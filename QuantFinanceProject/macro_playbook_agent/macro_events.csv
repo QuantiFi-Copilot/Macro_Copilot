@@ -1,0 +1,9 @@
+date,event_type,description,expected_value,actual_value,source
+2022-06-15,Rate Decision,Fed hikes interest rate by 75bps,50bps,75bps,FOMC
+2023-03-08,CPI,India CPI YoY rises to 6.4%,5.9%,6.4%,MOSPI
+2022-02-01,Fiscal Policy,India Union Budget 2022: capital expenditure rises 35%,NA,+35%,Budget Speech
+2020-04-21,Crude Oil Drop,Crude oil falls below $0 per barrel,NA,-37,Bloomberg
+2023-05-10,CPI,US CPI comes in at 4.9% YoY vs 5% expected,5%,4.9%,BLS
+2023-06-07,Rate Decision,RBI keeps repo rate unchanged at 6.5%,6.5%,6.5%,RBI MPC
+2022-09-13,CPI,US CPI surprises at 8.3% vs 8.1% expected,8.1%,8.3%,BLS
+2022-03-08,Geopolitics,Russia-Ukraine war causes crude to spike to $130,NA,$130,Reuters

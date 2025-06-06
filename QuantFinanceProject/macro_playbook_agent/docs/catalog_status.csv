@@ -1,0 +1,14 @@
+ticker,indicator_name,units,frequency,source
+CPIIN,Consumer Price Index (CPI),Index,monthly,EconDB (CSV Export)
+CRUDEBRNT,Crude Oil Price (Brent),USD/bbl,daily,Manual CSV
+INGDPABS,Real GDP (constant prices),INR Cr (2011 base),quarterly,MOSPI (Manual CSV)
+INGDP_NOMINAL,Nominal GDP,INR Cr,quarterly,Manual CSV
+GOLDUSD,Gold Price,USD/oz,daily,Manual CSV
+INIIP,Index of Industrial Production (IIP),Index,monthly,Manual CSV
+INREPO,Policy Repo Rate,%,weekly,Official RBI policy repo rate
+MBIN,Monetary Base,INR Lakh Cr,monthly,Manual CSV
+INPFCE,Private Final Consumption Expenditure (PFCE),INR Cr,quarterly,Manual CSV
+INGDPGR_DIRECT,Real GDP Growth (direct input),%,quarterly,Manual CSV
+USDINR,USD/INR Exchange Rate,INR,daily,Manual CSV
+INWPI,Wholesale Price Index (WPI),Index,monthly,Manual CSV
+IN10Y_YF,Yahoo 10Y Yield,%,daily,Alternate 10Y bond yield from Yahoo Finance

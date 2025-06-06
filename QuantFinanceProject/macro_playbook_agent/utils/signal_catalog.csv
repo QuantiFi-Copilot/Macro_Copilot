@@ -1,0 +1,57 @@
+ticker,signal_name,transformation_type,window,comments,analysis_freq,agg_method,effective_lag_days
+CPIIN,CPI_YoY,yoy,12,Year-over-year CPI inflation,M,last,10
+CPIIN,CPI_Z,zscore,36,CPI Z-score vs 3-year mean,M,last,10
+CPIIN,CPI_MA3,ma,3,3-month moving average of CPI,M,last,10
+CPIIN,CPI_Delta,delta,1,Month-over-month CPI change,M,last,10
+
+INWPI,WPI_YoY,yoy,12,Year-over-year WPI inflation,M,last,20
+INWPI,WPI_Z,zscore,36,WPI Z-score vs 3-year mean,M,last,20
+INWPI,WPI_MA3,ma,3,3-month WPI moving average,M,last,20
+INWPI,WPI_Delta,delta,1,Month-over-month WPI change,M,last,20
+
+INIIP,IIP_YoY,yoy,12,Year-over-year industrial output (IIP),M,last,30
+INIIP,IIP_Z,zscore,36,IIP Z-score vs 3-year mean,M,last,30
+INIIP,IIP_MA3,ma,3,3-month IIP moving average,M,last,30
+INIIP,IIP_Delta,delta,1,Month-over-month IIP change,M,last,30
+
+MBIN,MBIN_YoY,yoy,12,Year-over-year monetary base growth,M,last,15
+MBIN,MBIN_Delta,delta,1,Month-over-month monetary base change,M,last,15
+MBIN,MBIN_Z,zscore,36,Monetary base Z-score vs 3-year mean,M,last,15
+
+CRUDEBRNT,Crude_Price_MA1M,ma,1,Monthly average Brent crude price,M,mean,0
+CRUDEBRNT,Crude_MA3,ma,3,3-month Brent MA (trend),M,mean,0
+CRUDEBRNT,Crude_Z,zscore,36,Brent Z-score vs 3-year mean,M,mean,0
+CRUDEBRNT,Crude_Delta,delta,1,Month-over-month Brent change,M,mean,0
+CRUDEBRNT,Crude_Vol30d,volatility,30,30-day realized vol of Brent,M,last,0
+
+GOLDUSD,Gold_Price_MA1M,ma,1,Monthly average gold price,M,mean,0
+GOLDUSD,Gold_Z,zscore,36,Gold Z-score vs 3-year mean,M,mean,0
+GOLDUSD,Gold_Delta,delta,1,Month-over-month gold change,M,mean,0
+GOLDUSD,Gold_Vol30d,volatility,30,30-day realized vol of gold,M,last,0
+
+USDINR,USDINR_Delta,delta,1,Month-over-month USD/INR change,M,mean,0
+USDINR,USDINR_Z,zscore,36,USD/INR Z-score vs 3-year mean,M,mean,0
+USDINR,USDINR_Vol30d,volatility,30,30-day realized vol of USD/INR,M,last,0
+
+INREPO,Repo_Delta,delta,1,Week-over-week policy repo change,M,last,1
+INREPO,Repo_MA4,ma,4,4-week moving average of repo rate,M,last,1
+INREPO,Repo_Z,zscore,12,Repo rate Z-score vs 12-week mean,M,last,1
+
+IN10Y_YF,Y10_Delta,delta,1,Month-over-month 10Y yield change,M,last,0
+IN10Y_YF,Y10_MA3,ma,3,3-month moving average of 10Y yield,M,mean,0
+IN10Y_YF,Y10_Z,zscore,36,10Y yield Z-score vs 3-year mean,M,mean,0
+
+INGDPABS,GDP_YoY,yoy,4,Year-over-year real GDP growth,Q,last,45
+INGDPABS,GDP_QoQ,delta,1,Quarter-over-quarter real GDP change,Q,last,45
+INGDPABS,GDP_Z,zscore,8,Real GDP Z-score vs 2-year mean,Q,last,45
+
+INGDP_NOMINAL,NominalGDP_YoY,yoy,4,Year-over-year nominal GDP growth,Q,last,45
+INGDP_NOMINAL,NominalGDP_Z,zscore,8,Nominal GDP Z-score vs 2-year mean,Q,last,45
+
+INGDPGR_DIRECT,GDPGR_Delta,delta,1,Quarter-over-quarter direct GDP growth,Q,last,45
+INGDPGR_DIRECT,GDPGR_MA4,ma,4,4-quarter moving average of GDP growth,Q,last,45
+INGDPGR_DIRECT,GDPGR_Z,zscore,8,GDP growth Z-score vs 2-year mean,Q,last,45
+
+INPFCE,PFCE_YoY,yoy,4,Year-over-year PFCE growth,Q,last,60
+INPFCE,PFCE_Delta,delta,1,Quarter-over-quarter PFCE change,Q,last,60
+INPFCE,PFCE_Z,zscore,8,PFCE Z-score vs 2-year mean,Q,last,60

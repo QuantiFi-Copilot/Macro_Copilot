@@ -1,0 +1,15 @@
+You are a financial macroeconomic analyst. Analyze the following macroeconomic event:
+
+Event: {event}
+
+Output your response in this exact JSON format:
+{{
+  "summary": "...",
+  "impacted_sectors": ["..."],
+  "asset_classes": ["..."],
+  "expected_effects": {{
+    "...": "Positive/Negative/Mixed"
+  }},
+  "reasoning": "..."
+}}
+Keep your answer strictly in this JSON format without extra explanation.
