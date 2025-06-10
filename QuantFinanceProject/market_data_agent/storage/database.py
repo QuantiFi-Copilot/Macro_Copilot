@@ -1,4 +1,4 @@
-# market_data_agent/db/database.py
+# market_data_agent/storage/database.py
 
 import os
 from dotenv import load_dotenv, find_dotenv
@@ -6,14 +6,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 import pandas as pd
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 1) Load your DATABASE_URL (with credentials) from the project‐root .env
 dotenv_path = find_dotenv()
-if not dotenv_path:
-    raise RuntimeError("Could not find a .env file in parent directories.")
 load_dotenv(dotenv_path, override=True)
 
-# Read individual DB credentials from environment
 DB_USER = os.getenv("MARKET_DB_USER")
 DB_PASS = os.getenv("MARKET_DB_PASSWORD")
 DB_NAME = os.getenv("MARKET_DB_NAME")
@@ -24,9 +19,6 @@ if not (DB_USER and DB_PASS and DB_NAME):
     raise RuntimeError("One or more MARKET_DB_* variables are missing in .env")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-# 2) Create a single, shared SQLAlchemy Engine
-#    pool_size/overflow tuned for moderate concurrency
 engine: Engine = create_engine(
     DATABASE_URL,
     pool_size=10,
@@ -34,26 +26,26 @@ engine: Engine = create_engine(
     echo=False,
 )
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 3) Insert Helpers
-
 def insert_daily(symbol: str, df: pd.DataFrame):
     """
     Bulk upsert daily OHLCV into market_data.daily_ohlcv.
     Expects df with columns: ['date','open','high','low','close','volume'].
+    Here we convert df['date'] (a timestamp with tz) into a pure date.
     """
-    rows = [
-        {
+    rows = []
+    for row in df.to_dict(orient="records"):
+        # Convert the timestamp+tz to a pure date object:
+        pure_date = row["date"].date()
+        rows.append({
             "symbol": symbol,
-            "time": row["date"],
+            "time": pure_date,
             "open": row["open"],
             "high": row["high"],
             "low": row["low"],
             "close": row["close"],
             "volume": row["volume"],
-        }
-        for row in df.to_dict(orient="records")
-    ]
+        })
+
     stmt = text("""
     INSERT INTO market_data.daily_ohlcv(symbol, time, open, high, low, close, volume)
     VALUES(:symbol, :time, :open, :high, :low, :close, :volume)
@@ -66,6 +58,9 @@ def insert_daily(symbol: str, df: pd.DataFrame):
     """)
     with engine.begin() as conn:
         conn.execute(stmt, rows)
+
+# … leave insert_intraday_5m, insert_buffer_1m, get_daily, etc. unchanged …
+
 
 
 def insert_intraday_5m(symbol: str, df: pd.DataFrame):

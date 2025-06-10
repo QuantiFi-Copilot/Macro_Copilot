@@ -3,13 +3,10 @@
 import os
 from datetime import date, timedelta
 import pandas as pd
-
+from market_data_agent.config.universe import SYMBOLS
 from market_data_agent.ingestion.kite_client import KiteDataClient
 from market_data_agent.storage.database import insert_daily, insert_intraday_5m
 
-# 1. Define your universe (start with just one or two symbols to test)
-SYMBOLS = ["RELIANCE.NS"]  # e.g., test with Reliance first
-# Later, you can expand this list to the full top-20
 
 # 2. Define date ranges
 TODAY = date.today()
