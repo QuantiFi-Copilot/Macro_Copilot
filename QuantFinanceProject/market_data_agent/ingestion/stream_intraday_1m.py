@@ -1,93 +1,233 @@
-# market_data_agent/ingestion/stream_intraday_1m.py
+"""
+Live 1-minute streamer (IST-native + daily back-fill + rolling reset)
 
-import time
+• All timestamps stored **IST-naïve** (no timezone column).
+• Works even if you start the process **after** market close:
+    └─ pulls full-day 1-min candles first, then begins WebSocket streaming.
+• Keeps only the most-recent 1 trading-day of 1-minute data
+  in `market_data.intraday_1min_live`.
+• Robust reconnect loop with exponential back-off.
+"""
+
+from __future__ import annotations
+
+import os, time, json, threading
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
 import pandas as pd
+from kiteconnect import KiteConnect, KiteTicker
 from sqlalchemy import text
-from market_data_agent.storage.database import engine
 
-from market_data_agent.ingestion.kite_client import KiteDataClient
-from market_data_agent.storage.database import insert_buffer_1m
 from market_data_agent.config.universe import SYMBOLS
+from market_data_agent.utils.time import to_ist_naive  # <— helper you already added
+from market_data_agent.storage.database import insert_buffer_1m, engine
 
-from market_data_agent.utils.time import localize_df, IST
+# ──────────────────────────────────────────────────────────────────────────────
+API_KEY       = os.getenv("KITE_API_KEY")
+ACCESS_TOKEN  = os.getenv("KITE_ACCESS_TOKEN")      # refreshed elsewhere
+IST           = ZoneInfo("Asia/Kolkata")
+FLUSH_INTERVAL = 30                                # seconds
 
-# IST market open/close in 24-hr
-MARKET_OPEN  = "09:15:00"
-MARKET_CLOSE = "15:30:00"
+# in-memory buffer {symbol: [row_dict, …]}
+BUF: dict[str, list[dict]] = {}
+BUF_LOCK = threading.Lock()
+# ──────────────────────────────────────────────────────────────────────────────
 
-def is_market_open(now_ist: datetime) -> bool:
-    """Returns True if now_ist is between 09:15 and 15:30 IST."""
-    date_str = now_ist.strftime("%Y-%m-%d")
-    open_dt  = datetime.fromisoformat(f"{date_str} {MARKET_OPEN}")
-    close_dt = datetime.fromisoformat(f"{date_str} {MARKET_CLOSE}")
-    return open_dt <= now_ist <= close_dt
 
-def stream_intraday_1m():
-    client = KiteDataClient()
-    cleared_today = False
+# ╭───────────────────────────── helper utils ─────────────────────────────╮ #
+def now_ist() -> datetime:
+    return datetime.now(tz=IST)
 
+
+def today_trading_window() -> tuple[datetime, datetime]:
+    """Return today's 09:15 and 15:30 IST aware datetimes."""
+    d = now_ist().date()
+    start = datetime(d.year, d.month, d.day,  9, 15, tzinfo=IST)
+    end   = datetime(d.year, d.month, d.day, 15, 30, tzinfo=IST)
+    return start, end
+# ╰────────────────────────────────────────────────────────────────────────╯ #
+
+
+# ╭────────────────── WebSocket (ticks → buffer) callbacks ─────────────────╮ #
+def on_ticks(ws, ticks):
+    with BUF_LOCK:
+        for t in ticks:
+            token = t["instrument_token"]
+            symbol = token2symbol[token]        # guaranteed present
+            ts_ist = to_ist_naive(t["timestamp"])
+
+            BUF.setdefault(symbol, []).append(
+                {
+                    "symbol": symbol,
+                    "time":   ts_ist,
+                    "open":   t["ohlc"]["open"],
+                    "high":   t["ohlc"]["high"],
+                    "low":    t["ohlc"]["low"],
+                    "close":  t["last_price"],
+                    "volume": t["volume"],
+                }
+            )
+
+
+def on_connect(ws, _resp):
+    print("✔ WebSocket connected; subscribing …")
+    ws.subscribe(list(token2symbol.keys()))
+    ws.set_mode(ws.MODE_FULL, list(token2symbol.keys()))
+
+
+def on_close(ws, _code, reason):
+    print("✖ WebSocket closed:", reason)
+# ╰────────────────────────────────────────────────────────────────────────╯ #
+
+
+# ╭────────────────────── background housekeeping jobs ────────────────────╮ #
+def flusher():
+    """Flush buffered ticks to DB every FLUSH_INTERVAL seconds."""
     while True:
-        # 1) Current time in IST (naïve datetime)
-        now_ist = datetime.now(IST).replace(tzinfo=None)
-        # Convert that moment to UTC‑aware for API window math
-        now_utc = now_ist.replace(tzinfo=IST).astimezone(timezone.utc)
+        time.sleep(FLUSH_INTERVAL)
+        now = now_ist()
+        cutoff_prune = now - timedelta(days=1)
 
-        # 2) If market is open, fetch this past minute’s candle
-        if is_market_open(now_ist):
-            # On first tick of the new session, clear yesterday's live buffer
-            if not cleared_today:
-                with engine.begin() as conn:
-                    conn.execute(text("TRUNCATE market_data.intraday_1min_live"))
-                cleared_today = True
-                print(f"[{now_ist.strftime('%H:%M')}] Cleared 1-min buffer for new session.")
+        with BUF_LOCK:
+            snapshot = BUF.copy()
+            BUF.clear()
 
-            for symbol in SYMBOLS:
-                # a) Calculate the “minute window” in IST, then convert to UTC
-                end_ist   = now_ist.replace(second=0, microsecond=0)
-                start_ist = end_ist - timedelta(minutes=1)
+        if snapshot:
+            frames = [pd.DataFrame(v) for v in snapshot.values() if v]
+            df_all = pd.concat(frames, ignore_index=True)
+            insert_buffer_1m("BATCH", df_all)   # symbol col already present
+            print(f"→ flushed {len(df_all):,} rows ({now:%H:%M:%S})")
 
-                # Convert IST → UTC strings for Kite
-                start_utc = start_ist.replace(tzinfo=timezone(timedelta(hours=5, minutes=30))).astimezone(timezone.utc)
-                end_utc   = end_ist.replace(tzinfo=timezone(timedelta(hours=5, minutes=30))).astimezone(timezone.utc)
-                start_str = start_utc.strftime("%Y-%m-%d %H:%M:%S")
-                end_str   = end_utc.strftime("%Y-%m-%d %H:%M:%S")
+        # Rolling 1-day retention
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM market_data.intraday_1min_live "
+                    "WHERE time < :cutoff"
+                ),
+                {"cutoff": cutoff_prune.replace(tzinfo=None)},
+            )
 
-                try:
-                    data = client.fetch_ohlcv(
-                        symbol,
-                        start_str,
-                        end_str,
-                        interval="1minute"
-                    )
-                    df_1m = pd.DataFrame(data[symbol])
-                    if not df_1m.empty:
-                        df_1m = localize_df(df_1m, "date")
-                        insert_buffer_1m(symbol, df_1m)
-                        print(f"[{end_ist.strftime('%H:%M')}] Inserted 1-min bar for {symbol}")
-                    else:
-                        print(f"[{end_ist.strftime('%H:%M')}] No 1-min bar returned for {symbol}")
-                except Exception as e:
-                    print(f"Error fetching 1-min for {symbol} at {end_ist}: {e}")
 
-            # 3) Sleep until next minute mark (IST)
-            next_minute = (now_ist + timedelta(minutes=1)).replace(second=0, microsecond=0)
-            secs_to_sleep = (next_minute - now_ist).seconds
-            time.sleep(secs_to_sleep)
+def daily_reset_worker():
+    """
+    At 09:00 IST each morning: wipe buffer rows earlier than 09:15,
+    ensuring a clean start for the new session.
+    """
+    while True:
+        now = now_ist()
+        tomorrow_9 = (now + timedelta(days=1)).replace(
+            hour=9, minute=0, second=0, microsecond=0
+        )
+        time.sleep((tomorrow_9 - now).total_seconds())
 
-        else:
-            # Reset flag so we can clear buffer again next session
-            cleared_today = False
+        cutoff = tomorrow_9.strftime("%Y-%m-%d 09:15:00")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM market_data.intraday_1min_live "
+                    "WHERE time < :cutoff"
+                ),
+                {"cutoff": cutoff},
+            )
+        print("🧹 daily_reset_worker: cleared rows < ", cutoff)
+# ╰────────────────────────────────────────────────────────────────────────╯ #
 
-            # If market is closed, sleep until 09:15 IST next trading day
-            tomorrow = now_ist.date() + timedelta(days=1)
-            next_open_ist = datetime.fromisoformat(f"{tomorrow} {MARKET_OPEN}")
-            # Convert IST → UTC to compute sleep duration
-            next_open_utc = next_open_ist.replace(tzinfo=timezone(timedelta(hours=5, minutes=30))).astimezone(timezone.utc)
-            secs_to_sleep = (next_open_utc - now_utc).total_seconds()
-            print(f"Market closed at {now_ist.time()}, sleeping until next open.")
-            time.sleep(max(secs_to_sleep, 0))
+
+# ╭────────────────────────── initial back-fill logic ──────────────────────╮ #
+def backfill_today(kite: KiteConnect, symbol2token: dict[str, int]):
+    """
+    If the process starts *after* 15:30 IST, pull the full 1-min candle
+    set for today (09:15–15:30) before WebSocket streaming begins.
+    """
+    start, end = today_trading_window()
+    now = now_ist()
+    if now < end:                       # market open/ongoing → skip back-fill
+        return
+
+    print("↻ Back-filling today’s 1-min candles …")
+
+    for sym in SYMBOLS:
+        token = symbol2token[sym]
+        candles = kite.historical_data(
+            instrument_token=token,
+            from_date=start.astimezone(timezone.utc),
+            to_date=end.astimezone(timezone.utc),
+            interval="minute",
+        )
+        if not candles:
+            continue
+        df = pd.DataFrame(candles)
+        df["time"] = (
+            pd.to_datetime(df["date"])
+            .dt.tz_convert(IST)
+            .dt.tz_localize(None)
+        )
+        df = df.rename(
+            columns={
+                "open": "open",
+                "high": "high",
+                "low": "low",
+                "close": "close",
+                "volume": "volume",
+            }
+        )[["time", "open", "high", "low", "close", "volume"]]
+        insert_buffer_1m(sym, df)
+    print("✓ Back-fill complete.")
+# ╰────────────────────────────────────────────────────────────────────────╯ #
+
+
+# ╭──────────────────── utility: instruments → token map ───────────────────╮ #
+def build_token_maps(kite: KiteConnect):
+    instruments = kite.instruments("NSE")
+    want_ns = {s.split(".")[0] for s in SYMBOLS}  # RELIANCE from RELIANCE.NS
+    t2s, s2t = {}, {}
+    for row in instruments:
+        ts = row["tradingsymbol"]
+        if ts in want_ns:
+            symbol = f"{ts}.NS"
+            token = row["instrument_token"]
+            t2s[token] = symbol
+            s2t[symbol] = token
+    return t2s, s2t
+# ╰────────────────────────────────────────────────────────────────────────╯ #
+
+
+# ╭──────────────────────────── main entry-point ───────────────────────────╮ #
+def run_streamer():
+    kite = KiteConnect(api_key=API_KEY)
+    kite.set_access_token(ACCESS_TOKEN)
+
+    global token2symbol
+    token2symbol, symbol2token = build_token_maps(kite)
+    if not token2symbol:
+        raise RuntimeError("Instrument token map is empty – aborting.")
+
+    # optional one-time back-fill
+    backfill_today(kite, symbol2token)
+
+    # background jobs
+    threading.Thread(target=flusher,             daemon=True).start()
+    threading.Thread(target=daily_reset_worker,  daemon=True).start()
+
+    ws = KiteTicker(API_KEY, ACCESS_TOKEN, debug=False)
+    ws.on_ticks   = on_ticks
+    ws.on_connect = on_connect
+    ws.on_close   = on_close
+
+    backoff = 5
+    while True:
+        try:
+            ws.connect(threaded=True)
+            while ws.is_connected():
+                time.sleep(1)
+            print("WebSocket disconnected – reconnecting in", backoff, "s")
+        except Exception as e:
+            print("‼ WebSocket error:", e, "– reconnecting in", backoff, "s")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 30)
 
 
 if __name__ == "__main__":
-    stream_intraday_1m()
+    run_streamer()
