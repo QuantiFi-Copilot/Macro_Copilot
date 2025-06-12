@@ -10,6 +10,8 @@ from market_data_agent.ingestion.kite_client import KiteDataClient
 from market_data_agent.storage.database import insert_buffer_1m
 from market_data_agent.config.universe import SYMBOLS
 
+from market_data_agent.utils.time import localize_df, IST
+
 # IST market open/close in 24-hr
 MARKET_OPEN  = "09:15:00"
 MARKET_CLOSE = "15:30:00"
@@ -26,10 +28,10 @@ def stream_intraday_1m():
     cleared_today = False
 
     while True:
-        # 1) Get current time in UTC (timezone-aware)
-        now_utc = datetime.now(timezone.utc)
-        # Convert to IST
-        now_ist = now_utc.astimezone(timezone(timedelta(hours=5, minutes=30))).replace(tzinfo=None)
+        # 1) Current time in IST (naïve datetime)
+        now_ist = datetime.now(IST).replace(tzinfo=None)
+        # Convert that moment to UTC‑aware for API window math
+        now_utc = now_ist.replace(tzinfo=IST).astimezone(timezone.utc)
 
         # 2) If market is open, fetch this past minute’s candle
         if is_market_open(now_ist):
@@ -60,12 +62,7 @@ def stream_intraday_1m():
                     )
                     df_1m = pd.DataFrame(data[symbol])
                     if not df_1m.empty:
-                        # Convert UTC timestamps → IST, then drop tzinfo
-                        df_1m["date"] = (
-                            pd.to_datetime(df_1m["date"], utc=True)
-                              .dt.tz_convert("Asia/Kolkata")
-                              .dt.tz_localize(None)
-                        )
+                        df_1m = localize_df(df_1m, "date")
                         insert_buffer_1m(symbol, df_1m)
                         print(f"[{end_ist.strftime('%H:%M')}] Inserted 1-min bar for {symbol}")
                     else:

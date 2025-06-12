@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from market_data_agent.utils.time import localize_df
 import pandas as pd
 
 dotenv_path = find_dotenv()
@@ -26,12 +27,20 @@ engine: Engine = create_engine(
     echo=False,
 )
 
+# -----------------------------------------------------------------------------
+# Ensure every session defaults to Asia/Kolkata (IST)
+# -----------------------------------------------------------------------------
+with engine.begin() as conn:
+    conn.execute(text("SET TIME ZONE 'Asia/Kolkata'"))
+
 def insert_daily(symbol: str, df: pd.DataFrame):
     """
     Bulk upsert daily OHLCV into market_data.daily_ohlcv.
     Expects df with columns: ['date','open','high','low','close','volume'].
     Here we convert df['date'] (a timestamp with tz) into a pure date.
     """
+    # Convert incoming timezone‑aware UTC timestamps to naive IST
+    df = localize_df(df, "date")
     rows = []
     for row in df.to_dict(orient="records"):
         # Convert the timestamp+tz to a pure date object:
@@ -68,6 +77,8 @@ def insert_intraday_5m(symbol: str, df: pd.DataFrame):
     Bulk insert 5-min candles for the last 10 days into market_data.intraday_5min_ohlcv.
     Expects df with columns: ['date','open','high','low','close','volume'].
     """
+    # Ensure timestamps are naive IST before insert
+    df = localize_df(df, "date")
     rows = [
         {
             "symbol": symbol,
@@ -95,6 +106,8 @@ def insert_buffer_1m(symbol: str, df: pd.DataFrame):
     Expects df with columns: ['date','open','high','low','close','volume'].
     Retention policy automatically drops data older than 1 day.
     """
+    # Convert to naive IST
+    df = localize_df(df, "date")
     rows = [
         {
             "symbol": symbol,

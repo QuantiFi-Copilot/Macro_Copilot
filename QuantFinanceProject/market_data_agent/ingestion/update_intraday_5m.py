@@ -1,68 +1,125 @@
-# market_data_agent/ingestion/update_intraday_5m.py
+"""
+Real-time 1-minute streamer (robust)
 
-from datetime import date, timedelta
+• Connects via KiteTicker WebSocket.
+• Reconnects with exponential back-off (5 s → 10 s → 30 s).
+• Buffers ticks and flushes to DB every 30 s via insert_buffer_1m().
+• Converts timestamps to IST-naïve (to_ist_naive).
+• Keeps only the last 1 day of data in market_data.intraday_1min_live.
+"""
+
+from __future__ import annotations
+import os, json, time, threading
+from datetime import datetime, timedelta, timezone
+
 import pandas as pd
+from kiteconnect import KiteTicker, KiteConnect
+from sqlalchemy import text
 
-from market_data_agent.ingestion.kite_client import KiteDataClient
-from market_data_agent.storage.database import insert_intraday_5m
 from market_data_agent.config.universe import SYMBOLS
+from market_data_agent.utils.time import to_ist_naive
+from market_data_agent.storage.database import insert_buffer_1m, engine
 
-def update_intraday_5m():
-    client = KiteDataClient()
-    today = date.today()
+# --------------------------------------------------------------------------- #
+API_KEY      = os.getenv("KITE_API_KEY")
+ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")   # refreshed by refresh_token.py
+# --------------------------------------------------------------------------- #
 
-    # 1) Build ist_window_start as "14 days ago at 09:15 IST"
-    ist_window_start = (today - timedelta(days=14)).strftime("%Y-%m-%d 09:15:00")
-    #   a) Parse naive, then localize to IST, then convert to UTC
-    window_start_utc = (
-        pd.to_datetime(ist_window_start)                 # naive parser, as if local
-          .tz_localize("Asia/Kolkata")                    # mark as IST
-          .tz_convert("UTC")                               # convert to UTC
-    )
-    window_start_str = window_start_utc.strftime("%Y-%m-%d %H:%M:%S")
+# in-memory buffer {symbol: [ {dict row}, … ]}
+BUF: dict[str, list[dict]] = {}
+BUF_LOCK = threading.Lock()
 
-    # 2) Build ist_window_end as "today at 15:35 IST" (to capture the 15:30 bar)
-    ist_window_end = today.strftime("%Y-%m-%d 15:35:00")
-    window_end_utc = (
-        pd.to_datetime(ist_window_end)
-          .tz_localize("Asia/Kolkata")
-          .tz_convert("UTC")
-    )
-    window_end_str = window_end_utc.strftime("%Y-%m-%d %H:%M:%S")
+FLUSH_INTERVAL = 30        # seconds
 
-    for symbol in SYMBOLS:
-        print(
-            f"Fetching 5-min bars for {symbol} from {ist_window_start} IST "
-            f"to {today.strftime('%Y-%m-%d 15:30:00')} IST "
-            f"(UTC {window_start_str} → {window_end_str})..."
-        )
+def on_ticks(ws, ticks):
+    """Called by KiteTicker for each tick list."""
+    with BUF_LOCK:
+        for t in ticks:
+            tradingsym = t["instrument_token"]
+            # Map instrument_token → symbol once
+            symbol = token2symbol[tradingsym]
+            ts_ist = to_ist_naive(t["timestamp"])
+            BUF.setdefault(symbol, []).append({
+                "symbol": symbol,
+                "time":   ts_ist,
+                "open":   t["ohlc"]["open"],
+                "high":   t["ohlc"]["high"],
+                "low":    t["ohlc"]["low"],
+                "close":  t["last_price"],
+                "volume": t["volume"],
+            })
 
-        # 3) Fetch in UTC; Kite expects UTC timestamps
-        data = client.fetch_ohlcv(
-            symbol,
-            window_start_str,  # e.g. "2025-05-23 03:45:00"
-            window_end_str,    # e.g. "2025-06-06 10:05:00"
-            interval="5minute"
-        )
-        df_5min = pd.DataFrame(data[symbol])
+def on_connect(ws, _response):
+    print("✔ WebSocket connected; subscribing…")
+    ws.subscribe(list(token2symbol.keys()))
+    ws.set_mode(ws.MODE_FULL, list(token2symbol.keys()))
 
-        if df_5min.empty:
-            print(f"  → No 5-min bars returned for {symbol} (market holiday or no data).")
-            continue
+def on_close(ws, _code, _reason):
+    print("✖ WebSocket closed:", _reason)
 
-        # 4) Convert the fetched timestamps (UTC‐naive) into IST, then drop tzinfo
-        df_5min["date"] = (
-            pd.to_datetime(df_5min["date"], utc=True)       # parse as UTC‐aware
-              .dt.tz_convert("Asia/Kolkata")                  # convert to IST
-              .dt.tz_localize(None)                           # drop tzinfo, leaving naive IST
-        )
+def flusher():
+    while True:
+        time.sleep(FLUSH_INTERVAL)
+        now = datetime.now()
+        cutoff = (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        with BUF_LOCK:
+            snapshot = BUF.copy()
+            BUF.clear()
 
-        # 5) Upsert into the rolling‐window table (duplicates skipped)
-        insert_intraday_5m(symbol, df_5min)
-        print(f"  → Inserted {len(df_5min)} 5-min bars for {symbol} (duplicates skipped).")
+        if snapshot:
+            frames = [pd.DataFrame(rows) for rows in snapshot.values() if rows]
+            df_all  = pd.concat(frames, ignore_index=True)
+            insert_buffer_1m("BATCH", df_all)     # symbol column is in df
+            print(f"→ flushed {len(df_all)} rows ({now:%H:%M:%S})")
 
-    print("✅ 5-minute intraday update finished.")
+        # prune rows older than 1 day
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    DELETE FROM market_data.intraday_1min_live
+                    WHERE time < :cutoff
+                """),
+                {"cutoff": cutoff},
+            )
 
+def build_token_map(kite: KiteConnect):
+    instruments = kite.instruments("NSE")
+    wanted = {s.split(".")[0] for s in SYMBOLS}      # RELIANCE from RELIANCE.NS
+    mapping = {}
+    for row in instruments:
+        if row["tradingsymbol"] in wanted:
+            mapping[row["instrument_token"]] = f"{row['tradingsymbol']}.NS"
+    return mapping
+
+def run_streamer():
+    kite = KiteConnect(api_key=API_KEY)
+    kite.set_access_token(ACCESS_TOKEN)
+
+    global token2symbol
+    token2symbol = build_token_map(kite)
+    if not token2symbol:
+        raise RuntimeError("Token map is empty; check instruments download.")
+
+    ws = KiteTicker(API_KEY, ACCESS_TOKEN, debug=False)
+
+    ws.on_ticks      = on_ticks
+    ws.on_connect    = on_connect
+    ws.on_close      = on_close
+
+    # background flushing thread
+    threading.Thread(target=flusher, daemon=True).start()
+
+    backoff = 5
+    while True:
+        try:
+            ws.connect(threaded=True)
+            while ws.is_connected():
+                time.sleep(1)
+            print("WebSocket disconnected; reconnecting in", backoff, "s")
+        except Exception as e:
+            print("‼ WebSocket error:", e, "– reconnecting in", backoff, "s")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 30)  # max 30 s
 
 if __name__ == "__main__":
-    update_intraday_5m()
+    run_streamer()

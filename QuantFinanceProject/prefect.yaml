@@ -1,0 +1,25 @@
+prefect-version: "3"
+
+deployments:
+  - name: bootstrap-historical
+    path: /app                       # <── NEW: path recorded in metadata
+    entrypoint: flows/marketdata_flows.py:bootstrap_flow
+    work_pool: { name: default-agent-pool, type: process }
+    work_dir: /app                   # <── NEW: where set_working_directory cd’s
+    infra_overrides: { working_dir: /app }
+
+  - name: daily-eod
+    path: /app
+    entrypoint: flows/marketdata_flows.py:update_daily_flow
+    work_pool: { name: default-agent-pool, type: process }
+    work_dir: /app
+    infra_overrides: { working_dir: /app }
+    schedule: { cron: "0 16 * * 1-5", timezone: "Asia/Kolkata" }
+
+  - name: intraday-rollup-5m
+    path: /app
+    entrypoint: flows/marketdata_flows.py:update_5m_flow
+    work_pool: { name: default-agent-pool, type: process }
+    work_dir: /app
+    infra_overrides: { working_dir: /app }
+    schedule: { cron: "0 16 * * 1-5", timezone: "Asia/Kolkata" }

@@ -15,7 +15,7 @@ SELECT create_hypertable('market_data.daily_ohlcv', 'time', if_not_exists => TRU
 
 -- 2) Intraday 5-min OHLCV
 CREATE TABLE IF NOT EXISTS market_data.intraday_5min_ohlcv (
-    time TIMESTAMPTZ NOT NULL,
+    time TIMESTAMP NOT NULL,
     symbol TEXT NOT NULL,
     open DOUBLE PRECISION,
     high DOUBLE PRECISION,
@@ -29,7 +29,7 @@ SELECT add_retention_policy('market_data.intraday_5min_ohlcv', INTERVAL '10 days
 
 -- 3) Intraday 1-min live buffer
 CREATE TABLE IF NOT EXISTS market_data.intraday_1min_live (
-    time TIMESTAMPTZ NOT NULL,
+    time TIMESTAMP NOT NULL,
     symbol TEXT NOT NULL,
     open DOUBLE PRECISION,
     high DOUBLE PRECISION,

@@ -4,6 +4,7 @@ import os
 import time
 import json
 import pyotp
+import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -43,7 +44,11 @@ def get_request_token() -> str:
     chrome_options.add_argument("--no-sandbox")
     chrome_options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
-    driver = webdriver.Chrome(options=chrome_options)
+    # Explicitly wire Chromium & chromedriver paths inside Docker
+    chrome_options.binary_location = shutil.which("chromium")  # /usr/bin/chromium in image
+    driver_path = shutil.which("chromedriver")                 # /usr/local/bin/chromedriver symlink
+    driver = webdriver.Chrome(service=webdriver.chrome.service.Service(driver_path),
+                              options=chrome_options)
     driver.get(LOGIN_URL)
 
     try:

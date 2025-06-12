@@ -7,7 +7,7 @@ from dotenv import load_dotenv, find_dotenv
 # 1) Load .env and get DB URL
 dotenv_path = find_dotenv()
 load_dotenv(dotenv_path)
-DATABASE_URL = os.getenv("DOCKER_DATABASE_URL")
+DATABASE_URL = "postgresql://quantuser:myStrongPass@tsdb:5432/quantdata"
 
 # 2) Create engine
 engine = create_engine(DATABASE_URL)
