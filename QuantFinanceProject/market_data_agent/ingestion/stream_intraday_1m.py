@@ -12,7 +12,7 @@ Live 1-minute streamer (IST-native + daily back-fill + rolling reset)
 from __future__ import annotations
 
 import os, time, json, threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, date as Date
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -20,7 +20,7 @@ from kiteconnect import KiteConnect, KiteTicker
 from sqlalchemy import text
 
 from market_data_agent.config.universe import SYMBOLS
-from market_data_agent.utils.time import to_ist_naive  # <— helper you already added
+from market_data_agent.utils.time import to_ist_naive
 from market_data_agent.storage.database import insert_buffer_1m, engine
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -53,21 +53,23 @@ def today_trading_window() -> tuple[datetime, datetime]:
 def on_ticks(ws, ticks):
     with BUF_LOCK:
         for t in ticks:
-            token = t["instrument_token"]
-            symbol = token2symbol[token]        # guaranteed present
-            ts_ist = to_ist_naive(t["timestamp"])
+            # Defensive check to ignore non-tick messages
+            if isinstance(t, dict) and "instrument_token" in t and "timestamp" in t:
+                token = t["instrument_token"]
+                symbol = token2symbol[token]
+                ts_ist = to_ist_naive(t["timestamp"])
 
-            BUF.setdefault(symbol, []).append(
-                {
-                    "symbol": symbol,
-                    "time":   ts_ist,
-                    "open":   t["ohlc"]["open"],
-                    "high":   t["ohlc"]["high"],
-                    "low":    t["ohlc"]["low"],
-                    "close":  t["last_price"],
-                    "volume": t["volume"],
-                }
-            )
+                BUF.setdefault(symbol, []).append(
+                    {
+                        "symbol": symbol,
+                        "time":   ts_ist,
+                        "open":   t["ohlc"]["open"],
+                        "high":   t["ohlc"]["high"],
+                        "low":    t["ohlc"]["low"],
+                        "close":  t["last_price"],
+                        "volume": t["volume"],
+                    }
+                )
 
 
 def on_connect(ws, _resp):
@@ -95,9 +97,11 @@ def flusher():
 
         if snapshot:
             frames = [pd.DataFrame(v) for v in snapshot.values() if v]
-            df_all = pd.concat(frames, ignore_index=True)
-            insert_buffer_1m("BATCH", df_all)   # symbol col already present
-            print(f"→ flushed {len(df_all):,} rows ({now:%H:%M:%S})")
+            if frames:
+                df_all = pd.concat(frames, ignore_index=True)
+                # The DataFrame now has the correct 'time' column, pass directly.
+                insert_buffer_1m(df_all)
+                print(f"→ flushed {len(df_all):,} rows ({now:%H:%M:%S})")
 
         # Rolling 1-day retention
         with engine.begin() as conn:
@@ -117,12 +121,18 @@ def daily_reset_worker():
     """
     while True:
         now = now_ist()
-        tomorrow_9 = (now + timedelta(days=1)).replace(
-            hour=9, minute=0, second=0, microsecond=0
-        )
-        time.sleep((tomorrow_9 - now).total_seconds())
+        today_9am = now.replace(hour=9, minute=0, second=0, microsecond=0)
 
-        cutoff = tomorrow_9.strftime("%Y-%m-%d 09:15:00")
+        if now > today_9am:
+            next_run_time = today_9am + timedelta(days=1)
+        else:
+            next_run_time = today_9am
+
+        sleep_duration = (next_run_time - now).total_seconds()
+        print(f"🧹 daily_reset_worker: sleeping for {sleep_duration/3600:.2f} hours until {next_run_time}")
+        time.sleep(sleep_duration)
+
+        cutoff = next_run_time.replace(minute=15).strftime("%Y-%m-%d 09:15:00")
         with engine.begin() as conn:
             conn.execute(
                 text(
@@ -132,48 +142,59 @@ def daily_reset_worker():
                 {"cutoff": cutoff},
             )
         print("🧹 daily_reset_worker: cleared rows < ", cutoff)
+        time.sleep(60)
+
 # ╰────────────────────────────────────────────────────────────────────────╯ #
 
 
 # ╭────────────────────────── initial back-fill logic ──────────────────────╮ #
 def backfill_today(kite: KiteConnect, symbol2token: dict[str, int]):
     """
-    If the process starts *after* 15:30 IST, pull the full 1-min candle
-    set for today (09:15–15:30) before WebSocket streaming begins.
+    If the process starts after a trading session, pull the full 1-min candle
+    set for that day (09:15–15:30) before WebSocket streaming begins.
     """
-    start, end = today_trading_window()
     now = now_ist()
-    if now < end:                       # market open/ongoing → skip back-fill
+    
+    # If it's before market open, the session to backfill is the previous day.
+    # Otherwise, it's today's session.
+    trade_date: Date = now.date()
+    if now.time() < datetime.strptime("09:15", "%H:%M").time():
+        trade_date -= timedelta(days=1)
+    
+    if trade_date.weekday() >= 5: # 5=Sat, 6=Sun
+        print(f"✓ Skipping back-fill, {trade_date} is a weekend.")
         return
 
-    print("↻ Back-filling today’s 1-min candles …")
+    start = datetime(trade_date.year, trade_date.month, trade_date.day,  9, 15, tzinfo=IST)
+    end   = datetime(trade_date.year, trade_date.month, trade_date.day, 15, 30, tzinfo=IST)
+
+    if now < end:
+        print("✓ Script started before session end; skipping back-fill.")
+        return
+
+    print(f"↻ Back-filling 1-min candles for {trade_date}…")
 
     for sym in SYMBOLS:
-        token = symbol2token[sym]
+        token = symbol2token.get(sym)
+        if not token: continue
+            
         candles = kite.historical_data(
             instrument_token=token,
-            from_date=start.astimezone(timezone.utc),
-            to_date=end.astimezone(timezone.utc),
+            from_date=start,
+            to_date=end,
             interval="minute",
         )
-        if not candles:
-            continue
+        if not candles: continue
+            
         df = pd.DataFrame(candles)
-        df["time"] = (
-            pd.to_datetime(df["date"])
-            .dt.tz_convert(IST)
-            .dt.tz_localize(None)
-        )
-        df = df.rename(
-            columns={
-                "open": "open",
-                "high": "high",
-                "low": "low",
-                "close": "close",
-                "volume": "volume",
-            }
-        )[["time", "open", "high", "low", "close", "volume"]]
-        insert_buffer_1m(sym, df)
+        df['symbol'] = sym
+        # Rename 'date' from Kite API to 'time' to match our DB schema
+        df = df.rename(columns={'date': 'time'})
+        
+        # Ensure correct column order and pass directly to DB function
+        df = df[["symbol", "time", "open", "high", "low", "close", "volume"]]
+        insert_buffer_1m(df)
+        
     print("✓ Back-fill complete.")
 # ╰────────────────────────────────────────────────────────────────────────╯ #
 
@@ -181,7 +202,7 @@ def backfill_today(kite: KiteConnect, symbol2token: dict[str, int]):
 # ╭──────────────────── utility: instruments → token map ───────────────────╮ #
 def build_token_maps(kite: KiteConnect):
     instruments = kite.instruments("NSE")
-    want_ns = {s.split(".")[0] for s in SYMBOLS}  # RELIANCE from RELIANCE.NS
+    want_ns = {s.split(".")[0] for s in SYMBOLS}
     t2s, s2t = {}, {}
     for row in instruments:
         ts = row["tradingsymbol"]
@@ -204,10 +225,8 @@ def run_streamer():
     if not token2symbol:
         raise RuntimeError("Instrument token map is empty – aborting.")
 
-    # optional one-time back-fill
     backfill_today(kite, symbol2token)
 
-    # background jobs
     threading.Thread(target=flusher,             daemon=True).start()
     threading.Thread(target=daily_reset_worker,  daemon=True).start()
 
@@ -218,15 +237,19 @@ def run_streamer():
 
     backoff = 5
     while True:
+        if ws.is_connected():
+            time.sleep(1)
+            continue
         try:
+            print("Attempting to connect to WebSocket...")
             ws.connect(threaded=True)
-            while ws.is_connected():
-                time.sleep(1)
-            print("WebSocket disconnected – reconnecting in", backoff, "s")
+            backoff = 5
         except Exception as e:
-            print("‼ WebSocket error:", e, "– reconnecting in", backoff, "s")
+            print(f"‼ WebSocket error: {e}")
+        
+        print(f"WebSocket disconnected – reconnecting in {backoff}s")
         time.sleep(backoff)
-        backoff = min(backoff * 2, 30)
+        backoff = min(backoff * 2, 60)
 
 
 if __name__ == "__main__":

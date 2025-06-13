@@ -50,10 +50,11 @@ def _fetch_and_upsert(symbol: str, since: datetime, until: datetime):
     """
     client = KiteDataClient()
 
+    # MODIFIED SECTION: Pass datetime objects directly to the client
     raw = client.fetch_ohlcv(
         symbol,
-        since.isoformat(),
-        until.isoformat(),
+        since,
+        until,
         interval="5minute",
     )
 
@@ -84,6 +85,7 @@ def update_intraday_5m():
     5-minute data for every symbol in `SYMBOLS`.
     """
     cutoff = _ist_now_floor5() - timedelta(days=WINDOW_DAYS)
+    cutoff_str = cutoff.replace(tzinfo=None).isoformat()  # Convert to naive IST string
 
     # prune anything older than 14 days (cheap in TimescaleDB)
     with engine.begin() as conn:
@@ -100,7 +102,8 @@ def update_intraday_5m():
     total_new = 0
     for symbol in SYMBOLS:
         try:
-            df_existing = get_intraday_5m(symbol)
+            # FIX: Pass the required since_ts parameter
+            df_existing = get_intraday_5m(symbol, cutoff_str)
 
             if df_existing.empty:
                 need_from = cutoff

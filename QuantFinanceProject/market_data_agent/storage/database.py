@@ -68,10 +68,6 @@ def insert_daily(symbol: str, df: pd.DataFrame):
     with engine.begin() as conn:
         conn.execute(stmt, rows)
 
-# … leave insert_intraday_5m, insert_buffer_1m, get_daily, etc. unchanged …
-
-
-
 def insert_intraday_5m(symbol: str, df: pd.DataFrame):
     """
     Bulk insert 5-min candles for the last 10 days into market_data.intraday_5min_ohlcv.
@@ -100,37 +96,36 @@ def insert_intraday_5m(symbol: str, df: pd.DataFrame):
         conn.execute(stmt, rows)
 
 
-def insert_buffer_1m(symbol: str, df: pd.DataFrame):
+# -----------------------------------------------------------------------------
+# MODIFIED FUNCTION
+# -----------------------------------------------------------------------------
+def insert_buffer_1m(df: pd.DataFrame):
     """
     Bulk insert 1-min candles for today into market_data.intraday_1min_live.
-    Expects df with columns: ['date','open','high','low','close','volume'].
+    Expects df with columns: ['symbol', 'time', 'open', 'high', 'low', 'close', 'volume'].
     Retention policy automatically drops data older than 1 day.
     """
-    # Convert to naive IST
-    df = localize_df(df, "date")
-    rows = [
-        {
-            "symbol": symbol,
-            "time": row["date"],
-            "open": row["open"],
-            "high": row["high"],
-            "low": row["low"],
-            "close": row["close"],
-            "volume": row["volume"],
-        }
-        for row in df.to_dict(orient="records")
-    ]
+    # Ensure timestamps are naive IST before insert.
+    # The incoming DataFrame is now expected to have a 'time' column directly.
+    df = localize_df(df, "time")
+
+    # The DataFrame already contains the correct symbol for each row.
+    # We can convert it directly to a list of dictionaries for insertion.
+    rows = df.to_dict(orient="records")
+
     stmt = text("""
     INSERT INTO market_data.intraday_1min_live(symbol, time, open, high, low, close, volume)
     VALUES(:symbol, :time, :open, :high, :low, :close, :volume)
     ON CONFLICT(symbol, time) DO NOTHING;
     """)
-    with engine.begin() as conn:
-        conn.execute(stmt, rows)
+    if rows:
+        with engine.begin() as conn:
+            conn.execute(stmt, rows)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 4) Query Helpers
+# Query Helpers (Unchanged)
+# ────────────────────────────────────────────────────────────────────────────────
 
 def get_daily(symbol: str, start: str, end: str) -> pd.DataFrame:
     """

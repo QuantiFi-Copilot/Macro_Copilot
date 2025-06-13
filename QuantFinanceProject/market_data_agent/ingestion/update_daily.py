@@ -4,7 +4,7 @@ Daily updater (robust version)
 
 • Uses BOOTSTRAP_START_DATE from .env (or 5 years ago) when back-filling a
   newly-added symbol.
-• Skips API call entirely if yesterday’s bar is already present.
+• Skips API call entirely if the current day's bar is already present.
 • Fetches in ≤ 730-day chunks so Zerodha’s 2 000-day limit is never hit.
 """
 
@@ -59,8 +59,8 @@ def update_daily():
         else:
             last_date = df_existing["date"].max()
 
-            # Already have yesterday’s bar → skip
-            if last_date >= TODAY - timedelta(days=1):
+            # MODIFIED SECTION: Already have today’s bar → skip
+            if last_date >= TODAY:
                 print(f"✓ {symbol}: up-to-date")
                 continue
 
