@@ -25,7 +25,8 @@ services:
     volumes:
       - tsdata:/var/lib/postgresql/data
       - ./docker/00_set_timezone.sql:/docker-entrypoint-initdb.d/00_tz.sql:ro
-      - ./market_data_agent/storage/schema.sql:/docker-entrypoint-initdb.d/10_schema.sql:ro
+      - ./market_data_agent/storage/schema.sql:/docker-entrypoint-initdb.d/10_market_data_schema.sql:ro
+      - ./earnings_agent/storage/schema.sql:/docker-entrypoint-initdb.d/20_earnings_data_schema.sql:ro
 # ─────────────────────────────────────────────────────────────
   prefect-server:
     image: prefecthq/prefect:3-latest

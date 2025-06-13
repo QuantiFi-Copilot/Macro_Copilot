@@ -7,6 +7,6 @@ setup(
     packages=find_packages(include=[
         'macro_playbook_agent',
         'market_data_agent',
-        # add any future agents here
+        'earnings_agent'
     ]),
 )
