@@ -18,7 +18,7 @@ services:
     environment:
       POSTGRES_DB: quantdata
       POSTGRES_USER: quantuser
-      POSTGRES_PASSWORD: myStrongPass        # ← single hard-coded password
+      POSTGRES_PASSWORD: myStrongPass
       TZ: Asia/Kolkata
     ports:
       - "5432:5432"
@@ -27,13 +27,24 @@ services:
       - ./docker/00_set_timezone.sql:/docker-entrypoint-initdb.d/00_tz.sql:ro
       - ./market_data_agent/storage/schema.sql:/docker-entrypoint-initdb.d/10_market_data_schema.sql:ro
       - ./earnings_agent/storage/schema.sql:/docker-entrypoint-initdb.d/20_earnings_data_schema.sql:ro
+    # --- MODIFIED: Added healthcheck to ensure DB is ready ---
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantuser -d quantdata"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # --------------------------------------------------------
+
 # ─────────────────────────────────────────────────────────────
   prefect-server:
     image: prefecthq/prefect:3-latest
     container_name: prefect-server
     restart: unless-stopped
+    # --- MODIFIED: Now waits for tsdb to be healthy ---
     depends_on:
-      - tsdb
+      tsdb:
+        condition: service_healthy
+    # --------------------------------------------------
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://quantuser:myStrongPass@tsdb:5432/quantdata"
       TZ: Asia/Kolkata
@@ -42,22 +53,26 @@ services:
     command: "prefect server start --host 0.0.0.0"
 
 # ─────────────────────────────────────────────────────────────
-  # Build the project image (micromamba + Prefect + Chromium)
   project-image:
     build:
       context: .
-      dockerfile: Dockerfile         # ← the Dockerfile I sent earlier
+      dockerfile: Dockerfile
     image: quantfinanceproject:latest
-    # no container; just produces the image used below
 
 # ─────────────────────────────────────────────────────────────
   prefect-worker:
     image: quantfinanceproject:latest
     container_name: prefect-worker
     restart: unless-stopped
+    # --- MODIFIED: Now waits for server and healthy DB ---
     depends_on:
-      - prefect-server
+      prefect-server:
+        condition: service_started
+      tsdb:
+        condition: service_healthy
+    # -----------------------------------------------------
     working_dir: /app
+    shm_size: 1g
     volumes:
       - .:/app
       - ./.env:/app/.env                      
@@ -75,9 +90,13 @@ services:
     image: quantfinanceproject:latest
     container_name: market-streamer
     restart: unless-stopped
+    # --- MODIFIED: Now waits for tsdb to be healthy ---
     depends_on:
-      - tsdb
+      tsdb:
+        condition: service_healthy
+    # --------------------------------------------------
     working_dir: /app
+    shm_size: 1g
     volumes:
       - .:/app
       - ./.env:/app/.env
@@ -90,6 +109,30 @@ services:
       TZ: Asia/Kolkata
     command: >
       micromamba run -n quant-env python -m market_data_agent.ingestion.stream_intraday_1m
+  xbrl-ingestion:
+    image: quantfinanceproject:latest      # same as project-image
+    container_name: xbrl-ingestion
+    restart: "no"
+    depends_on:
+      tsdb:
+        condition: service_healthy         # wait for the DB :contentReference[oaicite:1]{index=1}
+    working_dir: /app
+    volumes:
+      - .:/app                             # mount code
+      - ./.env:/app/.env                   # mount creds/config
+      - ./earnings_agent/storage:/app/earnings_agent/storage 
+    environment:
+      # ensure your DB_HOST is the Docker service name
+      - EARNINGS_DB_HOST=tsdb              # default in database.py :contentReference[oaicite:2]{index=2}
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - EARNINGS_DB_SCHEMA=${EARNINGS_DB_SCHEMA}
+      - TZ=Asia/Kolkata
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.ingestion.fetch_xbrl"
+    ]
 ################################################################################
 # GUI stack
 ################################################################################
@@ -104,7 +147,11 @@ services:
       - pgadmin-data:/var/lib/pgadmin
     ports:
       - "5050:80"
-    depends_on: [ tsdb ]
+    # --- MODIFIED: Now waits for tsdb to be healthy ---
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    # --------------------------------------------------
 
   grafana:
     image: grafana/grafana-oss:11.0.0
@@ -115,18 +162,24 @@ services:
       - "3000:3000"
     volumes:
       - grafana-storage:/var/lib/grafana
-    depends_on: [ tsdb ]
+    # --- MODIFIED: Now waits for tsdb to be healthy ---
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    # --------------------------------------------------
 
   metabase:
     image: metabase/metabase:latest
     container_name: metabase
     ports:
-      - "3001:3000"          # web UI on http://localhost:3001
+      - "3001:3000"
     environment:
-      MB_DB_FILE: /metabase-data/metabase.db   # stores Metabase’s own metadata
-      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"   # server TZ
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Kolkata"
     volumes:
       - metabase-data:/metabase-data
+    # --- MODIFIED: Now waits for tsdb to be healthy ---
     depends_on:
-      - tsdb    
-
+      tsdb:
+        condition: service_healthy
+    # --------------------------------------------------

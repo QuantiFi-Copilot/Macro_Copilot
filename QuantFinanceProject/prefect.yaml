@@ -1,11 +1,24 @@
+# prefect.yaml
+
 prefect-version: "3"
 
 deployments:
+  # --- ADDED: This new deployment will run once daily to refresh the token ---
+  - name: daily-token-refresh
+    path: /app
+    entrypoint: flows/refresh_token_flow.py:refresh_token_flow
+    work_pool: { name: default-agent-pool, type: process }
+    work_dir: /app
+    schedule:
+      cron: "30 8 * * 1-5" # Runs at 8:30 AM IST on weekdays
+      timezone: "Asia/Kolkata"
+  # -------------------------------------------------------------------------
+
   - name: bootstrap-historical
-    path: /app                       # <── NEW: path recorded in metadata
+    path: /app
     entrypoint: flows/marketdata_flows.py:bootstrap_flow
     work_pool: { name: default-agent-pool, type: process }
-    work_dir: /app                   # <── NEW: where set_working_directory cd’s
+    work_dir: /app
     infra_overrides: { working_dir: /app }
 
   - name: daily-eod

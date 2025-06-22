@@ -1,12 +1,15 @@
 import os
 from dotenv import load_dotenv, find_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+# Import your ORM models from models.py
 from earnings_agent.storage.models import RawDocument, QuarterlyFundamental, CustomKPI, Base
+# CHANGED: Import DB_SCHEMA from the new neutral config file to prevent circular imports
+from earnings_agent.storage.config import DB_SCHEMA
 
-# Load environment variables
+# Load environment variables from the root of the project
 env_path = find_dotenv()
 load_dotenv(env_path, override=True)
 
@@ -16,12 +19,11 @@ DB_PASS = os.getenv("EARNINGS_DB_PASSWORD", "myStrongPass")
 DB_HOST = os.getenv("EARNINGS_DB_HOST", "tsdb")
 DB_PORT = os.getenv("EARNINGS_DB_PORT", "5432")
 DB_NAME = os.getenv("EARNINGS_DB_NAME", "quantdata")
-DB_SCHEMA = os.getenv("EARNINGS_DB_SCHEMA", "earnings_data")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Create engine and session factory
-gine = create_engine(DATABASE_URL, echo=False, future=True)
+engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -39,36 +41,33 @@ def get_session():
     return SessionLocal()
 
 
-def upsert_raw_document(document: dict) -> int:
+def upsert_raw_document(document: dict):
     """
-    Insert or update a RawDocument entry and return its primary key.
-
-    Args:
-        document: Dict matching RawDocument fields.
-
-    Returns:
-        int: ID of the inserted or updated RawDocument.
+    CHANGED: Inserts a RawDocument entry. If a document for the same ticker,
+    fiscal_date, and doc_type already exists, it does nothing. This makes the
+    operation idempotent and safe to re-run.
     """
     session = get_session()
-    rd = RawDocument(**document)
-    session.add(rd)
+    # Use the pg_insert construct to handle conflicts gracefully
+    stmt = pg_insert(RawDocument).values(**document)
+    
+    # "ON CONFLICT DO NOTHING" tells PostgreSQL to ignore the insert
+    # if a row with the same unique keys (ticker, fiscal_date, doc_type) already exists.
+    stmt = stmt.on_conflict_do_nothing(
+        index_elements=['ticker', 'fiscal_date', 'doc_type']
+    )
+    
+    session.execute(stmt)
     session.commit()
-    session.refresh(rd)
-    doc_id = rd.id
     session.close()
-    return doc_id
 
 
 def upsert_quarterly_fundamental(data: dict):
     """
     Upsert a QuarterlyFundamental record based on ticker, fiscal_date, and version.
-
-    Args:
-        data: Dict matching QuarterlyFundamental fields.
     """
     session = get_session()
     stmt = pg_insert(QuarterlyFundamental).values(**data)
-    # Prepare update dict excluding primary key
     update_cols = {c.name: getattr(stmt.excluded, c.name)
                    for c in QuarterlyFundamental.__table__.columns
                    if c.name not in ['id']}
@@ -84,10 +83,6 @@ def upsert_quarterly_fundamental(data: dict):
 def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
     """
     Upsert a CustomKPI JSONB entry for a given QuarterlyFundamental.
-
-    Args:
-        fundamental_id: The ID of the QuarterlyFundamental.
-        kpi_data: Dict of custom KPI data to store.
     """
     session = get_session()
     stmt = pg_insert(CustomKPI).values(
@@ -106,13 +101,6 @@ def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
 def get_quarterly_fundamental(ticker: str, fiscal_date):
     """
     Fetch a QuarterlyFundamental by ticker and fiscal_date.
-
-    Args:
-        ticker: Company ticker.
-        fiscal_date: Report date.
-
-    Returns:
-        QuarterlyFundamental or None
     """
     session = get_session()
     result = session.query(QuarterlyFundamental).filter_by(
@@ -126,12 +114,6 @@ def get_quarterly_fundamental(ticker: str, fiscal_date):
 def get_custom_kpis(fundamental_id: int):
     """
     Fetch CustomKPI for a given QuarterlyFundamental ID.
-
-    Args:
-        fundamental_id: ID of the QuarterlyFundamental.
-
-    Returns:
-        CustomKPI or None
     """
     session = get_session()
     result = session.query(CustomKPI).filter_by(

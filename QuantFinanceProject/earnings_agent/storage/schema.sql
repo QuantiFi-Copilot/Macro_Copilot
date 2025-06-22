@@ -2,16 +2,17 @@
 CREATE SCHEMA IF NOT EXISTS earnings_data;
 
 -- A table to store the raw source documents for audit and reprocessing.
--- This table is created first as other tables have foreign key dependencies on it.
 CREATE TABLE IF NOT EXISTS earnings_data.raw_documents (
     id SERIAL PRIMARY KEY,
     ticker VARCHAR(20) NOT NULL,
     fiscal_date DATE NOT NULL,
-    doc_type VARCHAR(50) NOT NULL, -- 'QUARTERLY_RESULTS_PDF', 'EARNINGS_TRANSCRIPT', 'XBRL_INSTANCE'
+    doc_type VARCHAR(50) NOT NULL, -- 'QUARTERLY_RESULTS_PDF', 'XBRL_INSTANCE'
     source_url TEXT,
     local_path TEXT,
     raw_text_content TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- NEW: This constraint prevents duplicate logs for the same filing.
+    UNIQUE (ticker, fiscal_date, doc_type)
 );
 
 
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS earnings_data.quarterly_fundamentals (
     total_assets BIGINT,
     total_liabilities BIGINT,
     operating_cash_flow BIGINT,
-    source VARCHAR(50) NOT NULL, -- e.g., 'XBRL_NSE', 'PDF_OCR_LLM', 'API_FMP', 'MANUAL_VERIFIED'
+    source VARCHAR(50) NOT NULL, -- e.g., 'XBRL_NSE', 'PDF_OCR_LLM', 'MANUAL_VERIFIED'
     version INT DEFAULT 1 NOT NULL, -- For handling restatements
     raw_document_id INTEGER REFERENCES earnings_data.raw_documents(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
