@@ -19,11 +19,10 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
-# --- Configuration (from your working script) ---
+# --- Configuration ---
 BASE_URL = "https://www.nseindia.com"
 UI_URL = BASE_URL + "/companies-listing/corporate-filings-financial-results"
 JSON_ENDPOINT = BASE_URL + "/api/corporates-financial-results"
-# Using the complete, proven set of headers from your original working script
 HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
@@ -32,10 +31,45 @@ HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
 }
 
-# The professional-grade data directory at the project root
-DATA_ROOT = Path(__file__).resolve().parent.parent/ "storage" / "data"
+DATA_ROOT = Path(__file__).resolve().parent.parent / "storage" / "data"
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
+
+# --- NEW: Robust Fiscal Period Calculation ---
+def get_indian_fiscal_period(report_end_date: datetime.date) -> tuple[int, int]:
+    """
+    Calculates the Indian financial year and quarter from a report's end date.
+
+    The Indian financial year starts on April 1st.
+    - Q1: April-June
+    - Q2: July-September
+    - Q3: October-December
+    - Q4: January-March
+
+    Args:
+        report_end_date: The end date of the reporting period.
+
+    Returns:
+        A tuple containing the financial year and the fiscal quarter (year, quarter).
+        For a report ending March 31, 2025, returns (2024, 4).
+    """
+    month = report_end_date.month
+    year = report_end_date.year
+
+    # Determine the financial year
+    fiscal_year = year - 1 if month < 4 else year
+
+    # Determine the fiscal quarter
+    if month in (4, 5, 6):
+        fiscal_quarter = 1
+    elif month in (7, 8, 9):
+        fiscal_quarter = 2
+    elif month in (10, 11, 12):
+        fiscal_quarter = 3
+    else:  # Months 1, 2, 3
+        fiscal_quarter = 4
+        
+    return fiscal_year, fiscal_quarter
 
 def seed_session() -> requests.Session:
     """Warms up a session by visiting the UI page to get necessary cookies."""
@@ -59,32 +93,21 @@ def fetch_financial_results(sess: requests.Session, from_date: str, to_date: str
             logging.info(f"Fetching master list of filings... (Attempt {attempt})")
             r = sess.get(JSON_ENDPOINT, params=params, timeout=20)
             
-            # Handle authentication/permission errors by reseeding the session
             if r.status_code in (401, 403):
                 logging.warning(f"Got status {r.status_code}, reseeding session...")
                 sess = seed_session()
                 continue
             
-            # For other HTTP errors, raise the exception
             r.raise_for_status()
 
-            # Check for a successful response and valid JSON
             if r.status_code == 200:
                 response_data = r.json()
-                
-                # --- START OF CORRECTION ---
-                # The API now wraps the results in a dictionary under the 'data' key.
                 if isinstance(response_data, dict) and 'data' in response_data:
-                    # Successfully found the list of announcements.
                     return response_data.get('data', [])
-                # --- END OF CORRECTION ---
-                
-                # This handles the old case where it might have been a direct list.
                 elif isinstance(response_data, list):
                      logging.info("API returned a direct list (old format). Processing as is.")
                      return response_data
                 else:
-                    # Log the unexpected structure and return empty.
                     logging.warning(f"API returned unexpected JSON structure: {response_data}")
                     return []
 
@@ -94,11 +117,10 @@ def fetch_financial_results(sess: requests.Session, from_date: str, to_date: str
                 raise HTTPError(f"Failed to fetch JSON after all retries: {JSON_ENDPOINT}") from e
             time.sleep(RETRY_DELAY_SECONDS * attempt)
     
-    return [] # Return empty list if all retries fail
-
+    return []
 
 def ingest_xbrl_for_universe(from_date: str, to_date: str):
-    """The main ingestion workflow, corrected and finalized."""
+    """The main ingestion workflow, corrected to use Indian FY standards."""
     logging.info(">>> Starting batch XBRL ingestion process <<<")
     try:
         sess = seed_session()
@@ -107,13 +129,11 @@ def ingest_xbrl_for_universe(from_date: str, to_date: str):
         logging.critical(f"Could not establish session or fetch master list. Aborting. Error: {e}")
         return
 
-    # If the list is empty after a successful fetch, there's nothing to do.
     if not all_announcements:
         logging.warning("Master list of filings was empty. No data to process for the given date range.")
         logging.info(">>> Batch ingestion process finished. <<<")
         return
 
-    # Group announcements by symbol for efficient lookup
     ann_by_ticker: dict[str, list[dict]] = {}
     for ann in all_announcements:
         if isinstance(ann, dict) and "symbol" in ann:
@@ -137,29 +157,32 @@ def ingest_xbrl_for_universe(from_date: str, to_date: str):
                 continue
 
             try:
-                fiscal_date = datetime.strptime(to_dt_str, "%d-%b-%Y").date()
-                quarter = (fiscal_date.month - 1) // 3 + 1
+                # --- MODIFICATION START ---
+                report_end_date = datetime.strptime(to_dt_str, "%d-%b-%Y").date()
+                fiscal_year, quarter = get_indian_fiscal_period(report_end_date)
+                # --- MODIFICATION END ---
             except ValueError:
                 logging.warning(f"Skipping filing for {ticker} due to unparsable date: '{to_dt_str}'")
                 continue
 
-            quarter_key = (fiscal_date.year, quarter)
+            quarter_key = (fiscal_year, quarter)
             if quarter_key in processed_quarters:
                 continue
             processed_quarters.add(quarter_key)
 
             company_dir = DATA_ROOT / "raw" / "xbrl" / ticker
             company_dir.mkdir(parents=True, exist_ok=True)
-            file_name = f"{ticker}_Q{quarter}_{fiscal_date.year}.xml"
+            
+            # --- MODIFICATION: New, clearer file name ---
+            file_name = f"{ticker}_FY{fiscal_year}_Q{quarter}.xml"
             out_path = company_dir / file_name
 
             if out_path.exists():
                 logging.info(f"Skipping (already exists): {out_path.name}")
-                # Even if it exists, ensure the metadata is in the DB for resilience
                 full_xml_url = BASE_URL + xml_url_path if not xml_url_path.startswith('http') else xml_url_path
                 document_data = {
                     "ticker": ticker,
-                    "fiscal_date": fiscal_date,
+                    "fiscal_date": report_end_date,
                     "doc_type": "XBRL_INSTANCE",
                     "source_url": full_xml_url,
                     "local_path": str(out_path.resolve()),
@@ -175,10 +198,9 @@ def ingest_xbrl_for_universe(from_date: str, to_date: str):
                 out_path.write_bytes(resp.content)
                 logging.info(f"Successfully downloaded: {out_path.name}")
 
-                # This is the Data Lineage step
                 document_data = {
                     "ticker": ticker,
-                    "fiscal_date": fiscal_date,
+                    "fiscal_date": report_end_date,
                     "doc_type": "XBRL_INSTANCE",
                     "source_url": full_xml_url,
                     "local_path": str(out_path.resolve()),
@@ -188,13 +210,11 @@ def ingest_xbrl_for_universe(from_date: str, to_date: str):
             except Exception as e:
                 logging.error(f"Failed to download or log {ticker} {file_name}: {e}")
 
-        time.sleep(3) # Be respectful to the server
+        time.sleep(3) 
 
     logging.info(">>> Batch ingestion process finished. <<<")
 
 if __name__ == "__main__":
-    # CORRECTED: Use the DD-MM-YYYY format required by the API.
-    # We are searching the period covering the results for the quarter ending March 2025.
     SEARCH_START_DATE = "01-04-2022"
     SEARCH_END_DATE = "22-06-2025"
     

@@ -1,146 +1,190 @@
-import xml.etree.ElementTree as ET
-from pathlib import Path
+# earnings_agent/parsing/parse_xbrl.py
+
 import json
 import logging
-from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from lxml import etree
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
+from sqlalchemy import select, and_
 
-# A more comprehensive semantic map based on the sample files provided.
-SEMANTIC_MAP = {
-    # Maps to 'standard_revenue'
-    "RevenueFromOperations": "standard_revenue",
-    "InterestEarned": "standard_revenue",
-    "Income": "standard_revenue",
+# --- Internal project imports ---
+from earnings_agent.storage.database import get_session, upsert_parsed_earning
+from earnings_agent.storage.models import RawDocument, ParsedEarning, QuarterlyFundamental
+from earnings_agent.parsing.semantic_map import SEMANTIC_MAP
 
-    # Maps to 'standard_net_income'
-    "ProfitLoss": "standard_net_income",
-    "ProfitLossForThePeriod": "standard_net_income",
-    "ProfitOrLossAttributableToOwnersOfParent": "standard_net_income",
-    "ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates": "standard_net_income",
+# --- Standard Logging Setup ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(module)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
-    # Maps to other core fields
-    "Assets": "total_assets",
-    "EquityAndLiabilities": "total_liabilities", # In many balance sheets, this represents the total L+E side
-    "CashFlowsFromUsedInOperatingActivities": "operating_cash_flow",
-}
+# --- Centralized Parser Version ---
+# This is crucial for the staging table logic. Increment this when you change the parser's logic.
+PARSER_VERSION = "2.3" # <-- VERSION INCREMENTED
+SOURCE_TYPE = "XBRL_NSE"
 
-UNIT_MULTIPLIERS = {
-    "crores": 10_000_000,
-    "lakhs": 100_000,
-    "millions": 1_000_000,
-}
 
-def find_tag(element, tag_name):
-    """Helper function to find a tag regardless of its namespace."""
-    return element.find(f".//{{*}}{tag_name}")
-
-def find_all_tags(element, tag_name):
-    """Helper function to find all tags regardless of their namespace."""
-    return element.findall(f".//{{*}}{tag_name}")
-
-def parse_xbrl_file(file_path: Path) -> dict | None:
+class XBRLParser:
     """
-    Parses a given XBRL XML file and extracts financial data into a structured dictionary.
-    This version is more robust and handles namespaces correctly.
+    An advanced, dual-context parser for XBRL instance files. (Version 2.3)
+    This version adds data quality status to the output based on context availability.
     """
-    try:
-        logging.info(f"Starting XBRL parsing for: {file_path.name}")
-        tree = ET.parse(file_path)
-        root = tree.getroot()
 
-        # --- 1. Extract Metadata and Context ---
-        # Find the primary context for the most recent quarter.
-        # This heuristic looks for a context ID containing "OneD" which typically represents the
-        # primary, single-quarter duration for the main financial statement.
-        contexts = find_all_tags(root, 'context')
-        primary_context_id = next((c.attrib['id'] for c in contexts if 'OneD' in c.attrib.get('id', '')), None)
+    def __init__(self, raw_document: RawDocument, session):
+        self.raw_document = raw_document
+        self.session = session
         
-        if not primary_context_id:
-            logging.error(f"Could not determine primary reporting context for {file_path.name}")
-            return None
-
-        # Find the end date tag within the specific primary context element
-        context_element = root.find(f".//*[@id='{primary_context_id}']")
-        end_date_tag = find_tag(context_element, 'endDate')
-        period_end_date = end_date_tag.text if end_date_tag is not None else "Unknown"
-
-        multiplier_tag = find_tag(root, 'LevelOfRoundingUsedInFinancialStatements')
-        multiplier_str = multiplier_tag.text.lower() if multiplier_tag is not None else "absolute"
-        multiplier = UNIT_MULTIPLIERS.get(multiplier_str, 1)
-        
-        ticker_tag = find_tag(root, 'Symbol')
-        ticker = ticker_tag.text if ticker_tag is not None else file_path.stem.split('_')[-1]
-        
-        logging.info(f"Parsing {ticker} for period ending {period_end_date}. Units: {multiplier_str.title()}.")
-
-        # --- 2. Extract and Process All Financial Facts ---
-        core_data = {}
-        custom_kpis = {}
-
-        for fact in root:
-            if 'contextRef' not in fact.attrib:
-                continue
-                
-            if fact.attrib['contextRef'] == primary_context_id:
-                tag_name = fact.tag.split('}')[-1]
-                raw_value = fact.text
-
-                if raw_value is None:
-                    continue
-                try:
-                    numeric_value = float(raw_value) * multiplier
-                except (ValueError, TypeError):
-                    continue
-
-                if tag_name in SEMANTIC_MAP:
-                    db_field = SEMANTIC_MAP[tag_name]
-                    # Don't overwrite a more specific value with a less specific one
-                    if db_field not in core_data:
-                        core_data[db_field] = int(numeric_value)
-                else:
-                    custom_kpis[tag_name] = int(numeric_value)
-        
-        if not core_data:
-            logging.warning("No core data extracted. Check context ID and XBRL tags.")
-            return None
+        if not self.raw_document or not self.raw_document.local_path:
+            raise FileNotFoundError(f"Raw document object is invalid or has no local_path.")
             
-        return {
-            "metadata": { "ticker": ticker, "period_end_date": period_end_date, "source_file": file_path.name },
-            "core_data": core_data,
-            "custom_kpis": custom_kpis,
-        }
-    except Exception as e:
-        logging.error(f"Failed to parse {file_path.name}: {type(e).__name__} - {e}")
+        self.tree = etree.parse(self.raw_document.local_path)
+        self.root = self.tree.getroot()
+        self.namespaces = {k if k is not None else 'xbrli': v for k, v in self.root.nsmap.items()}
+        
+        self.duration_context_id = self._find_context(instant=False)
+        self.instant_context_id = self._find_context(instant=True)
+
+    def _find_context(self, instant: bool) -> str | None:
+        date_str = self.raw_document.fiscal_date.strftime('%Y-%m-%d')
+        period_element = 'instant' if instant else 'endDate'
+        
+        xpath = (
+            f".//xbrli:context[not(.//xbrli:segment) and .//xbrli:period[xbrli:{period_element}='{date_str}']]"
+        )
+        contexts = self.root.xpath(xpath, namespaces=self.namespaces)
+        
+        if contexts:
+            return contexts[0].get('id')
+
+        fallback_xpath = f".//xbrli:context[.//xbrli:period[xbrli:{period_element}='{date_str}']]"
+        fallback_contexts = self.root.xpath(fallback_xpath, namespaces=self.namespaces)
+        if fallback_contexts:
+            context_id = fallback_contexts[0].get('id')
+            logging.warning(f"Using fallback {'instant' if instant else 'duration'} context for {self.raw_document.ticker}: {context_id}")
+            return context_id
+
+        # CHANGED: Logging level changed from ERROR to WARNING
+        logging.warning(f"No suitable {'instant' if instant else 'duration'} context found for {self.raw_document.ticker} on date {date_str}.")
         return None
 
+    def _process_facts(self, context_id: str | None, core_metrics: dict, custom_kpis: dict):
+        if not context_id: return 0
+        facts_xpath = f".//*[@contextRef='{context_id}']"
+        facts = self.root.xpath(facts_xpath, namespaces=self.namespaces)
+        for fact in facts:
+            tag = etree.QName(fact.tag).localname
+            value_str = fact.text.strip() if fact.text else '0'
+            decimals = fact.get('decimals', 'INF')
+            try:
+                if decimals.upper() == 'INF':
+                    normalized_value = float(value_str)
+                else:
+                    normalized_value = int(Decimal(value_str))
+            except (InvalidOperation, ValueError, TypeError):
+                continue
+            if tag in SEMANTIC_MAP:
+                standard_name = SEMANTIC_MAP[tag]
+                if core_metrics.get(standard_name) is None or core_metrics.get(standard_name) == 0:
+                    core_metrics[standard_name] = normalized_value
+            else:
+                if tag not in custom_kpis or custom_kpis.get(tag) == 0:
+                    custom_kpis[tag] = normalized_value
+        return len(facts)
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-
-    # CORRECTED: Point to the flat directory structure you specified.
-    # This path goes up from `parsing/` to `earnings_agent/` then into `storage/xbrl/`
-    data_dir = Path(__file__).resolve().parent.parent / "storage" / "data"/"xbrl"
-    
-    # List of test files to process from the correct location.
-    test_files_to_parse = [
-        data_dir / "Q2_2024_RELIANCE.xml",
-        data_dir / "Q2_2024_HDFCBANK.xml",
-        # You can add more files here to test, e.g., data_dir / "Q2_2024_TCS.xml"
-    ]
-
-    for test_file in test_files_to_parse:
-        print("-" * 60)
+    def parse(self) -> dict:
+        """
+        Parses the XBRL file and returns a structured dictionary ready for the staging table.
+        The output now includes a rich parsing_summary with a data quality status.
+        """
+        core_metric_keys = [c.name for c in QuarterlyFundamental.__table__.columns if c.name not in ['id', 'created_at', 'updated_at']]
+        core_metrics = {key: None for key in core_metric_keys}
+        custom_kpis = {}
         
-        if not test_file.exists():
-            logging.error(f"Test file not found: {test_file}")
-            logging.error("Please ensure the file exists in the 'earnings_agent/storage/data/xbrl/' directory.")
-            continue
+        duration_facts_count = self._process_facts(self.duration_context_id, core_metrics, custom_kpis)
+        instant_facts_count = self._process_facts(self.instant_context_id, core_metrics, custom_kpis)
 
-        parsed_data = parse_xbrl_file(test_file)
+        month = self.raw_document.fiscal_date.month
+        financial_quarter = ((month - 4 + 12) % 12) // 3 + 1
+        
+        # NEW: Determine the status based on context availability
+        status = "SUCCESS"
+        if not self.duration_context_id or not self.instant_context_id:
+            status = "PARTIAL_DATA"
 
-        if parsed_data:
-            print(f"\n--- XBRL Parsing Successful for {test_file.name} ---")
-            print(json.dumps(parsed_data, indent=4))
+        # CHANGED: The parsing_summary dictionary is enriched
+        output_content = {
+            "filing_metadata": { "source_document_id": self.raw_document.id, "ticker": self.raw_document.ticker, "fiscal_date": self.raw_document.fiscal_date.isoformat(), "period": f"Q{financial_quarter}" },
+            "core_metrics": core_metrics,
+            "custom_kpis": custom_kpis,
+            "parsing_summary": {
+                "parser_version": PARSER_VERSION,
+                "status": status,
+                "duration_context_found": bool(self.duration_context_id),
+                "instant_context_found": bool(self.instant_context_id),
+                "total_facts_found": duration_facts_count + instant_facts_count,
+                "core_metrics_mapped": sum(1 for v in core_metrics.values() if v is not None),
+                "custom_kpis_found": len(custom_kpis),
+                "parsing_timestamp": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+            }
+        }
+        
+        record_for_db = {
+            "raw_document_id": self.raw_document.id, "source_type": SOURCE_TYPE, "parser_version": PARSER_VERSION,
+            "ticker": self.raw_document.ticker, "fiscal_date": self.raw_document.fiscal_date, "content": output_content
+        }
+
+        return record_for_db
+
+
+# --- Main Batch Processing Logic ---
+if __name__ == '__main__':
+    logging.info(f"--- Starting XBRL Batch Parse v{PARSER_VERSION} ---")
+    session = get_session()
+    
+    try:
+        subquery = select(ParsedEarning.raw_document_id).where(
+            and_(
+                ParsedEarning.source_type == SOURCE_TYPE,
+                ParsedEarning.parser_version == PARSER_VERSION
+            )
+        ).scalar_subquery()
+
+        stmt = select(RawDocument).where(
+            and_(
+                RawDocument.doc_type == 'XBRL_INSTANCE',
+                RawDocument.id.notin_(subquery)
+            )
+        ).order_by(RawDocument.id)
+        
+        documents_to_process = session.execute(stmt).scalars().all()
+        
+        if not documents_to_process:
+            logging.info(f"All XBRL documents are already processed with parser v{PARSER_VERSION}. No new files to parse.")
         else:
-            print(f"\n--- XBRL Parsing Failed for {test_file.name} ---")
+            logging.info(f"Found {len(documents_to_process)} XBRL documents to parse with v{PARSER_VERSION}.")
+            
+            for doc in documents_to_process:
+                logging.info(f"Processing doc_id: {doc.id} for ticker: {doc.ticker} ({doc.fiscal_date})")
+                try:
+                    parser = XBRLParser(raw_document=doc, session=session)
+                    parsed_record = parser.parse()
+                    
+                    upsert_parsed_earning(parsed_record)
+                    
+                    # CHANGED: More intelligent logging based on the parse status
+                    parse_status = parsed_record['content']['parsing_summary']['status']
+                    if parse_status == 'PARTIAL_DATA':
+                        logging.warning(f"Stored PARTIAL parse for doc_id: {doc.id}. Check parsing_summary for details.")
+                    else:
+                        logging.info(f"Successfully stored FULL parse for doc_id: {doc.id}")
 
-    print("-" * 60)
+                except FileNotFoundError as e:
+                    logging.error(f"Halting execution for doc_id {doc.id}: {e}")
+                except Exception as e:
+                    logging.error(f"An unexpected error occurred processing doc_id {doc.id}: {e}", exc_info=True)
+
+    finally:
+        session.close()
+        logging.info(f"--- XBRL Batch Parse Finished v{PARSER_VERSION} ---")

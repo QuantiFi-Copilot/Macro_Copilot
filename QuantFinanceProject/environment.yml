@@ -18,3 +18,4 @@ dependencies:
     - watchdog
     - zope.interface
     - pyotp
+    - lxml

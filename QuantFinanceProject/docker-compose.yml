@@ -10,7 +10,7 @@ volumes:
   metabase-data:
 
 services:
-# ─────────────────────────────────────────────────────────────
+########################################## GENERAL PROJECT SERVICES ##########################################
   tsdb:
     image: timescale/timescaledb:latest-pg14
     container_name: tsdb
@@ -85,7 +85,7 @@ services:
         micromamba run -n quant-env prefect worker start --pool default-agent-pool --type process
       "
 
-# ─────────────────────────────────────────────────────────────
+  ########################################## MARKET DATA SERVICES ##########################################
   market-streamer:
     image: quantfinanceproject:latest
     container_name: market-streamer
@@ -109,6 +109,7 @@ services:
       TZ: Asia/Kolkata
     command: >
       micromamba run -n quant-env python -m market_data_agent.ingestion.stream_intraday_1m
+  ######################################### EARNINGS DATA SERVICES ##########################################
   xbrl-ingestion:
     image: quantfinanceproject:latest      # same as project-image
     container_name: xbrl-ingestion
@@ -133,8 +134,31 @@ services:
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.ingestion.fetch_xbrl"
     ]
+# ─────────────────────────────────────────────────────────────
+  xbrl-parser:
+    image: quantfinanceproject:latest
+    container_name: xbrl-parser
+    restart: "no" # This is a one-off task
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      # Pass database credentials to the container
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.parsing.parse_xbrl"
+    ]
 ################################################################################
-# GUI stack
+# DATABASE GUI stack
 ################################################################################
   pgadmin:
     image: dpage/pgadmin4:8

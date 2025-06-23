@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # Import your ORM models from models.py
-from earnings_agent.storage.models import RawDocument, QuarterlyFundamental, CustomKPI, Base
+from earnings_agent.storage.models import RawDocument, ParsedEarning, QuarterlyFundamental, CustomKPI, Base
 # CHANGED: Import DB_SCHEMA from the new neutral config file to prevent circular imports
 from earnings_agent.storage.config import DB_SCHEMA
 
@@ -61,7 +61,27 @@ def upsert_raw_document(document: dict):
     session.commit()
     session.close()
 
-
+def upsert_parsed_earning(data: dict):
+    """
+    Inserts a ParsedEarning entry. If a record for the same ticker, fiscal_date,
+    source_type, and parser_version already exists, it does nothing.
+    This makes the operation idempotent and safe to re-run.
+    """
+    session = get_session()
+    
+    # Use the pg_insert construct to handle conflicts gracefully
+    stmt = pg_insert(ParsedEarning).values(**data)
+    
+    # "ON CONFLICT DO NOTHING" leverages the 'uq_parsed_earnings' constraint
+    # defined in the models.py and schema.sql files.
+    stmt = stmt.on_conflict_do_nothing(
+        index_elements=['ticker', 'fiscal_date', 'source_type', 'parser_version']
+    )
+    
+    session.execute(stmt)
+    session.commit()
+    session.close()
+    
 def upsert_quarterly_fundamental(data: dict):
     """
     Upsert a QuarterlyFundamental record based on ticker, fiscal_date, and version.

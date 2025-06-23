@@ -104,3 +104,15 @@ CREATE TABLE IF NOT EXISTS earnings_data.custom_kpis (
     kpi_data JSONB NOT NULL,
     UNIQUE(fundamental_id)
 );
+
+The Revised "Source of Truth Hierarchy"
+Our data architecture can now be expanded to a multi-tiered pipeline that ingests and reconciles data from all these sources:
+Tier 1 (The Fast Layer): Data from Screen Scrapers or a Third-Party API.
+This gives us immediate numbers on earnings day and deep history.
+We store this with a source tag like SCRAPED_PROVISIONAL.
+Tier 2 (The Structured Layer): XBRL Data (when it arrives 1-2 months later).
+This is an official source. Its data will be used to overwrite and validate the provisional Tier 1 data.
+source tag: XBRL_NSE.
+Tier 3 (The Ground Truth Layer): PDF Extraction, guided by our validation engine and ML model.
+This is the ultimate source of truth, used to correct any discrepancies in Tiers 1 and 2.
+source tag: PDF_OCR_LLM.
