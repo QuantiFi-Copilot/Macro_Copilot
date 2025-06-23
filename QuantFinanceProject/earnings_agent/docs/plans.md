@@ -138,6 +138,20 @@ So the workflow will be:
 
 Things to explore: 
 - AI Driven scraping - somehow build an agent that automates web scraping 
+- Validation + Semantic mapping automation: 
+is it possible to build an automated workflow that does this:
+1) I will expand my universe of stocks to like a thousand stocks
+2) then we will build the validation engine, which will initially be rule based
+3) the validation engine flags stuff
+4) then we use the flag to find if the issue is because the raw xml file doesn't have the actual data or if the flag is because our semantic map is not intelligent/comprehensive enough
+5) if its the former, we just move on, if its the latter, it auto updates the semantic mapping to include the new tag - We build a diagnostic engine for this 
+6) we keep iterating till we nail the XBRL ingestion - at least based on the rule based validation engine initially then we can perhaps make the validation engine an ML model?? (I am not sure about this)
+7) then once the XBRL ingestion is nailed, as we discussed before, we need to classify whether or not these XBRL files or the results we have from it itself are reliable or not, we use an ML model to group by risk category then we move onto the next layer to do the PDF parsing/expensive process to get more accurate or true data
+8) we repeat steps 1-6 again for other sources because XBRL ingestion is only from 2017 onward and it has the lag problem
+
+We build a diagnostic engine for this - this is basically a module which has a mapping of key words. for instance net_profit is missing from the parsed earnings, and then in the custom_KPIs, NET_PROFIT_FROM_THE_QUARTER is added, which is basically an unknown bucket. so this means that the semantic mapping does not have this tag, so the diagnostic engine has a key word mapping and then it sees that net_profit is missing while the unknown bucket has a likely candidate, so it suggests this to us to add it to the semantic mapping.
+
+I also have another query: right now we are using rule based evaluation and whatnot, and we're saying we'll flag them and then move to the next layer if the data is suspicious, but what if the data doesn't "look" suspicious, but still is - let's say the profit is off by like 5% then how can we ever know if the data is wrong or right
 
 Analysis of Your Proposed 8-Step Workflow
 Your plan is 95% correct and perfectly aligned with best practices. I will go through each step and offer my commentary and one minor, crucial refinement.
@@ -151,3 +165,38 @@ The Power of Auto-Suggest: A safer, more robust workflow is for the system to fl
 Step 6: Iterate & Evolve Validation Engine: Correct. The rule-based engine is v1. Once we have enough labeled data (i.e., filings we have confirmed as "good" or "bad"), we can train an ML model to take over and find more subtle patterns.
 Step 7: Risk-Classify XBRL & Trigger PDF Parsing: Perfect. This is the "smart sampling" or "active learning" strategy we discussed. It uses a cheap process (XBRL parsing + ML scoring) to intelligently guide an expensive one (PDF parsing).
 Step 8: Repeat for Other Sources: Correct. This demonstrates a deep understanding of the architecture. Once this entire XBRL pipeline is a well-oiled machine, we can plug in a new data source (like a screen scraper) at the beginning and reuse the entire validation and processing backend.
+
+
+The Tiered Data Reconciliation Strategy
+Let's put a formal name and structure to your proposal. What you are describing is a Tiered Data Reconciliation Strategy. This is the absolute best-practice approach. Here’s how it looks architecturally:
+
+Tier 1: Raw Ingestion Layer (Multi-Source)
+Purpose: To acquire data from multiple "cheap" sources in parallel.
+Components:
+XBRL Parser (The one we just built)
+NSE Scraper (A new component to scrape the results page on the NSE website—an excellent idea for a high-trust source)
+Other Scrapers (e.g., from other financial data websites)
+Tier 2: ValidationEngine (Internal Consistency)
+Purpose: To run the rule-based checks we've already designed on each source independently.
+Logic:
+Does the XBRL data pass the Accounting Equation check?
+Does the scraped NSE data have null values for key fields?
+Output: Multiple, internally-validated JSON objects for a single company/quarter (one from each source).
+Tier 3: ReconciliationEngine (Cross-Source Validation) — The "5% Off" Solution
+This is the new, critical module you proposed.
+Purpose: To compare the outputs from Tier 2 and produce a single, reconciled record with a confidence score.
+Input: The validated JSON from XBRL, the validated JSON from the NSE scraper, etc.
+Logic:
+Compare Key Metrics: if abs(xbrl.revenue - nse.revenue) / nse.revenue > 0.05: -> Flag a major discrepancy.
+Establish Precedence: We can define a trust hierarchy. For headline numbers like Revenue and Net Income, we might say: "Trust the NSE website scrape over XBRL by default."
+Generate a Risk Score: Based on the number and magnitude of discrepancies, the engine calculates a single reconciliation_risk_score.
+Output: A single, master JSON record and its risk score.
+Tier 4: Triage & Escalation to PDF
+Purpose: To use the output of the ReconciliationEngine to make a final, cost-effective decision.
+Logic:
+If reconciliation_risk_score is LOW -> Promote the master record to quarterly_fundamentals. Done.
+If reconciliation_risk_score is HIGH -> Escalate. Add the raw_document_id for the company's PDF to a queue for our expensive PDFParser. The output of the PDF can then be used to create the final Golden Record.
+Answering Your Final Query
+"...what if the data doesn't 'look' suspicious, but still is - let's say the profit is off by like 5% then how can we ever know if the data is wrong or right"
+
+Your proposed architecture is the only way to solve this. An internal ValidationEngine (Tier 2) can never catch this. It can confirm that the numbers in a report add up correctly, but it can't know if the starting numbers themselves are wrong. Only by cross-referencing with an independent source (Tier 3) can you flag that 5% deviation and gain true confidence in your data.

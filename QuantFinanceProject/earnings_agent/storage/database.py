@@ -1,12 +1,12 @@
 import os
 from dotenv import load_dotenv, find_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, update
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 # Import your ORM models from models.py
 from earnings_agent.storage.models import RawDocument, ParsedEarning, QuarterlyFundamental, CustomKPI, Base
-# CHANGED: Import DB_SCHEMA from the new neutral config file to prevent circular imports
+# Import DB_SCHEMA from the new neutral config file
 from earnings_agent.storage.config import DB_SCHEMA
 
 # Load environment variables from the root of the project
@@ -43,20 +43,14 @@ def get_session():
 
 def upsert_raw_document(document: dict):
     """
-    CHANGED: Inserts a RawDocument entry. If a document for the same ticker,
-    fiscal_date, and doc_type already exists, it does nothing. This makes the
-    operation idempotent and safe to re-run.
+    Inserts a RawDocument entry. If a document for the same ticker,
+    fiscal_date, and doc_type already exists, it does nothing.
     """
     session = get_session()
-    # Use the pg_insert construct to handle conflicts gracefully
     stmt = pg_insert(RawDocument).values(**document)
-    
-    # "ON CONFLICT DO NOTHING" tells PostgreSQL to ignore the insert
-    # if a row with the same unique keys (ticker, fiscal_date, doc_type) already exists.
     stmt = stmt.on_conflict_do_nothing(
         index_elements=['ticker', 'fiscal_date', 'doc_type']
     )
-    
     session.execute(stmt)
     session.commit()
     session.close()
@@ -65,19 +59,12 @@ def upsert_parsed_earning(data: dict):
     """
     Inserts a ParsedEarning entry. If a record for the same ticker, fiscal_date,
     source_type, and parser_version already exists, it does nothing.
-    This makes the operation idempotent and safe to re-run.
     """
     session = get_session()
-    
-    # Use the pg_insert construct to handle conflicts gracefully
     stmt = pg_insert(ParsedEarning).values(**data)
-    
-    # "ON CONFLICT DO NOTHING" leverages the 'uq_parsed_earnings' constraint
-    # defined in the models.py and schema.sql files.
     stmt = stmt.on_conflict_do_nothing(
         index_elements=['ticker', 'fiscal_date', 'source_type', 'parser_version']
     )
-    
     session.execute(stmt)
     session.commit()
     session.close()
@@ -117,6 +104,24 @@ def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
     session.commit()
     session.close()
 
+# --- NEW FUNCTION FOR THE VALIDATION ENGINE ---
+def update_parsed_earning_with_validation(record_id: int, validated_content: dict):
+    """
+    Updates a specific ParsedEarning record with the new content containing
+    the validation_summary block.
+    """
+    session = get_session()
+    
+    stmt = (
+        update(ParsedEarning)
+        .where(ParsedEarning.id == record_id)
+        .values(content=validated_content)
+    )
+    
+    session.execute(stmt)
+    session.commit()
+    session.close()
+# --- END OF NEW FUNCTION ---
 
 def get_quarterly_fundamental(ticker: str, fiscal_date):
     """
