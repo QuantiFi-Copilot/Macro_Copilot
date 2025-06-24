@@ -11,7 +11,7 @@ from sqlalchemy import select, and_
 # --- Internal project imports ---
 from earnings_agent.storage.database import get_session, upsert_parsed_earning
 from earnings_agent.storage.models import RawDocument, ParsedEarning, QuarterlyFundamental
-from earnings_agent.parsing.semantic_map import SEMANTIC_MAP
+from earnings_agent.common.semantic_map import SEMANTIC_MAP
 
 # --- Standard Logging Setup ---
 logging.basicConfig(

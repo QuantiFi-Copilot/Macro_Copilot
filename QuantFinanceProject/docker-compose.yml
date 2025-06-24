@@ -110,6 +110,7 @@ services:
       TZ: Asia/Kolkata
     command: >
       micromamba run -n quant-env python -m market_data_agent.ingestion.stream_intraday_1m
+      
   ######################################### EARNINGS DATA SERVICES ##########################################
   xbrl-ingestion:
     image: quantfinanceproject:latest      # same as project-image
@@ -133,7 +134,7 @@ services:
       - TZ=Asia/Kolkata
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.ingestion.fetch_xbrl"
+      "python", "-m", "earnings_agent.sources.nse_xbrl.fetch_xbrl"
     ]
 # ─────────────────────────────────────────────────────────────
   xbrl-parser:
@@ -156,7 +157,7 @@ services:
       - TZ=Asia/Kolkata
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.parsing.parse_xbrl"
+      "python", "-m", "earnings_agent.sources.nse_xbrl.parse_xbrl"
     ]
 # ─────────────────────────────────────────────────────────────
 
