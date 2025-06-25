@@ -93,39 +93,37 @@
 <in-bse-fin:DateOfStartOfReportingPeriod contextRef="OneD">2024-07-01</in-bse-fin:DateOfStartOfReportingPeriod>
 <in-bse-fin:DateOfEndOfReportingPeriod contextRef="OneD">2024-09-30</in-bse-fin:DateOfEndOfReportingPeriod>
 <in-bse-fin:WhetherResultsAreAuditedOrUnaudited contextRef="OneD">Unaudited</in-bse-fin:WhetherResultsAreAuditedOrUnaudited>
-<in-bse-fin:NatureOfReportStandaloneConsolidated contextRef="OneD">Consolidated</in-bse-fin:NatureOfReportStandaloneConsolidated>
-<in-bse-fin:InterestOrDiscountOnAdvancesOrBills contextRef="OneD" unitRef="INR" decimals="-5">253651100000.00</in-bse-fin:InterestOrDiscountOnAdvancesOrBills>
-<in-bse-fin:RevenueOnInvestments contextRef="OneD" unitRef="INR" decimals="-5">54676800000.00</in-bse-fin:RevenueOnInvestments>
-<in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds contextRef="OneD" unitRef="INR" decimals="-5">3533500000.00</in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds>
-<in-bse-fin:OtherInterest contextRef="OneD" unitRef="INR" decimals="-5">4149100000.00</in-bse-fin:OtherInterest>
-<in-bse-fin:InterestEarned contextRef="OneD" unitRef="INR" decimals="-5">316010500000.00</in-bse-fin:InterestEarned>
-<in-bse-fin:OtherIncome contextRef="OneD" unitRef="INR" decimals="-5">76027200000.00</in-bse-fin:OtherIncome>
-<in-bse-fin:Income contextRef="OneD" unitRef="INR" decimals="-5">392037700000.00</in-bse-fin:Income>
-<in-bse-fin:InterestExpended contextRef="OneD" unitRef="INR" decimals="-5">176149200000.00</in-bse-fin:InterestExpended>
-<in-bse-fin:EmployeesCost contextRef="OneD" unitRef="INR" decimals="-5">34728400000.00</in-bse-fin:EmployeesCost>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneD" unitRef="INR" decimals="-5">66641400000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:OperatingExpenses contextRef="OneD" unitRef="INR" decimals="-5">101369800000.00</in-bse-fin:OperatingExpenses>
-<in-bse-fin:ExpenditureExcludingProvisionsAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">277519000000.00</in-bse-fin:ExpenditureExcludingProvisionsAndContingencies>
-<in-bse-fin:OperatingProfitBeforeProvisionAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">114518700000.00</in-bse-fin:OperatingProfitBeforeProvisionAndContingencies>
-<in-bse-fin:ProvisionsOtherThanTaxAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">22745800000.00</in-bse-fin:ProvisionsOtherThanTaxAndContingencies>
+<in-bse-fin:NatureOfReportStandaloneConsolidated contextRef="OneD">Standalone</in-bse-fin:NatureOfReportStandaloneConsolidated>
+<in-bse-fin:InterestOrDiscountOnAdvancesOrBills contextRef="OneD" unitRef="INR" decimals="-5">242611300000.00</in-bse-fin:InterestOrDiscountOnAdvancesOrBills>
+<in-bse-fin:RevenueOnInvestments contextRef="OneD" unitRef="INR" decimals="-5">54435400000.00</in-bse-fin:RevenueOnInvestments>
+<in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds contextRef="OneD" unitRef="INR" decimals="-5">3510700000.00</in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds>
+<in-bse-fin:OtherInterest contextRef="OneD" unitRef="INR" decimals="-5">3641200000.00</in-bse-fin:OtherInterest>
+<in-bse-fin:InterestEarned contextRef="OneD" unitRef="INR" decimals="-5">304198600000.00</in-bse-fin:InterestEarned>
+<in-bse-fin:OtherIncome contextRef="OneD" unitRef="INR" decimals="-5">67218500000.00</in-bse-fin:OtherIncome>
+<in-bse-fin:Income contextRef="OneD" unitRef="INR" decimals="-5">371417100000.00</in-bse-fin:Income>
+<in-bse-fin:InterestExpended contextRef="OneD" unitRef="INR" decimals="-5">169366600000.00</in-bse-fin:InterestExpended>
+<in-bse-fin:EmployeesCost contextRef="OneD" unitRef="INR" decimals="-5">31171900000.00</in-bse-fin:EmployeesCost>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneD" unitRef="INR" decimals="-5">63753900000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OperatingExpenses contextRef="OneD" unitRef="INR" decimals="-5">94925800000.00</in-bse-fin:OperatingExpenses>
+<in-bse-fin:ExpenditureExcludingProvisionsAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">264292400000.00</in-bse-fin:ExpenditureExcludingProvisionsAndContingencies>
+<in-bse-fin:OperatingProfitBeforeProvisionAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">107124700000.00</in-bse-fin:OperatingProfitBeforeProvisionAndContingencies>
+<in-bse-fin:ProvisionsOtherThanTaxAndContingencies contextRef="OneD" unitRef="INR" decimals="-5">22040900000.00</in-bse-fin:ProvisionsOtherThanTaxAndContingencies>
 <in-bse-fin:ExceptionalItems contextRef="OneD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ExceptionalItems>
-<in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax contextRef="OneD" unitRef="INR" decimals="-5">91772900000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax>
-<in-bse-fin:TaxExpense contextRef="OneD" unitRef="INR" decimals="-5">17683900000.00</in-bse-fin:TaxExpense>
-<in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax contextRef="OneD" unitRef="INR" decimals="-5">74089000000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax>
+<in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax contextRef="OneD" unitRef="INR" decimals="-5">85083800000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax>
+<in-bse-fin:TaxExpense contextRef="OneD" unitRef="INR" decimals="-5">15908100000.00</in-bse-fin:TaxExpense>
+<in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax contextRef="OneD" unitRef="INR" decimals="-5">69175700000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax>
 <in-bse-fin:ExtraordinaryItems contextRef="OneD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ExtraordinaryItems>
-<in-bse-fin:ProfitLossForThePeriod contextRef="OneD" unitRef="INR" decimals="-5">74089000000.00</in-bse-fin:ProfitLossForThePeriod>
-<in-bse-fin:ShareOfProfitLossOfAssociates contextRef="OneD" unitRef="INR" decimals="-5">267600000.00</in-bse-fin:ShareOfProfitLossOfAssociates>
-<in-bse-fin:ProfitLossOfMinorityInterest contextRef="OneD" unitRef="INR" decimals="-5">344000000.00</in-bse-fin:ProfitLossOfMinorityInterest>
-<in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="OneD" unitRef="INR" decimals="-5">74012600000.00</in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
+<in-bse-fin:ProfitLossForThePeriod contextRef="OneD" unitRef="INR" decimals="-5">69175700000.00</in-bse-fin:ProfitLossForThePeriod>
+<in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="OneD" unitRef="INR" decimals="-5">69175700000.00</in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
 <in-bse-fin:PaidUpValueOfEquityShareCapital contextRef="OneD" unitRef="INR" decimals="-5">6186500000.00</in-bse-fin:PaidUpValueOfEquityShareCapital>
 <in-bse-fin:FaceValueOfEquityShareCapital contextRef="OneD" unitRef="INRPerShare" decimals="INF">2.00</in-bse-fin:FaceValueOfEquityShareCapital>
 <in-bse-fin:PercentageOfShareHeldByGovernmentOfIndia contextRef="OneD" unitRef="pure" decimals="INF">0.00</in-bse-fin:PercentageOfShareHeldByGovernmentOfIndia>
-<in-bse-fin:CET1Ratio contextRef="OneD" unitRef="pure" decimals="INF">0.1411</in-bse-fin:CET1Ratio>
-<in-bse-fin:AdditionalTier1Ratio contextRef="OneD" unitRef="pure" decimals="INF">0.0039</in-bse-fin:AdditionalTier1Ratio>
-<in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">23.94</in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems>
-<in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">23.78</in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems>
-<in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">23.94</in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems>
-<in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">23.78</in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems>
+<in-bse-fin:CET1Ratio contextRef="OneD" unitRef="pure" decimals="INF">0.1412</in-bse-fin:CET1Ratio>
+<in-bse-fin:AdditionalTier1Ratio contextRef="OneD" unitRef="pure" decimals="INF">0.0042</in-bse-fin:AdditionalTier1Ratio>
+<in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">22.37</in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems>
+<in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">22.23</in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems>
+<in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">22.37</in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems>
+<in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems contextRef="OneD" unitRef="INRPerShare" decimals="INF">22.23</in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems>
 <in-bse-fin:GrossNonPerformingAssets contextRef="OneD" unitRef="INR" decimals="-5">154662300000.00</in-bse-fin:GrossNonPerformingAssets>
 <in-bse-fin:NonPerformingAssets contextRef="OneD" unitRef="INR" decimals="-5">36124700000.00</in-bse-fin:NonPerformingAssets>
 <in-bse-fin:PercentageOfGrossNpa contextRef="OneD" unitRef="pure" decimals="INF">0.0144</in-bse-fin:PercentageOfGrossNpa>
@@ -135,204 +133,201 @@
 <in-bse-fin:DateOfStartOfReportingPeriod contextRef="FourD">2024-04-01</in-bse-fin:DateOfStartOfReportingPeriod>
 <in-bse-fin:DateOfEndOfReportingPeriod contextRef="FourD">2024-09-30</in-bse-fin:DateOfEndOfReportingPeriod>
 <in-bse-fin:WhetherResultsAreAuditedOrUnaudited contextRef="FourD">Unaudited</in-bse-fin:WhetherResultsAreAuditedOrUnaudited>
-<in-bse-fin:NatureOfReportStandaloneConsolidated contextRef="FourD">Consolidated</in-bse-fin:NatureOfReportStandaloneConsolidated>
-<in-bse-fin:InterestOrDiscountOnAdvancesOrBills contextRef="FourD" unitRef="INR" decimals="-5">501052900000.00</in-bse-fin:InterestOrDiscountOnAdvancesOrBills>
-<in-bse-fin:RevenueOnInvestments contextRef="FourD" unitRef="INR" decimals="-5">110861500000.00</in-bse-fin:RevenueOnInvestments>
-<in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds contextRef="FourD" unitRef="INR" decimals="-5">6533800000.00</in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds>
-<in-bse-fin:OtherInterest contextRef="FourD" unitRef="INR" decimals="-5">9147500000.00</in-bse-fin:OtherInterest>
-<in-bse-fin:InterestEarned contextRef="FourD" unitRef="INR" decimals="-5">627595700000.00</in-bse-fin:InterestEarned>
-<in-bse-fin:OtherIncome contextRef="FourD" unitRef="INR" decimals="-5">142400800000.00</in-bse-fin:OtherIncome>
-<in-bse-fin:Income contextRef="FourD" unitRef="INR" decimals="-5">769996500000.00</in-bse-fin:Income>
-<in-bse-fin:InterestExpended contextRef="FourD" unitRef="INR" decimals="-5">348759200000.00</in-bse-fin:InterestExpended>
-<in-bse-fin:EmployeesCost contextRef="FourD" unitRef="INR" decimals="-5">69674600000.00</in-bse-fin:EmployeesCost>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourD" unitRef="INR" decimals="-5">129595500000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:OperatingExpenses contextRef="FourD" unitRef="INR" decimals="-5">199270100000.00</in-bse-fin:OperatingExpenses>
-<in-bse-fin:ExpenditureExcludingProvisionsAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">548029300000.00</in-bse-fin:ExpenditureExcludingProvisionsAndContingencies>
-<in-bse-fin:OperatingProfitBeforeProvisionAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">221967200000.00</in-bse-fin:OperatingProfitBeforeProvisionAndContingencies>
-<in-bse-fin:ProvisionsOtherThanTaxAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">43760900000.00</in-bse-fin:ProvisionsOtherThanTaxAndContingencies>
+<in-bse-fin:NatureOfReportStandaloneConsolidated contextRef="FourD">Standalone</in-bse-fin:NatureOfReportStandaloneConsolidated>
+<in-bse-fin:InterestOrDiscountOnAdvancesOrBills contextRef="FourD" unitRef="INR" decimals="-5">479799300000.00</in-bse-fin:InterestOrDiscountOnAdvancesOrBills>
+<in-bse-fin:RevenueOnInvestments contextRef="FourD" unitRef="INR" decimals="-5">110243700000.00</in-bse-fin:RevenueOnInvestments>
+<in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds contextRef="FourD" unitRef="INR" decimals="-5">6464000000.00</in-bse-fin:InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds>
+<in-bse-fin:OtherInterest contextRef="FourD" unitRef="INR" decimals="-5">8298900000.00</in-bse-fin:OtherInterest>
+<in-bse-fin:InterestEarned contextRef="FourD" unitRef="INR" decimals="-5">604805900000.00</in-bse-fin:InterestEarned>
+<in-bse-fin:OtherIncome contextRef="FourD" unitRef="INR" decimals="-5">125053400000.00</in-bse-fin:OtherIncome>
+<in-bse-fin:Income contextRef="FourD" unitRef="INR" decimals="-5">729859300000.00</in-bse-fin:Income>
+<in-bse-fin:InterestExpended contextRef="FourD" unitRef="INR" decimals="-5">335491600000.00</in-bse-fin:InterestExpended>
+<in-bse-fin:EmployeesCost contextRef="FourD" unitRef="INR" decimals="-5">62466400000.00</in-bse-fin:EmployeesCost>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourD" unitRef="INR" decimals="-5">123714200000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OperatingExpenses contextRef="FourD" unitRef="INR" decimals="-5">186180600000.00</in-bse-fin:OperatingExpenses>
+<in-bse-fin:ExpenditureExcludingProvisionsAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">521672200000.00</in-bse-fin:ExpenditureExcludingProvisionsAndContingencies>
+<in-bse-fin:OperatingProfitBeforeProvisionAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">208187100000.00</in-bse-fin:OperatingProfitBeforeProvisionAndContingencies>
+<in-bse-fin:ProvisionsOtherThanTaxAndContingencies contextRef="FourD" unitRef="INR" decimals="-5">42433700000.00</in-bse-fin:ProvisionsOtherThanTaxAndContingencies>
 <in-bse-fin:ExceptionalItems contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ExceptionalItems>
-<in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax contextRef="FourD" unitRef="INR" decimals="-5">178206300000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax>
-<in-bse-fin:TaxExpense contextRef="FourD" unitRef="INR" decimals="-5">39617000000.00</in-bse-fin:TaxExpense>
-<in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax contextRef="FourD" unitRef="INR" decimals="-5">138589300000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax>
+<in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax contextRef="FourD" unitRef="INR" decimals="-5">165753400000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesBeforeTax>
+<in-bse-fin:TaxExpense contextRef="FourD" unitRef="INR" decimals="-5">36231300000.00</in-bse-fin:TaxExpense>
+<in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax contextRef="FourD" unitRef="INR" decimals="-5">129522100000.00</in-bse-fin:ProfitLossFromOrdinaryActivitiesAfterTax>
 <in-bse-fin:ExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ExtraordinaryItems>
-<in-bse-fin:ProfitLossForThePeriod contextRef="FourD" unitRef="INR" decimals="-5">138589300000.00</in-bse-fin:ProfitLossForThePeriod>
-<in-bse-fin:ShareOfProfitLossOfAssociates contextRef="FourD" unitRef="INR" decimals="-5">438600000.00</in-bse-fin:ShareOfProfitLossOfAssociates>
-<in-bse-fin:ProfitLossOfMinorityInterest contextRef="FourD" unitRef="INR" decimals="-5">651000000.00</in-bse-fin:ProfitLossOfMinorityInterest>
-<in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="FourD" unitRef="INR" decimals="-5">138376900000.00</in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
+<in-bse-fin:ProfitLossForThePeriod contextRef="FourD" unitRef="INR" decimals="-5">129522100000.00</in-bse-fin:ProfitLossForThePeriod>
+<in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="FourD" unitRef="INR" decimals="-5">129522100000.00</in-bse-fin:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
 <in-bse-fin:PaidUpValueOfEquityShareCapital contextRef="FourD" unitRef="INR" decimals="-5">6186500000.00</in-bse-fin:PaidUpValueOfEquityShareCapital>
 <in-bse-fin:FaceValueOfEquityShareCapital contextRef="FourD" unitRef="INRPerShare" decimals="INF">2.00</in-bse-fin:FaceValueOfEquityShareCapital>
 <in-bse-fin:PercentageOfShareHeldByGovernmentOfIndia contextRef="FourD" unitRef="pure" decimals="INF">0.00</in-bse-fin:PercentageOfShareHeldByGovernmentOfIndia>
-<in-bse-fin:CET1Ratio contextRef="FourD" unitRef="pure" decimals="INF">0.1411</in-bse-fin:CET1Ratio>
-<in-bse-fin:AdditionalTier1Ratio contextRef="FourD" unitRef="pure" decimals="INF">0.0039</in-bse-fin:AdditionalTier1Ratio>
-<in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">44.78</in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems>
-<in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">44.48</in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems>
-<in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">44.78</in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems>
-<in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">44.48</in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems>
+<in-bse-fin:CET1Ratio contextRef="FourD" unitRef="pure" decimals="INF">0.1412</in-bse-fin:CET1Ratio>
+<in-bse-fin:AdditionalTier1Ratio contextRef="FourD" unitRef="pure" decimals="INF">0.0042</in-bse-fin:AdditionalTier1Ratio>
+<in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">41.92</in-bse-fin:BasicEarningsPerShareBeforeExtraordinaryItems>
+<in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">41.63</in-bse-fin:DilutedEarningsPerShareBeforeExtraordinaryItems>
+<in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">41.92</in-bse-fin:BasicEarningsPerShareAfterExtraordinaryItems>
+<in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems contextRef="FourD" unitRef="INRPerShare" decimals="INF">41.63</in-bse-fin:DilutedEarningsPerShareAfterExtraordinaryItems>
 <in-bse-fin:GrossNonPerformingAssets contextRef="FourD" unitRef="INR" decimals="-5">154662300000.00</in-bse-fin:GrossNonPerformingAssets>
 <in-bse-fin:NonPerformingAssets contextRef="FourD" unitRef="INR" decimals="-5">36124700000.00</in-bse-fin:NonPerformingAssets>
 <in-bse-fin:PercentageOfGrossNpa contextRef="FourD" unitRef="pure" decimals="INF">0.0144</in-bse-fin:PercentageOfGrossNpa>
 <in-bse-fin:PercentageOfNpa contextRef="FourD">0.0034</in-bse-fin:PercentageOfNpa>
 <in-bse-fin:ReturnOnAssets contextRef="FourD" unitRef="INR" decimals="-5">0.0175</in-bse-fin:ReturnOnAssets>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses01D" unitRef="INR" decimals="-5">Advertisement and publicity</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses01D" unitRef="INR" decimals="-5">440600000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses02D" unitRef="INR" decimals="-5">Auditors' fees and expenses (including branch auditors' fees and expenses)</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses02D" unitRef="INR" decimals="-5">13700000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses03D" unitRef="INR" decimals="-5">Depreciation on bank's property other than Leased Assets</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses03D" unitRef="INR" decimals="-5">4384800000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses01D" unitRef="INR" decimals="-5">303200000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses02D" unitRef="INR" decimals="-5">Auditor's  fees and expenses</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses02D" unitRef="INR" decimals="-5">4300000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses03D" unitRef="INR" decimals="-5">Depreciation on bank's property (incl. impairment provision)</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses03D" unitRef="INR" decimals="-5">4218800000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses04D" unitRef="INR" decimals="-5">Directors' fees, allowances and expenses</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses04D" unitRef="INR" decimals="-5">25000000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses05D" unitRef="INR" decimals="-5">Insurance &amp; Other Expenditure</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses05D" unitRef="INR" decimals="-5">47848200000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses04D" unitRef="INR" decimals="-5">13400000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses05D" unitRef="INR" decimals="-5">Insurance + others</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses05D" unitRef="INR" decimals="-5">45932700000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses06D" unitRef="INR" decimals="-5">Law Charges</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses06D" unitRef="INR" decimals="-5">477400000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses06D" unitRef="INR" decimals="-5">467100000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses07D" unitRef="INR" decimals="-5">Postage, Telegrams, Telephones etc.</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses07D" unitRef="INR" decimals="-5">1200200000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses07D" unitRef="INR" decimals="-5">1109600000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses08D" unitRef="INR" decimals="-5">Printing and stationery</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses08D" unitRef="INR" decimals="-5">1107100000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses08D" unitRef="INR" decimals="-5">1097600000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses09D" unitRef="INR" decimals="-5">Rent, taxes &amp; lighting</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses09D" unitRef="INR" decimals="-5">5230900000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses09D" unitRef="INR" decimals="-5">5056200000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="OneOperatingExpenses10D" unitRef="INR" decimals="-5">Repairs and maintenance</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses10D" unitRef="INR" decimals="-5">5913500000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="OneOperatingExpenses10D" unitRef="INR" decimals="-5">5551000000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses01D" unitRef="INR" decimals="-5">Advertisement and publicity</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses01D" unitRef="INR" decimals="-5">846200000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses02D" unitRef="INR" decimals="-5">Auditors' fees and expenses (including branch auditors' fees and expenses)</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses02D" unitRef="INR" decimals="-5">31100000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses03D" unitRef="INR" decimals="-5">Depreciation on bank's property other than Leased Assets</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses03D" unitRef="INR" decimals="-5">8510400000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses01D" unitRef="INR" decimals="-5">560500000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses02D" unitRef="INR" decimals="-5">Auditor's  fees and expenses</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses02D" unitRef="INR" decimals="-5">8300000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses03D" unitRef="INR" decimals="-5">Depreciation on bank's property (incl. impairment provision)</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses03D" unitRef="INR" decimals="-5">8192300000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses04D" unitRef="INR" decimals="-5">Directors' fees, allowances and expenses</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses04D" unitRef="INR" decimals="-5">49600000.00</in-bse-fin:OtherOperatingExpenses>
-<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses05D" unitRef="INR" decimals="-5">Insurance &amp; Other Expenditure</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses05D" unitRef="INR" decimals="-5">92809700000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses04D" unitRef="INR" decimals="-5">23800000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses05D" unitRef="INR" decimals="-5">Insurance + others</in-bse-fin:DescriptionOfOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses05D" unitRef="INR" decimals="-5">88907800000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses06D" unitRef="INR" decimals="-5">Law Charges</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses06D" unitRef="INR" decimals="-5">907900000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses06D" unitRef="INR" decimals="-5">891700000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses07D" unitRef="INR" decimals="-5">Postage, Telegrams, Telephones etc.</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses07D" unitRef="INR" decimals="-5">2139700000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses07D" unitRef="INR" decimals="-5">1961800000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses08D" unitRef="INR" decimals="-5">Printing and stationery</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses08D" unitRef="INR" decimals="-5">2005500000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses08D" unitRef="INR" decimals="-5">1987200000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses09D" unitRef="INR" decimals="-5">Rent, taxes &amp; lighting</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses09D" unitRef="INR" decimals="-5">10265500000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses09D" unitRef="INR" decimals="-5">9905800000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:DescriptionOfOperatingExpenses contextRef="FourOperatingExpenses10D" unitRef="INR" decimals="-5">Repairs and maintenance</in-bse-fin:DescriptionOfOperatingExpenses>
-<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses10D" unitRef="INR" decimals="-5">12029900000.00</in-bse-fin:OtherOperatingExpenses>
+<in-bse-fin:OtherOperatingExpenses contextRef="FourOperatingExpenses10D" unitRef="INR" decimals="-5">11275000000.00</in-bse-fin:OtherOperatingExpenses>
 <in-bse-fin:Capital contextRef="OneI" unitRef="INR" decimals="-5">6186500000.00</in-bse-fin:Capital>
-<in-bse-fin:ReservesAndSurplus contextRef="OneI" unitRef="INR" decimals="-5">1707839700000.00</in-bse-fin:ReservesAndSurplus>
-<in-bse-fin:Deposits contextRef="OneI" unitRef="INR" decimals="-5">10846989100000.00</in-bse-fin:Deposits>
-<in-bse-fin:Borrowings contextRef="OneI" unitRef="INR" decimals="-5">2252174600000.00</in-bse-fin:Borrowings>
-<in-bse-fin:OtherLiabilitiesAndProvisions contextRef="OneI" unitRef="INR" decimals="-5">709034100000.00</in-bse-fin:OtherLiabilitiesAndProvisions>
-<in-bse-fin:CapitalAndLiabilities contextRef="OneI" unitRef="INR" decimals="-5">15522224000000.00</in-bse-fin:CapitalAndLiabilities>
-<in-bse-fin:CashAndBalancesWithReserveBankOfIndia contextRef="OneI" unitRef="INR" decimals="-5">621182000000.00</in-bse-fin:CashAndBalancesWithReserveBankOfIndia>
-<in-bse-fin:BalancesWithBanksAndMoneyAtCallAndShortNotice contextRef="OneI" unitRef="INR" decimals="-5">271011100000.00</in-bse-fin:BalancesWithBanksAndMoneyAtCallAndShortNotice>
-<in-bse-fin:Investments contextRef="OneI" unitRef="INR" decimals="-5">3495702000000.00</in-bse-fin:Investments>
-<in-bse-fin:Advances contextRef="OneI" unitRef="INR" decimals="-5">10386016700000.00</in-bse-fin:Advances>
-<in-bse-fin:FixedAssets contextRef="OneI" unitRef="INR" decimals="-5">61043800000.00</in-bse-fin:FixedAssets>
-<in-bse-fin:OtherAssets contextRef="OneI" unitRef="INR" decimals="-5">687268400000.00</in-bse-fin:OtherAssets>
-<in-bse-fin:Assets contextRef="OneI">15522224000000.00</in-bse-fin:Assets>
-<in-bse-fin:DisclosureOfNotesOnAssetsAndLiabilitiesExplanatoryTextBlock contextRef="OneD">For detailed notes, please refer link    https://www.axisbank.com/docs/default-source/quarterly-results/ufr-q2fy25.pdf</in-bse-fin:DisclosureOfNotesOnAssetsAndLiabilitiesExplanatoryTextBlock>
+<in-bse-fin:ReservesAndSurplus contextRef="OneI" unitRef="INR" decimals="-5">1640694000000.00</in-bse-fin:ReservesAndSurplus>
+<in-bse-fin:Deposits contextRef="OneI" unitRef="INR" decimals="-5">10867439800000.00</in-bse-fin:Deposits>
+<in-bse-fin:Borrowings contextRef="OneI" unitRef="INR" decimals="-5">1898112300000.00</in-bse-fin:Borrowings>
+<in-bse-fin:OtherLiabilitiesAndProvisions contextRef="OneI" unitRef="INR" decimals="-5">644147400000.00</in-bse-fin:OtherLiabilitiesAndProvisions>
+<in-bse-fin:CapitalAndLiabilities contextRef="OneI" unitRef="INR" decimals="-5">15056580000000.00</in-bse-fin:CapitalAndLiabilities>
+<in-bse-fin:CashAndBalancesWithReserveBankOfIndia contextRef="OneI" unitRef="INR" decimals="-5">621181500000.00</in-bse-fin:CashAndBalancesWithReserveBankOfIndia>
+<in-bse-fin:BalancesWithBanksAndMoneyAtCallAndShortNotice contextRef="OneI" unitRef="INR" decimals="-5">239568200000.00</in-bse-fin:BalancesWithBanksAndMoneyAtCallAndShortNotice>
+<in-bse-fin:Investments contextRef="OneI" unitRef="INR" decimals="-5">3488551800000.00</in-bse-fin:Investments>
+<in-bse-fin:Advances contextRef="OneI" unitRef="INR" decimals="-5">9999792400000.00</in-bse-fin:Advances>
+<in-bse-fin:FixedAssets contextRef="OneI" unitRef="INR" decimals="-5">59265000000.00</in-bse-fin:FixedAssets>
+<in-bse-fin:OtherAssets contextRef="OneI" unitRef="INR" decimals="-5">648221100000.00</in-bse-fin:OtherAssets>
+<in-bse-fin:Assets contextRef="OneI">15056580000000.00</in-bse-fin:Assets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue01D" unitRef="INR" decimals="-5">123752900000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue01D" unitRef="INR" decimals="-5">116632700000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue02D" unitRef="INR" decimals="-5">13087200000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue02D" unitRef="INR" decimals="-5">9948100000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue03D" unitRef="INR" decimals="-5">82872800000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue04D" unitRef="INR" decimals="-5">277552300000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue04D" unitRef="INR" decimals="-5">267536100000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue05D" unitRef="INR" decimals="-5">86194200000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue05D" unitRef="INR" decimals="-5">79982800000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentRevenue06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentRevenue contextRef="OneReportableSegmentRevenue06D" unitRef="INR" decimals="-5">723800000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue01D" unitRef="INR" decimals="-5">246167400000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue01D" unitRef="INR" decimals="-5">231957400000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue02D" unitRef="INR" decimals="-5">25023800000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue02D" unitRef="INR" decimals="-5">18998700000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue03D" unitRef="INR" decimals="-5">160450900000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue04D" unitRef="INR" decimals="-5">547513300000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue04D" unitRef="INR" decimals="-5">528191200000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue05D" unitRef="INR" decimals="-5">168248400000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue05D" unitRef="INR" decimals="-5">156424800000.00</in-bse-fin:SegmentRevenue>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentRevenue06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentRevenue contextRef="FourReportableSegmentRevenue06D" unitRef="INR" decimals="-5">2932200000.00</in-bse-fin:SegmentRevenue>
-<in-bse-fin:SegmentRevenue contextRef="OneD" unitRef="INR" decimals="-5">584183200000.00</in-bse-fin:SegmentRevenue>
-<in-bse-fin:SegmentRevenue contextRef="FourD" unitRef="INR" decimals="-5">1150336000000.00</in-bse-fin:SegmentRevenue>
-<in-bse-fin:InterSegmentRevenue contextRef="OneD" unitRef="INR" decimals="-5">192145500000.00</in-bse-fin:InterSegmentRevenue>
-<in-bse-fin:InterSegmentRevenue contextRef="FourD" unitRef="INR" decimals="-5">380339500000.00</in-bse-fin:InterSegmentRevenue>
-<in-bse-fin:SegmentRevenueFromOperations contextRef="OneD">392037700000.00</in-bse-fin:SegmentRevenueFromOperations>
-<in-bse-fin:SegmentRevenueFromOperations contextRef="FourD">769996500000.00</in-bse-fin:SegmentRevenueFromOperations>
+<in-bse-fin:SegmentRevenue contextRef="OneD" unitRef="INR" decimals="-5">557696300000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:SegmentRevenue contextRef="FourD" unitRef="INR" decimals="-5">1098955200000.00</in-bse-fin:SegmentRevenue>
+<in-bse-fin:InterSegmentRevenue contextRef="OneD" unitRef="INR" decimals="-5">186279200000.00</in-bse-fin:InterSegmentRevenue>
+<in-bse-fin:InterSegmentRevenue contextRef="FourD" unitRef="INR" decimals="-5">369095900000.00</in-bse-fin:InterSegmentRevenue>
+<in-bse-fin:SegmentRevenueFromOperations contextRef="OneD">371417100000.00</in-bse-fin:SegmentRevenueFromOperations>
+<in-bse-fin:SegmentRevenueFromOperations contextRef="FourD">729859300000.00</in-bse-fin:SegmentRevenueFromOperations>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults01D" unitRef="INR" decimals="-5">31782800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults01D" unitRef="INR" decimals="-5">29497000000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults02D" unitRef="INR" decimals="-5">11151100000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults02D" unitRef="INR" decimals="-5">9518800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults03D" unitRef="INR" decimals="-5">2261900000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults04D" unitRef="INR" decimals="-5">24614800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults04D" unitRef="INR" decimals="-5">22098100000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults05D" unitRef="INR" decimals="-5">21238500000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults05D" unitRef="INR" decimals="-5">20984200000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentResults06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneReportableSegmentResults06D" unitRef="INR" decimals="-5">723800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults01D" unitRef="INR" decimals="-5">61368400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults01D" unitRef="INR" decimals="-5">56949800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults02D" unitRef="INR" decimals="-5">21289900000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults02D" unitRef="INR" decimals="-5">18142400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults03D" unitRef="INR" decimals="-5">8848400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults04D" unitRef="INR" decimals="-5">44894400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults04D" unitRef="INR" decimals="-5">40142400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults05D" unitRef="INR" decimals="-5">38873000000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults05D" unitRef="INR" decimals="-5">38738200000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="FourReportableSegmentResults06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourReportableSegmentResults06D" unitRef="INR" decimals="-5">2932200000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneD" unitRef="INR" decimals="-5">91772900000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
-<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourD" unitRef="INR" decimals="-5">178206300000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="OneD" unitRef="INR" decimals="-5">85083800000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
+<in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts contextRef="FourD" unitRef="INR" decimals="-5">165753400000.00</in-bse-fin:SegmentProfitLossBeforeTaxAndFinanceCosts>
 <in-bse-fin:SegmentFinanceCosts contextRef="OneD" unitRef="INR" decimals="-5">0.00</in-bse-fin:SegmentFinanceCosts>
 <in-bse-fin:SegmentFinanceCosts contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:SegmentFinanceCosts>
 <in-bse-fin:OtherUnallocableExpenditureNetOffUnAllocableIncome contextRef="OneD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherUnallocableExpenditureNetOffUnAllocableIncome>
 <in-bse-fin:OtherUnallocableExpenditureNetOffUnAllocableIncome contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherUnallocableExpenditureNetOffUnAllocableIncome>
-<in-bse-fin:SegmentProfitBeforeTax contextRef="OneD">91772900000.00</in-bse-fin:SegmentProfitBeforeTax>
-<in-bse-fin:SegmentProfitBeforeTax contextRef="FourD">178206300000.00</in-bse-fin:SegmentProfitBeforeTax>
+<in-bse-fin:SegmentProfitBeforeTax contextRef="OneD">85083800000.00</in-bse-fin:SegmentProfitBeforeTax>
+<in-bse-fin:SegmentProfitBeforeTax contextRef="FourD">165753400000.00</in-bse-fin:SegmentProfitBeforeTax>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets01D" unitRef="INR" decimals="-5">4243071100000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets01D" unitRef="INR" decimals="-5">4047026700000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets02D" unitRef="INR" decimals="-5">31446100000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets02D" unitRef="INR" decimals="-5">9282700000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets03D" unitRef="INR" decimals="-5">1229659600000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets04D" unitRef="INR" decimals="-5">5251648500000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets04D" unitRef="INR" decimals="-5">4985204300000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets05D" unitRef="INR" decimals="-5">4700005700000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets05D" unitRef="INR" decimals="-5">4720698500000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentAssets06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets06D" unitRef="INR" decimals="-5">66393000000.00</in-bse-fin:SegmentAssets>
-<in-bse-fin:SegmentAssets contextRef="OneD" unitRef="INR" decimals="-5">15522224000000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneReportableSegmentAssets06D" unitRef="INR" decimals="-5">64708200000.00</in-bse-fin:SegmentAssets>
+<in-bse-fin:SegmentAssets contextRef="OneD" unitRef="INR" decimals="-5">15056580000000.00</in-bse-fin:SegmentAssets>
 <in-bse-fin:UnAllocableAssets contextRef="OneI" unitRef="INR" decimals="-5">0.00</in-bse-fin:UnAllocableAssets>
 <in-bse-fin:UnAllocableAssets contextRef="FourI" unitRef="INR" decimals="-5">0.00</in-bse-fin:UnAllocableAssets>
-<in-bse-fin:NetSegmentAssets contextRef="OneI">15522224000000.00</in-bse-fin:NetSegmentAssets>
+<in-bse-fin:NetSegmentAssets contextRef="OneI">15056580000000.00</in-bse-fin:NetSegmentAssets>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities01D" unitRef="INR" decimals="-5">Corporate/Wholesale Banking</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities01I" unitRef="INR" decimals="-5">2046654200000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities01I" unitRef="INR" decimals="-5">2030199200000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities02D" unitRef="INR" decimals="-5">Other Banking Business</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities02I" unitRef="INR" decimals="-5">2071600000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities02I" unitRef="INR" decimals="-5">408200000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities03D" unitRef="INR" decimals="-5">Retail Banking - Digital Banking</in-bse-fin:DescriptionOfReportableSegment>
 <in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities03I" unitRef="INR" decimals="-5">1534185800000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities04D" unitRef="INR" decimals="-5">Retail Banking - Others</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities04I" unitRef="INR" decimals="-5">7764124900000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities04I" unitRef="INR" decimals="-5">7687752800000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities05D" unitRef="INR" decimals="-5">Treasury</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities05I" unitRef="INR" decimals="-5">2389136500000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities05I" unitRef="INR" decimals="-5">2091674400000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:DescriptionOfReportableSegment contextRef="OneReportableSegmentLiabilities06D" unitRef="INR" decimals="-5">Unallocated</in-bse-fin:DescriptionOfReportableSegment>
-<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities06I" unitRef="INR" decimals="-5">72024800000.00</in-bse-fin:SegmentLiabilities>
-<in-bse-fin:SegmentLiabilities contextRef="OneI" unitRef="INR" decimals="-5">13808197800000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneReportableSegmentLiabilities06I" unitRef="INR" decimals="-5">65479000000.00</in-bse-fin:SegmentLiabilities>
+<in-bse-fin:SegmentLiabilities contextRef="OneI" unitRef="INR" decimals="-5">13409699400000.00</in-bse-fin:SegmentLiabilities>
 <in-bse-fin:UnAllocableLiabilities contextRef="OneI" unitRef="INR" decimals="-5">0.00</in-bse-fin:UnAllocableLiabilities>
 <in-bse-fin:UnAllocableLiabilities contextRef="FourI" unitRef="INR" decimals="-5">0.00</in-bse-fin:UnAllocableLiabilities>
-<in-bse-fin:NetSegmentLiabilities contextRef="OneI">13808197800000.00</in-bse-fin:NetSegmentLiabilities>
-<in-bse-fin:DisclosureOfNotesOnSegmentsExplanatoryTextBlock contextRef="OneD">For detailed notes, please refer link    https://www.axisbank.com/docs/default-source/quarterly-results/ufr-q2fy25.pdf</in-bse-fin:DisclosureOfNotesOnSegmentsExplanatoryTextBlock>
+<in-bse-fin:NetSegmentLiabilities contextRef="OneI">13409699400000.00</in-bse-fin:NetSegmentLiabilities>
+<in-bse-fin:DisclosureOfNotesOnSegmentsExplanatoryTextBlock contextRef="OneD">Notes:    I. In accordance with RBI circular DOR.AUT.REC.12/22.01.001/2022-23 dated 7th April 2022 on Establishment of Digital Banking Units, the Bank has presented ‘Digital Banking’ as a sub-segment of the Retail Banking segment.    II. Previous period figures have been regrouped and reclassified, where necessary, to make them comparable with current period figures.</in-bse-fin:DisclosureOfNotesOnSegmentsExplanatoryTextBlock>
 <in-bse-fin:AdjustmentsForFinanceCosts contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForFinanceCosts>
-<in-bse-fin:AdjustmentsForDepreciationAndAmortisationExpense contextRef="FourD" unitRef="INR" decimals="-5">3638400000.00</in-bse-fin:AdjustmentsForDepreciationAndAmortisationExpense>
-<in-bse-fin:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss contextRef="FourD" unitRef="INR" decimals="-5">56886500000.00</in-bse-fin:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss>
+<in-bse-fin:AdjustmentsForDepreciationAndAmortisationExpense contextRef="FourD" unitRef="INR" decimals="-5">3320400000.00</in-bse-fin:AdjustmentsForDepreciationAndAmortisationExpense>
+<in-bse-fin:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss contextRef="FourD" unitRef="INR" decimals="-5">55661100000.00</in-bse-fin:AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss>
 <in-bse-fin:AdjustmentsForUnrealisedForeignExchangeLossesGains contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForUnrealisedForeignExchangeLossesGains>
 <in-bse-fin:AdjustmentsForDividendIncome contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForDividendIncome>
-<in-bse-fin:AdjustmentsForSharebasedPayments contextRef="FourD" unitRef="INR" decimals="-5">2279200000.00</in-bse-fin:AdjustmentsForSharebasedPayments>
+<in-bse-fin:AdjustmentsForSharebasedPayments contextRef="FourD" unitRef="INR" decimals="-5">2176100000.00</in-bse-fin:AdjustmentsForSharebasedPayments>
 <in-bse-fin:OtherAdjustmentsForWhichCashEffectsAreInvestingOrFinancingCashFlow contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherAdjustmentsForWhichCashEffectsAreInvestingOrFinancingCashFlow>
 <in-bse-fin:OtherAdjustmentsToReconcileProfitLoss contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherAdjustmentsToReconcileProfitLoss>
-<in-bse-fin:OtherAdjustmentsForNoncashItems contextRef="FourD" unitRef="INR" decimals="-5">2655600000.00</in-bse-fin:OtherAdjustmentsForNoncashItems>
+<in-bse-fin:OtherAdjustmentsForNoncashItems contextRef="FourD" unitRef="INR" decimals="-5">2481700000.00</in-bse-fin:OtherAdjustmentsForNoncashItems>
 <in-bse-fin:ShareOfProfitAndLossFromPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ShareOfProfitAndLossFromPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships>
-<in-bse-fin:AdjustmentsToProfitLoss contextRef="FourD" unitRef="INR" decimals="-5">65459700000.00</in-bse-fin:AdjustmentsToProfitLoss>
+<in-bse-fin:AdjustmentsToProfitLoss contextRef="FourD" unitRef="INR" decimals="-5">63639300000.00</in-bse-fin:AdjustmentsToProfitLoss>
 <in-bse-fin:AdjustmentsForDecreaseIncreaseInInventories contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForDecreaseIncreaseInInventories>
 <in-bse-fin:AdjustmentsForDecreaseIncreaseInTradeReceivables contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForDecreaseIncreaseInTradeReceivables>
 <in-bse-fin:AdjustmentsForDecreaseIncreaseInOtherCurrentAssets contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForDecreaseIncreaseInOtherCurrentAssets>
@@ -340,58 +335,58 @@
 <in-bse-fin:AdjustmentsForIncreaseDecreaseInOtherCurrentLiabilities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForIncreaseDecreaseInOtherCurrentLiabilities>
 <in-bse-fin:AdjustmentsForProvisions contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForProvisions>
 <in-bse-fin:AdjustmentsForWorkingCapital contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:AdjustmentsForWorkingCapital>
-<in-bse-fin:AdjustmentsForReconcileProfitLoss contextRef="FourD" unitRef="INR" decimals="-5">65459700000.00</in-bse-fin:AdjustmentsForReconcileProfitLoss>
-<in-bse-fin:CashFlowsFromUsedInOperations contextRef="FourD" unitRef="INR" decimals="-5">243666000000.00</in-bse-fin:CashFlowsFromUsedInOperations>
-<in-bse-fin:DividendsReceivedClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:DividendsReceivedClassifiedAsOperatingActivities>
+<in-bse-fin:AdjustmentsForReconcileProfitLoss contextRef="FourD" unitRef="INR" decimals="-5">63639300000.00</in-bse-fin:AdjustmentsForReconcileProfitLoss>
+<in-bse-fin:CashFlowsFromUsedInOperations contextRef="FourD" unitRef="INR" decimals="-5">229392700000.00</in-bse-fin:CashFlowsFromUsedInOperations>
+<in-bse-fin:DividendsReceivedClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">-245800000.00</in-bse-fin:DividendsReceivedClassifiedAsOperatingActivities>
 <in-bse-fin:InterestPaidClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:InterestPaidClassifiedAsOperatingActivities>
 <in-bse-fin:InterestReceivedClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:InterestReceivedClassifiedAsOperatingActivities>
-<in-bse-fin:IncomeTaxesPaidRefundClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">42576500000.00</in-bse-fin:IncomeTaxesPaidRefundClassifiedAsOperatingActivities>
-<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">-216588900000.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities>
-<in-bse-fin:CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">-15499400000.00</in-bse-fin:CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems>
+<in-bse-fin:IncomeTaxesPaidRefundClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">36842800000.00</in-bse-fin:IncomeTaxesPaidRefundClassifiedAsOperatingActivities>
+<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">-178179400000.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities>
+<in-bse-fin:CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">14124700000.00</in-bse-fin:CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems>
 <in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsOperatingActivities>
 <in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsOperatingActivities>
-<in-bse-fin:CashFlowsFromUsedInOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">-15499400000.00</in-bse-fin:CashFlowsFromUsedInOperatingActivities>
-<in-bse-fin:CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities>
-<in-bse-fin:CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities>
+<in-bse-fin:CashFlowsFromUsedInOperatingActivities contextRef="FourD" unitRef="INR" decimals="-5">14124700000.00</in-bse-fin:CashFlowsFromUsedInOperatingActivities>
+<in-bse-fin:CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">1631300000.00</in-bse-fin:CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities>
+<in-bse-fin:CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">19020000000.00</in-bse-fin:CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities>
 <in-bse-fin:OtherCashReceiptsFromSalesOfEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherCashReceiptsFromSalesOfEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities>
 <in-bse-fin:OtherCashPaymentsToAcquireEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherCashPaymentsToAcquireEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities>
 <in-bse-fin:OtherCashReceiptsFromSalesOfInterestsInJointVenturesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherCashReceiptsFromSalesOfInterestsInJointVenturesClassifiedAsInvestingActivities>
 <in-bse-fin:OtherCashPaymentsToAcquireInterestsInJointVenturesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherCashPaymentsToAcquireInterestsInJointVenturesClassifiedAsInvestingActivities>
 <in-bse-fin:CashReceiptsFromShareOfProfitsOfPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashReceiptsFromShareOfProfitsOfPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships>
 <in-bse-fin:CashPaymentForInvestmentInPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashPaymentForInvestmentInPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships>
-<in-bse-fin:ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">50200000.00</in-bse-fin:ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities>
-<in-bse-fin:PurchaseOfTangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">11293400000.00</in-bse-fin:PurchaseOfTangibleAssetsClassifiedAsInvestingActivities>
+<in-bse-fin:ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">49000000.00</in-bse-fin:ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities>
+<in-bse-fin:PurchaseOfTangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">10723200000.00</in-bse-fin:PurchaseOfTangibleAssetsClassifiedAsInvestingActivities>
 <in-bse-fin:ProceedsFromSalesOfIntangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromSalesOfIntangibleAssetsClassifiedAsInvestingActivities>
 <in-bse-fin:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities>
 <in-bse-fin:CashAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities>
 <in-bse-fin:CashReceiptsFromRepaymentOfAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashReceiptsFromRepaymentOfAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities>
 <in-bse-fin:CashPaymentsForFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashPaymentsForFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities>
 <in-bse-fin:CashReceiptsFromFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:CashReceiptsFromFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities>
-<in-bse-fin:DividendsReceivedClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:DividendsReceivedClassifiedAsInvestingActivities>
+<in-bse-fin:DividendsReceivedClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">245800000.00</in-bse-fin:DividendsReceivedClassifiedAsInvestingActivities>
 <in-bse-fin:InterestReceivedClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:InterestReceivedClassifiedAsInvestingActivities>
 <in-bse-fin:IncomeTaxesPaidRefundClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:IncomeTaxesPaidRefundClassifiedAsInvestingActivities>
-<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">-217612200000.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities>
+<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">-201492200000.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities>
 <in-bse-fin:ProceedsFromGovernmentGrantsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromGovernmentGrantsClassifiedAsInvestingActivities>
-<in-bse-fin:CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">-228855400000.00</in-bse-fin:CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems>
+<in-bse-fin:CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">-229309300000.00</in-bse-fin:CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems>
 <in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsInvestingActivities>
 <in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsInvestingActivities>
-<in-bse-fin:CashFlowsFromUsedInInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">-228855400000.00</in-bse-fin:CashFlowsFromUsedInInvestingActivities>
+<in-bse-fin:CashFlowsFromUsedInInvestingActivities contextRef="FourD" unitRef="INR" decimals="-5">-229309300000.00</in-bse-fin:CashFlowsFromUsedInInvestingActivities>
 <in-bse-fin:ProceedsFromIssuingShares contextRef="FourD" unitRef="INR" decimals="-5">4175100000.00</in-bse-fin:ProceedsFromIssuingShares>
 <in-bse-fin:ProceedsFromIssuingOtherEquityInstruments contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromIssuingOtherEquityInstruments>
 <in-bse-fin:ProceedsFromIssuingDebenturesNotesBondsEtc contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromIssuingDebenturesNotesBondsEtc>
-<in-bse-fin:ProceedsFromBorrowingsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">-29820900000.00</in-bse-fin:ProceedsFromBorrowingsClassifiedAsFinancingActivities>
-<in-bse-fin:RepaymentsOfBorrowingsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:RepaymentsOfBorrowingsClassifiedAsFinancingActivities>
+<in-bse-fin:ProceedsFromBorrowingsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromBorrowingsClassifiedAsFinancingActivities>
+<in-bse-fin:RepaymentsOfBorrowingsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">70005200000.00</in-bse-fin:RepaymentsOfBorrowingsClassifiedAsFinancingActivities>
 <in-bse-fin:DividendsPaidClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">3090900000.00</in-bse-fin:DividendsPaidClassifiedAsFinancingActivities>
 <in-bse-fin:InterestPaidClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:InterestPaidClassifiedAsFinancingActivities>
 <in-bse-fin:IncomeTaxesPaidRefundClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:IncomeTaxesPaidRefundClassifiedAsFinancingActivities>
-<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">651100000.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities>
-<in-bse-fin:CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">-28085600000.00</in-bse-fin:CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems>
+<in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities>
+<in-bse-fin:CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems contextRef="FourD" unitRef="INR" decimals="-5">-68921000000.00</in-bse-fin:CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems>
 <in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:ProceedsFromExtraordinaryItemsClassifiedAsFinancingActivities>
 <in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">0.00</in-bse-fin:PaymentForExtraordinaryItemsClassifiedAsFinancingActivities>
-<in-bse-fin:CashFlowsFromUsedInFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">-28085600000.00</in-bse-fin:CashFlowsFromUsedInFinancingActivities>
-<in-bse-fin:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges contextRef="FourD" unitRef="INR" decimals="-5">-272440400000.00</in-bse-fin:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges>
-<in-bse-fin:EffectOfExchangeRateChangesOnCashAndCashEquivalents contextRef="FourD" unitRef="INR" decimals="-5">-298300000.00</in-bse-fin:EffectOfExchangeRateChangesOnCashAndCashEquivalents>
-<in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents contextRef="FourD" unitRef="INR" decimals="-5">-272738700000.00</in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents>
-<in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD" unitRef="INR" decimals="-5">1164931800000.00</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
-<in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD" unitRef="INR" decimals="-5">892193100000.00</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
+<in-bse-fin:CashFlowsFromUsedInFinancingActivities contextRef="FourD" unitRef="INR" decimals="-5">-68921000000.00</in-bse-fin:CashFlowsFromUsedInFinancingActivities>
+<in-bse-fin:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges contextRef="FourD" unitRef="INR" decimals="-5">-284105600000.00</in-bse-fin:IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges>
+<in-bse-fin:EffectOfExchangeRateChangesOnCashAndCashEquivalents contextRef="FourD" unitRef="INR" decimals="-5">311400000.00</in-bse-fin:EffectOfExchangeRateChangesOnCashAndCashEquivalents>
+<in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents contextRef="FourD" unitRef="INR" decimals="-5">-283794200000.00</in-bse-fin:IncreaseDecreaseInCashAndCashEquivalents>
+<in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD" unitRef="INR" decimals="-5">1144543900000.00</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
+<in-bse-fin:CashAndCashEquivalentsCashFlowStatement contextRef="FourD" unitRef="INR" decimals="-5">860749700000.00</in-bse-fin:CashAndCashEquivalentsCashFlowStatement>
 </xbrli:xbrl>

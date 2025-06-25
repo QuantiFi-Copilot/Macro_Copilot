@@ -4,9 +4,8 @@ from sqlalchemy import create_engine, update
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-# Import your ORM models from models.py
-from earnings_agent.storage.models import RawDocument, ParsedEarning, QuarterlyFundamental, CustomKPI, Base
-# Import DB_SCHEMA from the new neutral config file
+# --- MODIFIED: Importing the new IngestionLog model ---
+from earnings_agent.storage.models import RawSource, ParsedEarning, QuarterlyFundamental, CustomKPI, IngestionLog, Base
 from earnings_agent.storage.config import DB_SCHEMA
 
 # Load environment variables from the root of the project
@@ -41,38 +40,65 @@ def get_session():
     return SessionLocal()
 
 
-def upsert_raw_document(document: dict):
+def upsert_raw_source(source_data: dict):
     """
-    Inserts a RawDocument entry. If a document for the same ticker,
-    fiscal_date, and doc_type already exists, it does nothing.
+    Inserts a RawSource entry. If a source for the same ticker,
+    fiscal_date, and source_type already exists, it does nothing.
     """
     session = get_session()
-    stmt = pg_insert(RawDocument).values(**document)
+    stmt = pg_insert(RawSource).values(**source_data)
     stmt = stmt.on_conflict_do_nothing(
-        index_elements=['ticker', 'fiscal_date', 'doc_type']
+        index_elements=['ticker', 'fiscal_date', 'source_type']
     )
     session.execute(stmt)
     session.commit()
     session.close()
 
+
 def upsert_parsed_earning(data: dict):
     """
-    Inserts a ParsedEarning entry. If a record for the same ticker, fiscal_date,
-    source_type, and parser_version already exists, it does nothing.
+    Inserts a ParsedEarning entry. If a record for the same raw_source_id
+    and parser_version already exists, it does nothing.
     """
     session = get_session()
     stmt = pg_insert(ParsedEarning).values(**data)
     stmt = stmt.on_conflict_do_nothing(
-        index_elements=['ticker', 'fiscal_date', 'source_type', 'parser_version']
+        index_elements=['raw_source_id', 'parser_version']
     )
     session.execute(stmt)
     session.commit()
     session.close()
+
+
+# --- NEW: Function to log the status of ingestion attempts ---
+def upsert_ingestion_log(log_data: dict):
+    """
+    Upserts an IngestionLog entry. If a log for the same company, period,
+    and source already exists, it updates the status and timestamp.
+    This makes the logging process idempotent and self-correcting.
+    """
+    session = get_session()
+    stmt = pg_insert(IngestionLog).values(**log_data)
     
+    # Define which columns to update if a conflict occurs
+    update_cols = {
+        'status': stmt.excluded.status,
+        'raw_source_id': stmt.excluded.raw_source_id,
+        'checked_at': stmt.excluded.checked_at,
+    }
+    
+    # ON CONFLICT, update the existing record with the new status
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['ticker', 'fiscal_year', 'quarter', 'source_type'],
+        set_=update_cols
+    )
+    session.execute(stmt)
+    session.commit()
+    session.close()
+
+
 def upsert_quarterly_fundamental(data: dict):
-    """
-    Upsert a QuarterlyFundamental record based on ticker, fiscal_date, and version.
-    """
+    # This function remains unchanged
     session = get_session()
     stmt = pg_insert(QuarterlyFundamental).values(**data)
     update_cols = {c.name: getattr(stmt.excluded, c.name)
@@ -88,9 +114,7 @@ def upsert_quarterly_fundamental(data: dict):
 
 
 def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
-    """
-    Upsert a CustomKPI JSONB entry for a given QuarterlyFundamental.
-    """
+    # This function remains unchanged
     session = get_session()
     stmt = pg_insert(CustomKPI).values(
         fundamental_id=fundamental_id,
@@ -104,29 +128,22 @@ def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
     session.commit()
     session.close()
 
-# --- NEW FUNCTION FOR THE VALIDATION ENGINE ---
+
 def update_parsed_earning_with_validation(record_id: int, validated_content: dict):
-    """
-    Updates a specific ParsedEarning record with the new content containing
-    the validation_summary block.
-    """
+    # This function remains unchanged
     session = get_session()
-    
     stmt = (
         update(ParsedEarning)
         .where(ParsedEarning.id == record_id)
         .values(content=validated_content)
     )
-    
     session.execute(stmt)
     session.commit()
     session.close()
-# --- END OF NEW FUNCTION ---
+
 
 def get_quarterly_fundamental(ticker: str, fiscal_date):
-    """
-    Fetch a QuarterlyFundamental by ticker and fiscal_date.
-    """
+    # This function remains unchanged
     session = get_session()
     result = session.query(QuarterlyFundamental).filter_by(
         ticker=ticker,
@@ -137,9 +154,7 @@ def get_quarterly_fundamental(ticker: str, fiscal_date):
 
 
 def get_custom_kpis(fundamental_id: int):
-    """
-    Fetch CustomKPI for a given QuarterlyFundamental ID.
-    """
+    # This function remains unchanged
     session = get_session()
     result = session.query(CustomKPI).filter_by(
         fundamental_id=fundamental_id
