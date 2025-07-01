@@ -14,7 +14,7 @@ from earnings_agent.common.semantic_map import SEMANTIC_MAP
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-PARSER_VERSION = "2.3"
+PARSER_VERSION = "1.1"
 SOURCE_TYPE_FILTER = "XBRL_FILE"
 
 # --- NEW: Added helper function to determine fiscal period from within the parser ---

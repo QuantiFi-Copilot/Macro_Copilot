@@ -36,3 +36,9 @@ deployments:
     work_dir: /app
     infra_overrides: { working_dir: /app }
     schedule: { cron: "0 16 * * 1-5", timezone: "Asia/Kolkata" }
+  - name: earnings-ingestion-xbrl
+    path: /app
+    entrypoint: flows/earnings_data_flows.py:simplified_ingestion_flow
+    work_pool: { name: default-agent-pool, type: process }
+    work_dir: /app
+    infra_overrides: { working_dir: /app }

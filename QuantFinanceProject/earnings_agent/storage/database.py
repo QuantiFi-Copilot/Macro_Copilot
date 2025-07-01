@@ -1,12 +1,26 @@
+# earnings_agent/storage/database.py
+
 import os
 from dotenv import load_dotenv, find_dotenv
-from sqlalchemy import create_engine, update
+from sqlalchemy import create_engine, update, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from typing import List, Dict, Any, Optional
 
-# --- MODIFIED: Importing the new IngestionLog model ---
-from earnings_agent.storage.models import RawSource, ParsedEarning, QuarterlyFundamental, CustomKPI, IngestionLog, Base
-from earnings_agent.storage.config import DB_SCHEMA
+# Import all the new models
+from earnings_agent.storage.models import (
+    Base,
+    IngestionJob,
+    RawDataAsset,
+    JobAssetLink,
+    ParsedDocument,
+    ValidationResult,
+    QuarterlyFundamental,
+    CustomKPI
+)
+# Assumes a central config file for the schema name
+# from .config import DB_SCHEMA
+DB_SCHEMA = "earnings_data" # Using a placeholder for standalone clarity
 
 # Load environment variables from the root of the project
 env_path = find_dotenv()
@@ -30,7 +44,9 @@ def init_db():
     """
     Initialize the database by creating all tables in the configured schema.
     """
-    Base.metadata.create_all(bind=engine, schema=DB_SCHEMA)
+    with engine.begin() as conn:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
+    Base.metadata.create_all(bind=engine)
 
 
 def get_session():
@@ -40,124 +56,150 @@ def get_session():
     return SessionLocal()
 
 
-def upsert_raw_source(source_data: dict):
+# ================================================================================================
+# INGESTION STAGE FUNCTIONS
+# ================================================================================================
+
+def create_ingestion_jobs(jobs_data: List[Dict[str, Any]]):
     """
-    Inserts a RawSource entry. If a source for the same ticker,
-    fiscal_date, and source_type already exists, it does nothing.
+    Bulk inserts ingestion jobs into the database.
+    If a job with the same unique constraint already exists, it does nothing.
     """
+    if not jobs_data:
+        return
+        
     session = get_session()
-    stmt = pg_insert(RawSource).values(**source_data)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=['ticker', 'fiscal_date', 'source_type']
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
+    try:
+        stmt = pg_insert(IngestionJob).values(jobs_data)
+        # Do nothing on conflict to ensure idempotency
+        # --- MODIFIED: Added 'consolidation_status' to the index_elements ---
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=['ticker', 'fiscal_year', 'quarter', 'source_type', 'consolidation_status', 'ingestion_script_version']
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
 
 
-def upsert_parsed_earning(data: dict):
+def get_jobs_by_status(statuses: List[str]) -> List[IngestionJob]:
     """
-    Inserts a ParsedEarning entry. If a record for the same raw_source_id
-    and parser_version already exists, it does nothing.
-    """
-    session = get_session()
-    stmt = pg_insert(ParsedEarning).values(**data)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=['raw_source_id', 'parser_version']
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
-
-
-# --- NEW: Function to log the status of ingestion attempts ---
-def upsert_ingestion_log(log_data: dict):
-    """
-    Upserts an IngestionLog entry. If a log for the same company, period,
-    and source already exists, it updates the status and timestamp.
-    This makes the logging process idempotent and self-correcting.
+    Retrieves all ingestion jobs with a status in the provided list.
     """
     session = get_session()
-    stmt = pg_insert(IngestionLog).values(**log_data)
-    
-    # Define which columns to update if a conflict occurs
-    update_cols = {
-        'status': stmt.excluded.status,
-        'raw_source_id': stmt.excluded.raw_source_id,
-        'checked_at': stmt.excluded.checked_at,
-    }
-    
-    # ON CONFLICT, update the existing record with the new status
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ticker', 'fiscal_year', 'quarter', 'source_type'],
-        set_=update_cols
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
+    try:
+        # The query now uses .in_() to check against a list of statuses
+        stmt = select(IngestionJob).where(IngestionJob.status.in_(statuses))
+        result = session.execute(stmt).scalars().all()
+        return result
+    finally:
+        session.close()
 
 
-def upsert_quarterly_fundamental(data: dict):
-    # This function remains unchanged
+def log_ingestion_success(job_id: int, raw_data_hash: str, source_type: str, storage_location: Optional[str] = None, data_content: Optional[Dict] = None):
+    """
+    Logs a successful ingestion in a single transaction:
+    1. Finds or creates the RawDataAsset based on its hash.
+    2. Links the IngestionJob to the RawDataAsset.
+    3. Updates the IngestionJob status to 'SUCCESS'.
+    """
     session = get_session()
-    stmt = pg_insert(QuarterlyFundamental).values(**data)
-    update_cols = {c.name: getattr(stmt.excluded, c.name)
-                   for c in QuarterlyFundamental.__table__.columns
-                   if c.name not in ['id']}
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ticker', 'fiscal_date', 'version'],
-        set_=update_cols
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
+    try:
+        # Step 1: Find or create the RawDataAsset
+        asset_stmt = pg_insert(RawDataAsset).values(
+            raw_data_hash=raw_data_hash,
+            source_type=source_type,
+            storage_location=storage_location,
+            data_content=data_content
+        )
+        asset_stmt = asset_stmt.on_conflict_do_nothing(index_elements=['raw_data_hash'])
+        session.execute(asset_stmt)
+        
+        # Get the asset_id of the (potentially new) asset
+        asset_id = session.execute(select(RawDataAsset.asset_id).where(RawDataAsset.raw_data_hash == raw_data_hash)).scalar_one()
+
+        # Step 2: Link the job to the asset
+        link_stmt = pg_insert(JobAssetLink).values(job_id=job_id, asset_id=asset_id)
+        link_stmt = link_stmt.on_conflict_do_nothing(index_elements=['job_id'])
+        session.execute(link_stmt)
+
+        # Step 3: Update the job status
+        job_update_stmt = update(IngestionJob).where(IngestionJob.job_id == job_id).values(status='SUCCESS', failure_reason=None)
+        session.execute(job_update_stmt)
+
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 
-def upsert_custom_kpis(fundamental_id: int, kpi_data: dict):
-    # This function remains unchanged
+def log_ingestion_failure(job_id: int, status: str, reason: str):
+    """
+    Updates the status of an IngestionJob to a failed state.
+    """
+    if status not in ['FETCH_FAILED', 'MISSING_AT_SOURCE']:
+        raise ValueError("Status must be one of 'FETCH_FAILED' or 'MISSING_AT_SOURCE'")
+
     session = get_session()
-    stmt = pg_insert(CustomKPI).values(
-        fundamental_id=fundamental_id,
-        kpi_data=kpi_data
-    )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['fundamental_id'],
-        set_={'kpi_data': stmt.excluded.kpi_data}
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
+    try:
+        stmt = update(IngestionJob).where(IngestionJob.job_id == job_id).values(status=status, failure_reason=reason)
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
 
 
-def update_parsed_earning_with_validation(record_id: int, validated_content: dict):
-    # This function remains unchanged
+# ================================================================================================
+# PARSING & VALIDATION STAGE FUNCTIONS
+# ================================================================================================
+
+def create_parsed_document(doc_data: Dict[str, Any]):
+    """
+    Inserts or updates a ParsedDocument. If a document for the same asset_id
+    and parser_version exists, it updates the record.
+    """
     session = get_session()
-    stmt = (
-        update(ParsedEarning)
-        .where(ParsedEarning.id == record_id)
-        .values(content=validated_content)
-    )
-    session.execute(stmt)
-    session.commit()
-    session.close()
+    try:
+        stmt = pg_insert(ParsedDocument).values(**doc_data)
+        update_cols = {
+            'parse_status': stmt.excluded.parse_status,
+            'error_details': stmt.excluded.error_details,
+            'parsed_at': stmt.excluded.parsed_at,
+            'content': stmt.excluded.content
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['asset_id', 'parser_version'],
+            set_=update_cols
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
 
 
-def get_quarterly_fundamental(ticker: str, fiscal_date):
-    # This function remains unchanged
+def create_validation_result(val_data: Dict[str, Any]):
+    """
+    Inserts or updates a ValidationResult. If a result for the same doc_id
+    and validation_script_version exists, it updates the record.
+    """
     session = get_session()
-    result = session.query(QuarterlyFundamental).filter_by(
-        ticker=ticker,
-        fiscal_date=fiscal_date
-    ).first()
-    session.close()
-    return result
+    try:
+        stmt = pg_insert(ValidationResult).values(**val_data)
+        update_cols = {
+            'status': stmt.excluded.status,
+            'summary': stmt.excluded.summary,
+            'validated_at': stmt.excluded.validated_at
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['doc_id', 'validation_script_version'],
+            set_=update_cols
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
 
-
-def get_custom_kpis(fundamental_id: int):
-    # This function remains unchanged
-    session = get_session()
-    result = session.query(CustomKPI).filter_by(
-        fundamental_id=fundamental_id
-    ).first()
-    session.close()
-    return result
+# Note: Functions for `QuarterlyFundamental` and `CustomKPI` would be added here
+# once the reconciliation logic is built. The patterns would be similar (upsert on unique constraints).

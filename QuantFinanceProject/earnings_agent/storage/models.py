@@ -10,88 +10,174 @@ from sqlalchemy import (
     DateTime,
     UniqueConstraint,
     func,
-    Numeric
+    Text,
+    BigInteger
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
-# Import from the neutral config file
-from .config import DB_SCHEMA
+# Assumes a central config file for the schema name, as in your original code.
+# from .config import DB_SCHEMA
+DB_SCHEMA = "earnings_data" # Using a placeholder for standalone clarity
 
 # The Base class which all our models will inherit from
 Base = declarative_base()
 
 
-class RawSource(Base):
+# ================================================================================================
+# STAGE 1: INGESTION - Expectations and Raw Results
+# ================================================================================================
+
+class IngestionJob(Base):
     """
-    SQLAlchemy ORM model for the unified `raw_sources` table.
-    Represents a single raw data source, which can be a file OR an API response.
+    SQLAlchemy ORM model for the `ingestion_jobs` table.
+    Represents the "To-Do List" or manifest of expected data ingestion tasks.
     """
-    __tablename__ = 'raw_sources'
+    __tablename__ = 'ingestion_jobs'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(BigInteger, primary_key=True)
     ticker = Column(String(20), nullable=False)
-    fiscal_date = Column(Date, nullable=False)
+    fiscal_year = Column(Integer, nullable=False)
+    quarter = Column(Integer, nullable=False)
     source_type = Column(String(50), nullable=False)
-    source_url = Column(String)
-    local_path = Column(String, nullable=True)
-    raw_content = Column(JSONB, nullable=True)
+    
+    # --- MODIFIED: Added consolidation_status column ---
+    consolidation_status = Column(String(50), nullable=False)
+    
+    ingestion_script_version = Column(String(50), nullable=False)
+    status = Column(String(50), nullable=False, default='PENDING')
+    failure_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_attempted_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    # Relationship to the link table (one-to-one)
+    job_asset_link = relationship("JobAssetLink", back_populates="job", uselist=False, cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # --- MODIFIED: Added consolidation_status to the unique constraint ---
+        UniqueConstraint('ticker', 'fiscal_year', 'quarter', 'source_type', 'consolidation_status', 'ingestion_script_version', name='uq_ingestion_job'),
+        {'schema': DB_SCHEMA}
+    )
+
+
+class RawDataAsset(Base):
+    """
+    SQLAlchemy ORM model for the `raw_data_assets` table.
+    Represents a unique piece of raw data, identified by its content hash.
+    """
+    __tablename__ = 'raw_data_assets'
     
+    asset_id = Column(BigInteger, primary_key=True)
+    raw_data_hash = Column(String(64), nullable=False, unique=True)
+    source_type = Column(String(50), nullable=True)
+    storage_location = Column(Text, nullable=True)
+    data_content = Column(JSONB, nullable=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+
     # Relationships
-    parsed_earnings = relationship("ParsedEarning", back_populates="raw_source")
-    # --- MODIFIED: Added relationship to the new IngestionLog ---
-    ingestion_logs = relationship("IngestionLog", back_populates="raw_source")
-    
-    __table_args__ = (
-        UniqueConstraint('ticker', 'fiscal_date', 'source_type', name='uq_raw_sources'),
-        {'schema': DB_SCHEMA}
-    )
+    job_links = relationship("JobAssetLink", back_populates="asset")
+    parsed_documents = relationship("ParsedDocument", back_populates="asset", cascade="all, delete-orphan")
+
+    __table_args__ = ({'schema': DB_SCHEMA})
 
 
-class ParsedEarning(Base):
+class JobAssetLink(Base):
     """
-    SQLAlchemy ORM model for the `parsed_earnings` table.
+    SQLAlchemy ORM model for the `job_asset_link` table.
+    Links an IngestionJob (the expectation) to a RawDataAsset (the result).
     """
-    __tablename__ = 'parsed_earnings'
+    __tablename__ = 'job_asset_link'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    raw_source_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.raw_sources.id'), nullable=False)
-    parser_version = Column(String(20), nullable=False)
+    job_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.ingestion_jobs.job_id'), primary_key=True)
+    asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=False)
+
+    # Relationships
+    job = relationship("IngestionJob", back_populates="job_asset_link")
+    asset = relationship("RawDataAsset", back_populates="job_links")
+
+    __table_args__ = ({'schema': DB_SCHEMA})
+
+
+# ================================================================================================
+# STAGE 2 & 3: PARSING AND VALIDATION
+# ================================================================================================
+
+class ParsedDocument(Base):
+    """
+    SQLAlchemy ORM model for the `parsed_documents` table.
+    Represents the structured data extracted from a RawDataAsset.
+    """
+    __tablename__ = 'parsed_documents'
+    
+    doc_id = Column(BigInteger, primary_key=True)
+    asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=False)
+    parser_version = Column(String(50), nullable=False)
+    parse_status = Column(String(50), nullable=False)
+    error_details = Column(Text,nullable=True)
     parsed_at = Column(DateTime(timezone=True), server_default=func.now())
-    content = Column(JSONB, nullable=False)
+    content = Column(JSONB, nullable=True)
 
-    raw_source = relationship("RawSource", back_populates="parsed_earnings")
+    # Relationships
+    asset = relationship("RawDataAsset", back_populates="parsed_documents")
+    validation_results = relationship("ValidationResult", back_populates="parsed_document", cascade="all, delete-orphan")
     
     __table_args__ = (
-        UniqueConstraint('raw_source_id', 'parser_version', name='uq_parsed_earnings'),
+        UniqueConstraint('asset_id', 'parser_version', name='uq_parsed_document'),
         {'schema': DB_SCHEMA}
     )
 
+
+class ValidationResult(Base):
+    """
+    SQLAlchemy ORM model for the `validation_results` table.
+    Stores the outcome of running the Validation Engine on a ParsedDocument.
+    """
+    __tablename__ = 'validation_results'
+    
+    validation_id = Column(BigInteger, primary_key=True)
+    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False)
+    validation_script_version = Column(String(50), nullable=False)
+    status = Column(String(50), nullable=False)
+    summary = Column(JSONB, nullable=True)
+    validated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship
+    parsed_document = relationship("ParsedDocument", back_populates="validation_results")
+
+    __table_args__ = (
+        UniqueConstraint('doc_id', 'validation_script_version', name='uq_validation_result'),
+        {'schema': DB_SCHEMA}
+    )
+
+
+# ================================================================================================
+# STAGE 4: FINAL "GOLDEN RECORD" TABLES
+# ================================================================================================
 
 class QuarterlyFundamental(Base):
     """
     SQLAlchemy ORM model for the `quarterly_fundamentals` table.
+    This is the final, clean, versioned "golden record" of financial data.
     """
     __tablename__ = 'quarterly_fundamentals'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True)
     ticker = Column(String(20), nullable=False)
     fiscal_date = Column(Date, nullable=False)
     period = Column(String(10), nullable=False)
-    filing_date = Column(Date)
+    filing_date = Column(Date, nullable=True)
     source = Column(String(50), nullable=False)
     version = Column(Integer, default=1, nullable=False)
-    raw_source_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.raw_sources.id'))
+    primary_asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=True)
     
+    # Financial metrics...
     revenue = Column(BIGINT)
     net_income = Column(BIGINT)
-    # ... all other financial columns ...
+    ebitda = Column(BIGINT)
+    # (All other financial columns as defined in the schema)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
-    raw_source = relationship("RawSource")
 
     __table_args__ = (
         UniqueConstraint('ticker', 'fiscal_date', 'version', name='uq_quarterly_fundamentals'),
@@ -105,39 +191,10 @@ class CustomKPI(Base):
     """
     __tablename__ = 'custom_kpis'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    fundamental_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.quarterly_fundamentals.id'), nullable=False, unique=True)
+    id = Column(BigInteger, primary_key=True)
+    fundamental_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.quarterly_fundamentals.id'), nullable=False, unique=True)
     kpi_data = Column(JSONB, nullable=False)
 
     fundamental = relationship("QuarterlyFundamental")
 
     __table_args__ = ({'schema': DB_SCHEMA})
-
-
-# --- NEW: SQLAlchemy ORM model for the ingestion_log table ---
-class IngestionLog(Base):
-    """
-    SQLAlchemy ORM model for the `ingestion_log` table.
-    Tracks the status of data ingestion attempts for every expected filing.
-    """
-    __tablename__ = 'ingestion_log'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    ticker = Column(String(20), nullable=False)
-    fiscal_year = Column(Integer, nullable=False)
-    quarter = Column(Integer, nullable=False)
-    source_type = Column(String(50), nullable=False)
-    status = Column(String(50), nullable=False)
-    
-    # This is nullable because a log entry with status 'MISSING' will not have a corresponding raw_source.
-    raw_source_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.raw_sources.id'), nullable=True)
-    
-    checked_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationship back to the raw source record, if one was found.
-    raw_source = relationship("RawSource", back_populates="ingestion_logs")
-    
-    __table_args__ = (
-        UniqueConstraint('ticker', 'fiscal_year', 'quarter', 'source_type', name='uq_ingestion_log'),
-        {'schema': DB_SCHEMA}
-    )

@@ -196,8 +196,8 @@ def ingest_xbrl_for_universe(from_date_str: str, to_date_str: str):
     logging.info(">>> Expectation-Driven ingestion process finished. <<<")
 
 if __name__ == "__main__":
-    SEARCH_START_DATE = "01-04-2022"
-    SEARCH_END_DATE = "25-06-2025"
+    SEARCH_START_DATE = "01-12-2021"
+    SEARCH_END_DATE = "30-04-2024"
     
     logging.info(f"Starting ingestion for date range: {SEARCH_START_DATE} to {SEARCH_END_DATE}")
     ingest_xbrl_for_universe(from_date_str=SEARCH_START_DATE, to_date_str=SEARCH_END_DATE)

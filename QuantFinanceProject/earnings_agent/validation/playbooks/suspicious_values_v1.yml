@@ -1,36 +1,33 @@
 # This playbook contains Tier 3 (Heuristic) checks for the ValidationEngine.
-# Version: 1.0
 
-- rule_name: "negative_shareholders_equity"
-  description: "Flags when a company's total shareholders' equity is negative, a major red flag."
-  target_metric: "core_metrics.shareholders_equity"
-  condition: "is_negative"
-  flag:
-    type: "BALANCE_SHEET_ALERT"
-    message: "Shareholders' equity is negative, indicating liabilities exceed assets."
-    severity: "CRITICAL"
+version: "1.0"  # <-- This is now a parsable key
 
-- rule_name: "suspicious_zero_debt_equity_for_non_financials"
-  description: "Flags when a non-financial company reports a Debt/Equity Ratio of exactly zero, which is unusual."
-  target_metric: "custom_kpis.DebtEquityRatio"
-  condition: "equals"
-  value: 0
-  # 'applies_to' will be implemented in a future version for more advanced scoping
-  # applies_to:
-  #   exclude_industry: ["Banks", "NBFC"] 
-  flag:
-    type: "SUSPICIOUS_VALUE"
-    message: "DebtEquityRatio is exactly 0, which is unusual for a non-financial company."
-    severity: "WARNING"
+rules:          # <-- The list of rules is now nested under this key
+  - rule_name: "negative_shareholders_equity"
+    description: "Flags when a company's total shareholders' equity is negative, a major red flag."
+    target_metric: "core_metrics.shareholders_equity"
+    condition: "is_negative"
+    flag:
+      type: "BALANCE_SHEET_ALERT"
+      message: "Shareholders' equity is negative, indicating liabilities exceed assets."
+      severity: "CRITICAL"
 
-- rule_name: "suspicious_zero_gross_npa_for_banks"
-  description: "Flags when a bank reports a Gross NPA of zero, which is highly improbable."
-  target_metric: "custom_kpis.GrossNPA"
-  condition: "equals"
-  value: 0
-  # applies_to:
-  #   industry: ["Banks"]
-  flag:
-    type: "SUSPICIOUS_VALUE"
-    message: "Gross NPA is exactly 0, which is highly suspicious for a bank."
-    severity: "WARNING"
+  - rule_name: "suspicious_zero_debt_equity_for_non_financials"
+    description: "Flags when a non-financial company reports a Debt/Equity Ratio of exactly zero, which is unusual."
+    target_metric: "custom_kpis.DebtEquityRatio"
+    condition: "equals"
+    value: 0
+    flag:
+      type: "SUSPICIOUS_VALUE"
+      message: "DebtEquityRatio is exactly 0, which is unusual for a non-financial company."
+      severity: "WARNING"
+
+  - rule_name: "suspicious_zero_gross_npa_for_banks"
+    description: "Flags when a bank reports a Gross NPA of zero, which is highly improbable."
+    target_metric: "custom_kpis.GrossNPA"
+    condition: "equals"
+    value: 0
+    flag:
+      type: "SUSPICIOUS_VALUE"
+      message: "Gross NPA is exactly 0, which is highly suspicious for a bank."
+      severity: "WARNING"

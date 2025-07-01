@@ -28,7 +28,7 @@ services:
       - ./market_data_agent/storage/schema.sql:/docker-entrypoint-initdb.d/10_market_data_schema.sql:ro
       - ./earnings_agent/storage/schema.sql:/docker-entrypoint-initdb.d/20_earnings_data_schema.sql:ro
       - ./earnings_agent/storage/30_earnings_data_views.sql:/docker-entrypoint-initdb.d/30_earnings_data_views.sql:ro
-      - ./earnings_agent/storage/40_clean_raw_sources_view.sql:/docker-entrypoint-initdb.d/40_earnings_data_views.sql:ro
+      - ./earnings_agent/storage/40_clean_raw_sources_view.sql:/docker-entrypoint-initdb.d/40_clean_raw_sources_view.sql:ro
     # --- MODIFIED: Added healthcheck to ensure DB is ready ---
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quantuser -d quantdata"]
@@ -84,7 +84,7 @@ services:
     command: >
       bash -c "
         micromamba run -n quant-env prefect work-pool create default-agent-pool --type process || true &&
-        micromamba run -n quant-env prefect worker start --pool default-agent-pool --type process
+        micromamba run -n quant-env prefect worker start --pool default-agent-pool --limit 5
       "
 
   ########################################## MARKET DATA SERVICES ##########################################
@@ -114,57 +114,35 @@ services:
       
   ######################################### EARNINGS DATA SERVICES ##########################################
   xbrl-ingestion:
-    image: quantfinanceproject:latest      # same as project-image
+    image: quantfinanceproject:latest
     container_name: xbrl-ingestion
-    restart: "no"
+    restart: "no" # It's a one-off task
     depends_on:
       tsdb:
-        condition: service_healthy         # wait for the DB :contentReference[oaicite:1]{index=1}
+        condition: service_healthy
     working_dir: /app
     volumes:
-      - .:/app                             # mount code
-      - ./.env:/app/.env                   # mount creds/config
-      - ./earnings_agent/storage:/app/earnings_agent/storage 
+      - .:/app
+      - ./.env:/app/.env
     environment:
-      # ensure your DB_HOST is the Docker service name
-      - EARNINGS_DB_HOST=tsdb              # default in database.py :contentReference[oaicite:2]{index=2}
+      # Pass database credentials to the container
+      - EARNINGS_DB_HOST=tsdb
       - EARNINGS_DB_USER=${EARNINGS_DB_USER}
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
       - EARNINGS_DB_SCHEMA=${EARNINGS_DB_SCHEMA}
       - TZ=Asia/Kolkata
+    # --- MODIFIED COMMAND ---
+    # This now points to our new, single, consolidated ingestion script.
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.sources.nse_xbrl.fetch_xbrl"
+      "python", "-m", "earnings_agent.ingestion.xbrl.ingestion_task"
     ]
 # ─────────────────────────────────────────────────────────────
   xbrl-parser:
     image: quantfinanceproject:latest
     container_name: xbrl-parser
-    restart: "no" # This is a one-off task
-    depends_on:
-      tsdb:
-        condition: service_healthy
-    working_dir: /app
-    volumes:
-      - .:/app
-      - ./.env:/app/.env
-    environment:
-      # Pass database credentials to the container
-      - EARNINGS_DB_HOST=tsdb
-      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
-      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
-      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
-      - TZ=Asia/Kolkata
-    command: [
-      "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.sources.nse_xbrl.parse_xbrl"
-    ]
-# ─────────────────────────────────────────────────────────────
-  nse-scraper:
-    image: quantfinanceproject:latest
-    container_name: nse-scraper
-    restart: "no" # This is a one-off task
+    restart: "no"
     depends_on:
       tsdb:
         condition: service_healthy
@@ -178,38 +156,63 @@ services:
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
       - TZ=Asia/Kolkata
+    # --- MODIFIED COMMAND ---
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.sources.nse_scraper.scrape_nse"
+      "python", "-m", "earnings_agent.parsing.xbrl_parser_task"
     ]
 # ─────────────────────────────────────────────────────────────
-  nse-parser:
-    image: quantfinanceproject:latest
-    container_name: nse-parser
-    restart: "no" # This is a one-off task
-    depends_on:
-      tsdb:
-        condition: service_healthy
-    working_dir: /app
-    volumes:
-      - .:/app
-      - ./.env:/app/.env
-    environment:
-      - EARNINGS_DB_HOST=tsdb
-      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
-      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
-      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
-      - TZ=Asia/Kolkata
-    command: [
-      "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.sources.nse_scraper.parse_nse"
-    ]
+  # nse-scraper:
+  #   image: quantfinanceproject:latest
+  #   container_name: nse-scraper
+  #   restart: "no" # This is a one-off task
+  #   depends_on:
+  #     tsdb:
+  #       condition: service_healthy
+  #   working_dir: /app
+  #   volumes:
+  #     - .:/app
+  #     - ./.env:/app/.env
+  #   environment:
+  #     - EARNINGS_DB_HOST=tsdb
+  #     - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+  #     - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+  #     - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+  #     - TZ=Asia/Kolkata
+  #   command: [
+  #     "micromamba", "run", "-n", "quant-env",
+  #     "python", "-m", "earnings_agent.sources.nse_scraper.scrape_nse"
+  #   ]
 # ─────────────────────────────────────────────────────────────
+  # nse-parser:
+  #   image: quantfinanceproject:latest
+  #   container_name: nse-parser
+  #   restart: "no" # This is a one-off task
+  #   depends_on:
+  #     tsdb:
+  #       condition: service_healthy
+  #   working_dir: /app
+  #   volumes:
+  #     - .:/app
+  #     - ./.env:/app/.env
+  #   environment:
+  #     - EARNINGS_DB_HOST=tsdb
+  #     - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+  #     - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+  #     - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+  #     - TZ=Asia/Kolkata
+  #   command: [
+  #     "micromamba", "run", "-n", "quant-env",
+  #     "python", "-m", "earnings_agent.sources.nse_scraper.parse_nse"
+  #   ]
+# ─────────────────────────────────────────────────────────────
+
+# In docker-compose.yml
 
   earnings-validator:
     image: quantfinanceproject:latest
     container_name: earnings-validator
-    restart: "no" # This is a one-off task
+    restart: "no"
     depends_on:
       tsdb:
         condition: service_healthy
@@ -218,15 +221,15 @@ services:
       - .:/app
       - ./.env:/app/.env
     environment:
-      # Pass database credentials to the container
       - EARNINGS_DB_HOST=tsdb
       - EARNINGS_DB_USER=${EARNINGS_DB_USER}
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
       - TZ=Asia/Kolkata
+    # --- MODIFIED COMMAND ---
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.validation.validate_earnings"
+      "python", "-m", "earnings_agent.validation.validation_task"
     ]
 
   
