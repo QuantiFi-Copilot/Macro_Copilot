@@ -30,6 +30,7 @@ protobuf==5.29.4
 psycopg2-binary==2.9.10
 pyarrow==19.0.1
 pydantic==2.11.3
+prefect
 pydantic_core==2.33.1
 pydeck==0.9.1
 pyotp==2.9.0
