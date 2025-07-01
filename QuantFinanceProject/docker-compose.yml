@@ -236,36 +236,36 @@ services:
 ################################################################################
 # DATABASE GUI stack
 ################################################################################
-  pgadmin:
-    image: dpage/pgadmin4:8
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Kolkata
-      PGADMIN_DEFAULT_EMAIL: saivenkatsriram@google.com
-      PGADMIN_DEFAULT_PASSWORD: changeme123
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    ports:
-      - "5050:80"
-    # --- MODIFIED: Now waits for tsdb to be healthy ---
-    depends_on:
-      tsdb:
-        condition: service_healthy
+  # pgadmin:
+  #   image: dpage/pgadmin4:8
+  #   restart: unless-stopped
+  #   environment:
+  #     TZ: Asia/Kolkata
+  #     PGADMIN_DEFAULT_EMAIL: saivenkatsriram@google.com
+  #     PGADMIN_DEFAULT_PASSWORD: changeme123
+  #   volumes:
+  #     - pgadmin-data:/var/lib/pgadmin
+  #   ports:
+  #     - "5050:80"
+  #   # --- MODIFIED: Now waits for tsdb to be healthy ---
+  #   depends_on:
+  #     tsdb:
+  #       condition: service_healthy
     # --------------------------------------------------
 
-  grafana:
-    image: grafana/grafana-oss:11.0.0
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Kolkata
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-storage:/var/lib/grafana
-    # --- MODIFIED: Now waits for tsdb to be healthy ---
-    depends_on:
-      tsdb:
-        condition: service_healthy
+  # grafana:
+  #   image: grafana/grafana-oss:11.0.0
+  #   restart: unless-stopped
+  #   environment:
+  #     TZ: Asia/Kolkata
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana-storage:/var/lib/grafana
+  #   # --- MODIFIED: Now waits for tsdb to be healthy ---
+  #   depends_on:
+  #     tsdb:
+  #       condition: service_healthy
     # --------------------------------------------------
 
   metabase:
