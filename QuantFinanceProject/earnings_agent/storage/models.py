@@ -74,7 +74,6 @@ class RawDataAsset(Base):
     storage_location = Column(Text, nullable=True)
     
     # --- ADDED: New columns for data integrity checks ---
-    file_size_bytes = Column(BigInteger, nullable=True)
     source_last_modified = Column(DateTime(timezone=True), nullable=True)
     
     data_content = Column(JSONB, nullable=True)

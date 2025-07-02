@@ -33,7 +33,7 @@ HEADERS = {
 DATA_ROOT = Path(__file__).resolve().parents[2] / "storage" / "data"
 SESSION_TIMEOUT_SECONDS = 30
 SOURCE_TYPE = "XBRL_FILE"
-INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v4.0-hybrid-integrity"
+INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v4.1-final-integrity" # Final Version
 DOWNLOAD_MAX_RETRIES = 3
 DOWNLOAD_INITIAL_DELAY_SECONDS = 5
 
@@ -181,9 +181,8 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
         file_name = f"{ticker}_FY{fy}_Q{q}_{conso_status}.xml"
         out_path = company_dir / file_name
 
-        # --- The New Hybrid Data Integrity Logic ---
         if out_path.exists():
-            logging.info("Local file exists. Verifying integrity against source...")
+            logging.info(f"Local file exists for Job {job.job_id}. Verifying integrity against source...")
             local_hash = get_file_hash(out_path)
             local_asset = get_asset_by_hash(local_hash)
             remote_metadata = get_remote_file_metadata(http_session, full_xml_url)
@@ -193,11 +192,10 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
                 if download_file_with_retry(http_session, full_xml_url, out_path):
                     new_hash = get_file_hash(out_path)
                     new_remote_metadata = get_remote_file_metadata(http_session, full_xml_url) or {}
-                    log_ingestion_success(job.job_id, new_hash, SOURCE_TYPE, str(out_path.resolve()), 
-                                          file_size_bytes=out_path.stat().st_size, 
+                    log_ingestion_success(job_id, new_hash, SOURCE_TYPE, str(out_path.resolve()), 
                                           source_last_modified=new_remote_metadata.get('modified'))
             elif remote_metadata['modified'] > local_asset.source_last_modified:
-                logging.warning(f"Remote file is newer (Remote: {remote_metadata['modified']}, Local DB: {local_asset.source_last_modified}). Verifying content...")
+                logging.warning(f"Remote file is newer. Verifying content...")
                 temp_path = out_path.with_suffix('.tmp')
                 if download_file_with_retry(http_session, full_xml_url, temp_path):
                     new_hash = get_file_hash(temp_path)
@@ -207,27 +205,26 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
                         temp_path.rename(out_path)
                         log_ingestion_success(
                             job_id=job.job_id, raw_data_hash=new_hash, source_type=SOURCE_TYPE,
-                            storage_location=str(out_path.resolve()), file_size_bytes=out_path.stat().st_size,
+                            storage_location=str(out_path.resolve()),
                             source_last_modified=remote_metadata.get('modified')
                         )
                     else:
                         logging.info("Content is identical (timestamp changed but not content). Discarding download.")
                         temp_path.unlink()
-                        log_ingestion_success(job_id=job.job_id, raw_data_hash=local_hash, source_type=SOURCE_TYPE)
+                        log_ingestion_success(job.job_id, local_hash, SOURCE_TYPE, str(out_path.resolve()))
                 else:
                     log_ingestion_failure(job.job_id, 'FETCH_FAILED', 'Failed to re-download changed file.')
             else:
                 logging.info("Local file is up-to-date. Skipping download.")
                 log_ingestion_success(job_id=job.job_id, raw_data_hash=local_hash, source_type=SOURCE_TYPE)
         else:
-            logging.info("Local file not found. Attempting first-time download.")
+            logging.info(f"Local file not found for Job {job.id}. Attempting first-time download.")
             if download_file_with_retry(http_session, full_xml_url, out_path):
                 file_hash = get_file_hash(out_path)
-                file_size = out_path.stat().st_size
                 remote_metadata = get_remote_file_metadata(http_session, full_xml_url) or {}
                 log_ingestion_success(
                     job_id=job.job_id, raw_data_hash=file_hash, source_type=SOURCE_TYPE,
-                    storage_location=str(out_path.resolve()), file_size_bytes=file_size,
+                    storage_location=str(out_path.resolve()),
                     source_last_modified=remote_metadata.get('modified')
                 )
             else:
@@ -239,5 +236,5 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
 
 if __name__ == '__main__':
     SEARCH_START_DATE = "01-01-2024"
-    SEARCH_END_DATE = "30-04-2024"
+    SEARCH_END_DATE = "30-06-2025"
     ingest_all_xbrl(start_date_str=SEARCH_START_DATE, to_date_str=SEARCH_END_DATE)

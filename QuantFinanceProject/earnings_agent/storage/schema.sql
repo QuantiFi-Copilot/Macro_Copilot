@@ -41,14 +41,14 @@ COMMENT ON TABLE earnings_data.ingestion_jobs IS 'The "To-Do List" or manifest. 
 
 CREATE TABLE IF NOT EXISTS earnings_data.raw_data_assets (
     asset_id BIGSERIAL PRIMARY KEY,
-    raw_data_hash VARCHAR(64) NOT NULL UNIQUE, -- SHA-256 hash of the content, the true identifier.
-    source_type VARCHAR(50), -- Denormalized for convenience
-    storage_location TEXT, -- e.g., S3 URI or local file path
-    file_size_bytes BIGINT, -- To store the size of the downloaded file for auditing.
+    raw_data_hash VARCHAR(64) NOT NULL UNIQUE,
+    source_type VARCHAR(50),
+    storage_location TEXT,
     source_last_modified TIMESTAMPTZ, -- To store the server's Last-Modified timestamp for integrity checks.
-    data_content JSONB, -- Used for API responses
+    data_content JSONB,
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 COMMENT ON TABLE earnings_data.raw_data_assets IS 'A content-addressable library of all unique raw data ever ingested. Identity is based on the data''s hash.';
 
 

@@ -96,44 +96,38 @@ def get_jobs_by_status(statuses: List[str]) -> List[IngestionJob]:
         session.close()
 
 
+# In database.py
 def log_ingestion_success(
     job_id: int, 
     raw_data_hash: str, 
     source_type: str, 
     storage_location: Optional[str] = None, 
     data_content: Optional[Dict] = None,
-    file_size_bytes: Optional[int] = None,      # ADDED
-    source_last_modified: Optional[datetime] = None # ADDED
+    source_last_modified: Optional[datetime] = None
 ):
     """
     Logs a successful ingestion in a single transaction. Now includes metadata.
     """
     session = get_session()
     try:
-        # Step 1: Find or create the RawDataAsset
         asset_values = {
             "raw_data_hash": raw_data_hash,
             "source_type": source_type,
             "storage_location": storage_location,
             "data_content": data_content,
-            "file_size_bytes": file_size_bytes,         # ADDED
-            "source_last_modified": source_last_modified # ADDED
+            "source_last_modified": source_last_modified
         }
         asset_stmt = pg_insert(RawDataAsset).values(asset_values)
         
-        # If a conflict on the hash occurs, do nothing. The original metadata is preserved.
         asset_stmt = asset_stmt.on_conflict_do_nothing(index_elements=['raw_data_hash'])
         session.execute(asset_stmt)
         
-        # Get the asset_id of the (potentially new) asset
         asset_id = session.execute(select(RawDataAsset.asset_id).where(RawDataAsset.raw_data_hash == raw_data_hash)).scalar_one()
 
-        # Step 2: Link the job to the asset
         link_stmt = pg_insert(JobAssetLink).values(job_id=job_id, asset_id=asset_id)
         link_stmt = link_stmt.on_conflict_do_nothing(index_elements=['job_id'])
         session.execute(link_stmt)
 
-        # Step 3: Update the job status
         job_update_stmt = update(IngestionJob).where(IngestionJob.job_id == job_id).values(status='SUCCESS', failure_reason=None)
         session.execute(job_update_stmt)
 
