@@ -5,7 +5,7 @@ from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import create_engine, update, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, datetime
 
 # Import all the new models
 from earnings_agent.storage.models import (
@@ -96,22 +96,32 @@ def get_jobs_by_status(statuses: List[str]) -> List[IngestionJob]:
         session.close()
 
 
-def log_ingestion_success(job_id: int, raw_data_hash: str, source_type: str, storage_location: Optional[str] = None, data_content: Optional[Dict] = None):
+def log_ingestion_success(
+    job_id: int, 
+    raw_data_hash: str, 
+    source_type: str, 
+    storage_location: Optional[str] = None, 
+    data_content: Optional[Dict] = None,
+    file_size_bytes: Optional[int] = None,      # ADDED
+    source_last_modified: Optional[datetime] = None # ADDED
+):
     """
-    Logs a successful ingestion in a single transaction:
-    1. Finds or creates the RawDataAsset based on its hash.
-    2. Links the IngestionJob to the RawDataAsset.
-    3. Updates the IngestionJob status to 'SUCCESS'.
+    Logs a successful ingestion in a single transaction. Now includes metadata.
     """
     session = get_session()
     try:
         # Step 1: Find or create the RawDataAsset
-        asset_stmt = pg_insert(RawDataAsset).values(
-            raw_data_hash=raw_data_hash,
-            source_type=source_type,
-            storage_location=storage_location,
-            data_content=data_content
-        )
+        asset_values = {
+            "raw_data_hash": raw_data_hash,
+            "source_type": source_type,
+            "storage_location": storage_location,
+            "data_content": data_content,
+            "file_size_bytes": file_size_bytes,         # ADDED
+            "source_last_modified": source_last_modified # ADDED
+        }
+        asset_stmt = pg_insert(RawDataAsset).values(asset_values)
+        
+        # If a conflict on the hash occurs, do nothing. The original metadata is preserved.
         asset_stmt = asset_stmt.on_conflict_do_nothing(index_elements=['raw_data_hash'])
         session.execute(asset_stmt)
         
@@ -150,7 +160,17 @@ def log_ingestion_failure(job_id: int, status: str, reason: str):
     finally:
         session.close()
 
-
+def get_asset_by_hash(hash_str: str) -> Optional[RawDataAsset]:
+    """
+    Retrieves a single RawDataAsset object from the database using its hash.
+    """
+    session = get_session()
+    try:
+        stmt = select(RawDataAsset).where(RawDataAsset.raw_data_hash == hash_str)
+        result = session.execute(stmt).scalar_one_or_none()
+        return result
+    finally:
+        session.close()
 # ================================================================================================
 # PARSING & VALIDATION STAGE FUNCTIONS
 # ================================================================================================

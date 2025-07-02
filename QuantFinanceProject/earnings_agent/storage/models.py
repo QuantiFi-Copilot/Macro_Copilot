@@ -59,6 +59,7 @@ class IngestionJob(Base):
         {'schema': DB_SCHEMA}
     )
 
+# In models.py
 
 class RawDataAsset(Base):
     """
@@ -71,6 +72,11 @@ class RawDataAsset(Base):
     raw_data_hash = Column(String(64), nullable=False, unique=True)
     source_type = Column(String(50), nullable=True)
     storage_location = Column(Text, nullable=True)
+    
+    # --- ADDED: New columns for data integrity checks ---
+    file_size_bytes = Column(BigInteger, nullable=True)
+    source_last_modified = Column(DateTime(timezone=True), nullable=True)
+    
     data_content = Column(JSONB, nullable=True)
     first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
 

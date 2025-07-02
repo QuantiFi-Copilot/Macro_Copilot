@@ -3,40 +3,42 @@ import time
 import requests
 import logging
 import hashlib
+import os
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from dateutil.relativedelta import relativedelta
 from requests.exceptions import RequestException
+from typing import Optional, Dict, List
 
 from earnings_agent.storage.database import (
     create_ingestion_jobs,
     get_jobs_by_status,
     log_ingestion_success,
-    log_ingestion_failure
+    log_ingestion_failure,
+    get_asset_by_hash
 )
+from earnings_agent.storage.models import RawDataAsset
 from earnings_agent.config.universe import COMPANIES
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
+# --- Constants ---
 BASE_URL = "https://www.nseindia.com"
 UI_URL = BASE_URL + "/companies-listing/corporate-filings-financial-results"
 JSON_ENDPOINT = BASE_URL + "/api/corporates-financial-results"
 HEADERS = {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": UI_URL,
+    "Accept": "*/*", "Accept-Language": "en-US,en;q=0.9", "Referer": UI_URL,
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "X-Requested-With": "XMLHttpRequest",
 }
 DATA_ROOT = Path(__file__).resolve().parents[2] / "storage" / "data"
 SESSION_TIMEOUT_SECONDS = 30
 SOURCE_TYPE = "XBRL_FILE"
-# Bumping version for this major logic change
-INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v3.0-monolithic-conso"
+INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v4.0-hybrid-integrity"
 DOWNLOAD_MAX_RETRIES = 3
 DOWNLOAD_INITIAL_DELAY_SECONDS = 5
 
-# (Helper functions are unchanged)
+# --- Helper Functions ---
+
 def get_indian_fiscal_period(report_end_date: date) -> tuple[int, int]:
     month = report_end_date.month
     year = report_end_date.year
@@ -69,9 +71,11 @@ def seed_session() -> requests.Session:
 def download_file_with_retry(session: requests.Session, url: str, output_path: Path) -> bool:
     for attempt in range(DOWNLOAD_MAX_RETRIES):
         try:
-            resp = session.get(url, timeout=30)
-            resp.raise_for_status()
-            output_path.write_bytes(resp.content)
+            with session.get(url, stream=True, timeout=30) as resp:
+                resp.raise_for_status()
+                with open(output_path, 'wb') as f:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        f.write(chunk)
             logging.info(f"Successfully downloaded: {output_path.name}")
             time.sleep(2)
             return True
@@ -84,15 +88,32 @@ def download_file_with_retry(session: requests.Session, url: str, output_path: P
             time.sleep(delay)
     return False
 
+def get_remote_file_metadata(session: requests.Session, url: str) -> Optional[Dict]:
+    """
+    Performs a lightweight streaming GET request to reliably get remote file headers.
+    """
+    try:
+        with session.get(url, stream=True, timeout=10) as response:
+            response.raise_for_status()
+            last_modified_str = response.headers.get('Last-Modified')
+            if last_modified_str:
+                last_modified_dt = datetime.strptime(
+                    last_modified_str, '%a, %d %b %Y %H:%M:%S %Z'
+                ).replace(tzinfo=timezone.utc)
+                return {'modified': last_modified_dt}
+    except Exception as e:
+        logging.warning(f"Could not fetch remote metadata for {url}. Reason: {e}")
+    return None
+
+# --- Main Ingestion Logic ---
+
 def ingest_all_xbrl(start_date_str: str, to_date_str: str):
     logging.info(f">>> Starting MONOLITHIC XBRL ingestion v{INGESTION_SCRIPT_VERSION} <<<")
     
     start_date = datetime.strptime(start_date_str, "%d-%m-%Y").date()
     end_date = datetime.strptime(to_date_str, "%d-%m-%Y").date()
 
-    # --- CHANGE 1: MANIFEST GENERATION ---
-    # Now creates jobs for both Consolidated and Standalone types.
-    jobs_to_create = []
+    jobs_to_create: List[Dict] = []
     consolidation_types = ["Consolidated", "Standalone"]
     for company in COMPANIES:
         for conso_type in consolidation_types:
@@ -115,40 +136,31 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
     
     jobs_to_process = get_jobs_by_status(['PENDING', 'MISSING_AT_SOURCE', 'FETCH_FAILED'])
     if not jobs_to_process:
-        logging.info("No pending jobs to process. Exiting.")
-        return
+        logging.info("No re-triable jobs to process. Exiting."); return
         
     try:
         http_session = seed_session()
         params = {"index": "equities", "from_date": start_date_str, "to_date": to_date_str, "period": "Quarterly"}
-        r = http_session.get(JSON_ENDPOINT, params=params, timeout=20)
-        r.raise_for_status()
+        r = http_session.get(JSON_ENDPOINT, params=params, timeout=20); r.raise_for_status()
         response_data = r.json()
         all_announcements = response_data.get('data', []) if isinstance(response_data, dict) else response_data
         logging.info(f"Fetched {len(all_announcements)} total announcements from NSE.")
     except Exception as e:
         logging.critical(f"Could not fetch master list. Aborting. Error: {e}", exc_info=True)
         for job in jobs_to_process:
-            log_ingestion_failure(job.job_id, 'FETCH_FAILED', 'Could not fetch master announcement list.')
-        return
+            log_ingestion_failure(job.job_id, 'FETCH_FAILED', 'Could not fetch master announcement list.'); return
 
-    # --- CHANGE 2: PRECISE ANNOUNCEMENT MAPPING ---
-    # The map key now includes the consolidation status for precise lookups.
     announcements_map = {}
     for ann in all_announcements:
         if isinstance(ann, dict) and "symbol" in ann and "toDate" in ann:
-            key_date = datetime.strptime(ann["toDate"], "%d-%b-%Y").date()
-            key_symbol = ann["symbol"]
-            status_val = ann.get('consolidated', '')
-            
-            key_status = "Unknown"
-            if status_val == 'Consolidated':
-                key_status = 'Consolidated'
-            elif status_val == 'Non-Consolidated':
-                key_status = 'Standalone'
-            
-            if key_status != "Unknown":
-                announcements_map[(key_symbol, key_date, key_status)] = ann
+            try:
+                key_date = datetime.strptime(ann["toDate"], "%d-%b-%Y").date()
+                key_symbol = ann["symbol"]; status_val = ann.get('consolidated', '')
+                key_status = "Unknown"
+                if status_val == 'Consolidated': key_status = 'Consolidated'
+                elif status_val == 'Non-Consolidated': key_status = 'Standalone'
+                if key_status != "Unknown": announcements_map[(key_symbol, key_date, key_status)] = ann
+            except (ValueError, TypeError): continue
 
     for job in jobs_to_process:
         fy, q, ticker, conso_status = job.fiscal_year, job.quarter, job.ticker, job.consolidation_status
@@ -157,37 +169,75 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
         q_end_month, q_end_year = ((6, fy), (9, fy), (12, fy), (3, fy + 1))[q-1]
         fiscal_date = date(q_end_year if q_end_month < 12 else q_end_year + 1, q_end_month % 12 + 1, 1) - relativedelta(days=1)
         
-        # --- CHANGE 3: PRECISE LOOKUP ---
-        # The key now includes the consolidation_status from the job.
         found_announcement = announcements_map.get((ticker, fiscal_date, conso_status))
 
-        if found_announcement and found_announcement.get("xbrl") and not found_announcement.get("xbrl").strip().endswith("/-"):
-            xml_url_path = found_announcement["xbrl"]
-            full_xml_url = BASE_URL + xml_url_path if not xml_url_path.startswith('http') else xml_url_path
-            
-            company_dir = DATA_ROOT / "raw" / "xbrl" / ticker
-            company_dir.mkdir(parents=True, exist_ok=True)
-            
-            # --- CHANGE 4: UNIQUE FILE NAMING ---
-            file_name = f"{ticker}_FY{fy}_Q{q}_{conso_status}.xml"
-            out_path = company_dir / file_name
+        if not found_announcement or not found_announcement.get("xbrl") or found_announcement.get("xbrl").strip().endswith("/-"):
+            log_ingestion_failure(job.job_id, 'MISSING_AT_SOURCE', f'Filing for {conso_status} not found in master list.')
+            continue
 
-            if out_path.exists():
+        full_xml_url = BASE_URL + found_announcement["xbrl"] if not found_announcement["xbrl"].startswith('http') else found_announcement["xbrl"]
+        company_dir = DATA_ROOT / "raw" / "xbrl" / ticker
+        company_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"{ticker}_FY{fy}_Q{q}_{conso_status}.xml"
+        out_path = company_dir / file_name
+
+        # --- The New Hybrid Data Integrity Logic ---
+        if out_path.exists():
+            logging.info("Local file exists. Verifying integrity against source...")
+            local_hash = get_file_hash(out_path)
+            local_asset = get_asset_by_hash(local_hash)
+            remote_metadata = get_remote_file_metadata(http_session, full_xml_url)
+
+            if not remote_metadata or not local_asset or not local_asset.source_last_modified:
+                logging.warning("Could not get complete metadata for comparison. Re-downloading to be safe.")
+                if download_file_with_retry(http_session, full_xml_url, out_path):
+                    new_hash = get_file_hash(out_path)
+                    new_remote_metadata = get_remote_file_metadata(http_session, full_xml_url) or {}
+                    log_ingestion_success(job.job_id, new_hash, SOURCE_TYPE, str(out_path.resolve()), 
+                                          file_size_bytes=out_path.stat().st_size, 
+                                          source_last_modified=new_remote_metadata.get('modified'))
+            elif remote_metadata['modified'] > local_asset.source_last_modified:
+                logging.warning(f"Remote file is newer (Remote: {remote_metadata['modified']}, Local DB: {local_asset.source_last_modified}). Verifying content...")
+                temp_path = out_path.with_suffix('.tmp')
+                if download_file_with_retry(http_session, full_xml_url, temp_path):
+                    new_hash = get_file_hash(temp_path)
+                    if new_hash != local_hash:
+                        logging.warning("CONTENT HAS CHANGED. Replacing local file and creating new asset record.")
+                        out_path.unlink()
+                        temp_path.rename(out_path)
+                        log_ingestion_success(
+                            job_id=job.job_id, raw_data_hash=new_hash, source_type=SOURCE_TYPE,
+                            storage_location=str(out_path.resolve()), file_size_bytes=out_path.stat().st_size,
+                            source_last_modified=remote_metadata.get('modified')
+                        )
+                    else:
+                        logging.info("Content is identical (timestamp changed but not content). Discarding download.")
+                        temp_path.unlink()
+                        log_ingestion_success(job_id=job.job_id, raw_data_hash=local_hash, source_type=SOURCE_TYPE)
+                else:
+                    log_ingestion_failure(job.job_id, 'FETCH_FAILED', 'Failed to re-download changed file.')
+            else:
+                logging.info("Local file is up-to-date. Skipping download.")
+                log_ingestion_success(job_id=job.job_id, raw_data_hash=local_hash, source_type=SOURCE_TYPE)
+        else:
+            logging.info("Local file not found. Attempting first-time download.")
+            if download_file_with_retry(http_session, full_xml_url, out_path):
                 file_hash = get_file_hash(out_path)
-                log_ingestion_success(job.job_id, file_hash, SOURCE_TYPE, str(out_path.resolve()))
-            elif download_file_with_retry(http_session, full_xml_url, out_path):
-                file_hash = get_file_hash(out_path)
-                log_ingestion_success(job.job_id, file_hash, SOURCE_TYPE, str(out_path.resolve()))
+                file_size = out_path.stat().st_size
+                remote_metadata = get_remote_file_metadata(http_session, full_xml_url) or {}
+                log_ingestion_success(
+                    job_id=job.job_id, raw_data_hash=file_hash, source_type=SOURCE_TYPE,
+                    storage_location=str(out_path.resolve()), file_size_bytes=file_size,
+                    source_last_modified=remote_metadata.get('modified')
+                )
             else:
                 log_ingestion_failure(job.job_id, 'FETCH_FAILED', f'Download failed for URL: {full_xml_url}')
-        else:
-            log_ingestion_failure(job.job_id, 'MISSING_AT_SOURCE', f'Filing for {conso_status} not found in master list.')
-            
-        time.sleep(0.5) # A smaller pause is fine here as we are not hammering the API in a loop.
+        
+        time.sleep(0.5)
 
     logging.info(">>> MONOLITHIC ingestion process finished. <<<")
 
 if __name__ == '__main__':
-    SEARCH_START_DATE = "01-12-2021"
+    SEARCH_START_DATE = "01-01-2024"
     SEARCH_END_DATE = "30-04-2024"
     ingest_all_xbrl(start_date_str=SEARCH_START_DATE, to_date_str=SEARCH_END_DATE)
