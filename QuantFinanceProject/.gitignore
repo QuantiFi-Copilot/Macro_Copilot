@@ -1,2 +1,3 @@
 venv/
 .env
+earnings_agent/storage/data/raw/

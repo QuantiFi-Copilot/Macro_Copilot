@@ -5,7 +5,8 @@ from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import create_engine, update, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from typing import List, Dict, Any, Optional, datetime
+from typing import List, Dict, Any, Optional
+import datetime
 
 # Import all the new models
 from earnings_agent.storage.models import (
