@@ -3,10 +3,11 @@
 import os
 from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import create_engine, update, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, joinedload, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List, Dict, Any, Optional
 import datetime
+from datetime import date
 
 # Import all the new models
 from earnings_agent.storage.models import (
@@ -17,7 +18,9 @@ from earnings_agent.storage.models import (
     ParsedDocument,
     ValidationResult,
     QuarterlyFundamental,
-    CustomKPI
+    CustomKPI, 
+    Classification,
+    CompanyMaster
 )
 # Assumes a central config file for the schema name
 # from .config import DB_SCHEMA
@@ -218,3 +221,103 @@ def create_validation_result(val_data: Dict[str, Any]):
 
 # Note: Functions for `QuarterlyFundamental` and `CustomKPI` would be added here
 # once the reconciliation logic is built. The patterns would be similar (upsert on unique constraints).
+# ================================================================================================
+# CLASSIFICATION & COMPANY MASTER FUNCTIONS
+# ================================================================================================
+
+def bulk_upsert_classifications(session: Session, classifications_data: list[dict]):
+    """
+    Performs a bulk "upsert" (insert or update on conflict) for industry classifications.
+    This ensures the master list of industries is always up-to-date.
+    
+    Args:
+        session: The SQLAlchemy session object.
+        classifications_data: A list of dictionaries, where each dict contains the
+                              full classification hierarchy for one industry.
+    """
+    if not classifications_data:
+        return
+
+    # Prepare an upsert statement using SQLAlchemy's PostgreSQL dialect support
+    stmt = pg_insert(Classification).values(classifications_data)
+    
+    # Define what to do on conflict (if a basic_industry_name already exists)
+    # Here, we update all other fields if the name matches.
+    update_dict = {
+        col.name: col
+        for col in stmt.excluded
+        if col.name != 'basic_industry_name' and col.name != 'id'
+    }
+    
+    final_stmt = stmt.on_conflict_do_update(
+        index_elements=['basic_industry_name'],
+        set_=update_dict
+    )
+    session.execute(final_stmt)
+    print(f"Upserted {len(classifications_data)} classifications.")
+
+def get_classification_id_by_name(session, name):
+    stmt = select(Classification.id).where(
+        Classification.basic_industry_name == name
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
+def bulk_upsert_companies(session: Session, company_data: list[dict]):
+    """
+    Performs a bulk "upsert" for company master data based on the ticker.
+    
+    Args:
+        session: The SQLAlchemy session object.
+        company_data: A list of dictionaries, each with 'ticker', 'company_name', 'isin_code'.
+    """
+    if not company_data:
+        return
+        
+    stmt = pg_insert(CompanyMaster).values(company_data)
+    
+    # If the ticker already exists, update the name and isin_code just in case.
+    update_dict = {
+        'company_name': stmt.excluded.company_name,
+        'isin_code': stmt.excluded.isin_code
+    }
+    
+    final_stmt = stmt.on_conflict_do_update(
+        index_elements=['ticker'],
+        set_=update_dict
+    )
+    session.execute(final_stmt)
+    print(f"Upserted {len(company_data)} companies.")
+
+def link_company_to_classification(session: Session, ticker: str, classification_id: int):
+    """
+    Links a single company in the master table to its classification.
+    
+    Args:
+        session: The SQLAlchemy session object.
+        ticker: The ticker of the company to update.
+        classification_id: The ID from the 'classifications' table.
+    """
+    session.query(CompanyMaster).\
+        filter(CompanyMaster.ticker == ticker).\
+        update({'classification_id': classification_id})
+    print(f"Linked ticker {ticker} to classification ID {classification_id}.")
+
+def get_company_context(session: Session, ticker: str) -> CompanyMaster | None:
+    """
+    The main function for the pipeline to get a company's full context.
+    
+    It fetches a company's master data and its full classification details in a single,
+    efficient query by performing a JOIN.
+    
+    Args:
+        session: The SQLAlchemy session object.
+        ticker: The ticker of the company to look up.
+        
+    Returns:
+        A single CompanyMaster SQLAlchemy object with the .classification attribute
+        populated, or None if the company is not found.
+    """
+    return session.query(CompanyMaster).\
+        options(joinedload(CompanyMaster.classification)).\
+        filter(CompanyMaster.ticker == ticker).\
+        first()

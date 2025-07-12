@@ -159,3 +159,55 @@ ORDER BY
     j.last_attempted_at DESC;
 
 COMMENT ON VIEW earnings_data.v_ingestion_status_report IS 'A user-friendly report for monitoring the status and outcome of all ingestion jobs.';
+
+-- ================================================================================================
+-- MOVE THE BELOW TABLES TO THE CORPORATE AGENT!!!
+-- ================================================================================================
+
+-- ================================================================================================
+-- DIMENSIONS & MASTER DATA
+-- ================================================================================================
+
+-- This table defines the unique industry classifications from the official source.
+CREATE TABLE IF NOT EXISTS earnings_data.classifications (
+    id SERIAL PRIMARY KEY,
+    basic_industry_name TEXT NOT NULL UNIQUE,
+    basic_industry_code VARCHAR(20),
+    industry_name TEXT,
+    industry_code VARCHAR(20),
+    sector_name TEXT,
+    sector_code VARCHAR(20),
+    macro_economic_sector_name TEXT,
+    mes_code VARCHAR(20),
+    source_system TEXT DEFAULT 'NSE_2023', -- To track the source of the classification
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE earnings_data.classifications IS 'Master list of all official industry classifications, a single source of truth for categorization.';
+
+
+-- This is the master list of all companies in your universe.
+CREATE TABLE IF NOT EXISTS earnings_data.company_master (
+    id SERIAL PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL UNIQUE,
+    company_name TEXT NOT NULL,
+    isin_code VARCHAR(20) UNIQUE,
+    listing_status VARCHAR(20) NOT NULL DEFAULT 'LISTED', -- e.g., LISTED, DELISTED
+    
+    -- A single foreign key to the classifications table for context.
+    classification_id INTEGER REFERENCES earnings_data.classifications(id),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE earnings_data.company_master IS 'Master dimension table for company profiles. Links to a classification for industry context.';
+
+
+-- === INDEXES FOR PERFORMANCE ===
+
+-- Index for fast company lookups by ticker
+CREATE INDEX IF NOT EXISTS idx_company_master_ticker ON earnings_data.company_master(ticker);
+
+-- Index for fast JOINs between companies and their classifications
+CREATE INDEX IF NOT EXISTS idx_company_master_classification_id ON earnings_data.company_master(classification_id);

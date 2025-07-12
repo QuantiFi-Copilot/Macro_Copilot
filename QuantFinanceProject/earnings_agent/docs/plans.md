@@ -200,3 +200,8 @@ Answering Your Final Query
 "...what if the data doesn't 'look' suspicious, but still is - let's say the profit is off by like 5% then how can we ever know if the data is wrong or right"
 
 Your proposed architecture is the only way to solve this. An internal ValidationEngine (Tier 2) can never catch this. It can confirm that the numbers in a report add up correctly, but it can't know if the starting numbers themselves are wrong. Only by cross-referencing with an independent source (Tier 3) can you flag that 5% deviation and gain true confidence in your data.
+
+
+https://iinvest.cogencis.com/INE002A01018/symbol/ns/RELIANCE/Reliance%20Industries%20Limited?tab=financials&type=interim-financials
+
+NSE Cogencis - cheap source 3 

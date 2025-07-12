@@ -203,3 +203,52 @@ class CustomKPI(Base):
     fundamental = relationship("QuarterlyFundamental")
 
     __table_args__ = ({'schema': DB_SCHEMA})
+
+# ================================================================================================
+# MASTER DATA MODELS
+# ================================================================================================
+
+class Classification(Base):
+    """
+    SQLAlchemy ORM model for the `classifications` table.
+    This table is the master list of all official industry classifications.
+    """
+    __tablename__ = 'classifications'
+    
+    id = Column(Integer, primary_key=True)
+    basic_industry_name = Column(Text, nullable=False, unique=True)
+    basic_industry_code = Column(String(20))
+    industry_name = Column(Text)
+    industry_code = Column(String(20))
+    sector_name = Column(Text)
+    sector_code = Column(String(20))
+    macro_economic_sector_name = Column(Text)
+    mes_code = Column(String(20))
+    source_system = Column(String(50), default='NSE_2023')
+    
+    # This defines the one-to-many relationship: one classification can have many companies.
+    companies = relationship("CompanyMaster", back_populates="classification")
+
+    __table_args__ = ({'schema': DB_SCHEMA})
+
+class CompanyMaster(Base):
+    """
+    SQLAlchemy ORM model for the `company_master` table.
+    This is the central directory for all companies in your universe.
+    """
+    __tablename__ = 'company_master'
+    
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String(20), nullable=False, unique=True)
+    company_name = Column(Text, nullable=False)
+    isin_code = Column(String(20), unique=True)
+    listing_status = Column(String(20), nullable=False, default='LISTED')
+    
+    # This column holds the foreign key linking to the classifications table.
+    classification_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.classifications.id'))
+    
+    # This defines the many-to-one relationship, allowing easy access
+    # to a company's full classification details via `company.classification`.
+    classification = relationship("Classification", back_populates="companies")
+    
+    __table_args__ = ({'schema': DB_SCHEMA})

@@ -1,0 +1,7 @@
+- SWITCH TO NSE RSS FEEDS!!!!!!!!! - IMPORTANT
+- IMPORTANT CHANGE - DATABASE MIGRATIONS SETUP - move to this setup
+- MOVE ingestion.nse_classification and the classification table and the company master table to the corporate_agent
+- In the Company Master and classifications table - make it source agnostic, and there are two types of changes - when the classification itself changes (the source file) and when the individual companies themselves change. Make it fully indempotent as well - update only on change. 
+- build an auto suggestion engine to improve the semantic mapping iteratively 
+- Important - right now in reconciliation_playbook.yml, the thresholds that govern the differences in each "cheap" source in the validation engine are hard coded, eventually we would have to transition to a method where we use dynamic updating of the thresholds for checking for suspicious values. there would be a dynamic updating logic for each ticker * metric to compare sources and determine the thresholds. 
+- Important - make the cross source reconciliation a much 'smarter' process, right now its hardcoded, but then it should be made a smarter process. 

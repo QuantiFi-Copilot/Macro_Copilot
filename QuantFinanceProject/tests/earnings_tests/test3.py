@@ -1,107 +1,146 @@
-# test_integrity_check.py
-# A standalone script to prove we can verify a local file against a remote source
-# using a lightweight HTTP HEAD request.
+# tests/earnings_tests/debug_ingestion.py
+# A standalone test script to debug the core ingestion logic without any database interaction.
 
+import time
 import requests
 import logging
-import time
+import json
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 
-# --- Configuration ---
-# IMPORTANT: Update these two variables to match your test case.
+# --- Configuration for this Test ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 1. The original URL from which the file was downloaded.
-#    (This is the URL for the Consolidated filing for RELIANCE ending 31-Dec-2023)
-REMOTE_FILE_URL = "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_101209_1030568_19012024071754.xml"
+# The specific universe of companies you requested for the test
+TEST_UNIVERSE = [
+    {"ticker": "AXISBANK"}, {"ticker": "BHARTIARTL"}, {"ticker": "HAL"},
+    {"ticker": "ICICIBANK"}, {"ticker": "ITC"}, {"ticker": "LICI"},
+    {"ticker": "LT"}, {"ticker": "M&M"}, {"ticker": "RELIANCE"},
+    {"ticker": "SBIN"}, {"ticker": "SUNPHARMA"}, {"ticker": "ULTRACEMCO"}
+]
 
-# 2. The path to the file you have already downloaded on your local machine.
-LOCAL_FILE_PATH = Path("./test_downloads/RELIANCE_Consolidated.xml")
-
+# The script will save files to a 'data' folder next to itself
+DATA_ROOT = Path(__file__).parent / "data"
 
 # --- NSE Constants (Self-contained) ---
 BASE_URL = "https://www.nseindia.com"
 UI_URL = BASE_URL + "/companies-listing/corporate-filings-financial-results"
+JSON_ENDPOINT = BASE_URL + "/api/corporates-financial-results"
 HEADERS = {
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "application/json, text/javascript, */*; q=0.01", "Accept-Language": "en-US,en;q=0.9",
+    "Referer": UI_URL,
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "X-Requested-With": "XMLHttpRequest",
 }
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- Helper Functions (Self-contained) ---
 
-def get_remote_file_metadata(session: requests.Session, url: str) -> dict | None:
-    """
-    Performs a lightweight HEAD request to get remote file metadata.
-    """
-    logging.info(f"Performing HEAD request to: {url}")
+def seed_session() -> requests.Session:
+    sess = requests.Session()
+    sess.headers.update(HEADERS)
     try:
-        # requests.head() gets only the headers, not the file content.
-        response = session.head(url, timeout=10)
-        response.raise_for_status() # Will raise an error for 4xx or 5xx status codes
-        
-        # Extract the metadata from the response headers
-        remote_size = int(response.headers.get('Content-Length', 0))
-        last_modified_str = response.headers.get('Last-Modified')
-        
-        remote_modified_dt = None
-        if last_modified_str:
-            # Parse the standard HTTP-date string format and make it timezone-aware (UTC)
-            remote_modified_dt = datetime.strptime(
-                last_modified_str, 
-                '%a, %d %b %Y %H:%M:%S %Z'
-            ).replace(tzinfo=timezone.utc)
-            
-        return {'size': remote_size, 'modified': remote_modified_dt}
-
+        logging.info("Seeding new session...")
+        resp = sess.get(UI_URL, timeout=30)
+        resp.raise_for_status(); time.sleep(1)
+        return sess
     except Exception as e:
-        logging.error(f"Could not fetch remote metadata. Reason: {e}")
-        return None
+        logging.error(f"Failed to seed session: {e}"); raise
+
+def download_file(session: requests.Session, url: str, output_path: Path) -> bool:
+    try:
+        resp = session.get(url, timeout=30)
+        resp.raise_for_status()
+        output_path.write_bytes(resp.content)
+        logging.info(f"  SUCCESS: Downloaded {output_path.name}")
+        time.sleep(2) # Polite pause
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.error(f"  ERROR: Download failed for {url}. Reason: {e}")
+        return False
+
+# --- Main Test Logic ---
+
+def run_ingestion_test(from_date_str: str, to_date_str: str):
+    logging.info(">>> Starting Standalone Ingestion Test <<<")
+    
+    start_date = datetime.strptime(from_date_str, "%d-%m-%Y").date()
+    end_date = datetime.strptime(to_date_str, "%d-%m-%Y").date()
+
+    # Step 1: Generate expectations for both Consolidated and Standalone
+    expected_filings = []
+    for company in TEST_UNIVERSE:
+        for conso_type in ["Consolidated", "Standalone"]:
+            expected_filings.append({"ticker": company["ticker"], "consolidation_status": conso_type})
+
+    # Step 2: Fetch the master list of all announcements from NSE
+    try:
+        http_session = seed_session()
+        params = {"index": "equities", "from_date": from_date_str, "to_date": to_date_str, "period": "Quarterly"}
+        r = http_session.get(JSON_ENDPOINT, params=params, timeout=20)
+        r.raise_for_status()
+        response_data = r.json()
+        all_announcements = response_data.get('data', []) if isinstance(response_data, dict) else response_data
+        logging.info(f"Fetched {len(all_announcements)} total announcements from NSE.")
+    except Exception as e:
+        logging.critical(f"Could not fetch master list. Aborting. Error: {e}")
+        return
+
+    # Step 3: Build a precise map of available announcements using the proven logic
+    announcements_map = {}
+    for ann in all_announcements:
+        if isinstance(ann, dict) and "symbol" in ann and "toDate" in ann:
+            try:
+                key_date = datetime.strptime(ann["toDate"], "%d-%b-%Y").date()
+                key_symbol = ann["symbol"]
+                status_val = ann.get('consolidated', '')
+                
+                key_status = "Unknown"
+                if status_val == 'Consolidated': key_status = 'Consolidated'
+                elif status_val == 'Non-Consolidated': key_status = 'Standalone'
+                
+                if key_status != "Unknown":
+                    # For this test, we only care about the URL
+                    if ann.get("xbrl") and not ann.get("xbrl").strip().endswith("/-"):
+                         announcements_map[(key_symbol, key_date, key_status)] = ann.get("xbrl")
+            except (ValueError, TypeError):
+                continue
+
+    # Step 4: Loop through all companies and quarters and try to find a match
+    # This logic is simpler than the main script; it checks all historical quarters in the date range.
+    for company in TEST_UNIVERSE:
+        ticker = company["ticker"]
+        logging.info(f"--- Checking for {ticker} ---")
+        for conso_type in ["Consolidated", "Standalone"]:
+            found_match_for_this_type = False
+            # Iterate through all dates in the map to find matches for this ticker/type
+            for (map_ticker, map_date, map_conso_status), xbrl_path in announcements_map.items():
+                if map_ticker == ticker and map_conso_status == conso_type:
+                    found_match_for_this_type = True
+                    fy, q = (map_date.year, (map_date.month-1)//3 + 1) # Simple date to quarter mapping for filename
+                    
+                    logging.info(f"  FOUND: Match for {ticker} {conso_type} ending {map_date}")
+                    
+                    # Create unique filename and download path
+                    company_dir = DATA_ROOT / ticker
+                    company_dir.mkdir(parents=True, exist_ok=True)
+                    file_name = f"{ticker}_{map_date}_{conso_type}.xml"
+                    out_path = company_dir / file_name
+                    
+                    if not out_path.exists():
+                        full_url = BASE_URL + xbrl_path if not xbrl_path.startswith('http') else xbrl_path
+                        download_file(http_session, full_url, out_path)
+                    else:
+                        logging.info(f"  SKIPPED: File already exists - {file_name}")
+
+            if not found_match_for_this_type:
+                logging.warning(f"  MISSING: No {conso_type} filings found for {ticker} in the entire date range.")
+    
+    logging.info(">>> Standalone Ingestion Test Finished. <<<")
+
 
 if __name__ == '__main__':
-    logging.info("--- Starting Data Integrity Check Test ---")
-
-    # Step 1: Check if the local file exists
-    if not LOCAL_FILE_PATH.exists():
-        logging.critical(f"Local file not found at: {LOCAL_FILE_PATH}. Please download the file first to run this test.")
-        exit()
-
-    # Step 2: Get metadata from the local file
-    local_stat = LOCAL_FILE_PATH.stat()
-    local_size = local_stat.st_size
-    local_modified_dt = datetime.fromtimestamp(local_stat.st_mtime, tz=timezone.utc)
-    logging.info(f"Local File Size    : {local_size} bytes")
-    logging.info(f"Local File Modified  : {local_modified_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-
-    # Step 3: Get metadata from the remote server
-    # We don't need to seed a session for nsearchives.nseindia.com, a direct request is fine.
-    http_session = requests.Session()
-    http_session.headers.update(HEADERS)
-    remote_metadata = get_remote_file_metadata(http_session, REMOTE_FILE_URL)
-
-    # Step 4: Compare and conclude
-    if remote_metadata:
-        logging.info(f"Remote File Size   : {remote_metadata['size']} bytes")
-        if remote_metadata['modified']:
-            logging.info(f"Remote Last-Modified: {remote_metadata['modified'].strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        else:
-            logging.warning("Remote server did not provide a 'Last-Modified' header.")
-
-        print("-" * 50)
-        # Perform the comparison
-        size_matches = (local_size == remote_metadata['size'])
-        # Only compare dates if the remote server provided one
-        time_matches = (remote_metadata['modified'] is None or local_modified_dt >= remote_metadata['modified'])
-
-        logging.info(f"Size Match: {size_matches}")
-        logging.info(f"Timestamp Check (Local >= Remote): {time_matches}")
-
-        if size_matches and time_matches:
-            print("\nCONCLUSION: SUCCESS! Local file appears to be up-to-date.")
-        else:
-            print("\nCONCLUSION: WARNING! Remote file has changed. Re-download would be required.")
-    else:
-        print("-" * 50)
-        print("\nCONCLUSION: FAILED to retrieve metadata from the remote server.")
-
-    logging.info("--- Test Finished ---")
+    # Use a very wide date range to find all possible filings for the test universe
+    SEARCH_START_DATE = "01-12-2021"
+    SEARCH_END_DATE = "30-04-2024"
+    run_ingestion_test(from_date_str=SEARCH_START_DATE, to_date_str=SEARCH_END_DATE)
