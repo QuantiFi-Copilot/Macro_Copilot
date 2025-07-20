@@ -1,6 +1,6 @@
 -- ================================================================================================
 -- QFinAgent - Earnings Agent Storage Schema
--- Version: 2.1
+-- Version: 2.3 (Added Staging Table for Normalization)
 -- Description: This script completely rebuilds the earnings_data schema to align with the
 --              institutional-grade, metadata-driven architecture.
 --
@@ -9,6 +9,8 @@
 -- 2. Idempotency via Hashing: `raw_data_hash` ensures data is processed only once.
 -- 3. Rich Metadata: Tracks script versions, failures, and status at each stage.
 -- 4. Clear Lineage: Dedicated link tables and foreign keys provide a full audit trail.
+-- 5. Intelligent Normalization: Includes a cache table for the LLM-augmented label mapping.
+-- 6. Staging Area: Includes a staging table for multi-source reconciliation.
 --
 -- WARNING: This script will drop the entire 'earnings_data' schema and all its data.
 -- ================================================================================================
@@ -60,7 +62,7 @@ COMMENT ON TABLE earnings_data.job_asset_link IS 'A simple, crucial link table c
 
 
 -- ================================================================================================
--- STAGE 2 & 3: PARSING AND VALIDATION
+-- STAGE 2: PARSING
 -- ================================================================================================
 
 CREATE TABLE IF NOT EXISTS earnings_data.parsed_documents (
@@ -73,23 +75,57 @@ CREATE TABLE IF NOT EXISTS earnings_data.parsed_documents (
     content JSONB, -- The structured data extracted from the raw asset
     UNIQUE (asset_id, parser_version)
 );
-COMMENT ON TABLE earnings_data.parsed_documents IS 'Staging table for structured data transformed from a raw asset.';
-
-
-CREATE TABLE IF NOT EXISTS earnings_data.validation_results (
-    validation_id BIGSERIAL PRIMARY KEY,
-    doc_id BIGINT NOT NULL REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
-    validation_script_version VARCHAR(50) NOT NULL,
-    status VARCHAR(50) NOT NULL, -- PASSED, FAILED, WARNING
-    summary JSONB, -- e.g., {"check_name": "Assets = L + E", "result": "FAILED", "details": "Diff of 1.2M"}
-    validated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (doc_id, validation_script_version)
-);
-COMMENT ON TABLE earnings_data.validation_results IS 'Stores the outcome of running the Validation Engine on a parsed document.';
+COMMENT ON TABLE earnings_data.parsed_documents IS 'Staging table for structured data transformed from a raw asset. Holds raw, un-normalized key-value pairs.';
 
 
 -- ================================================================================================
--- STAGE 4: FINAL "GOLDEN RECORD" TABLES (Structure from original schema)
+-- STAGE 3: NORMALIZATION & RECONCILIATION
+-- ================================================================================================
+
+-- This is the cache for the normalization engine itself
+CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
+    raw_label TEXT PRIMARY KEY,
+    normalized_label TEXT, -- The clean, standardized name from our master list
+    status VARCHAR(20) NOT NULL, -- 'APPROVED', 'PENDING_REVIEW', 'REJECTED'
+    source_context JSONB, -- Metadata about where this label was first seen (e.g., ticker, fiscal_date)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT -- Identifier for the human or system that performed the review
+);
+COMMENT ON TABLE earnings_data.label_mapping_cache IS 'The persistent cache for the financial label normalization engine. Acts as the system''s long-term memory.';
+CREATE INDEX IF NOT EXISTS idx_label_mapping_status ON earnings_data.label_mapping_cache(status);
+
+
+-- This is the staging area for the output of the normalization engine
+CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
+    id BIGSERIAL PRIMARY KEY,
+    doc_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
+    ticker VARCHAR(20) NOT NULL,
+    fiscal_date DATE NOT NULL,
+    normalized_data JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
+CREATE INDEX IF NOT EXISTS idx_staged_data_lookup ON earnings_data.staged_normalized_data(ticker, fiscal_date);
+
+
+-- This stores the final result of the reconciliation/quality check
+CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_results (
+    quality_run_id BIGSERIAL PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    fiscal_date DATE NOT NULL,
+    engine_version VARCHAR(20) NOT NULL,
+    playbook_config_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(50) NOT NULL, -- e.g., PASSED, PASSED_WITH_WARNINGS, PDF_ESCALATION_REQUIRED
+    summary JSONB, -- A rich JSON object containing all reconciliation and validation flags.
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (ticker, fiscal_date, playbook_config_hash)
+);
+
+COMMENT ON TABLE earnings_data.quality_engine_results IS 'Stores the detailed output of a Quality Engine run for a specific financial filing.';
+
+-- ================================================================================================
+-- STAGE 4: FINAL "GOLDEN RECORD" TABLES
 -- ================================================================================================
 
 CREATE TABLE IF NOT EXISTS earnings_data.quarterly_fundamentals (
@@ -159,10 +195,6 @@ ORDER BY
     j.last_attempted_at DESC;
 
 COMMENT ON VIEW earnings_data.v_ingestion_status_report IS 'A user-friendly report for monitoring the status and outcome of all ingestion jobs.';
-
--- ================================================================================================
--- MOVE THE BELOW TABLES TO THE CORPORATE AGENT!!!
--- ================================================================================================
 
 -- ================================================================================================
 -- DIMENSIONS & MASTER DATA

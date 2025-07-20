@@ -19,3 +19,6 @@ dependencies:
     - zope.interface
     - pyotp
     - lxml
+    - anthropic
+    - arelle 
+    - arelle-release

@@ -1,64 +1,73 @@
--- earnings_agent/storage/30_earnings_data_views.sql
+-- This VIEW creates a comprehensive, flattened overview of the entire earnings data pipeline.
+-- It joins every major table in the workflow, from the initial job to the final quality check,
+-- providing a single, easy-to-query source for BI tools, monitoring, and analysis.
+-- Version 3.0: Re-architected for the multi-stage ingestion, parsing, normalization, and quality engine workflow.
 
--- This VIEW creates a comprehensive, flattened view of the entire pipeline.
--- It joins ingestion jobs, parsed documents, and validation results to provide
--- a single, easy-to-query source for BI tools and analysis.
--- Version 2.0: Adapted to the new modular schema.
-
-CREATE OR REPLACE VIEW earnings_data.v_pipeline_results_flat AS
+CREATE OR REPLACE VIEW earnings_data.v_pipeline_overview AS
 SELECT
-    -- Metadata from the Ingestion Job (The "Expectation")
+    -- === Stage 1: Ingestion Job (The "Expectation") ===
     ij.job_id,
     ij.ticker,
     ij.fiscal_year,
     ij.quarter,
     ij.source_type,
     ij.ingestion_script_version,
-
-    -- IDs from the rest of the pipeline for traceability
-    pd.asset_id,
-    pd.doc_id,
-    vr.validation_id,
-
-    -- Status from each stage
     ij.status AS ingestion_status,
+    ij.failure_reason AS ingestion_failure_reason,
+    ij.created_at AS job_created_at,
+
+    -- === Stage 2: Parsing (Raw Fact Extraction) ===
+    pd.doc_id,
     pd.parse_status,
-    vr.status AS validation_status,
-
-    -- Versioning from each stage
     pd.parser_version,
-    vr.validation_script_version,
-
-    -- Timestamps
     pd.parsed_at,
-    vr.validated_at,
+    (pd.content -> 'parsing_summary' ->> 'total_facts_extracted')::INT AS raw_facts_extracted,
 
-    -- Unnesting the core_metrics from the parsed document's JSONB content
-    -- Preserving the robust NUMERIC cast to handle source variations
-    (pd.content -> 'core_metrics' ->> 'revenue')::NUMERIC::BIGINT AS revenue,
-    (pd.content -> 'core_metrics' ->> 'net_income')::NUMERIC::BIGINT AS net_income,
-    (pd.content -> 'core_metrics' ->> 'ebitda')::NUMERIC::BIGINT AS ebitda,
-    (pd.content -> 'core_metrics' ->> 'profit_before_tax')::NUMERIC::BIGINT AS profit_before_tax,
-    (pd.content -> 'core_metrics' ->> 'earnings_per_share_diluted')::NUMERIC(18, 4) AS eps_diluted,
+    -- === Stage 3: Normalization (Staging Area) ===
+    snd.id AS staged_data_id,
+    -- The existence of a staged_data_id indicates normalization was successful for this source.
+    CASE
+        WHEN snd.id IS NOT NULL THEN 'NORMALIZED'
+        ELSE NULL
+    END AS normalization_status,
+    (jsonb_object_keys(snd.normalized_data)) AS normalized_metric_name,
+    snd.normalized_data ->> (jsonb_object_keys(snd.normalized_data)) AS normalized_metric_value,
 
-    -- Balance Sheet items
-    (pd.content -> 'core_metrics' ->> 'total_assets')::NUMERIC::BIGINT AS total_assets,
-    (pd.content -> 'core_metrics' ->> 'total_liabilities')::NUMERIC::BIGINT AS total_liabilities,
-    (pd.content -> 'core_metrics' ->> 'shareholders_equity')::NUMERIC::BIGINT AS shareholders_equity,
-    (pd.content -> 'core_metrics' ->> 'cash_and_equivalents')::NUMERIC::BIGINT AS cash_and_equivalents
+    -- === Stage 4: Quality Engine (Reconciliation & Validation Summary) ===
+    qer.quality_run_id,
+    qer.status AS quality_engine_status,
+    qer.engine_version AS quality_engine_version,
+    qer.summary AS quality_engine_summary,
+    qer.completed_at AS quality_engine_completed_at,
+    
+    -- === Traceability IDs ===
+    rda.asset_id,
+    rda.raw_data_hash
 
 FROM
-    -- Start with parsed documents as the central point
-    earnings_data.parsed_documents pd
-    
--- Join backwards to get the raw data asset and the original job metadata
-LEFT JOIN earnings_data.raw_data_assets rda ON pd.asset_id = rda.asset_id
-LEFT JOIN earnings_data.job_asset_link jal ON rda.asset_id = jal.asset_id
-LEFT JOIN earnings_data.ingestion_jobs ij ON jal.job_id = ij.job_id
+    -- Start with the job as the primary record of intent
+    earnings_data.ingestion_jobs ij
 
--- Join forwards to get the results of the validation stage
-LEFT JOIN earnings_data.validation_results vr ON pd.doc_id = vr.doc_id;
+-- Join "forwards" through the pipeline stages
+LEFT JOIN earnings_data.job_asset_link jal ON ij.job_id = jal.job_id
+LEFT JOIN earnings_data.raw_data_assets rda ON jal.asset_id = rda.asset_id
+LEFT JOIN earnings_data.parsed_documents pd ON rda.asset_id = pd.asset_id
+LEFT JOIN earnings_data.staged_normalized_data snd ON pd.doc_id = snd.doc_id
+
+-- The Quality Engine result is linked by the logical entity (ticker + date), not a direct ID.
+-- This correctly associates the summary of a run with all the source documents that fed into it.
+LEFT JOIN earnings_data.quality_engine_results qer
+    ON ij.ticker = qer.ticker
+    AND (
+        -- This logic correctly reconstructs the fiscal_date from the job info to join with the quality_engine_results
+        CASE
+            WHEN ij.quarter = 1 THEN make_date(ij.fiscal_year, 6, 30)
+            WHEN ij.quarter = 2 THEN make_date(ij.fiscal_year, 9, 30)
+            WHEN ij.quarter = 3 THEN make_date(ij.fiscal_year, 12, 31)
+            ELSE make_date(ij.fiscal_year + 1, 3, 31)
+        END
+    ) = qer.fiscal_date;
 
 
 -- Update the comment on the VIEW for discoverability
-COMMENT ON VIEW earnings_data.v_pipeline_results_flat IS 'Version 2.0: A flattened, comprehensive view of the entire earnings pipeline, joining jobs, parsed docs, and validation results. Ideal for BI tools.';
+COMMENT ON VIEW earnings_data.v_pipeline_overview IS 'Version 3.0: A comprehensive, flattened view of the entire earnings pipeline, from job creation through parsing, normalization, and the final quality engine summary. Ideal for BI tools and operational monitoring.';

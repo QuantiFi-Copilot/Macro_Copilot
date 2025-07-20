@@ -1,118 +1,127 @@
-# test_consolidated_final.py
-# A standalone script with the corrected logic to find and download both filing types.
-
-import requests
+import csv
+import subprocess
+import os
 import json
-import logging
-import time
-from pathlib import Path
-from datetime import datetime
 
-# --- Configuration ---
-TARGET_TICKER = "RELIANCE"
-# This is the "Period Ended" date. The API calls it 'toDate'.
-TARGET_DATE_STR = "31-Dec-2023" 
+def parse_xbrl(xbrl_file_path, arelle_cmd_line_path):
+    """
+    Parses an XBRL file by converting its facts to a structured JSON file,
+    which is a more reliable method than CSV. It uses the --validate flag
+    to ensure all necessary schemas are loaded by Arelle.
+    """
+    output_json_path = "output.json"
+    
+    # --- Step 1: Convert XBRL to JSON using Arelle ---
+    # !! MAJOR FIX !! Switched from --facts (CSV) to --facts-export-file (JSON).
+    # This provides a standardized, reliable output format.
+    arelle_command = [
+        "python",
+        arelle_cmd_line_path,
+        "--file",
+        xbrl_file_path,
+        "--validate", 
+        "--facts-export-file",
+        output_json_path
+    ]
 
-# This is the date range of the announcement *broadcast*. For the period ending 31-Dec-2023,
-# the broadcast date was 19-Jan-2024. This range must include the broadcast date.
-SEARCH_START_DATE = "01-01-2024"
-SEARCH_END_DATE = "31-01-2024"
-
-# --- NSE Constants ---
-BASE_URL = "https://www.nseindia.com"
-UI_URL = BASE_URL + "/companies-listing/corporate-filings-financial-results"
-JSON_ENDPOINT = BASE_URL + "/api/corporates-financial-results"
-HEADERS = {
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": UI_URL,
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "X-Requested-With": "XMLHttpRequest",
-}
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-def seed_session() -> requests.Session:
-    sess = requests.Session()
-    sess.headers.update(HEADERS)
+    print(f"-> Running Arelle command: {' '.join(arelle_command)}")
+    
     try:
-        logging.info("Seeding new session...")
-        resp = sess.get(UI_URL, timeout=30)
-        resp.raise_for_status()
-        time.sleep(1)
-        return sess
-    except Exception as e:
-        logging.error(f"Failed to seed session: {e}")
-        raise
+        # Run the Arelle command
+        result = subprocess.run(
+            arelle_command, 
+            check=True, 
+            capture_output=True, 
+            text=True,
+            encoding='utf-8'
+        )
+        print("-> Arelle processing finished successfully.")
 
-def download_file_with_retry(session: requests.Session, url: str, output_path: Path) -> bool:
-    for attempt in range(3):
-        try:
-            resp = session.get(url, timeout=30)
-            resp.raise_for_status()
-            output_path.write_bytes(resp.content)
-            logging.info(f"  -> Successfully downloaded: {output_path.name}")
-            time.sleep(2)
-            return True
-        except requests.exceptions.RequestException as e:
-            logging.warning(f"  -> Attempt {attempt + 1} failed for {output_path.name}: {e}")
-            time.sleep(3)
-    logging.error(f"  -> All download attempts failed for {output_path.name}.")
-    return False
+    except subprocess.CalledProcessError as e:
+        print("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print(f"!! ARELLE FAILED TO EXECUTE for {os.path.basename(xbrl_file_path)}")
+        print(f"!! Arelle stderr:\n{e.stderr}")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+        return None
 
-if __name__ == '__main__':
-    logging.info(f"--- Starting Final Test for {TARGET_TICKER} on {TARGET_DATE_STR} ---")
+    # --- Step 2: Inspect and Parse the JSON output file ---
+    if not os.path.exists(output_json_path) or os.path.getsize(output_json_path) == 0:
+        print(f"!! CRITICAL ERROR: Arelle did not create a valid JSON output file at '{output_json_path}'!")
+        return None
 
+    financial_data = {}
+    key_financial_tags = {
+        "in-bse-fin:RevenueFromOperations": "Revenue from Operations",
+        "in-bse-fin:ProfitLossForPeriod": "Net Profit/Loss",
+        "in-bse-fin:BasicEarningsLossPerShareFromContinuingOperations": "Basic EPS",
+        "in-bse-fin:EquityShareCapital": "Equity Share Capital",
+        "in-bse-fin:NameOfTheCompany": "Company Name"
+    }
+    
+    print(f"-> Parsing '{output_json_path}'...")
     try:
-        session = seed_session()
-        params = {"index": "equities", "from_date": SEARCH_START_DATE, "to_date": SEARCH_END_DATE, "period": "Quarterly"}
-        response = session.get(JSON_ENDPOINT, params=params, timeout=20)
-        response.raise_for_status()
-        
-        response_data = response.json()
-        master_list = response_data.get('data', []) if isinstance(response_data, dict) else response_data
-        
-        logging.info(f"Fetched {len(master_list)} total announcements from NSE.")
-    except Exception as e:
-        logging.critical(f"Could not fetch master list. Exiting. Error: {e}")
-        exit()
-
-    filings_to_download = []
-    for announcement in master_list:
-        if announcement.get('symbol') == TARGET_TICKER and announcement.get('toDate') == TARGET_DATE_STR:
-            xbrl_link = announcement.get('xbrl')
-            if not xbrl_link or xbrl_link.strip().endswith('/-'):
-                continue
-
-            # --- FINAL, CORRECTED LOGIC ---
-            # We now check the "consolidated" field for its exact value.
-            consolidation_status = announcement.get('consolidated', '')
+        with open(output_json_path, 'r', encoding='utf-8') as json_file:
+            # Load the entire JSON structure
+            xbrl_facts = json.load(json_file)
             
-            if consolidation_status == 'Consolidated':
-                logging.info(f"Found CONSOLIDATED filing for {TARGET_TICKER}.")
-                filings_to_download.append({
-                    "type": "Consolidated",
-                    "url": BASE_URL + xbrl_link if not xbrl_link.startswith('http') else xbrl_link
-                })
-            elif consolidation_status == 'Non-Consolidated':
-                logging.info(f"Found STANDALONE (Non-Consolidated) filing for {TARGET_TICKER}.")
-                filings_to_download.append({
-                    "type": "Standalone",
-                    "url": BASE_URL + xbrl_link if not xbrl_link.startswith('http') else xbrl_link
-                })
-            # --------------------------------
+            # The facts are in a list under the 'facts' key
+            for fact in xbrl_facts.get('facts', []):
+                # Extract data from the JSON object for each fact
+                concept = fact.get('concept')
+                context_id = fact.get('contextID')
+                value = fact.get('value')
 
-    if not filings_to_download:
-        logging.warning(f"Could not find any Consolidated or Standalone filings for {TARGET_TICKER} on {TARGET_DATE_STR}.")
-    else:
-        logging.info(f"Found {len(filings_to_download)} filings to download. Starting downloads...")
-        output_dir = Path("./test_downloads")
-        output_dir.mkdir(exist_ok=True)
+                # Filter for the specific context ID for the current period's data
+                if context_id == "OneD":
+                    if concept in key_financial_tags:
+                        label = key_financial_tags[concept]
+                        if label not in financial_data:
+                            financial_data[label] = value
+                            print(f"   -> Found '{label}': {value}")
+
+    except json.JSONDecodeError as e:
+        print(f"!! CRITICAL ERROR: Failed to decode JSON from 'output.json'. The file may be corrupt. Error: {e}")
+        return None
+    except Exception as e:
+        print(f"!! An error occurred while parsing the JSON file: {e}")
+        return None
+
+    # Clean up the temporary file
+    os.remove(output_json_path)
+    
+    return financial_data
+
+if __name__ == "__main__":
+    ARELLE_CMD_LINE_PATH = "/Volumes/Sreeram/Arelle/arelleCmdLine.py"
+
+    # Process all files now that the core issue is resolved.
+    xbrl_files_to_process = [
+        "ITC_FY2024_Q2_Standalone.xml"
+    ] 
+    
+    print("--- Starting XBRL Parser ---")
+    for xbrl_file in xbrl_files_to_process:
+        print(f"\n========================================================")
+        print(f"Processing file: {xbrl_file}")
+        print(f"========================================================")
+
+        if not os.path.exists(xbrl_file):
+            print(f"!! FILE NOT FOUND: {xbrl_file}. Skipping.")
+            continue
+
+        xbrl_file_path = os.path.abspath(xbrl_file)
         
-        for filing in filings_to_download:
-            file_name = f"{TARGET_TICKER}_{filing['type']}.xml"
-            output_path = output_dir / file_name
-            logging.info(f"Attempting to download {filing['type']} version...")
-            download_file_with_retry(session, filing['url'], output_path)
+        extracted_data = parse_xbrl(xbrl_file_path, ARELLE_CMD_LINE_PATH)
+        
+        if extracted_data:
+            print("\n---------------------------------")
+            print(f"📊 Final Extracted Data for: {extracted_data.get('Company Name', os.path.basename(xbrl_file))}")
+            print("---------------------------------")
+            for key, value in sorted(extracted_data.items()):
+                if key != "Company Name":
+                    print(f"   {key}: {value}")
+            print("---------------------------------")
+        else:
+            print("\n-> No data was extracted for this file.")
 
-    logging.info("--- Test Finished ---")
+    print("\n--- Parser Finished ---")

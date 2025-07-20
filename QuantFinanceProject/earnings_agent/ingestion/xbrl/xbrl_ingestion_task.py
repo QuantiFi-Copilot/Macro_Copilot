@@ -33,7 +33,7 @@ HEADERS = {
 DATA_ROOT = Path(__file__).resolve().parents[2] / "storage" / "data"
 SESSION_TIMEOUT_SECONDS = 30
 SOURCE_TYPE = "XBRL_FILE"
-INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v4.1-final-integrity" # Final Version
+INGESTION_SCRIPT_VERSION = "1.0" # Final Version
 DOWNLOAD_MAX_RETRIES = 3
 DOWNLOAD_INITIAL_DELAY_SECONDS = 5
 

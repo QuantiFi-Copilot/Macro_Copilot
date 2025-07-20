@@ -1,0 +1,50 @@
+# ================================================================================
+# Global Playbook: Core Metrics
+# Version: 1.0
+#
+# Description:
+# This file defines the universal set of "core" financial metrics that are
+# expected to be applicable across all industries. These names correspond
+# directly to the columns in the `quarterly_fundamentals` table in the database.
+#
+# This file serves as the base layer that industry-specific playbooks will
+# extend.
+# ================================================================================
+
+core_metrics:
+  # --- Income Statement ---
+  - revenue
+  - cost_of_goods_sold
+  - gross_profit
+  - operating_expenses
+  - ebitda
+  - depreciation_and_amortization
+  - ebit
+  - interest_expense
+  - profit_before_tax
+  - tax_expense
+  - net_income
+  - earnings_per_share_basic
+  - earnings_per_share_diluted
+
+  # --- Balance Sheet ---
+  - cash_and_equivalents
+  - accounts_receivable
+  - inventory
+  - total_current_assets
+  - property_plant_equipment_net
+  - total_non_current_assets
+  - total_assets
+  - accounts_payable
+  - total_current_liabilities
+  - total_long_term_debt
+  - total_non_current_liabilities
+  - total_liabilities
+  - shareholders_equity
+  - total_liabilities_and_equity
+
+  # --- Cash Flow Statement ---
+  - cash_flow_from_operating
+  - cash_flow_from_investing
+  - cash_flow_from_financing
+  - net_change_in_cash

@@ -1,0 +1,41 @@
+version: "1.0"
+description: "Enforces logical and common-sense business rules that should apply to any company, regardless of industry."
+
+rules:
+  - rule_name: "negative_revenue"
+    description: "Flags if total revenue is reported as a negative value."
+    target_metric: "core_metrics.revenue"
+    condition: "is_negative"
+    flag:
+      type: "LOGICAL_CONSISTENCY_ERROR"
+      message: "Revenue is reported as a negative value, which is highly improbable."
+      severity: "WARNING"
+
+  - rule_name: "negative_total_assets"
+    description: "Flags if total assets are reported as a negative value."
+    target_metric: "core_metrics.total_assets"
+    condition: "is_negative"
+    flag:
+      type: "LOGICAL_CONSISTENCY_ERROR"
+      message: "Total Assets are reported as a negative value, which is impossible."
+      severity: "WARNING"
+
+  - rule_name: "component_exceeds_total"
+    description: "Flags if a sub-component (e.g., cash) is greater than its parent total (e.g., current assets)."
+    target_metric: "core_metrics.cash_and_equivalents"
+    condition: "is_greater_than" 
+    comparison_metric: "core_metrics.total_current_assets"
+    flag:
+      type: "LOGICAL_CONSISTENCY_ERROR"
+      message: "Component 'cash_and_equivalents' cannot be greater than its parent 'total_current_assets'."
+      severity: "WARNING"
+
+  - rule_name: "ebit_exceeds_ebitda"
+    description: "Flags if EBIT is greater than EBITDA, which violates the definition as EBITDA = EBIT + D&A."
+    target_metric: "core_metrics.ebit"
+    condition: "is_greater_than"
+    comparison_metric: "core_metrics.ebitda"
+    flag:
+      type: "LOGICAL_CONSISTENCY_ERROR"
+      message: "EBIT should not be greater than EBITDA."
+      severity: "WARNING"

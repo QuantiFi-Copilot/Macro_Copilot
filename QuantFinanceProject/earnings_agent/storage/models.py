@@ -41,7 +41,6 @@ class IngestionJob(Base):
     quarter = Column(Integer, nullable=False)
     source_type = Column(String(50), nullable=False)
     
-    # --- MODIFIED: Added consolidation_status column ---
     consolidation_status = Column(String(50), nullable=False)
     
     ingestion_script_version = Column(String(50), nullable=False)
@@ -54,12 +53,10 @@ class IngestionJob(Base):
     job_asset_link = relationship("JobAssetLink", back_populates="job", uselist=False, cascade="all, delete-orphan")
 
     __table_args__ = (
-        # --- MODIFIED: Added consolidation_status to the unique constraint ---
         UniqueConstraint('ticker', 'fiscal_year', 'quarter', 'source_type', 'consolidation_status', 'ingestion_script_version', name='uq_ingestion_job'),
         {'schema': DB_SCHEMA}
     )
 
-# In models.py
 
 class RawDataAsset(Base):
     """
@@ -73,7 +70,6 @@ class RawDataAsset(Base):
     source_type = Column(String(50), nullable=True)
     storage_location = Column(Text, nullable=True)
     
-    # --- ADDED: New columns for data integrity checks ---
     source_last_modified = Column(DateTime(timezone=True), nullable=True)
     
     data_content = Column(JSONB, nullable=True)
@@ -104,13 +100,14 @@ class JobAssetLink(Base):
 
 
 # ================================================================================================
-# STAGE 2 & 3: PARSING AND VALIDATION
+# STAGE 2: PARSING
 # ================================================================================================
 
 class ParsedDocument(Base):
     """
     SQLAlchemy ORM model for the `parsed_documents` table.
     Represents the structured data extracted from a RawDataAsset.
+    This holds the raw, un-normalized key-value pairs.
     """
     __tablename__ = 'parsed_documents'
     
@@ -124,36 +121,103 @@ class ParsedDocument(Base):
 
     # Relationships
     asset = relationship("RawDataAsset", back_populates="parsed_documents")
-    validation_results = relationship("ValidationResult", back_populates="parsed_document", cascade="all, delete-orphan")
     
     __table_args__ = (
         UniqueConstraint('asset_id', 'parser_version', name='uq_parsed_document'),
         {'schema': DB_SCHEMA}
     )
 
+# ================================================================================================
+# STAGE 3: NORMALIZATION & RECONCILIATION
+# ================================================================================================
 
-class ValidationResult(Base):
+class LabelMapping(Base):
     """
-    SQLAlchemy ORM model for the `validation_results` table.
-    Stores the outcome of running the Validation Engine on a ParsedDocument.
+    SQLAlchemy ORM model for the `label_mapping_cache` table.
+    This is the persistent cache for the financial label normalization engine,
+    acting as the system's long-term, human-verified memory.
     """
-    __tablename__ = 'validation_results'
+    __tablename__ = 'label_mapping_cache'
+
+    # The primary key is the exact, case-sensitive label from the source document.
+    raw_label = Column(Text, primary_key=True)
+
+    # The clean, standardized name it maps to (e.g., 'netIncome', 'grossNpaRatio').
+    # This can be null if the status is 'REJECTED'.
+    normalized_label = Column(Text, nullable=True)
+
+    # The status of the mapping, crucial for the human-in-the-loop workflow.
+    # 'APPROVED': Use this mapping automatically.
+    # 'PENDING_REVIEW': An LLM suggestion that needs human verification.
+    # 'REJECTED': A human has determined this raw_label cannot be mapped.
+    status = Column(String(20), nullable=False)
+
+    # Rich metadata for auditing and debugging. Stores where the label was first seen.
+    source_context = Column(JSONB, nullable=True)
+
+    # Timestamps for audit trail.
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Identifier for the human or system that performed the review.
+    reviewed_by = Column(Text, nullable=True)
+
+    __table_args__ = ({'schema': DB_SCHEMA})
+
+
+class StagedNormalizedData(Base):
+    """
+    SQLAlchemy ORM model for the `staged_normalized_data` table.
+    This is an intermediate staging table that holds the output of the
+    Normalization Engine for a single source. The Quality Engine will
+    gather all records for a given filing from this table to perform
+    reconciliation.
+    """
+    __tablename__ = 'staged_normalized_data'
+
+    id = Column(BigInteger, primary_key=True)
     
-    validation_id = Column(BigInteger, primary_key=True)
-    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False)
-    validation_script_version = Column(String(50), nullable=False)
-    status = Column(String(50), nullable=False)
-    summary = Column(JSONB, nullable=True)
-    validated_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Foreign key to the source document it was created from.
+    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False, unique=True)
+    
+    # Denormalized fields for easy querying by the Quality Engine.
+    ticker = Column(String(20), nullable=False)
+    fiscal_date = Column(Date, nullable=False)
+    
+    # The fully normalized data from this one source.
+    # Example: {"revenue": 5000, "gross_npa_ratio": 1.2}
+    normalized_data = Column(JSONB, nullable=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationship
-    parsed_document = relationship("ParsedDocument", back_populates="validation_results")
+    # Relationship back to the parsed document for full lineage
+    parsed_document = relationship("ParsedDocument")
 
     __table_args__ = (
-        UniqueConstraint('doc_id', 'validation_script_version', name='uq_validation_result'),
         {'schema': DB_SCHEMA}
     )
 
+
+class QualityEngineResult(Base):
+    """
+    SQLAlchemy ORM model for the `quality_engine_results` table.
+    Stores the detailed output of a Quality Engine run for a specific financial filing.
+    """
+    __tablename__ = 'quality_engine_results'
+
+    quality_run_id = Column(BigInteger, primary_key=True)
+    ticker = Column(String(20), nullable=False)
+    fiscal_date = Column(Date, nullable=False)
+    engine_version = Column(String(20), nullable=False)
+    playbook_config_hash = Column(String(64), nullable=False)
+    status = Column(String(50), nullable=False)
+    summary = Column(JSONB, nullable=True)
+    completed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('ticker', 'fiscal_date', 'playbook_config_hash', name='uq_quality_engine_run'),
+        {'schema': DB_SCHEMA}
+    )
 
 # ================================================================================================
 # STAGE 4: FINAL "GOLDEN RECORD" TABLES
@@ -211,7 +275,7 @@ class CustomKPI(Base):
 class Classification(Base):
     """
     SQLAlchemy ORM model for the `classifications` table.
-    This table is the master list of all official industry classifications.
+    This is the master list of all official industry classifications.
     """
     __tablename__ = 'classifications'
     

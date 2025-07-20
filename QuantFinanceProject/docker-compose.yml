@@ -205,13 +205,36 @@ services:
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.parsing.nse_scraper.nse_scraper_parser_task"
     ]
-# ─────────────────────────────────────────────────────────────
-
-# In docker-compose.yml
-
-  earnings-validator:
+  
+  earnings-normalizer:
     image: quantfinanceproject:latest
-    container_name: earnings-validator
+    container_name: earnings_normalizer
+    restart: "no" # It's a one-off task
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      # Pass database credentials
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    # --- NEW COMMAND ---
+    # This points to our new, source-agnostic normalization script.
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.normalization_engine.normalizer_engine"
+    ]
+# ─────────────────────────────────────────────────────────────
+  quality_engine:
+    image: quantfinanceproject:latest
+    container_name: quality_engine
     restart: "no"
     depends_on:
       tsdb:
@@ -229,10 +252,56 @@ services:
     # --- MODIFIED COMMAND ---
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.validation.validation_task"
+      "python", "-m", "earnings_agent.quality_engine.validation_task"
     ]
-
-  
+################################################################################
+# NSE CLASSIFICATION
+################################################################################
+  nse-classifier:
+    image: quantfinanceproject:latest
+    container_name: nse_classifier
+    restart: "no"
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    # --- MODIFIED COMMAND ---
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.ingestion.nse_classification.populate_classifications"
+    ]
+  company-classifier:
+    image: quantfinanceproject:latest
+    container_name: company_classifier
+    restart: "no"
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    # --- MODIFIED COMMAND ---
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.ingestion.nse_classification.populate_company_master"
+    ]
+# ─────────────────────────────────────────────────────────────
 ################################################################################
 # DATABASE GUI stack
 ################################################################################
