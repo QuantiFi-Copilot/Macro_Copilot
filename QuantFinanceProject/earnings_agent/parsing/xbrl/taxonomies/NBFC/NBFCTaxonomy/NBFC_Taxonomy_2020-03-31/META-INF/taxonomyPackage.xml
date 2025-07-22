@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<taxonomyPackage xmlns="http://xbrl.org/2016/taxonomy-package">
+
+  <!-- Who/what this package is -->
+  <identifier>
+    <name>NBFC 2020-03-31</name>
+    <publicURI>https://example.com/xbrl/nbfc/2020-03-31</publicURI>
+  </identifier>
+
+  <name>NBFC Taxonomy 2020-03-31</name>
+  <version>2020-03-31</version>
+  <description>Unofficial package built locally for NBFC filings</description>
+
+  <!-- One entry point is enough -->
+  <entryPoints>
+    <entryPoint id="nbfc-2020-03-31">
+      <title>NBFC entry point 2020-03-31</title>
+      <href>in-bse-fin-2020-03-31.xsd</href>
+    </entryPoint>
+  </entryPoints>
+</taxonomyPackage>

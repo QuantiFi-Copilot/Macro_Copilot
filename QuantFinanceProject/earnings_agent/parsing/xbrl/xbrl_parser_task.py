@@ -1,209 +1,202 @@
-# earnings_agent/parsing/xbrl/xbrl_parser_task.py
+"""
+Parse a single XBRL filing and extract quarter facts.
+FINAL version using the CntlrCmdLine().run(options) execution pattern.
+"""
+import argparse
 import json
-import logging
-from decimal import Decimal, InvalidOperation
-from lxml import etree
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
-from types import SimpleNamespace
+import re
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
-# --- Core Application Imports ---
-from earnings_agent.storage.database import get_session, create_parsed_document
-from earnings_agent.storage.models import RawDataAsset, JobAssetLink, IngestionJob, ParsedDocument
-from sqlalchemy import select
+# --- Main Arelle components from source file ---
+from arelle.CntlrCmdLine import CntlrCmdLine
+from arelle.RuntimeOptions import RuntimeOptions
 
-# --- Standard Logging Setup ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+# ---------------------------------------------------------------------------
+# project imports
+# ---------------------------------------------------------------------------
+project_root = Path(__file__).resolve().parents[3]
+sys.path.append(str(project_root))
 
-# --- Configuration ---
-PARSER_VERSION = "2.0-raw-facts-extractor"
+from earnings_agent.parsing.xbrl.taxonomy_config import TAXONOMY_REGISTRY
+from earnings_agent.storage.database import get_session
+from earnings_agent.storage.models import (
+    RawDataAsset,
+    JobAssetLink,
+    IngestionJob,
+    CompanyMaster,
+)
 
-# ================================================================================================
-# CORE PARSING ENGINE - REFACTORED
-# ================================================================================================
-
-class XBRLParser:
-    """
-    An advanced, dual-context parser for XBRL instance files.
-    REFACTORED: This parser's responsibility is now solely to extract raw,
-    un-normalized key-value pairs from the XBRL document.
-    """
-    def __init__(self, source_info: SimpleNamespace):
-        self.source_info = source_info
-        if not self.source_info or not self.source_info.local_path:
-            raise FileNotFoundError(f"Source info is invalid or has no local_path.")
-            
-        self.tree = etree.parse(self.source_info.local_path)
-        self.root = self.tree.getroot()
-        self.namespaces = {k if k is not None else 'xbrli': v for k, v in self.root.nsmap.items()}
-        self.duration_context_id = self._find_context(instant=False)
-        self.instant_context_id = self._find_context(instant=True)
-
-    def _find_context(self, instant: bool) -> str | None:
-        """
-        Finds the primary context ID for a given period type (instant or duration).
-        This logic is preserved as it is proven and effective.
-        """
-        date_str = self.source_info.fiscal_date.strftime('%Y-%m-%d')
-        period_element = 'instant' if instant else 'endDate'
-        xpath = f".//xbrli:context[not(.//xbrli:segment) and .//xbrli:period[xbrli:{period_element}='{date_str}']]"
-        contexts = self.root.xpath(xpath, namespaces=self.namespaces)
-        if contexts: return contexts[0].get('id')
-        
-        fallback_xpath = f".//xbrli:context[.//xbrli:period[xbrli:{period_element}='{date_str}']]"
-        fallback_contexts = self.root.xpath(fallback_xpath, namespaces=self.namespaces)
-        if fallback_contexts:
-            context_id = fallback_contexts[0].get('id')
-            logging.warning(f"Using fallback context for {self.source_info.ticker}: {context_id}")
-            return context_id
-
-        logging.warning(f"No suitable context found for {self.source_info.ticker} on date {date_str}.")
-        return None
-
-    def _process_facts(self, context_id: str | None, raw_facts: dict):
-        """
-        REFACTORED: Extracts all facts for a given context into a single dictionary.
-        It no longer normalizes or categorizes them.
-        """
-        if not context_id:
-            return 0
-            
-        facts_xpath = f".//*[@contextRef='{context_id}']"
-        facts = self.root.xpath(facts_xpath, namespaces=self.namespaces)
-        
-        for fact in facts:
-            tag = etree.QName(fact.tag).localname
-            value_str = fact.text.strip() if fact.text else '0'
-            
-            try:
-                if fact.get('decimals', 'INF').upper() == 'INF':
-                    normalized_value = float(value_str)
-                else:
-                    normalized_value = int(Decimal(value_str))
-            except (InvalidOperation, ValueError, TypeError):
-                continue
-            
-            raw_facts[tag] = normalized_value
-            
-        return len(facts)
-
-    def parse(self) -> dict:
-        """
-        REFACTORED: The main parsing method.
-        Returns a simple dictionary containing all raw facts found in the document.
-        """
-        raw_facts = {}
-        duration_facts_count = self._process_facts(self.duration_context_id, raw_facts)
-        instant_facts_count = self._process_facts(self.instant_context_id, raw_facts)
-        
-        status = "PARTIAL_DATA" if not self.duration_context_id or not self.instant_context_id else "SUCCESS"
-
-        return {
-            "raw_facts": raw_facts,
-            "parsing_summary": {
-                "parser_version": PARSER_VERSION,
-                "status": status,
-                "duration_context_found": bool(self.duration_context_id),
-                "instant_context_found": bool(self.instant_context_id),
-                "total_facts_extracted": len(raw_facts),
-                "parsing_timestamp": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
-            }
-        }
-
-
-# ================================================================================================
-# WORKER LOGIC - The "Runner" for the parsing task.
-# ================================================================================================
-
-def parse_xbrl_asset(asset_id: int):
-    """
-    Main function for this task. Processes one single raw data asset.
-    """
-    logging.info(f">>> (TASK) Starting XBRL Parse for asset_id: {asset_id} <<<")
-    # MODIFICATION: A session is passed in, not created, to support batch processing.
-    session = get_session()
-    
+# ---------------------------------------------------------------------------
+def get_taxonomy_package_path(file_path: str, ticker: str, db_session):
+    """Determines the correct local taxonomy package path for a given filing."""
     try:
-        asset = session.get(RawDataAsset, asset_id)
-        if not asset:
-            logging.error(f"No RawDataAsset found for asset_id: {asset_id}. Aborting.")
-            return
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read(8192)
+        match = re.search(r'<link:schemaRef[^>]*\s+xlink:href\s*=\s*["\']([^"\']+)["\']', content)
+        if match:
+            href = match.group(1)
+        else:
+            raise ValueError("Schema reference not found")
+    except Exception:
+         raise ValueError(f"Could not find a <link:schemaRef> in the file: {file_path}")
 
-        link = session.query(JobAssetLink).filter(JobAssetLink.asset_id == asset_id).first()
-        if not link:
-            raise Exception(f"Could not find associated job for asset_id {asset_id}. Cannot determine metadata.")
-            
-        job = session.get(IngestionJob, link.job_id)
-        if not job:
-            raise Exception(f"Could not find IngestionJob with id {link.job_id}.")
+    entry = Path(href).name
+    path_opts = TAXONOMY_REGISTRY.get(entry)
+    if not path_opts:
+        raise ValueError(f"Unknown taxonomy entry file in TAXONOMY_REGISTRY: {entry}")
 
-        if job.quarter == 1: quarter_end_date = date(job.fiscal_year, 6, 30)
-        elif job.quarter == 2: quarter_end_date = date(job.fiscal_year, 9, 30)
-        elif job.quarter == 3: quarter_end_date = date(job.fiscal_year, 12, 31)
-        else: quarter_end_date = date(job.fiscal_year + 1, 3, 31)
-        
-        source_info_for_parser = SimpleNamespace(
-            local_path=asset.storage_location,
-            fiscal_date=quarter_end_date,
-            ticker=job.ticker
+    if len(path_opts) == 1 and "_default_" in path_opts:
+        return project_root / path_opts["_default_"]
+    else:
+        co = db_session.query(CompanyMaster).filter(CompanyMaster.ticker == ticker).first()
+        industry = co.classification.basic_industry_name if co and co.classification else "_default_"
+        pkg_path = project_root / path_opts.get(industry, path_opts["_default_"])
+        if not pkg_path.exists():
+            raise FileNotFoundError(f"Taxonomy package not found at: {pkg_path}")
+        return pkg_path
+
+# ---------------------------------------------------------------------------
+def parse_xbrl_asset(asset_id: int):
+    print("=" * 80)
+    print(f"🚀 Starting Parse for Asset ID: {asset_id}")
+    print("=" * 80)
+
+    arelle_controller = None
+    db_session = get_session()
+    try:
+        link = db_session.query(JobAssetLink).filter_by(asset_id=asset_id).first()
+        if not link: raise RuntimeError("No JobAssetLink row.")
+
+        job   = db_session.get(IngestionJob, link.job_id)
+        asset = db_session.get(RawDataAsset, asset_id)
+        if not job or not asset: raise RuntimeError("Missing Job or Asset row.")
+
+        file_path = asset.storage_location
+        ticker    = job.ticker
+        fy, qtr   = job.fiscal_year, job.quarter
+        print(f"   Context: Ticker={ticker}, FY={fy}, Q{qtr}")
+
+        taxonomy_pkg_path = get_taxonomy_package_path(file_path, ticker, db_session)
+        print(f"1. Identified taxonomy package: {taxonomy_pkg_path}")
+
+        # --- SYMLINK TAXONOMY FILES INTO INSTANCE FOLDER -------------------
+        from pathlib import Path
+        import os
+
+        instance_dir = Path(file_path).parent
+        # Recursively link every file in the taxonomy package so schemaRef hrefs resolve
+        for taxon_file in Path(taxonomy_pkg_path).rglob("*"):
+            if taxon_file.is_file():
+                link_path = instance_dir / taxon_file.name
+                if not link_path.exists():
+                    try:
+                        os.symlink(taxon_file, link_path)
+                    except FileExistsError:
+                        pass
+        # -------------------------------------------------------------------
+
+        arelle_controller = CntlrCmdLine(logFileName='logToBuffer')
+
+        options = RuntimeOptions(
+            entrypointFile=file_path,
+            packages=[str(taxonomy_pkg_path)],
+            keepOpen=True,
         )
 
-        try:
-            parser = XBRLParser(source_info=source_info_for_parser)
-            parsed_content = parser.parse()
-            
-            doc_data = {
-                "asset_id": asset_id,
-                "parser_version": PARSER_VERSION,
-                "parse_status": 'PARSED_OK',
-                "content": parsed_content
-            }
-            create_parsed_document(doc_data)
-            logging.info(f"Successfully parsed and stored raw facts for asset_id: {asset_id}")
-
-        except Exception as e:
-            logging.error(f"An error occurred parsing asset_id {asset_id}: {e}", exc_info=True)
-            doc_data = {
-                "asset_id": asset_id,
-                "parser_version": PARSER_VERSION,
-                "parse_status": 'PARSING_ERROR',
-                "error_details": str(e)
-            }
-            create_parsed_document(doc_data)
-            logging.error(f"Created PARSING_ERROR record for asset_id: {asset_id}")
-
-    finally:
-        session.close()
-        logging.info(f">>> (TASK) Finished XBRL Parse for asset_id: {asset_id} <<<")
-
-
-if __name__ == '__main__':
-    # === MODIFIED FOR BULK PROCESSING ===
-    logging.info(f"--- Running XBRL Parser Task in BULK mode v{PARSER_VERSION} ---")
-    session = get_session()
-    try:
-        # Find all unprocessed assets from the XBRL source.
-        subquery = select(ParsedDocument.asset_id).where(ParsedDocument.parser_version == PARSER_VERSION)
+        print("2. Running Arelle controller...")
+        arelle_controller.run(options)
         
-        # The query now gets all results, not just the first one.
-        results = session.query(JobAssetLink.asset_id)\
-            .join(IngestionJob, JobAssetLink.job_id == IngestionJob.job_id)\
-            .filter(IngestionJob.status == 'SUCCESS')\
-            .filter(JobAssetLink.asset_id.notin_(subquery))\
-            .all()
+        model = arelle_controller.modelManager.modelXbrl
+        if not model or not model.facts:
+            log_text = arelle_controller.logHandler.getText()
+            raise RuntimeError(f"Arelle failed to parse facts. Log:\n{log_text}")
 
-        # Extract just the integer asset_ids from the result tuples.
-        assets_to_process = [r[0] for r in results]
+        if qtr == 1: end_date = date(fy, 6, 30)
+        elif qtr == 2: end_date = date(fy, 9, 30)
+        elif qtr == 3: end_date = date(fy, 12, 31)
+        else: end_date = date(fy + 1, 3, 31)
 
-        if assets_to_process:
-            logging.info(f"Found {len(assets_to_process)} assets to process.")
-            # Loop through each asset_id and process it.
-            for asset_id in assets_to_process:
-                try:
-                    parse_xbrl_asset(asset_id=asset_id)
-                except Exception as e:
-                    logging.error(f"An unexpected error occurred processing asset_id {asset_id}. Skipping. Error: {e}")
-        else:
-            logging.warning(f"No new, successfully ingested XBRL assets found to parse with version '{PARSER_VERSION}'.")
+        # ------------------- FINALIZED LOGIC STARTS HERE -------------------
+
+        print(f"3. Scanning contexts for {end_date} …")
+
+        def _period_end(ctx):
+            """Helper function to get the end date from a context."""
+            if getattr(ctx, "instantDatetime", None): return ctx.instantDatetime.date()
+            if getattr(ctx, "endDatetime", None): return ctx.endDatetime.date()
+            return None
+
+        # --- Find all contexts that end on the target quarter's end_date ---
+        candidate_contexts = []
+        for ctx in model.contexts.values():
+            pe = _period_end(ctx)
+            if pe in (end_date, end_date + timedelta(days=1)):
+                candidate_contexts.append(ctx)
+
+        if not candidate_contexts:
+            raise RuntimeError(f"No context found ending {end_date} (+/-1 day).")
+
+        # --- Separate primary contexts into DURATION and INSTANT lists ---
+        primary_duration_contexts = []
+        primary_instant_contexts = []
+        for ctx in candidate_contexts:
+            # A primary (non-dimensional) context is one WITHOUT a <scenario> element.
+            if getattr(ctx, "scenario", None) is None:
+                if getattr(ctx, "instantDatetime", None) is None:
+                    # To be a valid duration context, it must have both start and end dates
+                    if getattr(ctx, "startDatetime", None) and getattr(ctx, "endDatetime", None):
+                        primary_duration_contexts.append(ctx)
+                else:
+                    primary_instant_contexts.append(ctx)
+
+        # --- Identify the correct context IDs to target ---
+        target_ids = set()
+
+        # Find the single duration context with the shortest period (this will be the quarter)
+        if primary_duration_contexts:
+            def get_duration_days(c):
+                return (c.endDatetime.date() - c.startDatetime.date()).days
+            
+            shortest_duration_ctx = min(primary_duration_contexts, key=get_duration_days)
+            target_ids.add(shortest_duration_ctx.id)
+
+        # Add all primary instant contexts found for that end date
+        for ctx in primary_instant_contexts:
+            target_ids.add(ctx.id)
+
+        if not target_ids:
+            raise RuntimeError(f"Could not find any primary contexts for {end_date}.")
+
+        print(f"   Identified primary quarter contexts: {target_ids}")
+
+        # --- Extract facts using only the precisely identified primary context IDs ---
+        parsed = {fact.concept.qname.localName: fact.value for fact in model.facts if fact.contextID in target_ids}
+        if "LevelOfRoundingUsedInFinancialStatements" in parsed:
+            unit = parsed.pop("LevelOfRoundingUsedInFinancialStatements")
+            parsed = {"unit": unit, **parsed}
+
+        return parsed
+
+    except Exception as exc:
+        import traceback
+        print("❌  ERROR:", exc)
+        traceback.print_exc()
+        return None
     finally:
-        session.close()
+        if arelle_controller:
+            arelle_controller.close()
+        if db_session:
+            db_session.close()
+
+if __name__ == "__main__":
+    import re
+    argp = argparse.ArgumentParser()
+    argp.add_argument("--asset-id", type=int, required=True)
+    res = parse_xbrl_asset(argp.parse_args().asset_id)
+    if res:
+        print("\n" + "=" * 80)
+        print("✅ PARSING COMPLETE — JSON")
+        print("=" * 80)
+        print(json.dumps(res, indent=4))
