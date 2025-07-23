@@ -28,7 +28,7 @@ services:
       - ./market_data_agent/storage/schema.sql:/docker-entrypoint-initdb.d/10_market_data_schema.sql:ro
       - ./earnings_agent/storage/schema.sql:/docker-entrypoint-initdb.d/20_earnings_data_schema.sql:ro
       - ./earnings_agent/storage/30_earnings_data_views.sql:/docker-entrypoint-initdb.d/30_earnings_data_views.sql:ro
-      - ./earnings_agent/storage/40_clean_raw_sources_view.sql:/docker-entrypoint-initdb.d/40_clean_raw_sources_view.sql:ro
+      - ./earnings_agent/storage/40_clean_parsed_view.sql:/docker-entrypoint-initdb.d/40_clean_parsed_view.sql:ro
     # --- MODIFIED: Added healthcheck to ensure DB is ready ---
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quantuser -d quantdata"]
