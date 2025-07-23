@@ -5,9 +5,9 @@
 
 volumes:
   tsdata:
-  pgadmin-data:
-  grafana-storage:
   metabase-data:
+  superset-data:
+  redis-data:
 
 services:
 ########################################## GENERAL PROJECT SERVICES ##########################################
@@ -305,38 +305,6 @@ services:
 ################################################################################
 # DATABASE GUI stack
 ################################################################################
-  # pgadmin:
-  #   image: dpage/pgadmin4:8
-  #   restart: unless-stopped
-  #   environment:
-  #     TZ: Asia/Kolkata
-  #     PGADMIN_DEFAULT_EMAIL: saivenkatsriram@google.com
-  #     PGADMIN_DEFAULT_PASSWORD: changeme123
-  #   volumes:
-  #     - pgadmin-data:/var/lib/pgadmin
-  #   ports:
-  #     - "5050:80"
-  #   # --- MODIFIED: Now waits for tsdb to be healthy ---
-  #   depends_on:
-  #     tsdb:
-  #       condition: service_healthy
-    # --------------------------------------------------
-
-  # grafana:
-  #   image: grafana/grafana-oss:11.0.0
-  #   restart: unless-stopped
-  #   environment:
-  #     TZ: Asia/Kolkata
-  #   ports:
-  #     - "3000:3000"
-  #   volumes:
-  #     - grafana-storage:/var/lib/grafana
-  #   # --- MODIFIED: Now waits for tsdb to be healthy ---
-  #   depends_on:
-  #     tsdb:
-  #       condition: service_healthy
-    # --------------------------------------------------
-
   metabase:
     image: metabase/metabase:latest
     container_name: metabase
@@ -355,3 +323,36 @@ services:
         condition: service_healthy
 
     # --------------------------------------------------
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8088:8088"
+    depends_on:
+      tsdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      # This tells Superset where to find the configuration file inside the container
+      SUPERSET_CONFIG_PATH: "/app/superset_config.py"
+    volumes:
+      # ▼▼▼ THIS PATH HAS BEEN UPDATED ▼▼▼
+      - ./docker/superset_config.py:/app/superset_config.py
+      - superset-data:/app/superset_home
+    command: >
+      bash -c "
+        pip install psycopg2-binary &&
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin &&
+        superset init &&
+        /usr/bin/run-server.sh
+      "
+  redis:
+    image: redis:latest
+    container_name: superset_cache
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
