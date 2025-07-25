@@ -20,7 +20,7 @@ from earnings_agent.llm.normalizer_client import get_llm_mapping_suggestion
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
 
 # --- Configuration ---
-NORMALIZER_VERSION = "1.5-final-optimized" # Final version with all optimizations
+NORMALIZER_VERSION = "1.0.0" # Final version with all optimizations
 PLAYBOOKS_DIR = Path(__file__).resolve().parents[1] / "playbooks"
 
 class PlaybookLoader:
@@ -175,7 +175,7 @@ def normalize_document(doc_id: int, run_cache: Dict[str, Any]):
 
         # 4. Instantiate and run Normalizer
         source_context_for_cache = {"doc_id": doc_id, "ticker": ticker, "fiscal_date": fiscal_date.isoformat()}
-        raw_facts = parsed_doc.content.get('raw_facts', {})
+        raw_facts = parsed_doc.content
         if not raw_facts: return
 
         normalizer = Normalizer(

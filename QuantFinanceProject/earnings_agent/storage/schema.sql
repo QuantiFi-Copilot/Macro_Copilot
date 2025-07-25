@@ -87,15 +87,16 @@ CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
     raw_label TEXT PRIMARY KEY,
     normalized_label TEXT, -- The clean, standardized name from our master list
     status VARCHAR(20) NOT NULL, -- 'APPROVED', 'PENDING_REVIEW', 'REJECTED'
+    processed BOOLEAN NOT NULL DEFAULT FALSE, -- NEW: Tracks if the backfill job has processed this approval.
     source_context JSONB, -- Metadata about where this label was first seen (e.g., ticker, fiscal_date)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_reviewed_at TIMESTAMPTZ,
     reviewed_by TEXT -- Identifier for the human or system that performed the review
 );
 COMMENT ON TABLE earnings_data.label_mapping_cache IS 'The persistent cache for the financial label normalization engine. Acts as the system''s long-term memory.';
-CREATE INDEX IF NOT EXISTS idx_label_mapping_status ON earnings_data.label_mapping_cache(status);
 
-
+-- MODIFIED: Index now includes the 'processed' flag for efficient backfill queries.
+CREATE INDEX IF NOT EXISTS idx_label_mapping_status_processed ON earnings_data.label_mapping_cache(status, processed);
 -- This is the staging area for the output of the normalization engine
 CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
     id BIGSERIAL PRIMARY KEY,
@@ -103,11 +104,11 @@ CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
     ticker VARCHAR(20) NOT NULL,
     fiscal_date DATE NOT NULL,
     normalized_data JSONB NOT NULL,
+    data_hash VARCHAR(64), -- NEW: Hash of the normalized_data content to detect changes.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
 CREATE INDEX IF NOT EXISTS idx_staged_data_lookup ON earnings_data.staged_normalized_data(ticker, fiscal_date);
-
 
 -- This stores the final result of the reconciliation/quality check
 CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_results (

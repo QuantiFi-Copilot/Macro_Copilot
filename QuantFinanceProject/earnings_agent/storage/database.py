@@ -86,13 +86,19 @@ def create_ingestion_jobs(jobs_data: List[Dict[str, Any]]):
         session.close()
 
 
-def get_jobs_by_status(statuses: List[str]) -> List[IngestionJob]:
+def get_jobs_by_status(statuses: List[str], script_version: Optional[str] = None) -> List[IngestionJob]:
     """
     Retrieves all ingestion jobs with a status in the provided list.
+    Can optionally filter by a specific script version.
     """
     session = get_session()
     try:
         stmt = select(IngestionJob).where(IngestionJob.status.in_(statuses))
+        
+        # This new block filters by version if one is provided
+        if script_version:
+            stmt = stmt.where(IngestionJob.ingestion_script_version == script_version)
+            
         result = session.execute(stmt).scalars().all()
         return result
     finally:
@@ -252,7 +258,44 @@ def create_staged_normalized_data(data: Dict[str, Any]):
         session.commit()
     finally:
         session.close()
+def get_unprocessed_approved_labels() -> List[LabelMapping]:
+    """
+    Fetches all label mappings that have been approved but not yet processed
+    by the backfill job. This is the "to-do list" for the backfill script.
+    """
+    session = get_session()
+    try:
+        stmt = select(LabelMapping).where(
+            LabelMapping.status == 'APPROVED',
+            LabelMapping.processed == False
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
 
+# --- NEW FUNCTION 2 ---
+def mark_labels_as_processed(raw_labels: List[str]):
+    """
+    Marks a batch of approved labels as processed after the backfill
+    job has successfully run for them.
+    """
+    if not raw_labels:
+        return
+
+    session = get_session()
+    try:
+        stmt = update(LabelMapping).where(
+            LabelMapping.raw_label.in_(raw_labels)
+        ).values(
+            processed=True
+        )
+        session.execute(stmt)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 # ================================================================================================
 # RECONCILIATION & FINALIZATION FUNCTIONS (NEW & UPDATED)

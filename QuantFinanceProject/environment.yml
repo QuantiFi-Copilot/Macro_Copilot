@@ -12,6 +12,7 @@ dependencies:
   - python-dotenv
   - prefect
   - requests
+  - streamlit
   - pip
   - pip:
     - kiteconnect
@@ -21,3 +22,4 @@ dependencies:
     - lxml
     - anthropic 
     - arelle-release
+    

@@ -9,7 +9,7 @@ import time
 import requests
 import logging
 import json
-import hashlib
+import hashlib 
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from requests.exceptions import RequestException
@@ -133,7 +133,10 @@ def ingest_all_nse_api(start_date_str: str, to_date_str: str):
         logging.info(f"Created/verified {len(jobs_to_create)} jobs in the database.")
     # --- END MODIFIED BLOCK 1 ---
 
-    jobs_to_process = get_jobs_by_status(['PENDING', 'MISSING_AT_SOURCE', 'FETCH_FAILED'])
+    jobs_to_process = get_jobs_by_status(
+        statuses=['PENDING', 'MISSING_AT_SOURCE', 'FETCH_FAILED'], 
+        script_version=INGESTION_SCRIPT_VERSION
+    )
     if not jobs_to_process:
         logging.info("No re-triable jobs to process. Exiting.")
         return
@@ -204,6 +207,6 @@ def ingest_all_nse_api(start_date_str: str, to_date_str: str):
     logging.info(">>> MONOLITHIC NSE API ingestion process finished. <<<")
 
 if __name__ == '__main__':
-    SEARCH_START_DATE = "01-04-2024"
-    SEARCH_END_DATE = "30-12-2024"
+    SEARCH_START_DATE = "01-01-2023"
+    SEARCH_END_DATE = "30-06-2025"
     ingest_all_nse_api(start_date_str=SEARCH_START_DATE, to_date_str=SEARCH_END_DATE)

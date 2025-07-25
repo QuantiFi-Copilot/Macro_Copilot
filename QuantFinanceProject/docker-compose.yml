@@ -229,7 +229,7 @@ services:
     # This points to our new, source-agnostic normalization script.
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.normalization_engine.normalizer_engine"
+      "python", "-m", "earnings_agent.normalization.normalizer_engine"
     ]
 # ─────────────────────────────────────────────────────────────
   quality_engine:
@@ -356,3 +356,31 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+################################################################################
+# TOOLS
+################################################################################
+  normalization-reviewer-ui:
+    image: quantfinanceproject:latest  # <-- USE THE SAME IMAGE
+    container_name: normalization_reviewer_ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    ports:
+      - "8501:8501" # Expose the Streamlit port
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    # The command to run the Streamlit app from its new location
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "tools/earnings_normalization_reviewer/app.py", 
+      "--server.port=8501", "--server.address=0.0.0.0"
+    ]

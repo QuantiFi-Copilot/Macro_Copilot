@@ -11,7 +11,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
     Text,
-    BigInteger
+    BigInteger,
+    Boolean
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
@@ -139,31 +140,19 @@ class LabelMapping(Base):
     """
     __tablename__ = 'label_mapping_cache'
 
-    # The primary key is the exact, case-sensitive label from the source document.
     raw_label = Column(Text, primary_key=True)
-
-    # The clean, standardized name it maps to (e.g., 'netIncome', 'grossNpaRatio').
-    # This can be null if the status is 'REJECTED'.
     normalized_label = Column(Text, nullable=True)
-
-    # The status of the mapping, crucial for the human-in-the-loop workflow.
-    # 'APPROVED': Use this mapping automatically.
-    # 'PENDING_REVIEW': An LLM suggestion that needs human verification.
-    # 'REJECTED': A human has determined this raw_label cannot be mapped.
     status = Column(String(20), nullable=False)
 
-    # Rich metadata for auditing and debugging. Stores where the label was first seen.
+    # NEW: Tracks if the backfill job has processed this approval.
+    processed = Column(Boolean, nullable=False, server_default='f', default=False)
+    
     source_context = Column(JSONB, nullable=True)
-
-    # Timestamps for audit trail.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Identifier for the human or system that performed the review.
     reviewed_by = Column(Text, nullable=True)
 
     __table_args__ = ({'schema': DB_SCHEMA})
-
 
 class StagedNormalizedData(Base):
     """
@@ -187,6 +176,9 @@ class StagedNormalizedData(Base):
     # The fully normalized data from this one source.
     # Example: {"revenue": 5000, "gross_npa_ratio": 1.2}
     normalized_data = Column(JSONB, nullable=False)
+
+    # NEW: Hash of the normalized_data content to detect changes.
+    data_hash = Column(String(64), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -196,7 +188,6 @@ class StagedNormalizedData(Base):
     __table_args__ = (
         {'schema': DB_SCHEMA}
     )
-
 
 class QualityEngineResult(Base):
     """

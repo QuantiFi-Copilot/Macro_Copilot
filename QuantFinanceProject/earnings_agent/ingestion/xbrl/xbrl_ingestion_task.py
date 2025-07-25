@@ -33,7 +33,7 @@ HEADERS = {
 DATA_ROOT = Path(__file__).resolve().parents[2] / "storage" / "data"
 SESSION_TIMEOUT_SECONDS = 30
 SOURCE_TYPE = "XBRL_FILE"
-INGESTION_SCRIPT_VERSION = "1.0" # Final Version
+INGESTION_SCRIPT_VERSION = "xbrl-ingestor-v1.0" # Final Version
 DOWNLOAD_MAX_RETRIES = 3
 DOWNLOAD_INITIAL_DELAY_SECONDS = 5
 
@@ -134,7 +134,11 @@ def ingest_all_xbrl(start_date_str: str, to_date_str: str):
         create_ingestion_jobs(jobs_data=jobs_to_create)
         logging.info(f"Created/verified {len(jobs_to_create)} jobs in the database.")
     
-    jobs_to_process = get_jobs_by_status(['PENDING', 'MISSING_AT_SOURCE', 'FETCH_FAILED'])
+    jobs_to_process = get_jobs_by_status(
+    statuses=['PENDING', 'MISSING_AT_SOURCE', 'FETCH_FAILED'],
+    script_version=INGESTION_SCRIPT_VERSION
+    )
+    
     if not jobs_to_process:
         logging.info("No re-triable jobs to process. Exiting."); return
         
