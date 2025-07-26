@@ -3,6 +3,7 @@
 import logging
 import sys
 from pathlib import Path
+from sqlalchemy import or_
 
 # --- Environment and Path Setup ---
 # This allows the script to import modules from the main `earnings_agent` directory.
@@ -52,20 +53,32 @@ def run_backfill_job():
         try:
             # 2. Find all documents that contain this raw_label
             session = get_session()
-            affected_docs = session.query(ParsedDocument.doc_id).filter(
-                # This is a specific JSONB query to see if a key exists
-                ParsedDocument.content['raw_facts'].has_key(raw_label)
-            ).all()
+            affected_docs = (
+                session.query(ParsedDocument.doc_id)
+                .filter(
+                    # Support both layouts:
+                    # 1) Top-level: content ? raw_label
+                    # 2) Nested:    (content->'raw_facts') ? raw_label
+                    or_(
+                        ParsedDocument.content.has_key(raw_label),
+                        ParsedDocument.content['raw_facts'].has_key(raw_label)
+                    )
+                )
+                .all()
+            )
             session.close()
 
             doc_ids_to_normalize = [doc.doc_id for doc in affected_docs]
 
             if not doc_ids_to_normalize:
-                logging.warning(f"Label '{raw_label}' was approved, but no parsed documents were found containing it. Marking as processed.")
-                successfully_processed_labels.append(raw_label)
+                logging.warning(
+                    f"Label '{raw_label}' was approved, but no parsed documents were found containing it. Leaving as UNPROCESSED so it can be retried."
+                )
                 continue
 
-            logging.info(f"Found {len(doc_ids_to_normalize)} documents affected by this label. Re-normalizing them...")
+            logging.info(
+                f"Found {len(doc_ids_to_normalize)} documents containing label '{raw_label}'. Re-normalizing them..."
+            )
 
             # 3. Re-run normalization for each affected document
             # The normalizer will now use the approved mapping from the cache
