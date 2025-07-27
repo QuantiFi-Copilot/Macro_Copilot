@@ -22,8 +22,59 @@ from earnings_agent.storage.models import RawDataAsset, JobAssetLink, IngestionJ
 from sqlalchemy.orm import Session as SQLAlchemySession
 
 # --- Configuration ---
-PARSER_VERSION = "1.0.0"
+PARSER_VERSION = "1.1.0"
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+
+# --- Unit resolver -------------------------------------------------
+def resolve_unit_measure(unit) -> str | None:
+    """
+    Return a readable unit measure, e.g.:
+      - 'iso4217:INR'
+      - 'iso4217:INR/xbrli:shares'
+      - 'xbrli:pure'
+    Works across Arelle variants where measures are sets/tuples/model objects/strings.
+    """
+    def name_of(obj):
+        # plain string like 'iso4217:INR'
+        if isinstance(obj, str):
+            return obj
+        # QName-like with prefixedName
+        n = getattr(obj, "prefixedName", None)
+        if n:
+            return n
+        # Model object with .qname.prefixedName
+        qn = getattr(obj, "qname", None)
+        if qn and getattr(qn, "prefixedName", None):
+            return qn.prefixedName
+        # Fallback to str
+        return str(obj)
+
+    m = getattr(unit, "measures", None)
+    if m is not None:
+        try:
+            nums, dens = m
+            num = name_of(next(iter(nums))) if nums else None
+            den = name_of(next(iter(dens))) if dens else None
+            if num and den:
+                return f"{num}/{den}"
+            return num or None
+        except Exception:
+            # last resort, stringify what Arelle exposes
+            return str(m)
+
+    # Older fallback shape
+    div = getattr(unit, "divideUnit", None)
+    if div:
+        try:
+            nums = div[0].measures[0]
+            dens = div[1].measures[0]
+            num = name_of(next(iter(nums))) if nums else None
+            den = name_of(next(iter(dens))) if dens else None
+            return f"{num}/{den}" if (num and den) else (num or None)
+        except Exception:
+            return None
+
+    return None
 
 
 def get_taxonomy_package_path(file_path: str, ticker: str, db_session: SQLAlchemySession) -> Path:
@@ -107,9 +158,14 @@ def parse_xbrl_asset(asset_id: int, session: SQLAlchemySession):
             models = arelle_session.get_models()
             model = models[0] if models else None
 
-        if not model or not model.facts:
+        if not model or not getattr(model, "facts", None):
             # Get detailed logs from the handler if parsing fails
-            error_logs = [msg.message for msg in log_handler.get_messages()]
+            error_logs = []
+            try:
+                error_logs = [msg.message for msg in log_handler.get_messages()]
+            except Exception:
+                if hasattr(log_handler, "messages"):
+                    error_logs = log_handler.messages
             raise RuntimeError(f"Arelle failed to parse facts. Log: {error_logs}")
 
         # Your proven context discovery logic
@@ -137,13 +193,47 @@ def parse_xbrl_asset(asset_id: int, session: SQLAlchemySession):
         if not target_ids: raise RuntimeError(f"Could not find any primary contexts for {end_date}.")
         logging.info(f"   Identified primary quarter contexts: {target_ids}")
 
-        # Fact extraction and persistence
-        parsed_data = {fact.concept.qname.localName: fact.value for fact in model.facts if fact.contextID in target_ids}
-        if "LevelOfRoundingUsedInFinancialStatements" in parsed_data:
-            unit = parsed_data.pop("LevelOfRoundingUsedInFinancialStatements")
-            parsed_data = {"unit": unit, **parsed_data}
-        
-        doc_data = {"asset_id": asset_id, "parser_version": PARSER_VERSION, "parse_status": 'PARSED_OK', "content": parsed_data}
+        # -------------------------
+        # Fact extraction WITH unit metadata
+        # -------------------------
+        # Build a unit lookup: unit id -> resolved measure text
+        unit_map = {u.id: resolve_unit_measure(u) for u in model.units.values()}
+
+        parsed_data: dict[str, object] = {}
+        for fact in model.facts:
+            if fact.contextID not in target_ids:
+                continue
+            name = fact.concept.qname.localName
+            # Numeric facts carry unit metadata; non-numeric remain plain values
+            if getattr(fact, "unitID", None):
+                parsed_data[name] = {
+                    "value": fact.value,
+                    "unitRef": fact.unitID,
+                    "unit_measure": unit_map.get(fact.unitID),
+                    "decimals": getattr(fact, "decimals", None),
+                    "contextRef": fact.contextID,
+                }
+            else:
+                parsed_data[name] = fact.value
+
+        # Promote document-level metadata
+        rounding_level = parsed_data.pop("LevelOfRoundingUsedInFinancialStatements", None)
+        presentation_currency = parsed_data.pop("DescriptionOfPresentationCurrency", None)
+
+        # Preserve legacy top-level 'unit' field for backward-compatibility
+        content = {
+            "presentation_currency": presentation_currency,
+            "rounding_level": rounding_level,
+            "unit": rounding_level,
+            **parsed_data,
+        }
+
+        doc_data = {
+            "asset_id": asset_id,
+            "parser_version": PARSER_VERSION,
+            "parse_status": 'PARSED_OK',
+            "content": content,
+        }
         create_parsed_document(doc_data)
         logging.info(f"✅ Successfully parsed and stored result for Asset ID: {asset_id}")
 

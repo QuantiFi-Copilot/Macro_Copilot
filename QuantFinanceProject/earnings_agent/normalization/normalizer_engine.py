@@ -4,7 +4,8 @@ import yaml
 from pathlib import Path
 from datetime import date
 from typing import Dict, Any
-
+import hashlib
+import json
 # --- Core Application Imports ---
 from earnings_agent.storage.database import (
     get_session,
@@ -15,6 +16,7 @@ from earnings_agent.storage.database import (
 )
 from earnings_agent.storage.models import ParsedDocument, JobAssetLink, IngestionJob
 from earnings_agent.llm.normalizer_client import get_llm_mapping_suggestion
+from sqlalchemy.orm.attributes import flag_modified
 
 # --- Standard Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
@@ -196,6 +198,57 @@ def normalize_document(doc_id: int, run_cache: Dict[str, Any]):
     finally:
         session.close()
         logging.info(f">>> (TASK) Finished Normalization for doc_id: {doc_id} <<<")
+
+def update_staged_data_with_approved_label(label_mapping, session):
+    """
+    Finds all staged documents affected by a single approved label and
+    surgically updates their `normalized_data` JSONB field.
+    """
+    from sqlalchemy import or_
+    from earnings_agent.storage.models import StagedNormalizedData
+
+    raw_label = label_mapping.raw_label
+    normalized_label = label_mapping.normalized_label
+    logging.info(f"Backfilling '{raw_label}' -> '{normalized_label}'")
+
+    # 1. Find the doc_ids that contain this raw label
+    affected_docs = session.query(ParsedDocument.doc_id, ParsedDocument.content).filter(
+        or_(
+            ParsedDocument.content.has_key(raw_label),
+            ParsedDocument.content['raw_facts'].has_key(raw_label)
+        )
+    ).all()
+
+    if not affected_docs:
+        return 0
+
+    # 2. For each affected document, update its corresponding staged record
+    updated_count = 0
+    for doc_id, parsed_content in affected_docs:
+        staged_record = session.query(StagedNormalizedData).filter(StagedNormalizedData.doc_id == doc_id).first()
+        if not staged_record:
+            continue
+
+        # Get the original value from the parsed content
+        original_value = parsed_content.get(raw_label)
+        
+        # Update the JSONB field
+        current_data = staged_record.normalized_data
+        current_data[normalized_label] = original_value
+        
+        flag_modified(staged_record, "normalized_data")
+        # Calculate new hash
+        new_hash = hashlib.sha256(json.dumps(current_data, sort_keys=True).encode()).hexdigest()
+
+        # Perform the update
+        staged_record.normalized_data = current_data
+        staged_record.data_hash = new_hash
+        updated_count += 1
+    
+    session.commit()
+    logging.info(f"Surgically updated {updated_count} staged records for label '{raw_label}'.")
+    return updated_count
+
 
 if __name__ == '__main__':
     def run_batch():

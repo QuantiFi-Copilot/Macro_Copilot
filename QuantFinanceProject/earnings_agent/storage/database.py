@@ -301,18 +301,32 @@ def mark_labels_as_processed(raw_labels: List[str]):
 # RECONCILIATION & FINALIZATION FUNCTIONS (NEW & UPDATED)
 # ================================================================================================
 
-def get_staged_data_for_reconciliation(ticker: str, fiscal_date: date) -> List[StagedNormalizedData]:
+def get_staged_data_for_reconciliation(ticker: str, fiscal_date: date, consolidation_status: str) -> List[StagedNormalizedData]:
     """
-    Fetches all staged normalized data records for a specific filing
-    across all available sources, ready for the Quality Engine to reconcile.
+    Fetches all staged data for a filing, eagerly loading the entire relationship
+    chain from StagedNormalizedData back to the original IngestionJob.
     """
     session = get_session()
     try:
-        stmt = select(StagedNormalizedData).where(
+        stmt = select(StagedNormalizedData).options(
+            # This chain tells SQLAlchemy to load everything we need in one go
+            joinedload(StagedNormalizedData.parsed_document)
+            .joinedload(ParsedDocument.asset)
+            .joinedload(RawDataAsset.job_links)
+            .joinedload(JobAssetLink.job)
+        ).join(
+            ParsedDocument, StagedNormalizedData.doc_id == ParsedDocument.doc_id
+        ).join(
+            JobAssetLink, ParsedDocument.asset_id == JobAssetLink.asset_id
+        ).join(
+            IngestionJob, JobAssetLink.job_id == IngestionJob.job_id
+        ).where(
             StagedNormalizedData.ticker == ticker,
-            StagedNormalizedData.fiscal_date == fiscal_date
+            StagedNormalizedData.fiscal_date == fiscal_date,
+            IngestionJob.consolidation_status == consolidation_status
         )
-        return session.execute(stmt).scalars().all()
+        # --- MODIFIED: Added .unique() to de-duplicate the results ---
+        return session.execute(stmt).scalars().unique().all()
     finally:
         session.close()
 
