@@ -105,9 +105,15 @@ CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
     fiscal_date DATE NOT NULL,
     normalized_data JSONB NOT NULL,
     data_hash VARCHAR(64), -- NEW: Hash of the normalized_data content to detect changes.
+    unit_normalized   BOOLEAN   NOT NULL DEFAULT FALSE,
+    label_normalized  VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (label_normalized IN ('PENDING','PARTIAL','APPROVED','FAILED')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
+COMMENT ON COLUMN earnings_data.staged_normalized_data.unit_normalized IS 'Flag indicating whether unit normalization has been applied';
+COMMENT ON COLUMN earnings_data.staged_normalized_data.label_normalized IS 'Status of label normalization: PENDING, PARTIAL, APPROVED, or FAILED';
+CREATE INDEX IF NOT EXISTS idx_staged_normalized_status
+    ON earnings_data.staged_normalized_data(unit_normalized, label_normalized);
 CREATE INDEX IF NOT EXISTS idx_staged_data_lookup ON earnings_data.staged_normalized_data(ticker, fiscal_date);
 
 -- This stores the final result of the reconciliation/quality check

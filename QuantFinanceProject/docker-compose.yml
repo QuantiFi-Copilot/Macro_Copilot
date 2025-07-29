@@ -228,29 +228,8 @@ services:
     # This points to our new, source-agnostic normalization script.
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.normalization.normalizer_engine"
-    ]
-
-  normalization-backfill:
-    image: quantfinanceproject:latest
-    container_name: normalization_backfill
-    restart: "no" # This is a one-off task
-    depends_on:
-      tsdb:
-        condition: service_healthy
-    working_dir: /app
-    volumes:
-      - .:/app
-      - ./.env:/app/.env
-    environment:
-      - EARNINGS_DB_HOST=tsdb
-      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
-      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
-      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
-      - TZ=Asia/Kolkata
-    command: [
-      "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.normalization.run_backfill"
+      "python", "-m", "earnings_agent.normalization.normalization_engine"
+      # , "--allow-llm"
     ]
 # ─────────────────────────────────────────────────────────────
   quality_engine:

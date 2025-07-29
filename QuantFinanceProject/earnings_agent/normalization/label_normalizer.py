@@ -12,9 +12,11 @@ from earnings_agent.storage.database import (
     get_company_context,
     get_label_mapping,
     upsert_label_mapping,
-    create_staged_normalized_data
+    create_staged_normalized_data,
+    get_docs_pending_label_normalization,
+    mark_docs_label_normalized
 )
-from earnings_agent.storage.models import ParsedDocument, JobAssetLink, IngestionJob
+from earnings_agent.storage.models import ParsedDocument, JobAssetLink, IngestionJob, StagedNormalizedData
 from earnings_agent.llm.normalizer_client import get_llm_mapping_suggestion
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -199,86 +201,79 @@ def normalize_document(doc_id: int, run_cache: Dict[str, Any]):
         session.close()
         logging.info(f">>> (TASK) Finished Normalization for doc_id: {doc_id} <<<")
 
-def update_staged_data_with_approved_label(label_mapping, session):
+def run_label_normalizer_batch(allow_llm: bool = False):
     """
-    Finds all staged documents affected by a single approved label and
-    surgically updates their `normalized_data` JSONB field.
+    Process staged_normalized_data rows pending label normalization.
+    If allow_llm=True, will call LLM for unmapped raw labels; otherwise skips LLM.
     """
-    from sqlalchemy import or_
-    from earnings_agent.storage.models import StagedNormalizedData
+    session = get_session()
+    # --- FIX: Initialize the PlaybookLoader once at the start ---
+    playbook_loader = PlaybookLoader(PLAYBOOKS_DIR)
+    try:
+        doc_ids = get_docs_pending_label_normalization()
+        for doc_id in doc_ids:
+            record = session.query(StagedNormalizedData).filter(
+                StagedNormalizedData.doc_id == doc_id
+            ).one()
 
-    raw_label = label_mapping.raw_label
-    normalized_label = label_mapping.normalized_label
-    logging.info(f"Backfilling '{raw_label}' -> '{normalized_label}'")
+            # --- FIX: Get company context and load the correct playbook ---
+            company_context = get_company_context(session, record.ticker)
+            if not company_context or not company_context.classification:
+                logging.warning(f"Skipping doc_id {doc_id} for {record.ticker}: No classification found.")
+                continue
+            industry_name = company_context.classification.industry_name
+            playbook = playbook_loader.get_playbook(industry_name)
+            standard_names = playbook.get("standard_names", [])
 
-    # 1. Find the doc_ids that contain this raw label
-    affected_docs = session.query(ParsedDocument.doc_id, ParsedDocument.content).filter(
-        or_(
-            ParsedDocument.content.has_key(raw_label),
-            ParsedDocument.content['raw_facts'].has_key(raw_label)
-        )
-    ).all()
+            if not standard_names:
+                logging.warning(f"Skipping doc_id {doc_id} for {record.ticker}: No standard names in playbook for '{industry_name}'.")
+                continue
 
-    if not affected_docs:
-        return 0
+            data = record.normalized_data
+            raw_keys = list(data.get('facts_by_raw_key', {}).keys())
 
-    # 2. For each affected document, update its corresponding staged record
-    updated_count = 0
-    for doc_id, parsed_content in affected_docs:
-        staged_record = session.query(StagedNormalizedData).filter(StagedNormalizedData.doc_id == doc_id).first()
-        if not staged_record:
-            continue
-
-        # Get the original value from the parsed content
-        original_value = parsed_content.get(raw_label)
-        
-        # Update the JSONB field
-        current_data = staged_record.normalized_data
-        current_data[normalized_label] = original_value
-        
-        flag_modified(staged_record, "normalized_data")
-        # Calculate new hash
-        new_hash = hashlib.sha256(json.dumps(current_data, sort_keys=True).encode()).hexdigest()
-
-        # Perform the update
-        staged_record.normalized_data = current_data
-        staged_record.data_hash = new_hash
-        updated_count += 1
-    
-    session.commit()
-    logging.info(f"Surgically updated {updated_count} staged records for label '{raw_label}'.")
-    return updated_count
-
-
-if __name__ == '__main__':
-    def run_batch():
-        logging.info(f"--- Running Normalizer Task in BATCH mode v{NORMALIZER_VERSION} ---")
-        session = get_session()
-        docs_to_process = []
-        try:
-            from sqlalchemy import select, and_
-            from earnings_agent.storage.models import StagedNormalizedData
-            subquery = select(StagedNormalizedData.doc_id)
-            stmt = select(ParsedDocument.doc_id).where(and_(ParsedDocument.parse_status == 'PARSED_OK', ParsedDocument.doc_id.notin_(subquery)))
-            docs_to_process = session.execute(stmt).scalars().all()
-        finally:
-            session.close()
-
-        if docs_to_process:
-            total_docs = len(docs_to_process)
-            logging.info(f"Found {total_docs} new documents to normalize.")
+            mappings = {rk: get_label_mapping(rk) for rk in raw_keys}
+            missing = [rk for rk, m in mappings.items() if m is None]
             
-            run_level_cache = {}
+            if allow_llm and missing:
+                for rk in missing:
+                    # --- FIX: Pass the correct standard_names list from the playbook ---
+                    suggestion = get_llm_mapping_suggestion(
+                        rk, standard_names
+                    )
+                    if suggestion and suggestion != 'N/A':
+                        upsert_label_mapping({
+                            'raw_label': rk,
+                            'normalized_label': suggestion,
+                            'status': 'PENDING_REVIEW',
+                            'source_context': {'doc_id': doc_id, 'ticker': record.ticker}
+                        })
+                # Refresh mappings after seeding
+                mappings = {rk: get_label_mapping(rk) for rk in raw_keys}
+
+            approved_keys = [rk for rk, m in mappings.items() if m and m.status == 'APPROVED']
+            all_approved = len(approved_keys) == len(raw_keys)
+
+            label_map = {rk: {
+                'label': mappings[rk].normalized_label if mappings[rk] else None,
+                'status': mappings[rk].status if mappings[rk] else 'MISSING'
+            } for rk in raw_keys}
+            data['label_map'] = label_map
+
+            facts_by_label = {}
+            for rk in approved_keys:
+                lbl = mappings[rk].normalized_label
+                facts_by_label.setdefault(lbl, data['facts_by_raw_key'][rk])
+            data['facts_by_label'] = facts_by_label
+
+            record.normalized_data = data
+            new_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+            record.data_hash = new_hash
             
-            for i, doc_id in enumerate(docs_to_process):
-                logging.info(f"--- Processing document {i+1}/{total_docs} (doc_id: {doc_id}) ---")
-                try:
-                    normalize_document(doc_id=doc_id, run_cache=run_level_cache)
-                except Exception as e:
-                    logging.error(f"Failed to process doc_id {doc_id}. Error: {e}", exc_info=True)
-                    continue
-        else:
-            logging.warning("No new, successfully parsed documents found to normalize.")
-        logging.info("--- Normalizer BATCH run finished. ---")
-    
-    run_batch()
+            status = 'APPROVED' if all_approved else 'PARTIAL'
+            mark_docs_label_normalized([doc_id], status)
+            flag_modified(record, 'normalized_data')
+            
+        session.commit()
+    finally:
+        session.close()

@@ -17,7 +17,7 @@ try:
         mark_labels_as_processed
     )
     # MODIFIED: We now import the new, surgical update function
-    from earnings_agent.normalization.normalizer_engine import update_staged_data_with_approved_label
+    from earnings_agent.normalization.label_normalizer import update_staged_data_with_approved_label
 
 except ImportError as e:
     print(f"Error: Failed to import project modules. Ensure this script is placed correctly. Details: {e}")

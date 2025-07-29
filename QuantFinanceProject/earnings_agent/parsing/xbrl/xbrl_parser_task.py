@@ -203,28 +203,77 @@ def parse_xbrl_asset(asset_id: int, session: SQLAlchemySession):
         for fact in model.facts:
             if fact.contextID not in target_ids:
                 continue
-            name = fact.concept.qname.localName
-            # Numeric facts carry unit metadata; non-numeric remain plain values
-            if getattr(fact, "unitID", None):
+            concept = getattr(fact, "concept", None)
+            if concept is None or getattr(concept, "qname", None) is None:
+                # Fallback: keep raw value keyed by whatever name Arelle exposes
+                name = getattr(fact, "qname", None)
+                name = getattr(name, "localName", None) or getattr(fact, "concept", None) or "UnknownConcept"
+                parsed_data[str(name)] = fact.value
+                continue
+
+            # Names
+            qn = concept.qname
+            name = qn.localName
+            qname_prefixed = getattr(qn, "prefixedName", None) or name
+            qname_ns = getattr(qn, "namespaceURI", None) or ""
+            qname_clark = f"{{{qname_ns}}}{name}" if qname_ns else name
+
+            # Datatype hints
+            ctype = getattr(concept, "type", None)
+            type_qn = getattr(ctype, "qname", None)
+            data_type = getattr(type_qn, "prefixedName", None) or (str(type_qn) if type_qn else None)
+            base_xbrli_type = getattr(concept, "baseXbrliType", None)
+
+            # Numeric vs non-numeric
+            is_numeric = bool(getattr(concept, "isNumeric", False))
+
+            if is_numeric:
+                unit_id = getattr(fact, "unitID", None)
+                decimals_attr = getattr(fact, "decimals", None)
+                decimals_str = str(decimals_attr) if decimals_attr is not None else None
+                unit_measure = unit_map.get(unit_id) if unit_id else None
+
+                obj = {
+                    "value": fact.value,
+                    "contextRef": fact.contextID,
+                    # Preserve source exactly
+                    "original_unitRef": unit_id,
+                    "original_decimals": decimals_str,
+                    # Mirror into current parsed fields (we are not normalizing here)
+                    "unitRef": unit_id,
+                    "unit_measure": unit_measure,
+                    "decimals": decimals_str,
+                    # Concept identifiers
+                    "qname": qname_prefixed,
+                    "qname_clark": qname_clark,
+                    "data_type": data_type,
+                    "base_xbrli_type": base_xbrli_type,
+                    # Signal when filer omitted unit on a numeric fact
+                    "missing_unit": unit_id is None
+                }
+                parsed_data[name] = obj
+            else:
+                # Non-numeric facts: keep simple scalar plus identifiers for traceability
                 parsed_data[name] = {
                     "value": fact.value,
-                    "unitRef": fact.unitID,
-                    "unit_measure": unit_map.get(fact.unitID),
-                    "decimals": getattr(fact, "decimals", None),
                     "contextRef": fact.contextID,
+                    "qname": qname_prefixed,
+                    "qname_clark": qname_clark,
+                    "data_type": data_type,
+                    "base_xbrli_type": base_xbrli_type
                 }
-            else:
-                parsed_data[name] = fact.value
 
         # Promote document-level metadata
         rounding_level = parsed_data.pop("LevelOfRoundingUsedInFinancialStatements", None)
         presentation_currency = parsed_data.pop("DescriptionOfPresentationCurrency", None)
 
-        # Preserve legacy top-level 'unit' field for backward-compatibility
+        # Preserve legacy top-level 'unit' field for backward-compatibility and add primary_context_ids
         content = {
+            "source_period_end": end_date.isoformat(),
             "presentation_currency": presentation_currency,
             "rounding_level": rounding_level,
-            "unit": rounding_level,
+            "unit": rounding_level,  # legacy compatibility
+            "primary_context_ids": sorted(list(target_ids)),
             **parsed_data,
         }
 

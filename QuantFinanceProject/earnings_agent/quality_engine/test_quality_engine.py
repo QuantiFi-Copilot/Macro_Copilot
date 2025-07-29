@@ -116,6 +116,8 @@ class QualityEngine:
         self._validate()
         self._check_completeness()
 
+ # In test_quality_engine.py, inside the QualityEngine class
+
     def _reconcile(self):
         """Merges multiple sources into a single golden record based on the playbook's source hierarchy."""
         hierarchy = self.playbook.get('reconciliation_config', {}).get('source_hierarchy', [])
@@ -126,20 +128,36 @@ class QualityEngine:
         logging.info("--- Starting Reconciliation ---")
         for metric in self.playbook.get('standard_names', []):
             for source in hierarchy:
-                # Check if the source exists and if the metric is in that source's data
-                if source in self.staged_data_sources and self.staged_data_sources[source].get(metric) is not None:
-                    self.golden_record[metric] = self.staged_data_sources[source][metric]
+                # --- MODIFICATION START ---
+                # Check for the metric inside the 'facts_by_label' dictionary.
+                source_data = self.staged_data_sources.get(source, {})
+                facts = source_data.get('facts_by_label', {})
+                
+                if metric in facts:
+                    # If found, assign it to the golden record.
+                    self.golden_record[metric] = facts[metric]
+                    # --- MODIFICATION END ---
                     break # Found the best source for this metric, move to the next metric
+    # In test_quality_engine.py, inside the QualityEngine class
 
     def _validate(self):
         """Runs all validation rules from the playbook against the golden record."""
         logging.info("--- Starting Validation ---")
         for rule in self.playbook.get('validation_rules', []):
             metric_key = rule.get('target_metric', '').split('.')[-1]
-            value = self.golden_record.get(metric_key)
+            
+            # --- MODIFICATION START ---
+            # Get the entire metric object, which is now a dictionary.
+            value_obj = self.golden_record.get(metric_key)
+            if not isinstance(value_obj, dict):
+                continue # Skip if the metric is missing or not in the expected format
+
+            # Extract the numeric value from the 'normalized_value' key.
+            value = value_obj.get('normalized_value')
             if value is None:
                 continue
-
+            # --- MODIFICATION END ---
+            
             try:
                 numeric_value = float(value)
             except (ValueError, TypeError):
@@ -151,11 +169,13 @@ class QualityEngine:
             elif condition == 'is_less_than' and numeric_value < rule['value']:
                 self.flags.append(rule['flag'])
             elif condition == 'is_greater_than':
-                # Handle comparison to either a static value or another metric
                 compare_to_value = rule.get('value')
                 if 'comparison_metric' in rule:
                     comp_metric_key = rule['comparison_metric'].split('.')[-1]
-                    compare_to_value = self.golden_record.get(comp_metric_key)
+                    # --- MODIFICATION: Extract the numeric value for the comparison metric as well ---
+                    comp_value_obj = self.golden_record.get(comp_metric_key)
+                    if isinstance(comp_value_obj, dict):
+                        compare_to_value = comp_value_obj.get('normalized_value')
                 
                 if compare_to_value is not None:
                     try:
@@ -165,8 +185,12 @@ class QualityEngine:
                         continue
             
             elif condition == 'special_check_balance_sheet':
-                assets = float(self.golden_record.get('total_assets', 0))
-                liab_equity = float(self.golden_record.get('total_liabilities_and_equity', 0))
+                # --- MODIFICATION: Extract numeric values for all parts of the check ---
+                assets_obj = self.golden_record.get('total_assets', {})
+                liab_equity_obj = self.golden_record.get('total_liabilities_and_equity', {})
+                assets = assets_obj.get('normalized_value', 0)
+                liab_equity = liab_equity_obj.get('normalized_value', 0)
+                
                 if assets and abs(assets - liab_equity) / assets > rule.get('tolerance', 0.01):
                     self.flags.append(rule['flag'])
     
@@ -184,13 +208,19 @@ class QualityEngine:
         print("="*80)
         
         print("\n📋 GOLDEN RECORD:")
-        # Pretty print numbers if they are numeric
         formatted_record = {}
-        for k, v in sorted(self.golden_record.items()):
+        # --- MODIFICATION START ---
+        # Iterate through the items of the golden record.
+        for k, value_obj in sorted(self.golden_record.items()):
+            # Safely extract the numeric value from the 'normalized_value' key.
+            numeric_val = value_obj.get('normalized_value') if isinstance(value_obj, dict) else value_obj
             try:
-                formatted_record[k] = f"{float(v):,.2f}"
+                # Attempt to format the extracted numeric value.
+                formatted_record[k] = f"{float(numeric_val):,.2f}"
             except (ValueError, TypeError):
-                formatted_record[k] = v
+                # If it's not a number (or is None), just show the original object.
+                formatted_record[k] = value_obj
+        # --- MODIFICATION END ---
         print(json.dumps(formatted_record, indent=2))
         
         print("\n" + "-"*40)

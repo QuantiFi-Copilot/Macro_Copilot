@@ -39,7 +39,10 @@ custom_kpis:
   - "return_on_equity" # ROE is kept as it can be derived from P&L/BS
   - "ppop"
   - "effective_tax_rate"
-
+  - "advances"
+  - "deposits"
+  - "gross_npa"
+  - "interest_income"
   # Asset Quality
   - "gnpa_ratio"
   - "nnpa_ratio"

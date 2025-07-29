@@ -273,6 +273,7 @@ def get_unprocessed_approved_labels() -> List[LabelMapping]:
     finally:
         session.close()
 
+
 # --- NEW FUNCTION 2 ---
 def mark_labels_as_processed(raw_labels: List[str]):
     """
@@ -294,6 +295,77 @@ def mark_labels_as_processed(raw_labels: List[str]):
     except Exception as e:
         session.rollback()
         raise e
+    finally:
+        session.close()
+
+# ================================================================================================
+# NORMALIZATION STATE MANAGEMENT FUNCTIONS (NEW)
+# ================================================================================================
+
+def get_docs_pending_unit_normalization() -> List[int]:
+    """
+    Return all doc_ids that have not yet run through the unit normalizer.
+    """
+    session = get_session()
+    try:
+        stmt = select(StagedNormalizedData.doc_id).where(
+            StagedNormalizedData.unit_normalized == False
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+
+def mark_docs_unit_normalized(doc_ids: List[int]):
+    """
+    Mark the given doc_ids as having completed unit normalization.
+    """
+    if not doc_ids:
+        return
+    session = get_session()
+    try:
+        stmt = (
+            update(StagedNormalizedData)
+            .where(StagedNormalizedData.doc_id.in_(doc_ids))
+            .values(unit_normalized=True)
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
+
+
+def get_docs_pending_label_normalization() -> List[int]:
+    """
+    Return doc_ids ready for label normalization: unit-normalized but not fully label-normalized.
+    """
+    session = get_session()
+    try:
+        stmt = select(StagedNormalizedData.doc_id).where(
+            StagedNormalizedData.unit_normalized == True,
+            StagedNormalizedData.label_normalized != 'APPROVED'
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+
+def mark_docs_label_normalized(doc_ids: List[int], status: str = 'APPROVED'):
+    """
+    Set the label_normalized status for the given doc_ids.
+    status should be one of 'PENDING', 'PARTIAL', 'APPROVED', 'FAILED'.
+    """
+    if not doc_ids:
+        return
+    session = get_session()
+    try:
+        stmt = (
+            update(StagedNormalizedData)
+            .where(StagedNormalizedData.doc_id.in_(doc_ids))
+            .values(label_normalized=status)
+        )
+        session.execute(stmt)
+        session.commit()
     finally:
         session.close()
 

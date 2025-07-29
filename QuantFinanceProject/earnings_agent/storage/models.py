@@ -1,5 +1,3 @@
-# earnings_agent/storage/models.py
-
 from sqlalchemy import (
     Column,
     Integer,
@@ -12,7 +10,9 @@ from sqlalchemy import (
     func,
     Text,
     BigInteger,
-    Boolean
+    Boolean,
+    CheckConstraint,
+    Index
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
@@ -179,6 +179,8 @@ class StagedNormalizedData(Base):
 
     # NEW: Hash of the normalized_data content to detect changes.
     data_hash = Column(String(64), nullable=True)
+    unit_normalized = Column(Boolean, nullable=False, server_default='false')
+    label_normalized = Column(String(20), nullable=False, server_default="'PENDING'")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -186,6 +188,10 @@ class StagedNormalizedData(Base):
     parsed_document = relationship("ParsedDocument")
 
     __table_args__ = (
+        CheckConstraint(
+            "label_normalized IN ('PENDING','PARTIAL','APPROVED','FAILED')",
+            name='ck_staged_label_normalized'
+        ),
         {'schema': DB_SCHEMA}
     )
 
@@ -307,3 +313,10 @@ class CompanyMaster(Base):
     classification = relationship("Classification", back_populates="companies")
     
     __table_args__ = ({'schema': DB_SCHEMA})
+
+# Index to speed up normalization status queries
+Index(
+    'idx_staged_normalized_status',
+    StagedNormalizedData.unit_normalized,
+    StagedNormalizedData.label_normalized,
+)

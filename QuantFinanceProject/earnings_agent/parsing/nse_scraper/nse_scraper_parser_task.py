@@ -27,21 +27,30 @@
 #       "assumed_decimals": -5,
 #       "assumed_scale": "Lakhs",
 #       "decimals": null,
-#       "contextRef": "NSEPeriod_2024-12-31"
+#       "contextRef": "NSEPeriod_2024-12-31",
+#       "unit_inferred": true,
+#       "unit_inference_basis": "profile",
+#       "representation": "currency"
 #   },
 #   "re_bsc_eps_bfr_exi": {
 #       "value": "50.99",
 #       "unitRef": "INRPerShare",
 #       "unit_measure": "iso4217:INR/xbrli:shares",
 #       "decimals": null,
-#       "contextRef": "NSEPeriod_2024-12-31"
+#       "contextRef": "NSEPeriod_2024-12-31",
+#       "unit_inferred": true,
+#       "unit_inference_basis": "profile",
+#       "representation": "per_share"
 #   },
 #   "re_debt_ser_cov": {
 #       "value": "0.06",
 #       "unitRef": "pure",
 #       "unit_measure": "xbrli:pure",
 #       "decimals": null,
-#       "contextRef": "NSEPeriod_2024-12-31"
+#       "contextRef": "NSEPeriod_2024-12-31",
+#       "unit_inferred": true,
+#       "unit_inference_basis": "profile",
+#       "representation": "ratio"
 #   }
 # }
 
@@ -72,6 +81,7 @@ SOURCE_TYPE_FILTER = "NSE_SCRAPER"
 
 DEFAULT_ROUNDING_LEVEL = "Lakhs"
 DEFAULT_ROUNDING_CONFIDENCE = "validated_by_profile"  # backed by cross-source checks
+DEFAULT_UNIT_INFERENCE_BASIS = "profile"  # how units were inferred for NSE source
 
 # Known key classes
 MONETARY_KEYS = {
@@ -172,17 +182,26 @@ def classify_key(key: str, sval: str) -> str:
 def emit_numeric(key: str, sval: str, context_ref: str, forced_zero_ratio: bool = False) -> Dict[str, Any]:
     """Build the enriched numeric object with unit metadata."""
     klass = classify_key(key, sval)
-    out: Dict[str, Any] = {"value": sval, "contextRef": context_ref, "decimals": None}
+    out: Dict[str, Any] = {
+        "value": sval,
+        "contextRef": context_ref,
+        "decimals": None,
+        # Explicitly mark that NSE units are inferred, not provided by source
+        "unit_inferred": True,
+        "unit_inference_basis": DEFAULT_UNIT_INFERENCE_BASIS,
+    }
 
     if klass == "per_share":
         out.update({
             "unitRef": "INRPerShare",
             "unit_measure": "iso4217:INR/xbrli:shares",
+            "representation": "per_share",
         })
     elif klass == "pure":
         out.update({
             "unitRef": "pure",
             "unit_measure": "xbrli:pure",
+            "representation": "ratio",
         })
         if forced_zero_ratio and sval in {"0", "0.0", "0.00"}:
             out["reported_zero_due_to_template_limit"] = True
@@ -192,6 +211,7 @@ def emit_numeric(key: str, sval: str, context_ref: str, forced_zero_ratio: bool 
             "unit_measure": "iso4217:INR",
             "assumed_decimals": -5,      # Lakhs
             "assumed_scale": "Lakhs",
+            "representation": "currency",
         })
     return out
 
