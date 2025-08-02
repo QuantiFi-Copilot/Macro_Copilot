@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS earnings_data.company_master (
     company_name TEXT NOT NULL,
     isin_code VARCHAR(20) UNIQUE,
     listing_status VARCHAR(20) NOT NULL DEFAULT 'LISTED', -- e.g., LISTED, DELISTED
-    
+    bse_code VARCHAR(10) UNIQUE
     -- A single foreign key to the classifications table for context.
     classification_id INTEGER REFERENCES earnings_data.classifications(id),
 

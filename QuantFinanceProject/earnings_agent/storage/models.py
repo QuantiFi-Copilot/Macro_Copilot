@@ -304,7 +304,7 @@ class CompanyMaster(Base):
     company_name = Column(Text, nullable=False)
     isin_code = Column(String(20), unique=True)
     listing_status = Column(String(20), nullable=False, default='LISTED')
-    
+    bse_code = Column(String(10), unique=True)
     # This column holds the foreign key linking to the classifications table.
     classification_id = Column(Integer, ForeignKey(f'{DB_SCHEMA}.classifications.id'))
     

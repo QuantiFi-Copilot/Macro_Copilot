@@ -26,7 +26,7 @@ except ImportError as e:
 # Construct the path from the correct project root
 PLAYBOOKS_DIR = project_root / "earnings_agent" / "playbooks"
 TARGET_TICKER = "HDFCBANK"
-TARGET_FISCAL_DATE = date(2024, 6, 30)
+TARGET_FISCAL_DATE = date(2022, 3, 31)
 TARGET_CONSOLIDATION = "Consolidated"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -140,23 +140,39 @@ class QualityEngine:
                     break # Found the best source for this metric, move to the next metric
     # In test_quality_engine.py, inside the QualityEngine class
 
+    # In test_quality_engine.py, inside the QualityEngine class
+
     def _validate(self):
         """Runs all validation rules from the playbook against the golden record."""
         logging.info("--- Starting Validation ---")
         for rule in self.playbook.get('validation_rules', []):
+            # --- MODIFICATION: Added a check to handle special, hardcoded rules ---
+            if rule['condition'].startswith('special_check_'):
+                if rule['condition'] == 'special_check_balance_sheet':
+                    # Safely get the metric objects from the golden record
+                    assets_obj = self.golden_record.get('total_assets')
+                    liab_equity_obj = self.golden_record.get('total_liabilities_and_equity')
+
+                    # A rule should only run if its required data is present
+                    if assets_obj and liab_equity_obj:
+                        assets = assets_obj.get('normalized_value', 0)
+                        liab_equity = liab_equity_obj.get('normalized_value', 0)
+                        
+                        if assets and abs(assets - liab_equity) / abs(assets) > rule.get('tolerance', 0.01):
+                            self.flags.append(rule['flag'])
+                # Add other special checks here if needed
+                continue # Move to the next rule
+
+            # --- Standard rule processing ---
             metric_key = rule.get('target_metric', '').split('.')[-1]
             
-            # --- MODIFICATION START ---
-            # Get the entire metric object, which is now a dictionary.
             value_obj = self.golden_record.get(metric_key)
             if not isinstance(value_obj, dict):
                 continue # Skip if the metric is missing or not in the expected format
 
-            # Extract the numeric value from the 'normalized_value' key.
             value = value_obj.get('normalized_value')
             if value is None:
                 continue
-            # --- MODIFICATION END ---
             
             try:
                 numeric_value = float(value)
@@ -164,15 +180,15 @@ class QualityEngine:
                 continue
 
             condition = rule['condition']
+            flag = False
             if condition == 'is_negative' and numeric_value < 0:
-                self.flags.append(rule['flag'])
+                flag = True
             elif condition == 'is_less_than' and numeric_value < rule['value']:
-                self.flags.append(rule['flag'])
+                flag = True
             elif condition == 'is_greater_than':
                 compare_to_value = rule.get('value')
                 if 'comparison_metric' in rule:
                     comp_metric_key = rule['comparison_metric'].split('.')[-1]
-                    # --- MODIFICATION: Extract the numeric value for the comparison metric as well ---
                     comp_value_obj = self.golden_record.get(comp_metric_key)
                     if isinstance(comp_value_obj, dict):
                         compare_to_value = comp_value_obj.get('normalized_value')
@@ -180,19 +196,12 @@ class QualityEngine:
                 if compare_to_value is not None:
                     try:
                         if numeric_value > float(compare_to_value):
-                            self.flags.append(rule['flag'])
+                            flag = True
                     except (ValueError, TypeError):
                         continue
             
-            elif condition == 'special_check_balance_sheet':
-                # --- MODIFICATION: Extract numeric values for all parts of the check ---
-                assets_obj = self.golden_record.get('total_assets', {})
-                liab_equity_obj = self.golden_record.get('total_liabilities_and_equity', {})
-                assets = assets_obj.get('normalized_value', 0)
-                liab_equity = liab_equity_obj.get('normalized_value', 0)
-                
-                if assets and abs(assets - liab_equity) / assets > rule.get('tolerance', 0.01):
-                    self.flags.append(rule['flag'])
+            if flag:
+                self.flags.append(rule['flag'])
     
     def _check_completeness(self):
         """Checks for any expected metrics that are missing from the golden record."""

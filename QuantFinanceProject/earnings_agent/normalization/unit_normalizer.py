@@ -1,5 +1,6 @@
 import re
 import hashlib
+import logging
 from typing import Any, Dict, List, Tuple, Optional
 
 from sqlalchemy import select
@@ -14,6 +15,10 @@ from earnings_agent.storage.models import IngestionJob, JobAssetLink # <-- Add t
 # --- Add these imports at the top of the file ---
 from datetime import date
 from earnings_agent.storage.models import IngestionJob, JobAssetLink
+
+logging.getLogger().setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 # scale factors for document-level rounding (XBRL) and assumed scales (NSE)
 SCALE_MAP = {
     'lakhs': 100_000,
@@ -34,7 +39,7 @@ def classify_representation(fact: Dict[str, Any]) -> str:
     """
     dt = (fact.get("data_type") or "").lower()
     name = fact.get("concept", "")
-    orig_unit = (fact.get("original_unitRef") or "").lower()
+    orig_unit = (fact.get("unitRef") or "").lower()
     try:
         value = float(fact.get("value", 0))
     except Exception:
@@ -89,67 +94,74 @@ def compute_tolerance(fact: Dict[str, Any], representation: str) -> float:
 def normalize_value(fact: Dict[str, Any], doc_meta: Dict[str, Any]) -> Tuple[float, str, float, List[str], Dict[str, Any]]:
     """
     Convert raw fact to (value, unit, tolerance, flags, trace).
-    trace captures original metadata and decisions.
+    This version includes a heuristic to prevent double-scaling XBRL values.
     """
     rep = classify_representation(fact)
     raw_val = 0.0
     try:
         raw_val = float(fact.get("value", 0))
-    except Exception:
+    except (ValueError, TypeError):
         pass
+    
     trace: Dict[str, Any] = {
         "concept": fact.get("concept"),
-        "original_unitRef": fact.get("original_unitRef"),
-        "original_decimals": fact.get("original_decimals"),
+        "unitRef": fact.get("unitRef"),
+        "decimals": fact.get("decimals"),
         "data_type": fact.get("data_type"),
         "representation": rep,
         "flags": []
     }
-    # ratio
+
+    # Handle non-currency types first (no changes needed here)
     if rep == "ratio":
         val = raw_val
-        # correct cases like '5' meaning 5%
         if 'percentitemtype' in (fact.get('data_type') or '').lower() and val > 1:
             val = val / 100.0
             trace['flags'].append('DIVIDED_PERCENT_BY_100')
-        if (fact.get("original_unitRef") or "").lower() != "pure":
+        if (fact.get("unitRef") or "").lower() != "pure":
             trace["flags"].append("UNIT_CONCEPT_MISMATCH")
         tol = compute_tolerance(fact, rep)
-        unit_out = "fraction"
-        return val, unit_out, tol, trace["flags"], trace
-    # per_share
+        return val, "fraction", tol, trace["flags"], trace
+    
     if rep == "per_share":
         val = raw_val
         tol = compute_tolerance(fact, rep)
-        unit_out = "INRPerShare"
-        if not fact.get("original_unitRef"):
+        if not fact.get("unitRef"):
             trace["flags"].append("MISSING_UNIT")
-        return val, unit_out, tol, trace["flags"], trace
+        return val, "INRPerShare", tol, trace["flags"], trace
+
+    # --- ROBUST CURRENCY NORMALIZATION LOGIC ---
+    factor = 1.0
+    # Heuristic threshold to detect if a value from XBRL is already in its absolute form
+    ABSOLUTE_VALUE_THRESHOLD = 1_000_000 
+
+    # Logic path for XBRL data (inferred by presence of 'decimals')
+    if fact.get('decimals') is not None and fact.get('assumed_scale') is None:
+        try:
+            decs = int(fact.get('decimals'))
+            # HEURISTIC: If value is already large, assume it's absolute and the 'decimals' metadata is redundant.
+            if abs(raw_val) > ABSOLUTE_VALUE_THRESHOLD:
+                factor = 1.0
+                trace['flags'].append('SCALING_SKIPPED_HEURISTIC')
+            else:
+                # Value is small, so trust the decimals attribute is for scaling.
+                factor = 10 ** -decs
+        except (ValueError, TypeError):
+            factor = 1.0 # If decimals is not a valid integer (e.g., "INF"), do not scale.
     
-    # currency
-    # --- FIX STARTS HERE ---
-    # Get the rounding level object, which might be a dict from XBRL parsed data.
-    rounding_level_obj = doc_meta.get('rounding_level')
-    # Safely extract the string value. If it's a dict, get obj['value']. Otherwise, use the object itself.
-    rounding_level_str = rounding_level_obj.get('value') if isinstance(rounding_level_obj, dict) else rounding_level_obj
-    
-    # Now, use the safe string in the original logic.
-    scale_key = (fact.get('assumed_scale') or rounding_level_str or '').lower()
-    # --- FIX ENDS HERE ---
-    
-    factor = SCALE_MAP.get(scale_key, 1)
-    # compute normalized value
+    # Logic path for NSE Scraper data (inferred by presence of 'assumed_scale')
+    elif fact.get('assumed_scale') is not None:
+        scale_key = fact.get('assumed_scale', '').lower()
+        factor = SCALE_MAP.get(scale_key, 1.0)
+
     val = raw_val * factor
-    # compute tolerance
     tol = compute_tolerance(fact, rep)
     unit_out = 'INR'
-    # flag missing unit or explicit missing_unit in XBRL
-    if fact.get('missing_unit') or not fact.get('original_unitRef'):
-        trace['flags'].append('MISSING_UNIT_MONETARY')
-        # fall back to document currency if available
-        trace['assumed_unitRef'] = doc_meta.get('presentation_currency') or doc_meta.get('rounding_level') or 'INR'
-    # record scale factor
     trace['scale_factor_applied'] = factor
+    
+    if fact.get('missing_unit') or not fact.get('unitRef'):
+        trace['flags'].append('MISSING_UNIT_MONETARY')
+
     return val, unit_out, tol, trace['flags'], trace
 
 # ----------------------
@@ -160,10 +172,12 @@ def unit_normalize_document(doc_id: int, session: Session) -> Dict[str, Any]:
     Load parsed_document, normalize each fact, build normalized_data JSON.
     """
     pd = session.get(ParsedDocument, doc_id)
+    logger.debug(f"\n--- Processing doc_id: {doc_id} ---")
     if not pd:
         return {} # Return empty dict if document not found
     
     content = pd.content or {}
+    logger.debug(f"Found {len([k for k, v in content.items() if isinstance(v, dict) and 'value' in v])} facts in parsed data.")
     # document-level metadata
     doc_meta = {
         "presentation_currency": content.get("presentation_currency"),
@@ -183,6 +197,7 @@ def unit_normalize_document(doc_id: int, session: Session) -> Dict[str, Any]:
             "flags": flags,
             "trace": trace
         }
+    logger.debug(f"Final normalized dictionary has {len(result['facts_by_raw_key'])} entries: {list(result['facts_by_raw_key'].keys())}")
     return result
 
 # ----------------------

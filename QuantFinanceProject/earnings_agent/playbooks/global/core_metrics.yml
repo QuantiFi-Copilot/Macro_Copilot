@@ -26,6 +26,9 @@ core_metrics:
   - net_income
   - earnings_per_share_basic
   - earnings_per_share_diluted
+  - total_income
+  - net_income_from_ordinary_activities
+  - consolidated_net_income
 
   # --- Balance Sheet ---
   - cash_and_equivalents
@@ -42,6 +45,7 @@ core_metrics:
   - total_liabilities
   - shareholders_equity
   - total_liabilities_and_equity
+  - borrowings
 
   # --- Cash Flow Statement ---
   - cash_flow_from_operating

@@ -10,3 +10,5 @@ docker run --rm -it --network quantfinanceproject_default -v "$PWD":/app -w /app
 then: micromamba run -n quant-env python -m earnings_agent.script
 
 exec into DB: docker exec -it tsdb psql -U quantuser -d quantdata
+
+aws sso login --profile AdministratorAccess-172982781876

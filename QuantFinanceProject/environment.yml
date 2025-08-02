@@ -22,4 +22,5 @@ dependencies:
     - lxml
     - anthropic 
     - arelle-release
+    - bs4
     
