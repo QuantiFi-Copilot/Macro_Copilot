@@ -1,268 +1,308 @@
-import re
-import hashlib
+# earnings_agent/normalization/unit_normalizer.py
+
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+import json
+import hashlib
+from typing import Dict, Any, List, Tuple, Optional
+from datetime import date, datetime
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from earnings_agent.storage.database import (
+    get_session,
+    get_docs_pending_unit_normalization,
+    mark_docs_unit_review_status,
+    create_unit_review_record,
+    get_approved_unit_reviews,
+    delete_processed_unit_review,
+)
+from earnings_agent.storage.models import ParsedDocument, StagedNormalizedData, UnitReviewQueue
+from earnings_agent.llm.normalizer_client import call_gemini_with_json
 
-from earnings_agent.storage.database import get_session, create_staged_normalized_data
-from earnings_agent.storage.models import ParsedDocument, RawDataAsset, StagedNormalizedData
-from earnings_agent.storage.models import IngestionJob, JobAssetLink # <-- Add these imports at the top
-
-# In unit_normalizer.py
-
-# --- Add these imports at the top of the file ---
-from datetime import date
-from earnings_agent.storage.models import IngestionJob, JobAssetLink
-
-logging.getLogger().setLevel(logging.DEBUG)
+# Standard logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(module)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-# scale factors for document-level rounding (XBRL) and assumed scales (NSE)
-SCALE_MAP = {
-    'lakhs': 100_000,
-    'crores': 10_000_000,
-    'millions': 1_000_000,
-    'thousands': 1_000
+# LLM Configuration
+UNIT_ANALYSIS_MODEL = "gemini-2.5-pro" # Using a standard, available model
+
+UNIT_ANALYSIS_PROMPT = """
+You are a financial data analyst. You will analyze financial statement figures to determine their exact unit representation.
+You will receive financial statements with:
+1. Statement-level currency context (e.g., "in lacs", "in crores")  
+2. Individual figures with labels and values
+3. No industry assumptions - work purely from the data provided
+
+For EACH figure, determine:
+1. **representation**: "currency" (uses statement currency), "percentage", "ratio", or "count"
+2. **currency_context**: For currency figures, use the statement's currency unit exactly as provided
+3. **ratio_context**: For ratios/percentages - "percentage", "absolute", or null
+4. **confidence**: "high" or "low" - HIGH only if you can make a completely deterministic decision
+
+**DECISION RULES:**
+- **Currency figures**: Use statement-level currency context (e.g., "in lacs" → currency_context: "lacs")
+- **Percentage/Ratio indicators**: Labels containing "%", "percentage", "ratio", "rate" → likely percentage/ratio
+- **Value patterns**: Very small values (0.01-100) with ratio-suggesting labels → likely percentage  
+- **Large values**: Without clear ratio indicators → likely currency amounts
+
+**CONFIDENCE RULES:**
+- **HIGH confidence**: Clear currency context OR clear percentage/ratio indicators in label or all metrics in the filing.
+- **LOW confidence**: Ambiguous labels or unclear value context for any single metric in the filing.
+
+Return this exact JSON structure:
+{
+  "filing_analysis": {
+    "overall_confidence": "high/low",
+    "requires_human_review": true/false,
+    "currency_contexts_found": ["list of currency contexts from statements"]
+  },
+  "statement_analyses": [
+    {
+      "statement_type": "exact statement name from data",
+      "standard_mapping": "standalone_pnl/etc",
+      "statement_currency": "currency context from this statement",
+      "figures": [
+        {
+          "label": "exact label from data",
+          "value": original_value,
+          "representation": "currency/percentage/ratio/count",
+          "currency_context": "exact currency from statement or null",
+          "ratio_context": "percentage/absolute/null", 
+          "confidence": "high/low",
+          "reasoning": "brief explanation of decision"
+        }
+      ]
+    }
+  ]
 }
 
-# Heuristic patterns
-NAME_RATIO_PATTERN = re.compile(r"(returnon|ratio|margin|rate|yield|percentage)", re.IGNORECASE)
+IMPORTANT: 
+- Analyze every figure in every statement
+- Use exact currency context from statement (don't normalize "in lacs" to "lakhs")
+- Be conservative with confidence - mark "low" if there's ANY ambiguity
+- Work purely from provided data - no industry assumptions
+- IMPORTANT: ENSURE STRICT JSON FORMAT IN THE EXPECTED STRUCTURE GIVEN ABOVE!!!!!!
+"""
 
-# ----------------------
-# Representation Classifier
-# ----------------------
-def classify_representation(fact: Dict[str, Any]) -> str:
+def get_filing_context_for_analysis(doc_id: int, session) -> Tuple[Dict, Dict]:
     """
-    Decide representation: 'ratio', 'per_share', or 'currency'.
+    Extract complete filing context for LLM analysis.
     """
-    dt = (fact.get("data_type") or "").lower()
-    name = fact.get("concept", "")
-    orig_unit = (fact.get("unitRef") or "").lower()
-    try:
-        value = float(fact.get("value", 0))
-    except Exception:
-        value = None
-
-    # Strong signals from taxonomy
-    if "percentitemtype" in dt:
-        return "ratio"
-    if "pershareitemtype" in dt:
-        return "per_share"
-    if "monetaryitemtype" in dt or "xbrli:monetaryItemType" in dt:
-        return "currency"
-    # fallback on original unit
-    if orig_unit == "pure":
-        return "ratio"
-    # name + small value fallback
-    if value is not None and -1 < value < 1 and NAME_RATIO_PATTERN.search(name):
-        return "ratio"
-    return "currency"
-
-# ----------------------
-# Normalization Helpers
-# ----------------------
-def compute_tolerance(fact: Dict[str, Any], representation: str) -> float:
-    """Compute comparison tolerance based on decimals or assumed_decimals."""
-    if representation == "ratio":
-        return 1e-9
-    # per_share small
-    if representation == "per_share":
-        return 0.01
-    # currency
-    dec = fact.get("decimals") or fact.get("original_decimals")
-    assumed_dec = fact.get("assumed_decimals")
-    # infer scale tolerance
-    if assumed_dec is not None:
-        # e.g. Lakhs -> -5
-        try:
-            tol = 0.5 * (10 ** abs(int(assumed_dec)))
-            return tol
-        except Exception:
-            pass
-    if dec and dec.upper() == "INF":
-        return 0.01
-    if dec:
-        try:
-            tol = 0.5 * (10 ** abs(int(dec)))
-            return tol
-        except Exception:
-            pass
-    return 1.0
-
-def normalize_value(fact: Dict[str, Any], doc_meta: Dict[str, Any]) -> Tuple[float, str, float, List[str], Dict[str, Any]]:
-    """
-    Convert raw fact to (value, unit, tolerance, flags, trace).
-    This version includes a heuristic to prevent double-scaling XBRL values.
-    """
-    rep = classify_representation(fact)
-    raw_val = 0.0
-    try:
-        raw_val = float(fact.get("value", 0))
-    except (ValueError, TypeError):
-        pass
+    # --- THIS IS THE FIX ---
+    # Look up by doc_id using filter_by, not the primary key 'id' with get().
+    staged_data = session.query(StagedNormalizedData).filter_by(doc_id=doc_id).one_or_none()
+    if not staged_data:
+        raise ValueError(f"No staged data found for doc_id {doc_id}")
+    # --- END OF FIX ---
     
-    trace: Dict[str, Any] = {
-        "concept": fact.get("concept"),
-        "unitRef": fact.get("unitRef"),
-        "decimals": fact.get("decimals"),
-        "data_type": fact.get("data_type"),
-        "representation": rep,
-        "flags": []
+    statement_normalized_data = staged_data.normalized_data.get('statement_normalized_data', {})
+    
+    parsed_doc = session.get(ParsedDocument, doc_id)
+    if not parsed_doc:
+        raise ValueError(f"No parsed document found for doc_id {doc_id}")
+    
+    original_content = parsed_doc.content
+    
+    return statement_normalized_data, original_content
+
+def create_llm_analysis_payload(statement_data: Dict, original_content: Dict, ticker: str, fiscal_date: date) -> str:
+    """
+    Create the analysis payload combining statement data with original currency contexts.
+    """
+    original_statements = []
+    if 'llm_call_2' in original_content:
+        for stmt in original_content['llm_call_2']:
+            original_statements.append({
+                "statement_type": stmt.get('statement_type', ''),
+                "currency": stmt.get('currency', ''),
+                "quarter": stmt.get('quarter', ''),
+                "figures": stmt.get('figures', [])
+            })
+    
+    analysis_context = {
+        "company": ticker,
+        "fiscal_date": str(fiscal_date),
+        "statements_with_currency_context": original_statements,
+        "note": "Use the 'currency' field from each statement for currency figures in that statement"
     }
-
-    # Handle non-currency types first (no changes needed here)
-    if rep == "ratio":
-        val = raw_val
-        if 'percentitemtype' in (fact.get('data_type') or '').lower() and val > 1:
-            val = val / 100.0
-            trace['flags'].append('DIVIDED_PERCENT_BY_100')
-        if (fact.get("unitRef") or "").lower() != "pure":
-            trace["flags"].append("UNIT_CONCEPT_MISMATCH")
-        tol = compute_tolerance(fact, rep)
-        return val, "fraction", tol, trace["flags"], trace
     
-    if rep == "per_share":
-        val = raw_val
-        tol = compute_tolerance(fact, rep)
-        if not fact.get("unitRef"):
-            trace["flags"].append("MISSING_UNIT")
-        return val, "INRPerShare", tol, trace["flags"], trace
+    return json.dumps(analysis_context, indent=2)
 
-    # --- ROBUST CURRENCY NORMALIZATION LOGIC ---
-    factor = 1.0
-    # Heuristic threshold to detect if a value from XBRL is already in its absolute form
-    ABSOLUTE_VALUE_THRESHOLD = 1_000_000 
+def parse_llm_unit_analysis(response_text: str) -> Dict:
+    """
+    Parse and validate LLM response for unit analysis.
+    """
+    try:
+        analysis = json.loads(response_text.strip())
+        required_keys = ['filing_analysis', 'statement_analyses']
+        if not all(key in analysis for key in required_keys):
+            raise ValueError("Missing required keys in LLM response")
+        return analysis
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Failed to parse LLM unit analysis: {e}")
+        logger.error(f"Response was: {response_text}")
+        raise ValueError("Could not parse unit analysis from LLM") from e
 
-    # Logic path for XBRL data (inferred by presence of 'decimals')
-    if fact.get('decimals') is not None and fact.get('assumed_scale') is None:
-        try:
-            decs = int(fact.get('decimals'))
-            # HEURISTIC: If value is already large, assume it's absolute and the 'decimals' metadata is redundant.
-            if abs(raw_val) > ABSOLUTE_VALUE_THRESHOLD:
-                factor = 1.0
-                trace['flags'].append('SCALING_SKIPPED_HEURISTIC')
-            else:
-                # Value is small, so trust the decimals attribute is for scaling.
-                factor = 10 ** -decs
-        except (ValueError, TypeError):
-            factor = 1.0 # If decimals is not a valid integer (e.g., "INF"), do not scale.
+def analyze_units_with_llm(doc_id: int, session) -> Dict:
+    """
+    Send filing to LLM for contextual unit analysis.
+    """
+    try:
+        statement_data, original_content = get_filing_context_for_analysis(doc_id, session)
+        staged_data = session.query(StagedNormalizedData).filter_by(doc_id=doc_id).one()
+        
+        analysis_payload = create_llm_analysis_payload(
+            statement_data, original_content, staged_data.ticker, staged_data.fiscal_date
+        )
+        
+        response_text = call_gemini_with_json(
+            model_name=UNIT_ANALYSIS_MODEL,
+            prompt=UNIT_ANALYSIS_PROMPT,
+            context_text=analysis_payload,
+            temperature=0.0,
+            max_tokens=65536
+        )
+        
+        analysis_result = parse_llm_unit_analysis(response_text)
+        logger.info(f"Completed unit analysis for doc_id {doc_id} ({staged_data.ticker})")
+        return analysis_result
+        
+    except Exception as e:
+        logger.error(f"Error in LLM unit analysis for doc_id {doc_id}: {e}", exc_info=True)
+        raise
+
+def determine_review_requirement(analysis: Dict) -> Tuple[bool, List[Dict]]:
+    """
+    Determine if human review is required based on LLM analysis.
+    """
+    suspicious_figures = []
+    for stmt_analysis in analysis['statement_analyses']:
+        for figure in stmt_analysis['figures']:
+            if figure['confidence'] == 'low':
+                suspicious_figures.append({
+                    'statement_type': stmt_analysis['statement_type'],
+                    'standard_mapping': stmt_analysis.get('standard_mapping', 'unknown'),
+                    'label': figure['label'],
+                    'value': figure['value'],
+                    'representation': figure['representation'],
+                    'reasoning': figure.get('reasoning', 'Low confidence from LLM'),
+                })
     
-    # Logic path for NSE Scraper data (inferred by presence of 'assumed_scale')
-    elif fact.get('assumed_scale') is not None:
-        scale_key = fact.get('assumed_scale', '').lower()
-        factor = SCALE_MAP.get(scale_key, 1.0)
+    filing_requires_review = analysis['filing_analysis'].get('requires_human_review', False)
+    return len(suspicious_figures) > 0 or filing_requires_review, suspicious_figures
 
-    val = raw_val * factor
-    tol = compute_tolerance(fact, rep)
-    unit_out = 'INR'
-    trace['scale_factor_applied'] = factor
+def apply_unit_normalization_to_data(staged_data: StagedNormalizedData, analysis: Dict) -> Dict:
+    """
+    Apply unit normalization analysis to create unit_normalized_data structure.
+    """
+    # This function needs to be implemented based on the final desired structure
+    # For now, we'll just return the analysis to be stored.
+    logger.info(f"Applying unit normalization for doc_id {staged_data.doc_id}")
+    # This is a placeholder for the actual transformation logic
+    return {'llm_unit_analysis': analysis}
+
+def process_unit_normalization_discovery(doc_id: int, session) -> str:
+    """
+    Process a single document through unit normalization discovery phase.
+    """
+    try:
+        staged_data = session.query(StagedNormalizedData).filter_by(doc_id=doc_id).one_or_none()
+        if not staged_data:
+            logger.error(f"Could not find staged data for doc_id {doc_id}")
+            return 'PENDING'
+
+        parsed_doc = session.get(ParsedDocument, doc_id)
+        if not parsed_doc:
+             logger.error(f"Could not find parsed document for doc_id {doc_id}")
+             return 'PENDING'
+        
+        logger.info(f"Processing unit discovery for {staged_data.ticker} {staged_data.fiscal_date} (doc_id: {doc_id})")
+        
+        analysis = analyze_units_with_llm(doc_id, session)
+        requires_review, suspicious_figures = determine_review_requirement(analysis)
+        
+        if requires_review:
+            review_data = {
+                'doc_id': doc_id, 'asset_id': parsed_doc.asset_id, 'ticker': staged_data.ticker,
+                'fiscal_date': staged_data.fiscal_date, 'llm_analysis': analysis,
+                'filing_data': {
+                    'suspicious_figures': suspicious_figures,
+                    'total_figures_analyzed': sum(len(stmt['figures']) for stmt in analysis['statement_analyses']),
+                    'low_confidence_count': len(suspicious_figures),
+                }
+            }
+            create_unit_review_record(review_data)
+            logger.info(f"Queued {staged_data.ticker} for human review ({len(suspicious_figures)} suspicious figures)")
+            return 'PENDING_REVIEW'
+        else:
+            unit_normalized_data = apply_unit_normalization_to_data(staged_data, analysis)
+            
+            # Use a dictionary to update JSONB
+            updated_data = staged_data.normalized_data.copy()
+            updated_data['unit_normalized_data'] = unit_normalized_data
+            staged_data.normalized_data = updated_data
+            
+            session.commit()
+            logger.info(f"Auto-approved {staged_data.ticker} (high confidence)")
+            return 'AUTO_APPROVED'
+            
+    except Exception as e:
+        logger.error(f"Error processing unit discovery for doc_id {doc_id}: {e}", exc_info=True)
+        session.rollback()
+        return 'PENDING'
+
+def run_unit_normalizer_discovery(allow_llm: bool):
+    """
+    Run the discovery phase of unit normalization.
+    """
+    if not allow_llm:
+        logger.info("LLM calls disabled, skipping unit normalizer discovery")
+        return
     
-    if fact.get('missing_unit') or not fact.get('unitRef'):
-        trace['flags'].append('MISSING_UNIT_MONETARY')
-
-    return val, unit_out, tol, trace['flags'], trace
-
-# ----------------------
-# Document-level normalization
-# ----------------------
-def unit_normalize_document(doc_id: int, session: Session) -> Dict[str, Any]:
-    """
-    Load parsed_document, normalize each fact, build normalized_data JSON.
-    """
-    pd = session.get(ParsedDocument, doc_id)
-    logger.debug(f"\n--- Processing doc_id: {doc_id} ---")
-    if not pd:
-        return {} # Return empty dict if document not found
+    logger.info("=== Starting Unit Normalizer Discovery Phase ===")
     
-    content = pd.content or {}
-    logger.debug(f"Found {len([k for k, v in content.items() if isinstance(v, dict) and 'value' in v])} facts in parsed data.")
-    # document-level metadata
-    doc_meta = {
-        "presentation_currency": content.get("presentation_currency"),
-        "rounding_level": content.get("rounding_level")
-    }
-    result: Dict[str, Any] = {"facts_by_raw_key": {}}
-    # iterate facts
-    for key, val in content.items():
-        if not isinstance(val, dict) or "value" not in val:
-            continue
-        fact = {**val, "concept": key}
-        val_norm, unit_out, tol, flags, trace = normalize_value(fact, doc_meta)
-        result["facts_by_raw_key"][key] = {
-            "normalized_unit": unit_out,
-            "normalized_value": val_norm,
-            "tolerance": tol,
-            "flags": flags,
-            "trace": trace
-        }
-    logger.debug(f"Final normalized dictionary has {len(result['facts_by_raw_key'])} entries: {list(result['facts_by_raw_key'].keys())}")
-    return result
-
-# ----------------------
-# Batch runner
-# ----------------------
-# In unit_normalizer.py
-
-def run_unit_normalizer_batch():
-    """
-    Find unprocessed parsed_documents, normalize them, and upsert to staged_normalized_data.
-    """
     session = get_session()
     try:
-        subquery = select(StagedNormalizedData.doc_id)
-
-        # --- MODIFICATION ---
-        # Query for all necessary metadata directly from the database.
-        # This is the most robust way to get ticker, year, and quarter.
-        stmt = select(
-            ParsedDocument.doc_id,
-            IngestionJob.ticker,
-            IngestionJob.fiscal_year,
-            IngestionJob.quarter
-        ).join(
-            RawDataAsset, ParsedDocument.asset_id == RawDataAsset.asset_id
-        ).join(
-            JobAssetLink, RawDataAsset.asset_id == JobAssetLink.asset_id
-        ).join(
-            IngestionJob, JobAssetLink.job_id == IngestionJob.job_id
-        ).where(
-            ParsedDocument.parse_status == 'PARSED_OK',
-            ~ParsedDocument.doc_id.in_(subquery)
-        )
-        docs_to_process = session.execute(stmt).all()
-
-        # The loop now gets all required metadata from our robust query.
-        for doc_id, ticker, fiscal_year, quarter in docs_to_process:
-            
-            # --- MODIFICATION ---
-            # Calculate the fiscal_date deterministically. No more guessing from content.
-            if quarter == 1:
-                fiscal_date = date(fiscal_year, 6, 30)
-            elif quarter == 2:
-                fiscal_date = date(fiscal_year, 9, 30)
-            elif quarter == 3:
-                fiscal_date = date(fiscal_year, 12, 31)
-            else:  # Quarter 4
-                fiscal_date = date(fiscal_year + 1, 3, 31)
-
-            norm = unit_normalize_document(doc_id, session)
-            if not norm:
-                continue
-            
-            h = hashlib.sha256(str(norm).encode()).hexdigest()
-            
-            create_staged_normalized_data({
-                "doc_id": doc_id,
-                "ticker": ticker,
-                "fiscal_date": fiscal_date, # <-- This is now guaranteed to have a value.
-                "normalized_data": norm,
-                "data_hash": h,
-                "unit_normalized": True
-            })
+        doc_ids = get_docs_pending_unit_normalization()
+        if not doc_ids:
+            logger.info("No documents pending unit normalization discovery.")
+            return
+        
+        # Using temporary slice for testing
+        doc_ids_to_process = doc_ids[:2]
+        logger.info(f"Found {len(doc_ids_to_process)} documents for unit analysis (out of {len(doc_ids)} total)")
+        
+        status_updates = {}
+        for doc_id in doc_ids_to_process:
+            status = process_unit_normalization_discovery(doc_id, session)
+            if status not in status_updates:
+                status_updates[status] = []
+            status_updates[status].append(doc_id)
+        
+        for status, doc_list in status_updates.items():
+            if doc_list:
+                mark_docs_unit_review_status(doc_list, status)
+                logger.info(f"Marked {len(doc_list)} documents as {status}")
     finally:
         session.close()
+    
+    logger.info("=== Unit Normalizer Discovery Phase Complete ===")
 
-if __name__ == '__main__':
-    run_unit_normalizer_batch()
+def run_unit_normalizer_application():
+    """
+    Run the application phase of unit normalization.
+    """
+    logger.info("=== Starting Unit Normalizer Application Phase ===")
+    session = get_session()
+    try:
+        approved_reviews = get_approved_unit_reviews()
+        if not approved_reviews:
+            logger.info("No approved unit reviews to process.")
+            return
+        
+        logger.info(f"Found {len(approved_reviews)} approved reviews to process")
+        # Placeholder for processing logic
+    finally:
+        session.close()
+    logger.info("=== Unit Normalizer Application Phase Complete ===")

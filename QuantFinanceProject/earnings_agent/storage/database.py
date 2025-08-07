@@ -2,12 +2,12 @@
 
 import os
 from dotenv import load_dotenv, find_dotenv
-from sqlalchemy import create_engine, update, select
+from sqlalchemy import create_engine, update, select, delete, func 
 from sqlalchemy.orm import sessionmaker, joinedload, Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from typing import List, Dict, Any, Optional
 import datetime
-from datetime import date
+from datetime import date, timezone
 
 # Import all the new models
 from earnings_agent.storage.models import (
@@ -22,7 +22,8 @@ from earnings_agent.storage.models import (
     QuarterlyFundamental,
     CustomKPI,
     Classification,
-    CompanyMaster
+    CompanyMaster,
+    UnitReviewQueue
 )
 # Assumes a central config file for the schema name
 # from .config import DB_SCHEMA
@@ -204,20 +205,21 @@ def create_parsed_document(doc_data: Dict[str, Any]):
 # NORMALIZATION STAGE FUNCTIONS (NEW)
 # ================================================================================================
 
-def get_label_mapping(raw_label: str) -> Optional[LabelMapping]:
+def get_label_mapping(raw_label: str, industry: str) -> Optional[LabelMapping]:
     """
-    Retrieves a single label mapping from the cache by its raw_label.
+    Retrieves a single label mapping from the cache using its composite key.
     """
     session = get_session()
     try:
-        return session.get(LabelMapping, raw_label)
+        # session.get() works with composite keys when passed a tuple
+        return session.get(LabelMapping, (raw_label, industry))
     finally:
         session.close()
 
 def upsert_label_mapping(mapping_data: Dict[str, Any]):
     """
     Inserts or updates a label mapping in the cache.
-    Used to store LLM suggestions or human-verified mappings.
+    The mapping_data dictionary MUST contain 'raw_label' and 'industry'.
     """
     session = get_session()
     try:
@@ -228,8 +230,9 @@ def upsert_label_mapping(mapping_data: Dict[str, Any]):
             'last_reviewed_at': stmt.excluded.last_reviewed_at,
             'reviewed_by': stmt.excluded.reviewed_by
         }
+        # Update the index_elements to use the new composite key
         stmt = stmt.on_conflict_do_update(
-            index_elements=['raw_label'],
+            index_elements=['raw_label', 'industry'],
             set_=update_cols
         )
         session.execute(stmt)
@@ -239,21 +242,20 @@ def upsert_label_mapping(mapping_data: Dict[str, Any]):
 
 def create_staged_normalized_data(data: Dict[str, Any]):
     """
-    Inserts or updates a record in the staging table for normalized data.
-    This holds the output of the normalization engine for one source.
+    Inserts a record in the staging table for normalized data.
+    If a record with the same doc_id already exists, it does nothing.
+    This is safer and prevents accidental overwrites.
     """
     session = get_session()
     try:
         stmt = pg_insert(StagedNormalizedData).values(**data)
-        update_cols = {
-            'ticker': stmt.excluded.ticker,
-            'fiscal_date': stmt.excluded.fiscal_date,
-            'normalized_data': stmt.excluded.normalized_data
-        }
-        stmt = stmt.on_conflict_do_update(
-            index_elements=['doc_id'],
-            set_=update_cols
+        # --- THIS IS THE FIX ---
+        # Change the conflict action to DO NOTHING. This function's only job
+        # is to create the initial record if it doesn't exist.
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=['doc_id']
         )
+        # --- END OF FIX ---
         session.execute(stmt)
         session.commit()
     finally:
@@ -298,27 +300,61 @@ def mark_labels_as_processed(raw_labels: List[str]):
     finally:
         session.close()
 
+def fetch_pending_label_reviews() -> List[LabelMapping]:
+    """
+    Queries the database for all label mappings with 'PENDING_REVIEW' status.
+    """
+    session = get_session()
+    try:
+        return session.query(LabelMapping).filter(
+            LabelMapping.status == 'PENDING_REVIEW'
+        ).order_by(LabelMapping.created_at.desc()).all()
+    finally:
+        session.close()
+
+# Add `new_label` as an optional parameter
+def update_label_mapping_status(raw_label: str, industry: str, new_status: str, new_label: str = None, reviewer: str = "human_reviewer"):
+    """
+    Updates the status and optionally the normalized_label of a mapping.
+    """
+    session = get_session()
+    try:
+        mapping_to_update = session.get(LabelMapping, (raw_label, industry))
+        if mapping_to_update:
+            mapping_to_update.status = new_status
+            mapping_to_update.last_reviewed_at = datetime.now(timezone.utc)
+            mapping_to_update.reviewed_by = reviewer
+            # If a new label is provided, update it
+            if new_label is not None:
+                # Handle empty string from UI as null
+                mapping_to_update.normalized_label = None if new_label.lower() == 'null' or not new_label else new_label
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+
 # ================================================================================================
 # NORMALIZATION STATE MANAGEMENT FUNCTIONS (NEW)
 # ================================================================================================
-
-def get_docs_pending_unit_normalization() -> List[int]:
+def get_docs_pending_statement_normalization() -> List[int]:
     """
-    Return all doc_ids that have not yet run through the unit normalizer.
+    Return all doc_ids that have not yet run through the statement normalizer.
     """
     session = get_session()
     try:
         stmt = select(StagedNormalizedData.doc_id).where(
-            StagedNormalizedData.unit_normalized == False
+            StagedNormalizedData.statement_normalized == False
         )
         return session.execute(stmt).scalars().all()
     finally:
         session.close()
 
-
-def mark_docs_unit_normalized(doc_ids: List[int]):
+def mark_docs_statement_normalized(doc_ids: List[int]):
     """
-    Mark the given doc_ids as having completed unit normalization.
+    Mark the given doc_ids as having completed statement normalization.
     """
     if not doc_ids:
         return
@@ -327,7 +363,40 @@ def mark_docs_unit_normalized(doc_ids: List[int]):
         stmt = (
             update(StagedNormalizedData)
             .where(StagedNormalizedData.doc_id.in_(doc_ids))
-            .values(unit_normalized=True)
+            .values(statement_normalized=True)
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
+
+def get_docs_pending_unit_normalization() -> List[int]:
+    """
+    Return all doc_ids ready for unit normalization: statement-normalized but not unit-processed.
+    """
+    session = get_session()
+    try:
+        stmt = select(StagedNormalizedData.doc_id).where(
+            StagedNormalizedData.statement_normalized == True,
+            StagedNormalizedData.unit_review_status == 'PENDING'
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+def mark_docs_unit_review_status(doc_ids: List[int], status: str):
+    """
+    Set the unit_review_status for the given doc_ids.
+    status should be one of 'PENDING', 'AUTO_APPROVED', 'PENDING_REVIEW', 'APPROVED'.
+    """
+    if not doc_ids:
+        return
+    session = get_session()
+    try:
+        stmt = (
+            update(StagedNormalizedData)
+            .where(StagedNormalizedData.doc_id.in_(doc_ids))
+            .values(unit_review_status=status)
         )
         session.execute(stmt)
         session.commit()
@@ -337,23 +406,36 @@ def mark_docs_unit_normalized(doc_ids: List[int]):
 
 def get_docs_pending_label_normalization() -> List[int]:
     """
-    Return doc_ids ready for label normalization: unit-normalized but not fully label-normalized.
+    Return doc_ids ready for label normalization. This now includes both
+    human-approved and auto-approved documents from the unit normalization phase.
     """
     session = get_session()
     try:
         stmt = select(StagedNormalizedData.doc_id).where(
-            StagedNormalizedData.unit_normalized == True,
-            StagedNormalizedData.label_normalized != 'APPROVED'
+            StagedNormalizedData.unit_review_status.in_(['APPROVED', 'AUTO_APPROVED']),
+            StagedNormalizedData.label_review_status == 'PENDING'
         )
         return session.execute(stmt).scalars().all()
     finally:
         session.close()
 
-
-def mark_docs_label_normalized(doc_ids: List[int], status: str = 'APPROVED'):
+def get_docs_pending_label_review() -> List[int]:
     """
-    Set the label_normalized status for the given doc_ids.
-    status should be one of 'PENDING', 'PARTIAL', 'APPROVED', 'FAILED'.
+    Return doc_ids that have been scanned for labels and are awaiting human review approval.
+    """
+    session = get_session()
+    try:
+        stmt = select(StagedNormalizedData.doc_id).where(
+            StagedNormalizedData.label_review_status == 'PENDING_REVIEW'
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+def mark_docs_label_review_status(doc_ids: List[int], status: str):
+    """
+    Set the label_review_status for the given doc_ids.
+    status should be one of 'PENDING', 'PENDING_REVIEW', 'APPROVED'.
     """
     if not doc_ids:
         return
@@ -362,13 +444,91 @@ def mark_docs_label_normalized(doc_ids: List[int], status: str = 'APPROVED'):
         stmt = (
             update(StagedNormalizedData)
             .where(StagedNormalizedData.doc_id.in_(doc_ids))
-            .values(label_normalized=status)
+            .values(label_review_status=status)
         )
         session.execute(stmt)
         session.commit()
     finally:
         session.close()
 
+def create_unit_review_record(review_data: Dict[str, Any]):
+    """
+    Inserts a record into the unit review queue for human review.
+    """
+    session = get_session()
+    try:
+        stmt = pg_insert(UnitReviewQueue).values(**review_data)
+        # On conflict, update with new analysis
+        update_cols = {
+            'llm_analysis': stmt.excluded.llm_analysis,
+            'filing_data': stmt.excluded.filing_data,
+            'created_at': stmt.excluded.created_at
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['doc_id'],
+            set_=update_cols
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
+
+def get_pending_unit_reviews() -> List[UnitReviewQueue]:
+    """
+    Fetches all unit reviews that are pending human review.
+    """
+    session = get_session()
+    try:
+        stmt = select(UnitReviewQueue).where(
+            UnitReviewQueue.status == 'PENDING_REVIEW'
+        ).order_by(UnitReviewQueue.created_at.desc())
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+def approve_unit_review(review_id: int, corrections: Dict = None):
+    """
+    Marks a unit review as approved and optionally stores human corrections.
+    """
+    session = get_session()
+    try:
+        stmt = update(UnitReviewQueue).where(
+            UnitReviewQueue.id == review_id
+        ).values(
+            status='APPROVED',
+            reviewed_at=datetime.datetime.now(timezone.utc), # MODIFIED LINE
+            reviewed_by='human_reviewer',
+            human_corrections=corrections
+        )
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
+
+def get_approved_unit_reviews() -> List[UnitReviewQueue]:
+    """
+    Fetches all unit reviews that have been approved but not yet applied.
+    """
+    session = get_session()
+    try:
+        stmt = select(UnitReviewQueue).where(
+            UnitReviewQueue.status == 'APPROVED'
+        )
+        return session.execute(stmt).scalars().all()
+    finally:
+        session.close()
+
+def delete_processed_unit_review(review_id: int):
+    """
+    Removes a unit review record after it has been processed and applied.
+    """
+    session = get_session()
+    try:
+        stmt = delete(UnitReviewQueue).where(UnitReviewQueue.id == review_id)
+        session.execute(stmt)
+        session.commit()
+    finally:
+        session.close()
 # ================================================================================================
 # RECONCILIATION & FINALIZATION FUNCTIONS (NEW & UPDATED)
 # ================================================================================================

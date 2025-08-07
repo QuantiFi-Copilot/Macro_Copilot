@@ -161,6 +161,32 @@ services:
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.parsing.xbrl.xbrl_parser_task"
     ]
+  pdf-parser:
+    image: quantfinanceproject:latest
+    container_name: pdf-parser
+    restart: "no" # This is a one-off task
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+      # Mount the GCP key securely (read-only)
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+      # Tell the Google library where to find the key
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.parsing.pdf.pdf_parser_task"
+    ]
+
 # ─────────────────────────────────────────────────────────────
   nse-scraper:
     image: quantfinanceproject:latest
@@ -204,6 +230,27 @@ services:
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.ingestion.bse_scraper.bse_ingestion_task"
     ]
+  bse-pdf-ingestion:
+    image: quantfinanceproject:latest
+    container_name: bse-pdf-ingestion
+    restart: "no" # This is a one-off task
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.ingestion.pdf_ingestion.pdf_ingestion_task"
+    ]
 # ─────────────────────────────────────────────────────────────
   nse-parser:
     image: quantfinanceproject:latest
@@ -237,6 +284,7 @@ services:
     volumes:
       - .:/app
       - ./.env:/app/.env
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
     environment:
       # Pass database credentials
       - EARNINGS_DB_HOST=tsdb
@@ -244,13 +292,65 @@ services:
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
       - TZ=Asia/Kolkata
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
     # --- NEW COMMAND ---
     # This points to our new, source-agnostic normalization script.
     command: [
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.normalization.normalization_engine"
       # , "--allow-llm"
+    ]
+
+  unit-review-ui:
+    image: quantfinanceproject:latest
+    container_name: unit_review_ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    ports:
+      - "8502:8501" # Expose on port 8502 to avoid conflict with existing normalization-reviewer-ui
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/normalization/review_UIs/unit_review_ui.py", 
+      "--server.port=8501", "--server.address=0.0.0.0"
+    ]
+
+  # Add this service to your docker-compose.yml
+
+  label-review-ui:
+    image: quantfinanceproject:latest
+    container_name: label_review_ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    ports:
+      - "8503:8501" # Expose on host port 8503
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/normalization/review_UIs/label_review_ui.py", 
+      "--server.port=8501", "--server.address=0.0.0.0"
     ]
 # ─────────────────────────────────────────────────────────────
   quality_engine:
@@ -377,31 +477,4 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-################################################################################
-# TOOLS
-################################################################################
-  normalization-reviewer-ui:
-    image: quantfinanceproject:latest  # <-- USE THE SAME IMAGE
-    container_name: normalization_reviewer_ui
-    restart: unless-stopped
-    depends_on:
-      tsdb:
-        condition: service_healthy
-    working_dir: /app
-    volumes:
-      - .:/app
-      - ./.env:/app/.env
-    ports:
-      - "8501:8501" # Expose the Streamlit port
-    environment:
-      - EARNINGS_DB_HOST=tsdb
-      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
-      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
-      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
-      - TZ=Asia/Kolkata
-    # The command to run the Streamlit app from its new location
-    command: [
-      "micromamba", "run", "-n", "quant-env",
-      "streamlit", "run", "tools/earnings_normalization_reviewer/app.py", 
-      "--server.port=8501", "--server.address=0.0.0.0"
-    ]
+  

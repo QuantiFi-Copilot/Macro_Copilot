@@ -23,4 +23,6 @@ dependencies:
     - anthropic 
     - arelle-release
     - bs4
-    
+    - google-cloud-aiplatform
+    - google-auth
+    - PyPDF2

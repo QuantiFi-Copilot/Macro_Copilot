@@ -50,7 +50,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(module)s - %(message)s',
     handlers=[
-        logging.FileHandler("bse_ingestion.log"),
         logging.StreamHandler()
     ]
 )

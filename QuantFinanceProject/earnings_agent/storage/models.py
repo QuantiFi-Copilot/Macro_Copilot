@@ -137,14 +137,18 @@ class LabelMapping(Base):
     SQLAlchemy ORM model for the `label_mapping_cache` table.
     This is the persistent cache for the financial label normalization engine,
     acting as the system's long-term, human-verified memory.
+    Mappings are now specific to an industry.
     """
     __tablename__ = 'label_mapping_cache'
 
+    # --- MODIFIED: Changed to a composite primary key ---
     raw_label = Column(Text, primary_key=True)
+    industry = Column(Text, primary_key=True)
+    # ---------------------------------------------------
+    
     normalized_label = Column(Text, nullable=True)
     status = Column(String(20), nullable=False)
 
-    # NEW: Tracks if the backfill job has processed this approval.
     processed = Column(Boolean, nullable=False, server_default='f', default=False)
     
     source_context = Column(JSONB, nullable=True)
@@ -174,13 +178,15 @@ class StagedNormalizedData(Base):
     fiscal_date = Column(Date, nullable=False)
     
     # The fully normalized data from this one source.
-    # Example: {"revenue": 5000, "gross_npa_ratio": 1.2}
     normalized_data = Column(JSONB, nullable=False)
 
-    # NEW: Hash of the normalized_data content to detect changes.
+    # Hash of the normalized_data content to detect changes.
     data_hash = Column(String(64), nullable=True)
-    unit_normalized = Column(Boolean, nullable=False, server_default='false')
-    label_normalized = Column(String(20), nullable=False, server_default="'PENDING'")
+    
+    # NEW: Three-phase normalization status tracking
+    statement_normalized = Column(Boolean, nullable=False, server_default='false')
+    unit_review_status = Column(String(20), nullable=False, server_default="'PENDING'")
+    label_review_status = Column(String(20), nullable=False, server_default="'PENDING'")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -189,12 +195,56 @@ class StagedNormalizedData(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "label_normalized IN ('PENDING','PARTIAL','APPROVED','FAILED')",
-            name='ck_staged_label_normalized'
+            "unit_review_status IN ('PENDING','AUTO_APPROVED','PENDING_REVIEW','APPROVED')",
+            name='ck_unit_review_status'
+        ),
+        CheckConstraint(
+            "label_review_status IN ('PENDING','PENDING_REVIEW','APPROVED')",
+            name='ck_label_review_status'
+        ),
+        {'schema': DB_SCHEMA}
+    )
+class UnitReviewQueue(Base):
+    """
+    SQLAlchemy ORM model for the `unit_review_queue` table.
+    Stores filing-level unit normalization decisions pending human review.
+    """
+    __tablename__ = 'unit_review_queue'
+
+    id = Column(BigInteger, primary_key=True)
+    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False, unique=True)
+    asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=False)
+    ticker = Column(String(20), nullable=False)
+    fiscal_date = Column(Date, nullable=False)
+    
+    # The LLM's analysis and raw filing data
+    llm_analysis = Column(JSONB, nullable=False)
+    filing_data = Column(JSONB, nullable=False)
+    
+    # Human review fields
+    status = Column(String(20), nullable=False, server_default="'PENDING_REVIEW'")
+    reviewed_by = Column(Text, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    human_corrections = Column(JSONB, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    parsed_document = relationship("ParsedDocument")
+    asset = relationship("RawDataAsset")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING_REVIEW','APPROVED','REJECTED')",
+            name='ck_unit_review_queue_status'
         ),
         {'schema': DB_SCHEMA}
     )
 
+
+# ================================================================================================
+# STAGE 3.5: QUALITY ENGINE RESULTS
+# ================================================================================================
 class QualityEngineResult(Base):
     """
     SQLAlchemy ORM model for the `quality_engine_results` table.
@@ -316,7 +366,8 @@ class CompanyMaster(Base):
 
 # Index to speed up normalization status queries
 Index(
-    'idx_staged_normalized_status',
-    StagedNormalizedData.unit_normalized,
-    StagedNormalizedData.label_normalized,
+    'idx_staged_normalization_status',
+    StagedNormalizedData.statement_normalized,
+    StagedNormalizedData.unit_review_status,
+    StagedNormalizedData.label_review_status,
 )
