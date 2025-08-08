@@ -46,6 +46,9 @@ core_metrics:
   - shareholders_equity
   - total_liabilities_and_equity
   - borrowings
+  - change_in_borrowings
+  - debt_to_equity_ratio
+  - investment_in_subsidiaries
 
   # --- Cash Flow Statement ---
   - cash_flow_from_operating

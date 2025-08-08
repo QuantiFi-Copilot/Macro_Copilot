@@ -29,42 +29,44 @@ reconciliation_config:
 # --------------------------------------------------------------------------------
 custom_kpis:
     # Profitability
-  - "net_interest_income"
-  - "non_interest_income"
-  - "fee_income"
-  - "net_interest_margin"
-  - "cost_of_deposits"
-  - "cost_to_income_ratio"
-  - "return_on_assets"
-  - "return_on_equity" # ROE is kept as it can be derived from P&L/BS
-  - "ppop"
-  - "effective_tax_rate"
-  - "advances"
-  - "deposits"
-  - "gross_npa"
-  - "interest_income"
+  - net_interest_income
+  - non_interest_income
+  - fee_income
+  - net_interest_margin
+  - cost_of_deposits
+  - cost_to_income_ratio
+  - return_on_assets
+  - return_on_equity # ROE is kept as it can be derived from P&L/BS
+  - ppop
+  - effective_tax_rate
+  - advances
+  - deposits
+  - gross_npa
+  - interest_income
   # Asset Quality
-  - "gnpa_ratio"
-  - "nnpa_ratio"
-  - "provision_coverage_ratio"
-  - "credit_cost_ratio"
-  - "slippage_ratio" # Kept, but is a prime candidate for failing validation if data is not in XBRL
+  - gnpa_ratio
+  - nnpa_ratio
+  - provision_coverage_ratio
+  - credit_cost_ratio
+  - slippage_ratio # Kept, but is a prime candidate for failing validation if data is not in XBRL
+  - change_in_other_assets
+  - interest_on_investments
 
   # Capital Adequacy
-  - "capital_adequacy_ratio"
-  - "cet1_ratio"
-  - "tier1_ratio"
+  - capital_adequacy_ratio
+  - cet1_ratio
+  - tier1_ratio
 
   # Funding & Liquidity
-  - "casa_ratio"
-  - "credit_to_deposit_ratio"
-  - "deposits_growth_yoy"
-  - "advances_growth_yoy"
+  - casa_ratio
+  - credit_to_deposit_ratio
+  - deposits_growth_yoy
+  - advances_growth_yoy
 
 
 suspicious_value_rules:
   - rule_name: negative_gross_npa
-    target_metric: "gnpa_ratio"
+    target_metric: gnpa_ratio
     condition: is_negative
     flag:
       type: LOGICAL_CONSISTENCY_ERROR
@@ -72,7 +74,7 @@ suspicious_value_rules:
       severity: CRITICAL
 
   - rule_name: car_below_regulatory_minimum
-    target_metric: "capital_adequacy_ratio"
+    target_metric: capital_adequacy_ratio
     condition: is_less_than
     value: 9.0
     flag:
@@ -81,7 +83,7 @@ suspicious_value_rules:
       severity: CRITICAL
 
   - rule_name: casa_ratio_over_100pct
-    target_metric: "casa_ratio"
+    target_metric: casa_ratio
     condition: is_greater_than
     value: 100.0
     flag:

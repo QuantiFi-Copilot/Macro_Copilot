@@ -322,11 +322,10 @@ def update_label_mapping_status(raw_label: str, industry: str, new_status: str, 
         mapping_to_update = session.get(LabelMapping, (raw_label, industry))
         if mapping_to_update:
             mapping_to_update.status = new_status
-            mapping_to_update.last_reviewed_at = datetime.now(timezone.utc)
+            # --- CORRECTED LINE ---
+            mapping_to_update.last_reviewed_at = datetime.datetime.now(timezone.utc)
             mapping_to_update.reviewed_by = reviewer
-            # If a new label is provided, update it
             if new_label is not None:
-                # Handle empty string from UI as null
                 mapping_to_update.normalized_label = None if new_label.lower() == 'null' or not new_label else new_label
             session.commit()
     except Exception as e:
@@ -496,7 +495,8 @@ def approve_unit_review(review_id: int, corrections: Dict = None):
             UnitReviewQueue.id == review_id
         ).values(
             status='APPROVED',
-            reviewed_at=datetime.datetime.now(timezone.utc), # MODIFIED LINE
+            # --- CORRECTED LINE ---
+            reviewed_at=datetime.datetime.now(timezone.utc),
             reviewed_by='human_reviewer',
             human_corrections=corrections
         )
