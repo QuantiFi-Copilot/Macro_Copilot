@@ -45,6 +45,9 @@ For EACH figure, determine:
 - **Percentage/Ratio indicators**: Labels containing "%", "percentage", "ratio", "rate" → likely percentage/ratio
 - **Value patterns**: Very small values (0.01-100) with ratio-suggesting labels → likely percentage  
 - **Large values**: Without clear ratio indicators → likely currency amounts
+- **MATHEMATICAL CONTEXT:**
+Pay very close attention to keywords that imply a negative value, such as "Less:", "(Less)", "Reduction", or if the number is in parentheses `(390.49)`.
+If you see these indicators, the extracted `value` should be negative (e.g., -390.49).
 
 **CONFIDENCE RULES:**
 - **HIGH confidence**: Clear currency context OR clear percentage/ratio indicators in label or all metrics in the filing.

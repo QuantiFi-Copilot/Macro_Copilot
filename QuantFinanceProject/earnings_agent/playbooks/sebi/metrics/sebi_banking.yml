@@ -28,16 +28,17 @@ nodes:
         - id: employees_cost
         - id: other_operating_expenses
         - id: operating_expenses
-        - id: expenditure_excluding_provisions_and_contingencies
+        - id: total_expenditure_excluding_provisions_and_contingencies
     - id: operating_profit_before_provision_and_contingencies
     - id: provisions_other_than_tax_and_contingencies
     - id: exceptional_items
-    - id: profit_loss_from_ordinary_activities_before_tax
+    - id: net_profit_loss_from_ordinary_activities_before_tax
     - id: tax_expense
     - id: profit_loss_from_ordinary_activities_after_tax
     - id: extraordinary_items
-    - id: profit_loss_for_the_period
+    - id: net_profit_loss_for_the_period
     - id: share_of_profit_loss_of_associates
+    - id: net_profit_loss_after_taxes_before_minority_interest
     - id: profit_loss_of_minority_interest
     - id: profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates
   - id: details_of_paid_up_equity_share_capital_abstract
@@ -66,7 +67,7 @@ nodes:
       children:
       - id: gross_non_performing_assets
       - id: percentage_of_gross_npa
-      - id: non_performing_assets
+      - id: net_non_performing_assets
       - id: percentage_of_net_npa
     - id: return_on_assets
   - id: disclosure_of_notes_on_financial_results_explanatory_text_block
@@ -84,6 +85,7 @@ nodes:
     - id: borrowings
     - id: other_liabilities_and_provisions
     - id: total_capital_and_liabilities
+    - id: policyholder_funds
   - id: assets_abstract
     children:
     - id: cash_and_balances_with_reserve_bank_of_india
@@ -203,6 +205,7 @@ nodes:
         children:
         - id: adjustments_for_decrease_increase_in_inventories
         - id: adjustments_for_decrease_increase_in_trade_receivables
+        - id: adjustments_for_decrease_increase_in_investments
         - id: adjustments_for_decrease_increase_in_other_current_assets
         - id: adjustments_for_increase_decrease_in_trade_payables
         - id: adjustments_for_increase_decrease_in_other_current_liabilities

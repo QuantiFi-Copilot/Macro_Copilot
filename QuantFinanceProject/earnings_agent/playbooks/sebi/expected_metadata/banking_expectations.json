@@ -1,0 +1,2038 @@
+{
+  "100200": {
+    "statement": "pnl",
+    "ids": {
+      "statement_of_financial_results_by_banks_abstract": {
+        "label": "Statement of Financial Results by Banks Abstract [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "date_of_start_of_reporting_period": {
+        "label": "Date of Start of Reporting Period",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "date_of_end_of_reporting_period": {
+        "label": "Date of End of Reporting Period",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "whether_results_are_audited_or_unaudited": {
+        "label": "Whether Results Are Audited or Unaudited",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "nature_of_report_standalone_consolidated": {
+        "label": "Nature of Report Standalone Consolidated",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "disclosure_of_operational_result_abstract": {
+        "label": "Disclosure of Operational Result [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "disclosure_of_revenue_from_operations_abstract": {
+        "label": "Disclosure of Revenue from Operations [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "interest_earned_abstract": {
+        "label": "Interest Earned [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "interest_or_discount_on_advances_or_bills": {
+        "label": "Interest or Discount on Advances/Bills",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "revenue_on_investments": {
+        "label": "Revenue on Investments",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_on_balances_with_reserve_bank_of_india_and_other_inter_bank_funds": {
+        "label": "Interest on Balances with RBI and Other Inter-Bank Funds",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_interest": {
+        "label": "Other Interest",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_earned": {
+        "label": "Total Interest Earned",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_income": {
+        "label": "Other Income",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income": {
+        "label": "Total Income",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "expenses_abstract": {
+        "label": "Expenses [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "interest_expended": {
+        "label": "Interest Expended",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "operating_expenses_abstract": {
+        "label": "Operating Expenses [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "employees_cost": {
+        "label": "Employees Cost",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_operating_expenses": {
+        "label": "Other Operating Expenses",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "operating_expenses": {
+        "label": "Operating Expenses",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "expenditure_excluding_provisions_and_contingencies": {
+        "label": "Total Expenditure Excluding Provisions and Contingencies",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "operating_profit_before_provision_and_contingencies": {
+        "label": "Operating Profit Before Provision and Contingencies",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "provisions_other_than_tax_and_contingencies": {
+        "label": "Provisions Other than Tax and Contingencies",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "exceptional_items": {
+        "label": "Exceptional Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "profit_loss_from_ordinary_activities_before_tax": {
+        "label": "Profit (Loss) from Ordinary Activities Before Tax",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "tax_expense": {
+        "label": "Tax Expense",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "profit_loss_from_ordinary_activities_after_tax": {
+        "label": "Net Profit (Loss) from Ordinary Activities After Tax",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "extraordinary_items": {
+        "label": "Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "profit_loss_for_the_period": {
+        "label": "Net Profit (Loss) for the Period",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "share_of_profit_loss_of_associates": {
+        "label": "Share of Profit (Loss) of Associates",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "profit_loss_of_minority_interest": {
+        "label": "Profit (Loss) of Minority Interest",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates": {
+        "label": "Net Profit (Loss) After Taxes, Minority Interest and Share of Profit (Loss) of Associates",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "details_of_paid_up_equity_share_capital_abstract": {
+        "label": "Details of Paid-Up Equity Share Capital [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "paid_up_value_of_equity_share_capital": {
+        "label": "Paid-Up Value of Equity Share Capital",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "face_value_of_equity_share_capital": {
+        "label": "Face Value of Equity Share Capital",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": true
+      },
+      "reserve_excluding_revaluation_reserves": {
+        "label": "Reserve Excluding Revaluation Reserves",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "analytical_ratios_abstract": {
+        "label": "Analytical Ratios [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "percentage_of_share_held_by_government_of_india": {
+        "label": "Percentage of Share Held by Government of India",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "capital_adequacy_ratio_abstract": {
+        "label": "Capital Adequacy Ratio [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "cet1_ratio": {
+        "label": "CET1 Ratio",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "additional_tier1_ratio": {
+        "label": "AT1 Ratio",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "earnings_per_share_abstract": {
+        "label": "Earnings per Share [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "earnings_per_share_before_extraordinary_items_abstract": {
+        "label": "Earnings per Share Before Extraordinary Items [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "basic_earnings_per_share_before_extraordinary_items": {
+        "label": "Basic Earnings per Share (Before Extraordinary Items)",
+        "representation": "ratio",
+        "ratio_context": "absolute",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": true
+      },
+      "diluted_earnings_per_share_before_extraordinary_items": {
+        "label": "Diluted Earnings per Share (Before Extraordinary Items)",
+        "representation": "ratio",
+        "ratio_context": "absolute",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": true
+      },
+      "earnings_per_share_after_extraordinary_items_abstract": {
+        "label": "Earnings per Share After Extraordinary Items [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "basic_earnings_per_share_after_extraordinary_items": {
+        "label": "Basic Earnings per Share (After Extraordinary Items)",
+        "representation": "ratio",
+        "ratio_context": "absolute",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": true
+      },
+      "diluted_earnings_per_share_after_extraordinary_items": {
+        "label": "Diluted Earnings per Share (After Extraordinary Items)",
+        "representation": "ratio",
+        "ratio_context": "absolute",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": true
+      },
+      "npa_ratios_abstract": {
+        "label": "NPA Ratios [Abstract]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "gross_non_performing_assets": {
+        "label": "Gross Non-Performing Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "percentage_of_gross_npa": {
+        "label": "Percentage of Gross NPA",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "non_performing_assets": {
+        "label": "Non-Performing Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "percentage_of_net_npa": {
+        "label": "Percentage of Net NPA",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "return_on_assets": {
+        "label": "Return on Assets",
+        "representation": "percentage",
+        "ratio_context": "percentage",
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": "0-100",
+        "matchable": true
+      },
+      "disclosure_of_notes_on_financial_results_explanatory_text_block": {
+        "label": "Disclosure of Notes on Financial Results Explanatory [Text Block]",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      }
+    }
+  },
+  "100300": {
+    "statement": "balance_sheet",
+    "ids": {
+      "statement_of_assets_and_liabilities_abstract": {
+        "label": "Statement Of Assets And Liabilities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "assets_abstract": {
+        "label": "Assets Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "disclosure_of_notes_on_assets_and_liabilities_explanatory_text_block": {
+        "label": "Disclosure Of Notes On Assets And Liabilities Explanatory Text Block",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "capital_and_liabilities_abstract": {
+        "label": "Capital And Liabilities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "capital": {
+        "label": "Capital",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "reserves_and_surplus": {
+        "label": "Reserves And Surplus",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "deposits": {
+        "label": "Deposits",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "borrowings": {
+        "label": "Borrowings",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_liabilities_and_provisions": {
+        "label": "Other Liabilities And Provisions",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_and_balances_with_reserve_bank_of_india": {
+        "label": "Cash And Balances With Reserve Bank Of India",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "balances_with_banks_and_money_at_call_and_short_notice": {
+        "label": "Balances With Banks And Money At Call And Short Notice",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "investments": {
+        "label": "Investments",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "advances": {
+        "label": "Advances",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "fixed_assets": {
+        "label": "Fixed Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_assets": {
+        "label": "Other Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "total_assets": {
+        "label": "Total Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "total_capital_and_liabilities": {
+        "label": "Total Capital And Liabilities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      }
+    }
+  },
+  "100600": {
+    "statement": "cash_flow_direct",
+    "ids": {
+      "statement_of_cash_flows_abstract": {
+        "label": "Statement Of Cash Flows Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "cash_flows_from_used_in_operating_activities_abstract": {
+        "label": "Cash Flows From Used In Operating Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "classes_of_cash_receipts_from_operating_activities_abstract": {
+        "label": "Classes Of Cash Receipts From Operating Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "receipts_from_sales_of_goods_and_rendering_of_services": {
+        "label": "Receipts From Sales Of Goods And Rendering Of Services",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "receipts_from_royalties_fees_commissions_and_other_revenue": {
+        "label": "Receipts From Royalties Fees Commissions And Other Revenue",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_held_for_dealing_or_trading_purpose": {
+        "label": "Cash Receipts From Future Contracts Forward Contracts Option Contracts And Swap Contracts Held For Dealing Or Trading Purpose",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "receipts_from_premiums_and_claims_annuities_and_other_policy_benefits": {
+        "label": "Receipts From Premiums And Claims Annuities And Other Policy Benefits",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_receipts_from_operating_activities": {
+        "label": "Other Cash Receipts From Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "classes_of_cash_payments_abstract": {
+        "label": "Classes Of Cash Payments Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "payments_to_suppliers_for_goods_and_services": {
+        "label": "Payments To Suppliers For Goods And Services",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_held_for_dealing_or_trading_purpose": {
+        "label": "Cash Payments For Future Contracts Forward Contracts Option Contracts And Swap Contracts Held For Dealing Or Trading Purpose",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payments_to_and_on_behalf_of_employees": {
+        "label": "Payments To And On Behalf Of Employees",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payments_for_premiums_and_claims_annuities_and_other_policy_benefits": {
+        "label": "Payments For Premiums And Claims Annuities And Other Policy Benefits",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_payments_from_operating_activities": {
+        "label": "Other Cash Payments From Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operations": {
+        "label": "Net Cash From Used In Operations",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_received_classified_as_operating_activities": {
+        "label": "Dividends Received Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_paid_classified_as_operating_activities": {
+        "label": "Interest Paid Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_received_classified_as_operating_activities": {
+        "label": "Interest Received Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_operating_activities": {
+        "label": "Income Taxes Paid Refund Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_operating_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operating_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Operating Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_operating_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_operating_activities": {
+        "label": "Payment For Extraordinary Items Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operating_activities": {
+        "label": "Net Cash From Used In Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_from_used_in_investing_activities_abstract": {
+        "label": "Cash Flows From Used In Investing Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "cash_flows_from_losing_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities": {
+        "label": "Cash Flows From Losing Control Of Subsidiaries Or Other Businesses Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_used_in_obtaining_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities": {
+        "label": "Cash Flows Used In Obtaining Control Of Subsidiaries Or Other Businesses Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_receipts_from_sales_of_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities": {
+        "label": "Other Cash Receipts From Sales Of Equity Or Debt Instruments Of Other Entities Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_payments_to_acquire_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities": {
+        "label": "Other Cash Payments To Acquire Equity Or Debt Instruments Of Other Entities Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_receipts_from_sales_of_interests_in_joint_ventures_classified_as_investing_activities": {
+        "label": "Other Cash Receipts From Sales Of Interests In Joint Ventures Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_payments_to_acquire_interests_in_joint_ventures_classified_as_investing_activities": {
+        "label": "Other Cash Payments To Acquire Interests In Joint Ventures Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_share_of_profits_of_partnership_firm_or_association_of_persons_or_limited_liability_partnerships": {
+        "label": "Cash Receipts From Share Of Profits Of Partnership Firm Or Association Of Persons Or Limited Liability Partnerships",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_payment_for_investment_in_partnership_firm_or_association_of_persons_or_limited_liability_partnerships": {
+        "label": "Cash Payment For Investment In Partnership Firm Or Association Of Persons Or Limited Liability Partnerships",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_sales_of_tangible_assets_classified_as_investing_activities": {
+        "label": "Proceeds From Sales Of Tangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "purchase_of_tangible_assets_classified_as_investing_activities": {
+        "label": "Purchase Of Tangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_sales_of_intangible_assets_classified_as_investing_activities": {
+        "label": "Proceeds From Sales Of Intangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "purchase_of_intangible_assets_classified_as_investing_activities": {
+        "label": "Purchase Of Intangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_advances_and_loans_made_to_other_parties_classified_as_investing_activities": {
+        "label": "Cash Advances And Loans Made To Other Parties Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_repayment_of_advances_and_loans_made_to_other_parties_classified_as_investing_activities": {
+        "label": "Cash Receipts From Repayment Of Advances And Loans Made To Other Parties Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities": {
+        "label": "Cash Payments For Future Contracts Forward Contracts Option Contracts And Swap Contracts Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities": {
+        "label": "Cash Receipts From Future Contracts Forward Contracts Option Contracts And Swap Contracts Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_received_classified_as_investing_activities": {
+        "label": "Dividends Received Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_received_classified_as_investing_activities": {
+        "label": "Interest Received Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_investing_activities": {
+        "label": "Income Taxes Paid Refund Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_investing_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_government_grants_classified_as_investing_activities": {
+        "label": "Proceeds From Government Grants Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_investing_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Investing Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_investing_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_investing_activities": {
+        "label": "Payment For Extraordinary Items Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_investing_activities": {
+        "label": "Net Cash From Used In Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_from_used_in_financing_activities_abstract": {
+        "label": "Cash Flows From Used In Financing Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "proceeds_from_issuing_shares": {
+        "label": "Proceeds From Issuing Shares",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_issuing_other_equity_instruments": {
+        "label": "Proceeds From Issuing Other Equity Instruments",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_issuing_debentures_notes_bonds_etc": {
+        "label": "Proceeds From Issuing Debentures Notes Bonds Etc",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_borrowings_classified_as_financing_activities": {
+        "label": "Proceeds From Borrowings Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "repayments_of_borrowings_classified_as_financing_activities": {
+        "label": "Repayments Of Borrowings Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_paid_classified_as_financing_activities": {
+        "label": "Dividends Paid Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_paid_classified_as_financing_activities": {
+        "label": "Interest Paid Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_financing_activities": {
+        "label": "Income Taxes Paid Refund Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_financing_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_financing_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Financing Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_financing_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_financing_activities": {
+        "label": "Payment For Extraordinary Items Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_financing_activities": {
+        "label": "Net Cash From Used In Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes": {
+        "label": "Increase Decrease In Cash And Cash Equivalents Before Effect Of Exchange Rate Changes",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "effect_of_exchange_rate_changes_on_cash_and_cash_equivalents_abstract": {
+        "label": "Effect Of Exchange Rate Changes On Cash And Cash Equivalents Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "effect_of_exchange_rate_changes_on_cash_and_cash_equivalents": {
+        "label": "Effect Of Exchange Rate Changes On Cash And Cash Equivalents",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "increase_decrease_in_cash_and_cash_equivalents": {
+        "label": "Increase Decrease In Cash And Cash Equivalents",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_and_cash_equivalents_at_beginning_of_period": {
+        "label": "Cash And Cash Equivalents At Beginning Of Period",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_and_cash_equivalents_at_end_of_period": {
+        "label": "Cash And Cash Equivalents At End Of Period",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      }
+    }
+  },
+  "100700": {
+    "statement": "cash_flow_indirect",
+    "ids": {
+      "statement_of_cash_flows_abstract": {
+        "label": "Statement Of Cash Flows Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "cash_flows_from_used_in_operating_activities_abstract": {
+        "label": "Cash Flows From Used In Operating Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "profit_before_extraordinary_items_and_tax": {
+        "label": "Profit Before Extraordinary Items And Tax",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_reconcile_profit_loss_abstract": {
+        "label": "Adjustments For Reconcile Profit Loss Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "adjustments_to_profit_loss_abstract": {
+        "label": "Adjustments To Profit Loss Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "adjustments_for_finance_costs": {
+        "label": "Adjustments For Finance Costs",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_depreciation_and_amortisation_expense": {
+        "label": "Adjustments For Depreciation And Amortisation Expense",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_impairment_loss_reversal_of_impairment_loss_recognised_in_profit_or_loss": {
+        "label": "Adjustments For Impairment Loss Reversal Of Impairment Loss Recognised In Profit Or Loss",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_unrealised_foreign_exchange_losses_gains": {
+        "label": "Adjustments For Unrealised Foreign Exchange Losses Gains",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_dividend_income": {
+        "label": "Adjustments For Dividend Income",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_sharebased_payments": {
+        "label": "Adjustments For Sharebased Payments",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_adjustments_for_which_cash_effects_are_investing_or_financing_cash_flow": {
+        "label": "Other Adjustments For Which Cash Effects Are Investing Or Financing Cash Flow",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_adjustments_to_reconcile_profit_loss": {
+        "label": "Other Adjustments To Reconcile Profit Loss",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_adjustments_for_noncash_items": {
+        "label": "Other Adjustments For Noncash Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "share_of_profit_and_loss_from_partnership_firm_or_association_of_persons_or_limited_liability_partnerships": {
+        "label": "Share Of Profit And Loss From Partnership Firm Or Association Of Persons Or Limited Liability Partnerships",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_to_profit_loss": {
+        "label": "Adjustments To Profit Loss",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_working_capital_abstract": {
+        "label": "Adjustments For Working Capital Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "adjustments_for_decrease_increase_in_inventories": {
+        "label": "Adjustments For Decrease Increase In Inventories",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_decrease_increase_in_trade_receivables": {
+        "label": "Adjustments For Decrease Increase In Trade Receivables",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_decrease_increase_in_other_current_assets": {
+        "label": "Adjustments For Decrease Increase In Other Current Assets",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_increase_decrease_in_trade_payables": {
+        "label": "Adjustments For Increase Decrease In Trade Payables",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_increase_decrease_in_other_current_liabilities": {
+        "label": "Adjustments For Increase Decrease In Other Current Liabilities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_provisions": {
+        "label": "Adjustments For Provisions",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_working_capital": {
+        "label": "Adjustments For Working Capital",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_reconcile_profit_loss": {
+        "label": "Adjustments For Reconcile Profit Loss",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operations": {
+        "label": "Net Cash From Used In Operations",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_received_classified_as_operating_activities": {
+        "label": "Dividends Received Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_paid_classified_as_operating_activities": {
+        "label": "Interest Paid Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_received_classified_as_operating_activities": {
+        "label": "Interest Received Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_operating_activities": {
+        "label": "Income Taxes Paid Refund Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_operating_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operating_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Operating Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_operating_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_operating_activities": {
+        "label": "Payment For Extraordinary Items Classified As Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_operating_activities": {
+        "label": "Net Cash From Used In Operating Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_from_used_in_investing_activities_abstract": {
+        "label": "Cash Flows From Used In Investing Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "cash_flows_from_losing_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities": {
+        "label": "Cash Flows From Losing Control Of Subsidiaries Or Other Businesses Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_used_in_obtaining_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities": {
+        "label": "Cash Flows Used In Obtaining Control Of Subsidiaries Or Other Businesses Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_receipts_from_sales_of_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities": {
+        "label": "Other Cash Receipts From Sales Of Equity Or Debt Instruments Of Other Entities Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_payments_to_acquire_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities": {
+        "label": "Other Cash Payments To Acquire Equity Or Debt Instruments Of Other Entities Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_receipts_from_sales_of_interests_in_joint_ventures_classified_as_investing_activities": {
+        "label": "Other Cash Receipts From Sales Of Interests In Joint Ventures Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_cash_payments_to_acquire_interests_in_joint_ventures_classified_as_investing_activities": {
+        "label": "Other Cash Payments To Acquire Interests In Joint Ventures Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_share_of_profits_of_partnership_firm_or_association_of_persons_or_limited_liability_partnerships": {
+        "label": "Cash Receipts From Share Of Profits Of Partnership Firm Or Association Of Persons Or Limited Liability Partnerships",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_payment_for_investment_in_partnership_firm_or_association_of_persons_or_limited_liability_partnerships": {
+        "label": "Cash Payment For Investment In Partnership Firm Or Association Of Persons Or Limited Liability Partnerships",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_sales_of_tangible_assets_classified_as_investing_activities": {
+        "label": "Proceeds From Sales Of Tangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "purchase_of_tangible_assets_classified_as_investing_activities": {
+        "label": "Purchase Of Tangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_sales_of_intangible_assets_classified_as_investing_activities": {
+        "label": "Proceeds From Sales Of Intangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "purchase_of_intangible_assets_classified_as_investing_activities": {
+        "label": "Purchase Of Intangible Assets Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_advances_and_loans_made_to_other_parties_classified_as_investing_activities": {
+        "label": "Cash Advances And Loans Made To Other Parties Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_repayment_of_advances_and_loans_made_to_other_parties_classified_as_investing_activities": {
+        "label": "Cash Receipts From Repayment Of Advances And Loans Made To Other Parties Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities": {
+        "label": "Cash Payments For Future Contracts Forward Contracts Option Contracts And Swap Contracts Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities": {
+        "label": "Cash Receipts From Future Contracts Forward Contracts Option Contracts And Swap Contracts Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_received_classified_as_investing_activities": {
+        "label": "Dividends Received Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_received_classified_as_investing_activities": {
+        "label": "Interest Received Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_investing_activities": {
+        "label": "Income Taxes Paid Refund Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_investing_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_government_grants_classified_as_investing_activities": {
+        "label": "Proceeds From Government Grants Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_investing_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Investing Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_investing_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_investing_activities": {
+        "label": "Payment For Extraordinary Items Classified As Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_investing_activities": {
+        "label": "Net Cash From Used In Investing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_flows_from_used_in_financing_activities_abstract": {
+        "label": "Cash Flows From Used In Financing Activities Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "proceeds_from_issuing_shares": {
+        "label": "Proceeds From Issuing Shares",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_issuing_other_equity_instruments": {
+        "label": "Proceeds From Issuing Other Equity Instruments",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_issuing_debentures_notes_bonds_etc": {
+        "label": "Proceeds From Issuing Debentures Notes Bonds Etc",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_borrowings_classified_as_financing_activities": {
+        "label": "Proceeds From Borrowings Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "repayments_of_borrowings_classified_as_financing_activities": {
+        "label": "Repayments Of Borrowings Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "dividends_paid_classified_as_financing_activities": {
+        "label": "Dividends Paid Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "interest_paid_classified_as_financing_activities": {
+        "label": "Interest Paid Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "income_taxes_paid_refund_classified_as_financing_activities": {
+        "label": "Income Taxes Paid Refund Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "other_inflows_outflows_of_cash_classified_as_financing_activities": {
+        "label": "Other Inflows Outflows Of Cash Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_financing_activities_before_extraordinary_items": {
+        "label": "Net Cash From Used In Financing Activities Before Extraordinary Items",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "proceeds_from_extraordinary_items_classified_as_financing_activities": {
+        "label": "Proceeds From Extraordinary Items Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "payment_for_extraordinary_items_classified_as_financing_activities": {
+        "label": "Payment For Extraordinary Items Classified As Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "net_cash_from_used_in_financing_activities": {
+        "label": "Net Cash From Used In Financing Activities",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes": {
+        "label": "Increase Decrease In Cash And Cash Equivalents Before Effect Of Exchange Rate Changes",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "effect_of_exchange_rate_changes_on_cash_and_cash_equivalents_abstract": {
+        "label": "Effect Of Exchange Rate Changes On Cash And Cash Equivalents Abstract",
+        "representation": "text",
+        "ratio_context": null,
+        "currency_context": null,
+        "unit_scale": null,
+        "percent_scale": null,
+        "matchable": false
+      },
+      "effect_of_exchange_rate_changes_on_cash_and_cash_equivalents": {
+        "label": "Effect Of Exchange Rate Changes On Cash And Cash Equivalents",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "increase_decrease_in_cash_and_cash_equivalents": {
+        "label": "Increase Decrease In Cash And Cash Equivalents",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_and_cash_equivalents_at_beginning_of_period": {
+        "label": "Cash And Cash Equivalents At Beginning Of Period",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "cash_and_cash_equivalents_at_end_of_period": {
+        "label": "Cash And Cash Equivalents At End Of Period",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      }
+    }
+  }
+}

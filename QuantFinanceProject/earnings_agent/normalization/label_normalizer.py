@@ -21,6 +21,8 @@ from sqlalchemy.orm.attributes import flag_modified
 
 # --- Configuration ---
 PLAYBOOKS_DIR = Path(__file__).resolve().parents[1] / "playbooks"
+# Portable path: works both locally and inside Docker (/app)
+PLAYBOOK_PATH = PLAYBOOKS_DIR / "sebi" / "metrics" / "sebi_banking.yml"
 LABEL_NORMALIZATION_MODEL = "gemini-2.5-pro"
 
 # --- Logging Setup ---
@@ -35,9 +37,11 @@ Your task is to map a raw financial statement label to its single best-matching 
 You will be provided with:
 1.  **raw_labels**: A list of exact label texts from the financial statement.
 2.  **industry**: The industry of the company (e.g., "Banking", "IT - Software").
-3.  **standard_names**: The official list of valid canonical names for this industry.
+3.  **standard_names**: The official list of valid canonical names **for this statement only**.
 
-**CRITICAL INSTRUCTIONS:**
+**CRITICAL INSTRUCTIONS:
+- Map **only** to the provided `standard_names` for this statement.
+- **Never** map to abstract/heading nodes (they carry no values).**
 1.  **ANALYZE FINANCIAL MEANING, NOT JUST WORDS:** Do not perform a simple semantic search. Understand the financial concept behind the raw_label. Is it a top-line revenue item, an operating expense, a non-recurring item, a balance sheet asset? Your mapping must be financially correct.
 2.  **BE SPECIFIC, DO NOT GENERALIZE:** This is the most important rule. If a specific mapping exists, you must use it. For example:
     - If `raw_label` is "Revenue from Power Segment" and the `standard_names` list contains `segment_revenue`, you MUST map to `segment_revenue`. Mapping to the more general `revenue` would be a critical error.
@@ -57,104 +61,174 @@ Example Format:
 }
 """
 
-class PlaybookLoader:
-    """Handles loading and merging of global and industry-specific playbooks."""
-    def __init__(self, base_dir: Path):
-        self.base_dir = base_dir
-        self.global_playbook = self._load_yaml(base_dir / "global" / "core_metrics.yml")
 
-    def _load_yaml(self, path: Path) -> dict:
+class StatementPlaybookLoader:
+    """
+    Loads the nested SEBI banking playbook (ids + children) and exposes per-statement leaves.
+    Expected YAML: one or multiple documents with top-level keys: statement, nodes.
+    """
+    def __init__(self, playbook_path: Path):
+        self.playbook_path = playbook_path
+        self.statement_trees = self._load_all_statements(playbook_path)
+        # Precompute leaves (exclude Abstract parents)
+        self.statement_leaves = {k: self._flatten_leaves(v) for k, v in self.statement_trees.items()}
+
+    def _load_all_statements(self, path: Path) -> dict:
+        trees = {}
         try:
-            with open(path, 'r') as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            return {}
-        except Exception as e:
-            logger.error(f"Error loading playbook {path}: {e}")
-            return {}
+            with open(path, "r", encoding="utf-8") as f:
+                docs = list(yaml.safe_load_all(f))
+        except Exception:
+            docs = []
+        for doc in docs:
+            if isinstance(doc, dict) and doc.get("statement") and doc.get("nodes"):
+                trees[doc["statement"]] = doc["nodes"]
+        return trees
 
-    def get_playbook(self, industry_name: str) -> dict:
-        """Loads and merges the playbook for a specific industry."""
-        industry_file_name = industry_name.lower().replace(" ", "_").replace("&", "and") + ".yml"
-        industry_playbook = self._load_yaml(self.base_dir / "industry" / industry_file_name)
+    def _flatten_leaves(self, nodes):
+        leaves = []
+        def rec(n):
+            has_children = bool(n.get("children"))
+            if has_children:
+                for ch in n["children"]:
+                    rec(ch)
+            else:
+                leaves.append(n["id"])
+        for node in nodes:
+            rec(node)
+        return leaves
 
-        core_metrics = self.global_playbook.get('core_metrics', [])
-        custom_kpis = industry_playbook.get('custom_kpis', [])
-        
-        return {
-            "standard_names": core_metrics + custom_kpis,
-            "has_industry_playbook": bool(industry_playbook)
-        }
+    def get_leaves_for(self, statement_key: str) -> list:
+        # statement_key expected: 'pnl', 'balance_sheet', 'cash_flow_indirect', 'cash_flow_direct'
+        return self.statement_leaves.get(statement_key, [])
+
+    def available_statements(self):
+        return list(self.statement_trees.keys())
+
 
 def run_label_normalizer_discovery(allow_llm: bool = True):
-    """Finds new, unmapped labels, gets LLM suggestions, and populates the cache for human review."""
-    logger.info("=== Starting Label Normalizer Discovery Phase ===")
+
+    """Find new, unmapped labels per statement, get LLM suggestions, and populate the cache for human review.
+       CHANGE: now runs **statement-by-statement** using the nested playbook for Banking (ELRs 100200/100300/100600/100700).
+    """
+    logger.info("=== Starting Label Normalizer Discovery Phase (Statement-batched) ===")
     session = get_session()
-    playbook_loader = PlaybookLoader(PLAYBOOKS_DIR)
-    processed_in_this_run: Set[Tuple[str, str]] = set() # In-run cache: {(raw_label, industry)}
-    
+    from sqlalchemy import select
+    from earnings_agent.storage.models import StagedNormalizedData
     try:
+        playbook_path = PLAYBOOK_PATH
+        sp_loader = StatementPlaybookLoader(playbook_path)
+
+        docs_to_update_status = []
+        processed_in_this_run = set()
+
         doc_ids = get_docs_pending_label_normalization()
         if not doc_ids:
             logger.info("No documents pending label normalization discovery.")
             return
 
-        logger.info(f"Found {len(doc_ids)} documents for label discovery.")
-        docs_to_update_status = []
-
+        logger.info(f"Found {len(doc_ids)} documents to process for label discovery.")
         for doc_id in doc_ids:
-            record = session.query(StagedNormalizedData).filter_by(doc_id=doc_id).one()
+            record = session.execute(select(StagedNormalizedData).where(StagedNormalizedData.doc_id==doc_id)).scalar_one_or_none()
+            if not record:
+                continue
             company_context = get_company_context(session, record.ticker)
-            
-            if not company_context or not company_context.classification:
-                logger.warning(f"Skipping doc_id {doc_id} for {record.ticker}: No industry classification found.")
-                continue
-            
-            industry = company_context.classification.industry_name
-            playbook = playbook_loader.get_playbook(industry)
-            
-            if not playbook['standard_names']:
-                logger.warning(f"Skipping doc_id {doc_id} for {record.ticker}: No playbook found for industry '{industry}'.")
+            if not company_context:
+                logger.warning(f"Skipping doc_id {doc_id} ({record.ticker}): No company context found.")
                 continue
 
+            industry = company_context.classification.industry_name  # keep using industry for cache key
+            # Skip if the industry has no matching playbook (Banking only for now)
+            if not industry or industry.lower() not in {"banking", "banks"}:
+                logger.info(
+                    f"Skipping doc_id {doc_id}: industry '{industry}' has no playbook."
+                )
+                continue
             unit_data = record.normalized_data.get('unit_normalized_data', {}).get('llm_unit_analysis', {})
-            raw_labels = {fig['label'] for stmt in unit_data.get('statement_analyses', []) for fig in stmt['figures']}
-            
-            # Find which labels are new and need processing
-            new_labels_to_process = []
-            for label in raw_labels:
-                if (label, industry) not in processed_in_this_run:
-                    if not get_label_mapping(label, industry):
+            stmt_analyses = unit_data.get('statement_analyses', [])
+
+            if not stmt_analyses:
+                logger.info(f"No statement analyses found for doc_id {doc_id}.")
+                continue
+
+            for sa in stmt_analyses:
+                std_map = sa.get('standard_mapping', '') or ''
+                figures = sa.get('figures', []) or []
+                if not figures:
+                    continue
+
+                # Map standard_mapping to playbook statement key
+                std_lower = std_map.lower()
+                if 'pnl' in std_lower or 'income' in std_lower:
+                    stmt_key = 'pnl'
+                elif 'balance' in std_lower:
+                    stmt_key = 'balance_sheet'
+                elif 'cash' in std_lower:
+                    # Heuristic to choose indirect vs direct
+                    labels_text = " ".join((f.get('label') or '').lower() for f in figures)
+                    if any(k in labels_text for k in ['profit before', 'extraordinary', 'adjustments', 'working capital']):
+                        stmt_key = 'cash_flow_indirect'
+                    elif any(k in labels_text for k in ['receipts from', 'payments to', 'operating activities - receipts']):
+                        stmt_key = 'cash_flow_direct'
+                    else:
+                        stmt_key = 'cash_flow_indirect'  # default for Indian banks
+                else:
+                    # Unknown statement, skip
+                    logger.info(f"Unknown statement mapping '{std_map}' for doc_id {doc_id}; skipping batch.")
+                    continue
+
+                standard_names = sp_loader.get_leaves_for(stmt_key)
+                if not standard_names:
+                    logger.warning(f"No playbook leaves found for statement '{stmt_key}'.")
+                    continue
+
+                raw_labels_this_stmt = list({(fig.get('label') or '').strip() for fig in figures if fig.get('label')})
+
+                # Determine which labels are new relative to cache
+                new_labels_to_process = []
+                for label in raw_labels_this_stmt:
+                    if (label, industry) not in processed_in_this_run and not get_label_mapping(label, industry):
                         new_labels_to_process.append(label)
-            
-            if allow_llm and new_labels_to_process:
-                logger.info(f"Found {len(new_labels_to_process)} new labels for '{record.ticker}' in '{industry}' industry.")
-                context_payload = json.dumps({
-                    "industry": industry,
-                    "standard_names": playbook['standard_names'],
-                    "raw_labels": new_labels_to_process
-                })
 
-                try:
-                    response_text = call_gemini_with_json(
-                        model_name=LABEL_NORMALIZATION_MODEL,
-                        prompt=LABEL_NORMALIZATION_PROMPT,
-                        context_text=context_payload
-                    )
-                    llm_mappings = json.loads(response_text)
+                if not new_labels_to_process:
+                    continue
 
-                    for label, mapped_label in llm_mappings.items():
-                        upsert_label_mapping({
-                            "raw_label": label,
-                            "industry": industry,
-                            "normalized_label": mapped_label,
-                            "status": 'PENDING_REVIEW',
-                            "source_context": {'doc_id': doc_id, 'ticker': record.ticker}
-                        })
-                        processed_in_this_run.add((label, industry))
-                except Exception as e:
-                    logger.error(f"LLM call failed for doc_id {doc_id}: {e}")
-            
+                if allow_llm:
+                    logger.info(f"[doc {doc_id}] {record.ticker} | {std_map} | batching {len(new_labels_to_process)} new labels")
+                    context_payload = json.dumps({
+                        "industry": industry,
+                        "statement_key": stmt_key,
+                        "statement_name": sa.get('statement_type'),
+                        "statement_currency": sa.get('statement_currency'),
+                        "standard_names": standard_names,
+                        "raw_labels": new_labels_to_process
+                    })
+
+                    try:
+                        response_text = call_gemini_with_json(
+                            model_name=LABEL_NORMALIZATION_MODEL,
+                            prompt=LABEL_NORMALIZATION_PROMPT,
+                            context_text=context_payload
+                        )
+                        llm_mappings = json.loads(response_text)
+
+                        for label, mapped_label in llm_mappings.items():
+                            upsert_label_mapping({
+                                "raw_label": label,
+                                "industry": industry,
+                                "normalized_label": mapped_label,
+                                "status": 'PENDING_REVIEW',
+                                "source_context": {
+                                    'doc_id': doc_id,
+                                    'ticker': record.ticker,
+                                    'statement_key': stmt_key,
+                                    'standard_mapping': std_map
+                                }
+                            })
+                            processed_in_this_run.add((label, industry))
+                    except Exception as e:
+                        logger.error(f"LLM call failed for doc_id {doc_id} / {std_map}: {e}")
+
             docs_to_update_status.append(doc_id)
 
         if docs_to_update_status:
@@ -165,10 +239,13 @@ def run_label_normalizer_discovery(allow_llm: bool = True):
         session.close()
     logger.info("=== Label Normalizer Discovery Phase Complete ===")
 
+
 def run_label_normalizer_application():
     """Finds documents where all labels are approved and creates the final normalized data structure."""
     logger.info("=== Starting Label Normalizer Application Phase ===")
     session = get_session()
+    from sqlalchemy import select
+    from earnings_agent.storage.models import StagedNormalizedData
     try:
         doc_ids = get_docs_pending_label_review()
         if not doc_ids:
