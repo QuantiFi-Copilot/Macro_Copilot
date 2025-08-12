@@ -1,0 +1,268 @@
+﻿Sr,prefix,name,label,verbose,role,Publisher,Name,Paragraph,Section
+1,in-capmkt,AdditionalTier1Ratio,Additional tier 1 ratio,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+2,in-capmkt,AdjustmentsForDecreaseIncreaseInInventories,Adjustments for decrease (increase) in inventories,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 a,
+3,in-capmkt,AdjustmentsForDecreaseIncreaseInOtherCurrentAssets,Adjustments for decrease (increase) in other current assets,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20,
+4,in-capmkt,AdjustmentsForDepreciationAndAmortisationExpense,Adjustments for depreciation and amortisation expense,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 b,
+5,in-capmkt,AdjustmentsForDividendIncome,Adjustments for dividend income,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20,
+6,in-capmkt,AdjustmentsForFinanceCosts,Adjustments for finance costs,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 c,
+7,in-capmkt,AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss,Adjustments for impairment loss reversal of impairment loss recognised in profit or loss,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 b,
+8,in-capmkt,AdjustmentsForIncreaseDecreaseInOtherCurrentLiabilities,Adjustments for increase (decrease) in other current liabilities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20,
+9,in-capmkt,AdjustmentsForReconcileProfitLoss,Adjustments for reconcile profit (loss),,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 c,
+10,in-capmkt,AdjustmentsForSharebasedPayments,Adjustments for share-based payments,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 b,
+11,in-capmkt,AdjustmentsForUnrealisedForeignExchangeLossesGains,Adjustments for unrealised foreign exchange losses gains,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 b,
+12,in-capmkt,Advances,Advances,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+13,in-capmkt,AmountOfDefaultOutOfTotalOutstandingAmountOfLoansOrRevolvingFacilitiesAtTheEndOfPeriod,Amount of default out of total outstanding amount of loans or revolving facilities at the end of period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 30
+14,in-capmkt,AmountOfDefaultOutOfTotalOutstandingAmountOfUnlistedDebtSecuritiesAtTheEndOfPeriod,Amount of default out of total outstanding amount of unlisted debt securities at the end of period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 30
+15,in-capmkt,AmountOfDeviationOrVariationForTheQuarterAccordingToApplicableObject,Amount of deviation or variation for the quarter according to applicable object,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+16,in-capmkt,AmountOfRelatedPartyTransaction,Amount of related party transaction,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+17,in-capmkt,AmountOfRelatedPartyTransactionDuringTheReportingPeriod,Amount of related party transaction during the reporting period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+18,in-capmkt,AmountOfTotalFinancialIndebtednessOfTheListedEntityIncludingShortTermAndLongTermDebtAtTheEndOfPeriod,Amount of total financial indebtedness of the listed entity including short-term and long-term debt at the end of period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 30
+19,in-capmkt,AmountRaised,Amount raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+20,in-capmkt,AnalyticalRatiosAbstract,Analytical ratios [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+21,in-capmkt,Assets,Assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II Annexure IX,Regulation 33
+22,in-capmkt,Assets,Assets,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,Part I of - Balance sheet-Assets,
+23,in-capmkt,AssetsAbstract,Assets [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II Annexure IX,Regulation 33
+24,in-capmkt,BalancesWithBanksAndMoneyAtCallAndShortNotice,Balances with banks and money at call and short notice,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+25,in-capmkt,BasicEarningsPerShareAfterExtraordinaryItems,Basic earnings per share after extraordinary items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+26,in-capmkt,BasicEarningsPerShareBeforeExtraordinaryItems,Basic earnings per share before extraordinary items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+27,in-capmkt,Borrowings,Borrowings,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+28,in-capmkt,Capital,Capital,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+29,in-capmkt,CapitalAdequacyRatioAbstract,Capital adequacy ratio [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+30,in-capmkt,CapitalAndLiabilities,Capital and Liabilities,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+31,in-capmkt,CapitalAndLiabilitiesAbstract,Capital and liabilities [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+32,in-capmkt,CashAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash advances and loans made to other parties classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 e,
+33,in-capmkt,CashAndBalancesWithReserveBankOfIndia,Cash and balances with Reserve Bank of India,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+34,in-capmkt,CashAndCashEquivalentsCashFlowStatement,Cash and cash equivalents cash flow statement,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 45,
+35,in-capmkt,CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows from losing control of subsidiaries or other businesses classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 39,
+36,in-capmkt,CashFlowsFromUsedInFinancingActivities,Cash flows from used in financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 50 d,
+37,in-capmkt,CashFlowsFromUsedInInvestingActivities,Cash flows from used in investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 50 d,
+38,in-capmkt,CashFlowsFromUsedInOperatingActivities,Cash flows from used in operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 10,
+39,in-capmkt,CashFlowsFromUsedInOperations,Cash flows from used in operations,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7,
+40,in-capmkt,CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows used in obtaining control of subsidiaries or other businesses classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 39,
+41,in-capmkt,CashPaymentForInvestmentInPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash payment for investment in partnership firm or association of persons or limited liability partnerships,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 e,
+42,in-capmkt,CashPaymentsForFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash payments for future contracts forward contracts option contracts and swap contracts classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 g,
+43,in-capmkt,CashReceiptsFromFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash receipts from future contracts forward contracts option contracts and swap contracts classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 h,
+44,in-capmkt,CashReceiptsFromRepaymentOfAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash receipts from repayment of advances and loans made to other parties classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 f,
+45,in-capmkt,CashReceiptsFromShareOfProfitsOfPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash receipts from share of profits of partnership firm or association of persons or limited liability partnerships,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 e,
+46,in-capmkt,CET1Ratio,CET 1 ratio,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+47,in-capmkt,ClassOfSecurity,Class of security,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+48,in-capmkt,CommentsOfTheAuditCommitteeAfterReview,Comments of the audit committee after review,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+49,in-capmkt,CommentsOfTheAuditors,Comments of the auditors,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+50,in-capmkt,CostOfFinancialIndebtedness,Cost of financial indebtedness,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+51,in-capmkt,DateOfBoardMeetingWhenFinancialResultsWereApproved,Date of board meeting when financial results were approved,,http://www.xbrl.org/2003/role/reference,BSE,,,
+52,in-capmkt,DateOfEndOfFinancialYear,Date of end of financial year,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+53,in-capmkt,DateOfEndOfReportingPeriod,Date of end of reporting period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+54,in-capmkt,DateOfFundsRaising,Date of funds raising,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+55,in-capmkt,DateOfShareholderApproval,Date of shareholder approval,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+56,in-capmkt,DateOfStartOfFinancialYear,Date of start of financial year,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+57,in-capmkt,DateOfStartOfReportingPeriod,Date of start of reporting period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+58,in-capmkt,DateOfStatementOfDeviationOrVariationInUtilisationOfFundsRaised,Date of signing of statement of deviation or variation in utilisation of funds raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+59,in-capmkt,DateOnWhichPriorIntimationOfTheMeetingForConsideringFinancialResultsWasInformedToTheExchange,Date on which prior intimation of the meeting for considering financial results was informed to the exchange,,http://www.xbrl.org/2003/role/reference,BSE,,,
+60,in-capmkt,DeclarationOfUnmodifiedOpinionOrStatementOnImpactOfAuditQualification,Declaration of unmodified opinion or statement on impact of audit qualification,,http://www.xbrl.org/2003/role/reference,BSE,,,
+61,in-capmkt,Deposits,Deposits,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+62,in-capmkt,DescriptionOfModeOfFundRaising,Description of mode of fund raising,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+63,in-capmkt,DescriptionOfOperatingExpenses,Description of operating expenses,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+64,in-capmkt,DescriptionOfPresentationCurrency,Description of presentation currency,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+65,in-capmkt,DescriptionOfReportableSegment,Description of reportable segment,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+66,in-capmkt,DescriptionOfSingleSegment,Description of single segment,,http://www.xbrl.org/2003/role/reference,BSE,,,
+67,in-capmkt,DesignationOfPersonOfStatementOfDeviationOrVariationInUtilisationOfFundsRaised,Designation of person of statement of deviation or variation in utilisation of funds raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+68,in-capmkt,DetailsOfPaidUpEquityShareCapitalAbstract,Details of paid-up equity share capital [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+69,in-capmkt,DetailsOfSignatoryOfStatementOfDeviationOrVariationInUtilisationOfFundsRaisedAbstract,Details of signatory of statement of deviation or variation in utilisation of funds raised [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+70,in-capmkt,DilutedEarningsPerShareAfterExtraordinaryItems,Diluted earnings per share after extraordinary items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+71,in-capmkt,DilutedEarningsPerShareBeforeExtraordinaryItems,Diluted earnings per share before extraordinary items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+72,in-capmkt,DisclosureNotesOnObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviation,Disclosure notes on Objects for which funds have been raised and where there has been a deviation,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+73,in-capmkt,DisclosureOfNotesOnAssetsAndLiabilitiesExplanatoryTextBlock,Disclosure of notes on assets and liabilities explanatory [Text Block],,http://www.xbrl.org/2003/role/reference,BSE,,,
+74,in-capmkt,DisclosureOfNotesOnFinancialResultsExplanatoryTextBlock,Disclosure of notes on financial results explanatory [Text Block],,http://www.xbrl.org/2003/role/reference,BSE,,,
+75,in-capmkt,DisclosureOfNotesOnSegmentsExplanatoryTextBlock,Disclosure of notes on segments explanatory [text block],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+76,in-capmkt,DisclosureOfOperationalResultAbstract,Disclosure of operational result [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+77,in-capmkt,DisclosureOfRevenueFromOperationsAbstract,Disclosure of revenue from operations [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+78,in-capmkt,DisclosuresRelatingToSegmentAbstract,Disclosures relating to segment [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+79,in-capmkt,DisclosuresRelatingToSegmentAssetsAbstract,Disclosures relating to segment assets [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+80,in-capmkt,DisclosuresRelatingToSegmentAssetsLineItems,Disclosures relating to segment assets [Line items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+81,in-capmkt,DisclosuresRelatingToSegmentAssetsTable,Disclosures relating to segment assets [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+82,in-capmkt,DisclosuresRelatingToSegmentLiabilitiesAbstract,Disclosures relating to segment liabilities [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+83,in-capmkt,DisclosuresRelatingToSegmentLiabilitiesLineItems,Disclosures relating to segment liabilities [Line items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+84,in-capmkt,DisclosuresRelatingToSegmentLiabilitiesTable,Disclosures relating to segment liabilities [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+85,in-capmkt,DisclosuresRelatingToSegmentResultAbstract,Disclosures relating to segment result [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+86,in-capmkt,DisclosuresRelatingToSegmentResultLineItems,Disclosures relating to segment result [Line items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+87,in-capmkt,DisclosuresRelatingToSegmentResultTable,Disclosures relating to segment result [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+88,in-capmkt,DisclosuresRelatingToSegmentRevenueAbstract,Disclosures relating to segment revenue [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+89,in-capmkt,DisclosuresRelatingToSegmentRevenueLineItems,Disclosures relating to segment revenue [Line items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+90,in-capmkt,DisclosuresRelatingToSegmentRevenueTable,Disclosures relating to segment revenue [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+91,in-capmkt,DividendsPaidClassifiedAsFinancingActivities,Dividends paid classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+92,in-capmkt,DividendsReceivedClassifiedAsInvestingActivities,Dividends received classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+93,in-capmkt,DividendsReceivedClassifiedAsOperatingActivities,Dividends received classified as operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+94,in-capmkt,EarningsPerShareAbstract,Earnings per share [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+95,in-capmkt,EarningsPerShareAfterExtraordinaryItemsAbstract,Earnings per share after extraordinary items [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+96,in-capmkt,EarningsPerShareBeforeExtraordinaryItemsAbstract,Earnings per share before extraordinary items [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+97,in-capmkt,EffectOfExchangeRateChangesOnCashAndCashEquivalents,Effect of exchange rate changes on cash and cash equivalents,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 28,
+98,in-capmkt,EmployeesCost,Employees cost,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+99,in-capmkt,EndTimeOfBoardMeeting,End time of board meeting,,http://www.xbrl.org/2003/role/reference,BSE,,,
+100,in-capmkt,ExceptionalItems,Exceptional items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+101,in-capmkt,ExpenditureExcludingProvisionsAndContingencies,Expenditure excluding provisions and contingencies,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+102,in-capmkt,ExpensesAbstract,Expenses [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II,Regulation 33
+103,in-capmkt,ExplanationForTheDeviationOrVariation,Explanation for the deviation or variation,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+104,in-capmkt,ExtraordinaryItems,Extraordinary items,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+105,in-capmkt,FaceValueOfEquityShareCapital,Face value of equity share capital,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+106,in-capmkt,FixedAssets,Fixed assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II Annexure IX,Regulation 33
+107,in-capmkt,FundsUtilised,Funds Utilised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+108,in-capmkt,GeneralInformationAbstract,General information [Abstract],,http://www.xbrl.org/2003/role/reference,BSE,,,
+109,in-capmkt,GrossNonPerformingAssets,Gross non-performing assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+110,in-capmkt,Income,Income,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+111,in-capmkt,Income,Income,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,Part II of - Statement of Profit and loss (III),
+112,in-capmkt,IncomeTaxesPaidRefundClassifiedAsFinancingActivities,Income taxes paid (refund) classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 f,
+113,in-capmkt,IncomeTaxesPaidRefundClassifiedAsInvestingActivities,Income taxes paid (refund) classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 f,
+114,in-capmkt,IncomeTaxesPaidRefundClassifiedAsOperatingActivities,Income taxes paid (refund) classified as operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 35,
+115,in-capmkt,IncreaseDecreaseInCashAndCashEquivalents,Increase (decrease) in cash and cash equivalents,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 45,
+116,in-capmkt,IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges,Increase (decrease) in cash and cash equivalents before effect of exchange rate changes,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 45,
+117,in-capmkt,InterestEarned,Interest earned,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+118,in-capmkt,InterestEarnedAbstract,Interest earned [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+119,in-capmkt,InterestExpended,Interest expended,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+120,in-capmkt,InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds,Interest on balances with reserve bank of India and other inter-bank funds,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+121,in-capmkt,InterestOrDiscountOnAdvancesOrBills,Interest or discount on advances or bills,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+122,in-capmkt,InterestPaidClassifiedAsFinancingActivities,Interest paid classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+123,in-capmkt,InterestPaidClassifiedAsOperatingActivities,Interest paid classified as operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+124,in-capmkt,InterestRateOfLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Interest rate of loans inter corporate deposits advances or investments,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+125,in-capmkt,InterestReceivedClassifiedAsInvestingActivities,Interest received classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+126,in-capmkt,InterestReceivedClassifiedAsOperatingActivities,Interest received classified as operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 31,
+127,in-capmkt,InterSegmentRevenue,Inter segment revenue,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+128,in-capmkt,Investments,Investments,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+129,in-capmkt,IsCompanyReportingMultisegmentOrSingleSegment,Is company reporting multi segment or single segment,,http://www.xbrl.org/2003/role/reference,BSE,,,
+130,in-capmkt,ISIN,ISIN,,http://www.xbrl.org/2003/role/reference,BSE,,,
+131,in-capmkt,IsThereADeviationOrVariationInUseOfFundsRaised,Is there a deviation or variation in use of funds raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+132,in-capmkt,LevelOfRounding,Level of rounding,,http://www.xbrl.org/2003/role/reference,BSE,,,
+133,in-capmkt,Liabilities,Liabilities,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,Part I of - Balance sheet - Equity And Liabilities (2),
+134,in-capmkt,ModeOfFundRaising,Mode of fund raising,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+135,in-capmkt,ModifiedAllocation,Modified allocation,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+136,in-capmkt,ModifiedObject,Modified Object,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+137,in-capmkt,MonitoringAgency,Monitoring agency,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+138,in-capmkt,MSEISymbol,MSEI symbol,,http://www.xbrl.org/2003/role/reference,BSE,,,
+139,in-capmkt,NameOfBank,Name of bank,,http://www.xbrl.org/2003/role/reference,BSE,,,
+140,in-capmkt,NameOfCounterParty,Name of counter party,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+141,in-capmkt,NameOfListedEntityOrSubsidiaryEnteringIntoTheTransaction,Name of listed entity or subsidiary entering into the transaction,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+142,in-capmkt,NameOfMonitoringAgency,Name of monitoring agency,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+143,in-capmkt,NameOfSignatoryOfStatementOfDeviationOrVariationInUtilisationOfFundsRaised,Name of signatory of statement of deviation or variation in utilisation of funds raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+144,in-capmkt,NatureOfFinancialIndebtedness,Nature of financial indebtedness,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+145,in-capmkt,NatureOfReportStandaloneConsolidated,Nature of report standalone consolidated,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+146,in-capmkt,NatureOfTheLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Nature of the loans inter corporate deposits advances or investments,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+147,in-capmkt,NetSegmentAssets,Net segment assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+148,in-capmkt,NetSegmentLiabilities,Net segment liabilities,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+149,in-capmkt,NonPerformingAssets,Non-performing assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+150,in-capmkt,NpaRatiosAbstract,NPA Ratios [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+151,in-capmkt,ObjectAxis,Object [Axis],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+152,in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationAbstract,Objects for which funds have been raised and where there has been a deviation [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+153,in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationLineItems,Objects for which funds have been raised and where there has been a deviation [Line Items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+154,in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationTable,Objects for which funds have been raised and where there has been a deviation [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+155,in-capmkt,OperatingExpenses,Operating expenses,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+156,in-capmkt,OperatingExpensesAbstract,Operating expenses [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+157,in-capmkt,OperatingProfitBeforeProvisionAndContingencies,Operating profit before provision and contingencies,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+158,in-capmkt,OriginalAllocation,Original Allocation,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+159,in-capmkt,OriginalObject,Original Object,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+160,in-capmkt,OtherAdjustmentsForNoncashItems,Other adjustments for non-cash items,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 b,
+161,in-capmkt,OtherAdjustmentsForWhichCashEffectsAreInvestingOrFinancingCashFlow,Other adjustments for which cash effects are investing or financing cash flow,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 c,
+162,in-capmkt,OtherAdjustmentsToReconcileProfitLoss,Other adjustments to reconcile profit (loss),,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20,
+163,in-capmkt,PlaceOfStatementOfDeviationOrVariationInUtilisationOfFundsRaised,Place of statement of deviation or variation in utilisation of funds raised,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+164,in-capmkt,ProceedsFromBorrowingsClassifiedAsFinancingActivities,Proceeds from borrowings classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 17 c,
+165,in-capmkt,ProceedsFromGovernmentGrantsClassifiedAsInvestingActivities,Proceeds from government grants classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 20 28,
+166,in-capmkt,ProceedsFromIssuingDebenturesNotesBondsEtc,Proceeds from issuing debentures notes bonds etc,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 17 c,
+167,in-capmkt,ProceedsFromIssuingOtherEquityInstruments,Proceeds from issuing other equity instruments,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 17 a,
+168,in-capmkt,ProceedsFromSalesOfIntangibleAssetsClassifiedAsInvestingActivities,Proceeds from sales of intangible assets classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 b,
+169,in-capmkt,ProfitBeforeExtraordinaryItemsAndTax,Profit before extraordinary items and tax,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,PART II – STATEMENT OF PROFIT AND LOSS  (VII),
+170,in-capmkt,ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates,Profit (loss) after taxes minority interest and share of profit (loss) of associates,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+171,in-capmkt,ProfitLossForThePeriod,Profit (loss) for the period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+172,in-capmkt,ProfitLossFromOrdinaryActivitiesAfterTax,Profit (loss) from ordinary activities after tax,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+173,in-capmkt,ProfitLossFromOrdinaryActivitiesBeforeTax,Profit (loss) from ordinary activities before tax,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+174,in-capmkt,ProfitLossOfMinorityInterest,Profit (loss) of minority interest,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+175,in-capmkt,ProvisionsOtherThanTaxAndContingencies,Provisions other than tax and contingencies,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+176,in-capmkt,PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities,Purchase of intangible assets classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 a,
+177,in-capmkt,PurposeForWhichTheFundsWillBeUtilisedByTheUltimateRecipientOfFundsForEndusage,Purpose for which the funds will be utilised by the ultimate recipient of funds for end-usage,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+178,in-capmkt,ReceiptsFromPremiumsAndClaimsAnnuitiesAndOtherPolicyBenefits,Receipts from premiums and claims annuities and other policy benefits,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 e,
+179,in-capmkt,ReceiptsFromRoyaltiesFeesCommissionsAndOtherRevenue,Receipts from royalties fees commissions and other revenue,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 b,
+180,in-capmkt,ReceiptsFromSalesOfGoodsAndRenderingOfServices,Receipts from sales of goods and rendering of services,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 a,
+181,in-capmkt,RelationshipOfTheCounterpartyWithTheListedEntityOrItsSubsidiary,Relationship of the counterparty with the listed entity or its subsidiary,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+182,in-capmkt,RepaymentsOfBorrowingsClassifiedAsFinancingActivities,Repayments of borrowings classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 17 d,
+183,in-capmkt,ReportableSegmentAssetsAxis,Reportable segment assets [Axis],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+184,in-capmkt,ReportableSegmentLiabilitiesAxis,Reportable segment liabilities [Axis],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+185,in-capmkt,ReportableSegments10Member,Reportable segments 10 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+186,in-capmkt,ReportableSegments11Member,Reportable segments 11 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+187,in-capmkt,ReportableSegments12Member,Reportable segments 12 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+188,in-capmkt,ReportableSegments13Member,Reportable segments 13 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+189,in-capmkt,ReportableSegments14Member,Reportable segments 14 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+190,in-capmkt,ReportableSegments15Member,Reportable segments 15 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+191,in-capmkt,ReportableSegments1Member,Reportable segments 1 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+192,in-capmkt,ReportableSegments2Member,Reportable segments 2 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+193,in-capmkt,ReportableSegments3Member,Reportable segments 3 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+194,in-capmkt,ReportableSegments4Member,Reportable segments 4 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+195,in-capmkt,ReportableSegments5Member,Reportable segments 5 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+196,in-capmkt,ReportableSegments6Member,Reportable segments 6 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+197,in-capmkt,ReportableSegments7Member,Reportable segments 7 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+198,in-capmkt,ReportableSegments8Member,Reportable segments 8 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+199,in-capmkt,ReportableSegments9Member,Reportable segments 9 [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+200,in-capmkt,ReportableSegmentsAxis,Reportable segments [Axis],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+201,in-capmkt,ReportableSegmentsMember,Reportable segments [Member],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+202,in-capmkt,ReportingQuarter,Reporting quarter,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+203,in-capmkt,ReserveExcludingRevaluationReserves,Reserve excluding revaluation reserves,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+204,in-capmkt,ReservesAndSurplus,Reserves and surplus,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II Annexure IX,Regulation 33
+205,in-capmkt,ReturnOnAssets,Return on assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+206,in-capmkt,RevenueOnInvestments,Revenue on investments,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+207,in-capmkt,ScripCode,Scrip code,,http://www.xbrl.org/2003/role/reference,BSE,,,
+208,in-capmkt,SegmentAssets,Segment assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+209,in-capmkt,SegmentFinanceCosts,Segment finance costs,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+210,in-capmkt,SegmentLiabilities,Segment liabilities,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+211,in-capmkt,SegmentProfitBeforeTax,Segment profit before tax,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+212,in-capmkt,SegmentProfitLossBeforeTaxAndFinanceCosts,Segment profit (loss) before tax and finance costs,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+213,in-capmkt,SegmentRevenue,Segment revenue,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+214,in-capmkt,SegmentRevenueFromOperations,Segment revenue from operations,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+215,in-capmkt,ShareOfProfitAndLossFromPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Share of profit and loss from partnership firm or association of persons or limited liability partnerships,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 20 c,
+216,in-capmkt,ShareOfProfitLossOfAssociates,Share of profit (loss) of associates,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+217,in-capmkt,StartTimeOfBoardMeeting,Start time of board meeting,,http://www.xbrl.org/2003/role/reference,BSE,,,
+218,in-capmkt,StatementOfAssetsAndLiabilitiesAbstract,Statement of assets and liabilities [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+219,in-capmkt,StatementOfDeviationAbstract,Statement of deviation [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+220,in-capmkt,StatementOfDeviationAxis,Statement of deviation [Axis],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+221,in-capmkt,StatementOfDeviationLineItems,Statement of deviation [Line Items],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+222,in-capmkt,StatementOfDeviationOrVariationInUtilisationOfFundsRaisedAbstract,Statement of Deviation / Variation in utilisation of funds raised [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+223,in-capmkt,StatementOfDeviationTable,Statement of deviation [Table],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+224,in-capmkt,StatementOfFinancialResultsByBanksAbstract,Statement of financial results by banks [Abstract],,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+225,in-capmkt,Symbol,Symbol,,http://www.xbrl.org/2003/role/reference,BSE,,,
+226,in-capmkt,TaxExpense,Tax expense,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+227,in-capmkt,TaxExpense,Tax expense,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,Part II of - Statement of Profit and loss (VIII),
+228,in-capmkt,TenureOfFinancialIndebtedness,Tenure of financial indebtedness,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+229,in-capmkt,TenureOfLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Tenure of loans inter corporate deposits advances or investments,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+230,in-capmkt,TotalOutstandingAmountOfLoansOrRevolvingFacilitiesAtTheEndOfPeriod,Total outstanding amount of loans or revolving facilities at the end of period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 30
+231,in-capmkt,TotalOutstandingAmountOfUnlistedDebtSecuritiesAtTheEndOfPeriod,Total outstanding amount of unlisted debt securities at the end of period,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 30
+232,in-capmkt,TypeOfLoansOrInterCorporateDepositsOrAdvancesOrInvestmentsSecuredOrUnsecured,Type of loans inter corporate deposits advances or investments (Secured/ Unsecured),,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+233,in-capmkt,TypeOfRelatedPartyTransaction,Type of related party transaction,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+234,in-capmkt,UnAllocableAssets,Un-allocable assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+235,in-capmkt,UnAllocableLiabilities,Un-allocable liabilities,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+236,in-capmkt,ValueOfTheRelatedPartyTransactionAsApprovedByTheAuditCommittee,Value of the related party transaction as approved by the audit committee,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+237,in-capmkt,ValueOfTheRelatedPartyTransactionRatifiedByTheAuditCommittee,Value of the related party transaction ratified by the audit committee,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+238,in-capmkt,WhetherCashFlowStatementIsApplicableOnCompany,Whether cash flow statement is applicable on company,,http://www.xbrl.org/2003/role/reference,MCA,Common practice,,
+239,in-capmkt,WhetherResultsAreAuditedOrUnaudited,Whether results are audited or unaudited,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+240,in-capmkt,WhetherTheDeviationOrVariationInUseOfFundsIsPursuantToChangeInTermsOfAContractOrObjectsWhichWasApprovedByTheShareholders,Whether the deviation or variation in use of funds is pursuant to change in terms of a contract or objects which was approved by the shareholders,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 32(1)
+241,in-capmkt,OtherAssets,Other assets,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+242,in-capmkt,OtherCashPaymentsFromOperatingActivities,Other cash payments from operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14,
+243,in-capmkt,OtherCashPaymentsToAcquireEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash payments to acquire equity or debt instruments of other entities classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 c,
+244,in-capmkt,OtherCashPaymentsToAcquireInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash payments to acquire interests in joint ventures classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 c,
+245,in-capmkt,OtherCashReceiptsFromOperatingActivities,Other cash receipts from operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14,
+246,in-capmkt,OtherCashReceiptsFromSalesOfEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash receipts from sales of equity or debt instruments of other entities classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 d,
+247,in-capmkt,OtherCashReceiptsFromSalesOfInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash receipts from sales of interests in joint ventures classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 16 d,
+248,in-capmkt,OtherIncome,Other income,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+249,in-capmkt,OtherIncome,Other income,,http://www.xbrl.org/2003/role/reference,MCA,Schedule III,Part II of - Statement of Profit and loss (II),
+250,in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities,Other inflows (outflows) of cash classified as financing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14,
+251,in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities,Other inflows (outflows) of cash classified as investing activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14,
+252,in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities,Other inflows (outflows) of cash classified as operating activities,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14,
+253,in-capmkt,OtherInterest,Other interest,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+254,in-capmkt,OtherLiabilitiesAndProvisions,Other liabilities and provisions,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+255,in-capmkt,OtherOperatingExpenses,Other operating expenses,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+256,in-capmkt,OtherUnallocableExpenditureNetOffUnAllocableIncome,Other un-allocable expenditure net off un-allocable income,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure IV,Regulation 33
+257,in-capmkt,PaidUpValueOfEquityShareCapital,Paid-up equity share capital,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure I Annexure II Annexure III,Regulation 33
+258,in-capmkt,PANOfCounterParty,PAN of counter party,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+259,in-capmkt,PANOfListedEntityOrSubsidiaryEnteringIntoTheTransaction,PAN of listed entity or subsidiary entering into the transaction,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,,Regulation 23(9)
+260,in-capmkt,PaymentsForPremiumsAndClaimsAnnuitiesAndOtherPolicyBenefits,Payments for premiums and claims annuities and other policy benefits,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 e,
+261,in-capmkt,PaymentsToAndOnBehalfOfEmployees,Payments to and on behalf of employees,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 d,
+262,in-capmkt,PaymentsToSuppliersForGoodsAndServices,Payments to suppliers for goods and services,,http://www.xbrl.org/2003/role/reference,ICAI,Indian accounting standard,Ind AS 7 14 c,
+263,in-capmkt,PercentageOfGrossNpa,Percentage of gross NPA,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+264,in-capmkt,PercentageOfNpa,Percentage of net NPA,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+265,in-capmkt,PercentageOfShareHeldByGovernmentOfIndia,Percentage of share held by government of India,,http://www.xbrl.org/2003/role/reference,SEBI,Listing Regulations,Annexure II,Regulation 33
+,,,,,,,,,
+,,,,,,,,,

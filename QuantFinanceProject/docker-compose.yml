@@ -161,10 +161,14 @@ services:
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.parsing.xbrl.xbrl_parser_task"
     ]
+# Add this service to your docker-compose.yml file
+# This replaces the existing pdf-parser service with the enhanced version
+
+  # Enhanced PDF Parser - Complete Pipeline
   pdf-parser:
     image: quantfinanceproject:latest
     container_name: pdf-parser
-    restart: "no" # This is a one-off task
+    restart: "no" # One-off task, set to "unless-stopped" for continuous processing
     depends_on:
       tsdb:
         condition: service_healthy
@@ -172,19 +176,85 @@ services:
     volumes:
       - .:/app
       - ./.env:/app/.env
-      # Mount the GCP key securely (read-only)
+      # Mount GCP credentials securely (read-only)
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
+    environment:
+      # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      # Google Cloud Configuration
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=pdf-extractor-467911
+      - GOOGLE_CLOUD_LOCATION=us-central1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+      
+      # System Configuration
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+    # Main command - runs the complete enhanced pipeline
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.parsing.pdf.pdf_parser_task"
+    ]
+
+  # Alternative: Isolation-only service (if you want to run phases separately)
+  pdf-isolator:
+    image: quantfinanceproject:latest
+    container_name: pdf-isolator
+    restart: "no"
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
       - ./gcp-credentials.json:/app/gcp-credentials.json:ro
     environment:
       - EARNINGS_DB_HOST=tsdb
       - EARNINGS_DB_USER=${EARNINGS_DB_USER}
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
-      - TZ=Asia/Kolkata
-      # Tell the Google library where to find the key
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=pdf-extractor-467911
+      - GOOGLE_CLOUD_LOCATION=us-central1
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
     command: [
       "micromamba", "run", "-n", "quant-env",
-      "python", "-m", "earnings_agent.parsing.pdf.pdf_parser_task"
+      "python", "-m", "earnings_agent.parsing.pdf.pdf_isolator_task"
+    ]
+
+  # Alternative: Extraction-only service (if you want to run phases separately)
+  pdf-extractor:
+    image: quantfinanceproject:latest
+    container_name: pdf-extractor
+    restart: "no"
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
+    environment:
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=pdf-extractor-467911
+      - GOOGLE_CLOUD_LOCATION=us-central1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.parsing.pdf.pdf_extractor_task"
     ]
 
 # ─────────────────────────────────────────────────────────────

@@ -273,7 +273,7 @@ def run_unit_normalizer_discovery(allow_llm: bool):
             return
         
         # Using temporary slice for testing
-        doc_ids_to_process = doc_ids[:2]
+        doc_ids_to_process = doc_ids[:0]
         logger.info(f"Found {len(doc_ids_to_process)} documents for unit analysis (out of {len(doc_ids)} total)")
         
         status_updates = {}

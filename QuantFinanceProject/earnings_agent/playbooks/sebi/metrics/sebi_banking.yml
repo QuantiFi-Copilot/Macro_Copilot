@@ -28,7 +28,7 @@ nodes:
         - id: employees_cost
         - id: other_operating_expenses
         - id: operating_expenses
-        - id: total_expenditure_excluding_provisions_and_contingencies
+      - id: total_expenditure_excluding_provisions_and_contingencies
     - id: operating_profit_before_provision_and_contingencies
     - id: provisions_other_than_tax_and_contingencies
     - id: exceptional_items

@@ -1,0 +1,284 @@
+﻿LinkRole,[100800] Other operating expenses,,
+prefix,name,label,order
+in-capmkt,DetailsOfOtherOperatingExpensesAbstract,Details of other operating expenses [Abstract],
+in-capmkt,DetailsOfOtherOperatingExpensesTable,Details of other operating expenses [Table],1.0 
+in-capmkt,DetailsOfOtherOperatingExpensesAxis,Details of other operating expenses [Axis],1.0 
+in-capmkt,OtherOperatingExpensesMember,Other operating expenses [Member],1.0 
+in-capmkt,OtherOperatingExpenses1Member,Other operating expenses 1 [Member],1.0 
+in-capmkt,OtherOperatingExpenses2Member,Other operating expenses 2 [Member],2.0 
+in-capmkt,OtherOperatingExpenses3Member,Other operating expenses 3 [Member],3.0 
+in-capmkt,OtherOperatingExpenses4Member,Other operating expenses 4 [Member],4.0 
+in-capmkt,OtherOperatingExpenses5Member,Other operating expenses 5 [Member],5.0 
+in-capmkt,OtherOperatingExpenses6Member,Other operating expenses 6 [Member],6.0 
+in-capmkt,OtherOperatingExpenses7Member,Other operating expenses 7 [Member],7.0 
+in-capmkt,OtherOperatingExpenses8Member,Other operating expenses 8 [Member],8.0 
+in-capmkt,OtherOperatingExpenses9Member,Other operating expenses 9 [Member],9.0 
+in-capmkt,OtherOperatingExpenses10Member,Other operating expenses 10 [Member],10.0 
+in-capmkt,DetailsOfOtherOperatingExpensesLineItems,Details of other operating expenses [Line items],2.0 
+in-capmkt,DescriptionOfOperatingExpenses,Description of operating expenses,1.0 
+in-capmkt,OtherOperatingExpenses,Other operating expenses,2.0 
+,,,
+,,,
+LinkRole,[900000] Axis-Defaults,,
+prefix,name,label,order
+in-capmkt,DetailsOfOtherOperatingExpensesAxis,Details of other operating expenses [Axis],
+in-capmkt,OtherOperatingExpensesMember,Other operating expenses [Member],1.0 
+in-capmkt,ReportableSegmentsAxis,Reportable segments [Axis],
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegmentsFinanceCostsAxis,Reportable segments finance costs [Axis],
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegmentAssetsAxis,Reportable segment assets [Axis],
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegmentLiabilitiesAxis,Reportable segment liabilities [Axis],
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,AuditedOrAdjustedAxis,Audited or adjusted [Axis],
+in-capmkt,AuditedOrAdjustedMember,Audited/Adjusted [Member],1.0 
+,,,
+,,,
+LinkRole,[100400] Segment information,,
+prefix,name,label,order
+in-capmkt,DisclosuresRelatingToSegmentRevenueAbstract,Disclosures relating to segment revenue [Abstract],
+in-capmkt,DisclosuresRelatingToSegmentRevenueTable,Disclosures relating to segment revenue [Table],1.0 
+in-capmkt,ReportableSegmentsAxis,Reportable segments [Axis],1.0 
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegments1Member,Reportable segments 1 [Member],1.0 
+in-capmkt,ReportableSegments2Member,Reportable segments 2 [Member],2.0 
+in-capmkt,ReportableSegments3Member,Reportable segments 3 [Member],3.0 
+in-capmkt,ReportableSegments4Member,Reportable segments 4 [Member],4.0 
+in-capmkt,ReportableSegments5Member,Reportable segments 5 [Member],5.0 
+in-capmkt,ReportableSegments6Member,Reportable segments 6 [Member],6.0 
+in-capmkt,ReportableSegments7Member,Reportable segments 7 [Member],7.0 
+in-capmkt,ReportableSegments8Member,Reportable segments 8 [Member],8.0 
+in-capmkt,ReportableSegments9Member,Reportable segments 9 [Member],9.0 
+in-capmkt,ReportableSegments10Member,Reportable segments 10 [Member],10.0 
+in-capmkt,ReportableSegments11Member,Reportable segments 11 [Member],11.0 
+in-capmkt,ReportableSegments12Member,Reportable segments 12 [Member],12.0 
+in-capmkt,ReportableSegments13Member,Reportable segments 13 [Member],13.0 
+in-capmkt,ReportableSegments14Member,Reportable segments 14 [Member],14.0 
+in-capmkt,ReportableSegments15Member,Reportable segments 15 [Member],15.0 
+in-capmkt,DisclosuresRelatingToSegmentRevenueLineItems,Disclosures relating to segment revenue [Line items],2.0 
+in-capmkt,DescriptionOfReportableSegment,Description of reportable segment,1.0 
+in-capmkt,SegmentRevenue,Segment revenue,2.0 
+,,,
+,,,
+LinkRole,[100410] Segment information,,
+prefix,name,label,order
+in-capmkt,DisclosuresRelatingToSegmentResultAbstract,Disclosures relating to segment result [Abstract],
+in-capmkt,DisclosuresRelatingToSegmentResultTable,Disclosures relating to segment result [Table],1.0 
+in-capmkt,ReportableSegmentsFinanceCostsAxis,Reportable segments finance costs [Axis],1.0 
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegments1Member,Reportable segments 1 [Member],1.0 
+in-capmkt,ReportableSegments2Member,Reportable segments 2 [Member],2.0 
+in-capmkt,ReportableSegments3Member,Reportable segments 3 [Member],3.0 
+in-capmkt,ReportableSegments4Member,Reportable segments 4 [Member],4.0 
+in-capmkt,ReportableSegments5Member,Reportable segments 5 [Member],5.0 
+in-capmkt,ReportableSegments6Member,Reportable segments 6 [Member],6.0 
+in-capmkt,ReportableSegments7Member,Reportable segments 7 [Member],7.0 
+in-capmkt,ReportableSegments8Member,Reportable segments 8 [Member],8.0 
+in-capmkt,ReportableSegments9Member,Reportable segments 9 [Member],9.0 
+in-capmkt,ReportableSegments10Member,Reportable segments 10 [Member],10.0 
+in-capmkt,ReportableSegments11Member,Reportable segments 11 [Member],11.0 
+in-capmkt,ReportableSegments12Member,Reportable segments 12 [Member],12.0 
+in-capmkt,ReportableSegments13Member,Reportable segments 13 [Member],13.0 
+in-capmkt,ReportableSegments14Member,Reportable segments 14 [Member],14.0 
+in-capmkt,ReportableSegments15Member,Reportable segments 15 [Member],15.0 
+in-capmkt,DisclosuresRelatingToSegmentResultLineItems,Disclosures relating to segment result [Line items],2.0 
+in-capmkt,DescriptionOfReportableSegment,Description of reportable segment,1.0 
+in-capmkt,SegmentProfitLossBeforeTaxAndFinanceCosts,Segment profit (loss) before tax and finance costs,2.0 
+,,,
+,,,
+LinkRole,[100420] Segment information,,
+prefix,name,label,order
+in-capmkt,DisclosuresRelatingToSegmentAssetsAbstract,Disclosures relating to segment assets [Abstract],
+in-capmkt,DisclosuresRelatingToSegmentAssetsTable,Disclosures relating to segment assets [Table],1.0 
+in-capmkt,ReportableSegmentAssetsAxis,Reportable segment assets [Axis],1.0 
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegments1Member,Reportable segments 1 [Member],1.0 
+in-capmkt,ReportableSegments2Member,Reportable segments 2 [Member],2.0 
+in-capmkt,ReportableSegments3Member,Reportable segments 3 [Member],3.0 
+in-capmkt,ReportableSegments4Member,Reportable segments 4 [Member],4.0 
+in-capmkt,ReportableSegments5Member,Reportable segments 5 [Member],5.0 
+in-capmkt,ReportableSegments6Member,Reportable segments 6 [Member],6.0 
+in-capmkt,ReportableSegments7Member,Reportable segments 7 [Member],7.0 
+in-capmkt,ReportableSegments8Member,Reportable segments 8 [Member],8.0 
+in-capmkt,ReportableSegments9Member,Reportable segments 9 [Member],9.0 
+in-capmkt,ReportableSegments10Member,Reportable segments 10 [Member],10.0 
+in-capmkt,ReportableSegments11Member,Reportable segments 11 [Member],11.0 
+in-capmkt,ReportableSegments12Member,Reportable segments 12 [Member],12.0 
+in-capmkt,ReportableSegments13Member,Reportable segments 13 [Member],13.0 
+in-capmkt,ReportableSegments14Member,Reportable segments 14 [Member],14.0 
+in-capmkt,ReportableSegments15Member,Reportable segments 15 [Member],15.0 
+in-capmkt,DisclosuresRelatingToSegmentAssetsLineItems,Disclosures relating to segment assets [Line items],2.0 
+in-capmkt,DescriptionOfReportableSegment,Description of reportable segment,1.0 
+in-capmkt,SegmentAssets,Segment assets,2.0 
+,,,
+,,,
+LinkRole,[100430] Segment information,,
+prefix,name,label,order
+in-capmkt,DisclosuresRelatingToSegmentLiabilitiesAbstract,Disclosures relating to segment liabilities [Abstract],
+in-capmkt,DisclosuresRelatingToSegmentLiabilitiesTable,Disclosures relating to segment liabilities [Table],1.0 
+in-capmkt,ReportableSegmentLiabilitiesAxis,Reportable segment liabilities [Axis],1.0 
+in-capmkt,ReportableSegmentsMember,Reportable segments [Member],1.0 
+in-capmkt,ReportableSegments1Member,Reportable segments 1 [Member],1.0 
+in-capmkt,ReportableSegments2Member,Reportable segments 2 [Member],2.0 
+in-capmkt,ReportableSegments3Member,Reportable segments 3 [Member],3.0 
+in-capmkt,ReportableSegments4Member,Reportable segments 4 [Member],4.0 
+in-capmkt,ReportableSegments5Member,Reportable segments 5 [Member],5.0 
+in-capmkt,ReportableSegments6Member,Reportable segments 6 [Member],6.0 
+in-capmkt,ReportableSegments7Member,Reportable segments 7 [Member],7.0 
+in-capmkt,ReportableSegments8Member,Reportable segments 8 [Member],8.0 
+in-capmkt,ReportableSegments9Member,Reportable segments 9 [Member],9.0 
+in-capmkt,ReportableSegments10Member,Reportable segments 10 [Member],10.0 
+in-capmkt,ReportableSegments11Member,Reportable segments 11 [Member],11.0 
+in-capmkt,ReportableSegments12Member,Reportable segments 12 [Member],12.0 
+in-capmkt,ReportableSegments13Member,Reportable segments 13 [Member],13.0 
+in-capmkt,ReportableSegments14Member,Reportable segments 14 [Member],14.0 
+in-capmkt,ReportableSegments15Member,Reportable segments 15 [Member],15.0 
+in-capmkt,DisclosuresRelatingToSegmentLiabilitiesLineItems,Disclosures relating to segment liabilities [Line items],2.0 
+in-capmkt,DescriptionOfReportableSegment,Description of reportable segment,1.0 
+in-capmkt,SegmentLiabilities,Segment liabilities,2.0 
+,,,
+,,,
+LinkRole,[100900] Statement of deviation or variation in utilisation of funds raised,,
+prefix,name,label,order
+in-capmkt,StatementOfDeviationAbstract,Statement of deviation [Abstract],
+in-capmkt,StatementOfDeviationTable,Statement of deviation [Table],1.0 
+in-capmkt,StatementOfDeviationAxis,Statement of deviation [Axis],1.0 
+in-capmkt,StatementOfDeviationLineItems,Statement of deviation [Line Items],2.0 
+in-capmkt,ModeOfFundRaising,Mode of fund raising,1.0 
+in-capmkt,DescriptionOfModeOfFundRaising,Description of mode of fund raising,2.0 
+in-capmkt,DateOfFundsRaising,Date of funds raising,3.0 
+in-capmkt,AmountRaised,Amount raised,4.0 
+in-capmkt,DateOfEndOfReportingPeriod,Date of end of reporting period,5.0 
+in-capmkt,MonitoringAgency,Monitoring agency,6.0 
+in-capmkt,NameOfMonitoringAgency,Name of monitoring agency,7.0 
+in-capmkt,IsThereADeviationOrVariationInUseOfFundsRaised,Is there a deviation or variation in use of funds raised,8.0 
+in-capmkt,WhetherTheDeviationOrVariationInUseOfFundsIsPursuantToChangeInTermsOfAContractOrObjectsWhichWasApprovedByTheShareholders,Whether the deviation or variation in use of funds is pursuant to change in terms of a contract or objects which was approved by the shareholders,9.0 
+in-capmkt,DateOfShareholderApproval,Date of shareholder approval,10.0 
+in-capmkt,ExplanationForTheDeviationOrVariation,Explanation for the deviation or variation,11.0 
+in-capmkt,CommentsOfTheAuditCommitteeAfterReview,Comments of the audit committee after review,12.0 
+in-capmkt,CommentsOfTheAuditors,Comments of the auditors,13.0 
+,,,
+,,,
+LinkRole,[101300] Other financial item as felt appropriate by the management,,
+prefix,name,label,order
+in-capmkt,DetailsOfOtherFinancialItemAsFeltAppropriateByTheManagementAbstract,Details of other financial item as felt appropriate by the management [Abstract],
+in-capmkt,OtherFinancialItemAsFeltAppropriateByTheManagementTable,Other financial item as felt appropriate by the management [Table],1.0 
+in-capmkt,OtherFinancialItemAxis,Other financial item [Axis],1.0 
+in-capmkt,AuditedOrAdjustedAxis,Audited or adjusted [Axis],2.0 
+in-capmkt,AuditedOrAdjustedMember,Audited/Adjusted [Member],1.0 
+in-capmkt,AuditedMember,Audited [Member],1.0 
+in-capmkt,AdjustedMember,Adjusted [Member],2.0 
+in-capmkt,OtherFinancialItemAsFeltAppropriateByTheManagementLineItems,Other financial item as felt appropriate by the management [Line items],2.0 
+in-capmkt,DetailsOfOtherFinancialItem,Details of other financial item,1.0 
+in-capmkt,AmountOfOtherFinancialItem,Amount of other financial item,2.0 
+,,,
+,,,
+LinkRole,[101200] Financial details of the company,,
+prefix,name,label,order
+in-capmkt,FinancialDetailsAbstract,Financial details [Abstract],
+in-capmkt,FinancialDetailsTable,Financial details [Table],1.0 
+in-capmkt,AuditedOrAdjustedAxis,Audited or adjusted [Axis],1.0 
+in-capmkt,AuditedOrAdjustedMember,Audited/Adjusted [Member],1.0 
+in-capmkt,AuditedMember,Audited [Member],1.0 
+in-capmkt,AdjustedMember,Adjusted [Member],2.0 
+in-capmkt,FinancialDetailsLineitems,Financial details [Line items],2.0 
+in-capmkt,TurnoverOrTotalIncome,Turnover / Total income,1.0 
+in-capmkt,TotalExpenditure,Total expenditure,2.0 
+in-capmkt,NetProfitAfterTax,Net profit after tax,3.0 
+in-capmkt,EarningPerShare,Earning per share,4.0 
+in-capmkt,Assets,Assets,5.0 
+in-capmkt,Liabilities,Liabilities,6.0 
+in-capmkt,NetWorth,Net worth,7.0 
+,,,
+,,,
+LinkRole,[101400] Audit qualification,,
+prefix,name,label,order
+in-capmkt,AuditQualificationAbstract,Audit Qualification [Abstract],
+in-capmkt,AuditQualificationTable,Audit Qualification [Table],1.0 
+in-capmkt,AuditQualificationAxis,Audit Qualification [Axis],1.0 
+in-capmkt,AuditQualificationLineItems,Audit Qualification [Line items],2.0 
+in-capmkt,DetailsOfAuditQualificationExplanatory,Details of Audit Qualification [Text block],1.0 
+in-capmkt,TypeOfAuditQualification,Type of Audit Qualification,2.0 
+in-capmkt,FrequencyOfAuditQualification,Frequency of Audit Qualification,3.0 
+in-capmkt,AuditQualificationsWhereTheImpactIsQuantifiedByTheAuditorManagementsViewsExplanatory,Audit Qualification(s) where the impact is quantified by the Auditor managements views [Text block],4.0 
+in-capmkt,AuditQualificationsWhereTheImpactIsNotQuantifiedByTheAuditorAbstract,Audit Qualification(s) where the impact is not quantified by the Auditor [Abstract],5.0 
+in-capmkt,ManagementsEstimationOnTheImpactOfAuditQualificationExplanatory,Management`s estimation on the impact of Audit Qualification [Text block],1.0 
+in-capmkt,ReasonsIfManagementIsUnableToEstimateTheImpactExplanatory,Reasons if management is unable to estimate the impact [Text block],2.0 
+in-capmkt,AuditorsCommentsOnManagementsEstimateOrUnableToEstimateOnTheImpactOfAuditQualificationExplanatory,Auditor`s comments on managements estimate or unable to estimate on the impact of audit qualification [Text block],3.0 
+,,,
+,,,
+LinkRole,[101500] Disclosure of Related Parties Transactions,,
+prefix,name,label,order
+in-capmkt,DisclosureOfTransactionsBetweenRelatedPartiesAbstract,Disclosure of transactions between related parties [Abstract],
+in-capmkt,DisclosureOfTransactionsBetweenRelatedPartiesTable,Disclosure of transactions between related parties [Table],1.0 
+in-capmkt,RelatedPartyTransactionAxis,Related party transaction [Axis],1.0 
+in-capmkt,DisclosureOfTransactionsBetweenRelatedPartiesLineItems,Disclosure of transactions between related parties [Line items],2.0 
+in-capmkt,DetailsOfListedEntityOrSubsidiaryEnteringIntoTheTransactionAbstract,Details of listed entity or subsidiary entering into the transaction [Abstract],1.0 
+in-capmkt,NameOfListedEntityOrSubsidiaryEnteringIntoTheTransaction,Name of listed entity or subsidiary entering into the transaction,1.0 
+in-capmkt,PANOfListedEntityOrSubsidiaryEnteringIntoTheTransaction,PAN of listed entity or subsidiary entering into the transaction,2.0 
+in-capmkt,DetailsOfCounterPartyAbstract,Details of counter party [Abstract],2.0 
+in-capmkt,NameOfCounterParty,Name of counter party,1.0 
+in-capmkt,PANOfCounterParty,PAN of counter party,2.0 
+in-capmkt,RelationshipOfTheCounterpartyWithTheListedEntityOrItsSubsidiary,Relationship of the counterparty with the listed entity or its subsidiary,3.0 
+in-capmkt,TypeOfRelatedPartyTransaction,Type of related party transaction,4.0 
+in-capmkt,DetailsOfOtherRelatedPartyTransaction,Details of other related party transaction,5.0 
+in-capmkt,ValueOfTheRelatedPartyTransactionAsApprovedByTheAuditCommittee,Value of the related party transaction as approved by the audit committee,6.0 
+in-capmkt,RemarksOnApprovalByAuditCommittee,Remarks on approval by audit committee,7.0 
+in-capmkt,ValueOfTheRelatedPartyTransactionRatifiedByTheAuditCommittee,Value of the related party transaction ratified by the audit committee,8.0 
+in-capmkt,DateOfAuditCommitteeMeetingWhereTheRatificationWasApproved,Date of audit committee meeting where the ratification was approved,9.0 
+in-capmkt,AmountOfRelatedPartyTransactionDuringTheReportingPeriod,Amount of related party transaction during the reporting period,10.0 
+in-capmkt,AmountOfRelatedPartyTransaction,Amount of related party transaction,11.0 
+in-capmkt,AmountOfRelatedPartyTransaction,Amount of related party transaction,12.0 
+in-capmkt,InCaseAnyFinancialIndebtednessIsIncurredToMakeOrGiveLoansOrInterCorporateDepositsOrAdvancesOrInvestmentsAbstract,In case any financial indebtedness is incurred to make or give loans or inter corporate deposits or advances or investments [Abstract],13.0 
+in-capmkt,NatureOfFinancialIndebtedness,Nature of financial indebtedness,1.0 
+in-capmkt,DetailsOfOtherIndebtedness,Details of other indebtedness,2.0 
+in-capmkt,CostOfFinancialIndebtedness,Cost of financial indebtedness,3.0 
+in-capmkt,TenureOfFinancialIndebtedness,Tenure of financial indebtedness,4.0 
+in-capmkt,DetailsOfTheLoansOrInterCorporateDepositsOrAdvancesOrInvestmentsAbstract,Details of the loans inter corporate deposits advances or investments [Abstract],14.0 
+in-capmkt,NatureOfTheLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Nature of the loans inter corporate deposits advances or investments,1.0 
+in-capmkt,InterestRateOfLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Interest rate of loans inter corporate deposits advances or investments,2.0 
+in-capmkt,TenureOfLoansOrInterCorporateDepositsOrAdvancesOrInvestments,Tenure of loans inter corporate deposits advances or investments,3.0 
+in-capmkt,TypeOfLoansOrInterCorporateDepositsOrAdvancesOrInvestmentsSecuredOrUnsecured,Type of loans inter corporate deposits advances or investments (Secured/ Unsecured),4.0 
+in-capmkt,PurposeForWhichTheFundsWillBeUtilisedByTheUltimateRecipientOfFundsForEndusage,Purpose for which the funds will be utilised by the ultimate recipient of funds for end-usage,5.0 
+in-capmkt,RelatedPartyTransactionExplanatory,Related party transaction [Text block],15.0 
+,,,
+,,,
+LinkRole,[800000] Typed Default,,
+prefix,name,label,order
+in-capmkt,TypedDefaultAbstract,Typed default [Abstract],
+in-capmkt,TypedDefaultTable,Typed default [Table],1.0 
+in-capmkt,TypedDefaultAxis,Typed default [Axis],1.0 
+in-capmkt,TypedDefaultDomain,Typed default domain,1.0 
+in-capmkt,TypedDefaultDomain,Typed default domain,2.0 
+in-capmkt,AmountOfRelatedPartyTransactionDuringTheReportingPeriod,Amount of related party transaction during the reporting period,1.0 
+in-capmkt,DateOfEndOfReportingPeriod,Date of end of reporting period,2.0 
+,,,
+,,,
+LinkRole,[100910] Statement of deviation or variation in utilisation of funds raised,,
+prefix,name,label,order
+in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationAbstract,Objects for which funds have been raised and where there has been a deviation [Abstract],
+in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationTable,Objects for which funds have been raised and where there has been a deviation [Table],1.0 
+in-capmkt,StatementOfDeviationAxis,Statement of deviation [Axis],1.0 
+in-capmkt,ObjectAxis,Object [Axis],2.0 
+in-capmkt,ObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviationLineItems,Objects for which funds have been raised and where there has been a deviation [Line Items],2.0 
+in-capmkt,OriginalObject,Original Object,1.0 
+in-capmkt,ModifiedObject,Modified Object,2.0 
+in-capmkt,OriginalAllocation,Original Allocation,3.0 
+in-capmkt,ModifiedAllocation,Modified allocation,4.0 
+in-capmkt,FundsUtilised,Funds Utilised,5.0 
+in-capmkt,AmountOfDeviationOrVariationForTheQuarterAccordingToApplicableObject,Amount of deviation or variation for the quarter according to applicable object,6.0 
+in-capmkt,DisclosureNotesOnObjectsForWhichFundsHaveBeenRaisedAndWhereThereHasBeenADeviation,Disclosure notes on Objects for which funds have been raised and where there has been a deviation,7.0 
+,,,
+,,,
+LinkRole,[101100] Impact of audit qualification,,
+prefix,name,label,order
+in-capmkt,DetailsOfAuditorsAbstract,Details of Auditor(s) [Abstract],
+in-capmkt,DetailsOfAuditorsTable,Details of Auditor(s) [Table],1.0 
+in-capmkt,AuditorAxis,Auditor [Axis],1.0 
+in-capmkt,DetailsOfAuditorsLineItems,Details of Auditor(s) [Line items],2.0 
+in-capmkt,AuditorsFirmName,Auditor`s firm name,1.0 
+in-capmkt,WhetherTheFirmHoldsAValidPeerReviewCertificateIssuedByPeerReviewBoardOfICAI,Whether the firm holds a valid peer review certificate issued by peer review board of ICAI,2.0 
+in-capmkt,ValidityDateOfCertificate,Validity date of certificate,3.0 
+,,,
+,,,

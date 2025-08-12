@@ -42,25 +42,40 @@ DB_NAME = os.getenv("EARNINGS_DB_NAME", "quantdata")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Create engine and session factory
-engine = create_engine(DATABASE_URL, echo=False, future=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+# --- MODIFICATION START ---
+# These are now initialized to None. They will be created on a per-process basis.
+_engine = None
+_SessionLocal = None
 
-
-def init_db():
+def get_engine():
     """
-    Initialize the database by creating all tables in the configured schema.
+    Safely creates a new SQLAlchemy engine for the current process if one doesn't exist.
     """
-    with engine.begin() as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
-    Base.metadata.create_all(bind=engine)
-
+    global _engine
+    if _engine is None:
+        _engine = create_engine(DATABASE_URL, echo=False, future=True)
+    return _engine
 
 def get_session():
     """
-    Return a new SQLAlchemy session.
+    Return a new SQLAlchemy session, creating a process-local engine and
+    session factory if they don't exist. This is safe for multiprocessing.
     """
-    return SessionLocal()
+    global _SessionLocal
+    if _SessionLocal is None:
+        engine = get_engine()
+        _SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    return _SessionLocal()
+
+def init_db():
+    """
+    Initialize the database using the process-local engine.
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {DB_SCHEMA}")
+    Base.metadata.create_all(bind=engine)
+# --- MODIFICATION END ---
 
 
 # ================================================================================================

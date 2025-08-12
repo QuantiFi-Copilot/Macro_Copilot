@@ -191,7 +191,7 @@
         "percent_scale": null,
         "matchable": true
       },
-      "expenditure_excluding_provisions_and_contingencies": {
+      "total_expenditure_excluding_provisions_and_contingencies": {
         "label": "Total Expenditure Excluding Provisions and Contingencies",
         "representation": "currency",
         "ratio_context": null,
@@ -227,7 +227,7 @@
         "percent_scale": null,
         "matchable": true
       },
-      "profit_loss_from_ordinary_activities_before_tax": {
+      "net_profit_loss_from_ordinary_activities_before_tax": {
         "label": "Profit (Loss) from Ordinary Activities Before Tax",
         "representation": "currency",
         "ratio_context": null,
@@ -254,6 +254,15 @@
         "percent_scale": null,
         "matchable": true
       },
+      "net_profit_loss_after_taxes_before_minority_interest": {
+        "label": "Net Profit (Loss) After Taxes Before Minority Interest",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },  
       "extraordinary_items": {
         "label": "Extraordinary Items",
         "representation": "currency",
@@ -263,7 +272,7 @@
         "percent_scale": null,
         "matchable": true
       },
-      "profit_loss_for_the_period": {
+      "net_profit_loss_for_the_period": {
         "label": "Net Profit (Loss) for the Period",
         "representation": "currency",
         "ratio_context": null,
@@ -470,7 +479,7 @@
         "percent_scale": "0-100",
         "matchable": true
       },
-      "non_performing_assets": {
+      "net_non_performing_assets": {
         "label": "Non-Performing Assets",
         "representation": "currency",
         "ratio_context": null,
@@ -558,6 +567,15 @@
       },
       "reserves_and_surplus": {
         "label": "Reserves And Surplus",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "policyholder_funds": {
+        "label": "Policyholder Funds",
         "representation": "currency",
         "ratio_context": null,
         "currency_context": "INR",
@@ -1459,6 +1477,15 @@
       },
       "adjustments_for_decrease_increase_in_inventories": {
         "label": "Adjustments For Decrease Increase In Inventories",
+        "representation": "currency",
+        "ratio_context": null,
+        "currency_context": "INR",
+        "unit_scale": "crore",
+        "percent_scale": null,
+        "matchable": true
+      },
+      "adjustments_for_decrease_increase_in_investments": {
+        "label": "Adjustments For Decrease Increase In Investments",
         "representation": "currency",
         "ratio_context": null,
         "currency_context": "INR",

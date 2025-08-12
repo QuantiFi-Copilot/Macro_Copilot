@@ -1,0 +1,200 @@
+﻿LinkRole,[100200] Quarterly and half yearly financial result format  [Banking],,,
+prefix,name,label,order,weight
+in-capmkt,ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates,Profit (loss) after taxes minority interest and share of profit (loss) of associates,,
+in-capmkt,ProfitLossForThePeriod,Profit (loss) for the period,1.0 ,1.0 
+in-capmkt,ProfitLossFromOrdinaryActivitiesAfterTax,Profit (loss) from ordinary activities after tax,1.0 ,1.0 
+in-capmkt,ProfitLossFromOrdinaryActivitiesBeforeTax,Profit (loss) from ordinary activities before tax,1.0 ,1.0 
+in-capmkt,OperatingProfitBeforeProvisionAndContingencies,Operating profit before provision and contingencies,1.0 ,1.0 
+in-capmkt,Income,Income,1.0 ,1.0 
+in-capmkt,InterestEarned,Interest earned,1.0 ,1.0 
+in-capmkt,InterestOrDiscountOnAdvancesOrBills,Interest or discount on advances or bills,1.0 ,1.0 
+in-capmkt,RevenueOnInvestments,Revenue on investments,2.0 ,1.0 
+in-capmkt,InterestOnBalancesWithReserveBankOfIndiaAndOtherInterBankFunds,Interest on balances with reserve bank of India and other inter-bank funds,3.0 ,1.0 
+in-capmkt,OtherInterest,Other interest,4.0 ,1.0 
+in-capmkt,OtherIncome,Other income,2.0 ,1.0 
+in-capmkt,ExpenditureExcludingProvisionsAndContingencies,Expenditure excluding provisions and contingencies,2.0 ,-1.0 
+in-capmkt,InterestExpended,Interest expended,1.0 ,1.0 
+in-capmkt,OtherOperatingExpenses,Other operating expenses,2.0 ,1.0 
+in-capmkt,EmployeesCost,Employees cost,3.0 ,1.0 
+in-capmkt,ProvisionsOtherThanTaxAndContingencies,Provisions other than tax and contingencies,2.0 ,-1.0 
+in-capmkt,ExceptionalItems,Exceptional items,3.0 ,1.0 
+in-capmkt,TaxExpense,Tax expense,2.0 ,-1.0 
+in-capmkt,ExtraordinaryItems,Extraordinary items,2.0 ,1.0 
+in-capmkt,ShareOfProfitLossOfAssociates,Share of profit (loss) of associates,2.0 ,1.0 
+in-capmkt,ProfitLossOfMinorityInterest,Profit (loss) of minority interest,3.0 ,-1.0 
+,,,,
+,,,,
+LinkRole,[100300] Statement of assets and liabilities  [Banking],,,
+prefix,name,label,order,weight
+in-capmkt,Assets,Assets,,
+in-capmkt,CashAndBalancesWithReserveBankOfIndia,Cash and balances with Reserve Bank of India,1.0 ,1.0 
+in-capmkt,BalancesWithBanksAndMoneyAtCallAndShortNotice,Balances with banks and money at call and short notice,2.0 ,1.0 
+in-capmkt,Investments,Investments,3.0 ,1.0 
+in-capmkt,Advances,Advances,4.0 ,1.0 
+in-capmkt,FixedAssets,Fixed assets,5.0 ,1.0 
+in-capmkt,OtherAssets,Other assets,6.0 ,1.0 
+in-capmkt,CapitalAndLiabilities,Capital and Liabilities,,
+in-capmkt,Capital,Capital,1.0 ,1.0 
+in-capmkt,ReservesAndSurplus,Reserves and surplus,2.0 ,1.0 
+in-capmkt,Deposits,Deposits,3.0 ,1.0 
+in-capmkt,Borrowings,Borrowings,4.0 ,1.0 
+in-capmkt,OtherLiabilitiesAndProvisions,Other liabilities and provisions,5.0 ,1.0 
+,,,,
+,,,,
+LinkRole,[100400] Segment information,,,
+prefix,name,label,order,weight
+in-capmkt,SegmentRevenueFromOperations,Segment revenue from operations,,
+in-capmkt,SegmentRevenue,Segment revenue,1.0 ,1.0 
+in-capmkt,InterSegmentRevenue,Inter segment revenue,2.0 ,-1.0 
+in-capmkt,SegmentProfitBeforeTax,Segment profit before tax,,
+in-capmkt,SegmentProfitLossBeforeTaxAndFinanceCosts,Segment profit (loss) before tax and finance costs,1.0 ,1.0 
+in-capmkt,SegmentFinanceCosts,Segment finance costs,2.0 ,-1.0 
+in-capmkt,OtherUnallocableExpenditureNetOffUnAllocableIncome,Other un-allocable expenditure net off un-allocable income,3.0 ,-1.0 
+in-capmkt,NetSegmentLiabilities,Net segment liabilities,,
+in-capmkt,SegmentLiabilities,Segment liabilities,1.0 ,1.0 
+in-capmkt,UnAllocableLiabilities,Un-allocable liabilities,2.0 ,1.0 
+in-capmkt,NetSegmentAssets,Net segment assets,,
+in-capmkt,SegmentAssets,Segment assets,1.0 ,1.0 
+in-capmkt,UnAllocableAssets,Un-allocable assets,2.0 ,1.0 
+,,,,
+,,,,
+LinkRole,[100700] Cash flow statement indirect,,,
+prefix,name,label,order,weight
+in-capmkt,IncreaseDecreaseInCashAndCashEquivalents,Increase (decrease) in cash and cash equivalents,,
+in-capmkt,IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges,Increase (decrease) in cash and cash equivalents before effect of exchange rate changes,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperatingActivities,Cash flows from used in operating activities,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems,Cash flows from used in operating activities before extraordinary items,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperations,Cash flows from used in operations,1.0 ,1.0 
+in-capmkt,ProfitBeforeExtraordinaryItemsAndTax,Profit before extraordinary items and tax,1.0 ,1.0 
+in-capmkt,AdjustmentsForReconcileProfitLoss,Adjustments for reconcile profit (loss),2.0 ,1.0 
+in-capmkt,AdjustmentsToProfitLoss,Adjustments to profit (loss),1.0 ,1.0 
+in-capmkt,AdjustmentsForFinanceCosts,Adjustments for finance costs,1.0 ,1.0 
+in-capmkt,AdjustmentsForDepreciationAndAmortisationExpense,Adjustments for depreciation and amortisation expense,2.0 ,1.0 
+in-capmkt,AdjustmentsForImpairmentLossReversalOfImpairmentLossRecognisedInProfitOrLoss,Adjustments for impairment loss reversal of impairment loss recognised in profit or loss,3.0 ,1.0 
+in-capmkt,AdjustmentsForUnrealisedForeignExchangeLossesGains,Adjustments for unrealised foreign exchange losses gains,4.0 ,1.0 
+in-capmkt,AdjustmentsForDividendIncome,Adjustments for dividend income,5.0 ,-1.0 
+in-capmkt,AdjustmentsForSharebasedPayments,Adjustments for share-based payments,6.0 ,1.0 
+in-capmkt,OtherAdjustmentsForWhichCashEffectsAreInvestingOrFinancingCashFlow,Other adjustments for which cash effects are investing or financing cash flow,7.0 ,1.0 
+in-capmkt,OtherAdjustmentsToReconcileProfitLoss,Other adjustments to reconcile profit (loss),8.0 ,1.0 
+in-capmkt,OtherAdjustmentsForNoncashItems,Other adjustments for non-cash items,9.0 ,1.0 
+in-capmkt,ShareOfProfitAndLossFromPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Share of profit and loss from partnership firm or association of persons or limited liability partnerships,10.0 ,1.0 
+in-capmkt,AdjustmentsForWorkingCapital,Adjustments for working capital,2.0 ,1.0 
+in-capmkt,AdjustmentsForDecreaseIncreaseInInventories,Adjustments for decrease (increase) in inventories,1.0 ,1.0 
+in-capmkt,AdjustmentsForDecreaseIncreaseInTradeReceivables,Adjustments for decrease (increase) in trade receivables,2.0 ,1.0 
+in-capmkt,AdjustmentsForDecreaseIncreaseInOtherCurrentAssets,Adjustments for decrease (increase) in other current assets,3.0 ,1.0 
+in-capmkt,AdjustmentsForIncreaseDecreaseInTradePayables,Adjustments for increase (decrease) in trade payables,4.0 ,1.0 
+in-capmkt,AdjustmentsForIncreaseDecreaseInOtherCurrentLiabilities,Adjustments for increase (decrease) in other current liabilities,5.0 ,1.0 
+in-capmkt,AdjustmentsForProvisions,Adjustments for provisions,6.0 ,1.0 
+in-capmkt,DividendsReceivedClassifiedAsOperatingActivities,Dividends received classified as operating activities,2.0 ,1.0 
+in-capmkt,InterestPaidClassifiedAsOperatingActivities,Interest paid classified as operating activities,3.0 ,-1.0 
+in-capmkt,InterestReceivedClassifiedAsOperatingActivities,Interest received classified as operating activities,4.0 ,1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsOperatingActivities,Income taxes paid (refund) classified as operating activities,5.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities,Other inflows (outflows) of cash classified as operating activities,6.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsOperatingActivities,Proceeds from extraordinary items classified as operating activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsOperatingActivities,Payment for extraordinary items classified as operating activities,3.0 ,-1.0 
+in-capmkt,CashFlowsFromUsedInInvestingActivities,Cash flows from used in investing activities,2.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems,Cash flows from used in investing activities before extraordinary items,1.0 ,1.0 
+in-capmkt,CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows from losing control of subsidiaries or other businesses classified as investing activities,1.0 ,1.0 
+in-capmkt,CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows used in obtaining control of subsidiaries or other businesses classified as investing activities,2.0 ,-1.0 
+in-capmkt,OtherCashReceiptsFromSalesOfEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash receipts from sales of equity or debt instruments of other entities classified as investing activities,3.0 ,1.0 
+in-capmkt,OtherCashPaymentsToAcquireEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash payments to acquire equity or debt instruments of other entities classified as investing activities,4.0 ,-1.0 
+in-capmkt,OtherCashReceiptsFromSalesOfInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash receipts from sales of interests in joint ventures classified as investing activities,5.0 ,1.0 
+in-capmkt,OtherCashPaymentsToAcquireInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash payments to acquire interests in joint ventures classified as investing activities,6.0 ,-1.0 
+in-capmkt,CashReceiptsFromShareOfProfitsOfPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash receipts from share of profits of partnership firm or association of persons or limited liability partnerships,7.0 ,1.0 
+in-capmkt,CashPaymentForInvestmentInPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash payment for investment in partnership firm or association of persons or limited liability partnerships,8.0 ,-1.0 
+in-capmkt,ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities,Proceeds from sales of tangible assets classified as investing activities,9.0 ,1.0 
+in-capmkt,PurchaseOfTangibleAssetsClassifiedAsInvestingActivities,Purchase of tangible assets classified as investing activities,10.0 ,-1.0 
+in-capmkt,ProceedsFromSalesOfIntangibleAssetsClassifiedAsInvestingActivities,Proceeds from sales of intangible assets classified as investing activities,11.0 ,1.0 
+in-capmkt,PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities,Purchase of intangible assets classified as investing activities,12.0 ,-1.0 
+in-capmkt,CashAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash advances and loans made to other parties classified as investing activities,13.0 ,-1.0 
+in-capmkt,CashReceiptsFromRepaymentOfAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash receipts from repayment of advances and loans made to other parties classified as investing activities,14.0 ,1.0 
+in-capmkt,CashPaymentsForFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash payments for future contracts forward contracts option contracts and swap contracts classified as investing activities,15.0 ,-1.0 
+in-capmkt,CashReceiptsFromFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash receipts from future contracts forward contracts option contracts and swap contracts classified as investing activities,16.0 ,1.0 
+in-capmkt,DividendsReceivedClassifiedAsInvestingActivities,Dividends received classified as investing activities,17.0 ,1.0 
+in-capmkt,InterestReceivedClassifiedAsInvestingActivities,Interest received classified as investing activities,18.0 ,1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsInvestingActivities,Income taxes paid (refund) classified as investing activities,19.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities,Other inflows (outflows) of cash classified as investing activities,20.0 ,1.0 
+in-capmkt,ProceedsFromGovernmentGrantsClassifiedAsInvestingActivities,Proceeds from government grants classified as investing activities,21.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsInvestingActivities,Proceeds from extraordinary items classified as investing activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsInvestingActivities,Payment for extraordinary items classified as investing activities,3.0 ,-1.0 
+in-capmkt,CashFlowsFromUsedInFinancingActivities,Cash flows from used in financing activities,3.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems,Cash flows from used in financing activities before extraordinary items,1.0 ,1.0 
+in-capmkt,ProceedsFromIssuingShares,Proceeds from issuing shares,1.0 ,1.0 
+in-capmkt,ProceedsFromIssuingOtherEquityInstruments,Proceeds from issuing other equity instruments,2.0 ,1.0 
+in-capmkt,ProceedsFromIssuingDebenturesNotesBondsEtc,Proceeds from issuing debentures notes bonds etc,3.0 ,1.0 
+in-capmkt,ProceedsFromBorrowingsClassifiedAsFinancingActivities,Proceeds from borrowings classified as financing activities,4.0 ,1.0 
+in-capmkt,RepaymentsOfBorrowingsClassifiedAsFinancingActivities,Repayments of borrowings classified as financing activities,5.0 ,-1.0 
+in-capmkt,DividendsPaidClassifiedAsFinancingActivities,Dividends paid classified as financing activities,6.0 ,-1.0 
+in-capmkt,InterestPaidClassifiedAsFinancingActivities,Interest paid classified as financing activities,7.0 ,-1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsFinancingActivities,Income taxes paid (refund) classified as financing activities,8.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities,Other inflows (outflows) of cash classified as financing activities,9.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsFinancingActivities,Proceeds from extraordinary items classified as financing activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsFinancingActivities,Payment for extraordinary items classified as financing activities,3.0 ,-1.0 
+in-capmkt,EffectOfExchangeRateChangesOnCashAndCashEquivalents,Effect of exchange rate changes on cash and cash equivalents,2.0 ,1.0 
+,,,,
+,,,,
+LinkRole,[100600] Cash flow statementdirect,,,
+prefix,name,label,order,weight
+in-capmkt,IncreaseDecreaseInCashAndCashEquivalents,Increase (decrease) in cash and cash equivalents,,
+in-capmkt,IncreaseDecreaseInCashAndCashEquivalentsBeforeEffectOfExchangeRateChanges,Increase (decrease) in cash and cash equivalents before effect of exchange rate changes,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperatingActivities,Cash flows from used in operating activities,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperatingActivitiesBeforeExtraordinaryItems,Cash flows from used in operating activities before extraordinary items,1.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInOperations,Cash flows from used in operations,1.0 ,1.0 
+in-capmkt,ReceiptsFromSalesOfGoodsAndRenderingOfServices,Receipts from sales of goods and rendering of services,1.0 ,1.0 
+in-capmkt,ReceiptsFromRoyaltiesFeesCommissionsAndOtherRevenue,Receipts from royalties fees commissions and other revenue,2.0 ,1.0 
+in-capmkt,ReceiptsFromFutureContractsForwardContractsOptionsContractsAndSwapContractsHeldForDealingOrTradingPurpose,Receipts from future contracts forward contracts options contracts and swap contracts held for dealing or trading purpose,3.0 ,1.0 
+in-capmkt,ReceiptsFromPremiumsAndClaimsAnnuitiesAndOtherPolicyBenefits,Receipts from premiums and claims annuities and other policy benefits,4.0 ,1.0 
+in-capmkt,OtherCashReceiptsFromOperatingActivities,Other cash receipts from operating activities,5.0 ,1.0 
+in-capmkt,PaymentsToSuppliersForGoodsAndServices,Payments to suppliers for goods and services,6.0 ,-1.0 
+in-capmkt,PaymentsToFutureContractsForwardContractsOptionsContractsAndSwapContractsHeldForDealingOrTradingPurpose,Payments to future contracts forward contracts options contracts and swap contracts held for dealing or trading purpose,7.0 ,-1.0 
+in-capmkt,PaymentsToAndOnBehalfOfEmployees,Payments to and on behalf of employees,8.0 ,-1.0 
+in-capmkt,PaymentsForPremiumsAndClaimsAnnuitiesAndOtherPolicyBenefits,Payments for premiums and claims annuities and other policy benefits,9.0 ,-1.0 
+in-capmkt,OtherCashPaymentsFromOperatingActivities,Other cash payments from operating activities,10.0 ,-1.0 
+in-capmkt,DividendsReceivedClassifiedAsOperatingActivities,Dividends received classified as operating activities,2.0 ,1.0 
+in-capmkt,InterestPaidClassifiedAsOperatingActivities,Interest paid classified as operating activities,3.0 ,-1.0 
+in-capmkt,InterestReceivedClassifiedAsOperatingActivities,Interest received classified as operating activities,4.0 ,1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsOperatingActivities,Income taxes paid (refund) classified as operating activities,5.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsOperatingActivities,Other inflows (outflows) of cash classified as operating activities,6.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsOperatingActivities,Proceeds from extraordinary items classified as operating activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsOperatingActivities,Payment for extraordinary items classified as operating activities,3.0 ,-1.0 
+in-capmkt,CashFlowsFromUsedInInvestingActivities,Cash flows from used in investing activities,2.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInInvestingActivitiesBeforeExtraordinaryItems,Cash flows from used in investing activities before extraordinary items,1.0 ,1.0 
+in-capmkt,CashFlowsFromLosingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows from losing control of subsidiaries or other businesses classified as investing activities,1.0 ,1.0 
+in-capmkt,CashFlowsUsedInObtainingControlOfSubsidiariesOrOtherBusinessesClassifiedAsInvestingActivities,Cash flows used in obtaining control of subsidiaries or other businesses classified as investing activities,2.0 ,-1.0 
+in-capmkt,OtherCashReceiptsFromSalesOfEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash receipts from sales of equity or debt instruments of other entities classified as investing activities,3.0 ,1.0 
+in-capmkt,OtherCashPaymentsToAcquireEquityOrDebtInstrumentsOfOtherEntitiesClassifiedAsInvestingActivities,Other cash payments to acquire equity or debt instruments of other entities classified as investing activities,4.0 ,-1.0 
+in-capmkt,OtherCashReceiptsFromSalesOfInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash receipts from sales of interests in joint ventures classified as investing activities,5.0 ,1.0 
+in-capmkt,OtherCashPaymentsToAcquireInterestsInJointVenturesClassifiedAsInvestingActivities,Other cash payments to acquire interests in joint ventures classified as investing activities,6.0 ,-1.0 
+in-capmkt,CashReceiptsFromShareOfProfitsOfPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash receipts from share of profits of partnership firm or association of persons or limited liability partnerships,7.0 ,1.0 
+in-capmkt,CashPaymentForInvestmentInPartnershipFirmOrAssociationOfPersonsOrLimitedLiabilityPartnerships,Cash payment for investment in partnership firm or association of persons or limited liability partnerships,8.0 ,-1.0 
+in-capmkt,ProceedsFromSalesOfTangibleAssetsClassifiedAsInvestingActivities,Proceeds from sales of tangible assets classified as investing activities,9.0 ,1.0 
+in-capmkt,PurchaseOfTangibleAssetsClassifiedAsInvestingActivities,Purchase of tangible assets classified as investing activities,10.0 ,-1.0 
+in-capmkt,ProceedsFromSalesOfIntangibleAssetsClassifiedAsInvestingActivities,Proceeds from sales of intangible assets classified as investing activities,11.0 ,1.0 
+in-capmkt,PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities,Purchase of intangible assets classified as investing activities,12.0 ,-1.0 
+in-capmkt,CashAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash advances and loans made to other parties classified as investing activities,13.0 ,-1.0 
+in-capmkt,CashReceiptsFromRepaymentOfAdvancesAndLoansMadeToOtherPartiesClassifiedAsInvestingActivities,Cash receipts from repayment of advances and loans made to other parties classified as investing activities,14.0 ,1.0 
+in-capmkt,CashPaymentsForFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash payments for future contracts forward contracts option contracts and swap contracts classified as investing activities,15.0 ,-1.0 
+in-capmkt,CashReceiptsFromFutureContractsForwardContractsOptionContractsAndSwapContractsClassifiedAsInvestingActivities,Cash receipts from future contracts forward contracts option contracts and swap contracts classified as investing activities,16.0 ,1.0 
+in-capmkt,DividendsReceivedClassifiedAsInvestingActivities,Dividends received classified as investing activities,17.0 ,1.0 
+in-capmkt,InterestReceivedClassifiedAsInvestingActivities,Interest received classified as investing activities,18.0 ,1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsInvestingActivities,Income taxes paid (refund) classified as investing activities,19.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsInvestingActivities,Other inflows (outflows) of cash classified as investing activities,20.0 ,1.0 
+in-capmkt,ProceedsFromGovernmentGrantsClassifiedAsInvestingActivities,Proceeds from government grants classified as investing activities,21.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsInvestingActivities,Proceeds from extraordinary items classified as investing activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsInvestingActivities,Payment for extraordinary items classified as investing activities,3.0 ,-1.0 
+in-capmkt,CashFlowsFromUsedInFinancingActivities,Cash flows from used in financing activities,3.0 ,1.0 
+in-capmkt,CashFlowsFromUsedInFinancingActivitiesBeforeExtraordinaryItems,Cash flows from used in financing activities before extraordinary items,1.0 ,1.0 
+in-capmkt,ProceedsFromIssuingShares,Proceeds from issuing shares,1.0 ,1.0 
+in-capmkt,ProceedsFromIssuingOtherEquityInstruments,Proceeds from issuing other equity instruments,2.0 ,1.0 
+in-capmkt,ProceedsFromIssuingDebenturesNotesBondsEtc,Proceeds from issuing debentures notes bonds etc,3.0 ,1.0 
+in-capmkt,ProceedsFromBorrowingsClassifiedAsFinancingActivities,Proceeds from borrowings classified as financing activities,4.0 ,1.0 
+in-capmkt,RepaymentsOfBorrowingsClassifiedAsFinancingActivities,Repayments of borrowings classified as financing activities,5.0 ,-1.0 
+in-capmkt,DividendsPaidClassifiedAsFinancingActivities,Dividends paid classified as financing activities,6.0 ,-1.0 
+in-capmkt,InterestPaidClassifiedAsFinancingActivities,Interest paid classified as financing activities,7.0 ,-1.0 
+in-capmkt,IncomeTaxesPaidRefundClassifiedAsFinancingActivities,Income taxes paid (refund) classified as financing activities,8.0 ,-1.0 
+in-capmkt,OtherInflowsOutflowsOfCashClassifiedAsFinancingActivities,Other inflows (outflows) of cash classified as financing activities,9.0 ,1.0 
+in-capmkt,ProceedsFromExtraordinaryItemsClassifiedAsFinancingActivities,Proceeds from extraordinary items classified as financing activities,2.0 ,1.0 
+in-capmkt,PaymentForExtraordinaryItemsClassifiedAsFinancingActivities,Payment for extraordinary items classified as financing activities,3.0 ,-1.0 
+in-capmkt,EffectOfExchangeRateChangesOnCashAndCashEquivalents,Effect of exchange rate changes on cash and cash equivalents,2.0 ,1.0 
+,,,,
+,,,,
