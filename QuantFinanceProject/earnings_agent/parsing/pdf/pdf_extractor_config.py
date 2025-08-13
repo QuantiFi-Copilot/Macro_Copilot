@@ -1,180 +1,127 @@
-# earnings_agent/parsing/pdf/pdf_extractor_config.py
+# /app/earnings_agent/parsing/pdf/pdf_extractor_config.py
+import logging
+import enum
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from google.genai.types import Content
+# --- NEW: Enum Definitions for Stronger Typing ---
+# By defining these enums, we constrain the LLM's output to only these
+# specific, valid strings, dramatically increasing reliability.
 
-from google.genai import types
+class ConfidenceLevel(str, enum.Enum):
+    HIGH = "high"
+    LOW = "low"
 
-# ============================================================================
-# 1. SYSTEM INSTRUCTION (Now actively used in the API call)
-# ============================================================================
+class RepresentationType(str, enum.Enum):
+    CURRENCY = "currency"
+    PERCENTAGE = "percentage"
+    RATIO = "ratio"
 
-EXTRACTION_SYSTEM_INSTRUCTION = """
-You are an expert financial data extraction specialist with deep expertise in Indian Banking regulations (RBI, Ind AS, SEBI taxonomy) and financial statement architecture. Your purpose is to provide precise, hierarchically-aware extractions while maintaining complete data integrity and following strict output formatting requirements.
+class CurrencyType(str, enum.Enum):
+    INR = "INR"
+
+class UnitScaleType(str, enum.Enum):
+    CRORES = "crores"
+    LAKHS = "lakhs"
+    BILLIONS = "billions"
+    MILLIONS = "millions"
+    THOUSANDS = "thousands"
+    HUNDREDS = "hundreds"
+
+class RatioContextType(str, enum.Enum):
+    PERCENTAGE = "percentage"
+    ABSOLUTE = "absolute"
+
+# --- Pydantic Schemas for Structured Output (UPDATED with Enums) ---
+class NormalizedFigure(BaseModel):
+    playbook_id: str = Field(description="The unique, snake_case identifier from the playbook.")
+    raw_label: str = Field(description="The verbatim text from the PDF. If not found, use 'Missing in Filing'.")
+    value: Optional[float] = Field(description="The pure numerical value. Must be null if not found.")
+    confidence: ConfidenceLevel = Field(description="Your confidence in the accuracy of the extraction.")
+    representation: Optional[RepresentationType] = Field(description="The data type. Must be null if value is null.")
+    currency_context: Optional[CurrencyType] = Field(description="The currency if applicable. Must be null if not currency.")
+    unit_scale: Optional[UnitScaleType] = Field(description="The unit scale. Must be null if not applicable.")
+    ratio_context: Optional[RatioContextType] = Field(description="The ratio type. Must be null if not a ratio or percentage.")
+
+class UnmappedFigure(BaseModel):
+    raw_label: str = Field(description="The verbatim text from the PDF for a line item NOT found in the playbook.")
+    value: float = Field(description="The pure numerical value for the unmapped line item.")
+
+class ExtractionResponse(BaseModel):
+    normalized_figures: List[NormalizedFigure]
+    unmapped_from_pdf: List[UnmappedFigure]
+
+# --- System instruction (high-priority guardrails for the model) ---
+SYSTEM_INSTRUCTION = """
+You are an expert financial data extraction specialist with deep expertise in Indian Financial regulations (RBI, Ind AS, SEBI) and financial statement architecture. Your purpose is to provide precise, clean and extremely accurate extractions while maintaining complete data integrity and following strict output formatting requirements.
 """
 
-# ============================================================================
-# 2. REVAMPED PROMPT TEMPLATE (Now with a placeholder for specific instructions)
-# ============================================================================
 
 EXTRACTION_PROMPT_TEMPLATE = """
-Your sole task is to extract financial data from the provided PDF page for the statement: **{statement_type}**.
+Your sole task is to take the provided JSON TEMPLATE and populate its values based on the data in the attached PDF financial statement for the period: {period}.
 
-You will map the line items from the PDF to the `playbook_id` from the provided playbook.
-Your entire response MUST be a single, valid JSON object that conforms to the schema and follows the structure in the example below.
+You will be provided with a playbook that maps standard financial concepts to a `playbook_id`. You will also be provided with a JSON TEMPLATE containing a pre-defined list of all required financial metrics.
 
-**OUTPUT JSON EXAMPLE:**
+**YOUR TASK:**
+Carefully read the PDF and the playbook. For each metric in the JSON TEMPLATE's `normalized_figures` array, find the corresponding line item in the PDF and UPDATE the template's fields (`raw_label`, `value`, metadata, etc.).
 
-```json
-{{
-  "normalized_figures": [
-    {{
-      "playbook_id": "interest_earned",
-      "raw_label": "Interest earned (a)+(b)+(c)+(d)",
-      "value": 73033.14,
-      "confidence": "high",
-      "representation": "currency",
-      "currency_context": "INR",
-      "unit_scale": "crore",
-      "ratio_context": null
-    }},
-    {{
-      "playbook_id": "percentage_of_gross_npa",
-      "raw_label": "% of Gross NPAs to Gross Advances",
-      "value": 1.33,
-      "confidence": "high",
-      "representation": "percentage",
-      "currency_context": null,
-      "unit_scale": null,
-      "ratio_context": "percentage"
-    }},
-    {{
-      "playbook_id": "exceptional_items",
-      "raw_label": "Exceptional items",
-      "value": null,
-      "confidence": "high",
-      "representation": null,
-      "currency_context": null,
-      "unit_scale": null,
-      "ratio_context": null
-    }}
-  ],
-  "unmapped_from_pdf": [
-    {{
-      "raw_label": "Net worth",
-      "value": 444793.21
-    }}
-  ],
-  "cash_flow_method": null
-}}
-```
+---
+**FIELD DEFINITIONS (How to update the template):**
+- `playbook_id`: **DO NOT CHANGE THIS.** It is the ground truth from the playbook.
+- `raw_label`: Update this from `"Missing in Filing"` to the verbatim text label found in the PDF for that metric.
+- `value`: Update this from `null` to the pure numerical value you extract. If a value is genuinely not present for a metric in the PDF, leave the value as `null`.
+- `confidence`: Set your confidence for each extraction.
+- `representation`, `currency_context`, `unit_scale`, `ratio_context`: Populate these metadata fields based on the extracted value.
+- `unmapped_from_pdf`: If you find any significant financial line items in the PDF that are **NOT** in the playbook, add them to this array.
 
-**FIELD DEFINITIONS (CRITICAL):**
-
-  - **`playbook_id`**: The exact ID from the playbook that matches the PDF line item.
-  - **`raw_label`**: The verbatim text from the PDF. If not found, use "Missing in Filing".
-  - **`value`**: The pure numerical value. Must be `null` if not found.
-  - **`confidence`**: "high" for direct matches, "low" for inferred ones.
-  - **`representation`**: The type of data. Use one of:
-      - `"currency"`: For monetary values (e.g., Revenue, Assets).
-      - `"percentage"`: For values that are percentages (e.g., NPA Ratios).
-      - `"ratio"`: For non-percentage ratios (e.g., Earnings Per Share, Debt-Equity Ratio).
-      - `"count"`: For whole numbers (e.g., number of shares).
-  - **`currency_context`**: The currency code (e.g., "INR") ONLY if `representation` is "currency". Otherwise, it MUST be `null`.
-  - **`unit_scale`**: The magnitude (e.g., "crore", "lacs", "millions") ONLY if `representation` is "currency". Otherwise, it MUST be `null`.
-  - **`ratio_context`**: The type of ratio.
-      - `"percentage"`: If `representation` is "percentage".
-      - `"absolute"`: If `representation` is "ratio".
-      - Otherwise, it MUST be `null`.
-
-{statement_specific_instructions}
-
+---
 **CRITICAL RULES:**
+1.  **UNIT & CURRENCY DETECTION:** Before extracting values, you **MUST** scan the entire page for headers or text that define the default currency and unit scale (e.g., '(All figures in Rs. Crores)'). Apply this default to all relevant metrics unless a specific line item indicates otherwise.
+2.  **COLUMN SELECTION:** The document may have multiple columns for different periods. You **MUST** extract data **ONLY** from the column corresponding to the specified period: **{period}**. Ignore all other columns.
+3.  **NULL VALUES:** If a `value` is `null`, then `representation`, `currency_context`, `unit_scale`, and `ratio_context` **MUST** also be `null`.
+4.  **MANDATORY COMPLETENESS:** You **MUST** populate the values for **EVERY** object in the provided `normalized_figures` array within the template. **DO NOT ADD OR REMOVE ANY OBJECTS FROM THIS ARRAY.** Your final response must contain the complete, populated list.
 
-1.  **COLUMN SELECTION:** The document may have multiple columns. You MUST extract data ONLY from the column for the most recent unaudited quarter.
-2.  **NULL VALUES:** If a `value` is `null`, then `representation`, `currency_context`, `unit_scale`, and `ratio_context` MUST also be `null`.
+**DATA PARSING & NORMALIZATION RULES:**
+1.  **NUMBER FORMAT PARSING:** You must strictly follow these rules when parsing numbers:
+    - **Indian Notation:** `1,23,456.78` must be parsed as `123456.78`. Remove all commas.
+    - **Negative Values:** Numbers in parentheses, like `(5,432.10)`, **ALWAYS** indicate a negative value and must be parsed as `-5432.10`.
+    - **Special Values:**
+        - Text like `-`, `NIL`, `Nil`, or a blank entry must be treated as `null`.
+        - A literal `0` or `0.00` must be parsed as the number `0`, not `null`.
+    - **Percentages:** A value like `2.45%` must be parsed as the number `2.45`.
+2. **UNIT SCALE MAPPING:** You must map the unit found in the document to one of the allowed `UnitScaleType` enum values.
+    - Map variations like 'lacs', 'Lakh', or 'Lac' to **'lakhs'**.
+    - Map variations like 'Crs.', 'Crore', or 'Cr' to **'crores'**.
+    - Map 'Million' or 'Mn' to **'millions'**.
+    - And so on for other units.
 
+
+**FEW-SHOT EXAMPLES:**
+{few_shot_examples_placeholder}
+
+---
 **PLAYBOOK FOR MAPPING:**
-
+The playbook is a hierarchical JSON defining the financial concepts to extract, mapping human-readable labels to a standardized `playbook_id`. Use this to understand the meaning of each metric.
 ```json
 {hierarchical_playbook_json}
 ```
 
+---
+
+**JSON TEMPLATE TO COMPLETE:**
+
+```json
+{json_template_placeholder}
+```
+
 """
 
-# ============================================================================
-# 3. NEW: STATEMENT-SPECIFIC INSTRUCTIONS
-# ============================================================================
-
-STATEMENT_INSTRUCTIONS = {
-    "cash_flow": """
-**Cash Flow Statement Specific Instructions**:
-
-1.  **Identify Method**: First, examine the PDF to determine if the Cash Flow statement is prepared using the 'Direct Method' or 'Indirect Method'.
-2.  **Set Method Flag**: In your final JSON output, set the `cash_flow_method` field to `"direct"`, `"indirect"`, or `"unknown"` if you cannot determine the method.
-3.  **Map Accordingly**: Use the identified method to guide your mapping. The provided playbook contains nodes for both methods; use the correct one.
-      - If 'Indirect Method', look for line items like "Profit Before Tax" and "Adjustments for...".
-      - If 'Direct Method', look for line items like "Cash receipts from customers" and "Cash paid to suppliers".
-        """,
-    # Instructions for other statement types can be added here in the future
-    "pnl": "",
-    "balance_sheet": ""
+# --- Production Gemini Configuration (UPDATED) ---
+PRODUCTION_MODEL = "gemini-2.5-pro"
+PRODUCTION_CONFIG = {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": 1, # ADDED: For more deterministic, less creative outputs
+    "max_output_tokens": 20000,
+    "response_mime_type": "application/json",
 }
-
-# ============================================================================
-# 4. RESPONSE SCHEMAS (Unchanged)
-# ============================================================================
-
-NORMALIZED_FIGURE_SCHEMA = types.Schema(
-    type=types.Type.OBJECT,
-    properties={
-        'playbook_id': types.Schema(type=types.Type.STRING),
-        'raw_label': types.Schema(type=types.Type.STRING),
-        'value': types.Schema(type=types.Type.NUMBER, nullable=True),
-        'confidence': types.Schema(type=types.Type.STRING, enum=["high", "low"]),
-        'representation': types.Schema(type=types.Type.STRING, enum=["currency", "percentage", "ratio", "count"], nullable=True),
-        'currency_context': types.Schema(type=types.Type.STRING, nullable=True),
-        'unit_scale': types.Schema(type=types.Type.STRING, nullable=True),
-        'ratio_context': types.Schema(type=types.Type.STRING, enum=["percentage", "absolute"], nullable=True),
-    },
-    required=['playbook_id', 'raw_label', 'value', 'confidence', 'representation', 'currency_context', 'unit_scale', 'ratio_context']
-)
-
-UNMAPPED_FIGURE_SCHEMA = types.Schema(
-    type=types.Type.OBJECT,
-    properties={
-        'raw_label': types.Schema(type=types.Type.STRING),
-        'value': types.Schema(type=types.Type.NUMBER),
-    },
-    required=['raw_label', 'value']
-)
-
-EXTRACTION_RESPONSE_SCHEMA = types.Schema(
-    type=types.Type.OBJECT,
-    properties={
-        'normalized_figures': types.Schema(type=types.Type.ARRAY, items=NORMALIZED_FIGURE_SCHEMA),
-        'unmapped_from_pdf': types.Schema(type=types.Type.ARRAY, items=UNMAPPED_FIGURE_SCHEMA),
-        'cash_flow_method': types.Schema(type=types.Type.STRING, enum=["direct", "indirect", "unknown"], nullable=True)
-    },
-    required=['normalized_figures', 'unmapped_from_pdf']
-)
-
-# ============================================================================
-# 5. ENHANCED PRODUCTION CONFIGURATION
-# ============================================================================
-
-PRODUCTION_CONFIG = types.GenerateContentConfig(
-    response_mime_type="application/json",
-    temperature=0.0,
-    max_output_tokens=35000,
-    response_schema=EXTRACTION_RESPONSE_SCHEMA,
-    # ADDED: System instruction to guide overall behavior
-    system_instruction=EXTRACTION_SYSTEM_INSTRUCTION,
-    # ADDED: Explicitly configure thinking for complex documents
-    thinking_config=types.ThinkingConfig(
-        thinking_budget=20384
-    ),
-    safety_settings=[
-        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-    ]
-)

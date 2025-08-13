@@ -2,16 +2,24 @@
 statement: pnl
 nodes:
 - id: statement_of_financial_results_by_banks_abstract
+  extractable: false
   children:
   - id: date_of_start_of_reporting_period
+    extractable: false
   - id: date_of_end_of_reporting_period
+    extractable: false
   - id: whether_results_are_audited_or_unaudited
+    extractable: false
   - id: nature_of_report_standalone_consolidated
+    extractable: false
   - id: disclosure_of_operational_result_abstract
+    extractable: false
     children:
     - id: disclosure_of_revenue_from_operations_abstract
+      extractable: false
       children:
       - id: interest_earned_abstract
+        extractable: false
         children:
         - id: interest_or_discount_on_advances_or_bills
         - id: revenue_on_investments
@@ -21,9 +29,11 @@ nodes:
       - id: other_income
       - id: income
     - id: expenses_abstract
+      extractable: false
       children:
       - id: interest_expended
       - id: operating_expenses_abstract
+        extractable: false
         children:
         - id: employees_cost
         - id: other_operating_expenses
@@ -42,28 +52,35 @@ nodes:
     - id: profit_loss_of_minority_interest
     - id: profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates
   - id: details_of_paid_up_equity_share_capital_abstract
+    extractable: false
     children:
     - id: paid_up_value_of_equity_share_capital
     - id: face_value_of_equity_share_capital
   - id: reserve_excluding_revaluation_reserves
   - id: analytical_ratios_abstract
+    extractable: false
     children:
     - id: percentage_of_share_held_by_government_of_india
     - id: capital_adequacy_ratio_abstract
+      extractable: false
       children:
       - id: cet1_ratio
       - id: additional_tier1_ratio
     - id: earnings_per_share_abstract
+      extractable: false
       children:
       - id: earnings_per_share_before_extraordinary_items_abstract
+        extractable: false
         children:
         - id: basic_earnings_per_share_before_extraordinary_items
         - id: diluted_earnings_per_share_before_extraordinary_items
       - id: earnings_per_share_after_extraordinary_items_abstract
+        extractable: false
         children:
         - id: basic_earnings_per_share_after_extraordinary_items
         - id: diluted_earnings_per_share_after_extraordinary_items
     - id: npa_ratios_abstract
+      extractable: false
       children:
       - id: gross_non_performing_assets
       - id: percentage_of_gross_npa
@@ -71,13 +88,16 @@ nodes:
       - id: percentage_of_net_npa
     - id: return_on_assets
   - id: disclosure_of_notes_on_financial_results_explanatory_text_block
+    extractable: false
 
 ---
 statement: balance_sheet
 nodes:
 - id: statement_of_assets_and_liabilities_abstract
+  extractable: false
   children:
   - id: capital_and_liabilities_abstract
+    extractable: false
     children:
     - id: capital
     - id: reserves_and_surplus
@@ -87,6 +107,7 @@ nodes:
     - id: total_capital_and_liabilities
     - id: policyholder_funds
   - id: assets_abstract
+    extractable: false
     children:
     - id: cash_and_balances_with_reserve_bank_of_india
     - id: balances_with_banks_and_money_at_call_and_short_notice
@@ -96,99 +117,22 @@ nodes:
     - id: other_assets
     - id: total_assets
   - id: disclosure_of_notes_on_assets_and_liabilities_explanatory_text_block
-
----
-statement: cash_flow_direct
-nodes:
-- id: statement_of_cash_flows_abstract
-  children:
-  - id: cash_flows_from_used_in_operating_activities_abstract
-    children:
-    - id: classes_of_cash_receipts_from_operating_activities_abstract
-      children:
-      - id: receipts_from_sales_of_goods_and_rendering_of_services
-      - id: receipts_from_royalties_fees_commissions_and_other_revenue
-      - id: cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_held_for_dealing_or_trading_purpose
-      - id: receipts_from_premiums_and_claims_annuities_and_other_policy_benefits
-      - id: other_cash_receipts_from_operating_activities
-    - id: classes_of_cash_payments_abstract
-      children:
-      - id: payments_to_suppliers_for_goods_and_services
-      - id: cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_held_for_dealing_or_trading_purpose
-      - id: payments_to_and_on_behalf_of_employees
-      - id: payments_for_premiums_and_claims_annuities_and_other_policy_benefits
-      - id: other_cash_payments_from_operating_activities
-    - id: net_cash_from_used_in_operations
-    - id: dividends_received_classified_as_operating_activities
-    - id: interest_paid_classified_as_operating_activities
-    - id: interest_received_classified_as_operating_activities
-    - id: income_taxes_paid_refund_classified_as_operating_activities
-    - id: other_inflows_outflows_of_cash_classified_as_operating_activities
-    - id: net_cash_from_used_in_operating_activities_before_extraordinary_items
-    - id: proceeds_from_extraordinary_items_classified_as_operating_activities
-    - id: payment_for_extraordinary_items_classified_as_operating_activities
-    - id: net_cash_from_used_in_operating_activities
-  - id: cash_flows_from_used_in_investing_activities_abstract
-    children:
-    - id: cash_flows_from_losing_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities
-    - id: cash_flows_used_in_obtaining_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities
-    - id: other_cash_receipts_from_sales_of_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities
-    - id: other_cash_payments_to_acquire_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities
-    - id: other_cash_receipts_from_sales_of_interests_in_joint_ventures_classified_as_investing_activities
-    - id: other_cash_payments_to_acquire_interests_in_joint_ventures_classified_as_investing_activities
-    - id: cash_receipts_from_share_of_profits_of_partnership_firm_or_association_of_persons_or_limited_liability_partnerships
-    - id: cash_payment_for_investment_in_partnership_firm_or_association_of_persons_or_limited_liability_partnerships
-    - id: proceeds_from_sales_of_tangible_assets_classified_as_investing_activities
-    - id: purchase_of_tangible_assets_classified_as_investing_activities
-    - id: proceeds_from_sales_of_intangible_assets_classified_as_investing_activities
-    - id: purchase_of_intangible_assets_classified_as_investing_activities
-    - id: cash_advances_and_loans_made_to_other_parties_classified_as_investing_activities
-    - id: cash_receipts_from_repayment_of_advances_and_loans_made_to_other_parties_classified_as_investing_activities
-    - id: cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities
-    - id: cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities
-    - id: dividends_received_classified_as_investing_activities
-    - id: interest_received_classified_as_investing_activities
-    - id: income_taxes_paid_refund_classified_as_investing_activities
-    - id: other_inflows_outflows_of_cash_classified_as_investing_activities
-    - id: proceeds_from_government_grants_classified_as_investing_activities
-    - id: net_cash_from_used_in_investing_activities_before_extraordinary_items
-    - id: proceeds_from_extraordinary_items_classified_as_investing_activities
-    - id: payment_for_extraordinary_items_classified_as_investing_activities
-    - id: net_cash_from_used_in_investing_activities
-  - id: cash_flows_from_used_in_financing_activities_abstract
-    children:
-    - id: proceeds_from_issuing_shares
-    - id: proceeds_from_issuing_other_equity_instruments
-    - id: proceeds_from_issuing_debentures_notes_bonds_etc
-    - id: proceeds_from_borrowings_classified_as_financing_activities
-    - id: repayments_of_borrowings_classified_as_financing_activities
-    - id: dividends_paid_classified_as_financing_activities
-    - id: interest_paid_classified_as_financing_activities
-    - id: income_taxes_paid_refund_classified_as_financing_activities
-    - id: other_inflows_outflows_of_cash_classified_as_financing_activities
-    - id: net_cash_from_used_in_financing_activities_before_extraordinary_items
-    - id: proceeds_from_extraordinary_items_classified_as_financing_activities
-    - id: payment_for_extraordinary_items_classified_as_financing_activities
-    - id: net_cash_from_used_in_financing_activities
-  - id: increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes
-  - id: effect_of_exchange_rate_changes_on_cash_and_cash_equivalents_abstract
-    children:
-    - id: effect_of_exchange_rate_changes_on_cash_and_cash_equivalents
-  - id: increase_decrease_in_cash_and_cash_equivalents
-  - id: cash_and_cash_equivalents_at_beginning_of_period
-  - id: cash_and_cash_equivalents_at_end_of_period
-
+    extractable: false
 ---
 statement: cash_flow_indirect
 nodes:
 - id: statement_of_cash_flows_abstract
+  extractable: false
   children:
   - id: cash_flows_from_used_in_operating_activities_abstract
+    extractable: false
     children:
     - id: profit_before_extraordinary_items_and_tax
     - id: adjustments_for_reconcile_profit_loss_abstract
+      extractable: false
       children:
       - id: adjustments_to_profit_loss_abstract
+        extractable: false
         children:
         - id: adjustments_for_finance_costs
         - id: adjustments_for_depreciation_and_amortisation_expense
@@ -202,6 +146,7 @@ nodes:
         - id: share_of_profit_and_loss_from_partnership_firm_or_association_of_persons_or_limited_liability_partnerships
         - id: adjustments_to_profit_loss
       - id: adjustments_for_working_capital_abstract
+        extractable: false
         children:
         - id: adjustments_for_decrease_increase_in_inventories
         - id: adjustments_for_decrease_increase_in_trade_receivables
@@ -223,6 +168,7 @@ nodes:
     - id: payment_for_extraordinary_items_classified_as_operating_activities
     - id: net_cash_from_used_in_operating_activities
   - id: cash_flows_from_used_in_investing_activities_abstract
+    extractable: false
     children:
     - id: cash_flows_from_losing_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities
     - id: cash_flows_used_in_obtaining_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities
@@ -250,6 +196,7 @@ nodes:
     - id: payment_for_extraordinary_items_classified_as_investing_activities
     - id: net_cash_from_used_in_investing_activities
   - id: cash_flows_from_used_in_financing_activities_abstract
+    extractable: false
     children:
     - id: proceeds_from_issuing_shares
     - id: proceeds_from_issuing_other_equity_instruments
@@ -266,6 +213,7 @@ nodes:
     - id: net_cash_from_used_in_financing_activities
   - id: increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes
   - id: effect_of_exchange_rate_changes_on_cash_and_cash_equivalents_abstract
+    extractable: false
     children:
     - id: effect_of_exchange_rate_changes_on_cash_and_cash_equivalents
   - id: increase_decrease_in_cash_and_cash_equivalents

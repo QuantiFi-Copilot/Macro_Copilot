@@ -258,7 +258,7 @@ def _execute_isolation_for_worker(asset_id: int):
 
 def run_isolator_batch():
     """Main batch processing function for statement isolation."""
-    MAX_WORKERS = 4
+    MAX_WORKERS = 1
     logging.info(f"--- Starting PDF Isolator Batch Run v{PARSER_VERSION} ---")
 
     # The main process gets the list of work.

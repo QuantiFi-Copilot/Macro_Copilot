@@ -64,7 +64,6 @@ COMMENT ON TABLE earnings_data.job_asset_link IS 'A simple, crucial link table c
 -- ================================================================================================
 -- STAGE 2: PARSING
 -- ================================================================================================
-
 CREATE TABLE IF NOT EXISTS earnings_data.parsed_documents (
     doc_id BIGSERIAL PRIMARY KEY,
     asset_id BIGINT NOT NULL REFERENCES earnings_data.raw_data_assets(asset_id) ON DELETE CASCADE,
@@ -77,102 +76,135 @@ CREATE TABLE IF NOT EXISTS earnings_data.parsed_documents (
 );
 COMMENT ON TABLE earnings_data.parsed_documents IS 'Staging table for structured data transformed from a raw asset. Holds raw, un-normalized key-value pairs.';
 
-
 -- ================================================================================================
 -- STAGE 3: NORMALIZATION & RECONCILIATION
 -- ================================================================================================
+-- CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
+--     -- MODIFIED: Added industry and created a composite primary key
+--     raw_label TEXT NOT NULL,
+--     industry TEXT NOT NULL,
+--     normalized_label TEXT, -- The clean, standardized name from our master list
+--     status VARCHAR(20) NOT NULL, -- 'APPROVED', 'PENDING_REVIEW', 'REJECTED'
+--     processed BOOLEAN NOT NULL DEFAULT FALSE,
+--     source_context JSONB, -- Metadata about where this label was first seen
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--     last_reviewed_at TIMESTAMPTZ,
+--     reviewed_by TEXT, -- Identifier for the human or system that performed the review
+--     PRIMARY KEY (raw_label, industry)
+-- );
+-- COMMENT ON TABLE earnings_data.label_mapping_cache IS 'The persistent, industry-specific cache for the financial label normalization engine.';
 
-CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
-    -- MODIFIED: Added industry and created a composite primary key
-    raw_label TEXT NOT NULL,
-    industry TEXT NOT NULL,
-    normalized_label TEXT, -- The clean, standardized name from our master list
-    status VARCHAR(20) NOT NULL, -- 'APPROVED', 'PENDING_REVIEW', 'REJECTED'
-    processed BOOLEAN NOT NULL DEFAULT FALSE,
-    source_context JSONB, -- Metadata about where this label was first seen
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_reviewed_at TIMESTAMPTZ,
-    reviewed_by TEXT, -- Identifier for the human or system that performed the review
-    PRIMARY KEY (raw_label, industry)
-);
-COMMENT ON TABLE earnings_data.label_mapping_cache IS 'The persistent, industry-specific cache for the financial label normalization engine.';
+-- -- MODIFIED: Index now includes 'industry' for faster lookups
+-- CREATE INDEX IF NOT EXISTS idx_label_mapping_status_processed ON earnings_data.label_mapping_cache(industry, status, processed);
+-- -- This is the staging area for the output of the normalization engine
+-- CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
+--     id BIGSERIAL PRIMARY KEY,
+--     doc_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
+--     ticker VARCHAR(20) NOT NULL,
+--     fiscal_date DATE NOT NULL,
+--     normalized_data JSONB NOT NULL,
+--     data_hash VARCHAR(64), -- Hash of the normalized_data content to detect changes.
+    
+--     -- NEW: Three-phase normalization status tracking
+--     statement_normalized BOOLEAN NOT NULL DEFAULT FALSE,
+--     unit_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+--     label_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+--     -- Status constraints
+--     CONSTRAINT ck_unit_review_status CHECK (unit_review_status IN ('PENDING', 'AUTO_APPROVED', 'PENDING_REVIEW', 'APPROVED')),
+--     CONSTRAINT ck_label_review_status CHECK (label_review_status IN ('PENDING', 'PENDING_REVIEW', 'APPROVED'))
+-- );
+-- COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
+-- COMMENT ON COLUMN earnings_data.staged_normalized_data.statement_normalized IS 'Flag indicating whether statement normalization has been applied';
+-- COMMENT ON COLUMN earnings_data.staged_normalized_data.unit_review_status IS 'Status of unit normalization: PENDING, AUTO_APPROVED, PENDING_REVIEW, or APPROVED';
+-- COMMENT ON COLUMN earnings_data.staged_normalized_data.label_review_status IS 'Status of label normalization: PENDING, PENDING_REVIEW, or APPROVED';
 
--- MODIFIED: Index now includes 'industry' for faster lookups
-CREATE INDEX IF NOT EXISTS idx_label_mapping_status_processed ON earnings_data.label_mapping_cache(industry, status, processed);
--- This is the staging area for the output of the normalization engine
-CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
-    id BIGSERIAL PRIMARY KEY,
+
+-- -- NEW: Unit review queue for filing-level unit normalization review
+-- CREATE TABLE IF NOT EXISTS earnings_data.unit_review_queue (
+--     id BIGSERIAL PRIMARY KEY,
+--     doc_id BIGINT NOT NULL REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
+--     asset_id BIGINT NOT NULL REFERENCES earnings_data.raw_data_assets(asset_id),
+--     ticker VARCHAR(20) NOT NULL,
+--     fiscal_date DATE NOT NULL,
+    
+--     -- The LLM's analysis and raw filing data
+--     llm_analysis JSONB NOT NULL,
+--     filing_data JSONB NOT NULL,
+    
+--     -- Human review fields
+--     status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
+--     reviewed_by TEXT,
+--     reviewed_at TIMESTAMPTZ,
+--     human_corrections JSONB,
+    
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+--     CONSTRAINT ck_unit_review_queue_status CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED')),
+--     UNIQUE(doc_id)
+-- );
+-- COMMENT ON TABLE earnings_data.unit_review_queue IS 'Queue for human review of unit normalization decisions on entire filings.';
+
+-- CREATE INDEX IF NOT EXISTS idx_staged_normalization_status
+--     ON earnings_data.staged_normalized_data(statement_normalized, unit_review_status, label_review_status);
+-- CREATE INDEX IF NOT EXISTS idx_unit_review_pending 
+--     ON earnings_data.unit_review_queue(status, created_at);
+
+-- ================================================================================================
+-- STAGE 3: QUALITY ENGINE
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_runs (
+    -- Core Fields
+    run_id BIGSERIAL PRIMARY KEY,
     doc_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
-    ticker VARCHAR(20) NOT NULL,
-    fiscal_date DATE NOT NULL,
-    normalized_data JSONB NOT NULL,
-    data_hash VARCHAR(64), -- Hash of the normalized_data content to detect changes.
-    
-    -- NEW: Three-phase normalization status tracking
-    statement_normalized BOOLEAN NOT NULL DEFAULT FALSE,
-    unit_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    label_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    
+
+    -- === Stage-by-Stage Status Columns ===
+    stage_1_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    stage_2_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    stage_3_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    stage_4_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    stage_5_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+
+    -- === NEW: Per-Stage Versioning Columns ===
+    -- These are stamped upon successful completion of each stage
+    stage_1_version VARCHAR(20),
+    stage_2_version VARCHAR(20),
+    stage_3_version VARCHAR(20),
+    stage_4_version VARCHAR(20),
+    stage_5_version VARCHAR(20),
+
+    -- === Audit & Debugging Fields ===
+    failure_reason TEXT,
+    details JSONB,
+    playbook_config_hash VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
-    -- Status constraints
-    CONSTRAINT ck_unit_review_status CHECK (unit_review_status IN ('PENDING', 'AUTO_APPROVED', 'PENDING_REVIEW', 'APPROVED')),
-    CONSTRAINT ck_label_review_status CHECK (label_review_status IN ('PENDING', 'PENDING_REVIEW', 'APPROVED'))
-);
-COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
-COMMENT ON COLUMN earnings_data.staged_normalized_data.statement_normalized IS 'Flag indicating whether statement normalization has been applied';
-COMMENT ON COLUMN earnings_data.staged_normalized_data.unit_review_status IS 'Status of unit normalization: PENDING, AUTO_APPROVED, PENDING_REVIEW, or APPROVED';
-COMMENT ON COLUMN earnings_data.staged_normalized_data.label_review_status IS 'Status of label normalization: PENDING, PENDING_REVIEW, or APPROVED';
-
-
--- NEW: Unit review queue for filing-level unit normalization review
-CREATE TABLE IF NOT EXISTS earnings_data.unit_review_queue (
-    id BIGSERIAL PRIMARY KEY,
-    doc_id BIGINT NOT NULL REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
-    asset_id BIGINT NOT NULL REFERENCES earnings_data.raw_data_assets(asset_id),
-    ticker VARCHAR(20) NOT NULL,
-    fiscal_date DATE NOT NULL,
-    
-    -- The LLM's analysis and raw filing data
-    llm_analysis JSONB NOT NULL,
-    filing_data JSONB NOT NULL,
-    
-    -- Human review fields
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
-    reviewed_by TEXT,
-    reviewed_at TIMESTAMPTZ,
-    human_corrections JSONB,
-    
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
-    CONSTRAINT ck_unit_review_queue_status CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED')),
-    UNIQUE(doc_id)
-);
-COMMENT ON TABLE earnings_data.unit_review_queue IS 'Queue for human review of unit normalization decisions on entire filings.';
-
-CREATE INDEX IF NOT EXISTS idx_staged_normalization_status
-    ON earnings_data.staged_normalized_data(statement_normalized, unit_review_status, label_review_status);
-CREATE INDEX IF NOT EXISTS idx_unit_review_pending 
-    ON earnings_data.unit_review_queue(status, created_at);
-
--- ================================================================================================
--- STAGE 3.5: QUALITY ENGINE
--- ================================================================================================
--- This stores the final result of the reconciliation/quality check
-CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_results (
-    quality_run_id BIGSERIAL PRIMARY KEY,
-    ticker VARCHAR(20) NOT NULL,
-    fiscal_date DATE NOT NULL,
-    engine_version VARCHAR(20) NOT NULL,
-    playbook_config_hash VARCHAR(64) NOT NULL,
-    status VARCHAR(50) NOT NULL, -- e.g., PASSED, PASSED_WITH_WARNINGS, PDF_ESCALATION_REQUIRED
-    summary JSONB, -- A rich JSON object containing all reconciliation and validation flags.
-    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (ticker, fiscal_date, playbook_config_hash)
+    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE earnings_data.quality_engine_results IS 'Stores the detailed output of a Quality Engine run for a specific financial filing.';
+-- Index for fast querying by the orchestrator script
+CREATE INDEX IF NOT EXISTS idx_quality_engine_runs_statuses
+ON earnings_data.quality_engine_runs (stage_1_status, stage_2_status, stage_3_status, stage_4_status, stage_5_status);
 
+-- Trigger to automatically update the 'last_updated_at' timestamp
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.last_updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_quality_engine_runs_modtime
+BEFORE UPDATE ON earnings_data.quality_engine_runs
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+-- Comments for clarity
+COMMENT ON TABLE earnings_data.quality_engine_runs
+IS 'State-tracking table for the multi-stage data quality and normalization engine. Drives the execution of the orchestrated validation scripts.';
+COMMENT ON COLUMN earnings_data.quality_engine_runs.stage_1_version
+IS 'The version of the Stage 1 script that successfully processed this run.';
 -- ================================================================================================
 -- STAGE 4: FINAL "GOLDEN RECORD" TABLES
 -- ================================================================================================

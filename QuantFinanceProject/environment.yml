@@ -7,7 +7,7 @@ dependencies:
   - pyarrow
   - pandas
   - sqlalchemy
-  - psycopg2
+  - psycopg
   - selenium
   - python-dotenv
   - prefect
