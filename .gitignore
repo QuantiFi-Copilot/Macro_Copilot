@@ -7,7 +7,9 @@ env/
 venv/
 ENV/
 *.env
-
+Business/
+Docs/
+Implementation_Docs/
 # Jupyter
 .ipynb_checkpoints/
 
