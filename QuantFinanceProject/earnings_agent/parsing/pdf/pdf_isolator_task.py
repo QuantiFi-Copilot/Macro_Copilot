@@ -257,25 +257,33 @@ def _execute_isolation_for_worker(asset_id: int):
         pass  # No longer needed - each process has its own engine
 
 def run_isolator_batch():
-    """Main batch processing function for statement isolation."""
+    """
+    Main batch processing function for statement isolation.
+    MODIFIED: Now retries assets that previously failed with ISOLATION_ERROR.
+    """
     MAX_WORKERS = 1
     logging.info(f"--- Starting PDF Isolator Batch Run v{PARSER_VERSION} ---")
 
-    # The main process gets the list of work.
     with get_session() as session:
-        processed_assets_subquery = select(ParsedDocument.asset_id).where(ParsedDocument.parser_version == PARSER_VERSION)
-        unprocessed_assets_query = select(RawDataAsset.asset_id).where(
-            RawDataAsset.source_type == 'PDF_FILE',
-            RawDataAsset.asset_id.notin_(processed_assets_subquery)
+        # --- MODIFICATION: Updated query to make it self-healing ---
+        # Find assets that have either never been processed OR have failed isolation before.
+        # This is more robust than the previous "not in" subquery.
+        stmt = (
+            select(RawDataAsset.asset_id)
+            .outerjoin(ParsedDocument, (RawDataAsset.asset_id == ParsedDocument.asset_id) & (ParsedDocument.parser_version == PARSER_VERSION))
+            .where(
+                RawDataAsset.source_type == 'PDF_FILE',
+                (ParsedDocument.asset_id == None) | (ParsedDocument.parse_status == 'ISOLATION_ERROR')
+            )
         )
-        asset_ids_to_process = session.execute(unprocessed_assets_query).scalars().all()
+        asset_ids_to_process = session.execute(stmt).scalars().all()
+        # --- END MODIFICATION ---
 
     if not asset_ids_to_process:
-        logging.info("No new PDF assets to process for isolation.")
+        logging.info("No new or failed PDF assets to process for isolation.")
         return
 
     logging.info(f"Found {len(asset_ids_to_process)} PDF assets for isolation. Using {MAX_WORKERS} workers.")
-    # The ProcessPoolExecutor now calls the safe worker function
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         list(executor.map(_execute_isolation_for_worker, asset_ids_to_process))
 

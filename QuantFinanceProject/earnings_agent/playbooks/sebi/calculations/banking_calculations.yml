@@ -34,10 +34,6 @@ pnl:
   children:
     - profit_loss_from_ordinary_activities_after_tax: 1
     - extraordinary_items: 1
-- parent: profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates
-  children:
-    - net_profit_loss_for_the_period: 1
-    - share_of_profit_loss_of_associates: 1
     - profit_loss_of_minority_interest: -1
 
 balance_sheet:
@@ -59,99 +55,107 @@ balance_sheet:
     - policyholder_funds: 1   # harmless if 0 / not used for banks
 
 cash_flow_indirect:
-- parent: adjustments_to_profit_loss
-  children:
-    - adjustments_for_finance_costs: 1
-    - adjustments_for_depreciation_and_amortisation_expense: 1
-    - adjustments_for_impairment_loss_reversal_of_impairment_loss_recognised_in_profit_or_loss: 1
-    - adjustments_for_unrealised_foreign_exchange_losses_gains: 1
-    - adjustments_for_dividend_income: -1
-    - adjustments_for_sharebased_payments: 1
-    - other_adjustments_for_which_cash_effects_are_investing_or_financing_cash_flow: 1
-    - other_adjustments_to_reconcile_profit_loss: 1
-    - other_adjustments_for_noncash_items: 1
-    - share_of_profit_and_loss_from_partnership_firm_or_association_of_persons_or_limited_liability_partnerships: 1
-- parent: adjustments_for_working_capital
-  children:
-    - adjustments_for_decrease_increase_in_inventories: 1
-    - adjustments_for_decrease_increase_in_trade_receivables: 1
-    - adjustments_for_decrease_increase_in_investments: 1
-    - adjustments_for_decrease_increase_in_other_current_assets: 1
-    - adjustments_for_increase_decrease_in_trade_payables: 1
-    - adjustments_for_increase_decrease_in_other_current_liabilities: 1
-    - adjustments_for_provisions: 1
-- parent: adjustments_for_reconcile_profit_loss
-  children:
-    - adjustments_to_profit_loss: 1
-    - adjustments_for_working_capital: 1
-- parent: net_cash_from_used_in_operations
-  children:
-    - profit_before_extraordinary_items_and_tax: 1
-    - adjustments_for_reconcile_profit_loss: 1
-- parent: net_cash_from_used_in_operating_activities_before_extraordinary_items
-  children:
-    - net_cash_from_used_in_operations: 1
-    - dividends_received_classified_as_operating_activities: 1
-    - interest_paid_classified_as_operating_activities: -1
-    - interest_received_classified_as_operating_activities: 1
-    - income_taxes_paid_refund_classified_as_operating_activities: -1
-    - other_inflows_outflows_of_cash_classified_as_operating_activities: 1
-- parent: net_cash_from_used_in_operating_activities
-  children:
-    - net_cash_from_used_in_operating_activities_before_extraordinary_items: 1
-    - proceeds_from_extraordinary_items_classified_as_operating_activities: 1
-    - payment_for_extraordinary_items_classified_as_operating_activities: -1
-- parent: net_cash_from_used_in_investing_activities_before_extraordinary_items
-  children:
-    - cash_flows_from_losing_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities: 1
-    - cash_flows_used_in_obtaining_control_of_subsidiaries_or_other_businesses_classified_as_investing_activities: -1
-    - other_cash_receipts_from_sales_of_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities: 1
-    - other_cash_payments_to_acquire_equity_or_debt_instruments_of_other_entities_classified_as_investing_activities: -1
-    - other_cash_receipts_from_sales_of_interests_in_joint_ventures_classified_as_investing_activities: 1
-    - other_cash_payments_to_acquire_interests_in_joint_ventures_classified_as_investing_activities: -1
-    - cash_receipts_from_share_of_profits_of_partnership_firm_or_association_of_persons_or_limited_liability_partnerships: 1
-    - cash_payment_for_investment_in_partnership_firm_or_association_of_persons_or_limited_liability_partnerships: -1
-    - proceeds_from_sales_of_tangible_assets_classified_as_investing_activities: 1
-    - purchase_of_tangible_assets_classified_as_investing_activities: -1
-    - proceeds_from_sales_of_intangible_assets_classified_as_investing_activities: 1
-    - purchase_of_intangible_assets_classified_as_investing_activities: -1
-    - cash_advances_and_loans_made_to_other_parties_classified_as_investing_activities: -1
-    - cash_receipts_from_repayment_of_advances_and_loans_made_to_other_parties_classified_as_investing_activities: 1
-    - cash_payments_for_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities: -1
-    - cash_receipts_from_future_contracts_forward_contracts_option_contracts_and_swap_contracts_classified_as_investing_activities: 1
-    - dividends_received_classified_as_investing_activities: 1
-    - interest_received_classified_as_investing_activities: 1
-    - income_taxes_paid_refund_classified_as_investing_activities: -1
-    - other_inflows_outflows_of_cash_classified_as_investing_activities: 1
-    - proceeds_from_government_grants_classified_as_investing_activities: 1
-- parent: net_cash_from_used_in_investing_activities
-  children:
-    - net_cash_from_used_in_investing_activities_before_extraordinary_items: 1
-    - proceeds_from_extraordinary_items_classified_as_investing_activities: 1
-    - payment_for_extraordinary_items_classified_as_investing_activities: -1
-- parent: net_cash_from_used_in_financing_activities_before_extraordinary_items
-  children:
-    - proceeds_from_issuing_shares: 1
-    - proceeds_from_issuing_other_equity_instruments: 1
-    - proceeds_from_issuing_debentures_notes_bonds_etc: 1
-    - proceeds_from_borrowings_classified_as_financing_activities: 1
-    - repayments_of_borrowings_classified_as_financing_activities: -1
-    - dividends_paid_classified_as_financing_activities: -1
-    - interest_paid_classified_as_financing_activities: -1
-    - income_taxes_paid_refund_classified_as_financing_activities: -1
-    - other_inflows_outflows_of_cash_classified_as_financing_activities: 1
-- parent: net_cash_from_used_in_financing_activities
-  children:
-    - net_cash_from_used_in_financing_activities_before_extraordinary_items: 1
-    - proceeds_from_extraordinary_items_classified_as_financing_activities: 1
-    - payment_for_extraordinary_items_classified_as_financing_activities: -1
-- parent: increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes
-  children:
-    - net_cash_from_used_in_operating_activities: 1
-    - net_cash_from_used_in_investing_activities: 1
-    - net_cash_from_used_in_financing_activities: 1
-- parent: increase_decrease_in_cash_and_cash_equivalents
-  children:
-    - increase_decrease_in_cash_and_cash_equivalents_before_effect_of_exchange_rate_changes: 1
-    - effect_of_exchange_rate_changes_on_cash_and_cash_equivalents: 1
+  # ---- (Optional) Rollups for QA/debug; align to playbook _abstract IDs ----
+  - parent: adjustments_to_profit_loss_abstract
+    children:
+      - adjustments_for_depreciation_and_amortisation_expense: 1
+      - profit_loss_on_revaluation_of_investments: 1
+      - amortisation_of_premium_on_investments: 1
+      - profit_loss_on_sale_of_fixed_assets: 1
+      - profit_loss_on_sale_of_subsidiaries: 1
+      - profit_loss_on_sale_of_investments: 1
+      - provision_for_non_performing_assets: 1
+      - provision_for_floating_provisions: 1
+      - provision_for_standard_assets_and_contingencies: 1
+      - dividend_income_from_subsidiaries: 1
+      - adjustments_for_sharebased_payments: 1
+      - other_adjustments_for_noncash_items: 1
 
+  - parent: adjustments_for_working_capital_abstract
+    children:
+      - adjustments_for_decrease_increase_in_advances: 1
+      - adjustments_for_increase_decrease_in_deposits: 1
+      - adjustments_for_decrease_increase_in_other_current_assets: 1
+      - adjustments_for_increase_decrease_in_other_current_liabilities: 1
+      - adjustments_for_decrease_increase_in_investments: 1   # non-HTM WC; HTM flows go to CFI
+
+  # ---- Net cash from/(used in) operating activities (flattened) ----
+  - parent: net_cash_from_used_in_operating_activities
+    children:
+      - profit_before_tax: 1
+
+      # Adjustments (non-cash / non-operating)
+      - adjustments_for_depreciation_and_amortisation_expense: 1
+      - profit_loss_on_revaluation_of_investments: 1
+      - amortisation_of_premium_on_investments: 1
+      - profit_loss_on_sale_of_fixed_assets: 1
+      - profit_loss_on_sale_of_subsidiaries: 1
+      - profit_loss_on_sale_of_investments: 1
+      - provision_for_non_performing_assets: 1
+      - provision_for_floating_provisions: 1
+      - provision_for_standard_assets_and_contingencies: 1
+      - dividend_income_from_subsidiaries: 1
+      - adjustments_for_sharebased_payments: 1
+      - other_adjustments_for_noncash_items: 1
+
+      # Working capital (bank-native)
+      - adjustments_for_decrease_increase_in_advances: 1
+      - adjustments_for_increase_decrease_in_deposits: 1
+      - adjustments_for_decrease_increase_in_other_current_assets: 1
+      - adjustments_for_increase_decrease_in_other_current_liabilities: 1
+      - adjustments_for_decrease_increase_in_investments: 1
+
+      # Operating cash items (bank policy)
+      - interest_received_classified_as_operating_activities: 1
+      - interest_paid_classified_as_operating_activities: 1
+      - income_taxes_paid_refund_classified_as_operating_activities: 1
+
+  # ---- Net cash from/(used in) investing activities ----
+  - parent: net_cash_from_used_in_investing_activities
+    children:
+      - purchase_of_tangible_assets_classified_as_investing_activities: 1
+      - proceeds_from_sale_of_tangible_assets_classified_as_investing_activities: 1  # singular to match playbook
+      - purchase_of_investments_classified_as_investing_activities: 1
+      - proceeds_from_sale_of_investments_classified_as_investing_activities: 1
+      - dividends_received_classified_as_investing_activities: 1
+      - other_inflows_outflows_of_cash_classified_as_investing_activities: 1
+
+  # ---- Net cash from/(used in) financing activities ----
+  - parent: net_cash_from_used_in_financing_activities
+    children:
+      - proceeds_from_issuing_shares: 1
+      - proceeds_from_issuing_other_equity_instruments: 1
+      - proceeds_from_issue_of_tier_1_and_tier_2_capital_instruments: 1
+      - redemption_of_tier_1_and_tier_2_capital_instruments: 1
+      - proceeds_from_borrowings_classified_as_financing_activities: 1
+      - repayments_of_borrowings_classified_as_financing_activities: 1
+      - dividends_paid_classified_as_financing_activities: 1
+      - other_inflows_outflows_of_cash_classified_as_financing_activities: 1
+      - increase_in_minority_interest: 1
+
+  # ---- Δ Cash & Cash Equivalents (EXCLUDES FX; FX reported separately in playbook) ----
+  - parent: increase_decrease_in_cash_and_cash_equivalents
+    children:
+      - net_cash_from_used_in_operating_activities: 1
+      - net_cash_from_used_in_investing_activities: 1
+      - net_cash_from_used_in_financing_activities: 1
+
+  # ---- Δ Cash & Cash Equivalents INCLUDING FX (A+B+C+D) ----
+  - parent: net_increase_decrease_in_cash_and_cash_equivalents_including_fx
+    children:
+      - net_cash_from_used_in_operating_activities: 1
+      - net_cash_from_used_in_investing_activities: 1
+      - net_cash_from_used_in_financing_activities: 1
+      - effect_of_exchange_rate_changes_on_cash_and_cash_equivalents: 1
+
+  # ---- Calculated closing = Opening + ΔCash INCLUDING FX ----
+  - parent: calc_cash_and_cash_equivalents_at_end_of_period
+    children:
+      - cash_and_cash_equivalents_at_beginning_of_period: 1
+      - net_increase_decrease_in_cash_and_cash_equivalents_including_fx: 1
+
+  # ---- Reconciliation difference: Reported Closing − Calculated Closing ----
+  - parent: cash_and_cash_equivalents_reconciliation_difference
+    children:
+      - cash_and_cash_equivalents_at_end_of_period: 1
+      - calc_cash_and_cash_equivalents_at_end_of_period: -1

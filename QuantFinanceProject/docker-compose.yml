@@ -355,17 +355,187 @@ services:
     volumes:
       - .:/app
       - ./.env:/app/.env
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
     environment:
       - EARNINGS_DB_HOST=tsdb
       - EARNINGS_DB_USER=${EARNINGS_DB_USER}
       - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
       - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
       - TZ=Asia/Kolkata
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=pdf-extractor-467911
+      - GOOGLE_CLOUD_LOCATION=us-central1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
     # --- MODIFIED COMMAND ---
     command: [
       "micromamba", "run", "-n", "quant-env",
       "python", "-m", "earnings_agent.quality_engine.quality_engine"
     ]
+# ─────────────────────────────────────────────────────────────
+  stage1-review-ui:
+    image: quantfinanceproject:latest
+    container_name: stage1-review-ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app 
+    ports:
+      - "8502:8501"
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/quality_engine/stage1/review_UI/review_ui.py",
+      "--server.port=8501",
+      "--server.address=0.0.0.0",
+      "--server.headless=true",
+      "--server.enableCORS=false",
+      "--server.enableXsrfProtection=false"
+    ]
+
+# ─────────────────────────────────────────────────────────────
+  # Stage 2 Review UI
+  stage2-review-ui:
+    image: quantfinanceproject:latest
+    container_name: stage2-review-ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app 
+    ports:
+      - "8503:8501"  # Different port from stage1-review-ui (8502)
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/quality_engine/stage2/review_UI/stage_2_review_ui.py",
+      "--server.port=8501",
+      "--server.address=0.0.0.0",
+      "--server.headless=true",
+      "--server.enableCORS=false",
+      "--server.enableXsrfProtection=false"
+    ]
+  # ─────────────────────────────────────────────────────────────
+  stage3-review-ui:
+    image: quantfinanceproject:latest
+    container_name: stage3-review-ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+      # Mount GCP credentials for the UI backend logic
+      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
+    environment:
+      # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      # Google Cloud Configuration (needed for UI backend)
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=pdf-extractor-467911
+      - GOOGLE_CLOUD_LOCATION=us-central1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+      # System Configuration
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app 
+    ports:
+      - "8504:8501"  # Expose on a new port (8504)
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/quality_engine/stage3/review_UI/stage_3_review_ui.py",
+      "--server.port=8501",
+      "--server.address=0.0.0.0",
+      "--server.headless=true",
+      "--server.enableCORS=false",
+      "--server.enableXsrfProtection=false"
+    ]
+################################################################################
+# FINALIZATION ENGINE
+################################################################################
+# ─────────────────────────────────────────────────────────────
+  finalization-engine:
+    image: quantfinanceproject:latest
+    container_name: finalization_engine
+    restart: "no" # This is a one-off batch job
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      # System Configuration
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "python", "-m", "earnings_agent.finalization_engine.finalization_engine"
+    ]
+  
+  final-review-ui:
+    image: quantfinanceproject:latest
+    container_name: final_review_ui
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+    # Database Configuration
+      - EARNINGS_DB_HOST=tsdb
+      - EARNINGS_DB_USER=${EARNINGS_DB_USER}
+      - EARNINGS_DB_PASSWORD=${EARNINGS_DB_PASSWORD}
+      - EARNINGS_DB_NAME=${EARNINGS_DB_NAME}
+      - TZ=Asia/Kolkata
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app 
+    ports:
+      - "8505:8501" # Expose on a new port like 8505
+    command: [
+      "micromamba", "run", "-n", "quant-env",
+      "streamlit", "run", "earnings_agent/finalization_engine/UIs/banking.py",
+      "--server.port=8501",
+      "--server.address=0.0.0.0",
+      "--server.headless=true"
+    ]
+# ─────────────────────────────────────────────────────────────
 ################################################################################
 # NSE CLASSIFICATION
 ################################################################################

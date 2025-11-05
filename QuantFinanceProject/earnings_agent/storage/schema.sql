@@ -79,78 +79,21 @@ COMMENT ON TABLE earnings_data.parsed_documents IS 'Staging table for structured
 -- ================================================================================================
 -- STAGE 3: NORMALIZATION & RECONCILIATION
 -- ================================================================================================
--- CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
---     -- MODIFIED: Added industry and created a composite primary key
---     raw_label TEXT NOT NULL,
---     industry TEXT NOT NULL,
---     normalized_label TEXT, -- The clean, standardized name from our master list
---     status VARCHAR(20) NOT NULL, -- 'APPROVED', 'PENDING_REVIEW', 'REJECTED'
---     processed BOOLEAN NOT NULL DEFAULT FALSE,
---     source_context JSONB, -- Metadata about where this label was first seen
---     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
---     last_reviewed_at TIMESTAMPTZ,
---     reviewed_by TEXT, -- Identifier for the human or system that performed the review
---     PRIMARY KEY (raw_label, industry)
--- );
--- COMMENT ON TABLE earnings_data.label_mapping_cache IS 'The persistent, industry-specific cache for the financial label normalization engine.';
+CREATE TABLE IF NOT EXISTS earnings_data.label_mapping_cache (
+    id BIGSERIAL PRIMARY KEY,
+    raw_label TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    statement_key TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
+    mapping_type TEXT NOT NULL,
+    normalized_label TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- This line is changed to add a specific name to the constraint
+    CONSTRAINT uq_label_mapping_context UNIQUE (raw_label, ticker, statement_key)
+);
 
--- -- MODIFIED: Index now includes 'industry' for faster lookups
--- CREATE INDEX IF NOT EXISTS idx_label_mapping_status_processed ON earnings_data.label_mapping_cache(industry, status, processed);
--- -- This is the staging area for the output of the normalization engine
--- CREATE TABLE IF NOT EXISTS earnings_data.staged_normalized_data (
---     id BIGSERIAL PRIMARY KEY,
---     doc_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
---     ticker VARCHAR(20) NOT NULL,
---     fiscal_date DATE NOT NULL,
---     normalized_data JSONB NOT NULL,
---     data_hash VARCHAR(64), -- Hash of the normalized_data content to detect changes.
-    
---     -- NEW: Three-phase normalization status tracking
---     statement_normalized BOOLEAN NOT NULL DEFAULT FALSE,
---     unit_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
---     label_review_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    
---     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
---     -- Status constraints
---     CONSTRAINT ck_unit_review_status CHECK (unit_review_status IN ('PENDING', 'AUTO_APPROVED', 'PENDING_REVIEW', 'APPROVED')),
---     CONSTRAINT ck_label_review_status CHECK (label_review_status IN ('PENDING', 'PENDING_REVIEW', 'APPROVED'))
--- );
--- COMMENT ON TABLE earnings_data.staged_normalized_data IS 'Intermediate staging table holding normalized data from a single source, ready for the Quality Engine.';
--- COMMENT ON COLUMN earnings_data.staged_normalized_data.statement_normalized IS 'Flag indicating whether statement normalization has been applied';
--- COMMENT ON COLUMN earnings_data.staged_normalized_data.unit_review_status IS 'Status of unit normalization: PENDING, AUTO_APPROVED, PENDING_REVIEW, or APPROVED';
--- COMMENT ON COLUMN earnings_data.staged_normalized_data.label_review_status IS 'Status of label normalization: PENDING, PENDING_REVIEW, or APPROVED';
-
-
--- -- NEW: Unit review queue for filing-level unit normalization review
--- CREATE TABLE IF NOT EXISTS earnings_data.unit_review_queue (
---     id BIGSERIAL PRIMARY KEY,
---     doc_id BIGINT NOT NULL REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
---     asset_id BIGINT NOT NULL REFERENCES earnings_data.raw_data_assets(asset_id),
---     ticker VARCHAR(20) NOT NULL,
---     fiscal_date DATE NOT NULL,
-    
---     -- The LLM's analysis and raw filing data
---     llm_analysis JSONB NOT NULL,
---     filing_data JSONB NOT NULL,
-    
---     -- Human review fields
---     status VARCHAR(20) NOT NULL DEFAULT 'PENDING_REVIEW',
---     reviewed_by TEXT,
---     reviewed_at TIMESTAMPTZ,
---     human_corrections JSONB,
-    
---     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
---     CONSTRAINT ck_unit_review_queue_status CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED')),
---     UNIQUE(doc_id)
--- );
--- COMMENT ON TABLE earnings_data.unit_review_queue IS 'Queue for human review of unit normalization decisions on entire filings.';
-
--- CREATE INDEX IF NOT EXISTS idx_staged_normalization_status
---     ON earnings_data.staged_normalized_data(statement_normalized, unit_review_status, label_review_status);
--- CREATE INDEX IF NOT EXISTS idx_unit_review_pending 
---     ON earnings_data.unit_review_queue(status, created_at);
+COMMENT ON TABLE earnings_data.label_mapping_cache IS 'Stores human-approved, context-specific mappings for raw labels to prevent repeat LLM calls.';
 
 -- ================================================================================================
 -- STAGE 3: QUALITY ENGINE
@@ -159,33 +102,35 @@ CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_runs (
     -- Core Fields
     run_id BIGSERIAL PRIMARY KEY,
     doc_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.parsed_documents(doc_id) ON DELETE CASCADE,
-
+    -- === NEW: Data & History Columns ===
+    working_content JSONB,
+    run_history JSONB,
     -- === Stage-by-Stage Status Columns ===
     stage_1_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     stage_2_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     stage_3_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
     stage_4_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-    stage_5_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-
-    -- === NEW: Per-Stage Versioning Columns ===
-    -- These are stamped upon successful completion of each stage
+    -- === Per-Stage Versioning Columns ===
     stage_1_version VARCHAR(20),
     stage_2_version VARCHAR(20),
     stage_3_version VARCHAR(20),
     stage_4_version VARCHAR(20),
-    stage_5_version VARCHAR(20),
-
     -- === Audit & Debugging Fields ===
     failure_reason TEXT,
-    details JSONB,
     playbook_config_hash VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_loaded_to_golden_record BOOLEAN NOT NULL DEFAULT FALSE
 );
+-- Comments for the new columns
+COMMENT ON COLUMN earnings_data.quality_engine_runs.working_content
+IS 'The working copy of the parsed document content, which is modified at each QE stage.';
+COMMENT ON COLUMN earnings_data.quality_engine_runs.run_history
+IS 'A JSONB array that serves as an immutable audit log of all transformations and checks.';
 
 -- Index for fast querying by the orchestrator script
 CREATE INDEX IF NOT EXISTS idx_quality_engine_runs_statuses
-ON earnings_data.quality_engine_runs (stage_1_status, stage_2_status, stage_3_status, stage_4_status, stage_5_status);
+ON earnings_data.quality_engine_runs (stage_1_status, stage_2_status, stage_3_status, stage_4_status);
 
 -- Trigger to automatically update the 'last_updated_at' timestamp
 CREATE OR REPLACE FUNCTION update_modified_column()
@@ -200,54 +145,155 @@ CREATE TRIGGER update_quality_engine_runs_modtime
 BEFORE UPDATE ON earnings_data.quality_engine_runs
 FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
--- Comments for clarity
-COMMENT ON TABLE earnings_data.quality_engine_runs
-IS 'State-tracking table for the multi-stage data quality and normalization engine. Drives the execution of the orchestrated validation scripts.';
-COMMENT ON COLUMN earnings_data.quality_engine_runs.stage_1_version
-IS 'The version of the Stage 1 script that successfully processed this run.';
+-- In schema.sql, after the quality_engine_runs table
+CREATE TABLE IF NOT EXISTS earnings_data.quality_engine_rule_variants (
+    id BIGSERIAL PRIMARY KEY,
+    parent_playbook_id TEXT NOT NULL,
+    issuer_ticker VARCHAR(20) NOT NULL,
+    industry TEXT, -- For industry-wide rules later
+    variant_definition JSONB NOT NULL,
+    created_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (parent_playbook_id, issuer_ticker)
+);
+COMMENT ON TABLE earnings_data.quality_engine_rule_variants 
+IS 'Stores human-verified or learned calculation rule overrides for specific issuers.';
+
 -- ================================================================================================
 -- STAGE 4: FINAL "GOLDEN RECORD" TABLES
 -- ================================================================================================
-
-CREATE TABLE IF NOT EXISTS earnings_data.quarterly_fundamentals (
+CREATE TABLE IF NOT EXISTS earnings_data.fundamental_records (
     id BIGSERIAL PRIMARY KEY,
     ticker VARCHAR(20) NOT NULL,
     fiscal_date DATE NOT NULL,
     period VARCHAR(10) NOT NULL,
+    -- ADD THIS COLUMN
+    consolidation_status VARCHAR(50) NOT NULL,
     filing_date DATE,
-    source VARCHAR(50) NOT NULL,
     version INT DEFAULT 1 NOT NULL,
-    -- Link back to the primary asset used to generate this record
-    primary_asset_id BIGINT REFERENCES earnings_data.raw_data_assets(asset_id),
-    -- Income Statement
-    revenue BIGINT, cost_of_goods_sold BIGINT, gross_profit BIGINT, operating_expenses BIGINT,
-    ebitda BIGINT, depreciation_and_amortization BIGINT, ebit BIGINT, interest_expense BIGINT,
-    profit_before_tax BIGINT, tax_expense BIGINT, net_income BIGINT,
-    earnings_per_share_basic NUMERIC(18, 4), earnings_per_share_diluted NUMERIC(18, 4),
-    -- Balance Sheet
-    cash_and_equivalents BIGINT, accounts_receivable BIGINT, inventory BIGINT,
-    total_current_assets BIGINT, property_plant_equipment_net BIGINT, total_non_current_assets BIGINT,
-    total_assets BIGINT, accounts_payable BIGINT, total_current_liabilities BIGINT,
-    total_long_term_debt BIGINT, total_non_current_liabilities BIGINT, total_liabilities BIGINT,
-    shareholders_equity BIGINT, total_liabilities_and_equity BIGINT,
-    -- Cash Flow Statement
-    cash_flow_from_operating BIGINT, cash_flow_from_investing BIGINT, cash_flow_from_financing BIGINT,
-    net_change_in_cash BIGINT,
-    -- Timestamps
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(ticker, fiscal_date, version)
+    source_playbook VARCHAR(50) NOT NULL,
+    source_run_id BIGINT REFERENCES earnings_data.quality_engine_runs(run_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- UPDATE THE CONSTRAINT TO INCLUDE THE NEW COLUMN
+    CONSTRAINT uq_fundamental_record UNIQUE(ticker, fiscal_date, version, consolidation_status)
 );
-COMMENT ON TABLE earnings_data.quarterly_fundamentals IS 'The "Golden Record" table for final, clean, reconciled, and versioned financial data.';
 
+COMMENT ON TABLE earnings_data.fundamental_records IS 'Central hub table for each unique financial record (company + period). Links all golden record tables together.';
+
+CREATE TABLE IF NOT EXISTS earnings_data.fundamentals_banking (
+    -- Primary key also links to the master record
+    record_id BIGINT PRIMARY KEY REFERENCES earnings_data.fundamental_records(id) ON DELETE CASCADE,
+    -- Profit & Loss (Banks)
+    interest_or_discount_on_advances_or_bills BIGINT,
+    revenue_on_investments BIGINT,
+    interest_on_balances_with_reserve_bank_of_india_and_other_inter_bank_funds BIGINT,
+    other_interest BIGINT,
+    interest_earned BIGINT,
+    other_income BIGINT,
+    income BIGINT,
+    interest_expended BIGINT,
+    employees_cost BIGINT,
+    other_operating_expenses BIGINT,
+    operating_expenses BIGINT,
+    total_expenditure_excluding_provisions_and_contingencies BIGINT,
+    operating_profit_before_provision_and_contingencies BIGINT,
+    provisions_other_than_tax_and_contingencies BIGINT,
+    exceptional_items BIGINT,
+    net_profit_loss_from_ordinary_activities_before_tax BIGINT,
+    tax_expense BIGINT,
+    profit_loss_from_ordinary_activities_after_tax BIGINT,
+    extraordinary_items BIGINT,
+    net_profit_loss_for_the_period BIGINT,
+    share_of_profit_loss_of_associates BIGINT,
+    net_profit_loss_after_taxes_before_minority_interest BIGINT,
+    profit_loss_of_minority_interest BIGINT,
+    profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates BIGINT,
+    paid_up_value_of_equity_share_capital BIGINT,
+    face_value_of_equity_share_capital NUMERIC(18, 4),
+    reserve_excluding_revaluation_reserves BIGINT,
+    percentage_of_share_held_by_government_of_india NUMERIC(18, 4),
+    cet1_ratio NUMERIC(18, 4),
+    additional_tier1_ratio NUMERIC(18, 4),
+    basic_earnings_per_share_before_extraordinary_items NUMERIC(18, 4),
+    diluted_earnings_per_share_before_extraordinary_items NUMERIC(18, 4),
+    basic_earnings_per_share_after_extraordinary_items NUMERIC(18, 4),
+    diluted_earnings_per_share_after_extraordinary_items NUMERIC(18, 4),
+    gross_non_performing_assets BIGINT,
+    percentage_of_gross_npa NUMERIC(18, 4),
+    net_non_performing_assets BIGINT,
+    percentage_of_net_npa NUMERIC(18, 4),
+    return_on_assets NUMERIC(18, 4),
+    -- Balance Sheet
+    capital BIGINT,
+    reserves_and_surplus BIGINT,
+    deposits BIGINT,
+    borrowings BIGINT,
+    other_liabilities_and_provisions BIGINT,
+    total_capital_and_liabilities BIGINT,
+    policyholder_funds BIGINT,
+    cash_and_balances_with_reserve_bank_of_india BIGINT,
+    balances_with_banks_and_money_at_call_and_short_notice BIGINT,
+    investments BIGINT,
+    advances BIGINT,
+    fixed_assets BIGINT,
+    other_assets BIGINT,
+    total_assets BIGINT,
+    -- Cash Flow (Indirect)
+    profit_before_tax BIGINT,
+    adjustments_for_depreciation_and_amortisation_expense BIGINT,
+    profit_loss_on_revaluation_of_investments BIGINT,
+    amortisation_of_premium_on_investments BIGINT,
+    profit_loss_on_sale_of_fixed_assets BIGINT,
+    profit_loss_on_sale_of_subsidiaries BIGINT,
+    profit_loss_on_sale_of_investments BIGINT,
+    provision_for_non_performing_assets BIGINT,
+    provision_for_floating_provisions BIGINT,
+    provision_for_standard_assets_and_contingencies BIGINT,
+    dividend_income_from_subsidiaries BIGINT,
+    adjustments_for_sharebased_payments BIGINT,
+    other_adjustments_for_noncash_items BIGINT,
+    adjustments_for_decrease_increase_in_advances BIGINT,
+    adjustments_for_increase_decrease_in_deposits BIGINT,
+    adjustments_for_decrease_increase_in_other_current_assets BIGINT,
+    adjustments_for_increase_decrease_in_other_current_liabilities BIGINT,
+    adjustments_for_decrease_increase_in_investments BIGINT,
+    interest_received_classified_as_operating_activities BIGINT,
+    interest_paid_classified_as_operating_activities BIGINT,
+    income_taxes_paid_refund_classified_as_operating_activities BIGINT,
+    net_cash_from_used_in_operating_activities BIGINT,
+    purchase_of_tangible_assets_classified_as_investing_activities BIGINT,
+    proceeds_from_sale_of_tangible_assets_classified_as_investing_activities BIGINT,
+    purchase_of_investments_classified_as_investing_activities BIGINT,
+    proceeds_from_sale_of_investments_classified_as_investing_activities BIGINT,
+    dividends_received_classified_as_investing_activities BIGINT,
+    other_inflows_outflows_of_cash_classified_as_investing_activities BIGINT,
+    net_cash_from_used_in_investing_activities BIGINT,
+    proceeds_from_issuing_shares BIGINT,
+    proceeds_from_issuing_other_equity_instruments BIGINT,
+    proceeds_from_issue_of_tier_1_and_tier_2_capital_instruments BIGINT,
+    redemption_of_tier_1_and_tier_2_capital_instruments BIGINT,
+    repayments_of_borrowings_classified_as_financing_activities BIGINT,
+    proceeds_from_borrowings_classified_as_financing_activities BIGINT,
+    dividends_paid_classified_as_financing_activities BIGINT,
+    other_inflows_outflows_of_cash_classified_as_financing_activities BIGINT,
+    net_cash_from_used_in_financing_activities BIGINT,
+    effect_of_exchange_rate_changes_on_cash_and_cash_equivalents BIGINT,
+    increase_decrease_in_cash_and_cash_equivalents BIGINT,
+    cash_and_cash_equivalents_at_beginning_of_period BIGINT,
+    cash_and_cash_equivalents_at_end_of_period BIGINT,
+    -- Metadata
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS earnings_data.custom_kpis (
     id BIGSERIAL PRIMARY KEY,
-    fundamental_id BIGINT NOT NULL REFERENCES earnings_data.quarterly_fundamentals(id) ON DELETE CASCADE,
+    record_id BIGINT NOT NULL UNIQUE REFERENCES earnings_data.fundamental_records(id) ON DELETE CASCADE,
     kpi_data JSONB NOT NULL,
-    UNIQUE(fundamental_id)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE earnings_data.custom_kpis IS 'Stores custom-calculated KPIs for a given fundamental record.';
 
+COMMENT ON TABLE earnings_data.custom_kpis IS 'Flexible store for all non-standard KPIs, linked to a master fundamental record.';
 -- ================================================================================================
 -- UTILITY VIEWS
 -- ================================================================================================
@@ -306,7 +352,7 @@ CREATE TABLE IF NOT EXISTS earnings_data.company_master (
     company_name TEXT NOT NULL,
     isin_code VARCHAR(20) UNIQUE,
     listing_status VARCHAR(20) NOT NULL DEFAULT 'LISTED', -- e.g., LISTED, DELISTED
-    bse_code VARCHAR(10) UNIQUE
+    bse_code VARCHAR(10) UNIQUE,
     -- A single foreign key to the classifications table for context.
     classification_id INTEGER REFERENCES earnings_data.classifications(id),
 

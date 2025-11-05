@@ -18,15 +18,14 @@ from earnings_agent.storage.models import (
     RawDataAsset,
     JobAssetLink,
     ParsedDocument,
-    # LabelMapping, # NEW: For the normalization cache
-    # StagedNormalizedData, # NEW: For the reconciliation staging area
-    # QualityEngineResult,
-    # QuarterlyFundamental,
-    # CustomKPI,
     Classification,
-    # UnitReviewQueue,
     CompanyMaster, 
-    QualityEngineRun
+    QualityEngineRun,
+    QualityEngineRuleVariant,
+    LabelMappingCache, 
+    FundamentalRecord, 
+    FundamentalsBanking, 
+    CustomKpis
 )
 # Assumes a central config file for the schema name
 # from .config import DB_SCHEMA
@@ -237,341 +236,53 @@ def create_parsed_document(doc_data: Dict[str, Any]):
     finally:
         session.close()
 
-# # ================================================================================================
-# # NORMALIZATION STAGE FUNCTIONS (NEW)
-# # ================================================================================================
-# def get_label_mapping(raw_label: str, industry: str) -> Optional[LabelMapping]:
-#     """
-#     Retrieves a single label mapping from the cache using its composite key.
-#     """
-#     session = get_session()
-#     try:
-#         # session.get() works with composite keys when passed a tuple
-#         return session.get(LabelMapping, (raw_label, industry))
-#     finally:
-#         session.close()
-# def upsert_label_mapping(mapping_data: Dict[str, Any]):
-#     """
-#     Inserts or updates a label mapping in the cache.
-#     The mapping_data dictionary MUST contain 'raw_label' and 'industry'.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = pg_insert(LabelMapping).values(**mapping_data)
-#         update_cols = {
-#             'normalized_label': stmt.excluded.normalized_label,
-#             'status': stmt.excluded.status,
-#             'last_reviewed_at': stmt.excluded.last_reviewed_at,
-#             'reviewed_by': stmt.excluded.reviewed_by
-#         }
-#         # Update the index_elements to use the new composite key
-#         stmt = stmt.on_conflict_do_update(
-#             index_elements=['raw_label', 'industry'],
-#             set_=update_cols
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def create_staged_normalized_data(data: Dict[str, Any]):
-#     """
-#     Inserts a record in the staging table for normalized data.
-#     If a record with the same doc_id already exists, it does nothing.
-#     This is safer and prevents accidental overwrites.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = pg_insert(StagedNormalizedData).values(**data)
-#         # --- THIS IS THE FIX ---
-#         # Change the conflict action to DO NOTHING. This function's only job
-#         # is to create the initial record if it doesn't exist.
-#         stmt = stmt.on_conflict_do_nothing(
-#             index_elements=['doc_id']
-#         )
-#         # --- END OF FIX ---
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def get_unprocessed_approved_labels() -> List[LabelMapping]:
-#     """
-#     Fetches all label mappings that have been approved but not yet processed
-#     by the backfill job. This is the "to-do list" for the backfill script.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(LabelMapping).where(
-#             LabelMapping.status == 'APPROVED',
-#             LabelMapping.processed == False
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-# # --- NEW FUNCTION 2 ---
-# def mark_labels_as_processed(raw_labels: List[str]):
-#     """
-#     Marks a batch of approved labels as processed after the backfill
-#     job has successfully run for them.
-#     """
-#     if not raw_labels:
-#         return
-
-#     session = get_session()
-#     try:
-#         stmt = update(LabelMapping).where(
-#             LabelMapping.raw_label.in_(raw_labels)
-#         ).values(
-#             processed=True
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     except Exception as e:
-#         session.rollback()
-#         raise e
-#     finally:
-#         session.close()
-# def fetch_pending_label_reviews() -> List[LabelMapping]:
-#     """
-#     Queries the database for all label mappings with 'PENDING_REVIEW' status.
-#     """
-#     session = get_session()
-#     try:
-#         return session.query(LabelMapping).filter(
-#             LabelMapping.status == 'PENDING_REVIEW'
-#         ).order_by(LabelMapping.created_at.desc()).all()
-#     finally:
-#         session.close()
-# # Add `new_label` as an optional parameter
-# def update_label_mapping_status(raw_label: str, industry: str, new_status: str, new_label: str = None, reviewer: str = "human_reviewer"):
-#     """
-#     Updates the status and optionally the normalized_label of a mapping.
-#     """
-#     session = get_session()
-#     try:
-#         mapping_to_update = session.get(LabelMapping, (raw_label, industry))
-#         if mapping_to_update:
-#             mapping_to_update.status = new_status
-#             # --- CORRECTED LINE ---
-#             mapping_to_update.last_reviewed_at = datetime.datetime.now(timezone.utc)
-#             mapping_to_update.reviewed_by = reviewer
-#             if new_label is not None:
-#                 mapping_to_update.normalized_label = None if new_label.lower() == 'null' or not new_label else new_label
-#             session.commit()
-#     except Exception as e:
-#         session.rollback()
-#         raise e
-#     finally:
-#         session.close()
-# def get_docs_pending_statement_normalization() -> List[int]:
-#     """
-#     Return all doc_ids that have not yet run through the statement normalizer.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(StagedNormalizedData.doc_id).where(
-#             StagedNormalizedData.statement_normalized == False
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-# def mark_docs_statement_normalized(doc_ids: List[int]):
-#     """
-#     Mark the given doc_ids as having completed statement normalization.
-#     """
-#     if not doc_ids:
-#         return
-#     session = get_session()
-#     try:
-#         stmt = (
-#             update(StagedNormalizedData)
-#             .where(StagedNormalizedData.doc_id.in_(doc_ids))
-#             .values(statement_normalized=True)
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def get_docs_pending_unit_normalization() -> List[int]:
-#     """
-#     Return all doc_ids ready for unit normalization: statement-normalized but not unit-processed.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(StagedNormalizedData.doc_id).where(
-#             StagedNormalizedData.statement_normalized == True,
-#             StagedNormalizedData.unit_review_status == 'PENDING'
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-
-# def mark_docs_unit_review_status(doc_ids: List[int], status: str):
-#     """
-#     Set the unit_review_status for the given doc_ids.
-#     status should be one of 'PENDING', 'AUTO_APPROVED', 'PENDING_REVIEW', 'APPROVED'.
-#     """
-#     if not doc_ids:
-#         return
-#     session = get_session()
-#     try:
-#         stmt = (
-#             update(StagedNormalizedData)
-#             .where(StagedNormalizedData.doc_id.in_(doc_ids))
-#             .values(unit_review_status=status)
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def get_docs_pending_label_normalization() -> List[int]:
-#     """
-#     Return doc_ids ready for label normalization. This now includes both
-#     human-approved and auto-approved documents from the unit normalization phase.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(StagedNormalizedData.doc_id).where(
-#             StagedNormalizedData.unit_review_status.in_(['APPROVED', 'AUTO_APPROVED']),
-#             StagedNormalizedData.label_review_status == 'PENDING'
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-# def get_docs_pending_label_review() -> List[int]:
-#     """
-#     Return doc_ids that have been scanned for labels and are awaiting human review approval.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(StagedNormalizedData.doc_id).where(
-#             StagedNormalizedData.label_review_status == 'PENDING_REVIEW'
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-
-# def mark_docs_label_review_status(doc_ids: List[int], status: str):
-#     """
-#     Set the label_review_status for the given doc_ids.
-#     status should be one of 'PENDING', 'PENDING_REVIEW', 'APPROVED'.
-#     """
-#     if not doc_ids:
-#         return
-#     session = get_session()
-#     try:
-#         stmt = (
-#             update(StagedNormalizedData)
-#             .where(StagedNormalizedData.doc_id.in_(doc_ids))
-#             .values(label_review_status=status)
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def create_unit_review_record(review_data: Dict[str, Any]):
-#     """
-#     Inserts a record into the unit review queue for human review.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = pg_insert(UnitReviewQueue).values(**review_data)
-#         # On conflict, update with new analysis
-#         update_cols = {
-#             'llm_analysis': stmt.excluded.llm_analysis,
-#             'filing_data': stmt.excluded.filing_data,
-#             'created_at': stmt.excluded.created_at
-#         }
-#         stmt = stmt.on_conflict_do_update(
-#             index_elements=['doc_id'],
-#             set_=update_cols
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def get_pending_unit_reviews() -> List[UnitReviewQueue]:
-#     """
-#     Fetches all unit reviews that are pending human review.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(UnitReviewQueue).where(
-#             UnitReviewQueue.status == 'PENDING_REVIEW'
-#         ).order_by(UnitReviewQueue.created_at.desc())
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-# def approve_unit_review(review_id: int, corrections: Dict = None):
-#     """
-#     Marks a unit review as approved and optionally stores human corrections.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = update(UnitReviewQueue).where(
-#             UnitReviewQueue.id == review_id
-#         ).values(
-#             status='APPROVED',
-#             # --- CORRECTED LINE ---
-#             reviewed_at=datetime.datetime.now(timezone.utc),
-#             reviewed_by='human_reviewer',
-#             human_corrections=corrections
-#         )
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-# def get_approved_unit_reviews() -> List[UnitReviewQueue]:
-#     """
-#     Fetches all unit reviews that have been approved but not yet applied.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = select(UnitReviewQueue).where(
-#             UnitReviewQueue.status == 'APPROVED'
-#         )
-#         return session.execute(stmt).scalars().all()
-#     finally:
-#         session.close()
-# def delete_processed_unit_review(review_id: int):
-#     """
-#     Removes a unit review record after it has been processed and applied.
-#     """
-#     session = get_session()
-#     try:
-#         stmt = delete(UnitReviewQueue).where(UnitReviewQueue.id == review_id)
-#         session.execute(stmt)
-#         session.commit()
-#     finally:
-#         session.close()
-
 # ================================================================================================
 # QUALITY ENGINE FUNCTIONS
 # ================================================================================================
 def create_quality_engine_runs_for_new_documents():
     """
     Finds parsed documents that don't have a quality engine run and creates
-    an entry for each with default 'PENDING' statuses.
-    This function "seeds" the pipeline and is called by the master orchestrator.
+    an entry for each.
+    
+    MODIFIED: This function now copies the original content from ParsedDocument
+    into the QualityEngineRun's 'working_content' to initialize the run.
     """
     session = get_session()
     try:
         # Subquery to find all doc_ids that are already in the queue
         subquery = select(QualityEngineRun.doc_id)
-        
-        # Main query to find parsed documents not in the subquery
-        stmt = select(ParsedDocument.doc_id).where(
+        # The query now selects both the doc_id and the original content.
+        stmt = select(ParsedDocument.doc_id, ParsedDocument.content).where(
             ParsedDocument.parse_status == 'EXTRACTION_SUCCESS',
             ParsedDocument.doc_id.notin_(subquery)
         )
-        doc_ids_to_create = session.execute(stmt).scalars().all()
-
-        if not doc_ids_to_create:
+        docs_to_seed = session.execute(stmt).all()
+        if not docs_to_seed:
             logging.info("No new documents to seed into the Quality Engine queue.")
             return
+        # Build the new run objects, mapping the original content to the
+        # 'working_content' field and initializing the history.
+        new_runs_data = []
+        for doc_id, content in docs_to_seed:
+            # Extract only the LLM 2 extraction data
+            if content and "llm_call_2_extraction" in content:
+                working_content = {"llm_call_2_extraction": content["llm_call_2_extraction"]}
+            else:
+                # Log warning and skip if no extraction data exists
+                logging.warning(f"Skipping doc_id {doc_id}: No llm_call_2_extraction found")
+                continue
+        
+            new_runs_data.append({
+                "doc_id": doc_id,
+                "working_content": working_content,  # ✅ Only extraction data
+                "run_history": [{
+                    "step": "seed", 
+                    "status": "INITIALIZED", 
+                    "timestamp": datetime.datetime.now(timezone.utc).isoformat()
+                }]
+            })
 
-        new_runs_data = [{"doc_id": doc_id} for doc_id in doc_ids_to_create]
-
-        # Bulk insert the new runs; all status and version columns will use their defaults (PENDING/NULL)
+        # Bulk insert the new runs
         session.bulk_insert_mappings(QualityEngineRun, new_runs_data)
         session.commit()
         logging.info(f"Created {len(new_runs_data)} new runs in the Quality Engine queue.")
@@ -629,6 +340,405 @@ def update_quality_run(run_id: int, updates: Dict[str, Any]):
     finally:
         session.close()
 
+# Additional functions to add to database.py
+
+def get_runs_by_stage_2_status(statuses: List[str]) -> List[QualityEngineRun]:
+    """
+    Retrieves QualityEngineRun objects that are ready for Stage 2 processing.
+    """
+    session = get_session()
+    try:
+        stmt = (
+            select(QualityEngineRun)
+            # FIX: This gate ensures Stage 2 only runs on documents that passed Stage 1.
+            .where(QualityEngineRun.stage_1_status == 'PASSED')
+            .where(QualityEngineRun.stage_2_status.in_(statuses))
+            .options(joinedload(QualityEngineRun.parsed_document))
+        )
+        results = session.execute(stmt).scalars().all()
+        return results
+    finally:
+        session.close()
+
+def get_stage_2_summary_stats() -> Dict[str, int]:
+    """
+    Get summary statistics for Stage 2 processing.
+    """
+    session = get_session()
+    try:
+        from sqlalchemy import func
+        
+        # Count documents by stage_2_status
+        stmt = (
+            select(
+                QualityEngineRun.stage_2_status,
+                func.count(QualityEngineRun.run_id).label('count')
+            )
+            .group_by(QualityEngineRun.stage_2_status)
+        )
+        
+        results = session.execute(stmt).all()
+        
+        stats = {
+            'PENDING': 0,
+            'PASSED': 0,
+            'CALCULATION_MISMATCH': 0,
+            'TOTAL': 0
+        }
+        
+        for status, count in results:
+            if status in stats:
+                stats[status] = count
+            stats['TOTAL'] += count
+        
+        return stats
+    finally:
+        session.close()
+
+def get_rule_variant(session: Session, ticker: str, parent_playbook_id: str) -> Optional[QualityEngineRuleVariant]:
+    """
+    Retrieves a specific rule variant for a given ticker and parent playbook ID.
+    This is the core function the Playbook Resolver will use to find an override.
+    """
+    try:
+        stmt = (
+            select(QualityEngineRuleVariant)
+            .where(
+                QualityEngineRuleVariant.issuer_ticker == ticker,
+                QualityEngineRuleVariant.parent_playbook_id == parent_playbook_id
+            )
+        )
+        return session.execute(stmt).scalar_one_or_none()
+    except Exception as e:
+        logging.error(f"Error fetching rule variant for {ticker} - {parent_playbook_id}: {e}")
+        return None
+
+def save_rule_variant(variant_data: Dict[str, Any]):
+    """
+    Inserts or updates a rule variant in the database.
+    This is the function the Rule Correction UI will call after a human makes a fix.
+    """
+    session = get_session()
+    try:
+        # Pydantic models in FastAPI/Streamlit might pass enums; convert them to strings
+        for key, value in variant_data.items():
+            if hasattr(value, 'value'):
+                 variant_data[key] = value.value
+
+        stmt = pg_insert(QualityEngineRuleVariant).values(**variant_data)
+        
+        # On conflict (if a rule for this ticker/playbook_id already exists), update it
+        update_cols = {
+            'variant_definition': stmt.excluded.variant_definition,
+            'created_by': stmt.excluded.created_by,
+            'created_at': func.now() # Reset timestamp on update
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['parent_playbook_id', 'issuer_ticker'],
+            set_=update_cols
+        )
+        
+        session.execute(stmt)
+        session.commit()
+        logging.info(f"Saved rule variant for {variant_data.get('issuer_ticker')} - {variant_data.get('parent_playbook_id')}")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error saving rule variant: {e}", exc_info=True)
+        raise
+    finally:
+        session.close()
+
+def delete_rule_variant(variant_id: int):
+    """
+    Deletes a rule variant from the database.
+    Useful for admin purposes if a bad rule is saved by mistake.
+    """
+    session = get_session()
+    try:
+        stmt = delete(QualityEngineRuleVariant).where(QualityEngineRuleVariant.id == variant_id)
+        session.execute(stmt)
+        session.commit()
+        logging.info(f"Deleted rule variant with ID: {variant_id}")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error deleting rule variant ID {variant_id}: {e}", exc_info=True)
+        raise
+    finally:
+        session.close()
+
+def get_mapping_from_cache(raw_label: str, ticker: str, statement_key: str) -> Optional[LabelMappingCache]:
+    """
+    Queries the cache for a mapping, prioritizing 'APPROVED' over 'PENDING_REVIEW'.
+
+    This is the core lookup function for the Stage 3 orchestrator. It checks for a
+    definitive, human-approved mapping first. If none exists, it checks for an
+    in-flight, pending suggestion to avoid redundant LLM calls.
+
+    Args:
+        raw_label: The raw text of the label from the document.
+        ticker: The company ticker.
+        statement_key: The statement the label belongs to (e.g., 'consolidated_pnl').
+
+    Returns:
+        The highest-priority LabelMappingCache object if a match is found, otherwise None.
+    """
+    session = get_session()
+    try:
+        # Step 1: Prioritize the approved mapping
+        approved_stmt = (
+            select(LabelMappingCache)
+            .where(
+                LabelMappingCache.raw_label == raw_label,
+                LabelMappingCache.ticker == ticker,
+                LabelMappingCache.statement_key == statement_key,
+                LabelMappingCache.status == 'APPROVED'
+            )
+        )
+        approved_result = session.execute(approved_stmt).scalar_one_or_none()
+        if approved_result:
+            return approved_result
+
+        # Step 2: If no approved mapping, look for a pending one
+        pending_stmt = (
+            select(LabelMappingCache)
+            .where(
+                LabelMappingCache.raw_label == raw_label,
+                LabelMappingCache.ticker == ticker,
+                LabelMappingCache.statement_key == statement_key,
+                LabelMappingCache.status == 'PENDING_REVIEW'
+            )
+        )
+        pending_result = session.execute(pending_stmt).scalar_one_or_none()
+        return pending_result
+
+    finally:
+        session.close()
+
+
+def save_mapping_to_cache(mapping_data: Dict[str, Any]):
+    """
+    Saves a new 'PENDING_REVIEW' mapping to the cache. Performs an "upsert".
+
+    This is called by Stage 3 after getting a new suggestion from the LLM.
+    If a mapping for the same context already exists, it will be updated.
+
+    Args:
+        mapping_data: A dictionary with the mapping details. It should not
+                      include a 'status' as this is handled by default.
+    """
+    session = get_session()
+    try:
+        # Ensure status is correctly set for new suggestions
+        mapping_data['status'] = 'PENDING_REVIEW'
+
+        stmt = pg_insert(LabelMappingCache).values(**mapping_data)
+
+        # On conflict, update the details but keep the status as 'PENDING_REVIEW'
+        update_cols = {
+            'mapping_type': stmt.excluded.mapping_type,
+            'normalized_label': stmt.excluded.normalized_label,
+            'status': 'PENDING_REVIEW', # Re-set to pending on update
+            'approved_at': func.now()
+        }
+
+        stmt = stmt.on_conflict_do_update(
+            constraint='uq_label_mapping_context',
+            set_=update_cols
+        )
+
+        session.execute(stmt)
+        session.commit()
+        logging.info(f"Saved PENDING mapping for '{mapping_data.get('raw_label')}' to cache.")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error saving mapping to cache: {e}", exc_info=True)
+        raise
+    finally:
+        session.close()
+
+
+def update_mapping_status(mapping_id: int, new_status: str, user: str):
+    """
+    Updates the status of an existing mapping in the cache.
+
+    This function is intended to be used by the human review UI to approve or
+    reject a pending mapping.
+
+    Args:
+        mapping_id: The primary key (id) of the mapping record.
+        new_status: The new status, typically 'APPROVED' or 'REJECTED'.
+        user: The identifier for the user performing the action.
+    """
+    session = get_session()
+    try:
+        stmt = (
+            update(LabelMappingCache)
+            .where(LabelMappingCache.id == mapping_id)
+            .values(
+                status=new_status,
+                approved_by=user,
+                approved_at=func.now()
+            )
+        )
+        session.execute(stmt)
+        session.commit()
+        logging.info(f"Updated mapping ID {mapping_id} to status '{new_status}' by user '{user}'.")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error updating mapping status for ID {mapping_id}: {e}", exc_info=True)
+        raise
+    finally:
+        session.close()
+
+def get_runs_by_stage_4_status(statuses: List[str]) -> List[QualityEngineRun]:
+    """
+    Retrieves QualityEngineRun objects that are ready for Stage 4 processing.
+    """
+    session = get_session()
+    try:
+        stmt = (
+            select(QualityEngineRun)
+            # FIX: This gate ensures Stage 4 only runs on documents that passed Stage 3.
+            .where(QualityEngineRun.stage_3_status == 'PASSED')
+            .where(QualityEngineRun.stage_4_status.in_(statuses))
+            .options(joinedload(QualityEngineRun.parsed_document))
+        )
+        results = session.execute(stmt).scalars().all()
+        return results
+    finally:
+        session.close()
+
+# ================================================================================================
+# FINALIZATION ENGINE FUNCTIONS
+# ================================================================================================
+# The corrected function in earnings_agent/storage/database.py
+
+# In earnings_agent/storage/database.py
+
+# In earnings_agent/storage/database.py
+
+# In earnings_agent/storage/database.py
+
+def get_runs_ready_for_golden_record() -> List[QualityEngineRun]:
+    """
+    Finds all QE runs that have successfully passed Stage 4 and are waiting
+    to be loaded into the golden record tables, ensuring oldest are processed first.
+    """
+    session = get_session()
+    try:
+        stmt = (
+            select(QualityEngineRun)
+            .where(
+                QualityEngineRun.stage_4_status == 'PASSED',
+                QualityEngineRun.is_loaded_to_golden_record == False
+            )
+            .options(
+                joinedload(QualityEngineRun.parsed_document)
+                .joinedload(ParsedDocument.asset)
+                .joinedload(RawDataAsset.job_links)
+                .joinedload(JobAssetLink.job)
+            )
+            # --- THIS IS THE FIX ---
+            .order_by(QualityEngineRun.created_at.asc())
+        )
+        results = session.execute(stmt).unique().scalars().all()
+        return results
+    finally:
+        session.close()
+
+def create_fundamental_record(session: Session, record_data: Dict[str, Any]) -> int:
+    """
+    Performs an "upsert" on the fundamental_records table.
+    
+    It inserts a new record or, if a record with the same unique constraint
+    (ticker, fiscal_date, version) already exists, it updates it.
+    
+    Args:
+        session: The SQLAlchemy session to use for the transaction.
+        record_data: A dictionary containing all the data for the new record.
+        
+    Returns:
+        The integer ID of the inserted or updated fundamental record.
+    """
+    stmt = pg_insert(FundamentalRecord).values(**record_data)
+    
+    update_cols = {
+        'filing_date': stmt.excluded.filing_date,
+        'source_playbook': stmt.excluded.source_playbook,
+        'source_run_id': stmt.excluded.source_run_id,
+        'updated_at': func.now()
+    }
+    
+    # On conflict with the unique constraint, update the existing row
+    stmt = stmt.on_conflict_do_update(
+        constraint='uq_fundamental_record',
+        set_=update_cols
+    ).returning(FundamentalRecord.id)
+    
+    # Execute and return the ID
+    record_id = session.execute(stmt).scalar_one()
+    return record_id
+
+def get_master_records_pending_population(child_model: Base) -> List[FundamentalRecord]:
+    """
+    Finds all FundamentalRecord entries that do not yet have a corresponding
+    child record in the specified table (e.g., FundamentalsBanking).
+    
+    This is the "finder" function for the Finalization Engine stages.
+    """
+    session = get_session()
+    try:
+        # Perform a LEFT JOIN from the master table to the child table
+        stmt = (
+            select(FundamentalRecord)
+            .outerjoin(child_model, FundamentalRecord.id == child_model.record_id)
+            .where(child_model.record_id == None) # Filter for master records that have no child
+            .options(
+                # Eagerly load the QE run to get access to the working_content
+                joinedload(FundamentalRecord.quality_engine_run) 
+            )
+        )
+        results = session.execute(stmt).scalars().all()
+        return results
+    finally:
+        session.close()
+
+def upsert_banking_fundamentals(session: Session, banking_data: Dict[str, Any]):
+    """
+    Performs an "upsert" on the fundamentals_banking table using the record_id.
+    If a row with the record_id exists, it's updated; otherwise, it's inserted.
+    """
+    stmt = pg_insert(FundamentalsBanking).values(**banking_data)
+    
+    # Dynamically create the update dictionary, excluding the primary key
+    update_dict = {
+        col.name: getattr(stmt.excluded, col.name)
+        for col in FundamentalsBanking.__table__.columns if col.name != 'record_id'
+    }
+    update_dict['updated_at'] = func.now()
+
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['record_id'], # Use the primary key for conflict detection
+        set_=update_dict
+    )
+    session.execute(stmt)
+
+def upsert_custom_kpis(session: Session, kpi_record_data: Dict[str, Any]):
+    """
+    Performs an "upsert" on the custom_kpis table using the record_id.
+    """
+    stmt = pg_insert(CustomKpis).values(**kpi_record_data)
+    
+    update_dict = {
+        'kpi_data': stmt.excluded.kpi_data,
+        'updated_at': func.now()
+    }
+
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['record_id'], # The record_id is UNIQUE, so this works as our key
+        set_=update_dict
+    )
+    session.execute(stmt)
 # ================================================================================================
 # MASTER DATA FUNCTIONS (Unchanged)
 # ================================================================================================

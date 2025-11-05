@@ -78,7 +78,7 @@ def generate_few_shot_examples(period: str) -> str:
 **Example 1: Column Selection, Negative Values, and Footnotes**
 If the PDF contains a table like this and the target period is '{period}':
 
-(All figures in â‚¹ Crores except as stated)
+(All figures in Crores except as stated)
 | Particulars                               | Quarter Ended {period}   | Quarter Ended 31-Dec-2023 |
 |-------------------------------------------|--------------------------|---------------------------|
 | 1. Interest Earned                        | 1,23,456.78              | 1,11,222.33               |
@@ -220,10 +220,12 @@ def get_filing_metadata_for_extraction(session: SQLAlchemySession, asset_id: int
 # ==============================================================================
 
 def process_single_document_extraction(doc_id: int, session: SQLAlchemySession):
-    """Processes extraction for a single document with the new accuracy-focused logic."""
+    """
+    Processes extraction for a single document.
+    MODIFIED: Now includes an immediate retry loop for each individual statement.
+    """
     final_extraction_data, failed_statements = {}, []
     try:
-        # --- This part is from your original script ---
         parsed_doc = session.get(ParsedDocument, doc_id)
         if not parsed_doc or not parsed_doc.content:
             raise ValueError("Document not found or has no content.")
@@ -232,7 +234,6 @@ def process_single_document_extraction(doc_id: int, session: SQLAlchemySession):
             raise ValueError("No isolated statement paths found.")
         logging.info(f"Processing extraction for doc_id {doc_id} with {len(isolated_paths)} statements.")
 
-        # --- NEW: Get filing metadata required for the prompt and initialize client ---
         metadata = get_filing_metadata_for_extraction(session, parsed_doc.asset_id)
         filing_period = metadata['period']
         client = _get_gemini_client()
@@ -240,32 +241,44 @@ def process_single_document_extraction(doc_id: int, session: SQLAlchemySession):
         for statement_type, relative_path in isolated_paths.items():
             logging.info(f"  -> Extracting statement: {statement_type}")
             full_path = project_root / relative_path
+            
+            # --- MODIFICATION: Immediate Retry Loop ---
+            statement_succeeded = False
+            last_exception = None
+            for attempt in range(LLM_MAX_RETRIES): # Using the same retry constant (3 attempts total)
+                try:
+                    with open(full_path, "rb") as f: pdf_bytes = f.read()
+                    playbook_structure = get_playbook_structure(BANKING_PLAYBOOK_PATH, statement_type)
+                    response_text = _call_extraction_llm(client, pdf_bytes, statement_type, playbook_structure, filing_period)
+                    llm_data = json.loads(response_text)
 
-            try:
-                # --- NEW: This block now calls the new, more powerful LLM functions ---
-                with open(full_path, "rb") as f: pdf_bytes = f.read()
-                playbook_structure = get_playbook_structure(BANKING_PLAYBOOK_PATH, statement_type)
-                response_text = _call_extraction_llm(client, pdf_bytes, statement_type, playbook_structure, filing_period)
-                llm_data = json.loads(response_text)
+                    if not any(fig.get('value') is not None for fig in llm_data.get('normalized_figures', [])):
+                        raise ValueError("LLM returned a valid structure but with no extracted financial data.")
 
-                if not any(fig.get('value') is not None for fig in llm_data.get('normalized_figures', [])):
-                    raise ValueError("LLM returned a valid structure but with no extracted financial data.")
+                    final_extraction_data[statement_type] = llm_data
+                    logging.info(f"    ✅ Successfully extracted {statement_type} on attempt {attempt + 1}.")
+                    statement_succeeded = True
+                    break # Exit the retry loop on success
 
-                final_extraction_data[statement_type] = llm_data
-                logging.info(f"    âœ… Successfully extracted {statement_type} with data.")
-            except Exception as e:
-                logging.error(f"    âŒ Failed to extract {statement_type}: {e}", exc_info=True)
-                final_extraction_data[statement_type] = {"error": str(e)}
-                failed_statements.append(f"{statement_type}: {str(e)}")
+                except Exception as e:
+                    last_exception = e
+                    logging.warning(f"    Attempt {attempt + 1}/{LLM_MAX_RETRIES} for {statement_type} failed: {e}")
+                    if attempt + 1 < LLM_MAX_RETRIES:
+                        time.sleep(LLM_INITIAL_BACKOFF) # Wait before retrying
+            
+            if not statement_succeeded:
+                logging.error(f"    ❌ Failed to extract {statement_type} after {LLM_MAX_RETRIES} attempts: {last_exception}", exc_info=True)
+                final_extraction_data[statement_type] = {"error": str(last_exception)}
+                failed_statements.append(f"{statement_type}: {str(last_exception)}")
+            # --- END MODIFICATION ---
 
-        # --- This database update logic is from your original script, preserved perfectly ---
         if not failed_statements:
             final_status, error_details = 'EXTRACTION_SUCCESS', None
-            logging.info(f"âœ… All {len(isolated_paths)} statements extracted successfully for doc_id {doc_id}.")
+            logging.info(f"✅ All {len(isolated_paths)} statements extracted successfully for doc_id {doc_id}.")
         else:
             final_status = 'EXTRACTION_ERROR'
             error_details = f"Failed {len(failed_statements)}/{len(isolated_paths)} statements: {'; '.join(failed_statements)}"
-            logging.error(f"âŒ Extraction failed for doc_id {doc_id}: {error_details}")
+            logging.error(f"❌ Extraction failed for doc_id {doc_id}: {error_details}")
 
         new_content = parsed_doc.content.copy()
         new_content['llm_call_2_extraction'] = final_extraction_data
@@ -273,22 +286,19 @@ def process_single_document_extraction(doc_id: int, session: SQLAlchemySession):
         update_stmt = update(ParsedDocument).where(ParsedDocument.doc_id == doc_id).values(
             content=new_content,
             parse_status=final_status,
-            error_details=error_details,
-            parser_version=PARSER_VERSION
+            error_details=error_details
         )
         session.execute(update_stmt)
         session.commit()
 
     except Exception as e:
-        logging.error(f"âŒ Major error processing doc_id {doc_id}: {e}", exc_info=True)
+        logging.error(f"❌ Major error processing doc_id {doc_id}: {e}", exc_info=True)
         session.rollback()
-        # Attempt a final update to mark the job as failed
         with get_session() as error_session:
             error_session.execute(update(ParsedDocument).where(ParsedDocument.doc_id == doc_id).values(
                 parse_status='EXTRACTION_ERROR', error_details=f"Major processing error: {str(e)}", parser_version=PARSER_VERSION
             ))
             error_session.commit()
-
 # --- PRESERVED: The functions below are from your original script, ensuring the workflow remains unchanged ---
 
 def get_banking_doc_ids(session: SQLAlchemySession, all_doc_ids: List[int]) -> List[int]:
@@ -312,17 +322,27 @@ def _execute_extraction_for_worker(doc_id: int):
             process_single_document_extraction(doc_id, db_session)
     except Exception as e:
         logging.error(f"Worker process for doc_id {doc_id} crashed: {e}", exc_info=True)
-
 def run_extractor_batch():
-    """Runs extraction batch with banking industry filtering."""
+    """
+    Runs extraction batch with banking industry filtering.
+    MODIFIED: Corrected the query to properly handle retries and avoid unique constraint violations.
+    """
     logging.info(f"--- Starting PDF Extractor Batch Run v{PARSER_VERSION} ---")
 
     with get_session() as session:
-        # Find documents that have been isolated but not yet successfully extracted by this version
+        # --- MODIFICATION: This query is now more robust ---
+        # It finds documents that are either:
+        # 1. Fresh from isolation ('ISOLATION_SUCCESS') and have not been touched by this parser version yet.
+        # 2. Have explicitly failed extraction ('EXTRACTION_ERROR') and can be retried.
         stmt = select(ParsedDocument.doc_id).where(
-            ParsedDocument.parse_status.in_(['ISOLATION_SUCCESS', 'EXTRACTION_ERROR']),
-            ParsedDocument.parser_version != PARSER_VERSION
+            (ParsedDocument.parse_status == 'ISOLATION_SUCCESS') |
+            (
+                (ParsedDocument.parse_status == 'EXTRACTION_ERROR') &
+                (ParsedDocument.parser_version == PARSER_VERSION)
+            )
         )
+        # --- END MODIFICATION ---
+
         all_doc_ids = session.execute(stmt).scalars().all()
         banking_doc_ids = get_banking_doc_ids(session, all_doc_ids)
 

@@ -12,7 +12,8 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    Index
+    Index,
+    Numeric
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
@@ -126,120 +127,6 @@ class ParsedDocument(Base):
         {'schema': DB_SCHEMA}
     )
 
-# # ================================================================================================
-# # STAGE 3: NORMALIZATION & RECONCILIATION
-# # ================================================================================================
-
-# class LabelMapping(Base):
-#     """
-#     SQLAlchemy ORM model for the `label_mapping_cache` table.
-#     This is the persistent cache for the financial label normalization engine,
-#     acting as the system's long-term, human-verified memory.
-#     Mappings are now specific to an industry.
-#     """
-#     __tablename__ = 'label_mapping_cache'
-
-#     # --- MODIFIED: Changed to a composite primary key ---
-#     raw_label = Column(Text, primary_key=True)
-#     industry = Column(Text, primary_key=True)
-#     # ---------------------------------------------------
-    
-#     normalized_label = Column(Text, nullable=True)
-#     status = Column(String(20), nullable=False)
-
-#     processed = Column(Boolean, nullable=False, server_default='f', default=False)
-    
-#     source_context = Column(JSONB, nullable=True)
-#     created_at = Column(DateTime(timezone=True), server_default=func.now())
-#     last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
-#     reviewed_by = Column(Text, nullable=True)
-
-#     __table_args__ = ({'schema': DB_SCHEMA})
-
-# class StagedNormalizedData(Base):
-#     """
-#     SQLAlchemy ORM model for the `staged_normalized_data` table.
-#     This is an intermediate staging table that holds the output of the
-#     Normalization Engine for a single source. The Quality Engine will
-#     gather all records for a given filing from this table to perform
-#     reconciliation.
-#     """
-#     __tablename__ = 'staged_normalized_data'
-
-#     id = Column(BigInteger, primary_key=True)
-    
-#     # Foreign key to the source document it was created from.
-#     doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False, unique=True)
-    
-#     # Denormalized fields for easy querying by the Quality Engine.
-#     ticker = Column(String(20), nullable=False)
-#     fiscal_date = Column(Date, nullable=False)
-    
-#     # The fully normalized data from this one source.
-#     normalized_data = Column(JSONB, nullable=False)
-
-#     # Hash of the normalized_data content to detect changes.
-#     data_hash = Column(String(64), nullable=True)
-    
-#     # NEW: Three-phase normalization status tracking
-#     statement_normalized = Column(Boolean, nullable=False, server_default='false')
-#     unit_review_status = Column(String(20), nullable=False, server_default="'PENDING'")
-#     label_review_status = Column(String(20), nullable=False, server_default="'PENDING'")
-    
-#     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-#     # Relationship back to the parsed document for full lineage
-#     parsed_document = relationship("ParsedDocument")
-
-#     __table_args__ = (
-#         CheckConstraint(
-#             "unit_review_status IN ('PENDING','AUTO_APPROVED','PENDING_REVIEW','APPROVED')",
-#             name='ck_unit_review_status'
-#         ),
-#         CheckConstraint(
-#             "label_review_status IN ('PENDING','PENDING_REVIEW','APPROVED')",
-#             name='ck_label_review_status'
-#         ),
-#         {'schema': DB_SCHEMA}
-#     )
-# class UnitReviewQueue(Base):
-#     """
-#     SQLAlchemy ORM model for the `unit_review_queue` table.
-#     Stores filing-level unit normalization decisions pending human review.
-#     """
-#     __tablename__ = 'unit_review_queue'
-
-#     id = Column(BigInteger, primary_key=True)
-#     doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False, unique=True)
-#     asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=False)
-#     ticker = Column(String(20), nullable=False)
-#     fiscal_date = Column(Date, nullable=False)
-    
-#     # The LLM's analysis and raw filing data
-#     llm_analysis = Column(JSONB, nullable=False)
-#     filing_data = Column(JSONB, nullable=False)
-    
-#     # Human review fields
-#     status = Column(String(20), nullable=False, server_default="'PENDING_REVIEW'")
-#     reviewed_by = Column(Text, nullable=True)
-#     reviewed_at = Column(DateTime(timezone=True), nullable=True)
-#     human_corrections = Column(JSONB, nullable=True)
-    
-#     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-#     # Relationships
-#     parsed_document = relationship("ParsedDocument")
-#     asset = relationship("RawDataAsset")
-
-#     __table_args__ = (
-#         CheckConstraint(
-#             "status IN ('PENDING_REVIEW','APPROVED','REJECTED')",
-#             name='ck_unit_review_queue_status'
-#         ),
-#         {'schema': DB_SCHEMA}
-#     )
-
-
 # ================================================================================================
 # STAGE 3: QUALITY ENGINE
 # ================================================================================================
@@ -254,85 +141,290 @@ class QualityEngineRun(Base):
 
     # Core Fields
     run_id = Column(BigInteger, primary_key=True)
-    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id'), nullable=False, unique=True)
+    doc_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.parsed_documents.doc_id', ondelete="CASCADE"), nullable=False, unique=True)
+
+    # === Data & History Columns ===
+    working_content = Column(JSONB, nullable=True, comment="The working copy of the parsed document content, which is modified at each QE stage.")
+    run_history = Column(JSONB, nullable=True, comment="A JSONB array that serves as an immutable audit log of all transformations and checks.")
 
     # === Stage-by-Stage Status Columns ===
     stage_1_status = Column(String(50), nullable=False, server_default='PENDING')
     stage_2_status = Column(String(50), nullable=False, server_default='PENDING')
     stage_3_status = Column(String(50), nullable=False, server_default='PENDING')
     stage_4_status = Column(String(50), nullable=False, server_default='PENDING')
-    stage_5_status = Column(String(50), nullable=False, server_default='PENDING')
 
-    # === NEW: Per-Stage Versioning Columns ===
-    # These are nullable as they are only set upon successful stage completion.
+    # === Per-Stage Versioning Columns ===
     stage_1_version = Column(String(20), nullable=True)
     stage_2_version = Column(String(20), nullable=True)
     stage_3_version = Column(String(20), nullable=True)
     stage_4_version = Column(String(20), nullable=True)
-    stage_5_version = Column(String(20), nullable=True)
 
     # === Audit & Debugging Fields ===
     failure_reason = Column(Text, nullable=True)
-    details = Column(JSONB, nullable=True)
     playbook_config_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationship to the ParsedDocument object
+    # Relationship to the ParsedDocument object for lineage
     parsed_document = relationship("ParsedDocument", back_populates="quality_engine_run")
+
+    is_loaded_to_golden_record = Column(Boolean, nullable=False, server_default='FALSE')
 
     __table_args__ = (
         UniqueConstraint('doc_id', name='uq_quality_engine_run_doc_id'),
         {'schema': DB_SCHEMA}
     )
+class QualityEngineRuleVariant(Base):
+    __tablename__ = 'quality_engine_rule_variants'
+    
+    id = Column(BigInteger, primary_key=True)
+    parent_playbook_id = Column(Text, nullable=False)
+    issuer_ticker = Column(String(20), nullable=False)
+    industry = Column(Text)
+    variant_definition = Column(JSONB, nullable=False)
+    created_by = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('parent_playbook_id', 'issuer_ticker', name='uq_rule_variant'),
+        {'schema': DB_SCHEMA}
+    )
+
+class LabelMappingCache(Base):
+    """
+    SQLAlchemy ORM model for the `label_mapping_cache` table.
+    Stores both PENDING_REVIEW and APPROVED mappings to serve as the single
+    source of truth for label normalization.
+    """
+    __tablename__ = 'label_mapping_cache'
+
+    id = Column(BigInteger, primary_key=True)
+    raw_label = Column(Text, nullable=False)
+    ticker = Column(Text, nullable=False)
+    statement_key = Column(Text, nullable=False)
+    
+    # --- ADDED THIS LINE ---
+    status = Column(String(20), nullable=False, server_default='PENDING_REVIEW')
+    # ---------------------
+
+    mapping_type = Column(Text, nullable=False)
+    normalized_label = Column(Text, nullable=False)
+    approved_by = Column(Text, nullable=True)
+    approved_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('raw_label', 'ticker', 'statement_key', name='uq_label_mapping_context'),
+        {'schema': DB_SCHEMA}
+    )
 # ================================================================================================
 # STAGE 4: FINAL "GOLDEN RECORD" TABLES
 # ================================================================================================
-
-class QuarterlyFundamental(Base):
+class FundamentalRecord(Base):
     """
-    SQLAlchemy ORM model for the `quarterly_fundamentals` table.
-    This is the final, clean, versioned "golden record" of financial data.
+    SQLAlchemy ORM model for the `fundamental_records` table.
+    This is the central hub for each unique financial record.
     """
-    __tablename__ = 'quarterly_fundamentals'
-    
+    __tablename__ = 'fundamental_records'
     id = Column(BigInteger, primary_key=True)
     ticker = Column(String(20), nullable=False)
     fiscal_date = Column(Date, nullable=False)
     period = Column(String(10), nullable=False)
-    filing_date = Column(Date, nullable=True)
-    source = Column(String(50), nullable=False)
+    # ADD THIS COLUMN
+    consolidation_status = Column(String(50), nullable=False)
+    filing_date = Column(Date)
     version = Column(Integer, default=1, nullable=False)
-    primary_asset_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.raw_data_assets.asset_id'), nullable=True)
-    
-    # Financial metrics...
-    revenue = Column(BIGINT)
-    net_income = Column(BIGINT)
-    ebitda = Column(BIGINT)
-    # (All other financial columns as defined in the schema)
-    
+    source_playbook = Column(String(50), nullable=False)
+    source_run_id = Column(
+        BigInteger,
+        ForeignKey(f'{DB_SCHEMA}.quality_engine_runs.run_id')
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
+    # Relationship back to the Quality Engine run for lineage
+    quality_engine_run = relationship("QualityEngineRun")
+    # One-to-one child row for the Banking playbook table
+    banking = relationship(
+        "FundamentalsBanking",
+        back_populates="record",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    # UPDATE THE UNIQUE CONSTRAINT
     __table_args__ = (
-        UniqueConstraint('ticker', 'fiscal_date', 'version', name='uq_quarterly_fundamentals'),
+        UniqueConstraint('ticker', 'fiscal_date', 'version', 'consolidation_status', name='uq_fundamental_record'),
         {'schema': DB_SCHEMA}
     )
 
-
-class CustomKPI(Base):
+class CustomKpis(Base):
     """
-    SQLAlchemy ORM model for the `custom_kpis` table.
+    SQLAlchemy model for storing all company-specific KPIs in a flexible JSONB format.
     """
     __tablename__ = 'custom_kpis'
-    
-    id = Column(BigInteger, primary_key=True)
-    fundamental_id = Column(BigInteger, ForeignKey(f'{DB_SCHEMA}.quarterly_fundamentals.id'), nullable=False, unique=True)
-    kpi_data = Column(JSONB, nullable=False)
 
-    fundamental = relationship("QuarterlyFundamental")
+    id = Column(BigInteger, primary_key=True)
+    record_id = Column(
+        BigInteger,
+        ForeignKey(f"{DB_SCHEMA}.fundamental_records.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True
+    )
+    kpi_data = Column(JSONB, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Add a back-populating relationship to the master record
+    record = relationship("FundamentalRecord")
 
     __table_args__ = ({'schema': DB_SCHEMA})
+# ================================
+# STAGE 4: GOLDEN RECORD – BANKING
+# ================================
+
+class FundamentalsBanking(Base):
+    """
+    SQLAlchemy model for earnings_data.fundamentals_banking.
+    One-to-one child of FundamentalRecord via record_id.
+    """
+    __tablename__ = "fundamentals_banking"
+    __table_args__ = ({'schema': DB_SCHEMA})
+
+    # Primary key + FK to master record (cascade in DB)
+    record_id = Column(
+        BigInteger,
+        ForeignKey(f"{DB_SCHEMA}.fundamental_records.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    # -------------------------
+    # Profit & Loss (Banks)
+    # -------------------------
+    interest_or_discount_on_advances_or_bills = Column(BigInteger)
+    revenue_on_investments = Column(BigInteger)
+    interest_on_balances_with_reserve_bank_of_india_and_other_inter_bank_funds = Column(BigInteger)
+    other_interest = Column(BigInteger)
+    interest_earned = Column(BigInteger)
+    other_income = Column(BigInteger)
+    income = Column(BigInteger)
+    interest_expended = Column(BigInteger)
+    employees_cost = Column(BigInteger)
+    other_operating_expenses = Column(BigInteger)
+    operating_expenses = Column(BigInteger)
+    total_expenditure_excluding_provisions_and_contingencies = Column(BigInteger)
+    operating_profit_before_provision_and_contingencies = Column(BigInteger)
+    provisions_other_than_tax_and_contingencies = Column(BigInteger)
+    exceptional_items = Column(BigInteger)
+    net_profit_loss_from_ordinary_activities_before_tax = Column(BigInteger)
+    tax_expense = Column(BigInteger)
+    profit_loss_from_ordinary_activities_after_tax = Column(BigInteger)
+    extraordinary_items = Column(BigInteger)
+    net_profit_loss_for_the_period = Column(BigInteger)
+    share_of_profit_loss_of_associates = Column(BigInteger)
+    net_profit_loss_after_taxes_before_minority_interest = Column(BigInteger)
+    profit_loss_of_minority_interest = Column(BigInteger)
+    profit_loss_after_taxes_minority_interest_and_share_of_profit_loss_of_associates = Column(BigInteger)
+
+    paid_up_value_of_equity_share_capital = Column(BigInteger)
+    face_value_of_equity_share_capital = Column(Numeric(18, 4))
+
+    reserve_excluding_revaluation_reserves = Column(BigInteger)
+
+    percentage_of_share_held_by_government_of_india = Column(Numeric(18, 4))
+    cet1_ratio = Column(Numeric(18, 4))
+    additional_tier1_ratio = Column(Numeric(18, 4))
+
+    basic_earnings_per_share_before_extraordinary_items = Column(Numeric(18, 4))
+    diluted_earnings_per_share_before_extraordinary_items = Column(Numeric(18, 4))
+    basic_earnings_per_share_after_extraordinary_items = Column(Numeric(18, 4))
+    diluted_earnings_per_share_after_extraordinary_items = Column(Numeric(18, 4))
+
+    gross_non_performing_assets = Column(BigInteger)
+    percentage_of_gross_npa = Column(Numeric(18, 4))
+    net_non_performing_assets = Column(BigInteger)
+    percentage_of_net_npa = Column(Numeric(18, 4))
+    return_on_assets = Column(Numeric(18, 4))
+
+    # -------------------------
+    # Balance Sheet
+    # -------------------------
+    capital = Column(BigInteger)
+    reserves_and_surplus = Column(BigInteger)
+    deposits = Column(BigInteger)
+    borrowings = Column(BigInteger)
+    other_liabilities_and_provisions = Column(BigInteger)
+    total_capital_and_liabilities = Column(BigInteger)
+    policyholder_funds = Column(BigInteger)
+
+    cash_and_balances_with_reserve_bank_of_india = Column(BigInteger)
+    balances_with_banks_and_money_at_call_and_short_notice = Column(BigInteger)
+    investments = Column(BigInteger)
+    advances = Column(BigInteger)
+    fixed_assets = Column(BigInteger)
+    other_assets = Column(BigInteger)
+    total_assets = Column(BigInteger)
+
+    # -------------------------
+    # Cash Flow (Indirect)
+    # -------------------------
+    profit_before_tax = Column(BigInteger)
+
+    adjustments_for_depreciation_and_amortisation_expense = Column(BigInteger)
+    profit_loss_on_revaluation_of_investments = Column(BigInteger)
+    amortisation_of_premium_on_investments = Column(BigInteger)
+    profit_loss_on_sale_of_fixed_assets = Column(BigInteger)
+    profit_loss_on_sale_of_subsidiaries = Column(BigInteger)
+    profit_loss_on_sale_of_investments = Column(BigInteger)
+    provision_for_non_performing_assets = Column(BigInteger)
+    provision_for_floating_provisions = Column(BigInteger)
+    provision_for_standard_assets_and_contingencies = Column(BigInteger)
+    dividend_income_from_subsidiaries = Column(BigInteger)
+    adjustments_for_sharebased_payments = Column(BigInteger)
+    other_adjustments_for_noncash_items = Column(BigInteger)
+
+    adjustments_for_decrease_increase_in_advances = Column(BigInteger)
+    adjustments_for_increase_decrease_in_deposits = Column(BigInteger)
+    adjustments_for_decrease_increase_in_other_current_assets = Column(BigInteger)
+    adjustments_for_increase_decrease_in_other_current_liabilities = Column(BigInteger)
+    adjustments_for_decrease_increase_in_investments = Column(BigInteger)
+
+    interest_received_classified_as_operating_activities = Column(BigInteger)
+    interest_paid_classified_as_operating_activities = Column(BigInteger)
+    income_taxes_paid_refund_classified_as_operating_activities = Column(BigInteger)
+    net_cash_from_used_in_operating_activities = Column(BigInteger)
+
+    purchase_of_tangible_assets_classified_as_investing_activities = Column(BigInteger)
+    proceeds_from_sale_of_tangible_assets_classified_as_investing_activities = Column(BigInteger)
+    purchase_of_investments_classified_as_investing_activities = Column(BigInteger)
+    proceeds_from_sale_of_investments_classified_as_investing_activities = Column(BigInteger)
+    dividends_received_classified_as_investing_activities = Column(BigInteger)
+    other_inflows_outflows_of_cash_classified_as_investing_activities = Column(BigInteger)
+    net_cash_from_used_in_investing_activities = Column(BigInteger)
+
+    proceeds_from_issuing_shares = Column(BigInteger)
+    proceeds_from_issuing_other_equity_instruments = Column(BigInteger)
+    proceeds_from_issue_of_tier_1_and_tier_2_capital_instruments = Column(BigInteger)
+    redemption_of_tier_1_and_tier_2_capital_instruments = Column(BigInteger)
+    repayments_of_borrowings_classified_as_financing_activities = Column(BigInteger)
+    proceeds_from_borrowings_classified_as_financing_activities = Column(BigInteger)
+    dividends_paid_classified_as_financing_activities = Column(BigInteger)
+    other_inflows_outflows_of_cash_classified_as_financing_activities = Column(BigInteger)
+    net_cash_from_used_in_financing_activities = Column(BigInteger)
+
+    effect_of_exchange_rate_changes_on_cash_and_cash_equivalents = Column(BigInteger)
+    increase_decrease_in_cash_and_cash_equivalents = Column(BigInteger)
+    cash_and_cash_equivalents_at_beginning_of_period = Column(BigInteger)
+    cash_and_cash_equivalents_at_end_of_period = Column(BigInteger)
+
+    # Metadata
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # ORM relationship back to the master record
+    record = relationship(
+        "FundamentalRecord",
+        back_populates="banking",
+        uselist=False,
+        passive_deletes=True,
+    )
+
+
 
 # ================================================================================================
 # MASTER DATA MODELS
@@ -383,10 +475,3 @@ class CompanyMaster(Base):
     
     __table_args__ = ({'schema': DB_SCHEMA})
 
-# # Index to speed up normalization status queries
-# Index(
-#     'idx_staged_normalization_status',
-#     StagedNormalizedData.statement_normalized,
-#     StagedNormalizedData.unit_review_status,
-#     StagedNormalizedData.label_review_status,
-# )

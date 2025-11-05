@@ -48,9 +48,12 @@ def load_playbook_leaf_nodes() -> Dict[str, List[str]]:
                 
                 # For cash flow, both direct and indirect methods have many common leaves
                 if normalized_key == 'cash_flow':
-                    existing_leaves = set(playbook_leaf_nodes.get(normalized_key, []))
-                    existing_leaves.update(leaf_nodes)
-                    playbook_leaf_nodes[normalized_key] = sorted(list(existing_leaves))
+                    existing_leaves = playbook_leaf_nodes.get(normalized_key, [])
+                    # Preserve order: only add new items that aren't already present
+                    for leaf_id in leaf_nodes:
+                        if leaf_id not in existing_leaves:
+                            existing_leaves.append(leaf_id)
+                    playbook_leaf_nodes[normalized_key] = existing_leaves 
                 else:
                     playbook_leaf_nodes[normalized_key] = leaf_nodes
 
