@@ -1,0 +1,102 @@
+volumes:
+  macro-tsdata:
+  macro-metabase-data:
+  macro-prefect-data: # Added so Prefect state persists
+
+services:
+  ########################################## GENERAL INFRASTRUCTURE ##########################################
+  tsdb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: macro-tsdb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: macrodata
+      POSTGRES_USER: quantuser
+      POSTGRES_PASSWORD: myStrongPass
+      TZ: Europe/London
+    ports:
+      - "5433:5432"
+    volumes:
+      - macro-tsdata:/var/lib/postgresql/data
+      # Layer A: The Global Foundation (Runs first)
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/10_schema.sql:ro
+      # Layer B: The Rates Domain View (Runs second)
+      - ./rates_agent/storage/views/sovereign_curves_view.sql:/docker-entrypoint-initdb.d/20_sovereign_curves_view:ro
+      # Rates Instruments Manifest View
+      - ./rates_agent/storage/views/rates_instruments_view.sql:/docker-entrypoint-initdb.d/30_rates_instruments_view:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantuser -d macrodata"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: macro-prefect-server
+    restart: unless-stopped
+    environment:
+      TZ: Europe/London
+    ports:
+      - "4200:4200"
+    volumes:
+      - macro-prefect-data:/root/.prefect
+    command: "prefect server start --host 0.0.0.0"
+
+  ########################################## AGENT WORKSPACE ##########################################
+  macro-base-image:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: macro-project:latest
+
+  prefect-worker:
+    image: macro-project:latest
+    container_name: macro-prefect-worker
+    restart: unless-stopped
+    depends_on:
+      prefect-server:
+        condition: service_started
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env                      
+    environment:
+      PREFECT_API_URL: http://macro-prefect-server:4200/api
+      TZ: Europe/London
+    command: >
+      bash -c "
+        micromamba run -n macro-env prefect work-pool create macro-agent-pool --type process || true &&
+        micromamba run -n macro-env prefect worker start --pool macro-agent-pool --limit 5
+      "
+
+  rates-agent-dev:
+    image: macro-project:latest
+    container_name: rates-agent-dev
+    restart: unless-stopped
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      DB_HOST: tsdb
+      DB_USER: quantuser
+      DB_PASSWORD: myStrongPass
+      DB_NAME: macrodata
+      TZ: Europe/London
+    command: ["tail", "-f", "/dev/null"]
+
+  ########################################## BI & VISUALIZATION ##########################################
+  metabase:
+    image: metabase/metabase:latest
+    container_name: macro-metabase
+    ports:
+      - "3001:3000"
+    environment:
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Europe/London"
+    volumes:
+      - macro-metabase-data:/metabase.db
+    depends_on:
+      tsdb:
+        condition: service_healthy

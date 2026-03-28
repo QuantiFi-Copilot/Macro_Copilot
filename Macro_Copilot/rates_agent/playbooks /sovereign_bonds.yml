@@ -1,0 +1,22 @@
+# playbooks/sovereign_bonds.yml
+asset_class: "sovereign_bond"
+description: "Nominal government bonds for G10 nations."
+
+# The exact fields required by our Curve and PCA models
+target_metrics:
+  - metric_id: "yield"
+    bloomberg_field: "YLD_YTM_MID"
+  - metric_id: "price"
+    bloomberg_field: "PX_MID"
+  - metric_id: "duration"
+    bloomberg_field: "DUR_ADJ_MID"
+  - metric_id: "convexity"
+    bloomberg_field: "CONVEXITY_MID"
+
+# The MVP Universe (Just the 10Y)
+universe:
+  - ticker: "GT10 Govt"
+    name: "US 10-Year Treasury"
+    country: "US"
+    currency: "USD"
+    tenor: "10Y"

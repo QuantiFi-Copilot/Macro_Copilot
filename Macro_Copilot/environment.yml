@@ -1,0 +1,20 @@
+name: macro-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pyarrow
+  - pandas
+  - scipy
+  - sqlalchemy
+  - psycopg
+  - psycopg2-binary
+  - python-dotenv
+  - prefect>=3.0
+  - requests
+  - streamlit
+  - pip
+  - pip:
+    - anthropic
+    - pyyaml
