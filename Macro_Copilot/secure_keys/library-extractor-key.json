@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "macro-trading-pipelines-491621",
+  "private_key_id": "2e90749cc119e7ce0c123c29096b5087a1f79154",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCkTCNoKxSgsik3\n1J7OTLN9smuwbgMN3nEJaPD9ziT+dcrBaxLgtnCxFBp4oKTVdy6+DQgrCQo2FUhN\nI9ab8fSo80dDp0sjk/0vy6vRyRKwhOBPvhXWictdhwCqRk0Mo8msd61rc3POcTeT\nYtqxOIGO1VR5CXj1rNc5lWmWd04f3dWYHxX1GRKd0ntswT+doN931wRTWWxc8VzI\nvjC+edPWK0Z07Fxn+cxCCYJ72wV+vbXercTKiVFL0ZmkSyhsDwV8TS7BL6qQVVmp\nlIEc+gfKEV/FmEj7m02Spuuh5fIME4zq+cXiVwaVrjBGvpBwkcesQ9bKazxCSbPj\nqW6/ea5PAgMBAAECggEAD15p73wcLV4NGgJjKpQlNCxlA3d/BKSauVEePfezITR+\nl3I/LVMTnpTtVvxb/vXrou6QJYpucJm0Djc8g5DyHH3JXExBbJ4S0I5CT9j5zRZY\n70yuOUfhhKm0x7jUy0pk+qOlTshZfGW916UnJO3OvMA66ymWLZER/vp5ipA1eCh/\nN3SORWeUqwmy2rj1SnXjowfn7C1Op1xG8E0BUh3vxryLwK6gJOcqbYjFlzvyXL8N\n65xJ+H4jwECDWpcEzzNkf19y0G+rGKssVZrKfqn7m2ifSaal/bbzQqojQhdbFUC5\n1jYKPeUxY1Iu6oQVsc/KXpOihedZjNc37m6UjdAJOQKBgQDa9pj7jr7jCfPjdvsj\nQ8yIB/FUiQzsCtDgv0TGZbg5r8BKQcFO6zyJ69PkiFAK/TqAw0V4ALijfaWgHUj3\n0YL2Rse8eJ9zsvrT1Ej0IwBa3KUDaSU2hQ4P4WW9Zn/J3xltadXh3I/OV5kdMPYr\nAEPz8fnPe+MT0r6kUzJ9CnSvFwKBgQDAFm+grPjSs7HqpSAUJhVQR2PHNpb2rZSq\nMpvRvEbWO7OFHcBN9gjZU6y6SL/XNkRwBXRiuHsVuchbB2vHvTgTL5gFZzb5p1Ps\nwY8cleb01wf8eO5xAodFREpO207j5Wk9DRlD4bj33w7dD+/EAUTcwMhNRXnA0zrv\nl4rNBty9iQKBgAeMJnvNUNEcn7aAfGmbxaoOtAfY7YQZX1fP3/wCt5Xtc/BbUeF5\nhE2wvk4LUM8AKYsUsAlR5Qtlolbhi4lXRG9ewzXA5qYjTjgNAjLAHhwDrQBwGGNH\ntNNhTpN3vAHmWccGteOiKabQKCv0axfSW4VGGvlG6O3e/slFQOFEgf8jAoGBAIaO\nMNvIzvQp1DOeP/5dPwjhOU/POajKpx0iHmypCqX/ZB2XXaI++qviJVjIpTnIVeBy\nsbiFqhLp9SNu610bezBVYpRGXQg84lkyrWFE0GgqSPnebIjVUJSA5dyfW3/gr/uI\nNW6Lq9pWcj8AbuBKU0af9K/MPyGH1f0Hlr9QU0ihAoGAf8JR/9kcZ0T9Lmqx13VN\nLLfh3WogBmKb0Y+NXSX2hCwF7xSjwBvF15al0je59hkdvz3yEWM8qh1Z8eXkl2Kr\nLMS0sz1PbnnIHJmL0LKVGIaH7RFjtY2JGAFaeR1ize7zcbwSD4gNuunVvlfeIN7W\nsBNd9ytiAYCz16J5oWXmogQ=\n-----END PRIVATE KEY-----\n",
+  "client_email": "terminal-extractor@macro-trading-pipelines-491621.iam.gserviceaccount.com",
+  "client_id": "108164601789512155365",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/terminal-extractor%40macro-trading-pipelines-491621.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
