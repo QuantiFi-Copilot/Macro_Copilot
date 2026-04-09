@@ -1,0 +1,230 @@
+playbook_name: "bond_futures"
+playbook_version: "1.3"
+asset_class: "rates"
+dataset_name: "bond_futures"
+description: "Daily rolling government bond futures data across core macro markets for liquid expression, activity monitoring, and positioning proxies."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "last_price"
+    bloomberg_field: "PX_LAST"
+  - metric_id: "open_interest"
+    bloomberg_field: "OPEN_INT"
+  - metric_id: "volume"
+    bloomberg_field: "PX_VOLUME"
+
+# Static/reference fields validated across the selected rolling futures universe.
+reference_metrics:
+  - column_name: "expiry_date"
+    bloomberg_field: "LAST_TRADEABLE_DT"
+  - column_name: "maturity_date"
+    bloomberg_field: "FUT_DLV_DT_LAST"
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+  - column_name: "contract_size"
+    bloomberg_field: "FUT_CONT_SIZE"
+  - column_name: "quote_units"
+    bloomberg_field: "QUOTE_UNITS"
+
+universe:
+  # United States Treasury futures
+  - ticker: "TU1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "2Y"
+    contract_code: "TU1"
+    bucket_label: "2Y"
+    is_rolling_contract: true
+
+  - ticker: "FV1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "5Y"
+    contract_code: "FV1"
+    bucket_label: "5Y"
+    is_rolling_contract: true
+
+  - ticker: "TY1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "10Y"
+    contract_code: "TY1"
+    bucket_label: "10Y_CLASSIC"
+    is_rolling_contract: true
+
+  - ticker: "UXY1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "10Y"
+    contract_code: "UXY1"
+    bucket_label: "10Y_ULTRA"
+    is_rolling_contract: true
+
+  - ticker: "US1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "30Y"
+    contract_code: "US1"
+    bucket_label: "30Y_CLASSIC"
+    is_rolling_contract: true
+
+  - ticker: "WN1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UST_FUT"
+    country: "US"
+    currency: "USD"
+    tenor: "30Y"
+    contract_code: "WN1"
+    bucket_label: "30Y_ULTRA"
+    is_rolling_contract: true
+
+  # Germany government bond futures
+  - ticker: "DU1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "DE_FUT"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "2Y"
+    contract_code: "DU1"
+    bucket_label: "SCHATZ"
+    is_rolling_contract: true
+
+  - ticker: "OE1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "DE_FUT"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "5Y"
+    contract_code: "OE1"
+    bucket_label: "BOBL"
+    is_rolling_contract: true
+
+  - ticker: "RX1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "DE_FUT"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "10Y"
+    contract_code: "RX1"
+    bucket_label: "BUND"
+    is_rolling_contract: true
+
+  - ticker: "UB1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "DE_FUT"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "30Y"
+    contract_code: "UB1"
+    bucket_label: "BUXL"
+    is_rolling_contract: true
+
+  # United Kingdom gilt futures
+  - ticker: "G 1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "UK_FUT"
+    country: "UK"
+    currency: "GBP"
+    tenor: "10Y"
+    contract_code: "G1"
+    bucket_label: "LONG_GILT"
+    is_rolling_contract: true
+
+  # Japan government bond futures
+  - ticker: "JB1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "JP_FUT"
+    country: "Japan"
+    currency: "JPY"
+    tenor: "10Y"
+    contract_code: "JB1"
+    bucket_label: "JGB_10Y"
+    is_rolling_contract: true
+
+  # France government bond futures
+  - ticker: "OAT1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "FR_FUT"
+    country: "France"
+    currency: "EUR"
+    tenor: "10Y"
+    contract_code: "OAT1"
+    bucket_label: "OAT_10Y"
+    is_rolling_contract: true
+
+  # Italy government bond futures
+  - ticker: "BTS1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "IT_FUT"
+    country: "Italy"
+    currency: "EUR"
+    tenor: "3Y"
+    contract_code: "BTS1"
+    bucket_label: "SHORT_BTP"
+    is_rolling_contract: true
+
+  - ticker: "IK1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "IT_FUT"
+    country: "Italy"
+    currency: "EUR"
+    tenor: "10Y"
+    contract_code: "IK1"
+    bucket_label: "LONG_BTP"
+    is_rolling_contract: true
+
+  # Spain government bond futures
+  - ticker: "KOA1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "ES_FUT"
+    country: "Spain"
+    currency: "EUR"
+    tenor: "10Y"
+    contract_code: "KOA1"
+    bucket_label: "BONO_10Y"
+    is_rolling_contract: true
+
+  # Canada government bond futures
+  - ticker: "CN1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "CA_FUT"
+    country: "Canada"
+    currency: "CAD"
+    tenor: "10Y"
+    contract_code: "CN1"
+    bucket_label: "CGB_10Y"
+    is_rolling_contract: true
+
+  # Australia government bond futures
+  - ticker: "YM1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "AU_FUT"
+    country: "Australia"
+    currency: "AUD"
+    tenor: "3Y"
+    contract_code: "YM1"
+    bucket_label: "ACGB_3Y"
+    is_rolling_contract: true
+
+  - ticker: "XM1 Comdty"
+    instrument_type: "bond_future"
+    curve_family: "AU_FUT"
+    country: "Australia"
+    currency: "AUD"
+    tenor: "10Y"
+    contract_code: "XM1"
+    bucket_label: "ACGB_10Y"
+    is_rolling_contract: true

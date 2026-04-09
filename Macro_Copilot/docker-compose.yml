@@ -2,7 +2,8 @@ volumes:
   macro-tsdata:
   macro-metabase-data:
   macro-prefect-data: # Added so Prefect state persists
-
+  macro-superset-data:
+  macro-redis-data:
 services:
   ########################################## GENERAL INFRASTRUCTURE ##########################################
   tsdb:
@@ -21,9 +22,9 @@ services:
       # Layer A: The Global Foundation (Runs first)
       - ./database/schema.sql:/docker-entrypoint-initdb.d/10_schema.sql:ro
       # Layer B: The Rates Domain View (Runs second)
-      - ./rates_agent/storage/views/sovereign_curves_view.sql:/docker-entrypoint-initdb.d/20_sovereign_curves_view:ro
+      - ./rates_agent/storage/views/sovereign_curves_view.sql:/docker-entrypoint-initdb.d/20_sovereign_curves_view.sql:ro
       # Rates Instruments Manifest View
-      - ./rates_agent/storage/views/rates_instruments_view.sql:/docker-entrypoint-initdb.d/30_rates_instruments_view:ro
+      - ./rates_agent/storage/views/rates_instruments_view.sql:/docker-entrypoint-initdb.d/30_rates_instruments_view.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quantuser -d macrodata"]
       interval: 5s
@@ -81,12 +82,48 @@ services:
       - ./.env:/app/.env
     environment:
       DB_HOST: tsdb
+      DB_PORT: 5432
       DB_USER: quantuser
       DB_PASSWORD: myStrongPass
       DB_NAME: macrodata
       TZ: Europe/London
     command: ["tail", "-f", "/dev/null"]
 
+  ########################################## UTILITY JOBS ##########################################
+  parquet-ingestion:
+    image: macro-project:latest
+    container_name: macro-parquet-ingestion
+    restart: "no" # Runs once and exits cleanly
+    depends_on:
+      tsdb:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      DB_HOST: tsdb
+      DB_PORT: 5432
+      DB_USER: quantuser
+      DB_PASSWORD: myStrongPass
+      DB_NAME: macrodata
+      TZ: Europe/London
+    # Executes the ingestion module
+    command: ["micromamba", "run", "-n", "macro-env", "python", "-m", "ingestion.ingest_parquet"]
+
+  push-playbooks:
+    image: macro-project:latest
+    container_name: macro-push-playbooks
+    restart: "no" # Runs once and exits cleanly
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    environment:
+      TZ: Europe/London
+    # Executes the push script
+    command: ["micromamba", "run", "-n", "macro-env", "python", "utils/push_playbooks.py"]
+    
   ########################################## BI & VISUALIZATION ##########################################
   metabase:
     image: metabase/metabase:latest
@@ -99,4 +136,31 @@ services:
       - macro-metabase-data:/metabase.db
     depends_on:
       tsdb:
+        condition: service_healthy  
+  redis:
+    image: redis:latest
+    container_name: macro-superset-cache
+    restart: unless-stopped
+    volumes:
+    - macro-redis-data:/data
+  superset:
+    image: apache/superset:4.1.1
+    container_name: macro-superset
+    ports:
+      - "8088:8088"
+    depends_on:
+      tsdb:
         condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SUPERSET_CONFIG_PATH: "/app/superset_config.py"
+    volumes:
+      - ./docker/superset_config.py:/app/superset_config.py
+      - macro-superset-data:/app/superset_home
+    command: >
+      bash -c "pip install psycopg2-binary &&
+      superset db upgrade &&
+      (superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin || true) &&
+      superset init &&
+      /usr/bin/run-server.sh" 

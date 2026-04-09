@@ -1,0 +1,2211 @@
+playbook_name: ois
+playbook_version: '1.1'
+asset_class: rates
+dataset_name: ois_curves
+description: Daily OIS curve data for prototype ingestion, with Bloomberg-validated market/reference fields and manually encoded stable curve conventions.
+extraction:
+  start_date: '2005-01-01'
+  incremental_window_days: 14
+target_metrics:
+- metric_id: quoted_rate_mid
+  bloomberg_field: PX_LAST
+- metric_id: quoted_rate_bid
+  bloomberg_field: PX_BID
+- metric_id: quoted_rate_ask
+  bloomberg_field: PX_ASK
+reference_metrics:
+- column_name: security_name
+  bloomberg_field: SECURITY_DES
+- column_name: maturity_date
+  bloomberg_field: MATURITY
+- column_name: effective_date
+  bloomberg_field: SW_EFF_DT
+- column_name: underlying_index
+  bloomberg_field: SWAP_PRIMARY_INDEX
+- column_name: calendar_code
+  bloomberg_field: CALENDAR_CODE
+universe:
+- ticker: USOSFR1Z Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 1W
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFRA Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 1M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFRB Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 2M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFRC Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 3M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFRF Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 6M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFRI Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 9M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR1 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 1Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR2 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 2Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR3 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 3Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR5 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 5Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR10 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 10Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR20 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 20Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: USOSFR30 Curncy
+  instrument_type: ois_swap
+  curve_family: USD_SOFR_OIS
+  country: US
+  currency: USD
+  tenor: 30Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: FD
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: FD
+  float_leg_fixing_calendar: GT
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE1Z Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 1W
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWEA Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 1M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWEB Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 2M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWEC Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 3M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWEF Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 6M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWEI Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 9M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE1 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 1Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE2 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 2Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE3 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 3Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE5 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 5Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE10 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 10Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE20 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 20Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: EESWE30 Curncy
+  instrument_type: ois_swap
+  curve_family: EUR_ESTR_OIS
+  country: EU
+  currency: EUR
+  tenor: 30Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/360
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: TE
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/360
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: TE
+  float_leg_fixing_calendar: TE
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS1Z Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 1W
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWSA Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 1M
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWSB Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 2M
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWSC Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 3M
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWSF Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 6M
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWSI Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 9M
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS1 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 1Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS2 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 2Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS3 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 3Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS5 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 5Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS10 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 10Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS20 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 20Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: BPSWS30 Curncy
+  instrument_type: ois_swap
+  curve_family: GBP_SONIA_OIS
+  country: GB
+  currency: GBP
+  tenor: 30Y
+  discounting_display: OIS
+  settlement_convention_display: T+0 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: EN
+  fixed_leg_pay_delay: 0 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: EN
+  float_leg_fixing_calendar: EN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 0 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO1Z Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_TONA_OIS
+  country: JP
+  currency: JPY
+  tenor: 1W
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSOA Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 1M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSOB Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 2M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSOC Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 3M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSOF Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 6M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSOI Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 9M
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO1 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 1Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO2 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 2Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO3 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 3Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO5 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 5Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO10 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 10Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO20 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 20Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: JYSO30 Curncy
+  instrument_type: ois_swap
+  curve_family: JPY_OIS
+  country: JP
+  currency: JPY
+  tenor: 30Y
+  discounting_display: OIS
+  settlement_convention_display: T+2 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: JN
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: JN
+  float_leg_fixing_calendar: JN
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- instrument_type: ois_swap
+  curve_family: AUD_AONIA_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO1Z Curncy
+  tenor: 1W
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSOA Curncy
+  tenor: 1M
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSOB Curncy
+  tenor: 2M
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSOC Curncy
+  tenor: 3M
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSOF Curncy
+  tenor: 6M
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSOI Curncy
+  tenor: 9M
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO1 Curncy
+  tenor: 1Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO2 Curncy
+  tenor: 2Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO3 Curncy
+  tenor: 3Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO5 Curncy
+  tenor: 5Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO10 Curncy
+  tenor: 10Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO20 Curncy
+  tenor: 20Y
+- instrument_type: ois_swap
+  curve_family: AUD_OIS
+  country: AU
+  currency: AUD
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: AU
+  fixed_leg_pay_delay: 2 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: AU
+  float_leg_fixing_calendar: AU
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 2 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+  ticker: ADSO30 Curncy
+  tenor: 30Y
+- ticker: CDSO1Z Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_CORRA_OIS
+  country: CA
+  currency: CAD
+  tenor: 1W
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSOA Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 1M
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSOB Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 2M
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSOC Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 3M
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSOF Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 6M
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSOI Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 9M
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO1 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 1Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: Annual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward (EOM)
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: Annual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward (EOM)
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO2 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 2Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO3 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 3Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO5 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 5Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO10 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 10Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO20 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 20Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears
+- ticker: CDSO30 Curncy
+  instrument_type: ois_swap
+  curve_family: CAD_OIS
+  country: CA
+  currency: CAD
+  tenor: 30Y
+  discounting_display: OIS
+  settlement_convention_display: T+1 Days
+  fixed_leg_day_count: ACT/365.FIXED
+  fixed_leg_pay_frequency: SemiAnnual
+  fixed_leg_business_day_adjustment: Modified Following
+  fixed_leg_adjust: Accrl and Pay Dates
+  fixed_leg_roll_convention: Backward
+  fixed_leg_calc_calendar_display: CA
+  fixed_leg_pay_delay: 1 Business Days
+  float_leg_day_count: ACT/365.FIXED
+  float_leg_pay_frequency: SemiAnnual
+  float_leg_reset_frequency: Daily
+  float_leg_business_day_adjustment: Modified Following
+  float_leg_adjust: Accrl and Pay Dates
+  float_leg_roll_convention: Backward
+  float_leg_calc_calendar_display: CA
+  float_leg_fixing_calendar: CA
+  float_leg_accretion_mode: Excl Sprd
+  float_leg_fixing_lag: 0 Business Days
+  float_leg_pay_delay: 1 Business Days
+  float_leg_rate_cutoff: 1 Business Days
+  float_leg_reset_position: In Arrears

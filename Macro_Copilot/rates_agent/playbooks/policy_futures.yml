@@ -1,0 +1,283 @@
+playbook_name: "policy_futures"
+playbook_version: "1.0"
+asset_class: "rates"
+dataset_name: "policy_futures"
+description: "Daily rolling short-rate / policy futures (SOFR, Euribor, SONIA) across the first 8 listed contracts for central bank pricing and positioning proxies."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "last_price"
+    bloomberg_field: "PX_LAST"
+  - metric_id: "open_interest"
+    bloomberg_field: "OPEN_INT"
+  - metric_id: "volume"
+    bloomberg_field: "PX_VOLUME"
+
+# Static/reference fields validated across the selected rolling futures universe.
+# Upgraded to 'God Mode' to include tick sizing and underlying spot mapping.
+reference_metrics:
+  - column_name: "expiry_date"
+    bloomberg_field: "LAST_TRADEABLE_DT"
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+  - column_name: "contract_size"
+    bloomberg_field: "FUT_CONT_SIZE"
+  - column_name: "tick_size"
+    bloomberg_field: "FUT_TICK_SIZE"
+  - column_name: "tick_value"
+    bloomberg_field: "FUT_TICK_VAL"
+  - column_name: "underlying_spot"
+    bloomberg_field: "UNDL_SPOT_TICKER"
+
+universe:
+  # --------------------------------------------------------
+  # United States (The Fed) - SOFR Futures Strip
+  # --------------------------------------------------------
+  - ticker: "SFR1 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR1"
+    inverse_pricing: true
+    strip_position: 1
+    is_rolling_contract: true
+
+  - ticker: "SFR2 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR2"
+    inverse_pricing: true
+    strip_position: 2
+    is_rolling_contract: true
+
+  - ticker: "SFR3 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR3"
+    inverse_pricing: true
+    strip_position: 3
+    is_rolling_contract: true
+
+  - ticker: "SFR4 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR4"
+    inverse_pricing: true
+    strip_position: 4
+    is_rolling_contract: true
+
+  - ticker: "SFR5 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR5"
+    inverse_pricing: true
+    strip_position: 5
+    is_rolling_contract: true
+
+  - ticker: "SFR6 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR6"
+    inverse_pricing: true
+    strip_position: 6
+    is_rolling_contract: true
+
+  - ticker: "SFR7 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR7"
+    inverse_pricing: true
+    strip_position: 7
+    is_rolling_contract: true
+
+  - ticker: "SFR8 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SOFR_FUT"
+    country: "US"
+    currency: "USD"
+    contract_code: "SFR8"
+    inverse_pricing: true
+    strip_position: 8
+    is_rolling_contract: true
+
+  # --------------------------------------------------------
+  # Euro Area (The ECB) - Euribor Futures Strip
+  # --------------------------------------------------------
+  - ticker: "ER1 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER1"
+    inverse_pricing: true
+    strip_position: 1
+    is_rolling_contract: true
+
+  - ticker: "ER2 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER2"
+    inverse_pricing: true
+    strip_position: 2
+    is_rolling_contract: true
+
+  - ticker: "ER3 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER3"
+    inverse_pricing: true
+    strip_position: 3
+    is_rolling_contract: true
+
+  - ticker: "ER4 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER4"
+    inverse_pricing: true
+    strip_position: 4
+    is_rolling_contract: true
+
+  - ticker: "ER5 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER5"
+    inverse_pricing: true
+    strip_position: 5
+    is_rolling_contract: true
+
+  - ticker: "ER6 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER6"
+    inverse_pricing: true
+    strip_position: 6
+    is_rolling_contract: true
+
+  - ticker: "ER7 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER7"
+    inverse_pricing: true
+    strip_position: 7
+    is_rolling_contract: true
+
+  - ticker: "ER8 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "EUR_SHORT_RATE_FUT"
+    country: "Euro area"
+    currency: "EUR"
+    contract_code: "ER8"
+    inverse_pricing: true
+    strip_position: 8
+    is_rolling_contract: true
+
+  # --------------------------------------------------------
+  # United Kingdom (The BOE) - SONIA Futures Strip
+  # --------------------------------------------------------
+  - ticker: "SFI1 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI1"
+    inverse_pricing: true
+    strip_position: 1
+    is_rolling_contract: true
+
+  - ticker: "SFI2 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI2"
+    inverse_pricing: true
+    strip_position: 2
+    is_rolling_contract: true
+
+  - ticker: "SFI3 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI3"
+    inverse_pricing: true
+    strip_position: 3
+    is_rolling_contract: true
+
+  - ticker: "SFI4 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI4"
+    inverse_pricing: true
+    strip_position: 4
+    is_rolling_contract: true
+
+  - ticker: "SFI5 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI5"
+    inverse_pricing: true
+    strip_position: 5
+    is_rolling_contract: true
+
+  - ticker: "SFI6 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI6"
+    inverse_pricing: true
+    strip_position: 6
+    is_rolling_contract: true
+
+  - ticker: "SFI7 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI7"
+    inverse_pricing: true
+    strip_position: 7
+    is_rolling_contract: true
+
+  - ticker: "SFI8 Comdty"
+    instrument_type: "policy_future"
+    curve_family: "SONIA_FUT"
+    country: "UK"
+    currency: "GBP"
+    contract_code: "SFI8"
+    inverse_pricing: true
+    strip_position: 8
+    is_rolling_contract: true
