@@ -27,3 +27,4 @@ dependencies:
     - google-auth
     - PyPDF2
     - pyyaml
+    - mcp

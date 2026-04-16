@@ -19,3 +19,7 @@ dependencies:
     - anthropic
     - pyyaml
     - google-cloud-storage
+    - mcp
+    - langchain-anthropic
+    - langchain-mcp-adapters
+    - langgraph
