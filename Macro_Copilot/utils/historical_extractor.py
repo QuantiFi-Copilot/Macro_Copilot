@@ -1,4 +1,5 @@
 import os
+import sys
 import yaml
 import argparse
 import hashlib
@@ -313,9 +314,12 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
     temp_playbooks_dir.mkdir(exist_ok=True)
     temp_data_dir.mkdir(exist_ok=True)
 
+    any_failures = False
+
     try:
         if not gcp_key_path:
             print(f"[FATAL] Cannot find GCP Key '{GCP_KEY_FILENAME}' in expected locations.")
+            any_failures = True
             return
 
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
@@ -347,6 +351,7 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
 
         if not playbook_files:
             print("[ABORT] No playbooks found in the GCP bucket. Exiting.")
+            any_failures = True
             return
 
         print("\n[PHASE 2] Executing Bloomberg Extraction...")
@@ -374,10 +379,12 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
 
             if not universe_items:
                 print(f"\n[WARNING] No valid tickers found in {pb_path.name}. Skipping.")
+                any_failures = True
                 continue
 
             if not historical_fields:
                 print(f"\n[WARNING] No Bloomberg fields found in {pb_path.name}. Skipping.")
+                any_failures = True
                 continue
 
             print(f"\nProcessing Playbook: {pb_path.name}")
@@ -464,6 +471,23 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
                     print(f"    [ERROR] Failed on {ticker}: {exc}")
 
             if all_data_frames:
+                # Coverage gate: refuse to upload if too many tickers failed.
+                # This prevents a partial Bloomberg extraction from becoming
+                # authoritative truth after ingestion deletes existing data.
+                extracted_count = len(all_data_frames)
+                expected_count = len(universe_items)
+                if expected_count > 0:
+                    coverage = extracted_count / expected_count
+                    if coverage < 0.9:
+                        print(
+                            f"\n  [ABORT] Coverage gate: only {extracted_count}/"
+                            f"{expected_count} tickers extracted ({coverage:.0%}). "
+                            f"Refusing to upload partial data for {dataset_name}. "
+                            f"Threshold is 90%."
+                        )
+                        any_failures = True
+                        continue
+
                 print(f"\n[PHASE 3] Compiling and Pushing Data for {dataset_name}...")
 
                 final_df = pd.concat(all_data_frames, ignore_index=True)
@@ -471,6 +495,7 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
 
                 if final_df.empty:
                     print(f"  [WARNING] Final dataframe for {dataset_name} is empty after cleaning. Skipping upload.")
+                    any_failures = True
                     continue
 
                 preferred_order = [
@@ -522,6 +547,7 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
                 local_parquet_path.unlink(missing_ok=True)
             else:
                 print(f"  [WARNING] No valid data extracted for {dataset_name}. Skipping upload.")
+                any_failures = True
 
         try:
             print("\n[PHASE 4] Uploading latest terminal extractor script to GCP...")
@@ -543,6 +569,7 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
             print(f"  [WARNING] Failed to upload terminal extractor script: {exc}")
 
     except Exception as exc:
+        any_failures = True
         print(f"[FATAL] Pipeline failed: {exc}")
 
     finally:
@@ -565,6 +592,10 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
                 temp_data_dir.rmdir()
             except OSError:
                 pass
+
+        if any_failures:
+            print("\n*** EXTRACTION PIPELINE COMPLETE (WITH FAILURES) ***")
+            sys.exit(1)
 
         print("\n*** EXTRACTION PIPELINE COMPLETE ***")
 

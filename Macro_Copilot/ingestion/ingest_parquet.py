@@ -21,6 +21,8 @@ from database.database import (  # noqa: E402
     upsert_market_data_daily,
     get_latest_successful_load_for_playbook,
     mark_load_audit_skipped_duplicate,
+    update_load_audit_status,
+    count_instruments_in_load,
 )
 
 # --- CONFIGURATION ---
@@ -314,7 +316,7 @@ def run_ingestion_pipeline():
         gcp_key_path = Path("/app/secure_keys") / GCP_KEY_FILENAME
         if not gcp_key_path.exists():
             print(f"[FATAL] Cannot find GCP Key at {gcp_key_path}")
-            return
+            sys.exit(1)
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
     client = storage.Client()
@@ -337,9 +339,12 @@ def run_ingestion_pipeline():
     temp_dir.mkdir(exist_ok=True)
 
     # --- PHASE 2: PROCESS & UPSERT ---
+    any_failures = False
+
     for blob in parquet_blobs:
         filename = Path(blob.name).name
         local_path = temp_dir / filename
+        load_id = None  # Track for error-path status updates
 
         try:
             print(f"\nProcessing: {filename}")
@@ -351,6 +356,7 @@ def run_ingestion_pipeline():
 
             if df.empty:
                 print(f"  [WARNING] File {filename} is empty. Skipping.")
+                any_failures = True
                 continue
 
             # 2. Build audit metadata and skip ingestion if this parquet artifact is
@@ -387,9 +393,15 @@ def run_ingestion_pipeline():
                         f"(extraction_mode={extraction_mode})"
                     ),
                 )
-                new_blob_name = blob.name.replace("data/", "archive/data/", 1)
-                bucket.rename_blob(blob, new_blob_name)
-                print(f"  [SUCCESS] Archived duplicate file to gs://{BUCKET_NAME}/{new_blob_name}")
+                try:
+                    new_blob_name = blob.name.replace("data/", "archive/data/", 1)
+                    bucket.rename_blob(blob, new_blob_name)
+                    print(f"  [SUCCESS] Archived duplicate file to gs://{BUCKET_NAME}/{new_blob_name}")
+                except Exception as archive_err:
+                    print(
+                        f"  [WARNING] Duplicate correctly skipped but GCS archival failed: "
+                        f"{archive_err}. File remains in data/; dedup hash will skip it on next run."
+                    )
                 continue
 
             audit_record = {
@@ -404,8 +416,8 @@ def run_ingestion_pipeline():
                 "requested_start_date": requested_start_date,
                 "requested_end_date": requested_end_date,
                 "extracted_at": extracted_at,
-                "status": "SUCCESS",
-                "notes": f"Loaded from GCS object {blob.name} | extraction_mode={extraction_mode}",
+                "status": "RUNNING",
+                "notes": f"Processing GCS object {blob.name} | extraction_mode={extraction_mode}",
             }
 
             print("  [DB] Inserting load_audit record...")
@@ -447,9 +459,41 @@ def run_ingestion_pipeline():
                 master_records.append(record)
 
             print(f"  [DB] Verifying/Upserting {len(master_records)} instruments in instrument_master...")
+
+            # 4. Sanity gate: refuse to proceed if incoming data has significantly
+            #    fewer instruments than the previous successful load.  This prevents
+            #    a partial Bloomberg extraction from wiping good history.
+            #    Runs BEFORE instrument_master upsert so a failed gate causes zero
+            #    DB mutations.
+            incoming_instrument_count = len(master_records)
+            if latest_success and latest_success.get("load_id"):
+                existing_instrument_count = count_instruments_in_load(
+                    engine, latest_success["load_id"]
+                )
+                if existing_instrument_count > 0:
+                    coverage = incoming_instrument_count / existing_instrument_count
+                    if coverage < 0.8:
+                        msg = (
+                            f"Sanity gate FAILED: incoming parquet has "
+                            f"{incoming_instrument_count} instruments vs "
+                            f"{existing_instrument_count} in the previous successful "
+                            f"load (coverage {coverage:.0%}, threshold 80%). "
+                            f"Aborting to prevent data loss."
+                        )
+                        print(f"  [ABORT] {msg}")
+                        update_load_audit_status(engine, load_id, "FAILED", msg)
+                        any_failures = True
+                        # Do NOT archive — leave in data/ for investigation
+                        continue
+                    print(
+                        f"  [OK] Sanity gate passed: {incoming_instrument_count}/"
+                        f"{existing_instrument_count} instruments ({coverage:.0%})."
+                    )
+
+            # 5. Upsert instrument master (only reached if sanity gate passes)
             instrument_id_map = upsert_instrument_master(engine, master_records)
 
-            # 4. Delete the appropriate overlap before reloading, depending on extraction mode.
+            # 6. Delete the appropriate overlap before reloading, depending on extraction mode.
             if extraction_mode == "historical":
                 deleted_rows = _delete_existing_playbook_scope(
                     engine=engine,
@@ -480,7 +524,7 @@ def run_ingestion_pipeline():
                     "Expected 'historical' or 'incremental'."
                 )
 
-            # 5. Upsert daily time-series data using instrument_id + load_id
+            # 6. Upsert daily time-series data using instrument_id + load_id
             print(f"  [DB] Upserting {len(df)} daily market data rows...")
             upsert_market_data_daily(
                 engine=engine,
@@ -489,13 +533,41 @@ def run_ingestion_pipeline():
                 load_id=load_id,
             )
 
-            # 6. Archive processed file in GCP
-            new_blob_name = blob.name.replace("data/", "archive/data/", 1)
-            bucket.rename_blob(blob, new_blob_name)
-            print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+            # 8. All DB mutations succeeded — mark the audit row as SUCCESS.
+            #    This happens BEFORE archival so a GCS failure cannot flip the
+            #    DB status back to FAILED.
+            update_load_audit_status(
+                engine, load_id, "SUCCESS",
+                f"Successfully loaded from GCS object {blob.name} | "
+                f"extraction_mode={extraction_mode} | "
+                f"instruments={len(instrument_id_map)} | rows={len(df)}",
+            )
+
+            # 9. Archive processed file in GCP (best-effort — does not affect
+            #    DB status).  If archival fails, the file stays in data/ and
+            #    the next run's dedup hash check will skip it.
+            try:
+                new_blob_name = blob.name.replace("data/", "archive/data/", 1)
+                bucket.rename_blob(blob, new_blob_name)
+                print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+            except Exception as archive_err:
+                print(
+                    f"  [WARNING] DB load succeeded but GCS archival failed: {archive_err}. "
+                    f"File remains in data/; dedup hash will skip it on next run."
+                )
 
         except Exception as e:
+            any_failures = True
             print(f"  [ERROR] Failed to process {filename}: {e}")
+            # Mark the audit row as FAILED if it was created
+            if load_id is not None:
+                try:
+                    update_load_audit_status(
+                        engine, load_id, "FAILED",
+                        f"Processing failed for GCS object {blob.name}: {e}",
+                    )
+                except Exception as audit_err:
+                    print(f"  [ERROR] Could not update load_audit status: {audit_err}")
             # File remains in data/ for retry on the next run
 
         finally:
@@ -506,6 +578,10 @@ def run_ingestion_pipeline():
         temp_dir.rmdir()
     except OSError:
         pass
+
+    if any_failures:
+        print("\n*** INGESTION PIPELINE COMPLETE (WITH FAILURES) ***")
+        sys.exit(1)
 
     print("\n*** INGESTION PIPELINE COMPLETE ***")
 

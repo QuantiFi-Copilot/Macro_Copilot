@@ -251,6 +251,55 @@ def mark_load_audit_skipped_duplicate(
     return load_id
 
 
+def update_load_audit_status(
+    engine,
+    load_id: int,
+    status: str,
+    notes: Optional[str] = None,
+) -> None:
+    """
+    Update the status (and optionally notes) of an existing load_audit row.
+
+    Used to transition a row from RUNNING → SUCCESS or RUNNING → FAILED
+    after the destructive mutation phase completes or fails.
+    """
+    metadata = MetaData(schema="macro_data")
+    table = Table("load_audit", metadata, autoload_with=engine)
+
+    update_values: Dict[str, Any] = {"status": status}
+    if notes is not None:
+        update_values["notes"] = notes
+
+    stmt = table.update().where(table.c.load_id == load_id).values(**update_values)
+
+    with engine.begin() as conn:
+        conn.execute(stmt)
+
+    print(f"[DB] Updated load_audit row load_id={load_id} → status={status}.")
+
+
+def count_instruments_in_load(engine, load_id: int) -> int:
+    """
+    Count distinct instrument_ids in market_data_daily for a specific load.
+
+    Used by the ingestion sanity gate to compare the previous successful
+    load's instrument count against the incoming parquet's instrument count
+    before performing a destructive delete.
+
+    Returns 0 if no rows exist for the given load_id.
+    """
+    metadata = MetaData(schema="macro_data")
+    table = Table("market_data_daily", metadata, autoload_with=engine)
+
+    stmt = (
+        select(func.count(table.c.instrument_id.distinct()))
+        .where(table.c.load_id == load_id)
+    )
+
+    with engine.begin() as conn:
+        return conn.execute(stmt).scalar() or 0
+
+
 # ==============================================================================
 # DYNAMIC DAILY MARKET DATA (THE 'WHAT')
 # ==============================================================================
