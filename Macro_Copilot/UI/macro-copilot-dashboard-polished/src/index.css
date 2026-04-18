@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' 1, 'cv11' 1;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #06080C;
+  background-image:
+    radial-gradient(1200px 600px at 18% -8%, rgba(94, 139, 247, 0.07), transparent 55%),
+    radial-gradient(900px 480px at 88% -14%, rgba(66, 92, 172, 0.05), transparent 60%),
+    radial-gradient(700px 500px at 50% 110%, rgba(122, 162, 255, 0.035), transparent 60%);
+  color: #E8EAF0;
+  font-size: 13px;
+  letter-spacing: -0.008em;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*::selection {
+  background: rgba(122, 162, 255, 0.28);
+  color: #ffffff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 150ms ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.18);
+  background-clip: padding-box;
+}
+
+@layer base {
+  html {
+    font-feature-settings: 'ss01' 1, 'cv11' 1;
+  }
+}
+
+@layer components {
+  /* Core panel — seamless flanking surfaces (sidebar, chat) */
+  .panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0) 60%),
+      rgba(10, 12, 18, 0.4);
+    backdrop-filter: blur(8px);
+  }
+
+  .panel-divider-r {
+    background-image: linear-gradient(
+      180deg,
+      rgba(148, 163, 184, 0) 0%,
+      rgba(148, 163, 184, 0.12) 20%,
+      rgba(148, 163, 184, 0.12) 80%,
+      rgba(148, 163, 184, 0) 100%
+    );
+  }
+
+  /* Card: the workhorse surface on the main stage */
+  .card {
+    position: relative;
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.004) 55%),
+      #0C0E15;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.045),
+      inset 0 0 0 1px rgba(148, 163, 184, 0.075),
+      0 20px 50px -28px rgba(0, 0, 0, 0.55);
+    transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .card:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.055),
+      inset 0 0 0 1px rgba(148, 163, 184, 0.12),
+      0 22px 60px -28px rgba(0, 0, 0, 0.65);
+  }
+
+  .card-header {
+    @apply flex items-center justify-between gap-3 px-5 pt-4 pb-3;
+  }
+
+  .card-body {
+    @apply px-5 pb-5;
+  }
+
+  /* Embedded subsurface inside a card (single level of nesting allowed) */
+  .subsurface {
+    border: 1px solid rgba(148, 163, 184, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0) 70%),
+      rgba(255, 255, 255, 0.012);
+    border-radius: 10px;
+  }
+
+  /* Typography primitives */
+  .kicker {
+    @apply font-sans text-[10px] font-medium uppercase tracking-[0.16em] text-fg-muted;
+  }
+
+  .metric {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: 'tnum' 1, 'ss01' 1;
+    @apply font-medium tracking-[-0.01em] text-fg-primary;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: 'tnum' 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Chips and pills */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em];
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    background: rgba(148, 163, 184, 0.04);
+    color: #A4A8B6;
+  }
+
+  .chip-pos {
+    border-color: rgba(63, 214, 154, 0.2);
+    background: rgba(63, 214, 154, 0.07);
+    color: #6BE4B0;
+  }
+
+  .chip-neg {
+    border-color: rgba(255, 107, 126, 0.22);
+    background: rgba(255, 107, 126, 0.07);
+    color: #FF8FA0;
+  }
+
+  .chip-warn {
+    border-color: rgba(243, 183, 85, 0.22);
+    background: rgba(243, 183, 85, 0.07);
+    color: #F8CE88;
+  }
+
+  .chip-accent {
+    border-color: rgba(122, 162, 255, 0.26);
+    background: rgba(122, 162, 255, 0.08);
+    color: #A6BCFF;
+  }
+
+  /* Ghost button — the default interactive surface */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium text-fg-primary transition-all duration-150 ease-sleek;
+    border: 1px solid rgba(148, 163, 184, 0.10);
+    background: rgba(148, 163, 184, 0.025);
+  }
+
+  .btn-ghost:hover {
+    border-color: rgba(148, 163, 184, 0.20);
+    background: rgba(148, 163, 184, 0.055);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-all duration-150 ease-sleek;
+    background: linear-gradient(180deg, rgba(122, 162, 255, 0.18), rgba(122, 162, 255, 0.08));
+    border: 1px solid rgba(122, 162, 255, 0.28);
+    color: #DCE5FF;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(180deg, rgba(122, 162, 255, 0.24), rgba(122, 162, 255, 0.1));
+    border-color: rgba(122, 162, 255, 0.4);
+  }
+
+  /* Value tones — always tabular */
+  .val-pos {
+    @apply text-mint-400;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .val-neg {
+    @apply text-coral-400;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .val-neutral {
+    @apply text-fg-primary;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Subtle top accent on active nav items */
+  .nav-active-rail {
+    position: relative;
+  }
+
+  .nav-active-rail::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(180deg, rgba(122, 162, 255, 0), #7AA2FF 40%, #7AA2FF 60%, rgba(122, 162, 255, 0));
+    box-shadow: 0 0 12px rgba(122, 162, 255, 0.35);
+  }
+
+  /* Focus visibility */
+  .focus-ring:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 1px rgba(122, 162, 255, 0.55),
+      0 0 0 4px rgba(122, 162, 255, 0.12);
+  }
+}
