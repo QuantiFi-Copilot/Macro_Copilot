@@ -1,5 +1,10 @@
+import { BrowserRouter } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 
 export default function App() {
-  return <AppShell />;
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
+  );
 }

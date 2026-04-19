@@ -1,8 +1,14 @@
+import { NavLink } from 'react-router-dom';
 import { Bell, Bookmark, Radio, Search, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
+type TabDef = {
+  label: string;
+  path: string;
+};
+
 type TopNavProps = {
-  tabs: string[];
+  tabs: TabDef[];
 };
 
 const MARKET_TICKERS = [
@@ -13,27 +19,38 @@ const MARKET_TICKERS = [
 ];
 
 export function TopNav({ tabs }: TopNavProps) {
+  const focusCopilotComposer = () => {
+    window.dispatchEvent(new Event('copilot:focus-input'));
+  };
+
   return (
     <header className="relative flex flex-col">
       {/* Top row: tabs + search + utilities */}
       <div className="flex h-[64px] items-center gap-6 border-b border-line-subtle px-6">
         <nav className="flex items-center">
-          {tabs.map((tab, index) => (
-            <button
-              key={tab}
-              type="button"
-              className={cn(
-                'relative -mb-px flex h-[64px] items-center px-3 text-[13px] font-medium tracking-[-0.005em] transition-colors duration-150 ease-sleek',
-                index === 0
-                  ? 'text-fg-primary'
-                  : 'text-fg-muted hover:text-fg-secondary',
-              )}
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.path}
+              to={tab.path}
+              end={tab.path === '/'}
+              className={({ isActive }) =>
+                cn(
+                  'relative -mb-px flex h-[64px] items-center px-3 text-[13px] font-medium tracking-[-0.005em] transition-colors duration-150 ease-sleek',
+                  isActive
+                    ? 'text-fg-primary'
+                    : 'text-fg-muted hover:text-fg-secondary',
+                )
+              }
             >
-              {tab}
-              {index === 0 ? (
-                <span className="absolute inset-x-3 bottom-0 h-[2px] rounded-t-full bg-gradient-to-r from-transparent via-ice-400 to-transparent shadow-[0_0_12px_rgba(122,162,255,0.45)]" />
-              ) : null}
-            </button>
+              {({ isActive }) => (
+                <>
+                  {tab.label}
+                  {isActive ? (
+                    <span className="absolute inset-x-3 bottom-0 h-[2px] rounded-t-full bg-gradient-to-r from-transparent via-ice-400 to-transparent shadow-[0_0_12px_rgba(122,162,255,0.45)]" />
+                  ) : null}
+                </>
+              )}
+            </NavLink>
           ))}
         </nav>
 
@@ -41,6 +58,7 @@ export function TopNav({ tabs }: TopNavProps) {
         <div className="flex flex-1 justify-center">
           <button
             type="button"
+            onClick={focusCopilotComposer}
             className="flex w-full max-w-[520px] items-center gap-2.5 rounded-lg border border-line-soft bg-white/[0.015] px-3.5 py-2 text-[12.5px] text-fg-muted transition-colors duration-150 ease-sleek hover:border-line-strong hover:bg-white/[0.03] hover:text-fg-secondary"
           >
             <Search size={13} />

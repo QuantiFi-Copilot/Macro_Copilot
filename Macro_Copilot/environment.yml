@@ -27,4 +27,6 @@ dependencies:
     - uvicorn>=0.42.0
     - starlette>=0.46.2
     - sse-starlette>=3.3.4
+    - websockets
+    
   
