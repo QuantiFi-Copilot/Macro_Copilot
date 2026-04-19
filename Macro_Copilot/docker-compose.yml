@@ -164,3 +164,17 @@ services:
       (superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin || true) &&
       superset init &&
       /usr/bin/run-server.sh" 
+  api-server:
+    build: .
+    command: micromamba run -n macro-env uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment: 
+      - DB_HOST=tsdb
+      - DB_PORT=5432
+    depends_on:
+      - tsdb
