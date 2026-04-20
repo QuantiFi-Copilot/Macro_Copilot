@@ -80,6 +80,13 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
+    "ois_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.ois.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
     # ── Future agents ──────────────────────────────────────────────
     # "fx_agent": {
     #     "transport": "stdio",

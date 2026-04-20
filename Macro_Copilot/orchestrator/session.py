@@ -151,11 +151,16 @@ _WORKSPACE_TOOLS = {
     "calculate_cross_market_spread_tool",
     "calculate_butterfly_tool",
     "scan_extremes_tool",
+    "calculate_ois_curve_spread_tool",
 }
 
 _TOOL_LABEL_TEMPLATES = {
     "calculate_curve_spread_tool": lambda p: (
         f"Fetching {p.get('curve_family', '?')} "
+        f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
+    ),
+    "calculate_ois_curve_spread_tool": lambda p: (
+        f"Fetching OIS {p.get('curve_family', '?')} "
         f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
     ),
     "calculate_cross_market_spread_tool": lambda p: (
