@@ -10,27 +10,26 @@ long_tenor, lookback_days) from the user, validates them via
 
 Data flow
 ---------
-1.  **Fetch** — SQLAlchemy text query against the flattened enriched view
-    (``macro_data.v_market_data_daily_enriched``).  Parameters are bound, never
-    interpolated, to prevent injection.
-2.  **Pivot** — Long-format rows are pivoted so each tenor becomes a column
-    with trade_date as the index.
-3.  **Fill** — Forward-fill to handle public-holiday gaps (bonds trade on
-    slightly different calendars across countries).
-4.  **Math** — Spread = long − short (in basis points).  Fixed 252-trading-day
-    rolling z-score (always 1 year, independent of the display lookback).
-5.  **Return** — Structured dict matching ``CurveSpreadOutput``.
+1.  **Fetch** — ``shared.analytics.rates_fetch.fetch_tenor_pair`` runs a
+    parameterized SELECT against the enriched view.  Parameters are bound,
+    never interpolated, to prevent injection.
+2.  **Pivot + align** — ``shared.analytics.spreads.pivot_and_align_tenors``
+    pivots long-format rows to wide and forward-fills small holiday gaps.
+3.  **Math** — ``compute_spread_bps`` gives ``(long − short) × 100``;
+    ``rolling_zscore`` gives the fixed 252-trading-day z-score.
+4.  **Return** — Structured dict matching ``CurveSpreadOutput``.
 
+Domain-specific responsibilities that stay in this module: input
+validation, domain-aware error messages, window trimming, spread label
+formatting, and output-schema assembly.
 """
 
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.schemas import (
@@ -39,60 +38,14 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadOutput,
     CurveSpreadTimeSeriesRow,
 )
-
-
-# ============================================================================
-# PRIVATE HELPERS
-# ============================================================================
-
-_FETCH_SQL = text("""
-    SELECT
-        trade_date,
-        tenor,
-        field_value
-    FROM macro_data.v_market_data_daily_enriched
-    WHERE curve_family  = :curve_family
-      AND tenor         IN (:short_tenor, :long_tenor)
-      AND field_name    = :field_name
-      AND trade_date   >= :start_date
-    ORDER BY trade_date
-""")
-
-
-def _fetch_raw(
-    engine: Engine,
-    curve_family: str,
-    short_tenor: str,
-    long_tenor: str,
-    field_name: str,
-    start_date: date,
-) -> pd.DataFrame:
-    """Run the parameterized query and return a long-format DataFrame."""
-    with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_SQL,
-            {
-                "curve_family": curve_family,
-                "short_tenor": short_tenor,
-                "long_tenor": long_tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
-        rows = result.fetchall()
-        columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
-
-
-def _safe_float(value: Any) -> Optional[float]:
-    """Convert a value to a Python float, returning None for NaN / None."""
-    if value is None:
-        return None
-    try:
-        f = float(value)
-        return None if math.isnan(f) else round(f, 4)
-    except (TypeError, ValueError):
-        return None
+from shared.analytics.rates_fetch import fetch_tenor_pair
+from shared.analytics.spreads import (
+    Z_SCORE_WINDOW,
+    compute_spread_bps,
+    pivot_and_align_tenors,
+    rolling_zscore,
+    safe_float,
+)
 
 
 # ============================================================================
@@ -136,14 +89,13 @@ def calculate_curve_spread(
     # already populated from the first displayed row.  The buffer is
     # 1.5× the z-score window in calendar days to account for weekends
     # and holidays.
-    Z_SCORE_WINDOW: int = 252  # fixed 1-year rolling window (trading days)
     buffer_calendar_days = int(Z_SCORE_WINDOW * 1.5)  # ~378 calendar days
     start_date = date.today() - timedelta(days=params.lookback_days + buffer_calendar_days)
 
     # ------------------------------------------------------------------
     # 2. Fetch
     # ------------------------------------------------------------------
-    raw_df = _fetch_raw(
+    raw_df = fetch_tenor_pair(
         engine=engine,
         curve_family=params.curve_family,
         short_tenor=params.short_tenor,
@@ -176,25 +128,12 @@ def calculate_curve_spread(
         }
 
     # ------------------------------------------------------------------
-    # 4. Pivot → wide format (date × tenor)
+    # 4. Pivot → wide format (date × tenor) and align across holiday gaps
     # ------------------------------------------------------------------
-    raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
-    raw_df["field_value"] = pd.to_numeric(raw_df["field_value"], errors="coerce")
-
-    # De-duplicate: if somehow there are two rows for the same date+tenor,
-    # keep the last (most recently loaded).
-    raw_df = raw_df.drop_duplicates(
-        subset=["trade_date", "tenor"], keep="last"
+    wide = pivot_and_align_tenors(
+        raw_df,
+        required_tenors=(params.short_tenor, params.long_tenor),
     )
-
-    wide = raw_df.pivot(index="trade_date", columns="tenor", values="field_value")
-    wide = wide.sort_index()
-
-    # Forward-fill to bridge holiday mismatches (max 5 business days).
-    wide = wide.ffill(limit=5)
-
-    # Drop rows where either leg is still NaN after the fill.
-    wide = wide.dropna(subset=[params.short_tenor, params.long_tenor])
 
     if wide.empty:
         return {
@@ -210,15 +149,14 @@ def calculate_curve_spread(
     # ------------------------------------------------------------------
     # Yields are stored as percentages (e.g. 4.25 = 4.25%).
     # Spread in bps = (long − short) × 100.
-    wide["spread_bps"] = (
-        (wide[params.long_tenor] - wide[params.short_tenor]) * 100
-    ).round(2)
+    wide["spread_bps"] = compute_spread_bps(
+        wide,
+        minuend_col=params.long_tenor,
+        subtrahend_col=params.short_tenor,
+    )
 
-    # Rolling z-score: (current − rolling_mean) / rolling_std
-    # Always uses a fixed 252-trading-day window regardless of lookback_days.
-    rolling_mean = wide["spread_bps"].rolling(window=Z_SCORE_WINDOW, min_periods=60).mean()
-    rolling_std = wide["spread_bps"].rolling(window=Z_SCORE_WINDOW, min_periods=60).std()
-    wide["z_score"] = ((wide["spread_bps"] - rolling_mean) / rolling_std).round(4)
+    # Rolling z-score: always 252 trading days regardless of lookback_days.
+    wide["z_score"] = rolling_zscore(wide["spread_bps"])
 
     # ------------------------------------------------------------------
     # 6. Trim to the requested lookback (discard warm-up rows)
@@ -240,9 +178,9 @@ def calculate_curve_spread(
     latest = display_df.iloc[-1]
     previous = display_df.iloc[-2] if len(display_df) >= 2 else None
 
-    current_spread = _safe_float(latest["spread_bps"])
+    current_spread = safe_float(latest["spread_bps"])
     daily_change = (
-        _safe_float(round(latest["spread_bps"] - previous["spread_bps"], 2))
+        safe_float(round(latest["spread_bps"] - previous["spread_bps"], 2))
         if previous is not None
         else None
     )
@@ -258,10 +196,10 @@ def calculate_curve_spread(
         spread_label=spread_label,
         current_spread_bps=current_spread,
         daily_change_bps=daily_change,
-        current_z_score=_safe_float(latest.get("z_score")),
+        current_z_score=safe_float(latest.get("z_score")),
         rolling_window_days=Z_SCORE_WINDOW,
-        short_tenor_yield=_safe_float(latest.get(params.short_tenor)),
-        long_tenor_yield=_safe_float(latest.get(params.long_tenor)),
+        short_tenor_yield=safe_float(latest.get(params.short_tenor)),
+        long_tenor_yield=safe_float(latest.get(params.long_tenor)),
     )
 
     # ------------------------------------------------------------------
@@ -271,7 +209,7 @@ def calculate_curve_spread(
         CurveSpreadTimeSeriesRow(
             date=row.Index.strftime("%Y-%m-%d"),
             spread_bps=round(row.spread_bps, 2),
-            z_score=_safe_float(row.z_score),
+            z_score=safe_float(row.z_score),
         )
         for row in display_df.itertuples()
     ]
