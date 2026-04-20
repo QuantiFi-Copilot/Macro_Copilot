@@ -33,7 +33,7 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from rates_agent.tools.schemas import (
+from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadCurrentMetrics,
     CurveSpreadInput,
     CurveSpreadOutput,

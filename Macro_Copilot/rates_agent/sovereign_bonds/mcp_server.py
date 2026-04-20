@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
-from rates_agent.tools.schemas import (  # noqa: E402
+from rates_agent.sovereign_bonds.tools.schemas import (  # noqa: E402
     CurveSpreadInput,
     YieldLevelInput,
     CrossMarketSpreadInput,
@@ -35,12 +35,12 @@ from rates_agent.tools.schemas import (  # noqa: E402
     CurveRegimeInput,
     ScannerInput,
 )
-from rates_agent.tools.curve_spread import calculate_curve_spread  # noqa: E402
-from rates_agent.tools.yield_levels import get_yield_levels  # noqa: E402
-from rates_agent.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
-from rates_agent.tools.butterfly import calculate_butterfly  # noqa: E402
-from rates_agent.tools.curve_regime import classify_curve_regime  # noqa: E402
-from rates_agent.tools.scanner import scan_extremes  # noqa: E402
+from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread  # noqa: E402
+from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels  # noqa: E402
+from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
+from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly  # noqa: E402
+from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime  # noqa: E402
+from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 
 logging.basicConfig(
     stream=sys.stderr,

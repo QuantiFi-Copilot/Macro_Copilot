@@ -76,7 +76,7 @@ MCP_SERVERS: dict = {
     "rates_agent": {
         "transport": "stdio",
         "command": _PYTHON,
-        "args": ["-m", "rates_agent.mcp_server"],
+        "args": ["-m", "rates_agent.sovereign_bonds.mcp_server"],
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },

@@ -1,20 +1,11 @@
 """
-rates.py — Rates Page API Endpoints
-=====================================
+cards.py — Rates Card Endpoints
+=================================
 
-Two categories of endpoints:
-
-**Card endpoints** (power the Rates morning-briefing page):
+Pre-aggregated endpoints that power the Rates morning-briefing page:
     /yield-snapshot, /curve-shapes, /scanner, /cross-market, /regimes
 
-**Workspace endpoints** (power the "See more in workspace" flow):
-    /detail/yield, /detail/spread, /detail/cross-market,
-    /detail/butterfly, /detail/regime
-
-Card endpoints return pre-aggregated data for multiple instruments at
-once.  Workspace endpoints return full detail (including time_series for
-charts) for a single query.  Both categories call the existing Python
-tool functions directly — no LLM, no MCP.
+Each endpoint calls Python tool functions directly — no LLM, no MCP.
 """
 
 from __future__ import annotations
@@ -31,27 +22,18 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from api.dependencies import get_engine, settings
-from rates_agent.tools.schemas import (
+from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadInput,
-    CurveSpreadOutput,
     CrossMarketSpreadInput,
-    CrossMarketSpreadOutput,
     CurveRegimeInput,
-    CurveRegimeOutput,
     ScannerInput,
-    ButterflyInput,
-    ButterflyOutput,
-    YieldLevelInput,
-    YieldLevelOutput,
 )
-from rates_agent.tools.curve_spread import calculate_curve_spread
-from rates_agent.tools.cross_market_spread import calculate_cross_market_spread
-from rates_agent.tools.curve_regime import classify_curve_regime
-from rates_agent.tools.scanner import scan_extremes
-from rates_agent.tools.butterfly import calculate_butterfly
-from rates_agent.tools.yield_levels import get_yield_levels
+from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
+from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
+from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime
+from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
 
-logger = logging.getLogger("api.routes.rates")
+logger = logging.getLogger("api.routes.rates.cards")
 
 router = APIRouter()
 
@@ -183,42 +165,6 @@ def _extract_sparkline(
     ]
 
 
-def _tool_result_or_raise(result: dict, context: str) -> dict:
-    """Check a tool result dict for an error key and raise the
-    correct HTTP status:
-
-    - 404  — data not found (missing curve, tenor, insufficient history)
-    - 503  — infrastructure failure (DB connection, query timeout)
-    - 500  — unexpected / unclassified error
-    """
-    if "error" not in result:
-        return result
-
-    error_msg = result["error"]
-    lower = error_msg.lower()
-
-    # 404 — the query was valid but no data matched
-    not_found_phrases = [
-        "no data found", "missing tenor", "missing curve",
-        "no overlapping observations", "no observations within",
-        "all values were null", "insufficient data",
-        "no instruments found",
-    ]
-    if any(phrase in lower for phrase in not_found_phrases):
-        raise HTTPException(status_code=404, detail=f"{context}: {error_msg}")
-
-    # 503 — infrastructure / connectivity failures
-    infra_phrases = [
-        "database connection failed", "connection refused",
-        "timeout", "could not connect", "operational error",
-    ]
-    if any(phrase in lower for phrase in infra_phrases):
-        raise HTTPException(status_code=503, detail=f"{context}: {error_msg}")
-
-    # 500 — genuinely unexpected
-    raise HTTPException(status_code=500, detail=f"{context}: {error_msg}")
-
-
 _BATCH_YIELD_SQL = text("""
     SELECT
         trade_date,
@@ -309,21 +255,17 @@ def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
     return snapshot_rows
 
 
-# ============================================================================
-# CARD ENDPOINTS — power the Rates morning-briefing page
-# ============================================================================
-
 TENOR_ORDER = {
     "1Y": 1, "2Y": 2, "3Y": 3, "5Y": 5, "7Y": 7, "10Y": 10,
     "15Y": 15, "20Y": 20, "25Y": 25, "30Y": 30, "50Y": 50,
 }
 
 
-@router.get(
-    "/yield-snapshot",
-    response_model=YieldSnapshotResponse,
-    summary="Yield Snapshot Grid",
-)
+# ============================================================================
+# CARD ENDPOINTS
+# ============================================================================
+
+@router.get("/yield-snapshot", response_model=YieldSnapshotResponse, summary="Yield Snapshot Grid")
 def yield_snapshot(
     engine: Engine = Depends(get_engine),
     tenors: str = Query(default="", description="Comma-separated tenor filter."),
@@ -335,8 +277,6 @@ def yield_snapshot(
         logger.exception("yield-snapshot: DB query failed")
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
 
-    # An empty unfiltered result means the DB has no sovereign data at all.
-    # That is an infrastructure problem, not a valid empty state.
     if not rows:
         raise HTTPException(
             status_code=503,
@@ -359,11 +299,7 @@ def yield_snapshot(
     )
 
 
-@router.get(
-    "/curve-shapes",
-    response_model=CurveShapesResponse,
-    summary="Curve Shape Strip (2s10s sparklines)",
-)
+@router.get("/curve-shapes", response_model=CurveShapesResponse, summary="Curve Shape Strip (2s10s sparklines)")
 def curve_shapes(
     engine: Engine = Depends(get_engine),
     curves: str = Query(default=""),
@@ -415,11 +351,7 @@ def curve_shapes(
     return CurveShapesResponse(curves=results)
 
 
-@router.get(
-    "/scanner",
-    response_model=ScannerResponse,
-    summary="Extreme Scanner",
-)
+@router.get("/scanner", response_model=ScannerResponse, summary="Extreme Scanner")
 def scanner(
     engine: Engine = Depends(get_engine),
     top_n: int = Query(default=10, ge=1, le=50),
@@ -444,11 +376,9 @@ def scanner(
         error_msg = output["error"]
         lower = error_msg.lower()
 
-        # Real data/infra problem: the DB has no sovereign data at all
         if "no sovereign benchmark data found" in lower or "verify the database" in lower:
             raise HTTPException(status_code=503, detail=f"Scanner data unavailable: {error_msg}")
 
-        # Valid empty result: scan worked, nothing exceeded the threshold
         return ScannerResponse(summary=error_msg, results=[])
 
     return ScannerResponse(
@@ -466,11 +396,7 @@ def scanner(
     )
 
 
-@router.get(
-    "/cross-market",
-    response_model=CrossMarketResponse,
-    summary="Cross-Market Spreads (default pairs)",
-)
+@router.get("/cross-market", response_model=CrossMarketResponse, summary="Cross-Market Spreads")
 def cross_market(engine: Engine = Depends(get_engine)):
     results: list[CrossMarketRow] = []
     failures = 0
@@ -514,11 +440,7 @@ def cross_market(engine: Engine = Depends(get_engine)):
     return CrossMarketResponse(pairs=results)
 
 
-@router.get(
-    "/regimes",
-    response_model=RegimeResponse,
-    summary="Regime Monitor",
-)
+@router.get("/regimes", response_model=RegimeResponse, summary="Regime Monitor")
 def regimes(
     engine: Engine = Depends(get_engine),
     curves: str = Query(default=""),
@@ -569,179 +491,3 @@ def regimes(
         )
 
     return RegimeResponse(regimes=results)
-
-
-# ============================================================================
-# WORKSPACE ENDPOINTS — full detail with time_series for charts
-# ============================================================================
-
-@router.get(
-    "/detail/yield",
-    response_model=YieldLevelOutput,
-    summary="Yield Level Detail (workspace)",
-    description="Full yield level detail for a single curve/tenor point.",
-)
-def yield_detail(
-    engine: Engine = Depends(get_engine),
-    curve_family: str = Query(..., description="e.g. 'UST'"),
-    tenor: str = Query(..., description="e.g. '10Y'"),
-    lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
-):
-    try:
-        params = YieldLevelInput(
-            curve_family=curve_family, tenor=tenor,
-            lookback_days=lookback_days, field_name=field_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
-
-    try:
-        result = get_yield_levels(engine=engine, params=params)
-    except Exception as exc:
-        logger.exception("detail/yield: tool failed for %s %s", curve_family, tenor)
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
-
-    _tool_result_or_raise(result, f"Yield level for {curve_family} {tenor}")
-    return result
-
-
-@router.get(
-    "/detail/spread",
-    response_model=CurveSpreadOutput,
-    summary="Curve Spread Detail (workspace)",
-    description=(
-        "Full 2-point spread with time_series for charting.  "
-        "Returns the complete output including the z-score history."
-    ),
-)
-def spread_detail(
-    engine: Engine = Depends(get_engine),
-    curve_family: str = Query(..., description="e.g. 'UST'"),
-    short_tenor: str = Query(default="2Y"),
-    long_tenor: str = Query(default="10Y"),
-    lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
-):
-    try:
-        params = CurveSpreadInput(
-            curve_family=curve_family, short_tenor=short_tenor,
-            long_tenor=long_tenor, lookback_days=lookback_days,
-            field_name=field_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
-
-    try:
-        result = calculate_curve_spread(engine=engine, params=params)
-    except Exception as exc:
-        logger.exception("detail/spread: tool failed for %s %s/%s", curve_family, short_tenor, long_tenor)
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
-
-    _tool_result_or_raise(result, f"Spread for {curve_family} {short_tenor}/{long_tenor}")
-    return result
-
-
-@router.get(
-    "/detail/cross-market",
-    response_model=CrossMarketSpreadOutput,
-    summary="Cross-Market Spread Detail (workspace)",
-    description=(
-        "Full cross-market spread with time_series for charting.  "
-        "Supports arbitrary curve pairs and tenors."
-    ),
-)
-def cross_market_detail(
-    engine: Engine = Depends(get_engine),
-    curve_family_1: str = Query(..., description="e.g. 'IT_BTP'"),
-    curve_family_2: str = Query(..., description="e.g. 'DE_BUND'"),
-    tenor: str = Query(default="10Y"),
-    lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
-):
-    try:
-        params = CrossMarketSpreadInput(
-            curve_family_1=curve_family_1, curve_family_2=curve_family_2,
-            tenor=tenor, lookback_days=lookback_days, field_name=field_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
-
-    try:
-        result = calculate_cross_market_spread(engine=engine, params=params)
-    except Exception as exc:
-        logger.exception("detail/cross-market: tool failed for %s-%s %s",
-                         curve_family_1, curve_family_2, tenor)
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
-
-    _tool_result_or_raise(result, f"Cross-market {curve_family_1}-{curve_family_2} {tenor}")
-    return result
-
-
-@router.get(
-    "/detail/butterfly",
-    response_model=ButterflyOutput,
-    summary="Butterfly Detail (workspace)",
-    description="Full 3-point butterfly with time_series for charting.",
-)
-def butterfly_detail(
-    engine: Engine = Depends(get_engine),
-    curve_family: str = Query(..., description="e.g. 'UST'"),
-    short_tenor: str = Query(default="2Y"),
-    belly_tenor: str = Query(default="5Y"),
-    long_tenor: str = Query(default="10Y"),
-    lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
-):
-    try:
-        params = ButterflyInput(
-            curve_family=curve_family, short_tenor=short_tenor,
-            belly_tenor=belly_tenor, long_tenor=long_tenor,
-            lookback_days=lookback_days, field_name=field_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
-
-    try:
-        result = calculate_butterfly(engine=engine, params=params)
-    except Exception as exc:
-        logger.exception("detail/butterfly: tool failed for %s %s/%s/%s",
-                         curve_family, short_tenor, belly_tenor, long_tenor)
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
-
-    _tool_result_or_raise(result, f"Butterfly for {curve_family} {short_tenor}/{belly_tenor}/{long_tenor}")
-    return result
-
-
-@router.get(
-    "/detail/regime",
-    response_model=CurveRegimeOutput,
-    summary="Curve Regime Detail (workspace)",
-    description="Deterministic curve-move classification for any curve and period.",
-)
-def regime_detail(
-    engine: Engine = Depends(get_engine),
-    curve_family: str = Query(..., description="e.g. 'UST'"),
-    front_tenor: str = Query(default="2Y"),
-    back_tenor: str = Query(default="10Y"),
-    lookback_period: str = Query(default="1d", description="'1d', '5d', or '22d'"),
-    field_name: str = Query(default="YLD_YTM_MID"),
-):
-    try:
-        params = CurveRegimeInput(
-            curve_family=curve_family, front_tenor=front_tenor,
-            back_tenor=back_tenor, lookback_period=lookback_period,
-            field_name=field_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
-
-    try:
-        result = classify_curve_regime(engine=engine, params=params)
-    except Exception as exc:
-        logger.exception("detail/regime: tool failed for %s %s/%s %s",
-                         curve_family, front_tenor, back_tenor, lookback_period)
-        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
-
-    _tool_result_or_raise(result, f"Regime for {curve_family} {front_tenor}/{back_tenor} ({lookback_period})")
-    return result
