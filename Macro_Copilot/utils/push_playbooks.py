@@ -3,26 +3,26 @@ from pathlib import Path
 from google.cloud import storage
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket" 
+BUCKET_NAME = "macro-storage-bucket"
+
 
 def push_playbooks_to_gcp():
-    """Syncs local YAML playbooks to the GCP bucket."""
-    
-    # --- DYNAMIC PATH RESOLUTION ---
-    # Script is in: .../Macro_Copilot/utils/push_playbooks.py
+    """Sync local YAML playbooks from multiple agent folders to the GCP bucket."""
+
     current_dir = Path(__file__).parent
     project_root = current_dir.parent
-    
-    # Dynamically find the key and playbooks relative to the project root
-    gcp_key_path = project_root / "secure_keys" / "library-extractor-key.json"
-    playbooks_dir = project_root / "rates_agent" / "playbooks"
 
-    # Verify the key actually exists before trying to authenticate
+    gcp_key_path = project_root / "secure_keys" / "library-extractor-key.json"
+
+    playbook_dirs = [
+        project_root / "rates_agent" / "playbooks",
+        project_root / "fx_agent" / "playbooks",
+    ]
+
     if not gcp_key_path.exists():
         print(f"Error: Could not find GCP key at {gcp_key_path}")
         return
 
-    # Authenticate with GCP
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
 
     try:
@@ -32,29 +32,36 @@ def push_playbooks_to_gcp():
         print(f"Failed to authenticate with GCP: {e}")
         return
 
-    if not playbooks_dir.exists():
-        print(f"Error: Could not find playbooks directory at {playbooks_dir}")
-        return
+    all_playbook_files = []
 
-    print(f"Scanning for playbooks in: {playbooks_dir}")
-    
-    # Grab all .yml and .yaml files
-    playbook_files = list(playbooks_dir.glob("*.yml")) + list(playbooks_dir.glob("*.yaml"))
-    
-    if not playbook_files:
+    for playbooks_dir in playbook_dirs:
+        if not playbooks_dir.exists():
+            print(f"[WARNING] Playbooks directory not found: {playbooks_dir}")
+            continue
+
+        print(f"Scanning for playbooks in: {playbooks_dir}")
+        files = list(playbooks_dir.glob("*.yml")) + list(playbooks_dir.glob("*.yaml"))
+        all_playbook_files.extend(files)
+
+    if not all_playbook_files:
         print("No YAML playbooks found to upload.")
         return
+
+    # Deduplicate by filename just in case
+    unique_files = {}
+    for file_path in all_playbook_files:
+        unique_files[file_path.name] = file_path
+
+    playbook_files = list(unique_files.values())
 
     print(f"Found {len(playbook_files)} playbook(s). Syncing to GCP bucket '{BUCKET_NAME}'...")
 
     success_count = 0
     for file_path in playbook_files:
         try:
-            # Create the 'playbooks/' folder structure inside the bucket
             blob_name = f"playbooks/{file_path.name}"
             blob = bucket.blob(blob_name)
-            
-            # Execute the upload
+
             blob.upload_from_filename(str(file_path))
             print(f"  [SUCCESS] Uploaded {file_path.name} -> gs://{BUCKET_NAME}/{blob_name}")
             success_count += 1
@@ -62,6 +69,7 @@ def push_playbooks_to_gcp():
             print(f"  [FAILED] Could not upload {file_path.name}: {e}")
 
     print(f"\nSync complete: {success_count}/{len(playbook_files)} playbooks pushed to GCP.")
+
 
 if __name__ == "__main__":
     push_playbooks_to_gcp()
