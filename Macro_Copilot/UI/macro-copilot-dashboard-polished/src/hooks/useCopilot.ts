@@ -163,6 +163,13 @@ export function useCopilot(): UseCopilotResult {
       }
 
       case 'tool_result': {
+        // If the backend attached an error string, the tool returned
+        // {"error": "..."} from its MCP server. Mark the step as errored
+        // and preserve the message so the trace can render it inline
+        // instead of pretending the call succeeded.
+        const toolErrored =
+          typeof event.error === 'string' && event.error.length > 0;
+
         updateStreamingMessage((msg) => {
           let matchedRunningStep = false;
 
@@ -177,8 +184,9 @@ export function useCopilot(): UseCopilotResult {
                 matchedRunningStep = true;
                 return {
                   ...step,
-                  status: 'complete' as const,
+                  status: toolErrored ? ('error' as const) : ('complete' as const),
                   durationMs: event.duration_ms ?? undefined,
+                  error: toolErrored ? (event.error as string) : undefined,
                 };
               }
 

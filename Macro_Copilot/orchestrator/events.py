@@ -9,15 +9,22 @@ trace on the frontend.
 Event types
 -----------
 - ``status``            generic status chip: {"status": "thinking" | "synthesising" | "routing" | ...}
-- ``route_decision``    supervisor's pick: {"action", "domains", "rationale"}
+- ``route_decision``    supervisor's pick: {"action", "domains", "rationale", "adjustments"}
 - ``child_started``     a domain child begins: {"domain": "ois"}
 - ``child_finished``    a domain child finishes: {"domain", "status", "duration_ms"}
 - ``tool_call``         a child's tool is invoked: {"tool", "label", "params", "domain"}
-- ``tool_result``       a child's tool returns: {"tool", "domain", "duration_ms"}
+- ``tool_result``       a child's tool returns: {"tool", "domain", "duration_ms", "error"?}
+                        ``error`` is the tool's error string when the MCP
+                        output was ``{"error": "..."}``; null/absent on
+                        success.  Frontends should render per-tool
+                        failure state based on this field.
 - ``token``             LLM output chunk: {"content"}
 - ``synthesis_started`` supervisor begins multi-domain synthesis: {}
 - ``clarification``     supervisor asked the user to clarify: {"question"}
 - ``done``              final event: {"workspace_context", "tool_calls", "total_duration_ms"}
+                        Each ``tool_calls`` entry carries
+                        {"tool", "domain", "duration_ms", "error"?}
+                        with the same error semantics as ``tool_result``.
 - ``error``             {"message"}
 
 The frontend ignores unknown event types (forward-compatible), so we can add
