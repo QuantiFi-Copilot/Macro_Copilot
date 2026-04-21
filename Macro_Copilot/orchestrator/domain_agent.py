@@ -469,10 +469,19 @@ def _extract_facts(
     """Parse each tool's JSON output and extract scalar metrics as FactRow
     entries.
 
-    Shapes supported:
-      - ``{"current_metrics": {...}}`` — most rates tools
+    Canonical tool envelope shapes
+    ------------------------------
+      - ``{"current_metrics": {...}}`` — most rates tools (spread, yield,
+        butterfly, cross-market, regime)
       - ``{"results": [...]}``          — scanner tool
       - ``{"error": "..."}``            — skipped (not a fact)
+
+    New domain tools (FX, credit, futures, etc.) SHOULD adopt one of
+    these envelopes.  As a safety net against accidental divergence, a
+    fallback below performs a best-effort extraction from unrecognized
+    envelopes and logs a warning naming the offending tool — so the
+    problem surfaces in development rather than producing a silent
+    fact-free synthesis payload.
     """
     facts: list[FactRow] = []
 
@@ -500,7 +509,102 @@ def _extract_facts(
             facts.extend(_facts_from_scanner_results(tool_name, results))
             continue
 
+        # --------------------------------------------------------------
+        # Fallback: unrecognized envelope.  Try to salvage facts rather
+        # than silently producing zero so future domain tools that drift
+        # from convention don't degrade synthesis quality without notice.
+        # --------------------------------------------------------------
+        fallback_facts = _facts_from_unrecognized_envelope(
+            tool_name, params, payload
+        )
+        if fallback_facts:
+            logger.warning(
+                "Tool %s returned an unrecognized envelope with top-level "
+                "keys %s. Fallback extraction produced %d fact(s). "
+                "Prefer 'current_metrics' or 'results' for new tools.",
+                tool_name,
+                sorted(payload.keys()),
+                len(fallback_facts),
+            )
+            facts.extend(fallback_facts)
+        else:
+            logger.warning(
+                "Tool %s returned an unrecognized envelope with top-level "
+                "keys %s and no extractable facts. Synthesis for this tool "
+                "will rely on prose only.",
+                tool_name,
+                sorted(payload.keys()),
+            )
+
     return facts
+
+
+def _facts_from_unrecognized_envelope(
+    tool_name: str,
+    params: dict,
+    payload: dict,
+) -> list[FactRow]:
+    """Best-effort extraction when a tool returns a shape we don't
+    recognise.  We handle two common patterns:
+
+    1. **Single nested dict** — e.g. ``{"fx_data": {"eurusd": 1.08, ...}}``.
+       Treat the inner dict as if it were ``current_metrics``.
+    2. **Flat scalars at top level** — e.g. ``{"eurusd": 1.08, "gbpusd": 1.27}``.
+       Treat each scalar as its own fact.
+
+    Nested lists and deeper structures are skipped; those belong in the
+    canonical ``results`` envelope.
+    """
+    # Identify scalar and dict top-level values, ignoring envelope
+    # metadata that's never a fact.
+    ignore_keys = {"error", "status", "as_of_date"}
+    scalar_items = []
+    nested_dicts = []
+    for key, value in payload.items():
+        if key in ignore_keys:
+            continue
+        if isinstance(value, (int, float, str, bool)) or value is None:
+            scalar_items.append((key, value))
+        elif isinstance(value, dict):
+            nested_dicts.append((key, value))
+
+    # Case 1: exactly one nested dict and no scalar facts → treat as
+    # current_metrics.
+    if len(nested_dicts) == 1 and not scalar_items:
+        inner_key, inner_dict = nested_dicts[0]
+        facts = _facts_from_current_metrics(tool_name, params, inner_dict)
+        # Prefix each metric with the envelope key so it's traceable
+        # back to the non-canonical shape.
+        return [
+            FactRow(
+                tool=f.tool,
+                curve_family=f.curve_family,
+                metric=f"{inner_key}.{f.metric}",
+                value=f.value,
+                units=f.units,
+                as_of=f.as_of,
+            )
+            for f in facts
+        ]
+
+    # Case 2: top-level flat scalars.
+    as_of = payload.get("as_of_date")
+    curve_family = params.get("curve_family")
+    out: list[FactRow] = []
+    for key, value in scalar_items:
+        if value is None:
+            continue
+        out.append(
+            FactRow(
+                tool=tool_name,
+                curve_family=curve_family,
+                metric=key,
+                value=value,
+                units=_infer_units(key),
+                as_of=as_of,
+            )
+        )
+    return out
 
 
 def _facts_from_current_metrics(
