@@ -26,14 +26,22 @@ Z_SCORE_WINDOW: int = 252
 Z_SCORE_MIN_PERIODS: int = 60
 
 
-def safe_float(value: Any) -> Optional[float]:
-    """Convert a value to a Python float rounded to 4 decimals.
-    Returns ``None`` for None, NaN, or un-castable values."""
+def safe_float(value: Any, decimals: int = 4) -> Optional[float]:
+    """Convert a value to a Python float rounded to ``decimals`` places.
+
+    Returns ``None`` for None, NaN, or un-castable values.
+
+    ``decimals`` defaults to 4 to preserve backwards compatibility with
+    the original single-argument form used by the curve_spread refactor.
+    Callers that historically rounded to 2 decimals (bps quantities,
+    percentiles, etc.) should pass ``decimals=2`` explicitly — don't rely
+    on the shared default matching a tool-local choice that was tighter.
+    """
     if value is None:
         return None
     try:
         f = float(value)
-        return None if math.isnan(f) else round(f, 4)
+        return None if math.isnan(f) else round(f, decimals)
     except (TypeError, ValueError):
         return None
 

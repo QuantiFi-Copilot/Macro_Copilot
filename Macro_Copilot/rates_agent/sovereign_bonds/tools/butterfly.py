@@ -3,38 +3,37 @@ butterfly.py — Deterministic Butterfly / Curvature Calculator
 ==============================================================
 
 Computes the 3-point curvature (butterfly) on a single sovereign yield
-curve.  The butterfly measures how "rich" or "cheap" the belly is relative
-to the wings.
+curve:
 
-Formula:  butterfly_bps = 2 × belly − short − long   (in basis points)
+    butterfly_bps = (2 × belly − short − long) × 100
 
-A *positive* butterfly means the belly is cheap (yielding more than the
-linear interpolation of the wings).  A *negative* butterfly means the belly
-is rich (yielding less — typical of a smooth curve).
+A *positive* butterfly means the belly is cheap; a *negative* butterfly
+means the belly is rich.  Also returns the component wing spreads
+(belly−short, long−belly) for decomposition.
 
-This is the natural extension of the 2-point curve_spread tool.  Desks
-trade 2s5s10s, 5s10s30s, and other butterflies constantly to express views
-on curve *shape* without taking outright duration risk.
+Thin orchestration layer over ``shared/analytics/`` primitives:
 
-Data flow
----------
-1.  **Fetch** — three-tenor query against the enriched view (single curve).
-2.  **Pivot** — each tenor becomes a column with trade_date as index.
-3.  **Fill** — forward-fill to bridge holiday gaps (max 5 days).
-4.  **Math** — butterfly bps, 252-day rolling z-score, daily change,
-    component 2-leg spreads for decomposition.
-5.  **Return** — ``ButterflyOutput`` with ``current_metrics`` only
-    (time_series withheld from LLM).
+- ``fetch_tenor_group``              — DB query (3 tenors)
+- ``pivot_and_align_tenors``         — pivot by tenor + ffill
+- ``compute_spread_bps``             — wing spreads
+- ``rolling_zscore``                 — 252-day z-score
+- ``trailing_high_low_percentile``   — 252d range stats
+- ``safe_float``                     — None/NaN-safe numeric coercion
+
+The butterfly formula itself stays inline — it's a single expression,
+and extracting it would be over-engineering.
+
+Domain-specific responsibilities that stay in this module: input
+validation, domain-aware error messages, ``"2s5s10s"`` label, and
+output-schema assembly (including wing_short_bps, wing_long_bps).
 """
 
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.schemas import (
@@ -43,75 +42,18 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     ButterflyOutput,
     ButterflyTimeSeriesRow,
 )
-
-
-# ============================================================================
-# PRIVATE HELPERS
-# ============================================================================
-
-_FETCH_SQL = text("""
-    SELECT
-        trade_date,
-        tenor,
-        field_value
-    FROM macro_data.v_market_data_daily_enriched
-    WHERE curve_family  = :curve_family
-      AND tenor         IN (:short_tenor, :belly_tenor, :long_tenor)
-      AND field_name    = :field_name
-      AND trade_date   >= :start_date
-    ORDER BY trade_date
-""")
-
-
-def _fetch_raw(
-    engine: Engine,
-    curve_family: str,
-    short_tenor: str,
-    belly_tenor: str,
-    long_tenor: str,
-    field_name: str,
-    start_date: date,
-) -> pd.DataFrame:
-    """Run the parameterized query and return a long-format DataFrame."""
-    with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_SQL,
-            {
-                "curve_family": curve_family,
-                "short_tenor": short_tenor,
-                "belly_tenor": belly_tenor,
-                "long_tenor": long_tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
-        rows = result.fetchall()
-        columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
-
-
-def _safe_float(value: Any, decimals: int = 4) -> Optional[float]:
-    """Convert to Python float, returning None for NaN / None."""
-    if value is None:
-        return None
-    try:
-        f = float(value)
-        return None if math.isnan(f) else round(f, decimals)
-    except (TypeError, ValueError):
-        return None
-
-
-def _bps_change(current: float, previous: Any) -> Optional[float]:
-    """Compute change in basis points.  Returns None if either value is missing."""
-    if previous is None:
-        return None
-    try:
-        prev = float(previous)
-        if math.isnan(prev):
-            return None
-        return round(current - prev, 2)
-    except (TypeError, ValueError):
-        return None
+from shared.analytics.levels import (
+    delta_bps,
+    trailing_high_low_percentile,
+)
+from shared.analytics.rates_fetch import fetch_tenor_group
+from shared.analytics.spreads import (
+    Z_SCORE_WINDOW,
+    compute_spread_bps,
+    pivot_and_align_tenors,
+    rolling_zscore,
+    safe_float,
+)
 
 
 # ============================================================================
@@ -149,21 +91,18 @@ def calculate_butterfly(
     # ------------------------------------------------------------------
     # 1. Date window
     # ------------------------------------------------------------------
-    Z_SCORE_WINDOW: int = 252
     buffer_calendar_days = int(Z_SCORE_WINDOW * 1.5)
     start_date = date.today() - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
 
     # ------------------------------------------------------------------
-    # 2. Fetch
+    # 2. Fetch (3 tenors on one curve)
     # ------------------------------------------------------------------
-    raw_df = _fetch_raw(
+    raw_df = fetch_tenor_group(
         engine=engine,
         curve_family=params.curve_family,
-        short_tenor=params.short_tenor,
-        belly_tenor=params.belly_tenor,
-        long_tenor=params.long_tenor,
+        tenors=[params.short_tenor, params.belly_tenor, params.long_tenor],
         field_name=params.field_name,
         start_date=start_date,
     )
@@ -194,20 +133,12 @@ def calculate_butterfly(
         }
 
     # ------------------------------------------------------------------
-    # 4. Pivot → wide format (date × tenor)
+    # 4. Pivot → wide format (date × tenor) and align holiday gaps
     # ------------------------------------------------------------------
-    raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
-    raw_df["field_value"] = pd.to_numeric(raw_df["field_value"], errors="coerce")
-    raw_df = raw_df.drop_duplicates(
-        subset=["trade_date", "tenor"], keep="last"
+    wide = pivot_and_align_tenors(
+        raw_df,
+        required_tenors=(params.short_tenor, params.belly_tenor, params.long_tenor),
     )
-
-    wide = raw_df.pivot(index="trade_date", columns="tenor", values="field_value")
-    wide = wide.sort_index()
-
-    # Forward-fill to bridge holiday gaps (max 5 business days).
-    wide = wide.ffill(limit=5)
-    wide = wide.dropna(subset=[params.short_tenor, params.belly_tenor, params.long_tenor])
 
     if wide.empty:
         return {
@@ -219,23 +150,26 @@ def calculate_butterfly(
         }
 
     # ------------------------------------------------------------------
-    # 5. Calculate butterfly and component spreads
+    # 5. Compute butterfly + wing spreads + z-score
     # ------------------------------------------------------------------
     s = wide[params.short_tenor]
     b = wide[params.belly_tenor]
     l = wide[params.long_tenor]
 
-    # Butterfly = 2 × belly − short − long (in bps)
+    # Butterfly = 2 × belly − short − long (in bps) — kept inline;
+    # too trivial to warrant a shared helper.
     wide["butterfly_bps"] = ((2 * b - s - l) * 100).round(2)
 
-    # Component 2-leg spreads for decomposition
-    wide["wing_short_bps"] = ((b - s) * 100).round(2)  # belly − short
-    wide["wing_long_bps"] = ((l - b) * 100).round(2)   # long − belly
+    # Wing spreads reuse the shared 2-leg spread helper.
+    wide["wing_short_bps"] = compute_spread_bps(
+        wide, minuend_col=params.belly_tenor, subtrahend_col=params.short_tenor,
+    )
+    wide["wing_long_bps"] = compute_spread_bps(
+        wide, minuend_col=params.long_tenor, subtrahend_col=params.belly_tenor,
+    )
 
-    # Rolling z-score on the butterfly
-    rolling_mean = wide["butterfly_bps"].rolling(window=Z_SCORE_WINDOW, min_periods=60).mean()
-    rolling_std = wide["butterfly_bps"].rolling(window=Z_SCORE_WINDOW, min_periods=60).std()
-    wide["z_score"] = ((wide["butterfly_bps"] - rolling_mean) / rolling_std).round(4)
+    # Rolling z-score on the butterfly series (already in bps).
+    wide["z_score"] = rolling_zscore(wide["butterfly_bps"])
 
     # ------------------------------------------------------------------
     # 6. Trim to requested lookback
@@ -258,27 +192,19 @@ def calculate_butterfly(
     latest = display_df.iloc[-1]
     bfly_series = display_df["butterfly_bps"]
 
-    current_butterfly = _safe_float(latest["butterfly_bps"], 2)
+    current_butterfly = safe_float(latest["butterfly_bps"], decimals=2)
 
-    # Daily change
-    daily_change = _bps_change(
+    # Daily change on the butterfly series (already bps → plain subtract).
+    daily_change = delta_bps(
         latest["butterfly_bps"],
         bfly_series.iloc[-2] if len(bfly_series) >= 2 else None,
     )
 
-    # Trailing high / low / percentile
-    trailing = bfly_series.iloc[-Z_SCORE_WINDOW:] if len(bfly_series) >= Z_SCORE_WINDOW else bfly_series
-    high_252 = _safe_float(trailing.max(), 2)
-    low_252 = _safe_float(trailing.min(), 2)
+    # Trailing 252d high/low/percentile of the butterfly (bps scale).
+    high_252, low_252, percentile = trailing_high_low_percentile(
+        bfly_series, window=Z_SCORE_WINDOW, decimals=2,
+    )
 
-    if high_252 is not None and low_252 is not None and high_252 != low_252:
-        percentile = round(
-            (float(latest["butterfly_bps"]) - low_252) / (high_252 - low_252) * 100, 1
-        )
-    else:
-        percentile = None
-
-    # Build the human-readable label: "2s5s10s"
     butterfly_label = (
         f"{params.short_tenor.replace('Y', '')}s"
         f"{params.belly_tenor.replace('Y', '')}s"
@@ -291,16 +217,16 @@ def calculate_butterfly(
         butterfly_label=butterfly_label,
         current_butterfly_bps=current_butterfly,
         daily_change_bps=daily_change,
-        current_z_score=_safe_float(latest.get("z_score")),
+        current_z_score=safe_float(latest.get("z_score")),
         rolling_window_days=Z_SCORE_WINDOW,
         high_252d_bps=high_252,
         low_252d_bps=low_252,
         percentile_252d=percentile,
-        wing_short_bps=_safe_float(latest.get("wing_short_bps"), 2),
-        wing_long_bps=_safe_float(latest.get("wing_long_bps"), 2),
-        short_tenor_yield=_safe_float(latest.get(params.short_tenor)),
-        belly_tenor_yield=_safe_float(latest.get(params.belly_tenor)),
-        long_tenor_yield=_safe_float(latest.get(params.long_tenor)),
+        wing_short_bps=safe_float(latest.get("wing_short_bps"), decimals=2),
+        wing_long_bps=safe_float(latest.get("wing_long_bps"), decimals=2),
+        short_tenor_yield=safe_float(latest.get(params.short_tenor)),
+        belly_tenor_yield=safe_float(latest.get(params.belly_tenor)),
+        long_tenor_yield=safe_float(latest.get(params.long_tenor)),
     )
 
     # ------------------------------------------------------------------
@@ -310,7 +236,7 @@ def calculate_butterfly(
         ButterflyTimeSeriesRow(
             date=row.Index.strftime("%Y-%m-%d"),
             butterfly_bps=round(row.butterfly_bps, 2),
-            z_score=_safe_float(row.z_score),
+            z_score=safe_float(row.z_score),
         )
         for row in display_df.itertuples()
     ]

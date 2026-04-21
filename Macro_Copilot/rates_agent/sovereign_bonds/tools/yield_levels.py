@@ -6,30 +6,25 @@ Returns the current yield, period changes (daily/weekly/monthly in bps),
 a 252-day rolling z-score, and deterministic context (1-year high, low,
 percentile) for a single point on a sovereign yield curve.
 
-This is the foundational building block that almost every other tool
-chains with.  A PM asking "where's the 10Y?" or "how much have 2Y Gilts
-sold off this week?" hits this tool.  The spread tool tells you the
-relationship between two points; this tool tells you about the point
-itself.
+Thin orchestration layer over ``shared/analytics/`` primitives:
 
-Data flow
----------
-1.  **Fetch** — single-tenor query against the enriched view.
-2.  **Clean** — sort, dedup, forward-fill holiday gaps.
-3.  **Math** — daily/weekly/monthly change in bps, 252-day rolling
-    z-score, trailing high/low/percentile.
-4.  **Return** — ``YieldLevelOutput`` with ``current_metrics`` only.
-    No time-series is sent to the LLM.
+- ``fetch_single_tenor``            — DB query
+- ``clean_single_series``           — sort + dedup + ffill
+- ``period_changes``                — daily/weekly/monthly bps deltas
+- ``rolling_zscore``                — 252-day z-score
+- ``trailing_high_low_percentile``  — trailing stats
+- ``safe_float``                    — None/NaN-safe numeric coercion
+
+Domain-specific responsibilities that stay in this module: input
+validation, domain-aware error messages, and output-schema assembly.
 """
 
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.schemas import (
@@ -37,71 +32,17 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     YieldLevelMetrics,
     YieldLevelOutput,
 )
-
-
-# ============================================================================
-# PRIVATE HELPERS
-# ============================================================================
-
-_FETCH_SQL = text("""
-    SELECT
-        trade_date,
-        field_value
-    FROM macro_data.v_market_data_daily_enriched
-    WHERE curve_family = :curve_family
-      AND tenor        = :tenor
-      AND field_name   = :field_name
-      AND trade_date  >= :start_date
-    ORDER BY trade_date
-""")
-
-
-def _fetch_raw(
-    engine: Engine,
-    curve_family: str,
-    tenor: str,
-    field_name: str,
-    start_date: date,
-) -> pd.DataFrame:
-    """Run the parameterized query and return a DataFrame."""
-    with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_SQL,
-            {
-                "curve_family": curve_family,
-                "tenor": tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
-        rows = result.fetchall()
-        columns = list(result.keys())
-    return pd.DataFrame(rows, columns=columns)
-
-
-def _safe_float(value: Any, decimals: int = 4) -> Optional[float]:
-    """Convert to Python float, returning None for NaN / None."""
-    if value is None:
-        return None
-    try:
-        f = float(value)
-        return None if math.isnan(f) else round(f, decimals)
-    except (TypeError, ValueError):
-        return None
-
-
-def _bps_change(current: float, previous: Any) -> Optional[float]:
-    """Compute change in basis points (1bp = 0.01%).  Returns None if
-    either value is missing."""
-    if previous is None:
-        return None
-    try:
-        prev = float(previous)
-        if math.isnan(prev):
-            return None
-        return round((current - prev) * 100, 2)
-    except (TypeError, ValueError):
-        return None
+from shared.analytics.levels import (
+    clean_single_series,
+    period_changes,
+    trailing_high_low_percentile,
+)
+from shared.analytics.rates_fetch import fetch_single_tenor
+from shared.analytics.spreads import (
+    Z_SCORE_WINDOW,
+    rolling_zscore,
+    safe_float,
+)
 
 
 # ============================================================================
@@ -135,7 +76,6 @@ def get_yield_levels(
     # ------------------------------------------------------------------
     # 1. Date window — same buffering pattern as curve_spread.py
     # ------------------------------------------------------------------
-    Z_SCORE_WINDOW: int = 252
     buffer_calendar_days = int(Z_SCORE_WINDOW * 1.5)
     start_date = date.today() - timedelta(
         days=params.lookback_days + buffer_calendar_days
@@ -144,7 +84,7 @@ def get_yield_levels(
     # ------------------------------------------------------------------
     # 2. Fetch
     # ------------------------------------------------------------------
-    raw_df = _fetch_raw(
+    raw_df = fetch_single_tenor(
         engine=engine,
         curve_family=params.curve_family,
         tenor=params.tenor,
@@ -163,18 +103,11 @@ def get_yield_levels(
         }
 
     # ------------------------------------------------------------------
-    # 3. Clean
+    # 3. Clean (sort + dedup + ffill)
     # ------------------------------------------------------------------
-    raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
-    raw_df["field_value"] = pd.to_numeric(raw_df["field_value"], errors="coerce")
-    raw_df = raw_df.dropna(subset=["field_value"])
-    raw_df = raw_df.drop_duplicates(subset=["trade_date"], keep="last")
-    raw_df = raw_df.set_index("trade_date").sort_index()
+    clean_df = clean_single_series(raw_df)
 
-    # Forward-fill to bridge holiday gaps (max 5 business days).
-    raw_df = raw_df.ffill(limit=5)
-
-    if raw_df.empty:
+    if clean_df.empty:
         return {
             "error": (
                 f"All values were null after cleaning for "
@@ -182,46 +115,27 @@ def get_yield_levels(
             )
         }
 
-    # ------------------------------------------------------------------
-    # 4. Math
-    # ------------------------------------------------------------------
-    yields = raw_df["field_value"]
+    yields = clean_df["field_value"]
     current_yield = float(yields.iloc[-1])
 
-    # --- Period changes (bps) ---
-    daily_change = _bps_change(
-        current_yield,
-        yields.iloc[-2] if len(yields) >= 2 else None,
+    # ------------------------------------------------------------------
+    # 4. Math — period changes, z-score, trailing range
+    # ------------------------------------------------------------------
+    changes = period_changes(yields)
+    daily_change = changes["daily"]
+    weekly_change = changes["weekly"]
+    monthly_change = changes["monthly"]
+
+    z_series = rolling_zscore(yields)
+    current_z = safe_float(z_series.iloc[-1])
+
+    high_252, low_252, percentile = trailing_high_low_percentile(
+        yields, window=Z_SCORE_WINDOW, decimals=4,
     )
-    weekly_change = _bps_change(
-        current_yield,
-        yields.iloc[-6] if len(yields) >= 6 else None,
-    )
-    monthly_change = _bps_change(
-        current_yield,
-        yields.iloc[-22] if len(yields) >= 22 else None,
-    )
 
-    # --- Rolling z-score (252-day window) ---
-    rolling_mean = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).mean()
-    rolling_std = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).std()
-    z_series = (yields - rolling_mean) / rolling_std
-    current_z = _safe_float(z_series.iloc[-1])
-
-    # --- Trailing high / low / percentile (252 trading days) ---
-    # Use the actual trailing window, not the full buffer.
-    trailing = yields.iloc[-Z_SCORE_WINDOW:] if len(yields) >= Z_SCORE_WINDOW else yields
-    high_252 = _safe_float(trailing.max())
-    low_252 = _safe_float(trailing.min())
-
-    if high_252 is not None and low_252 is not None and high_252 != low_252:
-        percentile = round(
-            (current_yield - low_252) / (high_252 - low_252) * 100, 1
-        )
-    else:
-        percentile = None
-
-    # --- Observation count (in the display window) ---
+    # ------------------------------------------------------------------
+    # 5. Observation count (in the displayed window only)
+    # ------------------------------------------------------------------
     cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
     display_yields = yields.loc[yields.index >= cutoff]
     obs_count = len(display_yields)
@@ -235,13 +149,13 @@ def get_yield_levels(
         }
 
     # ------------------------------------------------------------------
-    # 5. Build output
+    # 6. Build output
     # ------------------------------------------------------------------
     metrics = YieldLevelMetrics(
         as_of_date=yields.index[-1].strftime("%Y-%m-%d"),
         curve_family=params.curve_family,
         tenor=params.tenor,
-        current_yield_pct=_safe_float(current_yield),
+        current_yield_pct=safe_float(current_yield),
         daily_change_bps=daily_change,
         weekly_change_bps=weekly_change,
         monthly_change_bps=monthly_change,
