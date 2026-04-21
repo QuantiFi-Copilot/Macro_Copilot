@@ -71,6 +71,14 @@ _WORKSPACE_TOOLS: set[str] = {
     "scan_extremes_tool",
     # OIS
     "calculate_ois_curve_spread_tool",
+    "calculate_ois_cross_market_spread_tool",
+    "calculate_ois_forward_rate_tool",
+    "calculate_ois_meeting_pricing_tool",
+    "scan_ois_extremes_tool",
+    # rate_level is intentionally NOT in the workspace set — a single-
+    # point yield/rate is better viewed inline in the chat than in a
+    # dedicated analytical workspace (same decision as get_yield_levels
+    # on the sovereign side).
 }
 
 
@@ -104,11 +112,39 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"Fetching {p.get('curve_family', '?')} {p.get('tenor', '?')} yield"
     ),
     # OIS
+    "calculate_ois_rate_level_tool": lambda p: (
+        f"Fetching OIS {p.get('curve_family', '?')} {p.get('tenor', '?')} rate"
+    ),
     "calculate_ois_curve_spread_tool": lambda p: (
         f"Fetching OIS {p.get('curve_family', '?')} "
         f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
     ),
+    "calculate_ois_forward_rate_tool": lambda p: _ois_forward_label(p),
+    "calculate_ois_meeting_pricing_tool": lambda p: (
+        f"Pricing {p.get('central_bank', '?')} meetings"
+        + (f" ({p.get('meeting_reference', 'next:4')})" if p.get('meeting_reference') else "")
+    ),
+    "calculate_ois_cross_market_spread_tool": lambda p: (
+        f"Computing OIS {p.get('curve_family_1', '?')}-{p.get('curve_family_2', '?')} "
+        f"{p.get('tenor', '10Y')} spread"
+    ),
+    "scan_ois_extremes_tool": lambda p: "Scanning OIS for z-score extremes",
 }
+
+
+def _ois_forward_label(p: dict) -> str:
+    """Render a forward_rate label covering both tenor-based and
+    date-based invocations."""
+    curve = p.get("curve_family", "?")
+    st = p.get("start_tenor")
+    et = p.get("end_tenor")
+    sd = p.get("start_date")
+    ed = p.get("end_date")
+    if st and et:
+        return f"Computing OIS {curve} {st}/{et} forward"
+    if sd and ed:
+        return f"Computing OIS {curve} forward {sd} to {ed}"
+    return f"Computing OIS {curve} forward"
 
 
 def make_tool_label(tool_name: str, params: dict) -> str:

@@ -1,0 +1,247 @@
+# Central-bank meeting calendar.
+# ==============================
+# Used by the ois_meeting_pricing tool.  Dates are the day the rate
+# decision / statement is published (end of meeting for the two-day FOMC,
+# the single announcement day for others).
+#
+# The schema is:
+#
+#   <BANK_KEY>:
+#     - date: YYYY-MM-DD
+#       label: "Human-readable label"
+#     - date: ...
+#
+# BANK_KEY values are the canonical uppercase identifiers used in
+# CENTRAL_BANK_TO_OIS_CURVE (FED, ECB, BOE, BOJ, RBA, BOC).
+#
+# Seed data below covers FOMC through end-2027 (fully scheduled), and
+# approximate schedules for ECB / BoE / BoJ / RBA / BoC.  Update as the
+# calendars are officially announced.  No math depends on these dates
+# being exactly right — they're just reference points the pricing tool
+# walks between when computing forwards.
+
+# ===========================================================================
+# FEDERAL RESERVE (FOMC)
+# ===========================================================================
+FED:
+  # 2026 (published schedule)
+  - date: 2026-01-28
+    label: "FOMC Jan 2026"
+  - date: 2026-03-18
+    label: "FOMC Mar 2026"
+  - date: 2026-04-29
+    label: "FOMC Apr 2026"
+  - date: 2026-06-17
+    label: "FOMC Jun 2026"
+  - date: 2026-07-29
+    label: "FOMC Jul 2026"
+  - date: 2026-09-16
+    label: "FOMC Sep 2026"
+  - date: 2026-10-28
+    label: "FOMC Oct 2026"
+  - date: 2026-12-09
+    label: "FOMC Dec 2026"
+  # 2027 (projected, approximate 6-week cadence)
+  - date: 2027-01-27
+    label: "FOMC Jan 2027"
+  - date: 2027-03-17
+    label: "FOMC Mar 2027"
+  - date: 2027-04-28
+    label: "FOMC Apr 2027"
+  - date: 2027-06-16
+    label: "FOMC Jun 2027"
+  - date: 2027-07-28
+    label: "FOMC Jul 2027"
+  - date: 2027-09-22
+    label: "FOMC Sep 2027"
+  - date: 2027-11-03
+    label: "FOMC Nov 2027"
+  - date: 2027-12-15
+    label: "FOMC Dec 2027"
+
+# ===========================================================================
+# EUROPEAN CENTRAL BANK (ECB)
+# ===========================================================================
+ECB:
+  # 2026 (approximate; 6-week cadence)
+  - date: 2026-01-29
+    label: "ECB Jan 2026"
+  - date: 2026-03-12
+    label: "ECB Mar 2026"
+  - date: 2026-04-23
+    label: "ECB Apr 2026"
+  - date: 2026-06-04
+    label: "ECB Jun 2026"
+  - date: 2026-07-23
+    label: "ECB Jul 2026"
+  - date: 2026-09-10
+    label: "ECB Sep 2026"
+  - date: 2026-10-29
+    label: "ECB Oct 2026"
+  - date: 2026-12-17
+    label: "ECB Dec 2026"
+  # 2027 (projected)
+  - date: 2027-01-28
+    label: "ECB Jan 2027"
+  - date: 2027-03-11
+    label: "ECB Mar 2027"
+  - date: 2027-04-22
+    label: "ECB Apr 2027"
+  - date: 2027-06-10
+    label: "ECB Jun 2027"
+  - date: 2027-07-22
+    label: "ECB Jul 2027"
+  - date: 2027-09-09
+    label: "ECB Sep 2027"
+  - date: 2027-10-28
+    label: "ECB Oct 2027"
+  - date: 2027-12-16
+    label: "ECB Dec 2027"
+
+# ===========================================================================
+# BANK OF ENGLAND (BoE)
+# ===========================================================================
+BOE:
+  - date: 2026-02-05
+    label: "BoE Feb 2026"
+  - date: 2026-03-19
+    label: "BoE Mar 2026"
+  - date: 2026-05-07
+    label: "BoE May 2026"
+  - date: 2026-06-18
+    label: "BoE Jun 2026"
+  - date: 2026-08-06
+    label: "BoE Aug 2026"
+  - date: 2026-09-17
+    label: "BoE Sep 2026"
+  - date: 2026-11-05
+    label: "BoE Nov 2026"
+  - date: 2026-12-17
+    label: "BoE Dec 2026"
+  - date: 2027-02-04
+    label: "BoE Feb 2027"
+  - date: 2027-03-18
+    label: "BoE Mar 2027"
+  - date: 2027-05-06
+    label: "BoE May 2027"
+  - date: 2027-06-17
+    label: "BoE Jun 2027"
+  - date: 2027-08-05
+    label: "BoE Aug 2027"
+  - date: 2027-09-23
+    label: "BoE Sep 2027"
+  - date: 2027-11-04
+    label: "BoE Nov 2027"
+  - date: 2027-12-16
+    label: "BoE Dec 2027"
+
+# ===========================================================================
+# BANK OF JAPAN (BoJ)
+# ===========================================================================
+BOJ:
+  - date: 2026-01-23
+    label: "BoJ Jan 2026"
+  - date: 2026-03-19
+    label: "BoJ Mar 2026"
+  - date: 2026-04-30
+    label: "BoJ Apr 2026"
+  - date: 2026-06-18
+    label: "BoJ Jun 2026"
+  - date: 2026-07-31
+    label: "BoJ Jul 2026"
+  - date: 2026-09-25
+    label: "BoJ Sep 2026"
+  - date: 2026-10-30
+    label: "BoJ Oct 2026"
+  - date: 2026-12-18
+    label: "BoJ Dec 2026"
+  - date: 2027-01-22
+    label: "BoJ Jan 2027"
+  - date: 2027-03-18
+    label: "BoJ Mar 2027"
+  - date: 2027-04-28
+    label: "BoJ Apr 2027"
+  - date: 2027-06-17
+    label: "BoJ Jun 2027"
+  - date: 2027-07-30
+    label: "BoJ Jul 2027"
+  - date: 2027-09-22
+    label: "BoJ Sep 2027"
+  - date: 2027-10-28
+    label: "BoJ Oct 2027"
+  - date: 2027-12-21
+    label: "BoJ Dec 2027"
+
+# ===========================================================================
+# RESERVE BANK OF AUSTRALIA (RBA)
+# ===========================================================================
+RBA:
+  - date: 2026-02-10
+    label: "RBA Feb 2026"
+  - date: 2026-03-31
+    label: "RBA Mar 2026"
+  - date: 2026-05-19
+    label: "RBA May 2026"
+  - date: 2026-07-07
+    label: "RBA Jul 2026"
+  - date: 2026-08-18
+    label: "RBA Aug 2026"
+  - date: 2026-09-29
+    label: "RBA Sep 2026"
+  - date: 2026-11-10
+    label: "RBA Nov 2026"
+  - date: 2026-12-08
+    label: "RBA Dec 2026"
+  - date: 2027-02-09
+    label: "RBA Feb 2027"
+  - date: 2027-03-30
+    label: "RBA Mar 2027"
+  - date: 2027-05-18
+    label: "RBA May 2027"
+  - date: 2027-07-06
+    label: "RBA Jul 2027"
+  - date: 2027-08-17
+    label: "RBA Aug 2027"
+  - date: 2027-09-28
+    label: "RBA Sep 2027"
+  - date: 2027-11-09
+    label: "RBA Nov 2027"
+  - date: 2027-12-07
+    label: "RBA Dec 2027"
+
+# ===========================================================================
+# BANK OF CANADA (BoC)
+# ===========================================================================
+BOC:
+  - date: 2026-01-28
+    label: "BoC Jan 2026"
+  - date: 2026-03-11
+    label: "BoC Mar 2026"
+  - date: 2026-04-22
+    label: "BoC Apr 2026"
+  - date: 2026-06-03
+    label: "BoC Jun 2026"
+  - date: 2026-07-29
+    label: "BoC Jul 2026"
+  - date: 2026-09-09
+    label: "BoC Sep 2026"
+  - date: 2026-10-28
+    label: "BoC Oct 2026"
+  - date: 2026-12-09
+    label: "BoC Dec 2026"
+  - date: 2027-01-27
+    label: "BoC Jan 2027"
+  - date: 2027-03-10
+    label: "BoC Mar 2027"
+  - date: 2027-04-21
+    label: "BoC Apr 2027"
+  - date: 2027-06-02
+    label: "BoC Jun 2027"
+  - date: 2027-07-28
+    label: "BoC Jul 2027"
+  - date: 2027-09-08
+    label: "BoC Sep 2027"
+  - date: 2027-10-27
+    label: "BoC Oct 2027"
+  - date: 2027-12-08
+    label: "BoC Dec 2027"
