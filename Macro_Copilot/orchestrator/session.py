@@ -768,28 +768,68 @@ class CopilotSession:
             return domain, response, duration_ms
 
         child_tasks = [run_one(d) for d in domains]
+        # ``return_exceptions=True`` preserves input order: ``completed[i]``
+        # corresponds to ``domains[i]``, so we can zip them to recover
+        # which domain each result (or exception) belongs to.
         completed = await asyncio.gather(*child_tasks, return_exceptions=True)
 
         child_responses: list[ChildResponse] = []
         tool_call_summary: list[dict] = []
         workspace_parts: list[dict] = []
 
-        for item in completed:
+        for domain, item in zip(domains, completed):
             if isinstance(item, BaseException):
-                # A child raised.  Emit an error event and move on; the
-                # synthesis step will deal with missing children.
+                # A child raised before returning a ChildResponse — e.g.
+                # the MCP subprocess failed to lazy-open, or the LangGraph
+                # stream crashed.  We must still tell the synthesis step
+                # that this domain was requested and failed, otherwise
+                # synthesis produces a confident partial answer for what
+                # the user asked to be a cross-domain comparison.
                 logger.exception(
-                    "[%s] %s child run raised", self.thread_id, turn_label
+                    "[%s] %s child run raised for domain=%s",
+                    self.thread_id, turn_label, domain.value,
                 )
+                error_msg = f"{type(item).__name__}: {item}"
+
                 await emit(
                     SessionEvent(
                         type="error",
-                        data={"message": f"Child agent error: {item}"},
+                        data={
+                            "message": (
+                                f"{domain.value} specialist error: {error_msg}"
+                            ),
+                        },
+                    )
+                )
+                # Emit child_finished so the frontend can balance the
+                # child_started event we fired before fan-out began.
+                await emit(
+                    SessionEvent(
+                        type="child_finished",
+                        data={
+                            "domain": domain.value,
+                            "status": ChildStatus.ERROR.value,
+                            "duration_ms": None,
+                        },
+                    )
+                )
+                # Synthesize a placeholder ChildResponse so the synthesis
+                # step sees the failure and the synthesis prompt's
+                # "state errors plainly" rule kicks in.
+                child_responses.append(
+                    ChildResponse(
+                        status=ChildStatus.ERROR,
+                        domain=domain,
+                        answer_markdown="",
+                        facts=[],
+                        workspace_context=None,
+                        tool_trace=[],
+                        error_message=error_msg,
                     )
                 )
                 continue
 
-            domain, response, duration_ms = item
+            _domain, response, duration_ms = item
             await emit(
                 SessionEvent(
                     type="child_finished",
@@ -816,12 +856,24 @@ class CopilotSession:
         # --------------------------------------------------------------
         # Synthesis
         # --------------------------------------------------------------
-        if not child_responses:
+        # After the fan-out fix above, ``child_responses`` always contains
+        # one entry per requested domain (real or error-placeholder).
+        # The all-failed short-circuit therefore checks status, not list
+        # emptiness.
+        all_failed = (
+            bool(child_responses)
+            and all(r.status == ChildStatus.ERROR for r in child_responses)
+        )
+        if not child_responses or all_failed:
+            msg = (
+                "All domain children failed; no answer could be produced."
+            )
             await emit(
-                SessionEvent(
-                    type="error",
-                    data={"message": "All domain children failed."},
-                )
+                SessionEvent(type="error", data={"message": msg})
+            )
+            # Give the user visible text too so the chat isn't blank.
+            await emit(
+                SessionEvent(type="token", data={"content": msg})
             )
             await emit(
                 SessionEvent(
