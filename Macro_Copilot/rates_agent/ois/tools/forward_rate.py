@@ -11,25 +11,41 @@ Why this exists
 Forwards are the atomic unit of rates-market speak — a PM saying
 "1Y1Y priced at 3.20, down 8bps" is reading an OIS-native metric that
 cannot be derived from yield levels alone.  This tool is also the math
-engine for ``ois_meeting_pricing``: every meeting-priced rate is just a
-forward rate over a meeting-bounded window.
+engine for ``ois_meeting_pricing``: every meeting-priced rate is just
+a forward rate over a meeting-bounded window.
 
-Algorithm (simple compounding, zero-rate approximation)
--------------------------------------------------------
-1. Fetch every tenor on the curve for each trading day in the display
-   window (plus z-score buffer).
-2. On each date, linearly interpolate the zero rate at ``start_years``
-   and ``end_years`` from the observed par-rate grid.
-3. Convert to discount factors via ``DF(T) = 1 / (1 + R · T)`` (OIS
-   par-rate ≈ zero-rate; see ``curve_bootstrap.py`` module docstring
-   for the approximation-error discussion).
-4. Forward rate = ``(DF_start / DF_end − 1) / (end_years − start_years)``.
-5. Roll the forward through history to build the time series; apply the
-   standard 252-day rolling z-score.
+Algorithm
+---------
+1. Fetch every tenor on the curve over the lookback + z-score buffer.
+2. On each trade date, resolve the forward window for that date:
+   - Tenor-based: ``start_years``/``end_years`` are constants from
+     ``tenor_to_years`` — same every day.
+   - Date-based: ``start_years`` / ``end_years`` are computed from
+     that day's trade date using the curve's day-count basis (ACT/360
+     or ACT/365), so the window shrinks as history approaches the
+     start date.  Days where the start has already passed are skipped.
+3. Linearly interpolate the zero rate at ``start_years`` and
+   ``end_years`` from the observed par-rate grid.
+4. Convert to discount factors via ``DF(T) = 1 / (1 + R · T)`` (OIS
+   par-rate ≈ zero-rate; see ``curve_bootstrap.py`` for the
+   approximation rationale).
+5. Forward rate = ``(DF_start / DF_end − 1) / (end_years − start_years)``.
+6. Apply the standard 252-day rolling z-score.
 
-Internal API accepts EITHER a tenor pair OR a date window; the tool
-surface exposes both so the LLM can answer both "what's 1Y1Y SOFR?" and
-"what's priced between Dec 26 and Jun 27?" directly.
+Anchor discipline
+-----------------
+Date-based forwards are anchored to the curve's as-of date (the latest
+trade_date in the fetched data) for validation, and to each trade
+date's own day for historical series points.  Never anchored to
+wall-clock ``date.today()``, which can drift 1-3 days off the DB on
+weekends or holidays.
+
+Extrapolation discipline
+------------------------
+If ``start_years`` extends past the longest quoted tenor, the forward
+would be computed entirely from flat-extrapolated values — noise, not
+signal.  Those days are skipped.  ``end_years`` past the longest tenor
+is acceptable (flat-extrap tail is defensible for near-end windows).
 """
 
 from __future__ import annotations
@@ -48,7 +64,9 @@ from rates_agent.ois.tools.schemas import (
     OISForwardRateTimeSeriesRow,
 )
 from shared.analytics.curve_bootstrap import (
+    day_count_basis_for_curve,
     forward_rate_between,
+    interpolate_rate,
     sort_tenors_by_years,
     tenor_to_years,
 )
@@ -63,10 +81,6 @@ from shared.analytics.spreads import (
 # ============================================================================
 # DB FETCH — entire OIS curve, all trading days in window
 # ============================================================================
-# This query is specific to forward_rate because we need the full tenor
-# grid (not a pair or a single tenor), so it lives here rather than in
-# shared/rates_fetch.py.  If future tools (e.g. curve PCA) need the same
-# shape, we'll lift it to shared then.
 
 _FETCH_FULL_CURVE_SQL = text("""
     SELECT
@@ -104,53 +118,83 @@ def _fetch_full_curve(
 
 
 # ============================================================================
-# WINDOW RESOLUTION
+# WINDOW RESOLVER — computes (start_years, end_years) per trade date
 # ============================================================================
 
-def _resolve_window(
-    params: OISForwardRateInput,
-) -> tuple[float, float, str]:
-    """Convert the input's (tenor pair OR date pair) into
-    ``(start_years, end_years, label)`` — the normalised internal
-    representation.
+class _WindowResolver:
+    """Encapsulates window-resolution logic for both input modes.
 
-    ``start_years`` / ``end_years`` are year fractions from today.
-    ``label`` is a human-readable tag for the output
-    (``"SOFR 1Y1Y"`` or ``"SOFR 2026-12-15 to 2027-06-15"``).
+    Tenor-based inputs produce constant year fractions.  Date-based
+    inputs re-anchor per trade date using the curve's day-count.
     """
-    curve_short = params.curve_family.replace("_OIS", "").replace("_", " ")
 
-    if params.start_tenor and params.end_tenor:
-        start_years = tenor_to_years(params.start_tenor)
-        end_years = tenor_to_years(params.end_tenor)
-        # Forward-label convention: tenor pairs with matching year widths
-        # render as NxM (e.g. 1Y1Y for 1Y→2Y, 5Y5Y for 5Y→10Y).  Mixed
-        # pairs render explicitly as "1Y/2Y" to avoid misleading shorthand.
-        widened = end_years - start_years
-        if (
-            params.start_tenor.endswith("Y")
-            and params.end_tenor.endswith("Y")
-            and abs(widened - start_years) < 1e-9
-        ):
-            label = f"{curve_short} {int(start_years)}Y{int(widened)}Y"
+    def __init__(self, params: OISForwardRateInput):
+        self._params = params
+        self._day_count = day_count_basis_for_curve(params.curve_family)
+        if params.start_tenor and params.end_tenor:
+            self._mode = "tenor"
+            self._start_years = tenor_to_years(params.start_tenor)
+            self._end_years = tenor_to_years(params.end_tenor)
+            if self._end_years <= self._start_years:
+                raise ValueError(
+                    f"end_tenor ({params.end_tenor}) must map to a larger "
+                    f"year fraction than start_tenor ({params.start_tenor})."
+                )
+            self._sd = None
+            self._ed = None
         else:
-            label = f"{curve_short} {params.start_tenor}/{params.end_tenor}"
-        return start_years, end_years, label
+            self._mode = "date"
+            self._start_years = None
+            self._end_years = None
+            self._sd = datetime.strptime(params.start_date, "%Y-%m-%d").date()
+            self._ed = datetime.strptime(params.end_date, "%Y-%m-%d").date()
+            if self._ed <= self._sd:
+                raise ValueError(
+                    f"end_date ({params.end_date}) must be strictly after "
+                    f"start_date ({params.start_date})."
+                )
 
-    # Date-window path.
-    today = date.today()
-    sd = datetime.strptime(params.start_date, "%Y-%m-%d").date()
-    ed = datetime.strptime(params.end_date, "%Y-%m-%d").date()
-    # Year fractions from today, using 365 as a neutral calendar basis.
-    start_years = max(0.0, (sd - today).days / 365.0)
-    end_years = (ed - today).days / 365.0
-    if end_years <= start_years:
-        raise ValueError(
-            f"end_date ({params.end_date}) must be strictly after "
-            f"start_date ({params.start_date})."
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def start_date_obj(self) -> Optional[date]:
+        return self._sd
+
+    def resolve(self, trade_date: date) -> Optional[tuple[float, float]]:
+        """Return ``(start_years, end_years)`` for a given trade date,
+        or None if the window isn't valid from that day's perspective
+        (e.g. a date window whose start has already passed).
+        """
+        if self._mode == "tenor":
+            return (self._start_years, self._end_years)
+        # Date mode: anchor to this trade_date.
+        start_years = (self._sd - trade_date).days / self._day_count
+        end_years = (self._ed - trade_date).days / self._day_count
+        if start_years < 0:
+            return None  # window has already started
+        if end_years <= start_years:
+            return None  # window has collapsed
+        return (start_years, end_years)
+
+    def label(self) -> str:
+        """Human-readable label for the output metrics."""
+        curve_short = (
+            self._params.curve_family.replace("_OIS", "").replace("_", " ")
         )
-    label = f"{curve_short} {params.start_date} to {params.end_date}"
-    return start_years, end_years, label
+        if self._mode == "tenor":
+            start_tenor = self._params.start_tenor
+            end_tenor = self._params.end_tenor
+            widened = self._end_years - self._start_years
+            if (
+                start_tenor.endswith("Y")
+                and end_tenor.endswith("Y")
+                and abs(widened - self._start_years) < 1e-9
+            ):
+                return f"{curve_short} {int(self._start_years)}Y{int(widened)}Y"
+            return f"{curve_short} {start_tenor}/{end_tenor}"
+        return f"{curve_short} {self._params.start_date} to {self._params.end_date}"
 
 
 # ============================================================================
@@ -159,12 +203,13 @@ def _resolve_window(
 
 def _compute_forward_series(
     raw_df: pd.DataFrame,
-    start_years: float,
-    end_years: float,
+    resolver: _WindowResolver,
 ) -> pd.Series:
-    """For each trading day, bootstrap the curve and compute the forward
-    rate between ``start_years`` and ``end_years``.  Returns a Series
-    indexed by date with values in percent.
+    """For each trading day in the fetched data, resolve the forward
+    window from that day's perspective, bootstrap the curve, and
+    compute the forward rate.  Returns a Series indexed by date in
+    percent.  Skips days where the window is invalid or requires
+    bogus extrapolation.
     """
     raw_df = raw_df.copy()
     raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
@@ -176,27 +221,32 @@ def _compute_forward_series(
 
     forwards: dict[pd.Timestamp, float] = {}
 
-    for trade_date, day_df in raw_df.groupby("trade_date"):
-        # Sort tenors chronologically and pull the matching rates.
+    for trade_date_ts, day_df in raw_df.groupby("trade_date"):
+        # Resolve the window from THIS day's perspective.
+        trade_date_py = (
+            trade_date_ts.date() if hasattr(trade_date_ts, "date") else trade_date_ts
+        )
+        window = resolver.resolve(trade_date_py)
+        if window is None:
+            continue
+        start_years, end_years = window
+
         ordered = sort_tenors_by_years(day_df["tenor"].tolist())
         if len(ordered) < 2:
             continue  # can't interpolate from a single point
 
-        # Build parallel (years, rate_decimal) arrays for interpolation.
         rate_by_tenor = dict(zip(day_df["tenor"], day_df["field_value"]))
         years = [tenor_to_years(t) for t in ordered]
-        # Convert pct → decimal for bootstrap math.
         rates_decimal = [float(rate_by_tenor[t]) / 100.0 for t in ordered]
 
-        # Skip days where the requested window falls outside the curve
-        # grid by more than flat-extrapolation can defend.  We allow
-        # extrapolation in ``interpolate_rate`` itself, but refuse to
-        # produce a forward if BOTH endpoints are outside the grid
-        # (indicates malformed curve data for that day).
-        if start_years > years[-1] or end_years > years[-1]:
-            # End extends beyond the longest quoted tenor — flat-extrap
-            # tail, still usable.  Only skip if start is also beyond.
-            pass
+        # Skip days where the forward's START point is past the longest
+        # quoted tenor — computing a forward entirely from
+        # flat-extrapolated values produces noise, not signal.  END
+        # beyond the grid is acceptable (flat-extrap tail is defensible
+        # for near-end windows — the shape just becomes "rate ≈
+        # constant at the grid endpoint").
+        if start_years > years[-1]:
+            continue
 
         try:
             fwd_decimal = forward_rate_between(
@@ -205,14 +255,14 @@ def _compute_forward_series(
         except (ValueError, ZeroDivisionError):
             continue
 
-        forwards[trade_date] = fwd_decimal * 100.0  # back to percent
+        forwards[trade_date_ts] = fwd_decimal * 100.0  # back to percent
 
     if not forwards:
         return pd.Series(dtype=float)
 
     series = pd.Series(forwards).sort_index()
-    # Forward-fill across small holiday gaps (max 5 business days) to
-    # align with the convention used by every other rates tool.
+    # Forward-fill small holiday gaps (max 5 business days) — matches
+    # the convention used by every other rates tool.
     series = series.ffill(limit=5)
     return series
 
@@ -243,10 +293,10 @@ def calculate_ois_forward_rate(
     """
 
     # ------------------------------------------------------------------
-    # 1. Resolve the forward window and date buffer
+    # 1. Build the window resolver and date buffer
     # ------------------------------------------------------------------
     try:
-        start_years, end_years, forward_label = _resolve_window(params)
+        resolver = _WindowResolver(params)
     except ValueError as exc:
         return {"error": str(exc)}
 
@@ -275,27 +325,48 @@ def calculate_ois_forward_rate(
         }
 
     # ------------------------------------------------------------------
-    # 3. Build the forward-rate time series
+    # 3. Validate date-window start_date vs curve as-of date
     # ------------------------------------------------------------------
-    forward_series = _compute_forward_series(raw_df, start_years, end_years)
+    # For date-mode, the user's start_date must not precede the curve's
+    # as-of date.  Without this check the math would silently produce a
+    # forward for a different (later) window than the user asked for.
+    as_of_ts = pd.to_datetime(raw_df["trade_date"]).max()
+    as_of_date: date = as_of_ts.date() if hasattr(as_of_ts, "date") else as_of_ts
+
+    if resolver.mode == "date" and resolver.start_date_obj is not None:
+        if resolver.start_date_obj < as_of_date:
+            return {
+                "error": (
+                    f"start_date ({resolver.start_date_obj.isoformat()}) is "
+                    f"before the curve's as-of date ({as_of_date.isoformat()}).  "
+                    "The forward window must begin on or after the most recent "
+                    "market data date.  Please supply a start_date on or after "
+                    f"{as_of_date.isoformat()}."
+                )
+            }
+
+    # ------------------------------------------------------------------
+    # 4. Build the forward-rate time series (per-trade-date anchoring)
+    # ------------------------------------------------------------------
+    forward_series = _compute_forward_series(raw_df, resolver)
 
     if forward_series.empty:
         return {
             "error": (
                 f"Could not compute a forward-rate series for "
-                f"'{params.curve_family}' over the window "
-                f"{start_years:.3f}y → {end_years:.3f}y.  The curve may "
-                "be missing enough tenors to interpolate."
+                f"'{params.curve_family}' over the requested window.  The "
+                "curve may be missing enough tenors to interpolate, or the "
+                "window may fall outside the quoted grid."
             )
         }
 
     # ------------------------------------------------------------------
-    # 4. Rolling z-score
+    # 5. Rolling z-score
     # ------------------------------------------------------------------
     z_series = rolling_zscore(forward_series)
 
     # ------------------------------------------------------------------
-    # 5. Trim to the requested display window
+    # 6. Trim to the requested display window
     # ------------------------------------------------------------------
     cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
     display_series = forward_series.loc[forward_series.index >= cutoff]
@@ -306,27 +377,27 @@ def calculate_ois_forward_rate(
             "error": (
                 f"No forward-rate observations within the last "
                 f"{params.lookback_days} days for '{params.curve_family}' "
-                f"{forward_label}."
+                f"{resolver.label()}."
             )
         }
 
     # ------------------------------------------------------------------
-    # 6. Build current_metrics
+    # 7. Build current_metrics
     # ------------------------------------------------------------------
     current_forward = float(display_series.iloc[-1])
+    # delta_bps expects inputs already in bps; the series is in percent,
+    # so we multiply by 100 so cur/prev are compared on the bps scale.
     daily_change = delta_bps(
-        current_forward * 100,  # pct → bps for this helper
+        current_forward * 100,
         display_series.iloc[-2] * 100 if len(display_series) >= 2 else None,
     )
-    # delta_bps expects inputs already in bps; the forward series is in
-    # percent, so we multiply by 100 to compare on the bps scale.
-    # (Equivalent to: round((cur_pct - prev_pct) * 100, 2).)
 
     high_252, low_252, percentile = trailing_high_low_percentile(
         forward_series, window=Z_SCORE_WINDOW, decimals=4,
     )
 
-    # Recover the spot legs from the latest date for context.
+    # Recover the spot legs from the latest trade date — resolving the
+    # window from the same day the forward was computed on.
     latest_date = display_series.index[-1]
     latest_day = raw_df[
         pd.to_datetime(raw_df["trade_date"]) == latest_date
@@ -337,26 +408,40 @@ def calculate_ois_forward_rate(
     latest_day = latest_day.dropna(subset=["field_value"])
     start_spot_pct: Optional[float] = None
     end_spot_pct: Optional[float] = None
-    if not latest_day.empty:
+    latest_date_py: date = (
+        latest_date.date() if hasattr(latest_date, "date") else latest_date
+    )
+    latest_window = resolver.resolve(latest_date_py)
+
+    if not latest_day.empty and latest_window is not None:
+        start_years_latest, end_years_latest = latest_window
         ordered = sort_tenors_by_years(latest_day["tenor"].tolist())
         if ordered:
             rate_by_tenor = dict(zip(latest_day["tenor"], latest_day["field_value"]))
-            years = [tenor_to_years(t) for t in ordered]
+            years_grid = [tenor_to_years(t) for t in ordered]
             rates_pct = [float(rate_by_tenor[t]) for t in ordered]
-            from shared.analytics.curve_bootstrap import interpolate_rate
             start_spot_pct = safe_float(
-                interpolate_rate(years, rates_pct, start_years)
+                interpolate_rate(years_grid, rates_pct, start_years_latest)
             )
             end_spot_pct = safe_float(
-                interpolate_rate(years, rates_pct, end_years)
+                interpolate_rate(years_grid, rates_pct, end_years_latest)
             )
 
+    # Round start/end years for display — avoids spurious precision
+    # from the ACT/360 vs ACT/365 day-count split.
+    start_years_display = round(
+        latest_window[0] if latest_window is not None else 0.0, 4,
+    )
+    end_years_display = round(
+        latest_window[1] if latest_window is not None else 0.0, 4,
+    )
+
     metrics = OISForwardRateCurrentMetrics(
-        as_of_date=latest_date.strftime("%Y-%m-%d"),
+        as_of_date=latest_date_py.strftime("%Y-%m-%d"),
         curve_family=params.curve_family,
-        forward_label=forward_label,
-        start_years=round(start_years, 4),
-        end_years=round(end_years, 4),
+        forward_label=resolver.label(),
+        start_years=start_years_display,
+        end_years=end_years_display,
         forward_rate_pct=safe_float(current_forward),
         daily_change_bps=daily_change,
         current_z_score=safe_float(display_z.iloc[-1]) if len(display_z) else None,
@@ -369,7 +454,7 @@ def calculate_ois_forward_rate(
     )
 
     # ------------------------------------------------------------------
-    # 7. Build time_series (withheld from LLM, frontend-only)
+    # 8. Build time_series (withheld from LLM, frontend-only)
     # ------------------------------------------------------------------
     ts_rows: List[OISForwardRateTimeSeriesRow] = []
     for idx in display_series.index:
