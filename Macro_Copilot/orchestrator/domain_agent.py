@@ -397,7 +397,11 @@ class DomainAgentSession:
         ]
         workspace_context = extract_workspace_context(trace_dicts)
 
-        status = _infer_status(answer_markdown, facts, tool_calls_seen, raw_tool_outputs)
+        status, follow_up_question = _classify_status(
+            answer_markdown=answer_markdown,
+            tool_calls=tool_calls_seen,
+            raw_tool_outputs=raw_tool_outputs,
+        )
 
         duration_ms = round((time.monotonic() - started) * 1000)
         logger.info(
@@ -416,6 +420,7 @@ class DomainAgentSession:
             facts=facts,
             workspace_context=workspace_context,
             tool_trace=tool_calls_seen,
+            follow_up_question=follow_up_question,
         )
 
 
@@ -588,30 +593,68 @@ def _infer_units(metric_key: str) -> Optional[str]:
     return None
 
 
-def _infer_status(
+# Keyword patterns the child uses when it can't fulfil the request.
+# Kept deliberately tight to minimise false positives on legitimate answers
+# that happen to contain one of these phrases in a different context.
+_OUT_OF_SCOPE_SIGNALS: tuple[str, ...] = (
+    "outside my domain",
+    "outside the sovereign bond",
+    "outside the ois",
+    "out of scope",
+    "not in my coverage",
+    "not covered by my tools",
+    "this is a question for the",
+    "this is handled by the",
+    "handled by the credit",
+    "handled by the fx",
+    "handled by the ois",
+    "handled by the sovereign",
+    "handled by the futures",
+)
+
+_CLARIFICATION_SIGNALS: tuple[str, ...] = (
+    "could you clarify",
+    "can you clarify",
+    "please clarify",
+    "could you specify",
+    "can you specify",
+    "please specify",
+    "which do you mean",
+    "which one do you mean",
+    "did you mean",
+    "to be sure,",
+    "to confirm,",
+)
+
+
+def _classify_status(
     answer_markdown: str,
-    facts: list[FactRow],
     tool_calls: list[ChildToolCallTrace],
     raw_tool_outputs: list[tuple[str, dict, str]],
-) -> ChildStatus:
-    """Infer a ChildStatus from what actually happened in the run.
+) -> tuple[ChildStatus, Optional[str]]:
+    """Deterministic post-hoc classification of a child run.
 
-    Deterministic rules (no LLM involvement):
-      - If every tool call returned an error, status=ERROR.
-      - If no tools were called AND the answer is non-empty, status=OK
-        (the child answered from domain knowledge in prose — valid for
-        out-of-scope / needs_clarification cases).
-      - Otherwise status=OK.
+    Rules (no LLM call — latency-free on the hot path):
 
-    The child's prose may self-flag out_of_scope; for now we don't parse
-    that out of free text — the supervisor sees the answer_markdown and
-    can route accordingly.  Future: have the child emit a structured
-    status marker in its final message.
+    1. If at least one tool call returned a non-error payload, the child
+       did meaningful work → OK.
+    2. If tool calls were made but every one returned an error → ERROR.
+    3. If no tool calls were made and the answer is empty → ERROR.
+    4. If no tool calls were made and the answer contains an
+       out-of-scope signal → OUT_OF_SCOPE.
+    5. If no tool calls were made and the answer contains a clarification
+       signal OR ends with a question → NEEDS_CLARIFICATION, with
+       ``follow_up_question`` extracted from the prose.
+    6. Fallback → OK (the child answered from domain knowledge without
+       needing a tool; rare but legitimate for meta questions).
+
+    Returns
+    -------
+    (status, follow_up_question)
+        ``follow_up_question`` is populated only for NEEDS_CLARIFICATION.
     """
-    if not tool_calls:
-        return ChildStatus.OK if answer_markdown else ChildStatus.ERROR
-
-    # Count errored tool outputs.
+    # Count successful vs errored tool outputs.
+    successful = 0
     errored = 0
     for _, _, raw in raw_tool_outputs:
         if not raw:
@@ -620,10 +663,59 @@ def _infer_status(
             payload = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             continue
-        if isinstance(payload, dict) and "error" in payload:
+        if not isinstance(payload, dict):
+            continue
+        if "error" in payload:
             errored += 1
+        else:
+            successful += 1
 
-    if errored == len(tool_calls) and errored > 0:
-        return ChildStatus.ERROR
+    # Rule 1: any successful tool → trust the child's answer.
+    if successful > 0:
+        return ChildStatus.OK, None
 
-    return ChildStatus.OK
+    # Rule 2: tools were called but none succeeded → ERROR.
+    if tool_calls and errored == len(tool_calls) and errored > 0:
+        return ChildStatus.ERROR, None
+
+    # Rule 3: no tools and empty answer → ERROR.
+    cleaned = answer_markdown.strip()
+    if not cleaned:
+        return ChildStatus.ERROR, None
+
+    lowered = cleaned.lower()
+
+    # Rule 4: out-of-scope prose signals.
+    for signal in _OUT_OF_SCOPE_SIGNALS:
+        if signal in lowered:
+            return ChildStatus.OUT_OF_SCOPE, None
+
+    # Rule 5: clarification signals or a trailing question.
+    for signal in _CLARIFICATION_SIGNALS:
+        if signal in lowered:
+            return ChildStatus.NEEDS_CLARIFICATION, _extract_last_question(cleaned)
+
+    if cleaned.endswith("?"):
+        return ChildStatus.NEEDS_CLARIFICATION, _extract_last_question(cleaned)
+
+    # Rule 6: default OK.
+    return ChildStatus.OK, None
+
+
+def _extract_last_question(text: str) -> Optional[str]:
+    """Pull the last question-like sentence out of a response for use as
+    ``follow_up_question``.
+
+    Looks at the final '?' and walks back to the nearest sentence boundary
+    (., !, ?, or newline) to get a clean single-sentence question.
+    """
+    if "?" not in text:
+        return None
+    end = text.rfind("?") + 1
+    start = 0
+    for sep in (".", "!", "\n"):
+        idx = text.rfind(sep, 0, end - 1)
+        if idx > start:
+            start = idx + 1
+    question = text[start:end].strip()
+    return question or None

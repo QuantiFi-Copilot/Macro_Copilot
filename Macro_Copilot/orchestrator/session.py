@@ -496,7 +496,12 @@ class CopilotSession:
         emit,
     ) -> None:
         """Run one child with streaming tokens forwarded straight to the
-        user.  This is the fast path — no synthesis, no double narration."""
+        user.  This is the fast path — no synthesis, no double narration.
+
+        Also guarantees the user sees *something* even when the child
+        fails before streaming: on ERROR we emit both an explicit error
+        event and a user-facing token so the chat doesn't go silent.
+        """
         await emit(SessionEvent(type="status", data={"status": "thinking"}))
 
         child = self._children[domain]
@@ -510,15 +515,86 @@ class CopilotSession:
         child_thread_id = self._child_thread_id(turn_label, domain)
         child_start = time.monotonic()
 
+        # Wrap emit so we can tell after the run whether the child
+        # actually streamed any token to the user.  If it errored before
+        # streaming, we need to synthesise a fallback message so the
+        # chat isn't silent.
+        tokens_emitted = False
+
+        async def tracked_emit(event: SessionEvent) -> None:
+            nonlocal tokens_emitted
+            if event.type == "token" and event.data.get("content"):
+                tokens_emitted = True
+            await emit(event)
+
         child_response: ChildResponse = await child.run(
             user_message=user_message,
             domain_boundary=None,  # no boundary in single-domain
             emit_tokens=True,      # child's prose IS the user-facing answer
-            on_event=emit,
+            on_event=tracked_emit,
             turn_thread_id=child_thread_id,
         )
 
         child_duration_ms = round((time.monotonic() - child_start) * 1000)
+
+        # --------------------------------------------------------------
+        # Handle non-OK child statuses so the frontend never goes silent.
+        # --------------------------------------------------------------
+        if child_response.status == ChildStatus.ERROR:
+            error_msg = (
+                child_response.error_message
+                or f"The {domain.value} specialist failed to complete the request."
+            )
+            logger.warning(
+                "[%s] %s child error: %s", self.thread_id, turn_label, error_msg
+            )
+            await emit(
+                SessionEvent(type="error", data={"message": error_msg})
+            )
+            if not tokens_emitted:
+                # Give the user a visible assistant message too.
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                f"The {domain.value} specialist ran into a "
+                                f"problem and couldn't complete this request: "
+                                f"{error_msg}"
+                            )
+                        },
+                    )
+                )
+        elif child_response.status == ChildStatus.NEEDS_CLARIFICATION:
+            question = (
+                child_response.follow_up_question
+                or "Could you clarify what you're asking about?"
+            )
+            await emit(
+                SessionEvent(type="clarification", data={"question": question})
+            )
+            if not tokens_emitted:
+                await emit(
+                    SessionEvent(type="token", data={"content": question})
+                )
+        elif child_response.status == ChildStatus.OUT_OF_SCOPE:
+            # The child's prose already explains the scope issue and was
+            # streamed live to the user.  Nothing extra to emit; log for
+            # observability so we can track misroutes.
+            logger.info(
+                "[%s] %s child flagged out_of_scope for domain=%s",
+                self.thread_id, turn_label, domain.value,
+            )
+            if not tokens_emitted:
+                # Very unusual: out_of_scope detected without any streamed
+                # tokens.  Emit the stored answer_markdown as a fallback.
+                fallback = child_response.answer_markdown or (
+                    f"That question is outside the {domain.value} domain."
+                )
+                await emit(
+                    SessionEvent(type="token", data={"content": fallback})
+                )
+
         await emit(
             SessionEvent(
                 type="child_finished",
