@@ -6,37 +6,33 @@ Scans across ALL sovereign yield curve instruments in the database and
 returns the most statistically extreme observations — ranked by absolute
 z-score.
 
-This is an exploration tool, not a point query.  It answers questions
-the PM doesn't know to ask: "What's the most stretched relationship
-across all markets today?"  It also enables daily morning-briefing
-workflows: "Flag anything with a z-score above 2."
+Thin orchestration layer over ``shared/analytics/`` primitives:
 
-Design
-------
-Unlike the other tools (which query a specific curve/tenor), this tool
-queries the entire universe and computes z-scores for every instrument
-in a single pass.  The LLM receives only the ranked results — no
-raw time-series.
+- ``fetch_scan_universe(instrument_type='sovereign_benchmark', ...)``
+                                     — DB query across the whole universe
+- ``rolling_zscore``                 — 252-day z-score per instrument
+- ``bps_change``                     — daily bps delta per instrument
+- ``trailing_high_low_percentile``   — 252d range stats per instrument
+- ``safe_float``                     — None/NaN-safe numeric coercion
 
-Data flow
----------
-1.  **Fetch** — broad query across all sovereign benchmark instruments
-    (filter by instrument_type = 'sovereign_benchmark' and field_name).
-2.  **Group** — group by (curve_family, tenor).
-3.  **Math** — for each group: current yield, 252-day rolling z-score,
-    daily change, trailing high/low, percentile.
-4.  **Rank** — sort by abs(z_score) descending.
-5.  **Return** — top N results as a ranked list.
+The per-group metric computation uses the same primitives as
+yield_levels — which is the whole point: the scanner is essentially a
+``yield_levels`` loop over every (curve_family, tenor) group, ranked by
+|z-score|.  A future OIS scanner will be a near-trivial port:
+
+    fetch_scan_universe(instrument_type='ois_swap', ...)
+
+Domain-specific responsibilities that stay in this module: input
+validation, the groupby / threshold / ranking workflow, and
+output-schema assembly.
 """
 
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.schemas import (
@@ -44,100 +40,67 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     ScannerResultRow,
     ScannerOutput,
 )
+from shared.analytics.levels import (
+    bps_change,
+    trailing_high_low_percentile,
+)
+from shared.analytics.rates_fetch import fetch_scan_universe
+from shared.analytics.spreads import (
+    Z_SCORE_WINDOW,
+    Z_SCORE_MIN_PERIODS,
+    rolling_zscore,
+    safe_float,
+)
 
 
 # ============================================================================
-# CONSTANTS
+# INSTRUMENT TYPE — filter passed to fetch_scan_universe
 # ============================================================================
 
-Z_SCORE_WINDOW = 252
+_INSTRUMENT_TYPE = "sovereign_benchmark"
 
 
 # ============================================================================
-# PRIVATE HELPERS
+# PER-GROUP METRICS
 # ============================================================================
 
-_FETCH_ALL_SQL = text("""
-    SELECT
-        trade_date,
-        curve_family,
-        tenor,
-        field_value
-    FROM macro_data.v_market_data_daily_enriched
-    WHERE instrument_type = 'sovereign_benchmark'
-      AND field_name      = :field_name
-      AND trade_date     >= :start_date
-      AND tenor IS NOT NULL
-    ORDER BY curve_family, tenor, trade_date
-""")
+def _compute_group_metrics(yields: pd.Series) -> Optional[Dict[str, Any]]:
+    """Compute z-score + context metrics for a single (curve_family, tenor)
+    group's clean yield series.
 
-_FETCH_FILTERED_SQL = text("""
-    SELECT
-        trade_date,
-        curve_family,
-        tenor,
-        field_value
-    FROM macro_data.v_market_data_daily_enriched
-    WHERE instrument_type = 'sovereign_benchmark'
-      AND field_name      = :field_name
-      AND trade_date     >= :start_date
-      AND tenor IS NOT NULL
-      AND curve_family    = ANY(:curve_families)
-    ORDER BY curve_family, tenor, trade_date
-""")
-
-
-def _safe_float(value: Any, decimals: int = 4) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        f = float(value)
-        return None if math.isnan(f) else round(f, decimals)
-    except (TypeError, ValueError):
+    Returns None when the group has insufficient history to compute a
+    meaningful z-score (< ``Z_SCORE_MIN_PERIODS`` observations) or when
+    the z-score itself resolves to NaN.
+    """
+    if len(yields) < Z_SCORE_MIN_PERIODS:
         return None
 
-
-def _compute_group_metrics(group_df: pd.DataFrame) -> Optional[Dict[str, Any]]:
-    """Compute z-score and context metrics for a single (curve_family, tenor) group."""
-    if len(group_df) < 60:
-        return None
-
-    yields = group_df["field_value"]
     current_yield = float(yields.iloc[-1])
 
-    # Daily change
+    # Daily change in bps (percentage-scale series → use bps_change).
     daily_change = None
     if len(yields) >= 2:
-        daily_change = round((current_yield - float(yields.iloc[-2])) * 100, 2)
+        daily_change = bps_change(current_yield, yields.iloc[-2])
 
-    # Rolling z-score
-    rolling_mean = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).mean()
-    rolling_std = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).std()
-    z_series = (yields - rolling_mean) / rolling_std
-    current_z = _safe_float(z_series.iloc[-1])
-
+    # Rolling 252-day z-score.
+    z_series = rolling_zscore(yields)
+    current_z = safe_float(z_series.iloc[-1])
     if current_z is None:
         return None
 
-    # Trailing high / low / percentile
-    trailing = yields.iloc[-Z_SCORE_WINDOW:] if len(yields) >= Z_SCORE_WINDOW else yields
-    high_252 = _safe_float(trailing.max())
-    low_252 = _safe_float(trailing.min())
-
-    percentile = None
-    if high_252 is not None and low_252 is not None and high_252 != low_252:
-        percentile = round(
-            (current_yield - low_252) / (high_252 - low_252) * 100, 1
-        )
+    # Trailing 252-day high / low / percentile.
+    high_252, low_252, percentile = trailing_high_low_percentile(
+        yields, window=Z_SCORE_WINDOW, decimals=4,
+    )
 
     return {
-        "current_yield": _safe_float(current_yield),
+        "current_yield": safe_float(current_yield),
         "daily_change_bps": daily_change,
         "z_score": current_z,
         "high_252d": high_252,
         "low_252d": low_252,
         "percentile_252d": percentile,
-        "as_of_date": group_df.index[-1].strftime("%Y-%m-%d"),
+        "as_of_date": yields.index[-1].strftime("%Y-%m-%d"),
     }
 
 
@@ -168,36 +131,21 @@ def scan_extremes(
     """
 
     # ------------------------------------------------------------------
-    # 1. Date window — enough for z-score warm-up
+    # 1. Date window — enough for z-score warm-up plus ~1 year display
     # ------------------------------------------------------------------
     buffer_calendar_days = int(Z_SCORE_WINDOW * 1.5)
     start_date = date.today() - timedelta(days=365 + buffer_calendar_days)
 
     # ------------------------------------------------------------------
-    # 2. Fetch
+    # 2. Fetch (every sovereign benchmark series in the universe)
     # ------------------------------------------------------------------
-    with engine.connect() as conn:
-        if params.curve_families:
-            result = conn.execute(
-                _FETCH_FILTERED_SQL,
-                {
-                    "field_name": params.field_name,
-                    "start_date": start_date.isoformat(),
-                    "curve_families": list(params.curve_families),
-                },
-            )
-        else:
-            result = conn.execute(
-                _FETCH_ALL_SQL,
-                {
-                    "field_name": params.field_name,
-                    "start_date": start_date.isoformat(),
-                },
-            )
-        rows = result.fetchall()
-        columns = list(result.keys())
-
-    raw_df = pd.DataFrame(rows, columns=columns)
+    raw_df = fetch_scan_universe(
+        engine=engine,
+        instrument_type=_INSTRUMENT_TYPE,
+        field_name=params.field_name,
+        start_date=start_date,
+        curve_families=params.curve_families,
+    )
 
     if raw_df.empty:
         return {
@@ -209,7 +157,7 @@ def scan_extremes(
         }
 
     # ------------------------------------------------------------------
-    # 3. Clean and group
+    # 3. Clean universe-wide (before splitting into groups)
     # ------------------------------------------------------------------
     raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
     raw_df["field_value"] = pd.to_numeric(raw_df["field_value"], errors="coerce")
@@ -222,12 +170,14 @@ def scan_extremes(
     # 4. Compute metrics per (curve_family, tenor)
     # ------------------------------------------------------------------
     all_results: List[Dict[str, Any]] = []
+    group_count = 0
 
     for (curve_family, tenor), group in raw_df.groupby(["curve_family", "tenor"]):
+        group_count += 1
         group = group.set_index("trade_date").sort_index()
         group = group.ffill(limit=5)
 
-        metrics = _compute_group_metrics(group)
+        metrics = _compute_group_metrics(group["field_value"])
         if metrics is None:
             continue
 
@@ -280,7 +230,7 @@ def scan_extremes(
 
     output = ScannerOutput(
         scan_summary=(
-            f"Scanned {len(raw_df.groupby(['curve_family', 'tenor']))} instruments.  "
+            f"Scanned {group_count} instruments.  "
             f"Found {len(all_results)} with |z-score| >= {params.min_abs_z_score}.  "
             f"Showing top {len(top_results)} by absolute z-score."
         ),
