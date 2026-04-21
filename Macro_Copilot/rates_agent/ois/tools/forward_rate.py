@@ -10,42 +10,50 @@ Why this exists
 ---------------
 Forwards are the atomic unit of rates-market speak — a PM saying
 "1Y1Y priced at 3.20, down 8bps" is reading an OIS-native metric that
-cannot be derived from yield levels alone.  This tool is also the math
-engine for ``ois_meeting_pricing``: every meeting-priced rate is just
-a forward rate over a meeting-bounded window.
+cannot be derived from yield levels alone.
 
 Algorithm
 ---------
 1. Fetch every tenor on the curve over the lookback + z-score buffer.
-2. On each trade date, resolve the forward window for that date:
+2. Validate that the requested window falls at least partially inside
+   the quoted curve grid — requests entirely outside the grid (both
+   endpoints shorter than the shortest tenor, or both longer than the
+   longest) are rejected with a clear error rather than silently
+   extrapolated.
+3. On each trade date, resolve the forward window for that date:
    - Tenor-based: ``start_years``/``end_years`` are constants from
      ``tenor_to_years`` — same every day.
    - Date-based: ``start_years`` / ``end_years`` are computed from
      that day's trade date using the curve's day-count basis (ACT/360
      or ACT/365), so the window shrinks as history approaches the
      start date.  Days where the start has already passed are skipped.
-3. Linearly interpolate the zero rate at ``start_years`` and
+4. Linearly interpolate the zero rate at ``start_years`` and
    ``end_years`` from the observed par-rate grid.
-4. Convert to discount factors via ``DF(T) = 1 / (1 + R · T)`` (OIS
-   par-rate ≈ zero-rate; see ``curve_bootstrap.py`` for the
-   approximation rationale).
-5. Forward rate = ``(DF_start / DF_end − 1) / (end_years − start_years)``.
-6. Apply the standard 252-day rolling z-score.
+5. Convert to discount factors via the dual convention in
+   ``curve_bootstrap.discount_factor_from_par`` (simple compounding
+   for T ≤ 1Y, annual for T > 1Y).
+6. Forward rate = ``(DF_start / DF_end − 1) / (end_years − start_years)``.
+7. Apply the standard 252-day rolling z-score.
 
 Anchor discipline
 -----------------
 Date-based forwards are anchored to the curve's as-of date (the latest
 trade_date in the fetched data) for validation, and to each trade
-date's own day for historical series points.  Never anchored to
-wall-clock ``date.today()``, which can drift 1-3 days off the DB on
-weekends or holidays.
+date's own day for historical series points.  Display-window cutoffs
+also anchor to the curve's as-of date.  Never anchored to wall-clock
+``date.today()``, which can drift 1-3 days off the DB on weekends or
+holidays.
 
 Extrapolation discipline
 ------------------------
-If ``start_years`` extends past the longest quoted tenor, the forward
-would be computed entirely from flat-extrapolated values — noise, not
-signal.  Those days are skipped.  ``end_years`` past the longest tenor
-is acceptable (flat-extrap tail is defensible for near-end windows).
+Two layers of guard:
+- Upfront: if the requested window is entirely outside the curve grid,
+  the tool returns an error before running the time series.
+- Per-day: if ``start_years`` extends past the longest quoted tenor
+  on a given trade date, that day is skipped (the forward would be
+  computed entirely from flat-extrapolated values — noise, not signal).
+  ``end_years`` past the longest tenor is acceptable (flat-extrap tail
+  is defensible for near-end windows).
 """
 
 from __future__ import annotations
@@ -346,6 +354,47 @@ def calculate_ois_forward_rate(
             }
 
     # ------------------------------------------------------------------
+    # 3b. Upfront guard: reject windows entirely outside the curve grid
+    # ------------------------------------------------------------------
+    # Resolve the window from the latest trade date's perspective, then
+    # check against the tenor grid available on that day.  If BOTH
+    # endpoints fall outside the grid (both shorter than the shortest
+    # quoted tenor, or both longer than the longest), the requested
+    # forward has zero legitimate signal — the whole rate would come
+    # from flat-extrapolated values.  Fail fast with a clear error
+    # rather than producing a number the user would misread as market
+    # data.  Per-day skip logic in ``_compute_forward_series`` still
+    # handles finer-grained misses on individual historical dates.
+    latest_day = raw_df[
+        pd.to_datetime(raw_df["trade_date"]) == as_of_ts
+    ].copy()
+    latest_day["field_value"] = pd.to_numeric(
+        latest_day["field_value"], errors="coerce",
+    )
+    latest_day = latest_day.dropna(subset=["field_value"])
+    latest_window = resolver.resolve(as_of_date)
+    if latest_window is not None and not latest_day.empty:
+        grid_tenors = sort_tenors_by_years(latest_day["tenor"].tolist())
+        if len(grid_tenors) >= 2:
+            grid_years = [tenor_to_years(t) for t in grid_tenors]
+            grid_min, grid_max = grid_years[0], grid_years[-1]
+            start_y, end_y = latest_window
+            both_above = start_y > grid_max and end_y > grid_max
+            both_below = start_y < grid_min and end_y < grid_min
+            if both_above or both_below:
+                return {
+                    "error": (
+                        f"Requested forward window ({start_y:.3f}y → "
+                        f"{end_y:.3f}y from the as-of date) falls entirely "
+                        f"outside the quoted curve grid "
+                        f"({grid_min:.3f}y → {grid_max:.3f}y).  No market "
+                        "data is available to interpolate from; the result "
+                        "would come entirely from flat extrapolation.  "
+                        "Choose a narrower or more central window."
+                    )
+                }
+
+    # ------------------------------------------------------------------
     # 4. Build the forward-rate time series (per-trade-date anchoring)
     # ------------------------------------------------------------------
     forward_series = _compute_forward_series(raw_df, resolver)
@@ -368,7 +417,12 @@ def calculate_ois_forward_rate(
     # ------------------------------------------------------------------
     # 6. Trim to the requested display window
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    # Anchor the cutoff to the forward series' latest date (which is
+    # the curve's as-of date), NOT date.today() — keeps the display
+    # window consistent with the actual data regardless of how stale
+    # the DB is vs the wall clock.
+    series_as_of = forward_series.index[-1]
+    cutoff = series_as_of - pd.Timedelta(days=params.lookback_days)
     display_series = forward_series.loc[forward_series.index >= cutoff]
     display_z = z_series.loc[z_series.index >= cutoff]
 

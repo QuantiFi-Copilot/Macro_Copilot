@@ -23,14 +23,6 @@ from rates_agent.ois.tools.schemas.forward_rate import (
     OISForwardRateTimeSeriesRow,
 )
 
-# Meeting pricing (central-bank meeting calendar × OIS curve)
-from rates_agent.ois.tools.schemas.meeting_pricing import (
-    OISMeetingPricingCurrentMetrics,
-    OISMeetingPricingInput,
-    OISMeetingPricingMeetingRow,
-    OISMeetingPricingOutput,
-)
-
 # Cross-market spread (same tenor, two OIS curves)
 from rates_agent.ois.tools.schemas.cross_market import (
     OISCrossMarketSpreadCurrentMetrics,
@@ -45,6 +37,13 @@ from rates_agent.ois.tools.schemas.scanner import (
     OISScannerOutput,
     OISScannerResultRow,
 )
+
+# NOTE: meeting_pricing was removed.  The tool used linear interpolation
+# on par OIS swap rates to approximate central-bank meeting moves, which
+# produces a ramp where the market prices a step function — outputs drifted
+# visibly from Bloomberg WIRP.  Will be rebuilt on top of ingested
+# WIRP data rather than recomputed from scratch.  The CalendarProvider
+# infrastructure in rates_agent/ois/reference/ is preserved for the rebuild.
 
 __all__ = [
     # curve_spread
@@ -61,11 +60,6 @@ __all__ = [
     "OISForwardRateInput",
     "OISForwardRateOutput",
     "OISForwardRateTimeSeriesRow",
-    # meeting_pricing
-    "OISMeetingPricingCurrentMetrics",
-    "OISMeetingPricingInput",
-    "OISMeetingPricingMeetingRow",
-    "OISMeetingPricingOutput",
     # cross_market
     "OISCrossMarketSpreadCurrentMetrics",
     "OISCrossMarketSpreadInput",

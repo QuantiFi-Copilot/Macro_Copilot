@@ -11,9 +11,15 @@ Tool surface
 1. calculate_ois_rate_level_tool           — SOFR 2Y right now, z-score, range
 2. calculate_ois_curve_spread_tool         — SOFR 2s10s, ESTR 1s5s, etc.
 3. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
-4. calculate_ois_meeting_pricing_tool      — FOMC/ECB/... meeting-by-meeting pricing
-5. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
-6. scan_ois_extremes_tool                  — z-score screener across OIS universe
+4. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
+5. scan_ois_extremes_tool                  — z-score screener across OIS universe
+
+Meeting-pricing was removed: the prior implementation approximated
+central-bank meeting moves by linearly interpolating par OIS rates,
+which produces a ramp where the market prices a step function.
+Outputs drifted visibly from Bloomberg WIRP, which would immediately
+damage PM trust in the rest of the copilot.  It will be rebuilt later
+on top of ingested WIRP data.
 
 Each tool description tells the LLM:
   (a) what the tool does
@@ -47,7 +53,6 @@ from rates_agent.ois.tools.schemas import (  # noqa: E402
     OISCrossMarketSpreadInput,
     OISCurveSpreadInput,
     OISForwardRateInput,
-    OISMeetingPricingInput,
     OISRateLevelInput,
     OISScannerInput,
 )
@@ -56,9 +61,6 @@ from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
 )
 from rates_agent.ois.tools.curve_spread import calculate_ois_curve_spread  # noqa: E402
 from rates_agent.ois.tools.forward_rate import calculate_ois_forward_rate  # noqa: E402
-from rates_agent.ois.tools.meeting_pricing import (  # noqa: E402
-    calculate_ois_meeting_pricing,
-)
 from rates_agent.ois.tools.rate_level import get_ois_rate_level  # noqa: E402
 from rates_agent.ois.tools.scanner import scan_ois_extremes  # noqa: E402
 
@@ -90,10 +92,15 @@ mcp = FastMCP(
         "over a TimescaleDB database of daily OIS (Overnight Index "
         "Swap) par-rate quotes.  Use these tools to answer questions "
         "about OIS rate levels, curve spreads, forward rates, "
-        "central-bank meeting pricing, cross-currency OIS spreads, "
-        "and z-score extremes on SOFR, ESTR, SONIA, TONA, AONIA, and "
-        "CORRA curves.  Never attempt the math yourself — always call "
-        "a tool and relay its output."
+        "cross-currency OIS spreads, and z-score extremes on SOFR, "
+        "ESTR, SONIA, TONA, AONIA, and CORRA curves.  Never attempt "
+        "the math yourself — always call a tool and relay its output.  "
+        "Central-bank meeting-pricing questions (e.g. 'how many cuts "
+        "are priced for the June FOMC?') are not yet supported by this "
+        "agent — the previous approximation produced numbers that "
+        "visibly disagreed with Bloomberg WIRP.  If the user asks, "
+        "explain that meeting-pricing will return in a future release "
+        "once Bloomberg probability data is ingested."
     ),
 )
 
@@ -311,8 +318,10 @@ def calculate_ois_forward_rate_tool(
     - Custom date windows   (e.g. "Forward between Jun and Dec 2027")
 
     Do NOT use this tool for:
-    - Central-bank meeting pricing ("cuts priced for the June FOMC")
-      → use calculate_ois_meeting_pricing_tool instead.
+    - Central-bank meeting pricing ("cuts priced for the June FOMC") —
+      that capability is not yet available in this agent.  Explain to
+      the user that meeting-pricing will return once Bloomberg WIRP
+      data is ingested, rather than producing a forward-rate proxy.
 
     Parameters
     ----------
@@ -354,71 +363,7 @@ def calculate_ois_forward_rate_tool(
 
 
 # ===========================================================================
-# TOOL 4: calculate_ois_meeting_pricing
-# ===========================================================================
-@mcp.tool()
-def calculate_ois_meeting_pricing_tool(
-    central_bank: str,
-    meeting_reference: str = "next:4",
-    curve_family: str = "",
-    field_name: str = "PX_LAST",
-) -> str:
-    """Compute OIS-implied central-bank policy rates on a
-    meeting-by-meeting basis.  THE flagship OIS tool — this is what a
-    macro PM reads every morning.
-
-    For each requested meeting, returns:
-    - implied policy rate during that meeting's window (percent)
-    - cumulative bps of move priced from today through that meeting
-    - bps of move priced AT that specific meeting
-    - implied probability of a 25bp move at that meeting
-
-    Use this tool when the user asks about:
-    - Cuts/hikes priced          (e.g. "How many cuts for June FOMC?")
-    - Terminal rate              (e.g. "Where's the SOFR terminal rate?")
-    - Year-end pricing           (e.g. "What's SOFR priced by year-end?")
-    - Specific meeting pricing   (e.g. "What's priced for the Dec ECB?")
-    - Meeting-to-meeting moves   (e.g. "Show me the next 6 FOMC meetings")
-
-    Do NOT use this tool for:
-    - Non-meeting-aligned forward rates (1Y1Y, 5Y5Y)
-      → use calculate_ois_forward_rate_tool instead.
-
-    Parameters
-    ----------
-    central_bank : str
-        Canonical values: 'FED' (also 'FOMC'), 'ECB', 'BOE', 'BOJ',
-        'RBA', 'BOC'.  Case-insensitive.
-    meeting_reference : str, optional
-        Which meeting(s) to price.  'next' = the single next meeting;
-        'next:N' = the next N meetings (e.g. 'next:6'); '+N' = the Nth
-        meeting from today; 'YYYY-MM-DD' = the meeting on or nearest-
-        after that date; 'all' = every upcoming meeting in the
-        calendar.  Default 'next:4'.
-    curve_family : str, optional
-        Override the OIS curve.  Leave as "" to auto-select by central
-        bank: FED→USD_SOFR_OIS, ECB→EUR_ESTR_OIS, BOE→GBP_SONIA_OIS,
-        BOJ→JPY_OIS, RBA→AUD_OIS, BOC→CAD_OIS.
-    field_name : str, optional
-        Observation field (default 'PX_LAST').
-    """
-    kwargs = dict(
-        central_bank=central_bank,
-        meeting_reference=meeting_reference,
-        curve_family=curve_family or None,
-        field_name=field_name,
-    )
-    return _run_tool(
-        tool_name="calculate_ois_meeting_pricing_tool",
-        schema_cls=OISMeetingPricingInput,
-        tool_fn=calculate_ois_meeting_pricing,
-        kwargs=kwargs,
-        strip_time_series=False,  # this tool doesn't produce a time series
-    )
-
-
-# ===========================================================================
-# TOOL 5: calculate_ois_cross_market_spread
+# TOOL 4: calculate_ois_cross_market_spread
 # ===========================================================================
 @mcp.tool()
 def calculate_ois_cross_market_spread_tool(
@@ -476,7 +421,7 @@ def calculate_ois_cross_market_spread_tool(
 
 
 # ===========================================================================
-# TOOL 6: scan_ois_extremes
+# TOOL 5: scan_ois_extremes
 # ===========================================================================
 @mcp.tool()
 def scan_ois_extremes_tool(
