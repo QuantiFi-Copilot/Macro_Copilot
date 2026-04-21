@@ -353,6 +353,15 @@ class CopilotSession:
             total_start = time.monotonic()
             try:
                 await self._run_turn(user_message, turn_label, emit)
+            except asyncio.CancelledError:
+                # Client disconnected mid-turn.  Don't try to emit
+                # events (the queue consumer is gone anyway) — just
+                # propagate so asyncio completes the task.
+                logger.info(
+                    "[%s] turn %s cancelled mid-run",
+                    self.thread_id, turn_label,
+                )
+                raise
             except Exception as exc:
                 logger.exception(
                     "[%s] turn %s pipeline error", self.thread_id, turn_label
@@ -368,7 +377,12 @@ class CopilotSession:
                     turn_label,
                     total_ms,
                 )
-                await queue.put(_SENTINEL)
+                # Use put_nowait so this finally block can't itself be
+                # suspended during cancellation.  The queue is unbounded.
+                try:
+                    queue.put_nowait(_SENTINEL)
+                except asyncio.QueueFull:  # unreachable for unbounded queue
+                    pass
 
         task = asyncio.create_task(pipeline())
 
@@ -379,13 +393,24 @@ class CopilotSession:
                     break
                 yield item
         finally:
-            # Ensure the pipeline task is awaited even if the consumer
-            # stops early (e.g. WebSocket disconnect).
+            # If the consumer stops early (e.g. WebSocket disconnect),
+            # CANCEL the pipeline rather than waiting for it to finish.
+            # Waiting would keep burning Anthropic tokens and tool calls
+            # for a client that's already gone.  asyncio.CancelledError
+            # propagates through LangGraph's astream_events and the LLM
+            # call, terminating promptly.
             if not task.done():
+                task.cancel()
                 try:
                     await task
-                except Exception:
+                except asyncio.CancelledError:
+                    # Expected — that's what we asked for.
                     pass
+                except Exception:
+                    logger.debug(
+                        "[%s] stream pipeline raised during cancel cleanup",
+                        self.thread_id, exc_info=True,
+                    )
 
     # ------------------------------------------------------------------
     # Internal turn pipeline
