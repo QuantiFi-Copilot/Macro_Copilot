@@ -20,6 +20,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from orchestrator.contracts import Domain
+
 # ---------------------------------------------------------------------------
 # Locate and load the .env file.
 # Priority: project root → /app/.env (Docker mount) → shell env only.
@@ -95,6 +97,29 @@ MCP_SERVERS: dict = {
     #     "cwd": str(PROJECT_ROOT),
     #     "env": _MCP_SUBPROCESS_ENV,
     # },
+}
+
+
+# ===========================================================================
+# DOMAIN → MCP SERVER MAPPING
+# ===========================================================================
+# The supervisor/child architecture requires each domain child to own its
+# own MCP client instance — hard-isolation at the client level, not just
+# at the prompt level.  A child session constructed for ``Domain.OIS`` is
+# physically unable to see ``calculate_curve_spread_tool`` because that
+# tool lives on a subprocess it never connected to.
+#
+# ``langchain-mcp-adapters`` does not expose a per-server tool filter, so
+# the enforcement mechanism is: one MultiServerMCPClient per domain, each
+# initialised with only that domain's server config.
+
+DOMAIN_MCP_SERVERS: dict = {
+    Domain.SOVEREIGN_BONDS: {
+        "sovereign_bonds": MCP_SERVERS["rates_agent"],
+    },
+    Domain.OIS: {
+        "ois": MCP_SERVERS["ois_agent"],
+    },
 }
 
 

@@ -25,12 +25,9 @@ Dependencies
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
-
-from langchain_core.messages import ToolMessage
 
 # ---------------------------------------------------------------------------
 # Internal imports
@@ -64,42 +61,33 @@ def _print_banner():
     print("=" * 64 + "\n")
 
 
-def _print_tool_trace(messages: list) -> None:
+def _print_route(route: dict | None) -> None:
+    """Print the supervisor's routing decision (observability)."""
+    if not route:
+        return
+    action = route.get("action", "?")
+    domains = route.get("domains") or []
+    rationale = route.get("rationale", "")
+    pretty = f"[{action}]"
+    if domains:
+        pretty += f" → {', '.join(domains)}"
+    if rationale:
+        pretty += f"  ({rationale})"
+    print(f"  ── route ──  {pretty}\n")
+
+
+def _print_tool_trace(tool_calls: list) -> None:
     """Print a compact summary of tool calls that were executed."""
-    tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
-    if not tool_msgs:
+    if not tool_calls:
         return
 
     print("  ── tool trace ──")
-    for tm in tool_msgs:
-        try:
-            data = json.loads(tm.content)
-            if "error" in data:
-                print(f"  ⚠  {tm.name}: {data['error'][:120]}")
-            elif "current_metrics" in data:
-                m = data["current_metrics"]
-                if "spread_label" in m:
-                    print(
-                        f"  ✓  {tm.name}: "
-                        f"{m['spread_label']} = "
-                        f"{m.get('current_spread_bps', '?')} bps | "
-                        f"z = {m.get('current_z_score', 'n/a')} | "
-                        f"Δ = {m.get('daily_change_bps', 'n/a')} bps"
-                    )
-                elif "current_yield_pct" in m:
-                    print(
-                        f"  ✓  {tm.name}: "
-                        f"{m.get('curve_family', '?')} {m.get('tenor', '?')} = "
-                        f"{m.get('current_yield_pct', '?')}% | "
-                        f"z = {m.get('z_score', 'n/a')} | "
-                        f"Δ1d = {m.get('daily_change_bps', 'n/a')} bps"
-                    )
-                else:
-                    print(f"  ✓  {tm.name}: OK")
-            else:
-                print(f"  ✓  {tm.name}: OK")
-        except (json.JSONDecodeError, TypeError):
-            print(f"  ✓  {tm.name}: (raw output)")
+    for tc in tool_calls:
+        tool = tc.get("tool", "?")
+        domain = tc.get("domain", "?")
+        dur = tc.get("duration_ms")
+        dur_str = f" ({dur}ms)" if dur is not None else ""
+        print(f"  ✓  [{domain}] {tool}{dur_str}")
     print()
 
 
@@ -139,8 +127,9 @@ async def chat_loop():
                     print(f"\n  [ERROR] {exc}\n")
                     continue
 
+                _print_route(result.get("route"))
                 print(f"\nRates Agent: {result['content']}\n")
-                _print_tool_trace(result.get("messages", []))
+                _print_tool_trace(result.get("tool_calls", []))
 
         except KeyboardInterrupt:
             print("\n\nInterrupted.")
