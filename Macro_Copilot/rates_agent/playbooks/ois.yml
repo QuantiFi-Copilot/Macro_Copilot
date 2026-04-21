@@ -1119,7 +1119,7 @@ universe:
   float_leg_reset_position: In Arrears
 - ticker: JYSO1Z Curncy
   instrument_type: ois_swap
-  curve_family: JPY_TONA_OIS
+  curve_family: JPY_OIS
   country: JP
   currency: JPY
   tenor: 1W
@@ -1482,7 +1482,7 @@ universe:
   float_leg_rate_cutoff: 1 Business Days
   float_leg_reset_position: In Arrears
 - instrument_type: ois_swap
-  curve_family: AUD_AONIA_OIS
+  curve_family: AUD_OIS
   country: AU
   currency: AUD
   discounting_display: OIS
@@ -1847,7 +1847,7 @@ universe:
   tenor: 30Y
 - ticker: CDSO1Z Curncy
   instrument_type: ois_swap
-  curve_family: CAD_CORRA_OIS
+  curve_family: CAD_OIS
   country: CA
   currency: CAD
   tenor: 1W
