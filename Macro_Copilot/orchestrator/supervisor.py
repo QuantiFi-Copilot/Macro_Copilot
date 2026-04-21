@@ -256,6 +256,12 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     [ois, ois]).  We normalise rather than reject so a near-correct
     routing choice still produces a usable decision.
 
+    Every rewrite is both logged AND recorded on the returned
+    ``RouteDecision.adjustments`` list so it becomes visible to eval
+    harnesses and debug panels via the ``route_decision`` streaming
+    event.  If the adjustments list is consistently non-empty in
+    production, that's the signal the supervisor prompt needs tuning.
+
     Order of operations matters: we deduplicate FIRST so that
     ``[ois, ois]`` collapses to ``[ois]`` before we decide whether it's
     a legitimate multi_domain request.  Otherwise a duplicated list
@@ -264,6 +270,12 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     """
     action = decision.action
     domains = list(decision.domains)
+    # ``adjustments`` is a post-hoc, code-generated field.  Even though
+    # the Pydantic field description tells the LLM not to populate it,
+    # structured output can still surface whatever the model wrote.
+    # Discard anything the LLM supplied here — only real normalization
+    # notes from THIS function should appear downstream.
+    adjustments: list[str] = []
 
     # ------------------------------------------------------------------
     # Step 1: deduplicate, preserving order.
@@ -275,11 +287,12 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
             seen.add(d)
             deduped.append(d)
     if len(deduped) != len(domains):
-        logger.warning(
-            "Supervisor returned duplicate domains %s; deduped to %s.",
-            [d.value for d in domains],
-            [d.value for d in deduped],
+        note = (
+            f"deduplicated domains {[d.value for d in domains]} -> "
+            f"{[d.value for d in deduped]}"
         )
+        logger.warning("Supervisor: %s", note)
+        adjustments.append(note)
     domains = deduped
 
     # ------------------------------------------------------------------
@@ -287,32 +300,40 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     # ------------------------------------------------------------------
     if action == RouteAction.SINGLE_DOMAIN and len(domains) != 1:
         if len(domains) > 1:
-            logger.warning(
-                "Supervisor returned single_domain with %d domains; keeping first: %s",
-                len(domains),
-                domains[0].value,
+            note = (
+                f"single_domain with {len(domains)} domains; "
+                f"keeping first: {domains[0].value}"
             )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
             domains = [domains[0]]
         else:
-            logger.warning(
-                "Supervisor returned single_domain with no domains; promoting to clarify."
-            )
+            note = "single_domain with no domains; promoting to clarify"
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
             action = RouteAction.CLARIFY
             domains = []
 
     if action == RouteAction.MULTI_DOMAIN and len(domains) < 2:
-        logger.warning(
-            "Supervisor returned multi_domain with %d unique domain(s) after dedup; "
-            "demoting.",
-            len(domains),
-        )
         if len(domains) == 1:
+            note = (
+                f"multi_domain with 1 unique domain ({domains[0].value}) "
+                f"after dedup; demoting to single_domain"
+            )
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
             action = RouteAction.SINGLE_DOMAIN
         else:
+            note = "multi_domain with no domains; demoting to clarify"
+            logger.warning("Supervisor: %s", note)
+            adjustments.append(note)
             action = RouteAction.CLARIFY
 
-    if action == RouteAction.CLARIFY:
+    if action == RouteAction.CLARIFY and domains:
         # Clarify path should not carry domains; null them out for clarity.
+        note = f"clarify with domains {[d.value for d in domains]}; clearing"
+        logger.warning("Supervisor: %s", note)
+        adjustments.append(note)
         domains = []
 
     return RouteDecision(
@@ -320,6 +341,7 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
         domains=domains,
         rationale=decision.rationale,
         clarification_question=decision.clarification_question,
+        adjustments=adjustments,
     )
 
 

@@ -447,6 +447,11 @@ class CopilotSession:
                     "action": decision.action.value,
                     "domains": [d.value for d in decision.domains],
                     "rationale": decision.rationale,
+                    # ``adjustments`` is populated by _normalise_route_decision
+                    # when the raw LLM output had to be repaired.  Empty list
+                    # = clean JSON from the supervisor.  Consistently
+                    # non-empty across turns = supervisor prompt needs work.
+                    "adjustments": list(decision.adjustments),
                 },
             )
         )

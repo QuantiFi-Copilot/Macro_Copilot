@@ -95,6 +95,17 @@ class RouteDecision(BaseModel):
             "as a senior PM would phrase it."
         ),
     )
+    adjustments: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Post-hoc normalisation notes appended by the code — NOT produced "
+            "by the supervisor LLM.  Populated when the raw LLM output had to "
+            "be repaired (duplicate domains, action/length mismatch, etc.). "
+            "Surfaced in the ``route_decision`` streaming event so an eval "
+            "harness or debug panel can detect drift in the supervisor's JSON "
+            "without scraping logs."
+        ),
+    )
 
 
 # ============================================================================
