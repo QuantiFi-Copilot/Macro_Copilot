@@ -252,15 +252,41 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     """Enforce internal consistency between action and domains.
 
     The model occasionally returns an action/domains mismatch (e.g.
-    single_domain with two domains).  We normalise rather than reject so a
-    near-correct routing choice still produces a usable decision.
+    single_domain with two domains, or multi_domain with duplicates like
+    [ois, ois]).  We normalise rather than reject so a near-correct
+    routing choice still produces a usable decision.
+
+    Order of operations matters: we deduplicate FIRST so that
+    ``[ois, ois]`` collapses to ``[ois]`` before we decide whether it's
+    a legitimate multi_domain request.  Otherwise a duplicated list
+    survives the length check and we'd pay synthesis overhead (and
+    suppress tokens) for what is effectively a single-domain query.
     """
     action = decision.action
     domains = list(decision.domains)
 
+    # ------------------------------------------------------------------
+    # Step 1: deduplicate, preserving order.
+    # ------------------------------------------------------------------
+    seen: set = set()
+    deduped: list = []
+    for d in domains:
+        if d not in seen:
+            seen.add(d)
+            deduped.append(d)
+    if len(deduped) != len(domains):
+        logger.warning(
+            "Supervisor returned duplicate domains %s; deduped to %s.",
+            [d.value for d in domains],
+            [d.value for d in deduped],
+        )
+    domains = deduped
+
+    # ------------------------------------------------------------------
+    # Step 2: reconcile action with the (deduped) domain count.
+    # ------------------------------------------------------------------
     if action == RouteAction.SINGLE_DOMAIN and len(domains) != 1:
         if len(domains) > 1:
-            # Keep the first domain, log the demotion.
             logger.warning(
                 "Supervisor returned single_domain with %d domains; keeping first: %s",
                 len(domains),
@@ -276,7 +302,8 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
 
     if action == RouteAction.MULTI_DOMAIN and len(domains) < 2:
         logger.warning(
-            "Supervisor returned multi_domain with %d domain(s); demoting to single_domain.",
+            "Supervisor returned multi_domain with %d unique domain(s) after dedup; "
+            "demoting.",
             len(domains),
         )
         if len(domains) == 1:
@@ -287,15 +314,6 @@ def _normalise_route_decision(decision: RouteDecision) -> RouteDecision:
     if action == RouteAction.CLARIFY:
         # Clarify path should not carry domains; null them out for clarity.
         domains = []
-
-    # Deduplicate while preserving order.
-    seen: set = set()
-    deduped: list = []
-    for d in domains:
-        if d not in seen:
-            seen.add(d)
-            deduped.append(d)
-    domains = deduped
 
     return RouteDecision(
         action=action,
