@@ -397,7 +397,7 @@ class DomainAgentSession:
         ]
         workspace_context = extract_workspace_context(trace_dicts)
 
-        status, follow_up_question = _classify_status(
+        status, follow_up_question, error_message = _classify_status(
             answer_markdown=answer_markdown,
             tool_calls=tool_calls_seen,
             raw_tool_outputs=raw_tool_outputs,
@@ -421,6 +421,7 @@ class DomainAgentSession:
             workspace_context=workspace_context,
             tool_trace=tool_calls_seen,
             follow_up_question=follow_up_question,
+            error_message=error_message,
         )
 
 
@@ -631,14 +632,16 @@ def _classify_status(
     answer_markdown: str,
     tool_calls: list[ChildToolCallTrace],
     raw_tool_outputs: list[tuple[str, dict, str]],
-) -> tuple[ChildStatus, Optional[str]]:
+) -> tuple[ChildStatus, Optional[str], Optional[str]]:
     """Deterministic post-hoc classification of a child run.
 
     Rules (no LLM call — latency-free on the hot path):
 
     1. If at least one tool call returned a non-error payload, the child
        did meaningful work → OK.
-    2. If tool calls were made but every one returned an error → ERROR.
+    2. If tool calls were made but every one returned an error → ERROR,
+       with ``error_message`` aggregated from the per-tool error strings
+       so the supervisor's synthesis step has actionable context.
     3. If no tool calls were made and the answer is empty → ERROR.
     4. If no tool calls were made and the answer contains an
        out-of-scope signal → OUT_OF_SCOPE.
@@ -650,13 +653,16 @@ def _classify_status(
 
     Returns
     -------
-    (status, follow_up_question)
-        ``follow_up_question`` is populated only for NEEDS_CLARIFICATION.
+    (status, follow_up_question, error_message)
+        - ``follow_up_question`` is populated only for NEEDS_CLARIFICATION.
+        - ``error_message`` is populated for ERROR paths (both
+          all-tools-errored and empty-answer cases).
     """
-    # Count successful vs errored tool outputs.
+    # Count successful vs errored tool outputs, capturing error strings.
     successful = 0
     errored = 0
-    for _, _, raw in raw_tool_outputs:
+    tool_errors: list[str] = []
+    for tool_name, _params, raw in raw_tool_outputs:
         if not raw:
             continue
         try:
@@ -667,53 +673,91 @@ def _classify_status(
             continue
         if "error" in payload:
             errored += 1
+            err_text = str(payload.get("error", "")).strip()
+            if err_text:
+                tool_errors.append(f"{tool_name}: {err_text}")
+            else:
+                tool_errors.append(f"{tool_name}: (unspecified error)")
         else:
             successful += 1
 
     # Rule 1: any successful tool → trust the child's answer.
     if successful > 0:
-        return ChildStatus.OK, None
+        return ChildStatus.OK, None, None
 
     # Rule 2: tools were called but none succeeded → ERROR.
     if tool_calls and errored == len(tool_calls) and errored > 0:
-        return ChildStatus.ERROR, None
+        error_summary = _summarise_tool_errors(tool_errors)
+        return ChildStatus.ERROR, None, error_summary
 
     # Rule 3: no tools and empty answer → ERROR.
     cleaned = answer_markdown.strip()
     if not cleaned:
-        return ChildStatus.ERROR, None
+        return (
+            ChildStatus.ERROR,
+            None,
+            "The specialist produced no answer and called no tools.",
+        )
 
     lowered = cleaned.lower()
 
     # Rule 4: out-of-scope prose signals.
     for signal in _OUT_OF_SCOPE_SIGNALS:
         if signal in lowered:
-            return ChildStatus.OUT_OF_SCOPE, None
+            return ChildStatus.OUT_OF_SCOPE, None, None
 
     # Rule 5: clarification signals or a trailing question.
     for signal in _CLARIFICATION_SIGNALS:
         if signal in lowered:
-            return ChildStatus.NEEDS_CLARIFICATION, _extract_last_question(cleaned)
+            return (
+                ChildStatus.NEEDS_CLARIFICATION,
+                _extract_last_question(cleaned),
+                None,
+            )
 
     if cleaned.endswith("?"):
-        return ChildStatus.NEEDS_CLARIFICATION, _extract_last_question(cleaned)
+        return (
+            ChildStatus.NEEDS_CLARIFICATION,
+            _extract_last_question(cleaned),
+            None,
+        )
 
     # Rule 6: default OK.
-    return ChildStatus.OK, None
+    return ChildStatus.OK, None, None
+
+
+def _summarise_tool_errors(tool_errors: list[str]) -> str:
+    """Compact, readable aggregation of per-tool error strings, bounded
+    so a runaway child's error list doesn't explode the synthesis prompt.
+    """
+    if not tool_errors:
+        return "All tool calls failed with no error message."
+    if len(tool_errors) == 1:
+        return tool_errors[0]
+    # Cap each entry and the number of entries.
+    capped = [e[:240] for e in tool_errors[:4]]
+    suffix = ""
+    if len(tool_errors) > 4:
+        suffix = f" (+{len(tool_errors) - 4} more)"
+    return "; ".join(capped) + suffix
 
 
 def _extract_last_question(text: str) -> Optional[str]:
     """Pull the last question-like sentence out of a response for use as
     ``follow_up_question``.
 
-    Looks at the final '?' and walks back to the nearest sentence boundary
-    (., !, ?, or newline) to get a clean single-sentence question.
+    Looks at the final '?' and walks back to the nearest sentence
+    boundary — including a prior '?' — to get a single trailing question.
+    Example: for "JGB cash or JPY OIS? Which one do you mean?" this
+    returns "Which one do you mean?" rather than the whole string.
     """
     if "?" not in text:
         return None
     end = text.rfind("?") + 1
     start = 0
-    for sep in (".", "!", "\n"):
+    # Include '?' in the separators so multi-question replies return only
+    # the trailing question, not the earlier ones.
+    for sep in (".", "!", "?", "\n"):
         idx = text.rfind(sep, 0, end - 1)
         if idx > start:
             start = idx + 1
