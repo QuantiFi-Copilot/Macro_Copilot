@@ -1,206 +1,97 @@
 """
-orchestrator/session.py — Copilot Session Manager
-====================================================
+orchestrator/session.py — Copilot Session Orchestrator
+=========================================================
 
-Encapsulates the lifecycle of a single copilot conversation session:
+The top-level session lifecycle.  Composes the three layers of the
+manager/supervisor architecture:
 
-    1. Start MCP subprocess(es) and discover tools.
-    2. Build the LangGraph state machine with those tools.
-    3. Handle multi-turn conversation with memory.
-    4. Clean up MCP subprocess(es) on close.
+    User  ↔  CopilotSession
+                  │
+                  ├─► Supervisor (no tools; picks domain(s); synthesises)
+                  │
+                  └─► Child domain agents (own tools; own tool loop)
+                          ├─► DomainAgentSession(sovereign_bonds)
+                          └─► DomainAgentSession(ois)
 
-This is the reusable core that both the CLI REPL (graph.py) and the
-WebSocket endpoint (api/routes/chat.py) consume.  Neither of them
-manages MCP subprocesses directly.
+Public API (preserved from the pre-supervisor implementation so that
+``api/routes/chat.py`` and ``orchestrator/graph.py`` keep working):
 
-Cost optimisation
------------------
-Two key mechanisms reduce Anthropic API costs:
+    async with CopilotSession(thread_id=..., stateless=True) as s:
+        async for event in s.stream("What's UST 2s10s?"):
+            ...
+        result = await s.invoke("Where is SOFR 2Y?")
+        #  result = {"content": "...", "tool_calls": [...],
+        #            "workspace_context": {...}|None, "messages": []}
 
-1.  **Explicit prompt caching** — The system prompt is structured as a
-    content block with ``cache_control``, placing the cache breakpoint
-    on the last *static* content.  Anthropic caches ``tools + system``
-    (the stable prefix) and reads from cache on subsequent calls.
-    The changing user message sits *after* the breakpoint and is not
-    cached — which is correct.  See:
-    https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+Streaming event contract — the frontend receives these event types in
+order per user turn:
 
-2.  **Stateless turns** — In deterministic mode (default), each user
-    turn gets a unique ``thread_id`` so the checkpointer does not load
-    prior conversation history.  Each call sends only
-    ``[system + current_message]`` instead of the growing transcript.
+    status            {"status": "routing"}
+    route_decision    {"action", "domains", "rationale"}
+    status            {"status": "thinking"}          # single-domain or first fan-out
+    child_started     {"domain"}
+    tool_call         {"tool", "label", "params", "domain"}
+    tool_result       {"tool", "domain", "duration_ms"}
+    token             {"content"}                     # streams child prose in single-domain,
+                                                      #   OR synthesis prose in multi-domain
+    child_finished    {"domain", "status", "duration_ms"}
+    synthesis_started {}                              # only in multi-domain path
+    clarification     {"question"}                    # only in clarify path
+    done              {"workspace_context", "tool_calls", "total_duration_ms"}
+    error             {"message"}
+
+Cost discipline
+---------------
+- Three distinct LLM system prompts are cached with ephemeral breakpoints:
+  supervisor route, each domain child, and synthesis.  First call of each
+  creates cache; subsequent calls in the session read at 10% cost.
+- Stateless turns (default) give each user turn a unique LangGraph
+  ``thread_id`` per child so conversation history doesn't accumulate in
+  the checkpointer.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Optional
-
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import (
-    AIMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from typing import AsyncIterator, Optional
 
 from orchestrator.config import (
+    DOMAIN_MCP_SERVERS,
+    LLM_MAX_TOKENS,
     LLM_MODEL,
     LLM_TEMPERATURE,
-    LLM_MAX_TOKENS,
-    MCP_SERVERS,
 )
-from orchestrator.prompts import RATES_AGENT_SYSTEM_PROMPT
+from orchestrator.contracts import (
+    ChildResponse,
+    ChildStatus,
+    Domain,
+    RouteAction,
+    RouteDecision,
+)
+from orchestrator.domain_agent import DomainAgentSession
+from orchestrator.events import SessionEvent, extract_workspace_context
+from orchestrator.prompts import (
+    OIS_SYSTEM_PROMPT,
+    SOVEREIGN_BONDS_SYSTEM_PROMPT,
+)
+from orchestrator.supervisor import Supervisor
 
 logger = logging.getLogger("orchestrator.session")
 
 
 # ============================================================================
-# PROMPT CACHING — EXPLICIT BLOCK-LEVEL BREAKPOINT
+# DOMAIN → SYSTEM PROMPT MAPPING
 # ============================================================================
-# The system prompt is structured as a content block list with an explicit
-# cache_control breakpoint.  Anthropic caches the full prefix in order:
-#   tools → system → messages
-# By placing cache_control on the system block, we cache tools + system.
-# The user message (which changes every request) is AFTER the breakpoint
-# and is NOT cached.
-#
-# This avoids the "common mistake" documented by Anthropic where automatic
-# caching places the breakpoint on the last (changing) block and never
-# gets cache reads across different questions.
+# Single source of truth for which prompt each child agent uses.  Adding a
+# new domain = add entry here + in DOMAIN_MCP_SERVERS + in contracts.Domain.
 
-CACHED_SYSTEM_MESSAGE = SystemMessage(
-    content=[
-        {
-            "type": "text",
-            "text": RATES_AGENT_SYSTEM_PROMPT,
-            "cache_control": {"type": "ephemeral"},
-        }
-    ]
-)
-
-
-# ============================================================================
-# USAGE LOGGING
-# ============================================================================
-
-def _log_usage(response) -> None:
-    """Log token usage from an Anthropic model response.
-
-    After implementing caching, you should see:
-      - First call:  cache_create > 0, cache_read = 0
-      - Later calls: cache_create = 0, cache_read > 0
-
-    If you only see input_tokens with no cache fields, the cache
-    breakpoint is not being honoured (check langchain-anthropic version).
-    """
-    meta = getattr(response, "usage_metadata", None)
-    if not meta:
-        return
-
-    # usage_metadata may be a dict or a TypedDict-like object
-    if not isinstance(meta, dict):
-        try:
-            meta = dict(meta)
-        except (TypeError, ValueError):
-            return
-
-    input_details = meta.get("input_token_details", {}) or {}
-
-    logger.info(
-        "Token usage: input=%s output=%s cache_create=%s cache_read=%s",
-        meta.get("input_tokens"),
-        meta.get("output_tokens"),
-        input_details.get("cache_creation"),
-        input_details.get("cache_read"),
-    )
-
-
-# ============================================================================
-# STREAMING EVENT TYPES
-# ============================================================================
-
-@dataclass
-class SessionEvent:
-    """A typed event emitted during streaming."""
-
-    type: str
-    data: dict = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        return {"type": self.type, **self.data}
-
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict(), default=str)
-
-
-# ============================================================================
-# WORKSPACE CONTEXT DETECTION
-# ============================================================================
-
-_WORKSPACE_TOOLS = {
-    "calculate_curve_spread_tool",
-    "calculate_cross_market_spread_tool",
-    "calculate_butterfly_tool",
-    "scan_extremes_tool",
-    "calculate_ois_curve_spread_tool",
+_DOMAIN_PROMPTS: dict[Domain, str] = {
+    Domain.SOVEREIGN_BONDS: SOVEREIGN_BONDS_SYSTEM_PROMPT,
+    Domain.OIS: OIS_SYSTEM_PROMPT,
 }
-
-_TOOL_LABEL_TEMPLATES = {
-    "calculate_curve_spread_tool": lambda p: (
-        f"Fetching {p.get('curve_family', '?')} "
-        f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
-    ),
-    "calculate_ois_curve_spread_tool": lambda p: (
-        f"Fetching OIS {p.get('curve_family', '?')} "
-        f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
-    ),
-    "calculate_cross_market_spread_tool": lambda p: (
-        f"Computing {p.get('curve_family_1', '?')}-{p.get('curve_family_2', '?')} "
-        f"{p.get('tenor', '10Y')} spread"
-    ),
-    "calculate_butterfly_tool": lambda p: (
-        f"Computing {p.get('curve_family', '?')} "
-        f"{p.get('short_tenor', '2Y')}/{p.get('belly_tenor', '5Y')}/{p.get('long_tenor', '10Y')} butterfly"
-    ),
-    "classify_curve_regime_tool": lambda p: (
-        f"Classifying {p.get('curve_family', '?')} "
-        f"{p.get('lookback_period', '1d')} regime"
-    ),
-    "scan_extremes_tool": lambda p: "Scanning for z-score extremes",
-    "get_yield_levels_tool": lambda p: (
-        f"Fetching {p.get('curve_family', '?')} {p.get('tenor', '?')} yield"
-    ),
-}
-
-
-def _make_tool_label(tool_name: str, params: dict) -> str:
-    template = _TOOL_LABEL_TEMPLATES.get(tool_name)
-    if template:
-        try:
-            return template(params)
-        except Exception:
-            pass
-    return f"Running {tool_name}"
-
-
-def _extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
-    workspace_items = [
-        {"tool": tc["tool"], "params": tc["params"]}
-        for tc in tool_calls
-        if tc["tool"] in _WORKSPACE_TOOLS
-    ]
-    if not workspace_items:
-        return None
-    return {"tools": workspace_items, "tool_count": len(workspace_items)}
 
 
 # ============================================================================
@@ -208,44 +99,34 @@ def _extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
 # ============================================================================
 
 class CopilotSession:
-    """Manages one copilot conversation session.
+    """One copilot conversation session.
 
-    Use as an async context manager::
-
-        async with CopilotSession() as session:
-            async for event in session.stream("Hello"):
-                ...
+    Owns:
+      - one Supervisor (no tools)
+      - one DomainAgentSession per domain (each with its own MCP subprocess)
 
     Parameters
     ----------
-    thread_id : str, optional
-        Session identifier.  Auto-generated if not provided.
+    thread_id : Optional[str]
+        Session id.  Auto-generated if omitted.
     stateless : bool, default True
-        When True (deterministic mode), each user turn starts with a
-        clean slate — no prior conversation history.  Set to False
-        for future "intelligence mode" with multi-turn context.
+        When True, each user turn gets a unique checkpointer thread_id
+        per child so prior history doesn't accumulate in context.  Set
+        False only for future "intelligence mode" multi-turn work.
     """
 
-    def __init__(self, thread_id: str | None = None, stateless: bool = True):
+    def __init__(self, thread_id: Optional[str] = None, stateless: bool = True):
         self.thread_id = thread_id or f"ws-{uuid.uuid4().hex[:12]}"
         self.stateless = stateless
         self._turn_counter = 0
-        self._mcp_client: MultiServerMCPClient | None = None
-        self._graph = None
-        self._config = {"configurable": {"thread_id": self.thread_id}}
+
+        self._supervisor: Supervisor | None = None
+        self._children: dict[Domain, DomainAgentSession] = {}
         self._is_open = False
 
-    def _get_turn_config(self) -> dict:
-        """Return the LangGraph config for the current turn.
-
-        Stateless: unique thread_id per turn (no history accumulation).
-        Stateful: shared thread_id (history grows across turns).
-        """
-        if self.stateless:
-            self._turn_counter += 1
-            turn_id = f"{self.thread_id}-turn-{self._turn_counter}"
-            return {"configurable": {"thread_id": turn_id}}
-        return self._config
+    # ------------------------------------------------------------------
+    # Context manager
+    # ------------------------------------------------------------------
 
     async def __aenter__(self) -> "CopilotSession":
         await self.open()
@@ -254,222 +135,635 @@ class CopilotSession:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
     async def open(self) -> None:
-        """Start MCP subprocesses and build the graph."""
+        """Build the supervisor and spawn all domain children concurrently.
+
+        Running the children's ``open()`` in parallel cuts startup latency
+        roughly in half (two MCP subprocesses spawn simultaneously instead
+        of sequentially).
+        """
         if self._is_open:
             return
 
-        logger.info("[%s] Starting MCP subprocesses...", self.thread_id)
-        self._mcp_client = MultiServerMCPClient(MCP_SERVERS)
-        tools = await self._mcp_client.get_tools()
+        logger.info("[%s] opening copilot session", self.thread_id)
 
-        tool_names = [t.name for t in tools]
-        logger.info("[%s] MCP tools discovered: %s", self.thread_id, tool_names)
-
-        if not tools:
-            raise RuntimeError("No tools discovered from MCP servers.")
-
-        # Build LLM with tools — no model_kwargs for caching here.
-        # Caching is handled by the explicit breakpoint on
-        # CACHED_SYSTEM_MESSAGE (see module-level constant).
-        model = ChatAnthropic(
-            model=LLM_MODEL,
+        self._supervisor = Supervisor(
+            model_name=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS,
         )
-        model_with_tools = model.bind_tools(tools)
 
-        # Build graph
-        async def agent_node(state: MessagesState) -> dict:
-            messages_for_model = [CACHED_SYSTEM_MESSAGE] + state["messages"]
-            response = await model_with_tools.ainvoke(messages_for_model)
-            _log_usage(response)
-            return {"messages": [response]}
+        for domain in Domain:
+            if domain not in DOMAIN_MCP_SERVERS:
+                logger.warning(
+                    "[%s] domain %s has no MCP server config; skipping.",
+                    self.thread_id,
+                    domain.value,
+                )
+                continue
+            if domain not in _DOMAIN_PROMPTS:
+                logger.warning(
+                    "[%s] domain %s has no system prompt; skipping.",
+                    self.thread_id,
+                    domain.value,
+                )
+                continue
+            self._children[domain] = DomainAgentSession(
+                domain=domain,
+                system_prompt=_DOMAIN_PROMPTS[domain],
+                mcp_servers=DOMAIN_MCP_SERVERS[domain],
+                model_name=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS,
+            )
 
-        tool_node = ToolNode(tools)
+        if not self._children:
+            raise RuntimeError("No domain children could be constructed.")
 
-        builder = StateGraph(MessagesState)
-        builder.add_node("rates_agent", agent_node)
-        builder.add_node("tools", tool_node)
-        builder.add_edge(START, "rates_agent")
-        builder.add_conditional_edges("rates_agent", tools_condition)
-        builder.add_edge("tools", "rates_agent")
-
-        memory = MemorySaver()
-        self._graph = builder.compile(checkpointer=memory)
+        # Open all children in parallel.  If any fails, close those that
+        # succeeded before propagating the error.
+        open_tasks = [child.open() for child in self._children.values()]
+        results = await asyncio.gather(*open_tasks, return_exceptions=True)
+        failures = [r for r in results if isinstance(r, BaseException)]
+        if failures:
+            logger.error(
+                "[%s] %d child(ren) failed to open; closing those that succeeded.",
+                self.thread_id,
+                len(failures),
+            )
+            await self._close_children_quiet()
+            raise failures[0]
 
         self._is_open = True
-        logger.info("[%s] Session ready.", self.thread_id)
+        logger.info(
+            "[%s] session ready with domains: %s",
+            self.thread_id,
+            [d.value for d in self._children.keys()],
+        )
 
     async def close(self) -> None:
-        """Shut down MCP subprocesses and release resources."""
+        """Shut down all child MCP subprocesses."""
         if not self._is_open:
             return
 
-        logger.info("[%s] Closing session...", self.thread_id)
-
-        if self._mcp_client is not None:
-            try:
-                if hasattr(self._mcp_client, "__aexit__"):
-                    await self._mcp_client.__aexit__(None, None, None)
-                elif hasattr(self._mcp_client, "close"):
-                    await self._mcp_client.close()
-            except Exception:
-                logger.debug("[%s] MCP client cleanup exception (non-fatal)",
-                             self.thread_id, exc_info=True)
-            self._mcp_client = None
-
-        self._graph = None
+        logger.info("[%s] closing session", self.thread_id)
+        await self._close_children_quiet()
+        self._children = {}
+        self._supervisor = None
         self._is_open = False
-        logger.info("[%s] Session closed.", self.thread_id)
+
+    async def _close_children_quiet(self) -> None:
+        """Close children in parallel, swallowing individual failures."""
+        if not self._children:
+            return
+        close_tasks = [child.close() for child in self._children.values()]
+        await asyncio.gather(*close_tasks, return_exceptions=True)
 
     # ------------------------------------------------------------------
-    # Non-streaming invoke (for CLI and simple use cases)
+    # Non-streaming invoke (used by the CLI REPL)
     # ------------------------------------------------------------------
 
     async def invoke(self, user_message: str) -> dict:
-        """Send a message and get the full response."""
-        if not self._is_open:
-            raise RuntimeError("Session is not open.")
+        """Drain a single turn's event stream into a result dict.
 
-        turn_config = self._get_turn_config()
-        result = await self._graph.ainvoke(
-            {"messages": [HumanMessage(content=user_message)]},
-            turn_config,
-        )
+        Returns
+        -------
+        dict
+            Keys:
+              - ``content``            final answer string for the user
+              - ``tool_calls``         list of {tool, domain, duration_ms}
+              - ``workspace_context``  dict or None
+              - ``messages``           always [] in the new architecture;
+                                       retained for legacy callers
+              - ``route``              dict with action / domains / rationale
+              - ``clarification``      str if route=clarify else None
+        """
+        content_parts: list[str] = []
+        tool_calls: list[dict] = []
+        workspace_context: Optional[dict] = None
+        route_info: Optional[dict] = None
+        clarification: Optional[str] = None
 
-        ai_message = result["messages"][-1]
-        tool_msgs = [
-            m for m in result["messages"]
-            if isinstance(m, ToolMessage)
-        ]
-
-        tool_calls = []
-        for tm in tool_msgs:
-            tool_calls.append({
-                "tool": tm.name,
-                "params": {},
-                "duration_ms": None,
-            })
+        async for event in self.stream(user_message):
+            if event.type == "token":
+                piece = event.data.get("content", "")
+                if piece:
+                    content_parts.append(piece)
+            elif event.type == "tool_result":
+                tool_calls.append(
+                    {
+                        "tool": event.data.get("tool"),
+                        "domain": event.data.get("domain"),
+                        "duration_ms": event.data.get("duration_ms"),
+                    }
+                )
+            elif event.type == "route_decision":
+                route_info = dict(event.data)
+            elif event.type == "clarification":
+                clarification = event.data.get("question")
+            elif event.type == "done":
+                workspace_context = event.data.get("workspace_context")
+            elif event.type == "error":
+                # Surface the error in the content so the CLI sees it.
+                content_parts.append(
+                    f"\n[ERROR] {event.data.get('message', 'unknown error')}"
+                )
 
         return {
-            "content": ai_message.content,
+            "content": "".join(content_parts).strip(),
             "tool_calls": tool_calls,
-            "workspace_context": _extract_workspace_context(tool_calls),
-            "messages": result["messages"],
+            "workspace_context": workspace_context,
+            "messages": [],
+            "route": route_info,
+            "clarification": clarification,
         }
 
     # ------------------------------------------------------------------
-    # Streaming (for WebSocket)
+    # Streaming (used by the WebSocket)
     # ------------------------------------------------------------------
 
     async def stream(self, user_message: str) -> AsyncIterator[SessionEvent]:
-        """Stream events for a single user turn."""
+        """Stream all events for one user turn through a single ordered
+        channel.
+
+        The pipeline runs in a background task and pushes events into an
+        ``asyncio.Queue``; this method yields them to the caller in
+        arrival order.  The queue serialises emissions from concurrent
+        children during multi-domain fan-out, which is important because
+        a WebSocket cannot have concurrent writes.
+        """
         if not self._is_open:
             raise RuntimeError("Session is not open.")
+        if self._supervisor is None:
+            raise RuntimeError("Supervisor not initialised.")
 
-        yield SessionEvent(type="status", data={"status": "thinking"})
+        self._turn_counter += 1
+        turn_label = f"turn-{self._turn_counter}"
 
-        tool_calls_seen: list[dict] = []
-        current_tool_start: float | None = None
-        current_tool_name: str | None = None
-        current_tool_params: dict = {}
-        tools_were_called = False
-        token_started = False
-        total_start = time.monotonic()
-        turn_config = self._get_turn_config()
+        queue: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
+
+        async def emit(event: SessionEvent) -> None:
+            await queue.put(event)
+
+        async def pipeline() -> None:
+            total_start = time.monotonic()
+            try:
+                await self._run_turn(user_message, turn_label, emit)
+            except Exception as exc:
+                logger.exception(
+                    "[%s] turn %s pipeline error", self.thread_id, turn_label
+                )
+                await emit(
+                    SessionEvent(type="error", data={"message": str(exc)})
+                )
+            finally:
+                total_ms = round((time.monotonic() - total_start) * 1000)
+                logger.info(
+                    "[%s] turn %s complete in %dms",
+                    self.thread_id,
+                    turn_label,
+                    total_ms,
+                )
+                await queue.put(_SENTINEL)
+
+        task = asyncio.create_task(pipeline())
 
         try:
-            async for event in self._graph.astream_events(
-                {"messages": [HumanMessage(content=user_message)]},
-                config=turn_config,
-                version="v2",
-            ):
-                kind = event.get("event", "")
-                name = event.get("name", "")
-                data = event.get("data", {})
+            while True:
+                item = await queue.get()
+                if item is _SENTINEL:
+                    break
+                yield item
+        finally:
+            # Ensure the pipeline task is awaited even if the consumer
+            # stops early (e.g. WebSocket disconnect).
+            if not task.done():
+                try:
+                    await task
+                except Exception:
+                    pass
 
-                # Tool call starts
-                if kind == "on_tool_start":
-                    tools_were_called = True
-                    current_tool_name = name
-                    current_tool_start = time.monotonic()
+    # ------------------------------------------------------------------
+    # Internal turn pipeline
+    # ------------------------------------------------------------------
 
-                    tool_input = data.get("input", {})
-                    if isinstance(tool_input, str):
-                        try:
-                            tool_input = json.loads(tool_input)
-                        except (json.JSONDecodeError, TypeError):
-                            tool_input = {}
-                    current_tool_params = tool_input if isinstance(tool_input, dict) else {}
+    async def _run_turn(
+        self,
+        user_message: str,
+        turn_label: str,
+        emit,
+    ) -> None:
+        """End-to-end orchestration for one user turn.
 
-                    label = _make_tool_label(name, current_tool_params)
-                    yield SessionEvent(
-                        type="tool_call",
-                        data={"tool": name, "label": label, "params": current_tool_params},
-                    )
+        Steps:
+          1. emit ``status=routing`` and get the RouteDecision from the
+             supervisor.
+          2. emit ``route_decision`` with action/domains/rationale.
+          3. Branch: clarify, single_domain, or multi_domain.
+          4. emit ``done`` with workspace_context and tool_calls from
+             whichever children ran.
+        """
+        turn_start = time.monotonic()
 
-                # Tool call completes
-                elif kind == "on_tool_end":
-                    duration_ms = None
-                    if current_tool_start is not None:
-                        duration_ms = round((time.monotonic() - current_tool_start) * 1000)
+        # ------------------------------------------------------------------
+        # 1. Supervisor routing
+        # ------------------------------------------------------------------
+        await emit(SessionEvent(type="status", data={"status": "routing"}))
 
-                    tool_calls_seen.append({
-                        "tool": current_tool_name or name,
-                        "params": current_tool_params,
-                        "duration_ms": duration_ms,
-                    })
-
-                    yield SessionEvent(
-                        type="tool_result",
-                        data={"tool": current_tool_name or name, "duration_ms": duration_ms},
-                    )
-
-                    current_tool_name = None
-                    current_tool_start = None
-                    current_tool_params = {}
-
-                # LLM token streaming
-                elif kind == "on_chat_model_stream":
-                    chunk = data.get("chunk")
-                    if chunk is None:
-                        continue
-
-                    content = ""
-                    if hasattr(chunk, "content"):
-                        if isinstance(chunk.content, str):
-                            content = chunk.content
-                        elif isinstance(chunk.content, list):
-                            for block in chunk.content:
-                                if isinstance(block, dict) and block.get("type") == "text":
-                                    content += block.get("text", "")
-                                elif isinstance(block, str):
-                                    content += block
-
-                    if content:
-                        if not token_started and tools_were_called:
-                            yield SessionEvent(type="status", data={"status": "synthesising"})
-                        token_started = True
-                        yield SessionEvent(type="token", data={"content": content})
-
+        try:
+            decision: RouteDecision = await self._supervisor.route(user_message)
         except Exception as exc:
-            logger.exception("[%s] Stream error", self.thread_id)
-            yield SessionEvent(type="error", data={"message": str(exc)})
+            logger.exception(
+                "[%s] %s supervisor route failed", self.thread_id, turn_label
+            )
+            await emit(
+                SessionEvent(
+                    type="error",
+                    data={"message": f"Routing failed: {exc}"},
+                )
+            )
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": [],
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
             return
 
-        # Done
-        total_ms = round((time.monotonic() - total_start) * 1000)
-        workspace_ctx = _extract_workspace_context(tool_calls_seen)
-
-        yield SessionEvent(
-            type="done",
-            data={
-                "workspace_context": workspace_ctx,
-                "tool_calls": [
-                    {"tool": tc["tool"], "duration_ms": tc["duration_ms"]}
-                    for tc in tool_calls_seen
-                ],
-                "total_duration_ms": total_ms,
-            },
+        await emit(
+            SessionEvent(
+                type="route_decision",
+                data={
+                    "action": decision.action.value,
+                    "domains": [d.value for d in decision.domains],
+                    "rationale": decision.rationale,
+                },
+            )
         )
+
+        # ------------------------------------------------------------------
+        # 2. Branch by action
+        # ------------------------------------------------------------------
+        if decision.action == RouteAction.CLARIFY:
+            question = (
+                decision.clarification_question
+                or "Could you clarify which market you're asking about?"
+            )
+            await emit(
+                SessionEvent(type="clarification", data={"question": question})
+            )
+            # Also stream the question as tokens so the chat UI renders it
+            # as a normal assistant reply.
+            await emit(SessionEvent(type="token", data={"content": question}))
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": [],
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
+            return
+
+        # Validate that every routed domain has an open child.
+        missing = [d for d in decision.domains if d not in self._children]
+        if missing:
+            msg = (
+                f"Routing selected domain(s) with no open child: "
+                f"{[d.value for d in missing]}"
+            )
+            logger.error("[%s] %s %s", self.thread_id, turn_label, msg)
+            await emit(SessionEvent(type="error", data={"message": msg}))
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": [],
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
+            return
+
+        if decision.action == RouteAction.SINGLE_DOMAIN:
+            await self._run_single_domain(
+                user_message=user_message,
+                domain=decision.domains[0],
+                turn_label=turn_label,
+                turn_start=turn_start,
+                emit=emit,
+            )
+            return
+
+        # MULTI_DOMAIN
+        await self._run_multi_domain(
+            user_message=user_message,
+            domains=decision.domains,
+            turn_label=turn_label,
+            turn_start=turn_start,
+            emit=emit,
+        )
+
+    # ------------------------------------------------------------------
+    # Single-domain branch
+    # ------------------------------------------------------------------
+
+    async def _run_single_domain(
+        self,
+        *,
+        user_message: str,
+        domain: Domain,
+        turn_label: str,
+        turn_start: float,
+        emit,
+    ) -> None:
+        """Run one child with streaming tokens forwarded straight to the
+        user.  This is the fast path — no synthesis, no double narration."""
+        await emit(SessionEvent(type="status", data={"status": "thinking"}))
+
+        child = self._children[domain]
+        await emit(
+            SessionEvent(
+                type="child_started",
+                data={"domain": domain.value},
+            )
+        )
+
+        child_thread_id = self._child_thread_id(turn_label, domain)
+        child_start = time.monotonic()
+
+        child_response: ChildResponse = await child.run(
+            user_message=user_message,
+            domain_boundary=None,  # no boundary in single-domain
+            emit_tokens=True,      # child's prose IS the user-facing answer
+            on_event=emit,
+            turn_thread_id=child_thread_id,
+        )
+
+        child_duration_ms = round((time.monotonic() - child_start) * 1000)
+        await emit(
+            SessionEvent(
+                type="child_finished",
+                data={
+                    "domain": domain.value,
+                    "status": child_response.status.value,
+                    "duration_ms": child_duration_ms,
+                },
+            )
+        )
+
+        # Done
+        await emit(
+            SessionEvent(
+                type="done",
+                data={
+                    "workspace_context": child_response.workspace_context,
+                    "tool_calls": [
+                        {
+                            "tool": t.tool,
+                            "domain": domain.value,
+                            "duration_ms": t.duration_ms,
+                        }
+                        for t in child_response.tool_trace
+                    ],
+                    "total_duration_ms": round(
+                        (time.monotonic() - turn_start) * 1000
+                    ),
+                },
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Multi-domain branch
+    # ------------------------------------------------------------------
+
+    async def _run_multi_domain(
+        self,
+        *,
+        user_message: str,
+        domains: list[Domain],
+        turn_label: str,
+        turn_start: float,
+        emit,
+    ) -> None:
+        """Fan out to multiple children in parallel, then synthesise.
+
+        Child token streams are SUPPRESSED at the user level
+        (emit_tokens=False): the user sees only the supervisor's
+        synthesis, not each child's internal prose.  Tool calls and
+        status events from children are still forwarded so the execution
+        trace stays visible.
+        """
+        await emit(SessionEvent(type="status", data={"status": "thinking"}))
+
+        # Build the domain-boundary hint for each child.  Tells the child
+        # to stay in its lane and leave other domains to their specialists.
+        boundaries = _build_domain_boundaries(domains)
+
+        # Emit child_started for all upfront so the UI can show parallel
+        # execution indicators.
+        for domain in domains:
+            await emit(
+                SessionEvent(type="child_started", data={"domain": domain.value})
+            )
+
+        async def run_one(domain: Domain):
+            child = self._children[domain]
+            start = time.monotonic()
+            response = await child.run(
+                user_message=user_message,
+                domain_boundary=boundaries.get(domain),
+                emit_tokens=False,   # suppress to user; synthesis is what they see
+                on_event=emit,       # tool events still forwarded
+                turn_thread_id=self._child_thread_id(turn_label, domain),
+            )
+            duration_ms = round((time.monotonic() - start) * 1000)
+            return domain, response, duration_ms
+
+        child_tasks = [run_one(d) for d in domains]
+        completed = await asyncio.gather(*child_tasks, return_exceptions=True)
+
+        child_responses: list[ChildResponse] = []
+        tool_call_summary: list[dict] = []
+        workspace_parts: list[dict] = []
+
+        for item in completed:
+            if isinstance(item, BaseException):
+                # A child raised.  Emit an error event and move on; the
+                # synthesis step will deal with missing children.
+                logger.exception(
+                    "[%s] %s child run raised", self.thread_id, turn_label
+                )
+                await emit(
+                    SessionEvent(
+                        type="error",
+                        data={"message": f"Child agent error: {item}"},
+                    )
+                )
+                continue
+
+            domain, response, duration_ms = item
+            await emit(
+                SessionEvent(
+                    type="child_finished",
+                    data={
+                        "domain": domain.value,
+                        "status": response.status.value,
+                        "duration_ms": duration_ms,
+                    },
+                )
+            )
+            child_responses.append(response)
+            for t in response.tool_trace:
+                tool_call_summary.append(
+                    {
+                        "tool": t.tool,
+                        "domain": domain.value,
+                        "duration_ms": t.duration_ms,
+                        "params": t.params,
+                    }
+                )
+            if response.workspace_context:
+                workspace_parts.append(response.workspace_context)
+
+        # --------------------------------------------------------------
+        # Synthesis
+        # --------------------------------------------------------------
+        if not child_responses:
+            await emit(
+                SessionEvent(
+                    type="error",
+                    data={"message": "All domain children failed."},
+                )
+            )
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": tool_call_summary,
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
+            return
+
+        await emit(SessionEvent(type="synthesis_started", data={}))
+        await emit(SessionEvent(type="status", data={"status": "synthesising"}))
+
+        try:
+            async for piece in self._supervisor.synthesize_stream(
+                user_message=user_message,
+                child_responses=child_responses,
+            ):
+                if piece:
+                    await emit(
+                        SessionEvent(type="token", data={"content": piece})
+                    )
+        except Exception as exc:
+            logger.exception(
+                "[%s] %s synthesis failed", self.thread_id, turn_label
+            )
+            await emit(
+                SessionEvent(
+                    type="error",
+                    data={"message": f"Synthesis failed: {exc}"},
+                )
+            )
+
+        # Done
+        workspace_context = _merge_workspace_contexts(workspace_parts)
+        await emit(
+            SessionEvent(
+                type="done",
+                data={
+                    "workspace_context": workspace_context,
+                    "tool_calls": [
+                        {k: v for k, v in tc.items() if k != "params"}
+                        for tc in tool_call_summary
+                    ],
+                    "total_duration_ms": round(
+                        (time.monotonic() - turn_start) * 1000
+                    ),
+                },
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _child_thread_id(self, turn_label: str, domain: Domain) -> str:
+        """Generate a per-(turn, domain) thread id for the child's
+        LangGraph checkpointer.  In stateless mode this is unique per
+        turn; otherwise it's shared per domain across turns."""
+        if self.stateless:
+            return f"{self.thread_id}-{turn_label}-{domain.value}"
+        return f"{self.thread_id}-{domain.value}"
+
+
+# ============================================================================
+# MODULE HELPERS
+# ============================================================================
+
+def _build_domain_boundaries(domains: list[Domain]) -> dict[Domain, str]:
+    """For each domain in a multi-domain fan-out, build a short scope
+    instruction that tells the child which part of the user's compound
+    query it should answer and which parts to leave to its siblings.
+    """
+    domain_labels = {
+        Domain.SOVEREIGN_BONDS: "cash sovereign bonds",
+        Domain.OIS: "OIS swaps",
+    }
+    out: dict[Domain, str] = {}
+    for d in domains:
+        self_label = domain_labels.get(d, d.value)
+        others = [
+            domain_labels.get(x, x.value) for x in domains if x is not d
+        ]
+        others_phrase = " / ".join(others) if others else "other domains"
+        out[d] = (
+            f"This is a multi-domain query. Answer ONLY the portions "
+            f"relevant to {self_label}. Leave the {others_phrase} "
+            f"portion(s) to the other specialist(s); a synthesis step "
+            f"will combine the outputs."
+        )
+    return out
+
+
+def _merge_workspace_contexts(parts: list[dict]) -> Optional[dict]:
+    """Combine per-child workspace_context dicts into one.  Each child
+    contributes a list under the ``tools`` key; we concatenate preserving
+    domain attribution."""
+    if not parts:
+        return None
+    merged_tools: list = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        tools = p.get("tools")
+        if isinstance(tools, list):
+            merged_tools.extend(tools)
+    # Re-compute via extract_workspace_context semantics for consistency.
+    merged = extract_workspace_context(merged_tools) if merged_tools else None
+    return merged
