@@ -192,10 +192,19 @@ def forward_rate_between(
     """Implied forward rate covering the period ``(start_years, end_years)``
     given a set of observed par OIS rates.
 
-    Formula (simple compounding):
+    Formula:
 
-        DF(t) = 1 / (1 + r(t) · t)             [zero-rate approximation]
+        DF(t) delegated to ``discount_factor_from_par`` — dual convention:
+            DF(t) = 1 / (1 + r · t)      for t ≤ 1Y   (money-market / simple)
+            DF(t) = 1 / (1 + r)**t       for t > 1Y   (annual compounding)
+
         f(t1, t2) = (DF(t1) / DF(t2) - 1) / (t2 - t1)
+
+    Using a dual convention (rather than simple compounding everywhere)
+    is critical for accuracy on long-end forwards: at r=4% and T=10Y,
+    simple compounding gives DF=0.714 while annual gives 0.676 — a
+    ~4% DF difference translates to ~60-70bps of error on a 5Y5Y
+    forward if simple were used throughout.
 
     Returns the forward in DECIMAL (e.g. 0.04 for 4.00%); callers
     typically multiply by 100 for display in percent.

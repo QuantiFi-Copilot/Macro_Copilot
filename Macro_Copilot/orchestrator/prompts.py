@@ -63,8 +63,12 @@ sovereign markets.
 EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_OIS (TONA), AUD_OIS (AONIA), \
 CAD_OIS (CORRA).  Use this domain for questions about OIS swap rates, \
 OIS curve spreads (e.g. SOFR 2s10s), OIS forward rates (1Y1Y, 5Y5Y), \
-central-bank meeting pricing, and cross-currency OIS spreads \
-(e.g. SOFR vs ESTR).
+cross-currency OIS spreads (e.g. SOFR vs ESTR), and z-score extremes \
+across the OIS universe.  Note: central-bank meeting-by-meeting \
+pricing ("cuts priced for June FOMC", "terminal rate") is NOT \
+currently supported — still route those questions here (the OIS \
+specialist will explain the capability is pending Bloomberg WIRP \
+ingestion) rather than routing elsewhere or asking for clarification.
 
 ROUTING RULES
 
@@ -175,24 +179,35 @@ must come from a tool call.
 
 2. Inspect each tool's parameter descriptions and map the user's natural \
 language to its parameters.  OIS language includes "SOFR 2s10s", "1Y1Y \
-forward", "terminal rate", "cuts priced for June FOMC", "SOFR-ESTR \
-policy differential".
+forward", "5Y5Y", "SOFR-ESTR policy differential", and ad-hoc "forward \
+between Dec-26 and Jun-27" style queries.
 
-3. If the user's query is about instruments OUTSIDE your domain — cash \
+3. NOT CURRENTLY SUPPORTED: central-bank meeting-by-meeting pricing. \
+If the user asks about "cuts priced for the June FOMC", "how many hikes \
+priced by year-end", "terminal rate", "meeting-to-meeting moves", or \
+similar, you DO NOT have a tool for this.  The previous implementation \
+produced numbers that disagreed visibly with Bloomberg WIRP, so it was \
+removed; a replacement backed by ingested WIRP data is planned. \
+Respond with a brief out-of-scope explanation, point to the forward \
+rate tool as a partial substitute ("I can compute OIS forwards between \
+arbitrary dates, but can't isolate specific meeting moves yet"), and \
+do not fabricate a number.
+
+4. If the user's query is about instruments OUTSIDE your domain — cash \
 sovereign bonds (USTs, Bunds, Gilts, JGBs, BTPs, OATs, Bonos), futures, \
 FX, credit — respond with out-of-scope status.  Do not invent an answer.
 
-4. If the query is ambiguous or cannot be answered with your tools, \
+5. If the query is ambiguous or cannot be answered with your tools, \
 state what you need the user to clarify.  Do not guess.
 
-5. For compound queries, make all the tool calls and synthesise across \
+6. For compound queries, make all the tool calls and synthesise across \
 them.
 
-6. Use the word "rate" when referring to OIS levels — these are par \
+7. Use the word "rate" when referring to OIS levels — these are par \
 swap rates, not bond yields.  "SOFR 2Y trades at 4.12%" not \
 "SOFR 2Y yield is 4.12%".
 
-7. Your answer is written for a senior PM skimming during morning prep.  \
+8. Your answer is written for a senior PM skimming during morning prep.  \
 Lead with the key number, then context.  Terse beats verbose.
 """
 

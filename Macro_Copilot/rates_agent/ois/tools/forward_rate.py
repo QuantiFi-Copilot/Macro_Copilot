@@ -247,13 +247,24 @@ def _compute_forward_series(
         years = [tenor_to_years(t) for t in ordered]
         rates_decimal = [float(rate_by_tenor[t]) / 100.0 for t in ordered]
 
-        # Skip days where the forward's START point is past the longest
-        # quoted tenor — computing a forward entirely from
-        # flat-extrapolated values produces noise, not signal.  END
-        # beyond the grid is acceptable (flat-extrap tail is defensible
-        # for near-end windows — the shape just becomes "rate ≈
-        # constant at the grid endpoint").
-        if start_years > years[-1]:
+        # Per-day extrapolation guard — mirrors the upfront guard in
+        # ``calculate_ois_forward_rate`` but applied to each historical
+        # trade date, because the set of quoted tenors can shift
+        # day-to-day.  Two cases where the window is entirely outside
+        # the grid:
+        #
+        #   - both endpoints past the longest tenor
+        #     (start > max_grid, which implies end > max_grid since
+        #     start < end)
+        #   - both endpoints before the shortest tenor
+        #     (end < min_grid, which implies start < min_grid)
+        #
+        # In either case the forward comes entirely from flat
+        # extrapolation — noise, not signal — and the day is skipped.
+        # Single-sided extrapolation (e.g. end beyond max but start
+        # inside grid) is acceptable; the rate shape just flattens at
+        # the grid endpoint, which is defensible for near-end windows.
+        if start_years > years[-1] or end_years < years[0]:
             continue
 
         try:

@@ -11,14 +11,15 @@ class OISForwardRateInput(BaseModel):
 
     1. **Tenor-based** (common case) — supply ``start_tenor`` and
        ``end_tenor`` (e.g. 1Y/2Y for "1Y1Y", or 5Y/10Y for "5Y5Y").
-       The tool converts these to year fractions from today and computes
-       the forward in that window.
+       The tool converts these to year fractions from the curve's
+       as-of date and computes the forward in that window.
 
     2. **Date-based** — supply ``start_date`` and ``end_date`` in
-       ISO-8601 form.  Used internally by ``ois_meeting_pricing`` when
-       the forward window is bounded by central-bank meetings rather
-       than a canonical tenor pair.  Exposed to the LLM too so it can
-       answer ad-hoc "forward between Dec 2026 and Jun 2027" questions.
+       ISO-8601 form.  Used for ad-hoc custom windows like "forward
+       between Dec 2026 and Jun 2027".  Year fractions are anchored to
+       the curve's as-of date (the latest trade date in the data), not
+       wall-clock today — this keeps the math consistent across
+       weekends and holidays when the DB may lag the calendar.
 
     Exactly ONE of the two modes must be supplied; the validator
     enforces this.
@@ -60,8 +61,11 @@ class OISForwardRateInput(BaseModel):
         default=None,
         description=(
             "Start date of the forward window in ISO-8601 format "
-            "(YYYY-MM-DD).  Mutually exclusive with start_tenor. "
-            "Must be today or later."
+            "(YYYY-MM-DD).  Mutually exclusive with start_tenor.  Must "
+            "be on or after the curve's as-of date (the latest trade "
+            "date in the market data).  Past dates are rejected with a "
+            "clear error rather than silently clamped — the tool will "
+            "name the required minimum date in the error message."
         ),
     )
     end_date: Optional[str] = Field(
@@ -122,8 +126,8 @@ class OISForwardRateCurrentMetrics(BaseModel):
     as_of_date: str
     curve_family: str
     forward_label: str = Field(..., description="Human-readable label, e.g. 'SOFR 1Y1Y'.")
-    start_years: float = Field(..., description="Start of the forward window in years from today.")
-    end_years: float = Field(..., description="End of the forward window in years from today.")
+    start_years: float = Field(..., description="Start of the forward window in years from the curve's as-of date.")
+    end_years: float = Field(..., description="End of the forward window in years from the curve's as-of date.")
     forward_rate_pct: Optional[float] = Field(None, description="Implied forward rate (percent).")
     daily_change_bps: Optional[float] = Field(None, description="1-day change in the forward rate (bps).")
     current_z_score: Optional[float] = Field(None, description="Rolling 252-day z-score of the forward rate.")
