@@ -77,7 +77,11 @@ def _print_route(route: dict | None) -> None:
 
 
 def _print_tool_trace(tool_calls: list) -> None:
-    """Print a compact summary of tool calls that were executed."""
+    """Print a compact summary of tool calls that were executed.
+
+    Uses ✓ for successful calls and ⚠ for failed ones; errored tools
+    additionally print their error text on an indented follow-up line.
+    """
     if not tool_calls:
         return
 
@@ -87,7 +91,14 @@ def _print_tool_trace(tool_calls: list) -> None:
         domain = tc.get("domain", "?")
         dur = tc.get("duration_ms")
         dur_str = f" ({dur}ms)" if dur is not None else ""
-        print(f"  ✓  [{domain}] {tool}{dur_str}")
+        error = tc.get("error")
+        if error:
+            print(f"  ⚠  [{domain}] {tool}{dur_str}")
+            # Truncate aggressively to keep the CLI readable.
+            trimmed = error if len(error) <= 200 else error[:197] + "..."
+            print(f"      error: {trimmed}")
+        else:
+            print(f"  ✓  [{domain}] {tool}{dur_str}")
     print()
 
 

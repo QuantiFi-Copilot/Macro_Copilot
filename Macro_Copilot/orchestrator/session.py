@@ -298,6 +298,11 @@ class CopilotSession:
                         "tool": event.data.get("tool"),
                         "domain": event.data.get("domain"),
                         "duration_ms": event.data.get("duration_ms"),
+                        # Preserve per-tool error so CLI callers (and any
+                        # other non-streaming consumer) can render partial
+                        # failures rather than pretending everything
+                        # succeeded.
+                        "error": event.data.get("error"),
                     }
                 )
             elif event.type == "route_decision":
@@ -737,6 +742,7 @@ class CopilotSession:
                             "tool": t.tool,
                             "domain": domain.value,
                             "duration_ms": t.duration_ms,
+                            "error": t.error,
                         }
                         for t in child_response.tool_trace
                     ],
@@ -878,6 +884,7 @@ class CopilotSession:
                         "domain": domain.value,
                         "duration_ms": t.duration_ms,
                         "params": t.params,
+                        "error": t.error,
                     }
                 )
             if response.workspace_context:
@@ -910,7 +917,14 @@ class CopilotSession:
                     type="done",
                     data={
                         "workspace_context": None,
-                        "tool_calls": tool_call_summary,
+                        # Keep shape consistent with the normal done
+                        # path: strip ``params`` (internal only) but
+                        # preserve ``error`` so any surviving tool calls
+                        # render with their failure state.
+                        "tool_calls": [
+                            {k: v for k, v in tc.items() if k != "params"}
+                            for tc in tool_call_summary
+                        ],
                         "total_duration_ms": round(
                             (time.monotonic() - turn_start) * 1000
                         ),
