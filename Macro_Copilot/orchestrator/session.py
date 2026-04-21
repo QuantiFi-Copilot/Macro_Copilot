@@ -122,6 +122,12 @@ class CopilotSession:
 
         self._supervisor: Supervisor | None = None
         self._children: dict[Domain, DomainAgentSession] = {}
+        # Per-domain async locks serialise concurrent "open" requests for
+        # the same child.  Child objects are constructed eagerly at
+        # session open time but MCP subprocesses are spawned lazily — on
+        # first use of each domain.  This keeps session startup cheap as
+        # the domain roster grows from 2 toward ~10.
+        self._child_open_locks: dict[Domain, asyncio.Lock] = {}
         self._is_open = False
 
     # ------------------------------------------------------------------
@@ -140,16 +146,21 @@ class CopilotSession:
     # ------------------------------------------------------------------
 
     async def open(self) -> None:
-        """Build the supervisor and spawn all domain children concurrently.
+        """Build the supervisor and construct (but do not open) the
+        domain children.
 
-        Running the children's ``open()`` in parallel cuts startup latency
-        roughly in half (two MCP subprocesses spawn simultaneously instead
-        of sequentially).
+        Session startup is intentionally cheap: we only instantiate the
+        ``Supervisor`` and construct ``DomainAgentSession`` objects plus
+        their async locks.  MCP subprocesses are NOT spawned until a
+        user query actually routes to that domain (see
+        ``_ensure_child_open``).  This keeps startup time O(1) in the
+        number of registered domains and avoids paying for subprocesses
+        that may never be used in a given session.
         """
         if self._is_open:
             return
 
-        logger.info("[%s] opening copilot session", self.thread_id)
+        logger.info("[%s] opening copilot session (lazy children)", self.thread_id)
 
         self._supervisor = Supervisor(
             model_name=LLM_MODEL,
@@ -180,48 +191,76 @@ class CopilotSession:
                 temperature=LLM_TEMPERATURE,
                 max_tokens=LLM_MAX_TOKENS,
             )
+            self._child_open_locks[domain] = asyncio.Lock()
 
         if not self._children:
             raise RuntimeError("No domain children could be constructed.")
 
-        # Open all children in parallel.  If any fails, close those that
-        # succeeded before propagating the error.
-        open_tasks = [child.open() for child in self._children.values()]
-        results = await asyncio.gather(*open_tasks, return_exceptions=True)
-        failures = [r for r in results if isinstance(r, BaseException)]
-        if failures:
-            logger.error(
-                "[%s] %d child(ren) failed to open; closing those that succeeded.",
-                self.thread_id,
-                len(failures),
-            )
-            await self._close_children_quiet()
-            raise failures[0]
-
         self._is_open = True
         logger.info(
-            "[%s] session ready with domains: %s",
+            "[%s] session ready; domains registered (not yet spawned): %s",
             self.thread_id,
             [d.value for d in self._children.keys()],
         )
 
     async def close(self) -> None:
-        """Shut down all child MCP subprocesses."""
+        """Shut down any child MCP subprocesses that were actually
+        spawned during the session."""
         if not self._is_open:
             return
 
         logger.info("[%s] closing session", self.thread_id)
         await self._close_children_quiet()
         self._children = {}
+        self._child_open_locks = {}
         self._supervisor = None
         self._is_open = False
 
     async def _close_children_quiet(self) -> None:
-        """Close children in parallel, swallowing individual failures."""
+        """Close children in parallel, swallowing individual failures.
+        ``DomainAgentSession.close()`` is a no-op if the child was never
+        opened, so un-spawned children incur no cost here."""
         if not self._children:
             return
         close_tasks = [child.close() for child in self._children.values()]
         await asyncio.gather(*close_tasks, return_exceptions=True)
+
+    async def _ensure_child_open(self, domain: Domain) -> DomainAgentSession:
+        """Lazily spawn a child's MCP subprocess on first use.
+
+        Concurrency: multiple fan-out tasks can call this for the same
+        domain simultaneously (multi-domain branch fires off parallel
+        runs).  A per-domain ``asyncio.Lock`` ensures the subprocess is
+        spawned exactly once; subsequent callers wait on the lock and
+        then take the fast ``_is_open`` check.
+        """
+        child = self._children.get(domain)
+        if child is None:
+            raise RuntimeError(
+                f"No child registered for domain {domain.value}."
+            )
+        # Fast path: already open, no lock contention.
+        if child._is_open:
+            return child
+
+        lock = self._child_open_locks.get(domain)
+        if lock is None:
+            # Defensive: should never happen given ``open()`` creates
+            # locks alongside children, but keep the runtime honest.
+            raise RuntimeError(
+                f"No open-lock registered for domain {domain.value}."
+            )
+
+        async with lock:
+            # Double-check under lock — another task may have opened it
+            # while we were waiting.
+            if not child._is_open:
+                logger.info(
+                    "[%s] lazily opening child for domain=%s",
+                    self.thread_id, domain.value,
+                )
+                await child.open()
+        return child
 
     # ------------------------------------------------------------------
     # Non-streaming invoke (used by the CLI REPL)
@@ -504,7 +543,41 @@ class CopilotSession:
         """
         await emit(SessionEvent(type="status", data={"status": "thinking"}))
 
-        child = self._children[domain]
+        # Lazily spawn the child's MCP subprocess on first use.  If the
+        # spawn fails, surface the error cleanly rather than crashing
+        # the whole turn pipeline.
+        try:
+            child = await self._ensure_child_open(domain)
+        except Exception as exc:
+            logger.exception(
+                "[%s] %s failed to open child for domain=%s",
+                self.thread_id, turn_label, domain.value,
+            )
+            await emit(
+                SessionEvent(
+                    type="error",
+                    data={
+                        "message": (
+                            f"Could not start the {domain.value} "
+                            f"specialist: {exc}"
+                        ),
+                    },
+                )
+            )
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": [],
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
+            return
+
         await emit(
             SessionEvent(
                 type="child_started",
@@ -594,6 +667,23 @@ class CopilotSession:
                 await emit(
                     SessionEvent(type="token", data={"content": fallback})
                 )
+        elif child_response.status == ChildStatus.OK and not tokens_emitted:
+            # Narrow silent-failure case: tools ran successfully but the
+            # LLM produced no final narration.  Surface whatever we have
+            # rather than leaving the chat blank.
+            logger.warning(
+                "[%s] %s child returned OK with no streamed tokens; "
+                "emitting fact fallback",
+                self.thread_id, turn_label,
+            )
+            fallback = _format_ok_fallback(
+                domain=domain,
+                answer_markdown=child_response.answer_markdown,
+                facts=child_response.facts,
+            )
+            await emit(
+                SessionEvent(type="token", data={"content": fallback})
+            )
 
         await emit(
             SessionEvent(
@@ -662,7 +752,10 @@ class CopilotSession:
             )
 
         async def run_one(domain: Domain):
-            child = self._children[domain]
+            # Lazy-open this child's MCP subprocess if it hasn't been used
+            # yet in this session.  Concurrent fan-out is safe: the
+            # per-domain lock in _ensure_child_open serialises the spawn.
+            child = await self._ensure_child_open(domain)
             start = time.monotonic()
             response = await child.run(
                 user_message=user_message,
@@ -843,3 +936,54 @@ def _merge_workspace_contexts(parts: list[dict]) -> Optional[dict]:
     # Re-compute via extract_workspace_context semantics for consistency.
     merged = extract_workspace_context(merged_tools) if merged_tools else None
     return merged
+
+
+def _format_ok_fallback(
+    domain: Domain,
+    answer_markdown: str,
+    facts: list,
+) -> str:
+    """Fallback text when a child returned OK but produced no streamed
+    narration (tool executed, LLM didn't summarise).
+
+    Preference order:
+      1. Whatever prose we have in ``answer_markdown`` (even if it wasn't
+         streamed live — e.g. content came back in a non-text block).
+      2. A compact one-line summary built from the structured facts.
+      3. A generic "result available" line with the domain name.
+    """
+    if answer_markdown and answer_markdown.strip():
+        return answer_markdown.strip()
+
+    if facts:
+        fragments: list[str] = []
+        # Cap the number of facts we surface so the fallback stays short.
+        for f in facts[:6]:
+            metric = getattr(f, "metric", None) or "?"
+            value = getattr(f, "value", None)
+            units = getattr(f, "units", None)
+            curve = getattr(f, "curve_family", None)
+            value_str = _format_scalar(value)
+            unit_str = f" {units}" if units else ""
+            prefix = f"{curve} " if curve else ""
+            fragments.append(f"{prefix}{metric}={value_str}{unit_str}")
+        body = "; ".join(fragments)
+        suffix = "" if len(facts) <= 6 else f" (+{len(facts) - 6} more)"
+        return (
+            f"The {domain.value} specialist returned data without a "
+            f"narration. Key facts: {body}{suffix}."
+        )
+
+    return (
+        f"The {domain.value} specialist completed the request but "
+        f"produced no summary. Please rephrase or try again."
+    )
+
+
+def _format_scalar(value) -> str:
+    """Best-effort scalar formatter for fact fallback text."""
+    if value is None:
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
