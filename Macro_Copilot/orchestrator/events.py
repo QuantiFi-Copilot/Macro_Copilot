@@ -73,7 +73,6 @@ _WORKSPACE_TOOLS: set[str] = {
     "calculate_ois_curve_spread_tool",
     "calculate_ois_cross_market_spread_tool",
     "calculate_ois_forward_rate_tool",
-    "calculate_ois_meeting_pricing_tool",
     "scan_ois_extremes_tool",
     # rate_level is intentionally NOT in the workspace set — a single-
     # point yield/rate is better viewed inline in the chat than in a
@@ -120,10 +119,6 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"{p.get('short_tenor', '2Y')}/{p.get('long_tenor', '10Y')} spread"
     ),
     "calculate_ois_forward_rate_tool": lambda p: _ois_forward_label(p),
-    "calculate_ois_meeting_pricing_tool": lambda p: (
-        f"Pricing {p.get('central_bank', '?')} meetings"
-        + (f" ({p.get('meeting_reference', 'next:4')})" if p.get('meeting_reference') else "")
-    ),
     "calculate_ois_cross_market_spread_tool": lambda p: (
         f"Computing OIS {p.get('curve_family_1', '?')}-{p.get('curve_family_2', '?')} "
         f"{p.get('tenor', '10Y')} spread"

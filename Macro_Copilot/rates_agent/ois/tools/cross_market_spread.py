@@ -158,7 +158,11 @@ def calculate_ois_cross_market_spread(
     # ------------------------------------------------------------------
     # 6. Trim to requested lookback
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    # Anchor the cutoff to the data's latest observation date, NOT
+    # date.today() — the DB can be 1-3 days stale over weekends /
+    # holidays and wall-clock anchoring produces inconsistent history.
+    as_of_date = wide.index[-1].date()
+    cutoff = pd.Timestamp(as_of_date - timedelta(days=params.lookback_days))
     display_df = wide.loc[wide.index >= cutoff].copy()
 
     if display_df.empty:

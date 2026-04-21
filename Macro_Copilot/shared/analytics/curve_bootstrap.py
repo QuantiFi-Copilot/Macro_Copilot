@@ -4,23 +4,25 @@ curve_bootstrap.py — Shared rates-curve primitives for forward-rate analytics
 
 Pure-math helpers for converting par OIS quotes into discount factors and
 forward rates.  Used by ois_forward_rate today; reusable by any future
-rates tool that needs forward-curve math (meeting_pricing, future
-bond_futures roll-down tools, etc.).
+rates tool that needs forward-curve math.
 
-Approximation used
-------------------
-For OIS curves with daily float compounding (SOFR, ESTR, SONIA, TONA,
-AONIA, CORRA), the par swap rate closely approximates the zero rate
-because the float leg is very close to a zero-coupon instrument (no
-funding spread, daily compounded overnight rate).  We therefore use the
-identity
+Compounding convention (dual — matches market practice)
+-------------------------------------------------------
+OIS par swap rates approximate zero rates because the float leg is a
+daily-compounded overnight rate with no funding spread.  We therefore
+use the par rate directly as a zero rate rather than running a full
+iterative bootstrap.  The discount factor formula depends on the tenor:
 
-    DF(T) ≈ 1 / (1 + R(T) · T)
+    DF(T) = 1 / (1 + R·T)            for T ≤ 1 year   (money-market / simple)
+    DF(T) = 1 / (1 + R)**T           for T > 1 year   (annual compounding)
 
-rather than a full iterative par-rate → zero bootstrap.  The residual
-convexity error at typical OIS tenors is sub-1bp on forward rates — well
-below the noise floor of macro-desk analysis.  A fuller bootstrap can be
-added later without changing the public API.
+This dual convention matches how desks quote OIS curves: short-end
+tenors are money-market instruments (simple compounding), multi-year
+tenors are annually-compounded par swaps.  Using simple compounding
+everywhere — as an earlier version did — produces discount factors
+that drift tens of bps wrong on the long end.  At 4% for 10Y,
+simple compounding gives DF=0.714 vs annual 0.676, which translates
+to ~20bps of error on a 5Y5Y forward.
 
 Year fractions
 --------------
@@ -29,7 +31,7 @@ fractions via a fixed mapping (7/365 for weeks, n/12 for months, n for
 years).  This ignores calendar-aware day counting but matches the
 macro-desk convention for "quick" forward quotes.  Per-curve day-count
 conventions are surfaced via ``day_count_basis_for_curve`` for callers
-that need precise day-fraction normalisation.
+that need precise day-fraction normalisation in date-window forwards.
 
 All helpers are pure Python (no pandas, no DB) so they're trivially
 testable in isolation.
@@ -104,12 +106,19 @@ def day_count_basis_for_curve(curve_family: str) -> int:
 # ============================================================================
 
 def discount_factor_from_par(par_rate: float, years: float) -> float:
-    """Approximate the discount factor from a par OIS rate using simple
-    compounding: ``DF(T) = 1 / (1 + R · T)``.
+    """Approximate discount factor from a par OIS rate.
+
+    Uses the standard dual convention:
+
+        DF(T) = 1 / (1 + R·T)      for T ≤ 1 year   (money-market)
+        DF(T) = 1 / (1 + R)**T     for T > 1 year   (annual compounding)
+
+    The two branches agree at T = 1 (both give 1/(1+R)), so the function
+    is continuous at the boundary.
 
     Inputs:
         par_rate : rate in DECIMAL (e.g. 0.045 for 4.5%), not percent.
-        years    : calendar year fraction.
+        years    : calendar year fraction (≥ 0).
 
     The caller is responsible for converting pct → decimal before
     passing.  Keeping decimal here avoids a ×100 factor quietly hiding
@@ -117,7 +126,12 @@ def discount_factor_from_par(par_rate: float, years: float) -> float:
     """
     if years < 0:
         raise ValueError(f"years must be non-negative, got {years}")
-    return 1.0 / (1.0 + par_rate * years)
+    if years <= 1.0:
+        # Money-market / simple compounding for short end.
+        return 1.0 / (1.0 + par_rate * years)
+    # Annual compounding for multi-year tenors — the market standard for
+    # the par-swap leg of an OIS.
+    return 1.0 / ((1.0 + par_rate) ** years)
 
 
 # ============================================================================

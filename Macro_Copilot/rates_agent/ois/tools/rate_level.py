@@ -140,7 +140,12 @@ def get_ois_rate_level(
     # ------------------------------------------------------------------
     # 5. Observation count (in the displayed window only)
     # ------------------------------------------------------------------
-    cutoff = pd.Timestamp(date.today() - timedelta(days=params.lookback_days))
+    # Anchor the cutoff to the data's latest observation date, NOT
+    # date.today().  Market data can be 1-3 days stale over weekends /
+    # holidays; anchoring to wall-clock would include inconsistent
+    # history depending on when the tool runs.
+    as_of_date = rates.index[-1].date()
+    cutoff = pd.Timestamp(as_of_date - timedelta(days=params.lookback_days))
     display_rates = rates.loc[rates.index >= cutoff]
     obs_count = len(display_rates)
 
