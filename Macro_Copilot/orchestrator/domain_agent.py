@@ -336,11 +336,17 @@ class DomainAgentSession:
                     raw_tool_outputs.append(
                         (current_tool_name or name, current_tool_params, tool_output_text)
                     )
+                    # If the tool returned {"error": "..."}, surface it on
+                    # the trace so partial same-domain failures are
+                    # visible in ChildResponse.tool_trace even when
+                    # another tool in the same run succeeded.
+                    tool_error = _tool_error_from_output(tool_output_text)
                     tool_calls_seen.append(
                         ChildToolCallTrace(
                             tool=current_tool_name or name,
                             params=current_tool_params,
                             duration_ms=duration_ms,
+                            error=tool_error,
                         )
                     )
 
@@ -352,6 +358,10 @@ class DomainAgentSession:
                                     "tool": current_tool_name or name,
                                     "domain": self.domain.value,
                                     "duration_ms": duration_ms,
+                                    # Frontend can render an error badge
+                                    # without having to re-parse the raw
+                                    # tool output.
+                                    "error": tool_error,
                                 },
                             )
                         )
@@ -461,6 +471,28 @@ def _stringify_tool_output(output) -> str:
     if isinstance(output, dict):
         return json.dumps(output, default=str)
     return str(output)
+
+
+def _tool_error_from_output(raw: str) -> Optional[str]:
+    """Return the ``error`` string from a tool's raw JSON output, or
+    None if the tool succeeded (or output wasn't parseable JSON).
+
+    Our MCP servers wrap error states as ``{"error": "..."}``; anything
+    else is treated as a successful payload.
+    """
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    err = payload.get("error")
+    if not err:
+        return None
+    text = str(err).strip()
+    return text or None
 
 
 def _extract_facts(
@@ -680,7 +712,29 @@ def _facts_from_scanner_results(
     results: list,
 ) -> list[FactRow]:
     """Scanner returns a list of ranked extreme rows; each row becomes
-    a small set of facts keyed by its curve/tenor."""
+    one FactRow per scalar metric field.
+
+    Domain-agnostic: any scalar field in the row that isn't a
+    pure-context key (curve_family, tenor, as_of_date, rank, etc.)
+    becomes a fact.  That way a future OIS / FX / credit scanner that
+    uses ``current_rate`` or ``spot`` instead of ``current_yield`` still
+    contributes structured facts to synthesis without requiring this
+    extractor to be updated.
+
+    Non-scalar row values (nested dicts, lists) are skipped via
+    ``_is_scalar`` to uphold the FactRow scalar invariant.
+    """
+    # Pure-context keys that identify the row rather than measure it.
+    # These become FactRow.curve_family / as_of attributes instead of
+    # emitting their own rows.
+    context_keys = {
+        "curve_family",
+        "tenor",
+        "as_of_date",
+        "trade_date",
+        "rank",
+    }
+
     out: list[FactRow] = []
     for row in results:
         if not isinstance(row, dict):
@@ -689,18 +743,21 @@ def _facts_from_scanner_results(
         tenor = row.get("tenor")
         as_of = row.get("as_of_date") or row.get("trade_date")
         scope_label = f"{curve} {tenor}" if curve and tenor else curve
-        for key in ("current_yield", "daily_change_bps", "z_score"):
-            if key in row and row[key] is not None:
-                out.append(
-                    FactRow(
-                        tool=tool_name,
-                        curve_family=scope_label,
-                        metric=key,
-                        value=row[key],
-                        units=_infer_units(key),
-                        as_of=as_of,
-                    )
+        for key, value in row.items():
+            if key in context_keys:
+                continue
+            if not _is_scalar(value):
+                continue
+            out.append(
+                FactRow(
+                    tool=tool_name,
+                    curve_family=scope_label,
+                    metric=key,
+                    value=value,
+                    units=_infer_units(key),
+                    as_of=as_of,
                 )
+            )
     return out
 
 
@@ -807,8 +864,22 @@ def _classify_status(
         else:
             successful += 1
 
-    # Rule 1: any successful tool → trust the child's answer.
+    # Rule 1: any successful tool → OK, BUT if some tools also errored,
+    # attach a partial-failure note in error_message so the supervisor's
+    # synthesis and the observability layer can see that part of a
+    # compound same-domain query failed.  The child's prose is still
+    # used as the user-facing answer (the child's LLM saw the tool
+    # errors live, so it should already reflect partial coverage), but
+    # status=OK + error_message=non-null lets downstream consumers
+    # render an incomplete-data badge.
     if successful > 0:
+        if errored > 0:
+            partial = _summarise_tool_errors(tool_errors)
+            partial_note = (
+                f"Partial data: {errored} of {successful + errored} tool "
+                f"call(s) in this run failed. {partial}"
+            )
+            return ChildStatus.OK, None, partial_note
         return ChildStatus.OK, None, None
 
     # Rule 2: tools were called but none succeeded → ERROR.
