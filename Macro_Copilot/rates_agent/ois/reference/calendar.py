@@ -66,11 +66,18 @@ def normalise_central_bank(name: str) -> str:
 
 @dataclass(frozen=True)
 class Meeting:
-    """One scheduled monetary-policy meeting."""
+    """One scheduled monetary-policy meeting.
+
+    ``scheduled`` distinguishes dates the central bank has officially
+    announced (``True``) from our own projections / approximations
+    (``False``).  The meeting_pricing tool surfaces this flag to the
+    PM so projected meetings aren't mistaken for published ones.
+    """
 
     central_bank: str          # Canonical uppercase name (e.g. "FED")
     meeting_date: date         # ISO date of the meeting (or statement day)
     label: str                 # Human-readable tag, e.g. "FOMC Jun 2026"
+    scheduled: bool = True     # False = our approximation, not CB-published
 
 
 # ============================================================================
@@ -175,8 +182,18 @@ class YamlCalendarProvider:
                 if meeting_date is None:
                     continue
                 label = str(entry.get("label") or f"{bank_key} {meeting_date.isoformat()}")
+                # Default scheduled=True if the YAML omits the key
+                # (maintains backwards compat); explicit False marks
+                # projected dates.
+                scheduled_raw = entry.get("scheduled", True)
+                scheduled = bool(scheduled_raw) if scheduled_raw is not None else True
                 parsed_meetings.append(
-                    Meeting(central_bank=bank_key, meeting_date=meeting_date, label=label)
+                    Meeting(
+                        central_bank=bank_key,
+                        meeting_date=meeting_date,
+                        label=label,
+                        scheduled=scheduled,
+                    )
                 )
             parsed_meetings.sort(key=lambda m: m.meeting_date)
             cache[bank_key] = parsed_meetings
