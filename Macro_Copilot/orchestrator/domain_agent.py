@@ -563,13 +563,18 @@ def _facts_from_unrecognized_envelope(
     for key, value in payload.items():
         if key in ignore_keys:
             continue
-        if isinstance(value, (int, float, str, bool)) or value is None:
+        if _is_scalar(value):
             scalar_items.append((key, value))
         elif isinstance(value, dict):
             nested_dicts.append((key, value))
+        # Other value types (lists, None, etc.) are skipped — they're
+        # neither scalar facts nor a nested ``current_metrics`` shape.
 
     # Case 1: exactly one nested dict and no scalar facts → treat as
-    # current_metrics.
+    # current_metrics.  _facts_from_current_metrics already enforces
+    # scalar-only values, so deeper nesting like
+    # {"fx_data": {"quotes": {"eurusd": 1.08}}} won't leak dict-valued
+    # facts: the "quotes" entry simply gets skipped.
     if len(nested_dicts) == 1 and not scalar_items:
         inner_key, inner_dict = nested_dicts[0]
         facts = _facts_from_current_metrics(tool_name, params, inner_dict)
@@ -592,8 +597,6 @@ def _facts_from_unrecognized_envelope(
     curve_family = params.get("curve_family")
     out: list[FactRow] = []
     for key, value in scalar_items:
-        if value is None:
-            continue
         out.append(
             FactRow(
                 tool=tool_name,
@@ -614,17 +617,21 @@ def _facts_from_current_metrics(
 ) -> list[FactRow]:
     """Flatten a ``current_metrics`` dict into FactRow entries.
 
-    We pick out the numeric fields (spreads, yields, rates, z-scores,
-    butterflies) and emit one FactRow per metric.  Non-numeric fields
-    (date, labels) provide context for the facts as ``as_of`` or
-    ``curve_family`` — they aren't emitted as their own rows.
+    Invariant: a ``FactRow.value`` must be a scalar.  Nested dicts and
+    lists are silently ignored — the synthesis model works on structured
+    per-metric facts, not on sub-trees, so emitting a dict-valued
+    FactRow would pollute the synthesis payload with non-scalar "facts"
+    and mislead the supervisor.
+
+    If a new tool legitimately needs to surface nested structure, it
+    should either flatten before returning (``spread_metrics.long``) or
+    use the ``results`` envelope.
     """
     as_of = cm.get("as_of_date")
     curve_family = cm.get("curve_family") or params.get("curve_family")
 
-    # Every other scalar-looking field becomes a fact.
-    # We skip fields that are pure context (already captured above) or
-    # structural (rolling_window_days is useful but not a fact-about-the-market).
+    # Pure-context keys that carry no measurement (they become the
+    # ``as_of`` / ``curve_family`` fields on every emitted FactRow).
     skip_keys = {
         "as_of_date",
         "curve_family",
@@ -637,20 +644,35 @@ def _facts_from_current_metrics(
     for key, value in cm.items():
         if key in skip_keys:
             continue
-        if value is None:
+        if not _is_scalar(value):
+            # Silently skip nested dicts / lists / other complex values.
+            # Canonical rates tools never produce these; defensive check
+            # for future tools that drift from convention.
             continue
-        units = _infer_units(key)
         out.append(
             FactRow(
                 tool=tool_name,
                 curve_family=curve_family,
                 metric=key,
                 value=value,
-                units=units,
+                units=_infer_units(key),
                 as_of=as_of,
             )
         )
     return out
+
+
+def _is_scalar(value) -> bool:
+    """Return True if ``value`` is a primitive we can safely embed as a
+    FactRow value.
+
+    None is rejected so callers don't have to check separately.
+    ``bool`` is allowed because ``isinstance(True, int)`` would already
+    admit it, and explicit is better than implicit.
+    """
+    if value is None:
+        return False
+    return isinstance(value, (bool, int, float, str))
 
 
 def _facts_from_scanner_results(
