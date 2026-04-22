@@ -4,6 +4,7 @@ import type {
   CopilotMessage,
   ConnectionStatus,
   ServerEvent,
+  ToolCallSummary,
   TraceStep,
 } from '@/types/copilot';
 
@@ -21,6 +22,45 @@ let _traceCounter = 0;
 function nextTraceId(): string {
   _traceCounter += 1;
   return `trace-${_traceCounter}`;
+}
+
+function reconcileTraceStepsFromDone(
+  traceSteps: TraceStep[],
+  toolCalls: ToolCallSummary[],
+): TraceStep[] {
+  if (traceSteps.length === 0) return traceSteps;
+
+  const remaining = [...toolCalls];
+
+  return traceSteps.map((step) => {
+    if (step.status !== 'running') {
+      return step;
+    }
+
+    const matchIndex = remaining.findIndex((toolCall) => toolCall.tool === step.tool);
+    if (matchIndex === -1) {
+      return {
+        ...step,
+        status: 'error',
+        error:
+          step.error ??
+          'Streaming finished without a matching final tool result for this step.',
+      };
+    }
+
+    const [match] = remaining.splice(matchIndex, 1);
+    const toolError =
+      typeof match.error === 'string' && match.error.length > 0
+        ? match.error
+        : undefined;
+
+    return {
+      ...step,
+      status: toolError ? 'error' : 'complete',
+      durationMs: match.duration_ms ?? step.durationMs,
+      error: toolError,
+    };
+  });
 }
 
 type UseCopilotResult = {
@@ -210,6 +250,10 @@ export function useCopilot(): UseCopilotResult {
           ...msg,
           isStreaming: false,
           phase: 'done',
+          traceSteps: reconcileTraceStepsFromDone(
+            msg.traceSteps,
+            event.tool_calls,
+          ),
           workspaceContext: event.workspace_context,
           totalDurationMs: event.total_duration_ms,
         }));
