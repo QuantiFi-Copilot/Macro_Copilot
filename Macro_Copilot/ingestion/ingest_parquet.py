@@ -26,7 +26,7 @@ from database.database import (  # noqa: E402
 )
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket"
+BUCKET_NAME = "quantifi-fx-data-sacha"
 GCP_KEY_FILENAME = "library-extractor-key.json"
 DEFAULT_VENDOR = "BLOOMBERG"
 

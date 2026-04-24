@@ -81,13 +81,13 @@ MCP_SERVERS: dict = {
         "env": _MCP_SUBPROCESS_ENV,
     },
     # ── Future agents ──────────────────────────────────────────────
-    # "fx_agent": {
-    #     "transport": "stdio",
-    #     "command": _PYTHON,
-    #     "args": ["-m", "fx_agent.mcp_server"],
-    #     "cwd": str(PROJECT_ROOT),
-    #     "env": _MCP_SUBPROCESS_ENV,
-    # },
+     "fx_agent": {
+         "transport": "stdio",
+         "command": _PYTHON,
+         "args": ["-m", "fx_agent.mcp_server"],
+         "cwd": str(PROJECT_ROOT),
+         "env": _MCP_SUBPROCESS_ENV,
+     },
 }
 
 
