@@ -3,7 +3,7 @@ from pathlib import Path
 from google.cloud import storage
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket"
+BUCKET_NAME = "quantifi-fx-data-sacha"
 
 
 def push_playbooks_to_gcp():

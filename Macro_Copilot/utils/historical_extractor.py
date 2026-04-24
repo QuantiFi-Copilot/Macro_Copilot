@@ -12,7 +12,7 @@ from google.cloud import storage
 from xbbg import blp
 
 # --- CONFIGURATION ---
-BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "macro-storage-bucket")
+BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "quantifi-fx-data-sacha")
 GCP_KEY_FILENAME = os.getenv("GCP_KEY_FILENAME", "library-extractor-key.json")
 DEFAULT_VENDOR = os.getenv("DATA_VENDOR", "BLOOMBERG")
 DEFAULT_LOOKBACK_DAYS = int(os.getenv("DEFAULT_LOOKBACK_DAYS", "30"))
@@ -129,42 +129,60 @@ def _resolve_date_window(playbook: Dict[str, Any]) -> Tuple[str, str]:
     return start_date, end_date
 
 
-def _normalize_bdh_output(df: pd.DataFrame, fallback_ticker: str) -> pd.DataFrame:
-    if df is None or df.empty:
+def _normalize_bdh_output(df: Any, fallback_ticker: str) -> pd.DataFrame:
+    """
+    Normalize Bloomberg BDH output to a pandas long-format dataframe.
+    Handles narwhals + pandas.
+    """
+
+    if df is None:
         return pd.DataFrame(columns=["trade_date", "ticker", "field_name", "field_value"])
 
+    # --- FIX 1: handle narwhals ---
+    if not isinstance(df, pd.DataFrame):
+        try:
+            if hasattr(df, "to_pandas"):
+                df = df.to_pandas()
+            elif hasattr(df, "to_native"):
+                df = df.to_native()  # 🔥 THIS is the key fix
+            else:
+                df = pd.DataFrame(df)
+        except Exception as exc:
+            raise TypeError(f"Unsupported type: {type(df)}") from exc
+
+    if df.empty:
+        return pd.DataFrame(columns=["trade_date", "ticker", "field_name", "field_value"])
+
+    # --- FIX 2: detect already normalized format ---
+    if set(df.columns) == {"ticker", "date", "field", "value"}:
+        df = df.rename(columns={
+            "date": "trade_date",
+            "field": "field_name",
+            "value": "field_value"
+        })
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+        df["field_name"] = df["field_name"].astype(str).str.upper()
+        return df[["trade_date", "ticker", "field_name", "field_value"]]
+
+    # --- fallback: original logic ---
     if isinstance(df.columns, pd.MultiIndex):
         long_df = (
             df.stack(level=list(range(df.columns.nlevels)), future_stack=True)
             .rename("field_value")
             .reset_index()
         )
-        if df.columns.nlevels == 2:
-            long_df.columns = ["trade_date", "ticker", "field_name", "field_value"]
-        else:
-            rename_cols = ["trade_date"] + [f"column_level_{i}" for i in range(1, df.columns.nlevels + 1)] + ["field_value"]
-            long_df.columns = rename_cols
-            if "column_level_1" in long_df.columns:
-                long_df = long_df.rename(columns={"column_level_1": "ticker"})
-            if "column_level_2" in long_df.columns:
-                long_df = long_df.rename(columns={"column_level_2": "field_name"})
-            if "ticker" not in long_df.columns:
-                long_df["ticker"] = fallback_ticker
-            if "field_name" not in long_df.columns:
-                raise ValueError("Unable to normalize Bloomberg output: missing field level in MultiIndex columns.")
-            long_df = long_df[["trade_date", "ticker", "field_name", "field_value"]]
+        long_df.columns = ["trade_date", "ticker", "field_name", "field_value"]
+
     else:
         long_df = df.stack(future_stack=True).rename("field_value").reset_index()
-        if len(long_df.columns) == 3:
-            long_df.columns = ["trade_date", "field_name", "field_value"]
-            long_df["ticker"] = fallback_ticker
-            long_df = long_df[["trade_date", "ticker", "field_name", "field_value"]]
-        else:
-            raise ValueError("Unable to normalize Bloomberg output for non-MultiIndex columns.")
+        long_df.columns = ["trade_date", "field_name", "field_value"]
+        long_df["ticker"] = fallback_ticker
+        long_df = long_df[["trade_date", "ticker", "field_name", "field_value"]]
 
     long_df["trade_date"] = pd.to_datetime(long_df["trade_date"]).dt.strftime("%Y-%m-%d")
     long_df["field_name"] = long_df["field_name"].astype(str).str.upper()
     long_df = long_df.dropna(subset=["field_value"])
+
     return long_df
 
 
