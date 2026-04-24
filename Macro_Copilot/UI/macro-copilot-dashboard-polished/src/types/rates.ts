@@ -8,6 +8,7 @@
 
 export type SparklinePoint = {
   date: string;
+  label: string;
   value: number;
 };
 
