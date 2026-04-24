@@ -41,6 +41,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import init_engine, settings
 from api.routes.rates import router as rates_router
+from api.routes.fx import router as fx_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -101,6 +102,12 @@ app.include_router(
     rates_router,
     prefix="/api/v1/rates",
     tags=["Rates"],
+)
+
+app.include_router(
+    fx_router,
+    prefix="/api/v1/fx",
+    tags=["FX"],
 )
 
 app.include_router(
