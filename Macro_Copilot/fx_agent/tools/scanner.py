@@ -7,6 +7,22 @@ from database.database import get_db_engine
 from fx_agent.tools.schemas import FXScannerInput, FXScannerOutput, FXScannerRow
 
 
+def _signal_label(z_score: float | None, momentum_1m_pct: float | None) -> str:
+    if z_score is None or momentum_1m_pct is None:
+        return "Neutral"
+
+    if z_score >= 1.5 and momentum_1m_pct > 0:
+        return "Bullish breakout"
+    if z_score <= -1.5 and momentum_1m_pct < 0:
+        return "Bearish breakdown"
+    if z_score >= 1.5 and momentum_1m_pct < 0:
+        return "Overbought fade risk"
+    if z_score <= -1.5 and momentum_1m_pct > 0:
+        return "Oversold rebound"
+
+    return "Neutral"
+
+
 def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
     field_name = params.field_name.upper().strip()
 
@@ -74,6 +90,9 @@ def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
                 return None
             return float((current / old - 1.0) * 100.0)
 
+        momentum_1m_pct = pct(21)
+        momentum_3m_pct = pct(63)
+
         last_row = group.iloc[-1]
 
         rows.append(
@@ -84,8 +103,11 @@ def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
                 current_spot=current,
                 daily_change_pct=pct(1),
                 weekly_change_pct=pct(5),
-                monthly_change_pct=pct(21),
+                monthly_change_pct=momentum_1m_pct,
+                momentum_1m_pct=momentum_1m_pct,
+                momentum_3m_pct=momentum_3m_pct,
                 z_score=z_score,
+                signal=_signal_label(z_score, momentum_1m_pct),
             )
         )
 

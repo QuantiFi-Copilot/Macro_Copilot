@@ -96,7 +96,10 @@ class FXScannerRow(BaseModel):
     daily_change_pct: Optional[float] = None
     weekly_change_pct: Optional[float] = None
     monthly_change_pct: Optional[float] = None
+    momentum_1m_pct: Optional[float] = None
+    momentum_3m_pct: Optional[float] = None
     z_score: Optional[float] = None
+    signal: str = "Neutral"
 
 
 class FXScannerOutput(BaseModel):

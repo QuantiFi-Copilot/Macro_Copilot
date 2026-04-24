@@ -128,7 +128,9 @@ export function FXPage() {
                     <Th>1D</Th>
                     <Th>1W</Th>
                     <Th>1M</Th>
+                    <Th>3M</Th>
                     <Th>Z</Th>
+                    <Th>Signal</Th>
                     <Th>As of</Th>
                   </tr>
                 </thead>
@@ -139,8 +141,10 @@ export function FXPage() {
                       <Td>{fmtNum(row.current_spot, row.pair.includes('JPY') ? 2 : 4)}</Td>
                       <Td>{fmtPct(row.daily_change_pct)}</Td>
                       <Td>{fmtPct(row.weekly_change_pct)}</Td>
-                      <Td>{fmtPct(row.monthly_change_pct)}</Td>
+                      <Td>{fmtPct(row.momentum_1m_pct)}</Td>
+                      <Td>{fmtPct(row.momentum_3m_pct)}</Td>
                       <Td>{fmtNum(row.z_score, 2)}</Td>
+                      <Td>{row.signal}</Td>
                       <Td muted>{row.as_of_date}</Td>
                     </tr>
                   ))}

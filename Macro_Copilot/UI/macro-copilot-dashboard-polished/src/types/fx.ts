@@ -7,6 +7,9 @@ export type FXScannerRow = {
   weekly_change_pct: number | null;
   monthly_change_pct: number | null;
   z_score: number | null;
+  momentum_1m_pct: number | null;
+  momentum_3m_pct: number | null;
+  signal: string;
 };
 
 export type FXScannerResponse = {
