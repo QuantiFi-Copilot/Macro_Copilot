@@ -4,6 +4,7 @@ import { ChatDrawer } from '@/components/layout/ChatDrawer';
 import { TopNav } from '@/components/ui/TopNav';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { RatesPage } from '@/components/rates/RatesPage';
+import { WorkspacePage } from '@/components/workspace/WorkspacePage';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
 const NAV_TABS = [
@@ -56,7 +57,7 @@ export function AppShell() {
               <Route path="/fx" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/policy" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/events" element={<Dashboard data={data} isLoading={isLoading} />} />
-              <Route path="/workspace" element={<Dashboard data={data} isLoading={isLoading} />} />
+              <Route path="/workspace" element={<WorkspacePage />} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

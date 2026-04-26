@@ -1,4 +1,5 @@
 import { ArrowUpRight, BarChart3 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { WorkspaceContext } from '@/types/copilot';
 
 type WorkspaceButtonProps = {
@@ -14,16 +15,17 @@ const TOOL_WORKSPACE_LABELS: Record<string, string> = {
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {
+  const navigate = useNavigate();
   const toolNames = context.tools.map((t) => t.tool);
   const subtitle = toolNames
     .map((t) => TOOL_WORKSPACE_LABELS[t] ?? t)
     .join(' · ');
 
   const handleClick = () => {
-    // Future: navigate to /workspace with context pre-loaded
-    // For now, encode context in URL params
+    // SPA navigation — preserves the chat drawer state and lets the
+    // WorkspacePage rewrite ?context=... into ?tool=... URL params.
     const encoded = encodeURIComponent(JSON.stringify(context));
-    window.location.href = `/workspace?context=${encoded}`;
+    navigate(`/workspace?context=${encoded}`);
   };
 
   return (

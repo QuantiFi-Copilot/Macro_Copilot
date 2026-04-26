@@ -120,3 +120,163 @@ export type RatesPageData = {
   crossMarket: CrossMarketResponse;
   regimes: RegimeResponse;
 };
+
+// ============================================================================
+// WORKSPACE DETAIL ENDPOINT TYPES
+// Mirror the Pydantic schemas in rates_agent/sovereign_bonds/tools/schemas/.
+// Returned by /api/v1/rates/detail/* — these include the full time_series
+// the MCP server strips before sending to the LLM.
+// ============================================================================
+
+// --- /detail/yield ---
+
+export type YieldLevelMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  tenor: string;
+  current_yield_pct: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  observation_count: number;
+};
+
+export type YieldLevelOutput = {
+  current_metrics: YieldLevelMetrics;
+};
+
+// --- /detail/spread ---
+
+export type CurveSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  spread_label: string;
+  current_spread_bps: number;
+  daily_change_bps: number | null;
+  current_z_score: number | null;
+  rolling_window_days: number;
+  short_tenor_yield: number | null;
+  long_tenor_yield: number | null;
+};
+
+export type CurveSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type CurveSpreadOutput = {
+  current_metrics: CurveSpreadCurrentMetrics;
+  time_series: CurveSpreadTimeSeriesRow[];
+};
+
+// --- /detail/cross-market ---
+
+export type CrossMarketSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family_1: string;
+  curve_family_2: string;
+  tenor: string;
+  spread_label: string;
+  current_spread_bps: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  curve_family_1_yield: number | null;
+  curve_family_2_yield: number | null;
+};
+
+export type CrossMarketSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type CrossMarketSpreadOutput = {
+  current_metrics: CrossMarketSpreadCurrentMetrics;
+  time_series: CrossMarketSpreadTimeSeriesRow[];
+};
+
+// --- /detail/butterfly ---
+
+export type ButterflyCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  butterfly_label: string;
+  current_butterfly_bps: number;
+  daily_change_bps: number | null;
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  wing_short_bps: number | null;
+  wing_long_bps: number | null;
+  short_tenor_yield: number | null;
+  belly_tenor_yield: number | null;
+  long_tenor_yield: number | null;
+};
+
+export type ButterflyTimeSeriesRow = {
+  date: string;
+  butterfly_bps: number;
+  z_score: number | null;
+};
+
+export type ButterflyOutput = {
+  current_metrics: ButterflyCurrentMetrics;
+  time_series: ButterflyTimeSeriesRow[];
+};
+
+// --- /detail/regime --- (no time_series — classification only)
+
+export type RegimeCurrentMetrics = {
+  as_of_date: string;
+  prior_date: string;
+  curve_family: string;
+  lookback_period: string;
+  spread_label: string;
+  regime_tag: string;
+  regime_description: string;
+  front_tenor: string;
+  back_tenor: string;
+  front_yield_current: number | null;
+  back_yield_current: number | null;
+  front_yield_prior: number | null;
+  back_yield_prior: number | null;
+  front_change_bps: number | null;
+  back_change_bps: number | null;
+  spread_current_bps: number | null;
+  spread_prior_bps: number | null;
+  spread_change_bps: number | null;
+};
+
+export type RegimeOutput = {
+  current_metrics: RegimeCurrentMetrics;
+};
+
+// ============================================================================
+// WORKSPACE VIEW MODEL
+// Discriminated union the views render against.  WorkspacePage parses the
+// URL into one of these and passes it down.
+// ============================================================================
+
+export type WorkspaceViewType =
+  | 'spread'
+  | 'cross_market'
+  | 'butterfly'
+  | 'yield'
+  | 'forward'      // OIS forward — backend endpoint TBD; UI ready for it
+  | 'regime'
+  | 'scanner';
+
+export type WorkspaceParams = Record<string, string>;
