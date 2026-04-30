@@ -80,6 +80,18 @@ from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput  # noqa: 
 from shared.analytics.rates_fetch import fetch_tenor_pair  # noqa: E402
 from shared.analytics.spreads import Z_SCORE_WINDOW  # noqa: E402
 
+# Note: as of commit 3 of the tool-config pilot, calculate_curve_spread
+# lives at .curve_spread.compute (the package init re-exports it for
+# backward compat).  The capture script does not currently patch
+# anything (it runs against the live DB), but if you ever add mocks
+# here, target the COMPUTE module directly:
+#
+#   patch("rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair", ...)
+#   patch("rates_agent.sovereign_bonds.tools.curve_spread.compute.date", ...)
+#
+# Patching the package init's namespace would be a no-op because the
+# imports we want to mock live inside compute.py.
+
 
 # ===========================================================================
 # CASE DEFINITIONS
