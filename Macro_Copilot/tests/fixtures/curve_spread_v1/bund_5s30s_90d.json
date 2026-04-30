@@ -1,0 +1,3429 @@
+{
+  "fixture_name": "bund_5s30s_90d",
+  "tool_module": "rates_agent.sovereign_bonds.tools.curve_spread",
+  "tool_function": "calculate_curve_spread",
+  "capture": {
+    "captured_at": "2026-04-30T22:07:55Z",
+    "database_name": "macrodata",
+    "as_of_date": "2026-04-08",
+    "raw_rows_count": 630,
+    "raw_rows_sha256": "8d846ef4a62ff7d4b636effd1312a77854754e1b699a43ee16374b82465db8be"
+  },
+  "input": {
+    "params": {
+      "curve_family": "DE_BUND",
+      "short_tenor": "5Y",
+      "long_tenor": "30Y",
+      "lookback_days": 90,
+      "field_name": "YLD_YTM_MID"
+    },
+    "frozen_today": "2026-04-30",
+    "raw_rows": [
+      {
+        "trade_date": "2025-01-17",
+        "tenor": "30Y",
+        "field_value": 2.762
+      },
+      {
+        "trade_date": "2025-01-17",
+        "tenor": "5Y",
+        "field_value": 2.337
+      },
+      {
+        "trade_date": "2025-01-20",
+        "tenor": "30Y",
+        "field_value": 2.757
+      },
+      {
+        "trade_date": "2025-01-20",
+        "tenor": "5Y",
+        "field_value": 2.327
+      },
+      {
+        "trade_date": "2025-01-21",
+        "tenor": "30Y",
+        "field_value": 2.73
+      },
+      {
+        "trade_date": "2025-01-21",
+        "tenor": "5Y",
+        "field_value": 2.317
+      },
+      {
+        "trade_date": "2025-01-22",
+        "tenor": "30Y",
+        "field_value": 2.753
+      },
+      {
+        "trade_date": "2025-01-22",
+        "tenor": "5Y",
+        "field_value": 2.334
+      },
+      {
+        "trade_date": "2025-01-23",
+        "tenor": "30Y",
+        "field_value": 2.777
+      },
+      {
+        "trade_date": "2025-01-23",
+        "tenor": "5Y",
+        "field_value": 2.348
+      },
+      {
+        "trade_date": "2025-01-24",
+        "tenor": "30Y",
+        "field_value": 2.783
+      },
+      {
+        "trade_date": "2025-01-24",
+        "tenor": "5Y",
+        "field_value": 2.38
+      },
+      {
+        "trade_date": "2025-01-27",
+        "tenor": "30Y",
+        "field_value": 2.751
+      },
+      {
+        "trade_date": "2025-01-27",
+        "tenor": "5Y",
+        "field_value": 2.339
+      },
+      {
+        "trade_date": "2025-01-28",
+        "tenor": "30Y",
+        "field_value": 2.778
+      },
+      {
+        "trade_date": "2025-01-28",
+        "tenor": "5Y",
+        "field_value": 2.363
+      },
+      {
+        "trade_date": "2025-01-29",
+        "tenor": "30Y",
+        "field_value": 2.803
+      },
+      {
+        "trade_date": "2025-01-29",
+        "tenor": "5Y",
+        "field_value": 2.381
+      },
+      {
+        "trade_date": "2025-01-30",
+        "tenor": "30Y",
+        "field_value": 2.758
+      },
+      {
+        "trade_date": "2025-01-30",
+        "tenor": "5Y",
+        "field_value": 2.313
+      },
+      {
+        "trade_date": "2025-01-31",
+        "tenor": "30Y",
+        "field_value": 2.712
+      },
+      {
+        "trade_date": "2025-01-31",
+        "tenor": "5Y",
+        "field_value": 2.233
+      },
+      {
+        "trade_date": "2025-02-03",
+        "tenor": "30Y",
+        "field_value": 2.636
+      },
+      {
+        "trade_date": "2025-02-03",
+        "tenor": "5Y",
+        "field_value": 2.153
+      },
+      {
+        "trade_date": "2025-02-04",
+        "tenor": "30Y",
+        "field_value": 2.645
+      },
+      {
+        "trade_date": "2025-02-04",
+        "tenor": "5Y",
+        "field_value": 2.169
+      },
+      {
+        "trade_date": "2025-02-05",
+        "tenor": "30Y",
+        "field_value": 2.598
+      },
+      {
+        "trade_date": "2025-02-05",
+        "tenor": "5Y",
+        "field_value": 2.153
+      },
+      {
+        "trade_date": "2025-02-06",
+        "tenor": "30Y",
+        "field_value": 2.611
+      },
+      {
+        "trade_date": "2025-02-06",
+        "tenor": "5Y",
+        "field_value": 2.163
+      },
+      {
+        "trade_date": "2025-02-07",
+        "tenor": "30Y",
+        "field_value": 2.62
+      },
+      {
+        "trade_date": "2025-02-07",
+        "tenor": "5Y",
+        "field_value": 2.152
+      },
+      {
+        "trade_date": "2025-02-10",
+        "tenor": "30Y",
+        "field_value": 2.614
+      },
+      {
+        "trade_date": "2025-02-10",
+        "tenor": "5Y",
+        "field_value": 2.141
+      },
+      {
+        "trade_date": "2025-02-11",
+        "tenor": "30Y",
+        "field_value": 2.691
+      },
+      {
+        "trade_date": "2025-02-11",
+        "tenor": "5Y",
+        "field_value": 2.209
+      },
+      {
+        "trade_date": "2025-02-12",
+        "tenor": "30Y",
+        "field_value": 2.724
+      },
+      {
+        "trade_date": "2025-02-12",
+        "tenor": "5Y",
+        "field_value": 2.265
+      },
+      {
+        "trade_date": "2025-02-13",
+        "tenor": "30Y",
+        "field_value": 2.671
+      },
+      {
+        "trade_date": "2025-02-13",
+        "tenor": "5Y",
+        "field_value": 2.206
+      },
+      {
+        "trade_date": "2025-02-14",
+        "tenor": "30Y",
+        "field_value": 2.675
+      },
+      {
+        "trade_date": "2025-02-14",
+        "tenor": "5Y",
+        "field_value": 2.224
+      },
+      {
+        "trade_date": "2025-02-17",
+        "tenor": "30Y",
+        "field_value": 2.744
+      },
+      {
+        "trade_date": "2025-02-17",
+        "tenor": "5Y",
+        "field_value": 2.265
+      },
+      {
+        "trade_date": "2025-02-18",
+        "tenor": "30Y",
+        "field_value": 2.744
+      },
+      {
+        "trade_date": "2025-02-18",
+        "tenor": "5Y",
+        "field_value": 2.265
+      },
+      {
+        "trade_date": "2025-02-19",
+        "tenor": "30Y",
+        "field_value": 2.802
+      },
+      {
+        "trade_date": "2025-02-19",
+        "tenor": "5Y",
+        "field_value": 2.326
+      },
+      {
+        "trade_date": "2025-02-20",
+        "tenor": "30Y",
+        "field_value": 2.788
+      },
+      {
+        "trade_date": "2025-02-20",
+        "tenor": "5Y",
+        "field_value": 2.3
+      },
+      {
+        "trade_date": "2025-02-21",
+        "tenor": "30Y",
+        "field_value": 2.719
+      },
+      {
+        "trade_date": "2025-02-21",
+        "tenor": "5Y",
+        "field_value": 2.239
+      },
+      {
+        "trade_date": "2025-02-24",
+        "tenor": "30Y",
+        "field_value": 2.751
+      },
+      {
+        "trade_date": "2025-02-24",
+        "tenor": "5Y",
+        "field_value": 2.233
+      },
+      {
+        "trade_date": "2025-02-25",
+        "tenor": "30Y",
+        "field_value": 2.722
+      },
+      {
+        "trade_date": "2025-02-25",
+        "tenor": "5Y",
+        "field_value": 2.213
+      },
+      {
+        "trade_date": "2025-02-26",
+        "tenor": "30Y",
+        "field_value": 2.695
+      },
+      {
+        "trade_date": "2025-02-26",
+        "tenor": "5Y",
+        "field_value": 2.195
+      },
+      {
+        "trade_date": "2025-02-27",
+        "tenor": "30Y",
+        "field_value": 2.696
+      },
+      {
+        "trade_date": "2025-02-27",
+        "tenor": "5Y",
+        "field_value": 2.163
+      },
+      {
+        "trade_date": "2025-02-28",
+        "tenor": "30Y",
+        "field_value": 2.701
+      },
+      {
+        "trade_date": "2025-02-28",
+        "tenor": "5Y",
+        "field_value": 2.149
+      },
+      {
+        "trade_date": "2025-03-03",
+        "tenor": "30Y",
+        "field_value": 2.799
+      },
+      {
+        "trade_date": "2025-03-03",
+        "tenor": "5Y",
+        "field_value": 2.208
+      },
+      {
+        "trade_date": "2025-03-04",
+        "tenor": "30Y",
+        "field_value": 2.841
+      },
+      {
+        "trade_date": "2025-03-04",
+        "tenor": "5Y",
+        "field_value": 2.183
+      },
+      {
+        "trade_date": "2025-03-05",
+        "tenor": "30Y",
+        "field_value": 3.075
+      },
+      {
+        "trade_date": "2025-03-05",
+        "tenor": "5Y",
+        "field_value": 2.484
+      },
+      {
+        "trade_date": "2025-03-06",
+        "tenor": "30Y",
+        "field_value": 3.075
+      },
+      {
+        "trade_date": "2025-03-06",
+        "tenor": "5Y",
+        "field_value": 2.518
+      },
+      {
+        "trade_date": "2025-03-07",
+        "tenor": "30Y",
+        "field_value": 3.111
+      },
+      {
+        "trade_date": "2025-03-07",
+        "tenor": "5Y",
+        "field_value": 2.514
+      },
+      {
+        "trade_date": "2025-03-10",
+        "tenor": "30Y",
+        "field_value": 3.119
+      },
+      {
+        "trade_date": "2025-03-10",
+        "tenor": "5Y",
+        "field_value": 2.489
+      },
+      {
+        "trade_date": "2025-03-11",
+        "tenor": "30Y",
+        "field_value": 3.185
+      },
+      {
+        "trade_date": "2025-03-11",
+        "tenor": "5Y",
+        "field_value": 2.517
+      },
+      {
+        "trade_date": "2025-03-12",
+        "tenor": "30Y",
+        "field_value": 3.164
+      },
+      {
+        "trade_date": "2025-03-12",
+        "tenor": "5Y",
+        "field_value": 2.52
+      },
+      {
+        "trade_date": "2025-03-13",
+        "tenor": "30Y",
+        "field_value": 3.173
+      },
+      {
+        "trade_date": "2025-03-13",
+        "tenor": "5Y",
+        "field_value": 2.484
+      },
+      {
+        "trade_date": "2025-03-14",
+        "tenor": "30Y",
+        "field_value": 3.2
+      },
+      {
+        "trade_date": "2025-03-14",
+        "tenor": "5Y",
+        "field_value": 2.5
+      },
+      {
+        "trade_date": "2025-03-17",
+        "tenor": "30Y",
+        "field_value": 3.115
+      },
+      {
+        "trade_date": "2025-03-17",
+        "tenor": "5Y",
+        "field_value": 2.471
+      },
+      {
+        "trade_date": "2025-03-18",
+        "tenor": "30Y",
+        "field_value": 3.121
+      },
+      {
+        "trade_date": "2025-03-18",
+        "tenor": "5Y",
+        "field_value": 2.458
+      },
+      {
+        "trade_date": "2025-03-19",
+        "tenor": "30Y",
+        "field_value": 3.088
+      },
+      {
+        "trade_date": "2025-03-19",
+        "tenor": "5Y",
+        "field_value": 2.464
+      },
+      {
+        "trade_date": "2025-03-20",
+        "tenor": "30Y",
+        "field_value": 3.092
+      },
+      {
+        "trade_date": "2025-03-20",
+        "tenor": "5Y",
+        "field_value": 2.435
+      },
+      {
+        "trade_date": "2025-03-21",
+        "tenor": "30Y",
+        "field_value": 3.1
+      },
+      {
+        "trade_date": "2025-03-21",
+        "tenor": "5Y",
+        "field_value": 2.402
+      },
+      {
+        "trade_date": "2025-03-24",
+        "tenor": "30Y",
+        "field_value": 3.11
+      },
+      {
+        "trade_date": "2025-03-24",
+        "tenor": "5Y",
+        "field_value": 2.402
+      },
+      {
+        "trade_date": "2025-03-25",
+        "tenor": "30Y",
+        "field_value": 3.129
+      },
+      {
+        "trade_date": "2025-03-25",
+        "tenor": "5Y",
+        "field_value": 2.426
+      },
+      {
+        "trade_date": "2025-03-26",
+        "tenor": "30Y",
+        "field_value": 3.135
+      },
+      {
+        "trade_date": "2025-03-26",
+        "tenor": "5Y",
+        "field_value": 2.413
+      },
+      {
+        "trade_date": "2025-03-27",
+        "tenor": "30Y",
+        "field_value": 3.132
+      },
+      {
+        "trade_date": "2025-03-27",
+        "tenor": "5Y",
+        "field_value": 2.371
+      },
+      {
+        "trade_date": "2025-03-28",
+        "tenor": "30Y",
+        "field_value": 3.1
+      },
+      {
+        "trade_date": "2025-03-28",
+        "tenor": "5Y",
+        "field_value": 2.318
+      },
+      {
+        "trade_date": "2025-03-31",
+        "tenor": "30Y",
+        "field_value": 3.089
+      },
+      {
+        "trade_date": "2025-03-31",
+        "tenor": "5Y",
+        "field_value": 2.337
+      },
+      {
+        "trade_date": "2025-04-01",
+        "tenor": "30Y",
+        "field_value": 3.028
+      },
+      {
+        "trade_date": "2025-04-01",
+        "tenor": "5Y",
+        "field_value": 2.302
+      },
+      {
+        "trade_date": "2025-04-02",
+        "tenor": "30Y",
+        "field_value": 3.071
+      },
+      {
+        "trade_date": "2025-04-02",
+        "tenor": "5Y",
+        "field_value": 2.327
+      },
+      {
+        "trade_date": "2025-04-03",
+        "tenor": "30Y",
+        "field_value": 3.041
+      },
+      {
+        "trade_date": "2025-04-03",
+        "tenor": "5Y",
+        "field_value": 2.231
+      },
+      {
+        "trade_date": "2025-04-04",
+        "tenor": "30Y",
+        "field_value": 2.977
+      },
+      {
+        "trade_date": "2025-04-04",
+        "tenor": "5Y",
+        "field_value": 2.126
+      },
+      {
+        "trade_date": "2025-04-07",
+        "tenor": "30Y",
+        "field_value": 3.015
+      },
+      {
+        "trade_date": "2025-04-07",
+        "tenor": "5Y",
+        "field_value": 2.108
+      },
+      {
+        "trade_date": "2025-04-08",
+        "tenor": "30Y",
+        "field_value": 3.02
+      },
+      {
+        "trade_date": "2025-04-08",
+        "tenor": "5Y",
+        "field_value": 2.172
+      },
+      {
+        "trade_date": "2025-04-09",
+        "tenor": "30Y",
+        "field_value": 2.963
+      },
+      {
+        "trade_date": "2025-04-09",
+        "tenor": "5Y",
+        "field_value": 2.1
+      },
+      {
+        "trade_date": "2025-04-10",
+        "tenor": "30Y",
+        "field_value": 2.957
+      },
+      {
+        "trade_date": "2025-04-10",
+        "tenor": "5Y",
+        "field_value": 2.111
+      },
+      {
+        "trade_date": "2025-04-11",
+        "tenor": "30Y",
+        "field_value": 2.89
+      },
+      {
+        "trade_date": "2025-04-11",
+        "tenor": "5Y",
+        "field_value": 2.13
+      },
+      {
+        "trade_date": "2025-04-14",
+        "tenor": "30Y",
+        "field_value": 2.876
+      },
+      {
+        "trade_date": "2025-04-14",
+        "tenor": "5Y",
+        "field_value": 2.072
+      },
+      {
+        "trade_date": "2025-04-15",
+        "tenor": "30Y",
+        "field_value": 2.914
+      },
+      {
+        "trade_date": "2025-04-15",
+        "tenor": "5Y",
+        "field_value": 2.088
+      },
+      {
+        "trade_date": "2025-04-16",
+        "tenor": "30Y",
+        "field_value": 2.912
+      },
+      {
+        "trade_date": "2025-04-16",
+        "tenor": "5Y",
+        "field_value": 2.059
+      },
+      {
+        "trade_date": "2025-04-17",
+        "tenor": "30Y",
+        "field_value": 2.894
+      },
+      {
+        "trade_date": "2025-04-17",
+        "tenor": "5Y",
+        "field_value": 2.017
+      },
+      {
+        "trade_date": "2025-04-18",
+        "tenor": "30Y",
+        "field_value": 2.894
+      },
+      {
+        "trade_date": "2025-04-18",
+        "tenor": "5Y",
+        "field_value": 2.017
+      },
+      {
+        "trade_date": "2025-04-22",
+        "tenor": "30Y",
+        "field_value": 2.857
+      },
+      {
+        "trade_date": "2025-04-22",
+        "tenor": "5Y",
+        "field_value": 1.981
+      },
+      {
+        "trade_date": "2025-04-23",
+        "tenor": "30Y",
+        "field_value": 2.91
+      },
+      {
+        "trade_date": "2025-04-23",
+        "tenor": "5Y",
+        "field_value": 2.047
+      },
+      {
+        "trade_date": "2025-04-24",
+        "tenor": "30Y",
+        "field_value": 2.876
+      },
+      {
+        "trade_date": "2025-04-24",
+        "tenor": "5Y",
+        "field_value": 1.986
+      },
+      {
+        "trade_date": "2025-04-25",
+        "tenor": "30Y",
+        "field_value": 2.888
+      },
+      {
+        "trade_date": "2025-04-25",
+        "tenor": "5Y",
+        "field_value": 2.015
+      },
+      {
+        "trade_date": "2025-04-28",
+        "tenor": "30Y",
+        "field_value": 2.945
+      },
+      {
+        "trade_date": "2025-04-28",
+        "tenor": "5Y",
+        "field_value": 2.058
+      },
+      {
+        "trade_date": "2025-04-29",
+        "tenor": "30Y",
+        "field_value": 2.926
+      },
+      {
+        "trade_date": "2025-04-29",
+        "tenor": "5Y",
+        "field_value": 2.044
+      },
+      {
+        "trade_date": "2025-04-30",
+        "tenor": "30Y",
+        "field_value": 2.881
+      },
+      {
+        "trade_date": "2025-04-30",
+        "tenor": "5Y",
+        "field_value": 1.984
+      },
+      {
+        "trade_date": "2025-05-02",
+        "tenor": "30Y",
+        "field_value": 2.969
+      },
+      {
+        "trade_date": "2025-05-02",
+        "tenor": "5Y",
+        "field_value": 2.078
+      },
+      {
+        "trade_date": "2025-05-05",
+        "tenor": "30Y",
+        "field_value": 2.972
+      },
+      {
+        "trade_date": "2025-05-05",
+        "tenor": "5Y",
+        "field_value": 2.059
+      },
+      {
+        "trade_date": "2025-05-06",
+        "tenor": "30Y",
+        "field_value": 3.003
+      },
+      {
+        "trade_date": "2025-05-06",
+        "tenor": "5Y",
+        "field_value": 2.063
+      },
+      {
+        "trade_date": "2025-05-07",
+        "tenor": "30Y",
+        "field_value": 2.921
+      },
+      {
+        "trade_date": "2025-05-07",
+        "tenor": "5Y",
+        "field_value": 2.012
+      },
+      {
+        "trade_date": "2025-05-08",
+        "tenor": "30Y",
+        "field_value": 2.988
+      },
+      {
+        "trade_date": "2025-05-08",
+        "tenor": "5Y",
+        "field_value": 2.078
+      },
+      {
+        "trade_date": "2025-05-09",
+        "tenor": "30Y",
+        "field_value": 3.017
+      },
+      {
+        "trade_date": "2025-05-09",
+        "tenor": "5Y",
+        "field_value": 2.098
+      },
+      {
+        "trade_date": "2025-05-12",
+        "tenor": "30Y",
+        "field_value": 3.079
+      },
+      {
+        "trade_date": "2025-05-12",
+        "tenor": "5Y",
+        "field_value": 2.22
+      },
+      {
+        "trade_date": "2025-05-13",
+        "tenor": "30Y",
+        "field_value": 3.124
+      },
+      {
+        "trade_date": "2025-05-13",
+        "tenor": "5Y",
+        "field_value": 2.244
+      },
+      {
+        "trade_date": "2025-05-14",
+        "tenor": "30Y",
+        "field_value": 3.145
+      },
+      {
+        "trade_date": "2025-05-14",
+        "tenor": "5Y",
+        "field_value": 2.268
+      },
+      {
+        "trade_date": "2025-05-15",
+        "tenor": "30Y",
+        "field_value": 3.065
+      },
+      {
+        "trade_date": "2025-05-15",
+        "tenor": "5Y",
+        "field_value": 2.189
+      },
+      {
+        "trade_date": "2025-05-16",
+        "tenor": "30Y",
+        "field_value": 3.038
+      },
+      {
+        "trade_date": "2025-05-16",
+        "tenor": "5Y",
+        "field_value": 2.153
+      },
+      {
+        "trade_date": "2025-05-19",
+        "tenor": "30Y",
+        "field_value": 3.037
+      },
+      {
+        "trade_date": "2025-05-19",
+        "tenor": "5Y",
+        "field_value": 2.148
+      },
+      {
+        "trade_date": "2025-05-20",
+        "tenor": "30Y",
+        "field_value": 3.087
+      },
+      {
+        "trade_date": "2025-05-20",
+        "tenor": "5Y",
+        "field_value": 2.15
+      },
+      {
+        "trade_date": "2025-05-21",
+        "tenor": "30Y",
+        "field_value": 3.135
+      },
+      {
+        "trade_date": "2025-05-21",
+        "tenor": "5Y",
+        "field_value": 2.192
+      },
+      {
+        "trade_date": "2025-05-22",
+        "tenor": "30Y",
+        "field_value": 3.149
+      },
+      {
+        "trade_date": "2025-05-22",
+        "tenor": "5Y",
+        "field_value": 2.171
+      },
+      {
+        "trade_date": "2025-05-23",
+        "tenor": "30Y",
+        "field_value": 3.086
+      },
+      {
+        "trade_date": "2025-05-23",
+        "tenor": "5Y",
+        "field_value": 2.096
+      },
+      {
+        "trade_date": "2025-05-26",
+        "tenor": "30Y",
+        "field_value": 3.063
+      },
+      {
+        "trade_date": "2025-05-26",
+        "tenor": "5Y",
+        "field_value": 2.097
+      },
+      {
+        "trade_date": "2025-05-27",
+        "tenor": "30Y",
+        "field_value": 3.001
+      },
+      {
+        "trade_date": "2025-05-27",
+        "tenor": "5Y",
+        "field_value": 2.092
+      },
+      {
+        "trade_date": "2025-05-28",
+        "tenor": "30Y",
+        "field_value": 3.03
+      },
+      {
+        "trade_date": "2025-05-28",
+        "tenor": "5Y",
+        "field_value": 2.106
+      },
+      {
+        "trade_date": "2025-05-29",
+        "tenor": "30Y",
+        "field_value": 2.986
+      },
+      {
+        "trade_date": "2025-05-29",
+        "tenor": "5Y",
+        "field_value": 2.067
+      },
+      {
+        "trade_date": "2025-05-30",
+        "tenor": "30Y",
+        "field_value": 2.978
+      },
+      {
+        "trade_date": "2025-05-30",
+        "tenor": "5Y",
+        "field_value": 2.063
+      },
+      {
+        "trade_date": "2025-06-02",
+        "tenor": "30Y",
+        "field_value": 3.011
+      },
+      {
+        "trade_date": "2025-06-02",
+        "tenor": "5Y",
+        "field_value": 2.083
+      },
+      {
+        "trade_date": "2025-06-03",
+        "tenor": "30Y",
+        "field_value": 3.015
+      },
+      {
+        "trade_date": "2025-06-03",
+        "tenor": "5Y",
+        "field_value": 2.081
+      },
+      {
+        "trade_date": "2025-06-04",
+        "tenor": "30Y",
+        "field_value": 2.996
+      },
+      {
+        "trade_date": "2025-06-04",
+        "tenor": "5Y",
+        "field_value": 2.095
+      },
+      {
+        "trade_date": "2025-06-05",
+        "tenor": "30Y",
+        "field_value": 3.023
+      },
+      {
+        "trade_date": "2025-06-05",
+        "tenor": "5Y",
+        "field_value": 2.169
+      },
+      {
+        "trade_date": "2025-06-06",
+        "tenor": "30Y",
+        "field_value": 3.008
+      },
+      {
+        "trade_date": "2025-06-06",
+        "tenor": "5Y",
+        "field_value": 2.175
+      },
+      {
+        "trade_date": "2025-06-09",
+        "tenor": "30Y",
+        "field_value": 3.011
+      },
+      {
+        "trade_date": "2025-06-09",
+        "tenor": "5Y",
+        "field_value": 2.155
+      },
+      {
+        "trade_date": "2025-06-10",
+        "tenor": "30Y",
+        "field_value": 2.969
+      },
+      {
+        "trade_date": "2025-06-10",
+        "tenor": "5Y",
+        "field_value": 2.122
+      },
+      {
+        "trade_date": "2025-06-11",
+        "tenor": "30Y",
+        "field_value": 3.004
+      },
+      {
+        "trade_date": "2025-06-11",
+        "tenor": "5Y",
+        "field_value": 2.125
+      },
+      {
+        "trade_date": "2025-06-12",
+        "tenor": "30Y",
+        "field_value": 2.931
+      },
+      {
+        "trade_date": "2025-06-12",
+        "tenor": "5Y",
+        "field_value": 2.078
+      },
+      {
+        "trade_date": "2025-06-13",
+        "tenor": "30Y",
+        "field_value": 2.986
+      },
+      {
+        "trade_date": "2025-06-13",
+        "tenor": "5Y",
+        "field_value": 2.134
+      },
+      {
+        "trade_date": "2025-06-16",
+        "tenor": "30Y",
+        "field_value": 2.985
+      },
+      {
+        "trade_date": "2025-06-16",
+        "tenor": "5Y",
+        "field_value": 2.119
+      },
+      {
+        "trade_date": "2025-06-17",
+        "tenor": "30Y",
+        "field_value": 2.984
+      },
+      {
+        "trade_date": "2025-06-17",
+        "tenor": "5Y",
+        "field_value": 2.14
+      },
+      {
+        "trade_date": "2025-06-18",
+        "tenor": "30Y",
+        "field_value": 2.943
+      },
+      {
+        "trade_date": "2025-06-18",
+        "tenor": "5Y",
+        "field_value": 2.102
+      },
+      {
+        "trade_date": "2025-06-19",
+        "tenor": "30Y",
+        "field_value": 2.971
+      },
+      {
+        "trade_date": "2025-06-19",
+        "tenor": "5Y",
+        "field_value": 2.121
+      },
+      {
+        "trade_date": "2025-06-20",
+        "tenor": "30Y",
+        "field_value": 2.97
+      },
+      {
+        "trade_date": "2025-06-20",
+        "tenor": "5Y",
+        "field_value": 2.117
+      },
+      {
+        "trade_date": "2025-06-23",
+        "tenor": "30Y",
+        "field_value": 2.96
+      },
+      {
+        "trade_date": "2025-06-23",
+        "tenor": "5Y",
+        "field_value": 2.109
+      },
+      {
+        "trade_date": "2025-06-24",
+        "tenor": "30Y",
+        "field_value": 3.024
+      },
+      {
+        "trade_date": "2025-06-24",
+        "tenor": "5Y",
+        "field_value": 2.13
+      },
+      {
+        "trade_date": "2025-06-25",
+        "tenor": "30Y",
+        "field_value": 3.051
+      },
+      {
+        "trade_date": "2025-06-25",
+        "tenor": "5Y",
+        "field_value": 2.141
+      },
+      {
+        "trade_date": "2025-06-26",
+        "tenor": "30Y",
+        "field_value": 3.069
+      },
+      {
+        "trade_date": "2025-06-26",
+        "tenor": "5Y",
+        "field_value": 2.133
+      },
+      {
+        "trade_date": "2025-06-27",
+        "tenor": "30Y",
+        "field_value": 3.068
+      },
+      {
+        "trade_date": "2025-06-27",
+        "tenor": "5Y",
+        "field_value": 2.161
+      },
+      {
+        "trade_date": "2025-06-30",
+        "tenor": "30Y",
+        "field_value": 3.099
+      },
+      {
+        "trade_date": "2025-06-30",
+        "tenor": "5Y",
+        "field_value": 2.169
+      },
+      {
+        "trade_date": "2025-07-01",
+        "tenor": "30Y",
+        "field_value": 3.051
+      },
+      {
+        "trade_date": "2025-07-01",
+        "tenor": "5Y",
+        "field_value": 2.146
+      },
+      {
+        "trade_date": "2025-07-02",
+        "tenor": "30Y",
+        "field_value": 3.116
+      },
+      {
+        "trade_date": "2025-07-02",
+        "tenor": "5Y",
+        "field_value": 2.182
+      },
+      {
+        "trade_date": "2025-07-03",
+        "tenor": "30Y",
+        "field_value": 3.076
+      },
+      {
+        "trade_date": "2025-07-03",
+        "tenor": "5Y",
+        "field_value": 2.141
+      },
+      {
+        "trade_date": "2025-07-04",
+        "tenor": "30Y",
+        "field_value": 3.085
+      },
+      {
+        "trade_date": "2025-07-04",
+        "tenor": "5Y",
+        "field_value": 2.124
+      },
+      {
+        "trade_date": "2025-07-07",
+        "tenor": "30Y",
+        "field_value": 3.116
+      },
+      {
+        "trade_date": "2025-07-07",
+        "tenor": "5Y",
+        "field_value": 2.16
+      },
+      {
+        "trade_date": "2025-07-08",
+        "tenor": "30Y",
+        "field_value": 3.17
+      },
+      {
+        "trade_date": "2025-07-08",
+        "tenor": "5Y",
+        "field_value": 2.252
+      },
+      {
+        "trade_date": "2025-07-09",
+        "tenor": "30Y",
+        "field_value": 3.16
+      },
+      {
+        "trade_date": "2025-07-09",
+        "tenor": "5Y",
+        "field_value": 2.237
+      },
+      {
+        "trade_date": "2025-07-10",
+        "tenor": "30Y",
+        "field_value": 3.201
+      },
+      {
+        "trade_date": "2025-07-10",
+        "tenor": "5Y",
+        "field_value": 2.271
+      },
+      {
+        "trade_date": "2025-07-11",
+        "tenor": "30Y",
+        "field_value": 3.224
+      },
+      {
+        "trade_date": "2025-07-11",
+        "tenor": "5Y",
+        "field_value": 2.285
+      },
+      {
+        "trade_date": "2025-07-14",
+        "tenor": "30Y",
+        "field_value": 3.244
+      },
+      {
+        "trade_date": "2025-07-14",
+        "tenor": "5Y",
+        "field_value": 2.277
+      },
+      {
+        "trade_date": "2025-07-15",
+        "tenor": "30Y",
+        "field_value": 3.225
+      },
+      {
+        "trade_date": "2025-07-15",
+        "tenor": "5Y",
+        "field_value": 2.261
+      },
+      {
+        "trade_date": "2025-07-16",
+        "tenor": "30Y",
+        "field_value": 3.212
+      },
+      {
+        "trade_date": "2025-07-16",
+        "tenor": "5Y",
+        "field_value": 2.229
+      },
+      {
+        "trade_date": "2025-07-17",
+        "tenor": "30Y",
+        "field_value": 3.196
+      },
+      {
+        "trade_date": "2025-07-17",
+        "tenor": "5Y",
+        "field_value": 2.227
+      },
+      {
+        "trade_date": "2025-07-18",
+        "tenor": "30Y",
+        "field_value": 3.23
+      },
+      {
+        "trade_date": "2025-07-18",
+        "tenor": "5Y",
+        "field_value": 2.238
+      },
+      {
+        "trade_date": "2025-07-21",
+        "tenor": "30Y",
+        "field_value": 3.138
+      },
+      {
+        "trade_date": "2025-07-21",
+        "tenor": "5Y",
+        "field_value": 2.167
+      },
+      {
+        "trade_date": "2025-07-22",
+        "tenor": "30Y",
+        "field_value": 3.116
+      },
+      {
+        "trade_date": "2025-07-22",
+        "tenor": "5Y",
+        "field_value": 2.15
+      },
+      {
+        "trade_date": "2025-07-23",
+        "tenor": "30Y",
+        "field_value": 3.171
+      },
+      {
+        "trade_date": "2025-07-23",
+        "tenor": "5Y",
+        "field_value": 2.192
+      },
+      {
+        "trade_date": "2025-07-24",
+        "tenor": "30Y",
+        "field_value": 3.191
+      },
+      {
+        "trade_date": "2025-07-24",
+        "tenor": "5Y",
+        "field_value": 2.279
+      },
+      {
+        "trade_date": "2025-07-25",
+        "tenor": "30Y",
+        "field_value": 3.206
+      },
+      {
+        "trade_date": "2025-07-25",
+        "tenor": "5Y",
+        "field_value": 2.297
+      },
+      {
+        "trade_date": "2025-07-28",
+        "tenor": "30Y",
+        "field_value": 3.194
+      },
+      {
+        "trade_date": "2025-07-28",
+        "tenor": "5Y",
+        "field_value": 2.265
+      },
+      {
+        "trade_date": "2025-07-29",
+        "tenor": "30Y",
+        "field_value": 3.203
+      },
+      {
+        "trade_date": "2025-07-29",
+        "tenor": "5Y",
+        "field_value": 2.291
+      },
+      {
+        "trade_date": "2025-07-30",
+        "tenor": "30Y",
+        "field_value": 3.202
+      },
+      {
+        "trade_date": "2025-07-30",
+        "tenor": "5Y",
+        "field_value": 2.294
+      },
+      {
+        "trade_date": "2025-07-31",
+        "tenor": "30Y",
+        "field_value": 3.174
+      },
+      {
+        "trade_date": "2025-07-31",
+        "tenor": "5Y",
+        "field_value": 2.293
+      },
+      {
+        "trade_date": "2025-08-01",
+        "tenor": "30Y",
+        "field_value": 3.186
+      },
+      {
+        "trade_date": "2025-08-01",
+        "tenor": "5Y",
+        "field_value": 2.259
+      },
+      {
+        "trade_date": "2025-08-04",
+        "tenor": "30Y",
+        "field_value": 3.133
+      },
+      {
+        "trade_date": "2025-08-04",
+        "tenor": "5Y",
+        "field_value": 2.215
+      },
+      {
+        "trade_date": "2025-08-05",
+        "tenor": "30Y",
+        "field_value": 3.136
+      },
+      {
+        "trade_date": "2025-08-05",
+        "tenor": "5Y",
+        "field_value": 2.213
+      },
+      {
+        "trade_date": "2025-08-06",
+        "tenor": "30Y",
+        "field_value": 3.171
+      },
+      {
+        "trade_date": "2025-08-06",
+        "tenor": "5Y",
+        "field_value": 2.233
+      },
+      {
+        "trade_date": "2025-08-07",
+        "tenor": "30Y",
+        "field_value": 3.136
+      },
+      {
+        "trade_date": "2025-08-07",
+        "tenor": "5Y",
+        "field_value": 2.225
+      },
+      {
+        "trade_date": "2025-08-08",
+        "tenor": "30Y",
+        "field_value": 3.204
+      },
+      {
+        "trade_date": "2025-08-08",
+        "tenor": "5Y",
+        "field_value": 2.281
+      },
+      {
+        "trade_date": "2025-08-11",
+        "tenor": "30Y",
+        "field_value": 3.224
+      },
+      {
+        "trade_date": "2025-08-11",
+        "tenor": "5Y",
+        "field_value": 2.287
+      },
+      {
+        "trade_date": "2025-08-12",
+        "tenor": "30Y",
+        "field_value": 3.297
+      },
+      {
+        "trade_date": "2025-08-12",
+        "tenor": "5Y",
+        "field_value": 2.316
+      },
+      {
+        "trade_date": "2025-08-13",
+        "tenor": "30Y",
+        "field_value": 3.225
+      },
+      {
+        "trade_date": "2025-08-13",
+        "tenor": "5Y",
+        "field_value": 2.255
+      },
+      {
+        "trade_date": "2025-08-14",
+        "tenor": "30Y",
+        "field_value": 3.265
+      },
+      {
+        "trade_date": "2025-08-14",
+        "tenor": "5Y",
+        "field_value": 2.281
+      },
+      {
+        "trade_date": "2025-08-15",
+        "tenor": "30Y",
+        "field_value": 3.348
+      },
+      {
+        "trade_date": "2025-08-15",
+        "tenor": "5Y",
+        "field_value": 2.339
+      },
+      {
+        "trade_date": "2025-08-18",
+        "tenor": "30Y",
+        "field_value": 3.336
+      },
+      {
+        "trade_date": "2025-08-18",
+        "tenor": "5Y",
+        "field_value": 2.317
+      },
+      {
+        "trade_date": "2025-08-19",
+        "tenor": "30Y",
+        "field_value": 3.321
+      },
+      {
+        "trade_date": "2025-08-19",
+        "tenor": "5Y",
+        "field_value": 2.305
+      },
+      {
+        "trade_date": "2025-08-20",
+        "tenor": "30Y",
+        "field_value": 3.292
+      },
+      {
+        "trade_date": "2025-08-20",
+        "tenor": "5Y",
+        "field_value": 2.272
+      },
+      {
+        "trade_date": "2025-08-21",
+        "tenor": "30Y",
+        "field_value": 3.326
+      },
+      {
+        "trade_date": "2025-08-21",
+        "tenor": "5Y",
+        "field_value": 2.313
+      },
+      {
+        "trade_date": "2025-08-22",
+        "tenor": "30Y",
+        "field_value": 3.307
+      },
+      {
+        "trade_date": "2025-08-22",
+        "tenor": "5Y",
+        "field_value": 2.275
+      },
+      {
+        "trade_date": "2025-08-25",
+        "tenor": "30Y",
+        "field_value": 3.329
+      },
+      {
+        "trade_date": "2025-08-25",
+        "tenor": "5Y",
+        "field_value": 2.313
+      },
+      {
+        "trade_date": "2025-08-26",
+        "tenor": "30Y",
+        "field_value": 3.319
+      },
+      {
+        "trade_date": "2025-08-26",
+        "tenor": "5Y",
+        "field_value": 2.267
+      },
+      {
+        "trade_date": "2025-08-27",
+        "tenor": "30Y",
+        "field_value": 3.306
+      },
+      {
+        "trade_date": "2025-08-27",
+        "tenor": "5Y",
+        "field_value": 2.235
+      },
+      {
+        "trade_date": "2025-08-28",
+        "tenor": "30Y",
+        "field_value": 3.296
+      },
+      {
+        "trade_date": "2025-08-28",
+        "tenor": "5Y",
+        "field_value": 2.241
+      },
+      {
+        "trade_date": "2025-08-29",
+        "tenor": "30Y",
+        "field_value": 3.335
+      },
+      {
+        "trade_date": "2025-08-29",
+        "tenor": "5Y",
+        "field_value": 2.256
+      },
+      {
+        "trade_date": "2025-09-01",
+        "tenor": "30Y",
+        "field_value": 3.357
+      },
+      {
+        "trade_date": "2025-09-01",
+        "tenor": "5Y",
+        "field_value": 2.276
+      },
+      {
+        "trade_date": "2025-09-02",
+        "tenor": "30Y",
+        "field_value": 3.405
+      },
+      {
+        "trade_date": "2025-09-02",
+        "tenor": "5Y",
+        "field_value": 2.311
+      },
+      {
+        "trade_date": "2025-09-03",
+        "tenor": "30Y",
+        "field_value": 3.353
+      },
+      {
+        "trade_date": "2025-09-03",
+        "tenor": "5Y",
+        "field_value": 2.279
+      },
+      {
+        "trade_date": "2025-09-04",
+        "tenor": "30Y",
+        "field_value": 3.335
+      },
+      {
+        "trade_date": "2025-09-04",
+        "tenor": "5Y",
+        "field_value": 2.268
+      },
+      {
+        "trade_date": "2025-09-05",
+        "tenor": "30Y",
+        "field_value": 3.296
+      },
+      {
+        "trade_date": "2025-09-05",
+        "tenor": "5Y",
+        "field_value": 2.218
+      },
+      {
+        "trade_date": "2025-09-08",
+        "tenor": "30Y",
+        "field_value": 3.262
+      },
+      {
+        "trade_date": "2025-09-08",
+        "tenor": "5Y",
+        "field_value": 2.207
+      },
+      {
+        "trade_date": "2025-09-09",
+        "tenor": "30Y",
+        "field_value": 3.28
+      },
+      {
+        "trade_date": "2025-09-09",
+        "tenor": "5Y",
+        "field_value": 2.224
+      },
+      {
+        "trade_date": "2025-09-10",
+        "tenor": "30Y",
+        "field_value": 3.272
+      },
+      {
+        "trade_date": "2025-09-10",
+        "tenor": "5Y",
+        "field_value": 2.224
+      },
+      {
+        "trade_date": "2025-09-11",
+        "tenor": "30Y",
+        "field_value": 3.254
+      },
+      {
+        "trade_date": "2025-09-11",
+        "tenor": "5Y",
+        "field_value": 2.255
+      },
+      {
+        "trade_date": "2025-09-12",
+        "tenor": "30Y",
+        "field_value": 3.297
+      },
+      {
+        "trade_date": "2025-09-12",
+        "tenor": "5Y",
+        "field_value": 2.306
+      },
+      {
+        "trade_date": "2025-09-15",
+        "tenor": "30Y",
+        "field_value": 3.259
+      },
+      {
+        "trade_date": "2025-09-15",
+        "tenor": "5Y",
+        "field_value": 2.294
+      },
+      {
+        "trade_date": "2025-09-16",
+        "tenor": "30Y",
+        "field_value": 3.274
+      },
+      {
+        "trade_date": "2025-09-16",
+        "tenor": "5Y",
+        "field_value": 2.283
+      },
+      {
+        "trade_date": "2025-09-17",
+        "tenor": "30Y",
+        "field_value": 3.228
+      },
+      {
+        "trade_date": "2025-09-17",
+        "tenor": "5Y",
+        "field_value": 2.276
+      },
+      {
+        "trade_date": "2025-09-18",
+        "tenor": "30Y",
+        "field_value": 3.309
+      },
+      {
+        "trade_date": "2025-09-18",
+        "tenor": "5Y",
+        "field_value": 2.304
+      },
+      {
+        "trade_date": "2025-09-19",
+        "tenor": "30Y",
+        "field_value": 3.335
+      },
+      {
+        "trade_date": "2025-09-19",
+        "tenor": "5Y",
+        "field_value": 2.324
+      },
+      {
+        "trade_date": "2025-09-22",
+        "tenor": "30Y",
+        "field_value": 3.355
+      },
+      {
+        "trade_date": "2025-09-22",
+        "tenor": "5Y",
+        "field_value": 2.318
+      },
+      {
+        "trade_date": "2025-09-23",
+        "tenor": "30Y",
+        "field_value": 3.342
+      },
+      {
+        "trade_date": "2025-09-23",
+        "tenor": "5Y",
+        "field_value": 2.327
+      },
+      {
+        "trade_date": "2025-09-24",
+        "tenor": "30Y",
+        "field_value": 3.338
+      },
+      {
+        "trade_date": "2025-09-24",
+        "tenor": "5Y",
+        "field_value": 2.325
+      },
+      {
+        "trade_date": "2025-09-25",
+        "tenor": "30Y",
+        "field_value": 3.341
+      },
+      {
+        "trade_date": "2025-09-25",
+        "tenor": "5Y",
+        "field_value": 2.358
+      },
+      {
+        "trade_date": "2025-09-26",
+        "tenor": "30Y",
+        "field_value": 3.327
+      },
+      {
+        "trade_date": "2025-09-26",
+        "tenor": "5Y",
+        "field_value": 2.333
+      },
+      {
+        "trade_date": "2025-09-29",
+        "tenor": "30Y",
+        "field_value": 3.271
+      },
+      {
+        "trade_date": "2025-09-29",
+        "tenor": "5Y",
+        "field_value": 2.31
+      },
+      {
+        "trade_date": "2025-09-30",
+        "tenor": "30Y",
+        "field_value": 3.28
+      },
+      {
+        "trade_date": "2025-09-30",
+        "tenor": "5Y",
+        "field_value": 2.308
+      },
+      {
+        "trade_date": "2025-10-01",
+        "tenor": "30Y",
+        "field_value": 3.298
+      },
+      {
+        "trade_date": "2025-10-01",
+        "tenor": "5Y",
+        "field_value": 2.299
+      },
+      {
+        "trade_date": "2025-10-02",
+        "tenor": "30Y",
+        "field_value": 3.273
+      },
+      {
+        "trade_date": "2025-10-02",
+        "tenor": "5Y",
+        "field_value": 2.295
+      },
+      {
+        "trade_date": "2025-10-03",
+        "tenor": "30Y",
+        "field_value": 3.266
+      },
+      {
+        "trade_date": "2025-10-03",
+        "tenor": "5Y",
+        "field_value": 2.301
+      },
+      {
+        "trade_date": "2025-10-06",
+        "tenor": "30Y",
+        "field_value": 3.295
+      },
+      {
+        "trade_date": "2025-10-06",
+        "tenor": "5Y",
+        "field_value": 2.304
+      },
+      {
+        "trade_date": "2025-10-07",
+        "tenor": "30Y",
+        "field_value": 3.292
+      },
+      {
+        "trade_date": "2025-10-07",
+        "tenor": "5Y",
+        "field_value": 2.296
+      },
+      {
+        "trade_date": "2025-10-08",
+        "tenor": "30Y",
+        "field_value": 3.262
+      },
+      {
+        "trade_date": "2025-10-08",
+        "tenor": "5Y",
+        "field_value": 2.269
+      },
+      {
+        "trade_date": "2025-10-09",
+        "tenor": "30Y",
+        "field_value": 3.278
+      },
+      {
+        "trade_date": "2025-10-09",
+        "tenor": "5Y",
+        "field_value": 2.293
+      },
+      {
+        "trade_date": "2025-10-10",
+        "tenor": "30Y",
+        "field_value": 3.224
+      },
+      {
+        "trade_date": "2025-10-10",
+        "tenor": "5Y",
+        "field_value": 2.235
+      },
+      {
+        "trade_date": "2025-10-13",
+        "tenor": "30Y",
+        "field_value": 3.223
+      },
+      {
+        "trade_date": "2025-10-13",
+        "tenor": "5Y",
+        "field_value": 2.216
+      },
+      {
+        "trade_date": "2025-10-14",
+        "tenor": "30Y",
+        "field_value": 3.191
+      },
+      {
+        "trade_date": "2025-10-14",
+        "tenor": "5Y",
+        "field_value": 2.2
+      },
+      {
+        "trade_date": "2025-10-15",
+        "tenor": "30Y",
+        "field_value": 3.145
+      },
+      {
+        "trade_date": "2025-10-15",
+        "tenor": "5Y",
+        "field_value": 2.164
+      },
+      {
+        "trade_date": "2025-10-16",
+        "tenor": "30Y",
+        "field_value": 3.158
+      },
+      {
+        "trade_date": "2025-10-16",
+        "tenor": "5Y",
+        "field_value": 2.157
+      },
+      {
+        "trade_date": "2025-10-17",
+        "tenor": "30Y",
+        "field_value": 3.174
+      },
+      {
+        "trade_date": "2025-10-17",
+        "tenor": "5Y",
+        "field_value": 2.166
+      },
+      {
+        "trade_date": "2025-10-20",
+        "tenor": "30Y",
+        "field_value": 3.163
+      },
+      {
+        "trade_date": "2025-10-20",
+        "tenor": "5Y",
+        "field_value": 2.167
+      },
+      {
+        "trade_date": "2025-10-21",
+        "tenor": "30Y",
+        "field_value": 3.127
+      },
+      {
+        "trade_date": "2025-10-21",
+        "tenor": "5Y",
+        "field_value": 2.153
+      },
+      {
+        "trade_date": "2025-10-22",
+        "tenor": "30Y",
+        "field_value": 3.146
+      },
+      {
+        "trade_date": "2025-10-22",
+        "tenor": "5Y",
+        "field_value": 2.158
+      },
+      {
+        "trade_date": "2025-10-23",
+        "tenor": "30Y",
+        "field_value": 3.167
+      },
+      {
+        "trade_date": "2025-10-23",
+        "tenor": "5Y",
+        "field_value": 2.18
+      },
+      {
+        "trade_date": "2025-10-24",
+        "tenor": "30Y",
+        "field_value": 3.205
+      },
+      {
+        "trade_date": "2025-10-24",
+        "tenor": "5Y",
+        "field_value": 2.23
+      },
+      {
+        "trade_date": "2025-10-27",
+        "tenor": "30Y",
+        "field_value": 3.188
+      },
+      {
+        "trade_date": "2025-10-27",
+        "tenor": "5Y",
+        "field_value": 2.226
+      },
+      {
+        "trade_date": "2025-10-28",
+        "tenor": "30Y",
+        "field_value": 3.19
+      },
+      {
+        "trade_date": "2025-10-28",
+        "tenor": "5Y",
+        "field_value": 2.232
+      },
+      {
+        "trade_date": "2025-10-29",
+        "tenor": "30Y",
+        "field_value": 3.187
+      },
+      {
+        "trade_date": "2025-10-29",
+        "tenor": "5Y",
+        "field_value": 2.231
+      },
+      {
+        "trade_date": "2025-10-30",
+        "tenor": "30Y",
+        "field_value": 3.198
+      },
+      {
+        "trade_date": "2025-10-30",
+        "tenor": "5Y",
+        "field_value": 2.251
+      },
+      {
+        "trade_date": "2025-10-31",
+        "tenor": "30Y",
+        "field_value": 3.211
+      },
+      {
+        "trade_date": "2025-10-31",
+        "tenor": "5Y",
+        "field_value": 2.231
+      },
+      {
+        "trade_date": "2025-11-03",
+        "tenor": "30Y",
+        "field_value": 3.25
+      },
+      {
+        "trade_date": "2025-11-03",
+        "tenor": "5Y",
+        "field_value": 2.267
+      },
+      {
+        "trade_date": "2025-11-04",
+        "tenor": "30Y",
+        "field_value": 3.236
+      },
+      {
+        "trade_date": "2025-11-04",
+        "tenor": "5Y",
+        "field_value": 2.254
+      },
+      {
+        "trade_date": "2025-11-05",
+        "tenor": "30Y",
+        "field_value": 3.259
+      },
+      {
+        "trade_date": "2025-11-05",
+        "tenor": "5Y",
+        "field_value": 2.268
+      },
+      {
+        "trade_date": "2025-11-06",
+        "tenor": "30Y",
+        "field_value": 3.237
+      },
+      {
+        "trade_date": "2025-11-06",
+        "tenor": "5Y",
+        "field_value": 2.246
+      },
+      {
+        "trade_date": "2025-11-07",
+        "tenor": "30Y",
+        "field_value": 3.265
+      },
+      {
+        "trade_date": "2025-11-07",
+        "tenor": "5Y",
+        "field_value": 2.254
+      },
+      {
+        "trade_date": "2025-11-10",
+        "tenor": "30Y",
+        "field_value": 3.259
+      },
+      {
+        "trade_date": "2025-11-10",
+        "tenor": "5Y",
+        "field_value": 2.267
+      },
+      {
+        "trade_date": "2025-11-11",
+        "tenor": "30Y",
+        "field_value": 3.253
+      },
+      {
+        "trade_date": "2025-11-11",
+        "tenor": "5Y",
+        "field_value": 2.258
+      },
+      {
+        "trade_date": "2025-11-12",
+        "tenor": "30Y",
+        "field_value": 3.228
+      },
+      {
+        "trade_date": "2025-11-12",
+        "tenor": "5Y",
+        "field_value": 2.246
+      },
+      {
+        "trade_date": "2025-11-13",
+        "tenor": "30Y",
+        "field_value": 3.279
+      },
+      {
+        "trade_date": "2025-11-13",
+        "tenor": "5Y",
+        "field_value": 2.292
+      },
+      {
+        "trade_date": "2025-11-14",
+        "tenor": "30Y",
+        "field_value": 3.317
+      },
+      {
+        "trade_date": "2025-11-14",
+        "tenor": "5Y",
+        "field_value": 2.311
+      },
+      {
+        "trade_date": "2025-11-17",
+        "tenor": "30Y",
+        "field_value": 3.309
+      },
+      {
+        "trade_date": "2025-11-17",
+        "tenor": "5Y",
+        "field_value": 2.308
+      },
+      {
+        "trade_date": "2025-11-18",
+        "tenor": "30Y",
+        "field_value": 3.318
+      },
+      {
+        "trade_date": "2025-11-18",
+        "tenor": "5Y",
+        "field_value": 2.292
+      },
+      {
+        "trade_date": "2025-11-19",
+        "tenor": "30Y",
+        "field_value": 3.331
+      },
+      {
+        "trade_date": "2025-11-19",
+        "tenor": "5Y",
+        "field_value": 2.293
+      },
+      {
+        "trade_date": "2025-11-20",
+        "tenor": "30Y",
+        "field_value": 3.349
+      },
+      {
+        "trade_date": "2025-11-20",
+        "tenor": "5Y",
+        "field_value": 2.293
+      },
+      {
+        "trade_date": "2025-11-21",
+        "tenor": "30Y",
+        "field_value": 3.338
+      },
+      {
+        "trade_date": "2025-11-21",
+        "tenor": "5Y",
+        "field_value": 2.284
+      },
+      {
+        "trade_date": "2025-11-24",
+        "tenor": "30Y",
+        "field_value": 3.321
+      },
+      {
+        "trade_date": "2025-11-24",
+        "tenor": "5Y",
+        "field_value": 2.278
+      },
+      {
+        "trade_date": "2025-11-25",
+        "tenor": "30Y",
+        "field_value": 3.3
+      },
+      {
+        "trade_date": "2025-11-25",
+        "tenor": "5Y",
+        "field_value": 2.269
+      },
+      {
+        "trade_date": "2025-11-26",
+        "tenor": "30Y",
+        "field_value": 3.306
+      },
+      {
+        "trade_date": "2025-11-26",
+        "tenor": "5Y",
+        "field_value": 2.267
+      },
+      {
+        "trade_date": "2025-11-27",
+        "tenor": "30Y",
+        "field_value": 3.317
+      },
+      {
+        "trade_date": "2025-11-27",
+        "tenor": "5Y",
+        "field_value": 2.282
+      },
+      {
+        "trade_date": "2025-11-28",
+        "tenor": "30Y",
+        "field_value": 3.325
+      },
+      {
+        "trade_date": "2025-11-28",
+        "tenor": "5Y",
+        "field_value": 2.287
+      },
+      {
+        "trade_date": "2025-12-01",
+        "tenor": "30Y",
+        "field_value": 3.386
+      },
+      {
+        "trade_date": "2025-12-01",
+        "tenor": "5Y",
+        "field_value": 2.342
+      },
+      {
+        "trade_date": "2025-12-02",
+        "tenor": "30Y",
+        "field_value": 3.38
+      },
+      {
+        "trade_date": "2025-12-02",
+        "tenor": "5Y",
+        "field_value": 2.344
+      },
+      {
+        "trade_date": "2025-12-03",
+        "tenor": "30Y",
+        "field_value": 3.386
+      },
+      {
+        "trade_date": "2025-12-03",
+        "tenor": "5Y",
+        "field_value": 2.339
+      },
+      {
+        "trade_date": "2025-12-04",
+        "tenor": "30Y",
+        "field_value": 3.403
+      },
+      {
+        "trade_date": "2025-12-04",
+        "tenor": "5Y",
+        "field_value": 2.369
+      },
+      {
+        "trade_date": "2025-12-05",
+        "tenor": "30Y",
+        "field_value": 3.429
+      },
+      {
+        "trade_date": "2025-12-05",
+        "tenor": "5Y",
+        "field_value": 2.4
+      },
+      {
+        "trade_date": "2025-12-08",
+        "tenor": "30Y",
+        "field_value": 3.46
+      },
+      {
+        "trade_date": "2025-12-08",
+        "tenor": "5Y",
+        "field_value": 2.478
+      },
+      {
+        "trade_date": "2025-12-09",
+        "tenor": "30Y",
+        "field_value": 3.458
+      },
+      {
+        "trade_date": "2025-12-09",
+        "tenor": "5Y",
+        "field_value": 2.465
+      },
+      {
+        "trade_date": "2025-12-10",
+        "tenor": "30Y",
+        "field_value": 3.452
+      },
+      {
+        "trade_date": "2025-12-10",
+        "tenor": "5Y",
+        "field_value": 2.475
+      },
+      {
+        "trade_date": "2025-12-11",
+        "tenor": "30Y",
+        "field_value": 3.451
+      },
+      {
+        "trade_date": "2025-12-11",
+        "tenor": "5Y",
+        "field_value": 2.462
+      },
+      {
+        "trade_date": "2025-12-12",
+        "tenor": "30Y",
+        "field_value": 3.48
+      },
+      {
+        "trade_date": "2025-12-12",
+        "tenor": "5Y",
+        "field_value": 2.466
+      },
+      {
+        "trade_date": "2025-12-15",
+        "tenor": "30Y",
+        "field_value": 3.472
+      },
+      {
+        "trade_date": "2025-12-15",
+        "tenor": "5Y",
+        "field_value": 2.468
+      },
+      {
+        "trade_date": "2025-12-16",
+        "tenor": "30Y",
+        "field_value": 3.465
+      },
+      {
+        "trade_date": "2025-12-16",
+        "tenor": "5Y",
+        "field_value": 2.451
+      },
+      {
+        "trade_date": "2025-12-17",
+        "tenor": "30Y",
+        "field_value": 3.485
+      },
+      {
+        "trade_date": "2025-12-17",
+        "tenor": "5Y",
+        "field_value": 2.464
+      },
+      {
+        "trade_date": "2025-12-18",
+        "tenor": "30Y",
+        "field_value": 3.484
+      },
+      {
+        "trade_date": "2025-12-18",
+        "tenor": "5Y",
+        "field_value": 2.448
+      },
+      {
+        "trade_date": "2025-12-19",
+        "tenor": "30Y",
+        "field_value": 3.535
+      },
+      {
+        "trade_date": "2025-12-19",
+        "tenor": "5Y",
+        "field_value": 2.487
+      },
+      {
+        "trade_date": "2025-12-22",
+        "tenor": "30Y",
+        "field_value": 3.531
+      },
+      {
+        "trade_date": "2025-12-22",
+        "tenor": "5Y",
+        "field_value": 2.484
+      },
+      {
+        "trade_date": "2025-12-23",
+        "tenor": "30Y",
+        "field_value": 3.487
+      },
+      {
+        "trade_date": "2025-12-23",
+        "tenor": "5Y",
+        "field_value": 2.463
+      },
+      {
+        "trade_date": "2025-12-24",
+        "tenor": "30Y",
+        "field_value": 3.487
+      },
+      {
+        "trade_date": "2025-12-24",
+        "tenor": "5Y",
+        "field_value": 2.463
+      },
+      {
+        "trade_date": "2025-12-25",
+        "tenor": "30Y",
+        "field_value": 3.487
+      },
+      {
+        "trade_date": "2025-12-25",
+        "tenor": "5Y",
+        "field_value": 2.463
+      },
+      {
+        "trade_date": "2025-12-29",
+        "tenor": "30Y",
+        "field_value": 3.458
+      },
+      {
+        "trade_date": "2025-12-29",
+        "tenor": "5Y",
+        "field_value": 2.429
+      },
+      {
+        "trade_date": "2025-12-30",
+        "tenor": "30Y",
+        "field_value": 3.476
+      },
+      {
+        "trade_date": "2025-12-30",
+        "tenor": "5Y",
+        "field_value": 2.447
+      },
+      {
+        "trade_date": "2025-12-31",
+        "tenor": "30Y",
+        "field_value": 3.476
+      },
+      {
+        "trade_date": "2025-12-31",
+        "tenor": "5Y",
+        "field_value": 2.447
+      },
+      {
+        "trade_date": "2026-01-01",
+        "tenor": "30Y",
+        "field_value": 3.476
+      },
+      {
+        "trade_date": "2026-01-01",
+        "tenor": "5Y",
+        "field_value": 2.447
+      },
+      {
+        "trade_date": "2026-01-02",
+        "tenor": "30Y",
+        "field_value": 3.54
+      },
+      {
+        "trade_date": "2026-01-02",
+        "tenor": "5Y",
+        "field_value": 2.475
+      },
+      {
+        "trade_date": "2026-01-05",
+        "tenor": "30Y",
+        "field_value": 3.506
+      },
+      {
+        "trade_date": "2026-01-05",
+        "tenor": "5Y",
+        "field_value": 2.452
+      },
+      {
+        "trade_date": "2026-01-06",
+        "tenor": "30Y",
+        "field_value": 3.48
+      },
+      {
+        "trade_date": "2026-01-06",
+        "tenor": "5Y",
+        "field_value": 2.423
+      },
+      {
+        "trade_date": "2026-01-07",
+        "tenor": "30Y",
+        "field_value": 3.446
+      },
+      {
+        "trade_date": "2026-01-07",
+        "tenor": "5Y",
+        "field_value": 2.397
+      },
+      {
+        "trade_date": "2026-01-08",
+        "tenor": "30Y",
+        "field_value": 3.467
+      },
+      {
+        "trade_date": "2026-01-08",
+        "tenor": "5Y",
+        "field_value": 2.41
+      },
+      {
+        "trade_date": "2026-01-09",
+        "tenor": "30Y",
+        "field_value": 3.461
+      },
+      {
+        "trade_date": "2026-01-09",
+        "tenor": "5Y",
+        "field_value": 2.418
+      },
+      {
+        "trade_date": "2026-01-12",
+        "tenor": "30Y",
+        "field_value": 3.435
+      },
+      {
+        "trade_date": "2026-01-12",
+        "tenor": "5Y",
+        "field_value": 2.399
+      },
+      {
+        "trade_date": "2026-01-13",
+        "tenor": "30Y",
+        "field_value": 3.452
+      },
+      {
+        "trade_date": "2026-01-13",
+        "tenor": "5Y",
+        "field_value": 2.397
+      },
+      {
+        "trade_date": "2026-01-14",
+        "tenor": "30Y",
+        "field_value": 3.421
+      },
+      {
+        "trade_date": "2026-01-14",
+        "tenor": "5Y",
+        "field_value": 2.367
+      },
+      {
+        "trade_date": "2026-01-15",
+        "tenor": "30Y",
+        "field_value": 3.403
+      },
+      {
+        "trade_date": "2026-01-15",
+        "tenor": "5Y",
+        "field_value": 2.386
+      },
+      {
+        "trade_date": "2026-01-16",
+        "tenor": "30Y",
+        "field_value": 3.419
+      },
+      {
+        "trade_date": "2026-01-16",
+        "tenor": "5Y",
+        "field_value": 2.452
+      },
+      {
+        "trade_date": "2026-01-19",
+        "tenor": "30Y",
+        "field_value": 3.454
+      },
+      {
+        "trade_date": "2026-01-19",
+        "tenor": "5Y",
+        "field_value": 2.434
+      },
+      {
+        "trade_date": "2026-01-20",
+        "tenor": "30Y",
+        "field_value": 3.478
+      },
+      {
+        "trade_date": "2026-01-20",
+        "tenor": "5Y",
+        "field_value": 2.436
+      },
+      {
+        "trade_date": "2026-01-21",
+        "tenor": "30Y",
+        "field_value": 3.512
+      },
+      {
+        "trade_date": "2026-01-21",
+        "tenor": "5Y",
+        "field_value": 2.46
+      },
+      {
+        "trade_date": "2026-01-22",
+        "tenor": "30Y",
+        "field_value": 3.497
+      },
+      {
+        "trade_date": "2026-01-22",
+        "tenor": "5Y",
+        "field_value": 2.479
+      },
+      {
+        "trade_date": "2026-01-23",
+        "tenor": "30Y",
+        "field_value": 3.513
+      },
+      {
+        "trade_date": "2026-01-23",
+        "tenor": "5Y",
+        "field_value": 2.5
+      },
+      {
+        "trade_date": "2026-01-26",
+        "tenor": "30Y",
+        "field_value": 3.479
+      },
+      {
+        "trade_date": "2026-01-26",
+        "tenor": "5Y",
+        "field_value": 2.464
+      },
+      {
+        "trade_date": "2026-01-27",
+        "tenor": "30Y",
+        "field_value": 3.493
+      },
+      {
+        "trade_date": "2026-01-27",
+        "tenor": "5Y",
+        "field_value": 2.466
+      },
+      {
+        "trade_date": "2026-01-28",
+        "tenor": "30Y",
+        "field_value": 3.493
+      },
+      {
+        "trade_date": "2026-01-28",
+        "tenor": "5Y",
+        "field_value": 2.439
+      },
+      {
+        "trade_date": "2026-01-29",
+        "tenor": "30Y",
+        "field_value": 3.488
+      },
+      {
+        "trade_date": "2026-01-29",
+        "tenor": "5Y",
+        "field_value": 2.417
+      },
+      {
+        "trade_date": "2026-01-30",
+        "tenor": "30Y",
+        "field_value": 3.493
+      },
+      {
+        "trade_date": "2026-01-30",
+        "tenor": "5Y",
+        "field_value": 2.416
+      },
+      {
+        "trade_date": "2026-02-02",
+        "tenor": "30Y",
+        "field_value": 3.515
+      },
+      {
+        "trade_date": "2026-02-02",
+        "tenor": "5Y",
+        "field_value": 2.447
+      },
+      {
+        "trade_date": "2026-02-03",
+        "tenor": "30Y",
+        "field_value": 3.549
+      },
+      {
+        "trade_date": "2026-02-03",
+        "tenor": "5Y",
+        "field_value": 2.461
+      },
+      {
+        "trade_date": "2026-02-04",
+        "tenor": "30Y",
+        "field_value": 3.524
+      },
+      {
+        "trade_date": "2026-02-04",
+        "tenor": "5Y",
+        "field_value": 2.43
+      },
+      {
+        "trade_date": "2026-02-05",
+        "tenor": "30Y",
+        "field_value": 3.5
+      },
+      {
+        "trade_date": "2026-02-05",
+        "tenor": "5Y",
+        "field_value": 2.42
+      },
+      {
+        "trade_date": "2026-02-06",
+        "tenor": "30Y",
+        "field_value": 3.511
+      },
+      {
+        "trade_date": "2026-02-06",
+        "tenor": "5Y",
+        "field_value": 2.412
+      },
+      {
+        "trade_date": "2026-02-09",
+        "tenor": "30Y",
+        "field_value": 3.526
+      },
+      {
+        "trade_date": "2026-02-09",
+        "tenor": "5Y",
+        "field_value": 2.405
+      },
+      {
+        "trade_date": "2026-02-10",
+        "tenor": "30Y",
+        "field_value": 3.489
+      },
+      {
+        "trade_date": "2026-02-10",
+        "tenor": "5Y",
+        "field_value": 2.381
+      },
+      {
+        "trade_date": "2026-02-11",
+        "tenor": "30Y",
+        "field_value": 3.455
+      },
+      {
+        "trade_date": "2026-02-11",
+        "tenor": "5Y",
+        "field_value": 2.376
+      },
+      {
+        "trade_date": "2026-02-12",
+        "tenor": "30Y",
+        "field_value": 3.448
+      },
+      {
+        "trade_date": "2026-02-12",
+        "tenor": "5Y",
+        "field_value": 2.364
+      },
+      {
+        "trade_date": "2026-02-13",
+        "tenor": "30Y",
+        "field_value": 3.431
+      },
+      {
+        "trade_date": "2026-02-13",
+        "tenor": "5Y",
+        "field_value": 2.336
+      },
+      {
+        "trade_date": "2026-02-16",
+        "tenor": "30Y",
+        "field_value": 3.431
+      },
+      {
+        "trade_date": "2026-02-16",
+        "tenor": "5Y",
+        "field_value": 2.338
+      },
+      {
+        "trade_date": "2026-02-17",
+        "tenor": "30Y",
+        "field_value": 3.404
+      },
+      {
+        "trade_date": "2026-02-17",
+        "tenor": "5Y",
+        "field_value": 2.327
+      },
+      {
+        "trade_date": "2026-02-18",
+        "tenor": "30Y",
+        "field_value": 3.404
+      },
+      {
+        "trade_date": "2026-02-18",
+        "tenor": "5Y",
+        "field_value": 2.333
+      },
+      {
+        "trade_date": "2026-02-19",
+        "tenor": "30Y",
+        "field_value": 3.407
+      },
+      {
+        "trade_date": "2026-02-19",
+        "tenor": "5Y",
+        "field_value": 2.334
+      },
+      {
+        "trade_date": "2026-02-20",
+        "tenor": "30Y",
+        "field_value": 3.4
+      },
+      {
+        "trade_date": "2026-02-20",
+        "tenor": "5Y",
+        "field_value": 2.335
+      },
+      {
+        "trade_date": "2026-02-23",
+        "tenor": "30Y",
+        "field_value": 3.384
+      },
+      {
+        "trade_date": "2026-02-23",
+        "tenor": "5Y",
+        "field_value": 2.305
+      },
+      {
+        "trade_date": "2026-02-24",
+        "tenor": "30Y",
+        "field_value": 3.377
+      },
+      {
+        "trade_date": "2026-02-24",
+        "tenor": "5Y",
+        "field_value": 2.305
+      },
+      {
+        "trade_date": "2026-02-25",
+        "tenor": "30Y",
+        "field_value": 3.375
+      },
+      {
+        "trade_date": "2026-02-25",
+        "tenor": "5Y",
+        "field_value": 2.306
+      },
+      {
+        "trade_date": "2026-02-26",
+        "tenor": "30Y",
+        "field_value": 3.352
+      },
+      {
+        "trade_date": "2026-02-26",
+        "tenor": "5Y",
+        "field_value": 2.295
+      },
+      {
+        "trade_date": "2026-02-27",
+        "tenor": "30Y",
+        "field_value": 3.314
+      },
+      {
+        "trade_date": "2026-02-27",
+        "tenor": "5Y",
+        "field_value": 2.237
+      },
+      {
+        "trade_date": "2026-03-02",
+        "tenor": "30Y",
+        "field_value": 3.357
+      },
+      {
+        "trade_date": "2026-03-02",
+        "tenor": "5Y",
+        "field_value": 2.325
+      },
+      {
+        "trade_date": "2026-03-03",
+        "tenor": "30Y",
+        "field_value": 3.385
+      },
+      {
+        "trade_date": "2026-03-03",
+        "tenor": "5Y",
+        "field_value": 2.377
+      },
+      {
+        "trade_date": "2026-03-04",
+        "tenor": "30Y",
+        "field_value": 3.399
+      },
+      {
+        "trade_date": "2026-03-04",
+        "tenor": "5Y",
+        "field_value": 2.367
+      },
+      {
+        "trade_date": "2026-03-05",
+        "tenor": "30Y",
+        "field_value": 3.43
+      },
+      {
+        "trade_date": "2026-03-05",
+        "tenor": "5Y",
+        "field_value": 2.485
+      },
+      {
+        "trade_date": "2026-03-06",
+        "tenor": "30Y",
+        "field_value": 3.421
+      },
+      {
+        "trade_date": "2026-03-06",
+        "tenor": "5Y",
+        "field_value": 2.521
+      },
+      {
+        "trade_date": "2026-03-09",
+        "tenor": "30Y",
+        "field_value": 3.426
+      },
+      {
+        "trade_date": "2026-03-09",
+        "tenor": "5Y",
+        "field_value": 2.519
+      },
+      {
+        "trade_date": "2026-03-10",
+        "tenor": "30Y",
+        "field_value": 3.442
+      },
+      {
+        "trade_date": "2026-03-10",
+        "tenor": "5Y",
+        "field_value": 2.477
+      },
+      {
+        "trade_date": "2026-03-11",
+        "tenor": "30Y",
+        "field_value": 3.492
+      },
+      {
+        "trade_date": "2026-03-11",
+        "tenor": "5Y",
+        "field_value": 2.591
+      },
+      {
+        "trade_date": "2026-03-12",
+        "tenor": "30Y",
+        "field_value": 3.517
+      },
+      {
+        "trade_date": "2026-03-12",
+        "tenor": "5Y",
+        "field_value": 2.61
+      },
+      {
+        "trade_date": "2026-03-13",
+        "tenor": "30Y",
+        "field_value": 3.531
+      },
+      {
+        "trade_date": "2026-03-13",
+        "tenor": "5Y",
+        "field_value": 2.635
+      },
+      {
+        "trade_date": "2026-03-16",
+        "tenor": "30Y",
+        "field_value": 3.516
+      },
+      {
+        "trade_date": "2026-03-16",
+        "tenor": "5Y",
+        "field_value": 2.601
+      },
+      {
+        "trade_date": "2026-03-17",
+        "tenor": "30Y",
+        "field_value": 3.473
+      },
+      {
+        "trade_date": "2026-03-17",
+        "tenor": "5Y",
+        "field_value": 2.563
+      },
+      {
+        "trade_date": "2026-03-18",
+        "tenor": "30Y",
+        "field_value": 3.475
+      },
+      {
+        "trade_date": "2026-03-18",
+        "tenor": "5Y",
+        "field_value": 2.612
+      },
+      {
+        "trade_date": "2026-03-19",
+        "tenor": "30Y",
+        "field_value": 3.453
+      },
+      {
+        "trade_date": "2026-03-19",
+        "tenor": "5Y",
+        "field_value": 2.683
+      },
+      {
+        "trade_date": "2026-03-20",
+        "tenor": "30Y",
+        "field_value": 3.527
+      },
+      {
+        "trade_date": "2026-03-20",
+        "tenor": "5Y",
+        "field_value": 2.768
+      },
+      {
+        "trade_date": "2026-03-23",
+        "tenor": "30Y",
+        "field_value": 3.5
+      },
+      {
+        "trade_date": "2026-03-23",
+        "tenor": "5Y",
+        "field_value": 2.709
+      },
+      {
+        "trade_date": "2026-03-24",
+        "tenor": "30Y",
+        "field_value": 3.489
+      },
+      {
+        "trade_date": "2026-03-24",
+        "tenor": "5Y",
+        "field_value": 2.756
+      },
+      {
+        "trade_date": "2026-03-25",
+        "tenor": "30Y",
+        "field_value": 3.428
+      },
+      {
+        "trade_date": "2026-03-25",
+        "tenor": "5Y",
+        "field_value": 2.691
+      },
+      {
+        "trade_date": "2026-03-26",
+        "tenor": "30Y",
+        "field_value": 3.51
+      },
+      {
+        "trade_date": "2026-03-26",
+        "tenor": "5Y",
+        "field_value": 2.807
+      },
+      {
+        "trade_date": "2026-03-27",
+        "tenor": "30Y",
+        "field_value": 3.55
+      },
+      {
+        "trade_date": "2026-03-27",
+        "tenor": "5Y",
+        "field_value": 2.807
+      },
+      {
+        "trade_date": "2026-03-30",
+        "tenor": "30Y",
+        "field_value": 3.502
+      },
+      {
+        "trade_date": "2026-03-30",
+        "tenor": "5Y",
+        "field_value": 2.749
+      },
+      {
+        "trade_date": "2026-03-31",
+        "tenor": "30Y",
+        "field_value": 3.457
+      },
+      {
+        "trade_date": "2026-03-31",
+        "tenor": "5Y",
+        "field_value": 2.725
+      },
+      {
+        "trade_date": "2026-04-01",
+        "tenor": "30Y",
+        "field_value": 3.459
+      },
+      {
+        "trade_date": "2026-04-01",
+        "tenor": "5Y",
+        "field_value": 2.707
+      },
+      {
+        "trade_date": "2026-04-02",
+        "tenor": "30Y",
+        "field_value": 3.471
+      },
+      {
+        "trade_date": "2026-04-02",
+        "tenor": "5Y",
+        "field_value": 2.707
+      },
+      {
+        "trade_date": "2026-04-03",
+        "tenor": "30Y",
+        "field_value": 3.471
+      },
+      {
+        "trade_date": "2026-04-03",
+        "tenor": "5Y",
+        "field_value": 2.707
+      },
+      {
+        "trade_date": "2026-04-07",
+        "tenor": "30Y",
+        "field_value": 3.538
+      },
+      {
+        "trade_date": "2026-04-07",
+        "tenor": "5Y",
+        "field_value": 2.815
+      },
+      {
+        "trade_date": "2026-04-08",
+        "tenor": "30Y",
+        "field_value": 3.464
+      },
+      {
+        "trade_date": "2026-04-08",
+        "tenor": "5Y",
+        "field_value": 2.633
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-04-08",
+      "curve_family": "DE_BUND",
+      "spread_label": "5s30s",
+      "current_spread_bps": 83.1,
+      "daily_change_bps": 10.8,
+      "current_z_score": -1.6163,
+      "rolling_window_days": 252,
+      "short_tenor_yield": 2.633,
+      "long_tenor_yield": 3.464
+    },
+    "time_series": [
+      {
+        "date": "2026-01-30",
+        "spread_bps": 107.7,
+        "z_score": 1.0899
+      },
+      {
+        "date": "2026-02-02",
+        "spread_bps": 106.8,
+        "z_score": 1.0301
+      },
+      {
+        "date": "2026-02-03",
+        "spread_bps": 108.8,
+        "z_score": 1.1651
+      },
+      {
+        "date": "2026-02-04",
+        "spread_bps": 109.4,
+        "z_score": 1.2092
+      },
+      {
+        "date": "2026-02-05",
+        "spread_bps": 108.0,
+        "z_score": 1.1148
+      },
+      {
+        "date": "2026-02-06",
+        "spread_bps": 109.9,
+        "z_score": 1.2549
+      },
+      {
+        "date": "2026-02-09",
+        "spread_bps": 112.1,
+        "z_score": 1.4188
+      },
+      {
+        "date": "2026-02-10",
+        "spread_bps": 110.8,
+        "z_score": 1.3297
+      },
+      {
+        "date": "2026-02-11",
+        "spread_bps": 107.9,
+        "z_score": 1.1188
+      },
+      {
+        "date": "2026-02-12",
+        "spread_bps": 108.4,
+        "z_score": 1.1626
+      },
+      {
+        "date": "2026-02-13",
+        "spread_bps": 109.5,
+        "z_score": 1.257
+      },
+      {
+        "date": "2026-02-16",
+        "spread_bps": 109.3,
+        "z_score": 1.2472
+      },
+      {
+        "date": "2026-02-17",
+        "spread_bps": 107.7,
+        "z_score": 1.1241
+      },
+      {
+        "date": "2026-02-18",
+        "spread_bps": 107.1,
+        "z_score": 1.0825
+      },
+      {
+        "date": "2026-02-19",
+        "spread_bps": 107.3,
+        "z_score": 1.1059
+      },
+      {
+        "date": "2026-02-20",
+        "spread_bps": 106.5,
+        "z_score": 1.0411
+      },
+      {
+        "date": "2026-02-23",
+        "spread_bps": 107.9,
+        "z_score": 1.1689
+      },
+      {
+        "date": "2026-02-24",
+        "spread_bps": 107.2,
+        "z_score": 1.1036
+      },
+      {
+        "date": "2026-02-25",
+        "spread_bps": 106.9,
+        "z_score": 1.08
+      },
+      {
+        "date": "2026-02-26",
+        "spread_bps": 105.7,
+        "z_score": 0.9748
+      },
+      {
+        "date": "2026-02-27",
+        "spread_bps": 107.7,
+        "z_score": 1.173
+      },
+      {
+        "date": "2026-03-02",
+        "spread_bps": 103.2,
+        "z_score": 0.7312
+      },
+      {
+        "date": "2026-03-03",
+        "spread_bps": 100.8,
+        "z_score": 0.486
+      },
+      {
+        "date": "2026-03-04",
+        "spread_bps": 103.2,
+        "z_score": 0.7286
+      },
+      {
+        "date": "2026-03-05",
+        "spread_bps": 94.5,
+        "z_score": -0.1864
+      },
+      {
+        "date": "2026-03-06",
+        "spread_bps": 90.0,
+        "z_score": -0.6785
+      },
+      {
+        "date": "2026-03-09",
+        "spread_bps": 90.7,
+        "z_score": -0.6292
+      },
+      {
+        "date": "2026-03-10",
+        "spread_bps": 96.5,
+        "z_score": -0.0083
+      },
+      {
+        "date": "2026-03-11",
+        "spread_bps": 90.1,
+        "z_score": -0.7577
+      },
+      {
+        "date": "2026-03-12",
+        "spread_bps": 90.7,
+        "z_score": -0.7179
+      },
+      {
+        "date": "2026-03-13",
+        "spread_bps": 89.6,
+        "z_score": -0.8735
+      },
+      {
+        "date": "2026-03-16",
+        "spread_bps": 91.5,
+        "z_score": -0.6675
+      },
+      {
+        "date": "2026-03-17",
+        "spread_bps": 91.0,
+        "z_score": -0.7543
+      },
+      {
+        "date": "2026-03-18",
+        "spread_bps": 86.3,
+        "z_score": -1.3714
+      },
+      {
+        "date": "2026-03-19",
+        "spread_bps": 77.0,
+        "z_score": -2.5578
+      },
+      {
+        "date": "2026-03-20",
+        "spread_bps": 75.9,
+        "z_score": -2.6887
+      },
+      {
+        "date": "2026-03-23",
+        "spread_bps": 79.1,
+        "z_score": -2.2959
+      },
+      {
+        "date": "2026-03-24",
+        "spread_bps": 73.3,
+        "z_score": -3.0397
+      },
+      {
+        "date": "2026-03-25",
+        "spread_bps": 73.7,
+        "z_score": -2.9851
+      },
+      {
+        "date": "2026-03-26",
+        "spread_bps": 70.3,
+        "z_score": -3.364
+      },
+      {
+        "date": "2026-03-27",
+        "spread_bps": 74.3,
+        "z_score": -2.8224
+      },
+      {
+        "date": "2026-03-30",
+        "spread_bps": 75.3,
+        "z_score": -2.6556
+      },
+      {
+        "date": "2026-03-31",
+        "spread_bps": 73.2,
+        "z_score": -2.872
+      },
+      {
+        "date": "2026-04-01",
+        "spread_bps": 75.2,
+        "z_score": -2.5972
+      },
+      {
+        "date": "2026-04-02",
+        "spread_bps": 76.4,
+        "z_score": -2.4308
+      },
+      {
+        "date": "2026-04-03",
+        "spread_bps": 76.4,
+        "z_score": -2.4321
+      },
+      {
+        "date": "2026-04-07",
+        "spread_bps": 72.3,
+        "z_score": -2.8896
+      },
+      {
+        "date": "2026-04-08",
+        "spread_bps": 83.1,
+        "z_score": -1.6163
+      }
+    ]
+  }
+}
