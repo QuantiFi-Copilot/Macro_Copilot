@@ -22,11 +22,15 @@ For each fixture in ``tests/fixtures/curve_spread_v1/``:
    tampering.
 2. Reconstruct the long-format DataFrame the tool's DB fetcher would
    return from ``input.raw_rows``.
-3. Patch ``rates_agent.sovereign_bonds.tools.curve_spread.fetch_tenor_pair``
+3. Patch ``rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair``
    to return that DataFrame.  Patch the same module's ``date`` reference
-   with a subclass whose ``today()`` returns ``input.frozen_today``, so
-   the two ``date.today()`` callsites inside the tool become
-   deterministic.
+   (``...curve_spread.compute.date``) with a subclass whose ``today()``
+   returns ``input.frozen_today``, so the two ``date.today()`` callsites
+   inside the tool become deterministic.  The patches target
+   ``compute.py``'s namespace specifically because the package
+   ``__init__.py`` only re-exports ``calculate_curve_spread`` and does
+   NOT propagate ``compute.py``'s imports — see the package init's
+   docstring "Note for tests" section.
 4. Build a ``CurveSpreadInput`` from the recorded params and call
    ``calculate_curve_spread(engine=None, params=...)``.
 5. Recursively compare the result against ``expected_output`` — strings
@@ -80,8 +84,13 @@ FLOAT_ABS_TOL = 1e-9
 class _FrozenDateForCurveSpread(date):
     """``date`` subclass with ``today()`` returning a fixed value.
 
-    Patched in place of ``rates_agent.sovereign_bonds.tools.curve_spread.date``
-    so the tool's two ``date.today()`` callsites become deterministic.
+    Patched in place of
+    ``rates_agent.sovereign_bonds.tools.curve_spread.compute.date``
+    so the tool's two ``date.today()`` callsites in ``compute.py``
+    become deterministic.  Patching the package init's namespace
+    would be a no-op because the ``date`` import lives inside
+    ``compute.py``, not on the package's __init__.
+
     Subtracting a ``timedelta`` from the value returned by ``today()``
     still yields a real ``date`` because ``today()`` returns the
     underlying ``date(...)`` instance, not the subclass.
