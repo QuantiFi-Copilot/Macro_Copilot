@@ -28,10 +28,14 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     CurveRegimeInput,
     ScannerInput,
 )
-from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
+from rates_agent.sovereign_bonds.tools.curve_spread import (
+    CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
+    calculate_curve_spread,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
 from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
+from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.cards")
 
@@ -313,13 +317,22 @@ def curve_shapes(
     results: list[CurveShapeRow] = []
     failures = 0
 
+    # Load curve_spread's config once per request and reuse across the
+    # per-curve loop.  load_tool_config caches by path, so subsequent
+    # requests are free; doing it here (not at module load) keeps the
+    # config dependency visible at the callsite and lets tests inject
+    # an alternate config via the same kwarg the tool accepts.
+    cs_config = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
+
     for curve_family in curve_list:
         try:
             params = CurveSpreadInput(
                 curve_family=curve_family, short_tenor=short_tenor,
                 long_tenor=long_tenor, lookback_days=90,
             )
-            output = calculate_curve_spread(engine=engine, params=params)
+            output = calculate_curve_spread(
+                engine=engine, params=params, config=cs_config,
+            )
             if "error" in output:
                 logger.warning("curve-shapes: %s failed: %s", curve_family, output["error"])
                 failures += 1

@@ -33,6 +33,7 @@ not ``...curve_spread.fetch_tenor_pair``.
 """
 
 from rates_agent.sovereign_bonds.tools.curve_spread.compute import (
+    CONFIG_PATH,
     calculate_curve_spread,
 )
 from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
@@ -44,6 +45,7 @@ from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
 
 
 __all__ = [
+    "CONFIG_PATH",
     "calculate_curve_spread",
     "CurveSpreadCurrentMetrics",
     "CurveSpreadInput",
