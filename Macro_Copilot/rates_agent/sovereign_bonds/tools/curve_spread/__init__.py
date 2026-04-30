@@ -20,8 +20,16 @@ the schema classes from this package's path:
     from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput
 
 The first works because this ``__init__.py`` re-exports it.  The second
-works because ``tools/schemas/spread.py`` is now a re-export shim
-pointing at this package's ``schemas`` module.
+works because ``rates_agent.sovereign_bonds.tools.schemas/__init__.py``
+(the re-export hub) imports the same classes from
+``rates_agent.sovereign_bonds.tools.curve_spread.schemas`` (this
+package's canonical location).
+
+The third path that used to exist —
+``from rates_agent.sovereign_bonds.tools.schemas.spread import ...`` —
+was a thin re-export shim that has been removed in commit 5 of the
+tool-config pilot.  Any caller using that path must switch to one of
+the two paths shown above.
 
 Note for tests
 --------------

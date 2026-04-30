@@ -5,10 +5,25 @@ External code imports from here::
 
     from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput
     from rates_agent.sovereign_bonds.tools.schemas import ScannerOutput
+
+Migration note (commit 5 of the tool-config pilot):
+The CurveSpread* models are now sourced from
+``rates_agent.sovereign_bonds.tools.curve_spread.schemas`` (the
+canonical per-tool-folder location).  The legacy
+``rates_agent.sovereign_bonds.tools.schemas.spread`` shim was deleted.
+This hub continues to re-export the same names so all existing
+``from ...tools.schemas import CurveSpreadInput`` imports keep
+working unchanged.
+
+Other schemas (yield_level, cross_market, butterfly, regime, scanner)
+remain in this directory until their respective tools migrate to the
+per-tool-folder layout.
 """
 
-# Spread
-from rates_agent.sovereign_bonds.tools.schemas.spread import (
+# Spread — canonical location is ...tools.curve_spread.schemas as of
+# commit 3 of the tool-config pilot.  The legacy shim
+# ...tools.schemas.spread was deleted in commit 5.
+from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
     CurveSpreadInput,
     CurveSpreadCurrentMetrics,
     CurveSpreadTimeSeriesRow,

@@ -439,13 +439,25 @@ class TestConventionOverrides:
 
 
 # ===========================================================================
-# 4. Backward-compat: legacy import paths still resolve
+# 4. Import-path resolution after the per-tool-folder migration
 # ===========================================================================
 
 class TestImportPathBackwardCompat:
-    """Commit 3 deletes ``tools/curve_spread.py`` (replaced by package)
-    and shims ``tools/schemas/spread.py``.  Both legacy import paths
-    must still resolve to the same canonical Pydantic classes."""
+    """Commit 3 of the tool-config pilot replaced ``tools/curve_spread.py``
+    with a package and added a thin ``tools/schemas/spread.py``
+    re-export shim for the schemas.  Commit 5 deletes that shim;
+    callers must use one of the two surviving paths.
+
+    The tests below lock in:
+      - ``calculate_curve_spread`` resolves to the same callable via
+        the package init and via the .compute submodule;
+      - ``CurveSpreadInput`` resolves to the same class via the three
+        canonical paths;
+      - the deleted shim path now raises ``ModuleNotFoundError``.
+
+    If a future caller restores the legacy
+    ``...tools.schemas.spread`` shim, the third test below fails
+    loudly — the deletion is now a load-bearing test."""
 
     def test_calculate_curve_spread_via_package_init(self):
         from rates_agent.sovereign_bonds.tools.curve_spread import (
@@ -457,6 +469,7 @@ class TestImportPathBackwardCompat:
         assert via_package is via_compute
 
     def test_input_schema_via_three_paths(self):
+        """Three canonical paths still resolve to the same class."""
         from rates_agent.sovereign_bonds.tools.curve_spread import (
             CurveSpreadInput as via_package,
         )
@@ -466,9 +479,16 @@ class TestImportPathBackwardCompat:
         from rates_agent.sovereign_bonds.tools.schemas import (
             CurveSpreadInput as via_hub,
         )
-        from rates_agent.sovereign_bonds.tools.schemas.spread import (
-            CurveSpreadInput as via_legacy_shim,
-        )
         assert via_package is via_schemas
         assert via_package is via_hub
-        assert via_package is via_legacy_shim
+
+    def test_legacy_shim_path_is_deleted(self):
+        """``rates_agent.sovereign_bonds.tools.schemas.spread`` was a
+        re-export shim; commit 5 deleted it.  The import must fail
+        with ``ModuleNotFoundError``.
+
+        If this test ever flips to "passes the import", the shim has
+        been restored without removing this test — review whether
+        that's intentional."""
+        with pytest.raises(ModuleNotFoundError):
+            import rates_agent.sovereign_bonds.tools.schemas.spread  # noqa: F401

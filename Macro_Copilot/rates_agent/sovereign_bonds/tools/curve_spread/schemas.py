@@ -1,10 +1,16 @@
 """Pydantic schemas for the curve_spread tool.
 
-Canonical location for these models.  The legacy import path
-``rates_agent.sovereign_bonds.tools.schemas.spread`` is preserved
-through a re-export shim so existing callers continue to work; that
-shim will be removed in commit 5 of the pilot once every caller has
-migrated.
+Canonical (and only) location for these models.  The legacy
+``rates_agent.sovereign_bonds.tools.schemas.spread`` re-export shim
+that briefly preserved the old import path was removed in commit 5
+of the tool-config pilot.
+
+Callers reach these classes via either:
+  - ``from rates_agent.sovereign_bonds.tools.curve_spread import CurveSpreadInput``
+    (direct re-export from the package init), or
+  - ``from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput``
+    (the sovereign-bonds re-export hub, which now imports from this
+    file rather than from the deleted shim).
 
 Conventions like ``z_score_window_days`` and ``ffill_limit_days`` live
 in ``config.yaml`` (alongside this file), not on the Pydantic input.
