@@ -1,0 +1,344 @@
+"""
+test_curve_spread_compute.py — Unit tests for the new config-driven curve_spread tool
+======================================================================================
+
+Verifies the seam introduced in commit 3 of the tool-config pilot:
+
+  1. The bundled ``config.yaml`` is structurally valid and loads
+     cleanly via ``shared.config.load_tool_config``.
+  2. ``calculate_curve_spread`` runs end-to-end against synthetic
+     input with the bundled config and returns a well-formed output.
+  3. Passing a custom ``ToolConfig`` with a different convention
+     value actually changes the output — proves every convention is
+     wired through to the underlying primitive call.
+  4. The legacy import paths
+     (``...tools.curve_spread import ...`` and
+      ``...tools.schemas import CurveSpreadInput``) still resolve to
+     the same Pydantic class.
+
+These tests are fully offline — the DB fetcher is mocked and
+``date.today()`` is frozen.  They complement the parity test from
+commit 0 (which freezes real production behaviour byte-for-byte once
+fixtures are captured); the parity test asserts "math is unchanged",
+the tests below assert "config seam is wired".
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
+from rates_agent.sovereign_bonds.tools.curve_spread.compute import _CONFIG_PATH
+from rates_agent.sovereign_bonds.tools.curve_spread.schemas import CurveSpreadInput
+from shared.config import (
+    Convention,
+    MethodologyMeta,
+    ToolConfig,
+    ToolMeta,
+    clear_tool_config_cache,
+    load_tool_config,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fixture helpers
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    clear_tool_config_cache()
+    yield
+    clear_tool_config_cache()
+
+
+def _synthetic_raw_df(years: int = 5, frozen_today: date = date(2026, 4, 30)) -> pd.DataFrame:
+    """Build a synthetic long-format raw DataFrame matching the shape
+    fetch_tenor_pair returns for two tenors of one curve."""
+    rs = np.random.RandomState(11)
+    bdays = pd.bdate_range(frozen_today - timedelta(days=years * 365), frozen_today)
+
+    def _series(tenor: str, mu: float, vol: float, init: float, seed: int) -> pd.DataFrame:
+        rs2 = np.random.RandomState(seed)
+        n = len(bdays)
+        v = np.empty(n, dtype=float)
+        v[0] = init
+        for i in range(1, n):
+            v[i] = v[i - 1] + 0.005 * (mu - v[i - 1]) + rs2.randn() * vol
+        return pd.DataFrame({
+            "trade_date": [d.date() for d in bdays],
+            "tenor": tenor,
+            "field_value": v,
+        })
+
+    return pd.concat(
+        [
+            _series("2Y", 4.30, 0.045, 4.20, 11),
+            _series("10Y", 4.55, 0.040, 4.50, 12),
+        ],
+        ignore_index=True,
+    ).sort_values(["trade_date", "tenor"]).reset_index(drop=True)
+
+
+class _FrozenDate(date):
+    """date subclass with today() returning a fixed value."""
+    _frozen_value: date = date(2026, 4, 30)
+
+    @classmethod
+    def today(cls) -> date:
+        return cls._frozen_value
+
+
+# ===========================================================================
+# 1. Bundled config.yaml structurally valid
+# ===========================================================================
+
+class TestBundledConfig:
+    def test_config_yaml_exists(self):
+        assert _CONFIG_PATH.is_file(), (
+            f"Bundled config not found at {_CONFIG_PATH}"
+        )
+
+    def test_config_loads(self):
+        cfg = load_tool_config(_CONFIG_PATH)
+        assert cfg.tool.name == "calculate_curve_spread_tool"
+        assert cfg.tool.domain == "sovereign_bonds"
+
+    def test_required_conventions_present(self):
+        """Every convention compute.py reads must be in the YAML.  If
+        a convention is renamed in YAML without updating compute.py
+        this test fails before any tool call does."""
+        cfg = load_tool_config(_CONFIG_PATH)
+        required = {
+            "z_score_window_days",
+            "z_score_min_periods",
+            "z_score_ddof",
+            "z_score_buffer_multiplier",
+            "ffill_limit_days",
+            "spread_bps_round_decimals",
+            "z_score_round_decimals",
+        }
+        missing = required - set(cfg.conventions.keys())
+        assert not missing, f"missing conventions: {sorted(missing)}"
+
+    def test_convention_defaults_match_legacy_constants(self):
+        """The bundled defaults must reproduce the pre-commit-3 values
+        exactly so the parity fixture remains valid when re-captured."""
+        cfg = load_tool_config(_CONFIG_PATH)
+        assert cfg.convention_value("z_score_window_days") == 252
+        assert cfg.convention_value("z_score_min_periods") == 60
+        assert cfg.convention_value("z_score_ddof") == 1
+        assert cfg.convention_value("z_score_buffer_multiplier") == 1.5
+        assert cfg.convention_value("ffill_limit_days") == 5
+        assert cfg.convention_value("spread_bps_round_decimals") == 2
+        assert cfg.convention_value("z_score_round_decimals") == 4
+
+    def test_methodology_block_populated(self):
+        cfg = load_tool_config(_CONFIG_PATH)
+        assert cfg.methodology.what_it_does
+        assert len(cfg.methodology.assumptions) > 0
+
+
+# ===========================================================================
+# 2. End-to-end happy path with the bundled config
+# ===========================================================================
+
+class TestComputeHappyPath:
+    """Exercises the full compute() pipeline with synthetic data and
+    the bundled config — proves every wiring step works end-to-end."""
+
+    def _run(self, params: CurveSpreadInput, config: ToolConfig | None = None):
+        raw_df = _synthetic_raw_df()
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_curve_spread(engine=None, params=params, config=config)
+
+    def test_default_config_returns_well_formed_output(self):
+        params = CurveSpreadInput(
+            curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+            lookback_days=365, field_name="YLD_YTM_MID",
+        )
+        out = self._run(params)
+
+        assert "error" not in out, f"unexpected error: {out.get('error')!r}"
+        assert "current_metrics" in out
+        assert "time_series" in out
+
+        cm = out["current_metrics"]
+        assert cm["curve_family"] == "UST"
+        assert cm["spread_label"] == "2s10s"
+        assert cm["rolling_window_days"] == 252
+        assert isinstance(cm["current_spread_bps"], float)
+        # Z-score buffer is large enough that the latest z-score is
+        # populated (not None).
+        assert cm["current_z_score"] is not None
+
+        ts = out["time_series"]
+        assert len(ts) > 0
+        assert all("date" in row and "spread_bps" in row for row in ts)
+
+    def test_explicit_default_config_matches_auto_loaded(self):
+        """Passing config=load_tool_config(_CONFIG_PATH) explicitly must
+        produce identical output to passing config=None."""
+        params = CurveSpreadInput(
+            curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+            lookback_days=365, field_name="YLD_YTM_MID",
+        )
+        out_auto = self._run(params, config=None)
+        out_explicit = self._run(params, config=load_tool_config(_CONFIG_PATH))
+        assert out_auto == out_explicit
+
+
+# ===========================================================================
+# 3. Convention overrides actually change output (wiring proof)
+# ===========================================================================
+
+class TestConventionOverrides:
+    """For every convention compute.py reads, building a custom
+    ToolConfig with a different value must produce observably different
+    output.  If overriding a convention has no effect, compute.py is
+    not wiring it through to the primitive."""
+
+    def _custom_config(self, **overrides) -> ToolConfig:
+        """Build a ToolConfig with a default convention block plus
+        overrides applied on top."""
+        defaults = {
+            "z_score_window_days": 252,
+            "z_score_min_periods": 60,
+            "z_score_ddof": 1,
+            "z_score_buffer_multiplier": 1.5,
+            "ffill_limit_days": 5,
+            "spread_bps_round_decimals": 2,
+            "z_score_round_decimals": 4,
+        }
+        defaults.update(overrides)
+        return ToolConfig(
+            tool=ToolMeta(name="t", domain="d", description="x"),
+            methodology=MethodologyMeta(what_it_does="x"),
+            conventions={
+                k: Convention(value=v, source="test", rationale="test")
+                for k, v in defaults.items()
+            },
+        )
+
+    def _run(self, params: CurveSpreadInput, config: ToolConfig):
+        raw_df = _synthetic_raw_df()
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_curve_spread(engine=None, params=params, config=config)
+
+    @pytest.fixture
+    def params(self):
+        return CurveSpreadInput(
+            curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+            lookback_days=365, field_name="YLD_YTM_MID",
+        )
+
+    def test_z_score_window_override_changes_z(self, params):
+        """A different window produces a different rolling z-score."""
+        out_default = self._run(params, self._custom_config())
+        out_override = self._run(params, self._custom_config(z_score_window_days=120))
+        # current_spread_bps depends only on the latest two yields; that
+        # should be unchanged.
+        assert out_default["current_metrics"]["current_spread_bps"] == \
+               out_override["current_metrics"]["current_spread_bps"]
+        # current_z_score depends on the rolling window — must differ.
+        assert out_default["current_metrics"]["current_z_score"] != \
+               out_override["current_metrics"]["current_z_score"]
+
+    def test_z_score_ddof_override_changes_z(self, params):
+        """Population vs sample std produces different z-scores."""
+        out_sample = self._run(params, self._custom_config(z_score_ddof=1))
+        out_pop = self._run(params, self._custom_config(z_score_ddof=0))
+        assert out_sample["current_metrics"]["current_z_score"] != \
+               out_pop["current_metrics"]["current_z_score"]
+
+    def test_spread_round_decimals_override_changes_precision(self, params):
+        """Rounding to 4 dp instead of 2 dp must change at least one
+        time_series row's spread_bps."""
+        out_2dp = self._run(params, self._custom_config(spread_bps_round_decimals=2))
+        out_4dp = self._run(params, self._custom_config(spread_bps_round_decimals=4))
+
+        ts_2dp = out_2dp["time_series"]
+        ts_4dp = out_4dp["time_series"]
+        assert len(ts_2dp) == len(ts_4dp)
+
+        # At least one row must differ — synthetic data has enough
+        # variation that rounding precision is observable.
+        differs = any(
+            ts_2dp[i]["spread_bps"] != ts_4dp[i]["spread_bps"]
+            for i in range(len(ts_2dp))
+        )
+        assert differs, "spread_bps_round_decimals override had no effect"
+
+    def test_zscore_round_decimals_override_changes_precision(self, params):
+        out_4 = self._run(params, self._custom_config(z_score_round_decimals=4))
+        out_2 = self._run(params, self._custom_config(z_score_round_decimals=2))
+        # 4dp z-score has at most 4 decimals, 2dp has at most 2;
+        # the most-recent z-scores must differ on at least one
+        # observation in the time_series.
+        ts_4 = out_4["time_series"]
+        ts_2 = out_2["time_series"]
+        differs = any(
+            ts_4[i].get("z_score") != ts_2[i].get("z_score")
+            for i in range(len(ts_4))
+            if ts_4[i].get("z_score") is not None and ts_2[i].get("z_score") is not None
+        )
+        assert differs, "z_score_round_decimals override had no effect"
+
+    def test_rolling_window_days_appears_in_metrics(self, params):
+        """The rolling_window_days field in current_metrics should
+        reflect the convention value, not a hardcoded 252."""
+        out = self._run(params, self._custom_config(z_score_window_days=180))
+        assert out["current_metrics"]["rolling_window_days"] == 180
+
+
+# ===========================================================================
+# 4. Backward-compat: legacy import paths still resolve
+# ===========================================================================
+
+class TestImportPathBackwardCompat:
+    """Commit 3 deletes ``tools/curve_spread.py`` (replaced by package)
+    and shims ``tools/schemas/spread.py``.  Both legacy import paths
+    must still resolve to the same canonical Pydantic classes."""
+
+    def test_calculate_curve_spread_via_package_init(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread import (
+            calculate_curve_spread as via_package,
+        )
+        from rates_agent.sovereign_bonds.tools.curve_spread.compute import (
+            calculate_curve_spread as via_compute,
+        )
+        assert via_package is via_compute
+
+    def test_input_schema_via_three_paths(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread import (
+            CurveSpreadInput as via_package,
+        )
+        from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
+            CurveSpreadInput as via_schemas,
+        )
+        from rates_agent.sovereign_bonds.tools.schemas import (
+            CurveSpreadInput as via_hub,
+        )
+        from rates_agent.sovereign_bonds.tools.schemas.spread import (
+            CurveSpreadInput as via_legacy_shim,
+        )
+        assert via_package is via_schemas
+        assert via_package is via_hub
+        assert via_package is via_legacy_shim

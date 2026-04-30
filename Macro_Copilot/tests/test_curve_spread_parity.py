@@ -266,7 +266,14 @@ def test_curve_spread_parity(fixture_path: Path) -> None:
     )
 
     # 5. Patch and run.
-    target_module = "rates_agent.sovereign_bonds.tools.curve_spread"
+    #
+    # Patches target the tool's COMPUTE module specifically, not the
+    # package init.  The package init re-exports calculate_curve_spread
+    # but does NOT propagate compute.py's imports (fetch_tenor_pair,
+    # date) into its own namespace, so patching the package init would
+    # be a no-op.  See rates_agent/sovereign_bonds/tools/curve_spread/
+    # __init__.py "Note for tests" docstring section.
+    target_module = "rates_agent.sovereign_bonds.tools.curve_spread.compute"
     with patch(f"{target_module}.fetch_tenor_pair", return_value=raw_df), \
          patch(f"{target_module}.date", _FrozenDateForCurveSpread):
         # engine is unused because fetch_tenor_pair is mocked.
