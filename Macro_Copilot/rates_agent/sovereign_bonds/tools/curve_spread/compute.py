@@ -62,7 +62,14 @@ from shared.config import ToolConfig, load_tool_config
 
 
 # Bundled config — relative to this file.  Loaded lazily on first call.
-_CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+# Public symbol so external callers (mcp_server, REST routes, tests)
+# can build their own ToolConfig from the same source the tool uses.
+CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+
+# Legacy alias retained for one migration step — fixture capture
+# script and existing tests imported `_CONFIG_PATH` before this name
+# became public.  Will be removed after the pilot lands.
+_CONFIG_PATH: Path = CONFIG_PATH
 
 
 # ============================================================================
@@ -100,7 +107,7 @@ def calculate_curve_spread(
     """
 
     if config is None:
-        config = load_tool_config(_CONFIG_PATH)
+        config = load_tool_config(CONFIG_PATH)
 
     # ------------------------------------------------------------------
     # Pull conventions from config.  Fail fast (KeyError) if the YAML

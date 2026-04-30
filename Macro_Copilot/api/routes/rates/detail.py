@@ -29,11 +29,15 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     YieldLevelInput,
     YieldLevelOutput,
 )
-from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
+from rates_agent.sovereign_bonds.tools.curve_spread import (
+    CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
+    calculate_curve_spread,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
 from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly
 from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels
+from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.detail")
 
@@ -120,8 +124,14 @@ def spread_detail(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
 
+    # Pass the curve_spread tool's bundled config explicitly so the
+    # config dependency is observable at the endpoint.  load_tool_config
+    # is process-cached, so this is a free lookup after the first call.
     try:
-        result = calculate_curve_spread(engine=engine, params=params)
+        cs_config = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_curve_spread(
+            engine=engine, params=params, config=cs_config,
+        )
     except Exception as exc:
         logger.exception("detail/spread: tool failed for %s %s/%s", curve_family, short_tenor, long_tenor)
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")

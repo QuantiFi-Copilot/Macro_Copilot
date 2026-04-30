@@ -35,12 +35,16 @@ from rates_agent.sovereign_bonds.tools.schemas import (  # noqa: E402
     CurveRegimeInput,
     ScannerInput,
 )
-from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread  # noqa: E402
+from rates_agent.sovereign_bonds.tools.curve_spread import (  # noqa: E402
+    CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
+    calculate_curve_spread,
+)
 from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels  # noqa: E402
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly  # noqa: E402
 from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
+from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -130,8 +134,15 @@ def calculate_curve_spread_tool(
         logger.exception("Failed to connect to TimescaleDB")
         return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
 
+    # Pass the curve_spread tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.
     try:
-        result = calculate_curve_spread(engine=engine, params=params)
+        cs_config = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_curve_spread(
+            engine=engine, params=params, config=cs_config,
+        )
     except Exception as exc:
         logger.exception("Unhandled error in calculate_curve_spread for %s %s/%s",
                          params.curve_family, params.short_tenor, params.long_tenor)
