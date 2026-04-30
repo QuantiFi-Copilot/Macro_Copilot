@@ -76,9 +76,12 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread  # noqa: E402
+from rates_agent.sovereign_bonds.tools.curve_spread.compute import (  # noqa: E402
+    _CONFIG_PATH as _CURVE_SPREAD_CONFIG_PATH,
+)
 from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput  # noqa: E402
 from shared.analytics.rates_fetch import fetch_tenor_pair  # noqa: E402
-from shared.analytics.spreads import Z_SCORE_WINDOW  # noqa: E402
+from shared.config import load_tool_config  # noqa: E402
 
 # Note: as of commit 3 of the tool-config pilot, calculate_curve_spread
 # lives at .curve_spread.compute (the package init re-exports it for
@@ -205,10 +208,17 @@ def _capture_one(case: dict, engine, captured_at: str, db_name: str) -> dict:
 
     # 1. Capture the exact long-format rows the tool's fetcher returns
     #    for the same (start_date, end_date) window the tool will use.
-    #    Using the same buffer math as curve_spread.py keeps the captured
-    #    rows complete enough for the tool to reproduce its output.
+    #    Read the window/buffer values from the SAME config.yaml the
+    #    tool will load — single source of truth.  A bump to
+    #    ``z_score_window_days`` or ``z_score_buffer_multiplier`` in
+    #    YAML now propagates to fixture regeneration automatically;
+    #    the previous version of this script hardcoded
+    #    ``Z_SCORE_WINDOW * 1.5`` and would silently fall out of sync.
     from datetime import timedelta
-    buffer_days = int(Z_SCORE_WINDOW * 1.5)
+    cs_config = load_tool_config(_CURVE_SPREAD_CONFIG_PATH)
+    z_window = cs_config.convention_value("z_score_window_days")
+    buffer_mult = cs_config.convention_value("z_score_buffer_multiplier")
+    buffer_days = int(z_window * buffer_mult)
     fetch_start = frozen_today - timedelta(
         days=params.lookback_days + buffer_days
     )

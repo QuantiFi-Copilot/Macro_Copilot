@@ -204,10 +204,23 @@ class TestComputeHappyPath:
 # ===========================================================================
 
 class TestConventionOverrides:
-    """For every convention compute.py reads, building a custom
-    ToolConfig with a different value must produce observably different
-    output.  If overriding a convention has no effect, compute.py is
-    not wiring it through to the primitive."""
+    """For every convention compute.py reads, prove the override path
+    is wired through.
+
+    For conventions whose change has an observable impact on the
+    output of the synthetic-data run (window, ddof, the two
+    round_decimals), we override and compare outputs.
+
+    For conventions whose change can be silent on a well-buffered
+    synthetic series (``z_score_min_periods``,
+    ``z_score_buffer_multiplier``, ``ffill_limit_days``), we use
+    ``wraps=``-style spies on the underlying primitive / fetcher to
+    assert the override value was actually passed down — a wiring
+    proof rather than an output proof.
+
+    Together the tests below cover all seven conventions declared in
+    the bundled ``config.yaml``.
+    """
 
     def _custom_config(self, **overrides) -> ToolConfig:
         """Build a ToolConfig with a default convention block plus
@@ -306,6 +319,123 @@ class TestConventionOverrides:
         reflect the convention value, not a hardcoded 252."""
         out = self._run(params, self._custom_config(z_score_window_days=180))
         assert out["current_metrics"]["rolling_window_days"] == 180
+
+    # ---------------------------------------------------------------
+    # Wiring proofs — for conventions whose override has no observable
+    # output diff on this synthetic data, spy on the underlying
+    # primitive / fetcher to assert the value was passed through.
+    # ---------------------------------------------------------------
+
+    def test_min_periods_passed_to_rolling_zscore(self, params):
+        """``z_score_min_periods`` flows from config → rolling_zscore.
+
+        For a well-buffered synthetic series the displayed z-scores
+        are populated regardless of min_periods (every displayed row
+        has full window-warmup behind it), so the only reliable
+        wiring proof is to inspect the kwargs the primitive was
+        invoked with.
+        """
+        from shared.analytics.spreads import rolling_zscore as real_rolling
+
+        raw_df = _synthetic_raw_df()
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.rolling_zscore",
+            wraps=real_rolling,
+        ) as spy:
+            calculate_curve_spread(
+                engine=None,
+                params=params,
+                config=self._custom_config(z_score_min_periods=200),
+            )
+
+        assert spy.call_count >= 1
+        # min_periods kwarg must reflect the override.
+        assert spy.call_args.kwargs["min_periods"] == 200
+        # And the other conventions should be at their default (sanity).
+        assert spy.call_args.kwargs["window"] == 252
+
+    def test_buffer_multiplier_changes_fetch_start_date(self, params):
+        """``z_score_buffer_multiplier`` flows into ``int(window * mult)``
+        and shifts the ``start_date`` passed to ``fetch_tenor_pair``.
+
+        We capture ``start_date`` from the mock under default vs
+        overridden config and assert the override fetches further
+        back in time, by exactly the expected number of days.
+        """
+        raw_df = _synthetic_raw_df()
+
+        # Default config: buffer_mult=1.5, window=252 → buffer=378d.
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ) as spy_default, patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            calculate_curve_spread(
+                engine=None, params=params, config=self._custom_config(),
+            )
+        default_start = spy_default.call_args.kwargs["start_date"]
+
+        # Override: buffer_mult=2.0, window=252 → buffer=504d.
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ) as spy_override, patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            calculate_curve_spread(
+                engine=None, params=params,
+                config=self._custom_config(z_score_buffer_multiplier=2.0),
+            )
+        override_start = spy_override.call_args.kwargs["start_date"]
+
+        # Larger buffer must fetch from EARLIER.
+        assert override_start < default_start
+        # The exact diff: int(252*2.0) - int(252*1.5) = 504 - 378 = 126
+        # calendar days.  If the wiring drifts (e.g. compute multiplies
+        # by the wrong key, or the cast to int changes), this fails
+        # with a precise number rather than a vague "differs".
+        diff_days = (default_start - override_start).days
+        assert diff_days == 126, (
+            f"expected 126-day shift from buffer_mult 1.5→2.0, got {diff_days}"
+        )
+
+    def test_ffill_limit_passed_to_pivot(self, params):
+        """``ffill_limit_days`` flows from config → pivot_and_align_tenors.
+
+        On the synthetic series there are no holiday gaps, so the
+        ffill_limit is unobservable in the output; spy on the
+        primitive to verify the value was passed.
+        """
+        from shared.analytics.spreads import pivot_and_align_tenors as real_pivot
+
+        raw_df = _synthetic_raw_df()
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.pivot_and_align_tenors",
+            wraps=real_pivot,
+        ) as spy:
+            calculate_curve_spread(
+                engine=None,
+                params=params,
+                config=self._custom_config(ffill_limit_days=2),
+            )
+
+        assert spy.call_count >= 1
+        assert spy.call_args.kwargs["ffill_limit"] == 2
 
 
 # ===========================================================================
