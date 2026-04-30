@@ -8,6 +8,7 @@ dependencies:
   - pandas
   - scipy
   - sqlalchemy
+  - pytest
   - psycopg
   - psycopg2-binary
   - python-dotenv

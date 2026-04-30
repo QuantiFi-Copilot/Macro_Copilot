@@ -1,0 +1,223 @@
+"""
+test_curve_spread_parity.py — Snapshot parity tests for calculate_curve_spread
+==============================================================================
+
+Locks in the *current* output of ``calculate_curve_spread`` for a small
+set of synthetic inputs.  Any commit that changes the math — directly or
+through a primitive in ``shared/analytics/`` — must keep these tests
+green or come with a deliberate, reviewed fixture regeneration.
+
+How it works
+------------
+For each fixture in ``tests/fixtures/curve_spread_v1/``:
+
+1. Load the JSON.  Reconstruct the long-format DataFrame the tool's DB
+   fetcher would return.
+2. Patch ``rates_agent.sovereign_bonds.tools.curve_spread.fetch_tenor_pair``
+   to return that DataFrame.  Patch the same module's ``date`` reference
+   with a subclass whose ``today()`` returns the frozen value, so the
+   two ``date.today()`` callsites inside the tool become deterministic.
+3. Build a ``CurveSpreadInput`` from the recorded params and call
+   ``calculate_curve_spread(engine=None, params=...)``.
+4. Recursively compare the result against ``expected_output`` — strings
+   and ints exact, floats within a tight numerical tolerance.
+
+Why a tolerance and not byte-equal JSON?
+----------------------------------------
+``calculate_curve_spread`` already rounds every numeric output (z-score
+to 4 dp, bps quantities to 2 dp), so on the same inputs the result
+*should* be bit-identical between runs.  We still allow a 1e-9 absolute
+tolerance to absorb harmless float-formatting differences across
+pandas/numpy versions — anything bigger than that is real math drift
+and the test fails.
+
+Regenerating fixtures
+---------------------
+Only after a deliberate methodology change.  See
+``tests/fixtures/curve_spread_v1/README.md``.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from datetime import date
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
+
+from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
+from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "curve_spread_v1"
+
+# Tight tolerance — outputs are pre-rounded so floats should be
+# bit-identical in practice; this only absorbs harmless float-formatting
+# noise from upstream library updates.
+FLOAT_ABS_TOL = 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Frozen-date helper
+# ---------------------------------------------------------------------------
+
+class _FrozenDateForCurveSpread(date):
+    """``date`` subclass with ``today()`` returning a fixed value.
+
+    Patched in place of ``rates_agent.sovereign_bonds.tools.curve_spread.date``
+    so the tool's two ``date.today()`` callsites become deterministic.
+    Subtracting a ``timedelta`` from the value returned by ``today()``
+    still yields a real ``date`` because ``today()`` returns the
+    underlying ``date(...)`` instance, not the subclass.
+    """
+
+    _frozen_value: date = date(2000, 1, 1)  # overridden per test invocation
+
+    @classmethod
+    def today(cls) -> date:
+        return cls._frozen_value
+
+
+# ---------------------------------------------------------------------------
+# Fixture discovery
+# ---------------------------------------------------------------------------
+
+def _discover_fixtures() -> list[Path]:
+    """Return every ``*.json`` file in the fixtures directory, sorted by
+    name so test ordering is stable across runs."""
+    if not FIXTURES_DIR.is_dir():
+        return []
+    return sorted(p for p in FIXTURES_DIR.glob("*.json"))
+
+
+_FIXTURE_PATHS = _discover_fixtures()
+# Test IDs (e.g. "ust_2s10s_365d") — drives readable pytest output.
+_FIXTURE_IDS = [p.stem for p in _FIXTURE_PATHS]
+
+
+# ---------------------------------------------------------------------------
+# Recursive deep comparator
+# ---------------------------------------------------------------------------
+
+def _assert_equal(actual: Any, expected: Any, *, path: str = "$") -> None:
+    """Assert ``actual == expected`` recursively.
+
+    Floats are compared with ``FLOAT_ABS_TOL`` absolute tolerance.  All
+    other scalars must be exactly equal.  Dicts must have identical
+    keysets.  Lists must have identical lengths.  Mismatches raise
+    ``AssertionError`` with a JSON-ish path so the failure points to the
+    exact field that drifted.
+    """
+    if isinstance(expected, dict):
+        assert isinstance(actual, dict), f"{path}: expected dict, got {type(actual).__name__}"
+        ekeys, akeys = set(expected.keys()), set(actual.keys())
+        assert ekeys == akeys, (
+            f"{path}: key mismatch.  missing={sorted(ekeys - akeys)} "
+            f"extra={sorted(akeys - ekeys)}"
+        )
+        for k in expected:
+            _assert_equal(actual[k], expected[k], path=f"{path}.{k}")
+        return
+
+    if isinstance(expected, list):
+        assert isinstance(actual, list), f"{path}: expected list, got {type(actual).__name__}"
+        assert len(actual) == len(expected), (
+            f"{path}: length mismatch.  actual={len(actual)} expected={len(expected)}"
+        )
+        for i, (a_item, e_item) in enumerate(zip(actual, expected)):
+            _assert_equal(a_item, e_item, path=f"{path}[{i}]")
+        return
+
+    if expected is None:
+        assert actual is None, f"{path}: expected None, got {actual!r}"
+        return
+
+    # bool is an int subclass in Python — handle it before the float branch.
+    if isinstance(expected, bool):
+        assert actual is expected, f"{path}: expected {expected!r}, got {actual!r}"
+        return
+
+    if isinstance(expected, float):
+        assert actual is not None, f"{path}: expected {expected!r}, got None"
+        # NaN comparison: treat both-NaN as equal (the tool never emits NaN
+        # in practice, but be defensive).
+        if math.isnan(expected):
+            assert isinstance(actual, float) and math.isnan(actual), (
+                f"{path}: expected NaN, got {actual!r}"
+            )
+            return
+        diff = abs(float(actual) - expected)
+        assert diff <= FLOAT_ABS_TOL, (
+            f"{path}: float mismatch.  actual={actual!r} expected={expected!r} "
+            f"diff={diff:.3e} tol={FLOAT_ABS_TOL:.0e}"
+        )
+        return
+
+    if isinstance(expected, int):
+        assert actual == expected, f"{path}: expected {expected!r}, got {actual!r}"
+        return
+
+    if isinstance(expected, str):
+        assert actual == expected, f"{path}: expected {expected!r}, got {actual!r}"
+        return
+
+    # Fallback for any other scalar type — defensive, shouldn't be reached
+    # given the tool only emits dicts/lists/floats/ints/strs/None.
+    assert actual == expected, f"{path}: expected {expected!r}, got {actual!r}"
+
+
+# ---------------------------------------------------------------------------
+# Fixture-driven test
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(
+    not _FIXTURE_PATHS,
+    reason=(
+        "No fixtures found — run "
+        "`python tests/fixtures/curve_spread_v1/_capture.py` to generate."
+    ),
+)
+@pytest.mark.parametrize("fixture_path", _FIXTURE_PATHS, ids=_FIXTURE_IDS)
+def test_curve_spread_parity(fixture_path: Path) -> None:
+    """Run the recorded inputs through ``calculate_curve_spread`` with
+    the DB fetcher mocked and the date frozen, and assert byte-equal
+    output (modulo float tolerance) against the recorded fixture."""
+
+    with fixture_path.open() as f:
+        fx = json.load(f)
+
+    # 1. Reconstruct the long-format DataFrame the fetcher would return.
+    raw_rows = fx["input"]["raw_rows"]
+    raw_df = pd.DataFrame(raw_rows)
+    # Mirror the type contract of the real fetch_tenor_pair output.
+    raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"]).dt.date
+    raw_df["tenor"] = raw_df["tenor"].astype(str)
+    raw_df["field_value"] = raw_df["field_value"].astype(float)
+
+    # 2. Build the input.
+    params = CurveSpreadInput(**fx["input"]["params"])
+
+    # 3. Freeze the date.
+    _FrozenDateForCurveSpread._frozen_value = date.fromisoformat(
+        fx["input"]["frozen_today"]
+    )
+
+    # 4. Patch and run.
+    target_module = "rates_agent.sovereign_bonds.tools.curve_spread"
+    with patch(f"{target_module}.fetch_tenor_pair", return_value=raw_df), \
+         patch(f"{target_module}.date", _FrozenDateForCurveSpread):
+        # engine is unused because fetch_tenor_pair is mocked.
+        actual = calculate_curve_spread(engine=None, params=params)
+
+    # The tool should never return an error path on these well-formed
+    # synthetic inputs; if it does, surface the message.
+    assert "error" not in actual, (
+        f"Tool returned an error for {fixture_path.name}: {actual.get('error')!r}"
+    )
+
+    # 5. Compare with recorded expectation.
+    _assert_equal(actual, fx["expected_output"], path="$")
