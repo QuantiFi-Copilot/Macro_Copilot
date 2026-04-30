@@ -322,7 +322,21 @@ def curve_shapes(
     # requests are free; doing it here (not at module load) keeps the
     # config dependency visible at the callsite and lets tests inject
     # an alternate config via the same kwarg the tool accepts.
-    cs_config = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
+    #
+    # Wrapped in its own try/except so a missing or invalid YAML
+    # surfaces as a clean 503 ("tool configuration unavailable")
+    # rather than an unhandled 500 escaping past the per-curve
+    # failure-counting loop below.  detail.py and mcp_server.py wrap
+    # their loads the same way; this match keeps operational error
+    # handling consistent across all three callers.
+    try:
+        cs_config = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
+    except Exception as exc:
+        logger.exception("curve-shapes: failed to load curve_spread tool config")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Curve-spread tool configuration unavailable: {exc}",
+        )
 
     for curve_family in curve_list:
         try:

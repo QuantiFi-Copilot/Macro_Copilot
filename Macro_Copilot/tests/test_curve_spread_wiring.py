@@ -125,10 +125,19 @@ class TestCardsEndpointWiring:
         # And sanity-check the rest of the call
         assert mock_cs.call_args.kwargs["engine"] is mock_engine
 
-    def test_curve_shapes_reuses_config_across_curve_loop(self):
-        """The endpoint loads config once outside the per-curve loop;
-        across N curves it must invoke calculate_curve_spread N times,
-        all with the same ToolConfig instance (no per-iteration reload).
+    def test_curve_shapes_passes_same_config_instance_to_every_curve(self):
+        """Across N curves, every call must receive the same ToolConfig
+        instance.  This proves the endpoint isn't reconstructing
+        Configs per iteration (e.g. via a custom ToolConfig() built
+        from a dict — which would be a different object identity even
+        if the values matched).
+
+        NOTE: this test does NOT prove that load_tool_config is called
+        only once — load_tool_config is process-cached by path, so
+        repeated in-loop calls would still return the same instance
+        and this `is` check would pass.  See
+        ``test_curve_shapes_loads_config_only_once_per_request`` for
+        the call-count assertion that catches that regression.
         """
         from api.routes.rates import cards as cards_module
 
@@ -147,13 +156,95 @@ class TestCardsEndpointWiring:
 
         assert mock_cs.call_count == 3
         configs = [c.kwargs["config"] for c in mock_cs.call_args_list]
-        # All three must be the same ToolConfig instance — proves the
-        # config is loaded once and reused, not re-loaded per curve.
         assert all(c is configs[0] for c in configs), (
-            "config was re-loaded per curve; expected one load reused across the loop"
+            "every curve received a different ToolConfig instance — the "
+            "endpoint must reuse one Config across the loop"
         )
         for ca in mock_cs.call_args_list:
             _assert_curve_spread_config_passed(ca)
+
+    def test_curve_shapes_loads_config_only_once_per_request(self):
+        """``load_tool_config`` must be invoked exactly once per request,
+        regardless of how many curves are in the per-curve loop.  If a
+        future refactor moves the load into the loop, ``call_count``
+        scales with curve count and this test fails.
+
+        We spy on ``load_tool_config`` via ``wraps=`` so the real
+        function still runs (the cache returns a real ToolConfig);
+        only the call count is what we assert on.  Cache-state is
+        normalised at the top of every test by the autouse
+        ``_clear_cache`` fixture, so this is robust to test ordering.
+        """
+        from shared.config import load_tool_config as real_load_tool_config
+
+        from api.routes.rates import cards as cards_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            cards_module,
+            "calculate_curve_spread",
+            return_value=_well_formed_curve_spread_output(),
+        ), patch.object(
+            cards_module,
+            "load_tool_config",
+            wraps=real_load_tool_config,
+        ) as mock_load:
+            cards_module.curve_shapes(
+                engine=mock_engine,
+                curves="UST,DE_BUND,IT_BTP",  # three curves
+                short_tenor="2Y",
+                long_tenor="10Y",
+            )
+
+        # If the load is correctly outside the loop: 1 call.
+        # If accidentally inside the loop: 3 calls.
+        assert mock_load.call_count == 1, (
+            f"load_tool_config was called {mock_load.call_count} times for "
+            "a 3-curve request; expected exactly 1 (load must live outside "
+            "the per-curve loop).  Likely cause: the load was moved inside "
+            "the for-loop in curve_shapes."
+        )
+
+    def test_curve_shapes_returns_503_when_config_load_fails(self):
+        """When ``load_tool_config`` raises (missing YAML, invalid
+        schema, etc.), the endpoint must return a clean 503 rather
+        than letting the exception escape as an unhandled 500.  This
+        matches the failure-mode contract used by detail.py and
+        mcp_server.py."""
+        from fastapi import HTTPException
+
+        from api.routes.rates import cards as cards_module
+        from shared.config import ToolConfigError
+
+        mock_engine = MagicMock(name="engine")
+
+        def _broken_load(*_args, **_kwargs):
+            raise ToolConfigError(
+                "Tool config not found: /nope/config.yaml"
+            )
+
+        with patch.object(
+            cards_module, "load_tool_config", side_effect=_broken_load,
+        ), patch.object(
+            cards_module,
+            "calculate_curve_spread",
+            return_value=_well_formed_curve_spread_output(),
+        ) as mock_cs:
+            with pytest.raises(HTTPException) as exc_info:
+                cards_module.curve_shapes(
+                    engine=mock_engine,
+                    curves="UST",
+                    short_tenor="2Y",
+                    long_tenor="10Y",
+                )
+
+        # 503, not 500 — config-loading is treated as a controlled
+        # operational error, same shape as the per-curve failure path.
+        assert exc_info.value.status_code == 503
+        assert "config" in exc_info.value.detail.lower()
+        # And we never reached calculate_curve_spread, because the
+        # config load failed first.
+        assert mock_cs.call_count == 0
 
 
 # ===========================================================================
