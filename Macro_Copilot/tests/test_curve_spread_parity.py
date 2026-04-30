@@ -2,25 +2,36 @@
 test_curve_spread_parity.py — Snapshot parity tests for calculate_curve_spread
 ==============================================================================
 
-Locks in the *current* output of ``calculate_curve_spread`` for a small
-set of synthetic inputs.  Any commit that changes the math — directly or
-through a primitive in ``shared/analytics/`` — must keep these tests
-green or come with a deliberate, reviewed fixture regeneration.
+Locks in the *real production* output of ``calculate_curve_spread`` for
+the three pilot test cases (UST 2s10s 365d, BUND 5s30s 90d, BTP 2s10s
+730d).  Any commit that changes the math — directly or through a
+primitive in ``shared/analytics/`` — must keep these tests green or come
+with a deliberate, reviewed fixture regeneration.
+
+The fixtures are captured against a live TimescaleDB by
+``tests/fixtures/curve_spread_v1/_capture.py``; the test itself runs
+fully offline by replaying captured ``raw_rows`` through a mocked
+fetcher.
 
 How it works
 ------------
 For each fixture in ``tests/fixtures/curve_spread_v1/``:
 
-1. Load the JSON.  Reconstruct the long-format DataFrame the tool's DB
-   fetcher would return.
-2. Patch ``rates_agent.sovereign_bonds.tools.curve_spread.fetch_tenor_pair``
+1. Load the JSON.  Verify the captured ``raw_rows_sha256`` matches a
+   freshly-computed hash of ``input.raw_rows`` — guards against fixture
+   tampering.
+2. Reconstruct the long-format DataFrame the tool's DB fetcher would
+   return from ``input.raw_rows``.
+3. Patch ``rates_agent.sovereign_bonds.tools.curve_spread.fetch_tenor_pair``
    to return that DataFrame.  Patch the same module's ``date`` reference
-   with a subclass whose ``today()`` returns the frozen value, so the
-   two ``date.today()`` callsites inside the tool become deterministic.
-3. Build a ``CurveSpreadInput`` from the recorded params and call
+   with a subclass whose ``today()`` returns ``input.frozen_today``, so
+   the two ``date.today()`` callsites inside the tool become
+   deterministic.
+4. Build a ``CurveSpreadInput`` from the recorded params and call
    ``calculate_curve_spread(engine=None, params=...)``.
-4. Recursively compare the result against ``expected_output`` — strings
-   and ints exact, floats within a tight numerical tolerance.
+5. Recursively compare the result against ``expected_output`` — strings
+   and ints exact, floats within 1e-9 absolute tolerance, dicts must
+   have identical keysets, lists identical lengths.
 
 Why a tolerance and not byte-equal JSON?
 ----------------------------------------
@@ -39,6 +50,7 @@ Only after a deliberate methodology change.  See
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from datetime import date
@@ -88,10 +100,19 @@ class _FrozenDateForCurveSpread(date):
 
 def _discover_fixtures() -> list[Path]:
     """Return every ``*.json`` file in the fixtures directory, sorted by
-    name so test ordering is stable across runs."""
+    name so test ordering is stable across runs.
+
+    Files whose name begins with ``_`` are considered private / scratch
+    (e.g. ``_sanity_smoke.json`` from interactive debugging) and are
+    skipped — only ``_capture.py`` is allowed to write into this
+    directory and it always produces non-underscore filenames.
+    """
     if not FIXTURES_DIR.is_dir():
         return []
-    return sorted(p for p in FIXTURES_DIR.glob("*.json"))
+    return sorted(
+        p for p in FIXTURES_DIR.glob("*.json")
+        if not p.name.startswith("_")
+    )
 
 
 _FIXTURE_PATHS = _discover_fixtures()
@@ -174,39 +195,77 @@ def _assert_equal(actual: Any, expected: Any, *, path: str = "$") -> None:
 # Fixture-driven test
 # ---------------------------------------------------------------------------
 
+def _canonicalise_rows(rows: list[dict]) -> str:
+    """Match the canonical encoding ``_capture.py`` uses for hashing.
+
+    Keeping these two implementations identical is critical: a mismatch
+    here would make every parity run fail with a hash error.  The two
+    encodings agree because both:
+      - sort dict keys,
+      - use the most compact separators (no whitespace),
+      - emit UTF-8.
+    """
+    return json.dumps(rows, sort_keys=True, separators=(",", ":"))
+
+
+def _sha256_hex(payload: str) -> str:
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 @pytest.mark.skipif(
     not _FIXTURE_PATHS,
     reason=(
         "No fixtures found — run "
-        "`python tests/fixtures/curve_spread_v1/_capture.py` to generate."
+        "`python tests/fixtures/curve_spread_v1/_capture.py` against the "
+        "live DB to generate."
     ),
 )
 @pytest.mark.parametrize("fixture_path", _FIXTURE_PATHS, ids=_FIXTURE_IDS)
 def test_curve_spread_parity(fixture_path: Path) -> None:
-    """Run the recorded inputs through ``calculate_curve_spread`` with
+    """Run the captured inputs through ``calculate_curve_spread`` with
     the DB fetcher mocked and the date frozen, and assert byte-equal
     output (modulo float tolerance) against the recorded fixture."""
 
     with fixture_path.open() as f:
         fx = json.load(f)
 
-    # 1. Reconstruct the long-format DataFrame the fetcher would return.
+    # 1. Tamper-detection: verify the recorded raw_rows hash matches a
+    #    fresh recompute.  If raw_rows were edited by hand without
+    #    re-running the capture script, the hash diverges and we abort
+    #    rather than silently accepting altered baseline inputs.
     raw_rows = fx["input"]["raw_rows"]
+    capture = fx.get("capture", {})
+    expected_hash = capture.get("raw_rows_sha256")
+    assert expected_hash, (
+        f"{fixture_path.name}: missing capture.raw_rows_sha256 — "
+        "fixture must be regenerated by _capture.py"
+    )
+    actual_hash = _sha256_hex(_canonicalise_rows(raw_rows))
+    assert actual_hash == expected_hash, (
+        f"{fixture_path.name}: raw_rows_sha256 mismatch.\n"
+        f"  recorded: {expected_hash}\n"
+        f"  computed: {actual_hash}\n"
+        "raw_rows have been edited without re-running the capture script. "
+        "Either restore the original rows or regenerate the fixture with "
+        "`python tests/fixtures/curve_spread_v1/_capture.py`."
+    )
+
+    # 2. Reconstruct the long-format DataFrame the fetcher would return.
     raw_df = pd.DataFrame(raw_rows)
     # Mirror the type contract of the real fetch_tenor_pair output.
     raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"]).dt.date
     raw_df["tenor"] = raw_df["tenor"].astype(str)
     raw_df["field_value"] = raw_df["field_value"].astype(float)
 
-    # 2. Build the input.
+    # 3. Build the input.
     params = CurveSpreadInput(**fx["input"]["params"])
 
-    # 3. Freeze the date.
+    # 4. Freeze the date.
     _FrozenDateForCurveSpread._frozen_value = date.fromisoformat(
         fx["input"]["frozen_today"]
     )
 
-    # 4. Patch and run.
+    # 5. Patch and run.
     target_module = "rates_agent.sovereign_bonds.tools.curve_spread"
     with patch(f"{target_module}.fetch_tenor_pair", return_value=raw_df), \
          patch(f"{target_module}.date", _FrozenDateForCurveSpread):
@@ -214,10 +273,10 @@ def test_curve_spread_parity(fixture_path: Path) -> None:
         actual = calculate_curve_spread(engine=None, params=params)
 
     # The tool should never return an error path on these well-formed
-    # synthetic inputs; if it does, surface the message.
+    # captured inputs; if it does, surface the message.
     assert "error" not in actual, (
         f"Tool returned an error for {fixture_path.name}: {actual.get('error')!r}"
     )
 
-    # 5. Compare with recorded expectation.
+    # 6. Compare with recorded expectation.
     _assert_equal(actual, fx["expected_output"], path="$")
