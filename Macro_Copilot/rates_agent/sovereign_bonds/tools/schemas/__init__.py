@@ -6,18 +6,15 @@ External code imports from here::
     from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput
     from rates_agent.sovereign_bonds.tools.schemas import ScannerOutput
 
-Migration note (commit 5 of the tool-config pilot):
-The CurveSpread* models are now sourced from
-``rates_agent.sovereign_bonds.tools.curve_spread.schemas`` (the
-canonical per-tool-folder location).  The legacy
-``rates_agent.sovereign_bonds.tools.schemas.spread`` shim was deleted.
-This hub continues to re-export the same names so all existing
-``from ...tools.schemas import CurveSpreadInput`` imports keep
-working unchanged.
-
-Other schemas (yield_level, cross_market, butterfly, regime, scanner)
-remain in this directory until their respective tools migrate to the
-per-tool-folder layout.
+Migration status (per-tool-folder + config-driven pilot):
+- curve_spread, yield_levels, curve_move_classifier, butterfly:
+  MIGRATED.  Schemas live in their per-tool packages
+  (``...tools.<name>.schemas``); the legacy
+  ``...tools.schemas.<name>`` shims have been deleted.  This hub
+  continues to re-export the same names so existing imports
+  (``from ...tools.schemas import ButterflyInput``) keep working.
+- cross_market, scanner: still live in this directory; they will
+  move to the per-tool-folder layout when their tools migrate.
 """
 
 # Spread — canonical location is ...tools.curve_spread.schemas as of

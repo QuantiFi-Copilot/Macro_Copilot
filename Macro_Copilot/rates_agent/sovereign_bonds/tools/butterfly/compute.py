@@ -360,7 +360,10 @@ def calculate_butterfly(
         butterfly_label=butterfly_label,
         current_butterfly_bps=current_butterfly,
         daily_change_bps=daily_change,
-        current_z_score=safe_float(latest.get("z_score")),
+        # Pass z_round_decimals so a YAML override above 4 isn't
+        # silently truncated by safe_float's default of 4 — same
+        # boundary-shadowing class of bug as the field_name fix.
+        current_z_score=safe_float(latest.get("z_score"), decimals=z_round_decimals),
         rolling_window_days=z_window,
         high_252d_bps=high,
         low_252d_bps=low,
@@ -383,7 +386,8 @@ def calculate_butterfly(
         ButterflyTimeSeriesRow(
             date=row.Index.strftime("%Y-%m-%d"),
             butterfly_bps=round(row.butterfly_bps, bps_round_decimals),
-            z_score=safe_float(row.z_score),
+            # Same boundary-rounding fix as current_z_score above.
+            z_score=safe_float(row.z_score, decimals=z_round_decimals),
         )
         for row in display_df.itertuples()
     ]
