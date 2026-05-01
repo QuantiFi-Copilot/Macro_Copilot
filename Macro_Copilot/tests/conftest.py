@@ -9,14 +9,21 @@ Two responsibilities:
     file manipulating ``sys.path`` itself.
 
 2.  Excluding the pre-existing CLI smoke-test scripts from collection.
-    Those files (``tests/test_*_direct.py``, ``tests/test_ws_chat.py``)
-    are standalone runners (argparse + ``if __name__ == "__main__":``)
-    that pre-date pytest adoption.  Several of them import from
-    ``rates_agent.tools.*`` — a path that moved to
-    ``rates_agent.sovereign_bonds.tools.*`` during the earlier
-    supervisor refactor — so attempting to import them at collection
-    time errors out.  They still run as CLI scripts; re-pathing those
-    imports is its own follow-up PR.
+    Those files (``test_ws_chat.py``, the ``*_sql_validation.py``
+    runners) are standalone scripts with their own
+    ``if __name__ == "__main__":`` entry points and argparse
+    surfaces; they aren't pytest tests and shouldn't be collected.
+
+    Some are still imported by the multi-agent gauntlet
+    (``tests/test_multi_agent_prompt_gauntlet.py``) as helper
+    modules — that import path is fine because pytest collects the
+    gauntlet itself, not its helpers.
+
+Historical note: an earlier version of this list included a set of
+``test_*_direct.py`` files that pre-dated pytest adoption and had
+stale imports.  Those files have since been deleted from the tree
+or replaced by ``*_sql_validation.py`` equivalents; the ignore
+list below is now narrowed to the entries that genuinely exist.
 """
 
 from __future__ import annotations
@@ -31,14 +38,22 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Files in tests/ that pytest should not try to import or collect.
 # Listed by basename; pytest matches against the filename within this
-# conftest's directory.
+# conftest's directory.  Every entry below corresponds to a file that
+# actually exists in tests/ — keep it that way.
 collect_ignore = [
-    "test_butterfly_direct.py",
-    "test_cross_market_direct.py",
-    "test_curve_regime_direct.py",                  # already deleted; left for reference
-    "test_curve_move_classifier_sql_validation.py", # CLI runner; not a pytest test
-    "test_scanner_direct.py",
-    "test_tool_direct.py",
+    # WebSocket REPL client; run as `python tests/test_ws_chat.py`.
     "test_ws_chat.py",
-    "test_yield_levels_direct.py",
+
+    # SQL-baseline validators.  Each is a standalone CLI runner that
+    # cross-checks one tool's output against an independent SQL
+    # implementation.  Imported as helper modules by
+    # tests/test_multi_agent_prompt_gauntlet.py.  Not pytest tests
+    # themselves.
+    "test_butterfly_sql_validation.py",
+    "test_cross_market_sql_validation.py",
+    "test_curve_move_classifier_sql_validation.py",
+    "test_curve_spread_sql_validation.py",
+    "test_ois_curve_spread_sql_validation.py",
+    "test_scanner_sql_validation.py",
+    "test_yield_levels_sql_validation.py",
 ]
