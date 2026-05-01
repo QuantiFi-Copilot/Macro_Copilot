@@ -1,0 +1,95 @@
+tools:
+  - name: calculate_curve_spread
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_curve_spread_tool
+      schema: rates_agent/sovereign_bonds/tools/curve_spread/schemas.py::CurveSpreadInput
+      compute: rates_agent/sovereign_bonds/tools/curve_spread/compute.py::calculate_curve_spread
+      config: rates_agent/sovereign_bonds/tools/curve_spread/config.yaml
+
+    one_liner: >-
+      Basis-point spread between two tenors on the same sovereign yield
+      curve, with a fixed 1-year rolling z-score and full chartable time
+      series.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored daily sovereign yields.
+      The methodology lives in config.yaml, but deterministic mode exposes
+      no LLM-facing override path for it.  No model inference, no
+      scenario generation, no persistence-state logic.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_cross_market_spread_tool
+      - calculate_butterfly_tool
+      - classify_curve_move_tool
+
+    workflows:
+      - curve_shapes_card
+      - spread_detail_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Tuckman & Serrat (2022), Fixed Income Securities."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Built in the per-tool-folder config-driven format.  Parity fixture,
+      compute tests, wiring tests, SQL validator, and prompt-gauntlet
+      coverage are all present in the repo.
+
+  - name: classify_curve_move
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: classify_curve_move_tool
+      schema: rates_agent/sovereign_bonds/tools/curve_move_classifier/schemas.py::CurveMoveInput
+      compute: rates_agent/sovereign_bonds/tools/curve_move_classifier/compute.py::classify_curve_move_compute
+      config: rates_agent/sovereign_bonds/tools/curve_move_classifier/config.yaml
+
+    one_liner: >-
+      Deterministically classify a two-point sovereign curve move over a
+      discrete lookback into one of six canonical labels.
+
+    bucket_rationale: >-
+      Deterministic rule-based classifier over stored daily yields.
+      The taxonomy and arithmetic are fixed; the subjective thresholds and
+      conventions are explicit in config.yaml.  This is a move classifier,
+      not a true macro "regime" detector and not a model-driven state
+      inference tool.
+
+    pm_overridable:
+      - parallel_threshold_bps
+      - move_threshold_bps
+      - allowed_lookback_periods
+      - avg_change_method
+
+    related_tools:
+      - calculate_curve_spread_tool
+      - get_yield_levels_tool
+      - scan_extremes_tool
+
+    workflows:
+      - regime_monitor_card
+      - regime_detail_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Litterman & Scheinkman (1991), Common Factors Affecting Bond Returns."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Built in the per-tool-folder config-driven format.  Compute tests,
+      wiring tests, SQL validator, and prompt-gauntlet quarterly-path
+      coverage are present in the repo.
