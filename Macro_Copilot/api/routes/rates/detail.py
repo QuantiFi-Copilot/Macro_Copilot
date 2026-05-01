@@ -39,7 +39,10 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
     classify_curve_move_compute,
 )
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
-from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly
+from rates_agent.sovereign_bonds.tools.butterfly import (
+    CONFIG_PATH as BUTTERFLY_CONFIG_PATH,
+    calculate_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.yield_levels import (
     CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
     get_yield_levels,
@@ -203,8 +206,23 @@ def butterfly_detail(
     belly_tenor: str = Query(default="5Y"),
     long_tenor: str = Query(default="10Y"),
     lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's bundled "
+            "``default_field_name`` convention from butterfly/config.yaml "
+            "(currently 'YLD_YTM_MID').  Pass explicitly to override per "
+            "request.  Same wrapper-shadowing fix applied as the "
+            "yield_levels and curve_move_classifier endpoints (commit "
+            "b2605ee)."
+        ),
+    ),
 ):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  A previous version hardcoded
+    ``Query(default="YLD_YTM_MID")`` which silently shadowed the YAML
+    default — same fix as yield_levels and curve_move_classifier."""
     try:
         params = ButterflyInput(
             curve_family=curve_family, short_tenor=short_tenor,
@@ -214,8 +232,14 @@ def butterfly_detail(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
 
+    # Pass butterfly's bundled config explicitly so the config
+    # dependency is observable at the endpoint.  load_tool_config is
+    # process-cached, so this is a free lookup after the first call.
     try:
-        result = calculate_butterfly(engine=engine, params=params)
+        bf_config = load_tool_config(BUTTERFLY_CONFIG_PATH)
+        result = calculate_butterfly(
+            engine=engine, params=params, config=bf_config,
+        )
     except Exception as exc:
         logger.exception("detail/butterfly: tool failed for %s %s/%s/%s",
                          curve_family, short_tenor, belly_tenor, long_tenor)

@@ -61,11 +61,24 @@ def bps_change(current: Any, previous: Any) -> Optional[float]:
         return None
 
 
-def delta_bps(current: Any, previous: Any) -> Optional[float]:
+def delta_bps(
+    current: Any, previous: Any, *, decimals: int = 2,
+) -> Optional[float]:
     """Subtraction in basis points when both inputs are already in bps.
 
     Used for spread series (where values are already bps).  Returns
-    ``current - previous`` rounded to 2 decimals; None-safe.
+    ``current - previous`` rounded to ``decimals`` places; None-safe.
+
+    Parameters
+    ----------
+    decimals : int
+        Number of decimal places to round to.  Default 2 preserves the
+        previously-hardcoded behaviour and keeps existing callers
+        byte-identical when they don't pass an override.  The butterfly
+        tool's compute() passes the YAML's ``bps_round_decimals``
+        convention here so daily_change_bps respects the config — see
+        the wrapper-shadowing rationale documented in
+        rates_agent/sovereign_bonds/tools/butterfly/config.yaml.
     """
     if current is None or previous is None:
         return None
@@ -74,7 +87,7 @@ def delta_bps(current: Any, previous: Any) -> Optional[float]:
         prev = float(previous)
         if math.isnan(cur) or math.isnan(prev):
             return None
-        return round(cur - prev, 2)
+        return round(cur - prev, decimals)
     except (TypeError, ValueError):
         return None
 

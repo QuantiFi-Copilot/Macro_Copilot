@@ -48,7 +48,10 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (  # noqa: E402
     get_yield_levels,
 )
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
-from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly  # noqa: E402
+from rates_agent.sovereign_bonds.tools.butterfly import (  # noqa: E402
+    CONFIG_PATH as BUTTERFLY_CONFIG_PATH,
+    calculate_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.config import load_tool_config  # noqa: E402
 
@@ -341,7 +344,7 @@ def calculate_butterfly_tool(
     belly_tenor: str,
     long_tenor: str,
     lookback_days: int = 365,
-    field_name: str = "YLD_YTM_MID",
+    field_name: str = "",
 ) -> str:
     """Calculate the 3-point butterfly (curvature) on a sovereign yield
     curve: butterfly = 2 times belly minus short minus long (in basis points).
@@ -371,15 +374,28 @@ def calculate_butterfly_tool(
         The long wing, e.g. '10Y'.
         All three tenors must be different.
     lookback_days : int, optional
-        Calendar days of displayed history (default 365).
+        Calendar days of *displayed* history (default 365).  Does NOT
+        control the rolling z-score window or trailing range window —
+        those are config-driven (see butterfly/config.yaml).
     field_name : str, optional
-        Bloomberg field mnemonic (default 'YLD_YTM_MID').
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_field_name`` convention from
+        butterfly/config.yaml (currently 'YLD_YTM_MID').  Pass an
+        explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by yield_levels and
+        curve_move_classifier.
     """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's default_field_name.
+    # Without this, the LLM omitting field_name would always hit a
+    # hardcoded default regardless of what the YAML says — same
+    # shadowing pattern fixed for curve_move in commit b2605ee.
+    field_name_arg = field_name if field_name else None
     try:
         params = ButterflyInput(
             curve_family=curve_family, short_tenor=short_tenor,
             belly_tenor=belly_tenor, long_tenor=long_tenor,
-            lookback_days=lookback_days, field_name=field_name,
+            lookback_days=lookback_days, field_name=field_name_arg,
         )
     except ValidationError as exc:
         logger.warning("Input validation failed: %s", exc)
@@ -391,8 +407,15 @@ def calculate_butterfly_tool(
         logger.exception("Failed to connect to TimescaleDB")
         return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
 
+    # Pass the butterfly tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.
     try:
-        result = calculate_butterfly(engine=engine, params=params)
+        bf_config = load_tool_config(BUTTERFLY_CONFIG_PATH)
+        result = calculate_butterfly(
+            engine=engine, params=params, config=bf_config,
+        )
     except Exception as exc:
         logger.exception("Unhandled error in calculate_butterfly for %s %s/%s/%s",
                          params.curve_family, params.short_tenor,
