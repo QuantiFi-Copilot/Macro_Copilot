@@ -30,8 +30,12 @@ from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
     CurveSpreadOutput,
 )
 
-# Yield Level
-from rates_agent.sovereign_bonds.tools.schemas.yield_level import (
+# Yield Level — canonical location moved to
+# ...tools.yield_levels.schemas in the yield_levels migration.  The
+# legacy ...tools.schemas.yield_level shim was deleted in the same
+# commit.  Hub continues to re-export the same names so existing
+# `from ...tools.schemas import YieldLevelInput` imports keep working.
+from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
     YieldLevelInput,
     YieldLevelMetrics,
     YieldLevelOutput,

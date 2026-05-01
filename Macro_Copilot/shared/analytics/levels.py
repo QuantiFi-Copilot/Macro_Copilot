@@ -7,9 +7,18 @@ tool: yield levels, OIS rate levels, cross-market spread levels, and the
 per-instrument metric computation inside scanner-style tools.
 
 Each helper is intentionally narrow so tools can assemble only the
-pieces they need — no monolithic ``compute_level_metrics`` composite
-(that would force a least-common-denominator schema and couple all
-callers to the same decimal precision and field names).
+pieces they need — no monolithic composite that would force a
+least-common-denominator schema and couple all callers to the same
+decimal precision and field names.
+
+The one composite helper, ``compute_level_metrics``, was added when
+``yield_levels`` was migrated to the per-tool-folder pattern (see
+architecture/tool_architecture.md): the sovereign yield-snapshot card
+is a separate batch surface that historically reimplemented the
+single-tenor level math inline, with hardcoded constants drifting
+from the tool itself.  Routing both call sites through this one
+composite — driven by the same ``yield_levels/config.yaml`` — makes
+the YAML genuinely authoritative across both surfaces.
 
 Convention: caller supplies a clean ``pd.Series`` indexed by date, in
 percentage scale (e.g. 4.25 = 4.25%).  Helpers return None-safe scalars
@@ -23,7 +32,7 @@ from typing import Any, Mapping, Optional
 
 import pandas as pd
 
-from shared.analytics.spreads import safe_float
+from shared.analytics.spreads import rolling_zscore, safe_float
 
 
 # ============================================================================
@@ -207,3 +216,102 @@ def clean_single_series(
     df = df.set_index(date_col).sort_index()
     df = df.ffill(limit=ffill_limit)
     return df
+
+
+# ============================================================================
+# COMPOSITE: SINGLE-TENOR LEVEL METRICS
+# ============================================================================
+
+def compute_level_metrics(
+    series: pd.Series,
+    *,
+    z_window: int,
+    z_min_periods: int,
+    z_ddof: int,
+    period_offsets: Mapping[str, int],
+    trailing_window: int,
+    yield_round_decimals: int = 4,
+    z_score_round_decimals: int = 4,
+    high_low_round_decimals: int = 4,
+) -> dict:
+    """Compute the canonical level-metrics dict for one cleaned, sorted,
+    ffilled price/yield series.
+
+    Returns a dict with keys:
+      - ``current_value``        — latest observation, rounded
+      - ``z_score``              — current z-score against the
+                                    ``z_window``-day rolling mean/std
+      - ``period_changes``       — {label: bps} mapping, one entry per
+                                    ``period_offsets`` entry
+      - ``high``, ``low``,
+        ``percentile``           — trailing range stats over the
+                                    ``trailing_window``-day suffix
+      - ``observation_count``    — len(series)
+
+    Composes ``rolling_zscore``, ``period_changes``, and
+    ``trailing_high_low_percentile`` against a single source of truth
+    for the conventions, so two callers (e.g. a single-tenor tool and
+    a batch yield-snapshot endpoint) cannot drift on methodology.
+
+    The caller is expected to supply a clean Series (use
+    ``clean_single_series`` first if you have raw rows).  All caller-
+    facing outputs are pre-rounded; downstream wrappers can re-round
+    only if they need finer / different precision than the four
+    decimals the rolling stat itself uses.
+
+    Parameters
+    ----------
+    z_window, z_min_periods, z_ddof
+        Forwarded to ``rolling_zscore``.  These should come from the
+        tool's ``config.yaml`` rather than being hardcoded.
+    period_offsets
+        ``{label: iloc-offset}`` map forwarded to ``period_changes``.
+        For yield levels, typically ``{"daily": 2, "weekly": 6,
+        "monthly": 22}``.
+    trailing_window
+        Forwarded to ``trailing_high_low_percentile``.  For
+        ``yield_levels`` v1 this is locked at 252 (the output schema's
+        ``high_252d_pct`` etc. field names are wire-frozen for
+        frontend backward-compat); see the ``planned_extensions`` in
+        the tool's ``config.yaml``.
+    """
+    if len(series) == 0:
+        return {
+            "current_value": None,
+            "z_score": None,
+            "period_changes": {label: None for label in period_offsets},
+            "high": None,
+            "low": None,
+            "percentile": None,
+            "observation_count": 0,
+        }
+
+    current = safe_float(series.iloc[-1], decimals=yield_round_decimals)
+
+    # Rolling z-score → take the latest non-NaN.
+    z_series = rolling_zscore(
+        series,
+        window=z_window,
+        min_periods=z_min_periods,
+        ddof=z_ddof,
+        round_decimals=z_score_round_decimals,
+    )
+    z_score = safe_float(z_series.iloc[-1], decimals=z_score_round_decimals)
+
+    changes = period_changes(series, offsets=period_offsets)
+
+    high, low, percentile = trailing_high_low_percentile(
+        series,
+        window=trailing_window,
+        decimals=high_low_round_decimals,
+    )
+
+    return {
+        "current_value": current,
+        "z_score": z_score,
+        "period_changes": changes,
+        "high": high,
+        "low": low,
+        "percentile": percentile,
+        "observation_count": int(len(series)),
+    }

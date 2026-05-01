@@ -40,7 +40,10 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
 )
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly
-from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels
+from rates_agent.sovereign_bonds.tools.yield_levels import (
+    CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
+    get_yield_levels,
+)
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.detail")
@@ -90,8 +93,22 @@ def yield_detail(
     curve_family: str = Query(..., description="e.g. 'UST'"),
     tenor: str = Query(..., description="e.g. '10Y'"),
     lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's "
+            "bundled ``default_field_name`` convention from "
+            "yield_levels/config.yaml (currently 'YLD_YTM_MID').  "
+            "Pass explicitly to override per request."
+        ),
+    ),
 ):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  A previous version hardcoded
+    ``Query(default="YLD_YTM_MID")`` which silently shadowed the YAML
+    default — same fix as the curve_move_classifier wrapper-shadowing
+    cleanup (commit b2605ee)."""
     try:
         params = YieldLevelInput(
             curve_family=curve_family, tenor=tenor,
@@ -100,8 +117,14 @@ def yield_detail(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
 
+    # Pass yield_levels' bundled config explicitly so the config
+    # dependency is observable at the endpoint.  load_tool_config is
+    # process-cached, so this is a free lookup after the first call.
     try:
-        result = get_yield_levels(engine=engine, params=params)
+        yl_config = load_tool_config(YIELD_LEVELS_CONFIG_PATH)
+        result = get_yield_levels(
+            engine=engine, params=params, config=yl_config,
+        )
     except Exception as exc:
         logger.exception("detail/yield: tool failed for %s %s", curve_family, tenor)
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")

@@ -43,7 +43,10 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier import (  # noqa: E
     CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
     classify_curve_move_compute,
 )
-from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels  # noqa: E402
+from rates_agent.sovereign_bonds.tools.yield_levels import (  # noqa: E402
+    CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
+    get_yield_levels,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
@@ -174,7 +177,7 @@ def get_yield_levels_tool(
     curve_family: str,
     tenor: str,
     lookback_days: int = 365,
-    field_name: str = "YLD_YTM_MID",
+    field_name: str = "",
 ) -> str:
     """Get the current yield level for a single point on a sovereign curve,
     plus period changes, z-score, and deterministic historical context.
@@ -193,14 +196,28 @@ def get_yield_levels_tool(
     tenor : str
         The tenor point, e.g. '1Y', '2Y', '5Y', '7Y', '10Y', '20Y', '30Y'.
     lookback_days : int, optional
-        Calendar days of history for calculations (default 365).
+        Calendar days of history fetched + used to scope the
+        observation_count window (default 365).  Does NOT control the
+        rolling z-score window or trailing range window — those are
+        config-driven (see yield_levels/config.yaml).
     field_name : str, optional
-        Bloomberg field mnemonic (default 'YLD_YTM_MID').
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_field_name`` convention from
+        yield_levels/config.yaml (currently 'YLD_YTM_MID').  Pass an
+        explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by curve_move_classifier
+        and OIS forward_rate.
     """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's default_field_name.
+    # Without this, the LLM omitting field_name would always hit a
+    # hardcoded default regardless of what the YAML says — same
+    # shadowing pattern fixed for curve_move in commit b2605ee.
+    field_name_arg = field_name if field_name else None
     try:
         params = YieldLevelInput(
             curve_family=curve_family, tenor=tenor,
-            lookback_days=lookback_days, field_name=field_name,
+            lookback_days=lookback_days, field_name=field_name_arg,
         )
     except ValidationError as exc:
         logger.warning("Input validation failed: %s", exc)
@@ -212,8 +229,15 @@ def get_yield_levels_tool(
         logger.exception("Failed to connect to TimescaleDB")
         return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
 
+    # Pass the yield_levels tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.
     try:
-        result = get_yield_levels(engine=engine, params=params)
+        yl_config = load_tool_config(YIELD_LEVELS_CONFIG_PATH)
+        result = get_yield_levels(
+            engine=engine, params=params, config=yl_config,
+        )
     except Exception as exc:
         logger.exception("Unhandled error in get_yield_levels for %s %s",
                          params.curve_family, params.tenor)
