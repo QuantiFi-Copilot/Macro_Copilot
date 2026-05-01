@@ -38,7 +38,10 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
     CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
     classify_curve_move_compute,
 )
-from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
+from rates_agent.sovereign_bonds.tools.cross_market_spread import (
+    CONFIG_PATH as CROSS_MARKET_CONFIG_PATH,
+    calculate_cross_market_spread,
+)
 from rates_agent.sovereign_bonds.tools.butterfly import (
     CONFIG_PATH as BUTTERFLY_CONFIG_PATH,
     calculate_butterfly,
@@ -177,8 +180,23 @@ def cross_market_detail(
     curve_family_2: str = Query(..., description="e.g. 'DE_BUND'"),
     tenor: str = Query(default="10Y"),
     lookback_days: int = Query(default=365, ge=30, le=7300),
-    field_name: str = Query(default="YLD_YTM_MID"),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's bundled "
+            "``default_field_name`` convention from "
+            "cross_market_spread/config.yaml (currently 'YLD_YTM_MID').  "
+            "Pass explicitly to override per request.  Same wrapper-"
+            "shadowing fix applied as the other migrated detail endpoints "
+            "(commit b2605ee)."
+        ),
+    ),
 ):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  A previous version hardcoded
+    ``Query(default="YLD_YTM_MID")`` which silently shadowed the YAML
+    default — same fix as the other migrated tools."""
     try:
         params = CrossMarketSpreadInput(
             curve_family_1=curve_family_1, curve_family_2=curve_family_2,
@@ -187,8 +205,14 @@ def cross_market_detail(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
 
+    # Pass cross_market_spread's bundled config explicitly so the
+    # config dependency is observable at the endpoint.  load_tool_config
+    # is process-cached, so this is a free lookup after the first call.
     try:
-        result = calculate_cross_market_spread(engine=engine, params=params)
+        cm_config = load_tool_config(CROSS_MARKET_CONFIG_PATH)
+        result = calculate_cross_market_spread(
+            engine=engine, params=params, config=cm_config,
+        )
     except Exception as exc:
         logger.exception("detail/cross-market: tool failed for %s-%s %s",
                          curve_family_1, curve_family_2, tenor)
