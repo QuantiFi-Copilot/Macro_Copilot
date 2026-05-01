@@ -66,11 +66,6 @@ from shared.config import ToolConfig, load_tool_config
 # can build their own ToolConfig from the same source the tool uses.
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
-# Legacy alias retained for one migration step — fixture capture
-# script and existing tests imported `_CONFIG_PATH` before this name
-# became public.  Will be removed after the pilot lands.
-_CONFIG_PATH: Path = CONFIG_PATH
-
 
 # ============================================================================
 # PUBLIC API

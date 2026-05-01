@@ -10,7 +10,8 @@
 #
 # In V1 deterministic mode there is NO LLM-facing override path for
 # conventions; the LLM cannot ask for a non-standard z-score window.
-# That changes in advanced mode (commit 6+).  See docs/tool_architecture.md.
+# That changes in advanced mode (commit 6+).  See
+# architecture/tool_architecture.md.
 #
 # Bumping any value in `conventions:` is a deliberate methodology change.
 # It must come with a regenerated parity fixture (see
