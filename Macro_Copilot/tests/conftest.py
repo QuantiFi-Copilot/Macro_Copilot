@@ -35,7 +35,8 @@ if str(PROJECT_ROOT) not in sys.path:
 collect_ignore = [
     "test_butterfly_direct.py",
     "test_cross_market_direct.py",
-    "test_curve_regime_direct.py",
+    "test_curve_regime_direct.py",                  # already deleted; left for reference
+    "test_curve_move_classifier_sql_validation.py", # CLI runner; not a pytest test
     "test_scanner_direct.py",
     "test_tool_direct.py",
     "test_ws_chat.py",

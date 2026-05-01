@@ -32,17 +32,20 @@ from rates_agent.sovereign_bonds.tools.schemas import (  # noqa: E402
     YieldLevelInput,
     CrossMarketSpreadInput,
     ButterflyInput,
-    CurveRegimeInput,
+    CurveMoveInput,
     ScannerInput,
 )
 from rates_agent.sovereign_bonds.tools.curve_spread import (  # noqa: E402
     CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
     calculate_curve_spread,
 )
+from rates_agent.sovereign_bonds.tools.curve_move_classifier import (  # noqa: E402
+    CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
+    classify_curve_move_compute,
+)
 from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels  # noqa: E402
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread  # noqa: E402
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly  # noqa: E402
-from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.config import load_tool_config  # noqa: E402
 
@@ -390,28 +393,33 @@ def calculate_butterfly_tool(
 
 
 # ===========================================================================
-# TOOL 5: classify_curve_regime
+# TOOL 5: classify_curve_move
 # ===========================================================================
+# Renamed from classify_curve_regime_tool — see
+# rates_agent/sovereign_bonds/tools/curve_move_classifier/compute.py
+# "Why rename" docstring.  No backward-compat alias is exposed; the
+# legacy name is gone.
 @mcp.tool()
-def classify_curve_regime_tool(
+def classify_curve_move_tool(
     curve_family: str,
     front_tenor: str = "2Y",
     back_tenor: str = "10Y",
     lookback_period: str = "1d",
     field_name: str = "YLD_YTM_MID",
 ) -> str:
-    """Classify the curve move over a lookback period into a deterministic
-    regime tag: BULL_STEEPENER, BEAR_STEEPENER, BULL_FLATTENER,
-    BEAR_FLATTENER, PARALLEL_SHIFT, or TWIST.
+    """Classify the curve move over a discrete lookback period into one of
+    six deterministic tags: BULL_STEEPENER, BEAR_STEEPENER,
+    BULL_FLATTENER, BEAR_FLATTENER, PARALLEL_SHIFT, or TWIST.
 
-    This replaces LLM inference with guaranteed-correct classification.
-    Use it whenever the user asks about the nature of a curve move rather
-    than just the numbers.
+    This is a single-observation classification — NOT a statistical
+    persistence-state inference (which would justify the word "regime").
+    Use it whenever the user asks about the nature of a curve move
+    rather than just the numbers.
 
     Use this tool when the user asks about:
-    - Move type / regime       (e.g. "Was today a bull steepener?")
-    - Curve dynamics            (e.g. "How has the Gilt curve moved this week?")
-    - Macro interpretation      (e.g. "What kind of move are we seeing in Bunds?")
+    - Move type           (e.g. "Was today a bull steepener?")
+    - Curve dynamics      (e.g. "How has the Gilt curve moved this week?")
+    - Macro interpretation (e.g. "What kind of move are we seeing in Bunds?")
 
     Parameters
     ----------
@@ -423,13 +431,16 @@ def classify_curve_regime_tool(
     back_tenor : str, optional
         The back-end leg (default '10Y').  Must differ from front_tenor.
     lookback_period : str, optional
-        Period to measure: '1d' (today), '5d' (weekly), '22d' (monthly).
-        Default '1d'.
+        Discrete period to measure: '1d' (today), '5d' (weekly),
+        '22d' (monthly), '63d' (quarterly).  Default '1d'.  The full
+        allowed set is configured per-tool via the
+        ``allowed_lookback_periods`` convention in the tool's
+        config.yaml.
     field_name : str, optional
         Bloomberg field mnemonic (default 'YLD_YTM_MID').
     """
     try:
-        params = CurveRegimeInput(
+        params = CurveMoveInput(
             curve_family=curve_family, front_tenor=front_tenor,
             back_tenor=back_tenor, lookback_period=lookback_period,
             field_name=field_name,
@@ -444,10 +455,15 @@ def classify_curve_regime_tool(
         logger.exception("Failed to connect to TimescaleDB")
         return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
 
+    # Pass the curve-move-classifier config explicitly so the config
+    # dependency is observable here.  load_tool_config caches by path.
     try:
-        result = classify_curve_regime(engine=engine, params=params)
+        cm_config = load_tool_config(CURVE_MOVE_CONFIG_PATH)
+        result = classify_curve_move_compute(
+            engine=engine, params=params, config=cm_config,
+        )
     except Exception as exc:
-        logger.exception("Unhandled error in classify_curve_regime for %s %s/%s %s",
+        logger.exception("Unhandled error in classify_curve_move for %s %s/%s %s",
                          params.curve_family, params.front_tenor,
                          params.back_tenor, params.lookback_period)
         return json.dumps({"error": f"Classification failed for {params.curve_family} "
@@ -457,7 +473,7 @@ def classify_curve_regime_tool(
     logger.info("Tool call complete: %s %s/%s %s → %s",
                 params.curve_family, params.front_tenor,
                 params.back_tenor, params.lookback_period,
-                "error" if "error" in result else result.get("current_metrics", {}).get("regime_tag", "OK"))
+                "error" if "error" in result else result.get("current_metrics", {}).get("classification", "OK"))
 
     if "error" in result:
         return json.dumps(result, default=str)

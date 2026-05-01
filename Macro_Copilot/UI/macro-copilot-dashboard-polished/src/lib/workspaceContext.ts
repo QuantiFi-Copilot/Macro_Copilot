@@ -25,7 +25,14 @@ export const TOOL_TO_VIEW: Record<string, WorkspaceViewType> = {
   calculate_cross_market_spread_tool: 'cross_market',
   calculate_butterfly_tool: 'butterfly',
   get_yield_levels_tool: 'yield',
-  classify_curve_regime_tool: 'regime',
+  // Tool name was renamed from `classify_curve_regime_tool` to
+  // `classify_curve_move_tool` because the tool classifies a single
+  // observed move, not a statistical persistence-state regime.  The
+  // workspace VIEW key stays 'regime' because that's the URL
+  // parameter / view-name the user-facing Workspace surface uses,
+  // and the user-facing word "regime" remains how PMs talk about
+  // the output.  Only the internal tool name was renamed.
+  classify_curve_move_tool: 'regime',
   scan_extremes_tool: 'scanner',
 };
 

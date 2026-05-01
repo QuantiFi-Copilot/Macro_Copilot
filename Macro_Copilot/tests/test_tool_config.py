@@ -204,6 +204,36 @@ class TestToolConfigShape:
         assert cfg.tool.name == "t"
         assert cfg.conventions == {}
         assert cfg.methodology.assumptions == []
+        # planned_extensions defaults to empty for tools that have nothing
+        # documented as future-supported.
+        assert cfg.methodology.planned_extensions == []
+
+    def test_methodology_planned_extensions_accepted(self):
+        cfg = ToolConfig(
+            tool=ToolMeta(name="t", domain="d", description="x"),
+            methodology=MethodologyMeta(
+                what_it_does="x",
+                planned_extensions=[
+                    "avg_change_method: duration_weighted (needs DV01 data)",
+                    "avg_change_method: back_leg_only (trivial)",
+                ],
+            ),
+        )
+        assert len(cfg.methodology.planned_extensions) == 2
+
+    def test_methodology_planned_extensions_via_yaml(self, tmp_path):
+        from shared.config import load_tool_config
+        cfg_path = tmp_path / "config.yaml"
+        cfg_path.write_text(
+            "tool:\n  name: t\n  domain: d\n  description: x\n"
+            "methodology:\n"
+            "  what_it_does: x\n"
+            "  planned_extensions:\n"
+            "    - 'foo'\n"
+            "    - 'bar'\n"
+        )
+        cfg = load_tool_config(cfg_path)
+        assert cfg.methodology.planned_extensions == ["foo", "bar"]
 
     def test_extra_top_level_key_rejected(self):
         with pytest.raises(ValidationError, match="Extra inputs"):

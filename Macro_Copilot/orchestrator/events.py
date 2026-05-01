@@ -102,9 +102,9 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"{p.get('short_tenor', '2Y')}/{p.get('belly_tenor', '5Y')}/"
         f"{p.get('long_tenor', '10Y')} butterfly"
     ),
-    "classify_curve_regime_tool": lambda p: (
+    "classify_curve_move_tool": lambda p: (
         f"Classifying {p.get('curve_family', '?')} "
-        f"{p.get('lookback_period', '1d')} regime"
+        f"{p.get('lookback_period', '1d')} move"
     ),
     "scan_extremes_tool": lambda p: "Scanning for z-score extremes",
     "get_yield_levels_tool": lambda p: (

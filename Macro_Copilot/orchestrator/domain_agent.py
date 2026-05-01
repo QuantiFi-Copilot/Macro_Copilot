@@ -668,7 +668,8 @@ def _facts_from_current_metrics(
         "as_of_date",
         "curve_family",
         "spread_label",
-        "regime_description",
+        "regime_description",   # legacy field name (from REST cards/detail wire format)
+        "description",          # new curve_move_classifier narration field
         "lookback_period",
     }
 

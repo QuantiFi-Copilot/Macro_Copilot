@@ -56,7 +56,7 @@ AVAILABLE DOMAINS
 UST, DE_BUND, UK_GILT, JGB, FR_OAT, IT_BTP, ES_BONO, CANADA_GOVT, AU_GOVT.  \
 Use this domain for questions about sovereign yield levels, curve spreads \
 (e.g. UST 2s10s, Bund 5s30s), butterflies, cross-market spreads \
-(e.g. BTP-Bund), curve-regime classification, and scanning across \
+(e.g. BTP-Bund), curve-move classification, and scanning across \
 sovereign markets.
 
 - ois — overnight index swap curves.  Curve families: USD_SOFR_OIS, \
