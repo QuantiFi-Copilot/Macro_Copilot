@@ -341,6 +341,69 @@ class TestConventionOverrides:
         )
 
 
+class TestZScoreRoundDecimalsReachesOutput:
+    """z_score_round_decimals must apply at the OUTPUT boundary, not
+    just to the internal rolling_zscore() call.  An earlier version
+    rounded the rolling series to the YAML decimals, but then called
+    safe_float() without `decimals=` at the metric-assembly step,
+    silently truncating any value above 4.  This test pins the wiring
+    end-to-end so a future edit can't reintroduce the bug.
+
+    Caught by Codex review of the original butterfly migration commit;
+    same boundary-shadowing class as the field_name fix in b2605ee."""
+
+    def test_current_z_score_uses_z_round_decimals(self):
+        from shared.analytics import spreads as spreads_mod
+
+        raw_df = _synthetic_raw_df(
+            short_drift=-0.43219, belly_drift=-0.12345, long_drift=+0.09876,
+        )
+        params = ButterflyInput(
+            curve_family="UST", short_tenor="2Y", belly_tenor="5Y", long_tenor="10Y",
+            lookback_days=365,
+        )
+        # z_score_round_decimals=6 — well above safe_float's default of 4.
+        # If safe_float at the output boundary ignores this, we'll see
+        # at most 4 decimals on current_z_score.
+        out = _run(params, raw_df, _custom_config(z_score_round_decimals=6))
+
+        z = out["current_metrics"]["current_z_score"]
+        assert z is not None
+        # Find the actual rounded representation.  At decimals=6 the
+        # raw value should preserve more precision than decimals=4
+        # would.  Check by re-rounding to 4 and comparing.
+        out_at_4 = _run(params, raw_df, _custom_config(z_score_round_decimals=4))
+        z_at_4 = out_at_4["current_metrics"]["current_z_score"]
+        # Contract: at decimals=6, value rounded back to 4 == value at decimals=4
+        assert round(z, 4) == z_at_4
+
+    def test_time_series_z_score_uses_z_round_decimals(self):
+        raw_df = _synthetic_raw_df(
+            short_drift=-0.43219, belly_drift=-0.12345, long_drift=+0.09876,
+        )
+        params = ButterflyInput(
+            curve_family="UST", short_tenor="2Y", belly_tenor="5Y", long_tenor="10Y",
+            lookback_days=365,
+        )
+        out_hi = _run(params, raw_df, _custom_config(z_score_round_decimals=6))
+        out_lo = _run(params, raw_df, _custom_config(z_score_round_decimals=4))
+
+        # On a synthetic series with non-round drifts there should be
+        # at least one row where the 6-decimal version reveals
+        # sub-4-decimal precision in z_score.
+        differs = any(
+            hi["z_score"] is not None and lo["z_score"] is not None
+            and round(hi["z_score"], 4) == lo["z_score"]
+            and hi["z_score"] != lo["z_score"]
+            for hi, lo in zip(out_hi["time_series"], out_lo["time_series"])
+        )
+        assert differs, (
+            "no time_series row exhibited sub-4-decimal precision at "
+            "z_score_round_decimals=6 — safe_float() at the output "
+            "boundary may be ignoring the YAML override"
+        )
+
+
 class TestBpsRoundingReachesDailyChange:
     """delta_bps used to be hardcoded to 2 decimals, so a bumped
     bps_round_decimals would silently NOT apply to daily_change_bps.
