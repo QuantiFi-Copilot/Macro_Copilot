@@ -324,6 +324,184 @@ class TestMcpToolWiring:
 
 
 # ===========================================================================
+# Wrapper-layer field_name shadowing — regression coverage for the
+# Codex P1 follow-up.  These tests prove that omitting field_name
+# through the SURFACE wrappers (MCP tool + FastAPI route) flows the
+# YAML's default_field_name convention all the way to the SQL
+# fetcher, instead of silently being shadowed by a hardcoded
+# wrapper-layer default.
+#
+# The earlier wiring tests above pass field_name="YLD_YTM_MID"
+# explicitly, so they don't catch wrapper shadowing.  These tests
+# are the load-bearing safety net against that regression.
+# ===========================================================================
+
+class TestWrapperDoesNotShadowYamlDefault:
+
+    def _capture_field_name_seen_by_compute(
+        self, mock_cm: MagicMock,
+    ) -> object:
+        """Pull the field_name on the CurveMoveInput passed to
+        classify_curve_move_compute.  None means "the wrapper
+        correctly forwarded the omission" → compute() will then
+        resolve it against the YAML's default_field_name."""
+        params = mock_cm.call_args.kwargs["params"]
+        return params.field_name
+
+    def test_mcp_wrapper_field_name_default_is_empty_string_sentinel(self):
+        """The MCP wrapper's ``field_name`` parameter must default to
+        the empty-string sentinel "", NOT to "YLD_YTM_MID".  An
+        explicit hardcoded "YLD_YTM_MID" here would shadow the YAML
+        convention (the LLM omitting field_name would still hit the
+        legacy default regardless of what the YAML says)."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+        import inspect
+        sig = inspect.signature(mcp_module.classify_curve_move_tool)
+        default = sig.parameters["field_name"].default
+        assert default == "", (
+            f"MCP wrapper's field_name default must be '' (the "
+            f"empty-string sentinel for 'use the YAML default'), "
+            f"got {default!r}.  Hardcoding any other value here "
+            f"shadows config.yaml's default_field_name convention."
+        )
+
+    def test_mcp_wrapper_omitted_field_name_flows_none_to_curve_move_input(self):
+        """When the LLM doesn't pass field_name, the MCP wrapper
+        translates the empty-string sentinel into None and hands
+        that to CurveMoveInput.  compute() then resolves None
+        against the YAML's default_field_name."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            mcp_module, "_get_engine", return_value=mock_engine,
+        ), patch.object(
+            mcp_module,
+            "classify_curve_move_compute",
+            return_value=_well_formed_curve_move_output(),
+        ) as mock_cm:
+            # Crucially: omit field_name.
+            mcp_module.classify_curve_move_tool(
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period="22d",
+            )
+
+        assert mock_cm.call_count == 1
+        seen = self._capture_field_name_seen_by_compute(mock_cm)
+        assert seen is None, (
+            f"omitted field_name must reach CurveMoveInput as None "
+            f"(sentinel for 'use YAML default_field_name'), "
+            f"got {seen!r}.  Wrapper hardcoded a default before "
+            f"the schema layer could see the omission."
+        )
+
+    def test_mcp_wrapper_explicit_field_name_passes_through(self):
+        """An explicitly-passed field_name reaches CurveMoveInput
+        unchanged — the empty-string sentinel translation must not
+        clobber explicit overrides."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            mcp_module, "_get_engine", return_value=mock_engine,
+        ), patch.object(
+            mcp_module,
+            "classify_curve_move_compute",
+            return_value=_well_formed_curve_move_output(),
+        ) as mock_cm:
+            mcp_module.classify_curve_move_tool(
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period="22d",
+                field_name="YLD_BID",  # explicit override
+            )
+
+        assert mock_cm.call_count == 1
+        assert self._capture_field_name_seen_by_compute(mock_cm) == "YLD_BID"
+
+    def test_detail_route_field_name_default_is_none(self):
+        """The /detail/regime endpoint's ``field_name`` Query default
+        must be None (FastAPI's natural Optional support).  A
+        hardcoded ``Query(default="YLD_YTM_MID")`` would shadow the
+        YAML's default_field_name."""
+        from api.routes.rates import detail as detail_module
+        import inspect
+        sig = inspect.signature(detail_module.regime_detail)
+        # FastAPI Query objects have a ``.default`` attribute.
+        query_obj = sig.parameters["field_name"].default
+        assert query_obj.default is None, (
+            f"Query default for field_name must be None, got "
+            f"{query_obj.default!r}.  A hardcoded string here "
+            f"shadows config.yaml's default_field_name convention."
+        )
+
+    def test_detail_route_omitted_field_name_flows_none(self):
+        """When an HTTP client omits ``?field_name=``, FastAPI resolves
+        the ``Query(default=None)`` to None at request-parse time and
+        invokes ``regime_detail(field_name=None, ...)``.  We simulate
+        that path here (calling the endpoint as a plain function
+        bypasses FastAPI's request lifecycle, so the test must
+        explicitly pass None to mirror what FastAPI would have done).
+
+        This test proves that ONCE the route receives None, the value
+        flows unchanged into CurveMoveInput — and from there
+        compute() resolves it against the YAML's default_field_name.
+        Combined with ``test_detail_route_field_name_default_is_none``
+        (which checks the Query default itself), the pair covers the
+        full omitted-field path."""
+        from api.routes.rates import detail as detail_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "classify_curve_move_compute",
+            return_value=_well_formed_curve_move_output(),
+        ) as mock_cm:
+            detail_module.regime_detail(
+                engine=mock_engine,
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period="22d",
+                field_name=None,  # mirrors FastAPI's request-parse resolution
+            )
+
+        assert mock_cm.call_count == 1
+        seen = self._capture_field_name_seen_by_compute(mock_cm)
+        assert seen is None, (
+            f"None must reach CurveMoveInput unchanged, got {seen!r}. "
+            f"Route shadowed the schema's None sentinel with a "
+            f"hardcoded default before constructing the input model."
+        )
+
+    def test_detail_route_explicit_field_name_passes_through(self):
+        """An explicitly-passed ?field_name=PX_LAST reaches
+        CurveMoveInput unchanged."""
+        from api.routes.rates import detail as detail_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "classify_curve_move_compute",
+            return_value=_well_formed_curve_move_output(),
+        ) as mock_cm:
+            detail_module.regime_detail(
+                engine=mock_engine,
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period="22d",
+                field_name="PX_LAST",
+            )
+
+        assert mock_cm.call_count == 1
+        assert self._capture_field_name_seen_by_compute(mock_cm) == "PX_LAST"
+
+
+# ===========================================================================
 # CONFIG_PATH public symbol
 # ===========================================================================
 
