@@ -49,8 +49,12 @@ from rates_agent.sovereign_bonds.tools.schemas.cross_market import (
     CrossMarketSpreadOutput,
 )
 
-# Butterfly
-from rates_agent.sovereign_bonds.tools.schemas.butterfly import (
+# Butterfly — canonical location moved to
+# ...tools.butterfly.schemas in the butterfly migration commit.  The
+# legacy ...tools.schemas.butterfly shim was deleted in the same
+# commit.  Hub continues to re-export the same names so existing
+# `from ...tools.schemas import ButterflyInput` imports keep working.
+from rates_agent.sovereign_bonds.tools.butterfly.schemas import (
     ButterflyInput,
     ButterflyCurrentMetrics,
     ButterflyTimeSeriesRow,
