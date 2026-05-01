@@ -41,9 +41,7 @@ tools:
 
     built_date: 2026-05-01
     validation_status: >-
-      Built in the per-tool-folder config-driven format.  Parity fixture,
-      compute tests, wiring tests, SQL validator, and prompt-gauntlet
-      coverage are all present in the repo.
+      Not validated yet
 
   - name: classify_curve_move
     domain: rates
@@ -90,6 +88,4 @@ tools:
 
     built_date: 2026-05-01
     validation_status: >-
-      Built in the per-tool-folder config-driven format.  Compute tests,
-      wiring tests, SQL validator, and prompt-gauntlet quarterly-path
-      coverage are present in the repo.
+      Not validated yet
