@@ -7,14 +7,15 @@ External code imports from here::
     from rates_agent.sovereign_bonds.tools.schemas import ScannerOutput
 
 Migration status (per-tool-folder + config-driven pilot):
-- curve_spread, yield_levels, curve_move_classifier, butterfly:
-  MIGRATED.  Schemas live in their per-tool packages
-  (``...tools.<name>.schemas``); the legacy
+- curve_spread, yield_levels, curve_move_classifier, butterfly,
+  cross_market_spread: MIGRATED.  Schemas live in their per-tool
+  packages (``...tools.<name>.schemas``); the legacy
   ``...tools.schemas.<name>`` shims have been deleted.  This hub
   continues to re-export the same names so existing imports
-  (``from ...tools.schemas import ButterflyInput``) keep working.
-- cross_market, scanner: still live in this directory; they will
-  move to the per-tool-folder layout when their tools migrate.
+  (``from ...tools.schemas import CrossMarketSpreadInput``) keep
+  working.
+- scanner: still lives in this directory; it will move to the
+  per-tool-folder layout when its tool migrates.
 """
 
 # Spread — canonical location is ...tools.curve_spread.schemas as of
@@ -38,8 +39,13 @@ from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
     YieldLevelOutput,
 )
 
-# Cross-Market Spread
-from rates_agent.sovereign_bonds.tools.schemas.cross_market import (
+# Cross-Market Spread — canonical location moved to
+# ...tools.cross_market_spread.schemas in the cross_market_spread
+# migration commit.  The legacy ...tools.schemas.cross_market shim was
+# deleted in the same commit.  Hub continues to re-export the same
+# names so existing `from ...tools.schemas import CrossMarketSpreadInput`
+# imports keep working.
+from rates_agent.sovereign_bonds.tools.cross_market_spread.schemas import (
     CrossMarketSpreadInput,
     CrossMarketSpreadCurrentMetrics,
     CrossMarketSpreadTimeSeriesRow,

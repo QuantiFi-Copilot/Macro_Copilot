@@ -42,7 +42,10 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
 from rates_agent.sovereign_bonds.tools.yield_levels.compute import (
     _conventions_from_config as _yield_metrics_kwargs_from_config,
 )
-from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
+from rates_agent.sovereign_bonds.tools.cross_market_spread import (
+    CONFIG_PATH as CROSS_MARKET_CONFIG_PATH,
+    calculate_cross_market_spread,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
 from shared.analytics.levels import compute_level_metrics
 from shared.config import load_tool_config
@@ -442,6 +445,24 @@ def scanner(
 
 @router.get("/cross-market", response_model=CrossMarketResponse, summary="Cross-Market Spreads")
 def cross_market(engine: Engine = Depends(get_engine)):
+    # Load the cross_market_spread config ONCE per request, before the
+    # per-pair loop.  This makes the config dependency observable at
+    # the endpoint and ensures load_tool_config runs once, not once
+    # per pair.  Wrap the load in try/except so a YAML failure raises
+    # a clean 503 BEFORE entering the loop — otherwise every per-pair
+    # call would fail and the existing `failures += 1` counter would
+    # surface a misleading "All N cross-market queries failed" 503,
+    # masking the real cause.  (Codex P3 from the cross_market plan
+    # review: avoid silent total failure on config load.)
+    try:
+        cm_config = load_tool_config(CROSS_MARKET_CONFIG_PATH)
+    except Exception as exc:
+        logger.exception("/cross-market: failed to load tool config")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cross-market spread config unavailable: {exc}",
+        )
+
     results: list[CrossMarketRow] = []
     failures = 0
 
@@ -451,7 +472,9 @@ def cross_market(engine: Engine = Depends(get_engine)):
                 curve_family_1=cf1, curve_family_2=cf2,
                 tenor=tenor, lookback_days=90,
             )
-            output = calculate_cross_market_spread(engine=engine, params=params)
+            output = calculate_cross_market_spread(
+                engine=engine, params=params, config=cm_config,
+            )
             if "error" in output:
                 logger.warning("cross-market: %s-%s %s failed: %s", cf1, cf2, tenor, output["error"])
                 failures += 1

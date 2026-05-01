@@ -39,15 +39,27 @@ from shared.analytics.spreads import rolling_zscore, safe_float
 # BPS CHANGE
 # ============================================================================
 
-def bps_change(current: Any, previous: Any) -> Optional[float]:
+def bps_change(
+    current: Any, previous: Any, *, decimals: int = 2,
+) -> Optional[float]:
     """Compute change in basis points between two percentage-scale values.
 
-    ``(current - previous) * 100``, rounded to 2 decimal places.
+    ``(current - previous) * 100``, rounded to ``decimals`` places.
     Returns None if either value is None or NaN.
 
     Convention: inputs are percent (e.g. 4.25 = 4.25%), output is bps
     (1bp = 0.01%).  For already-bps series (spread time series), use
     simple subtraction instead — this helper always multiplies by 100.
+
+    Parameters
+    ----------
+    decimals : int
+        Number of decimal places to round to.  Default 2 preserves the
+        previously-hardcoded behaviour and keeps existing callers
+        byte-identical when they don't pass an override.  Mirrors
+        ``delta_bps``'s ``decimals`` kwarg so ``period_changes`` can
+        thread a YAML ``bps_round_decimals`` convention through both
+        code paths uniformly.
     """
     if current is None or previous is None:
         return None
@@ -56,7 +68,7 @@ def bps_change(current: Any, previous: Any) -> Optional[float]:
         prev = float(previous)
         if math.isnan(cur) or math.isnan(prev):
             return None
-        return round((cur - prev) * 100, 2)
+        return round((cur - prev) * 100, decimals)
     except (TypeError, ValueError):
         return None
 
@@ -111,6 +123,7 @@ def period_changes(
     *,
     offsets: Mapping[str, int] = DEFAULT_PERIOD_OFFSETS,
     already_bps: bool = False,
+    decimals: Optional[int] = None,
 ) -> dict[str, Optional[float]]:
     """Compute change in bps over each (label, iloc-offset) pair.
 
@@ -128,6 +141,15 @@ def period_changes(
         multiplied by 100 to produce bps.  True when ``series`` is
         already in bps (e.g. a spread series) — changes are a plain
         subtraction.
+    decimals : int, optional
+        Number of decimal places to round each change to.  When None
+        (default), the underlying ``delta_bps`` / ``bps_change`` use
+        their own default of 2.  Pass an explicit value to thread a
+        tool's YAML ``bps_round_decimals`` convention through to the
+        period changes — used by the cross_market_spread migration so
+        the YAML convention is truly authoritative for daily / weekly
+        / monthly bps changes (otherwise they'd silently round to 2
+        regardless of the YAML override).
 
     Returns
     -------
@@ -141,10 +163,15 @@ def period_changes(
     current = series.iloc[-1]
     change_fn = delta_bps if already_bps else bps_change
 
+    # Build the kwargs once.  Both delta_bps and bps_change accept a
+    # `decimals` kwarg (default 2); omitting it preserves byte-identical
+    # behaviour for callers that don't override.
+    extra_kwargs = {"decimals": decimals} if decimals is not None else {}
+
     out: dict[str, Optional[float]] = {}
     for label, offset in offsets.items():
         if len(series) >= offset:
-            out[label] = change_fn(current, series.iloc[-offset])
+            out[label] = change_fn(current, series.iloc[-offset], **extra_kwargs)
         else:
             out[label] = None
     return out
