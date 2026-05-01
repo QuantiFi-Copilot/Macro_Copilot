@@ -491,3 +491,149 @@ class TestClassifyCurveMovePrimitive:
                 spread_change_bps=1.0,
                 avg_change_bps=1.5,
             )
+
+
+# ===========================================================================
+# 6. Schema-layer validation (P2 fix from Codex review)
+# ===========================================================================
+
+class TestSchemaLayerValidation:
+    """Locks in the validation discipline for the input schema:
+
+      - ``front_tenor != back_tenor`` is an invariant.
+      - ``lookback_period`` must be in the bundled config's
+        ``allowed_lookback_periods`` set.  Direct API callers should
+        get a clean Pydantic ValidationError (which FastAPI turns
+        into a 422) rather than a deferred error envelope from
+        compute().
+    """
+
+    def test_invalid_lookback_period_rejected_at_construction(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match=r"lookback_period '999d'"):
+            CurveMoveInput(
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period="999d",
+            )
+
+    def test_valid_lookback_periods_accepted(self):
+        # All four labels in the bundled config's
+        # allowed_lookback_periods convention construct cleanly.
+        for label in ("1d", "5d", "22d", "63d"):
+            CurveMoveInput(
+                curve_family="UST",
+                front_tenor="2Y",
+                back_tenor="10Y",
+                lookback_period=label,
+            )
+
+    def test_same_tenor_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match=r"must be different"):
+            CurveMoveInput(
+                curve_family="UST",
+                front_tenor="5Y",
+                back_tenor="5Y",
+                lookback_period="1d",
+            )
+
+
+# ===========================================================================
+# 7. default_field_name actually flows from YAML (P1 fix)
+# ===========================================================================
+
+class TestDefaultFieldNameFromYaml:
+    """When ``field_name`` is omitted (or explicitly None), the tool
+    must pull ``default_field_name`` from the active config and pass
+    it to ``fetch_tenor_group``.  When ``field_name`` is set
+    explicitly, the explicit value wins regardless of YAML.
+
+    This locks in the P1 fix from the Codex review: previously the
+    Pydantic schema's hardcoded ``default="YLD_YTM_MID"`` shadowed
+    the YAML convention, making ``default_field_name`` a dead config
+    field.  Now the schema defaults to None and ``compute()``
+    resolves the sentinel against the active config.
+    """
+
+    def _custom_config(self, **overrides) -> ToolConfig:
+        defaults = {
+            "parallel_threshold_bps": 1.0,
+            "move_threshold_bps": 0.5,
+            "ffill_limit_days": 5,
+            "default_field_name": "YLD_YTM_MID",
+            "avg_change_method": "arithmetic_mean",
+            "allowed_lookback_periods": "1d,5d,22d,63d",
+        }
+        defaults.update(overrides)
+        return ToolConfig(
+            tool=ToolMeta(name="t", domain="d", description="x"),
+            methodology=MethodologyMeta(what_it_does="x"),
+            conventions={
+                k: Convention(value=v, source="test", rationale="test")
+                for k, v in defaults.items()
+            },
+        )
+
+    def _run_capture_field_name(
+        self, params: CurveMoveInput, config: ToolConfig,
+    ) -> str:
+        """Run compute() with mocked fetch + frozen date and return
+        the ``field_name`` that fetch_tenor_group received."""
+        raw_df = _synthetic_raw_df(front_change_pct=-0.10, back_change_pct=-0.05)
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_move_classifier.compute.fetch_tenor_group",
+            return_value=raw_df,
+        ) as spy, patch(
+            "rates_agent.sovereign_bonds.tools.curve_move_classifier.compute.date",
+            _FrozenDate,
+        ):
+            classify_curve_move_compute(
+                engine=None, params=params, config=config,
+            )
+        assert spy.call_count == 1
+        return spy.call_args.kwargs["field_name"]
+
+    def test_field_name_default_is_none_at_schema_layer(self):
+        params = CurveMoveInput(
+            curve_family="UST", front_tenor="2Y", back_tenor="10Y",
+            lookback_period="22d",
+        )
+        assert params.field_name is None, (
+            "schema default must be None so compute() can fall through "
+            "to the YAML default; a hardcoded string here makes "
+            "default_field_name a dead convention"
+        )
+
+    def test_omitted_field_name_uses_yaml_default(self):
+        params = CurveMoveInput(
+            curve_family="UST", front_tenor="2Y", back_tenor="10Y",
+            lookback_period="22d",  # no field_name passed
+        )
+        # YAML default is YLD_YTM_MID:
+        passed = self._run_capture_field_name(params, self._custom_config())
+        assert passed == "YLD_YTM_MID"
+
+    def test_yaml_override_changes_resolved_field_name(self):
+        params = CurveMoveInput(
+            curve_family="UST", front_tenor="2Y", back_tenor="10Y",
+            lookback_period="22d",
+        )
+        # Override the YAML default — fetch should see the new value:
+        passed = self._run_capture_field_name(
+            params, self._custom_config(default_field_name="PX_LAST"),
+        )
+        assert passed == "PX_LAST"
+
+    def test_explicit_field_name_overrides_yaml(self):
+        params = CurveMoveInput(
+            curve_family="UST", front_tenor="2Y", back_tenor="10Y",
+            lookback_period="22d",
+            field_name="YLD_BID",
+        )
+        # Caller's explicit value wins, regardless of the YAML default:
+        passed = self._run_capture_field_name(
+            params, self._custom_config(default_field_name="PX_LAST"),
+        )
+        assert passed == "YLD_BID"

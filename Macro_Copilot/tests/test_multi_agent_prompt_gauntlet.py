@@ -1393,15 +1393,28 @@ def _dynamic_ois_uk_scan_case(engine) -> DeterministicCaseResult:
     return DeterministicCaseResult(numeric_supported=True, outcomes=outcomes, notes=notes)
 
 
-def _unsupported_sovereign_scan_regime_case(engine) -> DeterministicCaseResult:
+def _supported_sovereign_scan_regime_case(engine) -> DeterministicCaseResult:
+    """Scanner prefix + a real 63d (quarterly) regime classification on
+    UST.  Replaces the previous "unsupported" case: the
+    curve_move_classifier migration (commit 7 of the tool-config
+    refactor) added 63d to ``allowed_lookback_periods`` and to the
+    SQL validator's ``LOOKBACK_OFFSETS``, so this leg now validates
+    end-to-end against an independent SQL baseline rather than being
+    treated as a tool-surface gap."""
     notes = [
-        "The prompt asks for a 3-month regime classification.",
-        "The current sovereign regime tool only supports 1d / 5d / 22d, so there is no honest numeric baseline for the follow-up leg.",
-        "This case therefore validates the supported scanner prefix only; the follow-up should be treated as current tool-surface gap, not a routing failure.",
+        "Scanner prefix runs for the routing leg.",
+        "The 63d (quarterly) regime classification leg now validates "
+        "numerically against the SQL baseline; previously this case "
+        "documented the 63d gap and skipped numeric validation.",
     ]
-    outcomes = [_run_operation(engine, op_sov_scan(min_abs_z_score=1.5))]
+    outcomes = [
+        _run_operation(engine, op_sov_scan(min_abs_z_score=1.5)),
+        _run_operation(
+            engine, op_sov_regime("UST", lookback_period="63d"),
+        ),
+    ]
     return DeterministicCaseResult(
-        numeric_supported=False,
+        numeric_supported=True,
         outcomes=outcomes,
         notes=notes,
     )
@@ -2028,7 +2041,7 @@ PROMPT_CASES: list[PromptCase] = [
         prompt="Scan sovereign bonds for extremes. For any curve that shows up, run a 3-month regime classification.",
         expected_action="single_domain",
         expected_domains=("sovereign_bonds",),
-        runner=_unsupported_sovereign_scan_regime_case,
+        runner=_supported_sovereign_scan_regime_case,
     ),
     PromptCase(
         case_id="sov_10",

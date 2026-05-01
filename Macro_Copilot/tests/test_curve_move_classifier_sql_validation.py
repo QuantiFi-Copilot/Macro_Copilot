@@ -42,6 +42,7 @@ LOOKBACK_OFFSETS = {
     "1d": (2, 1),
     "5d": (6, 5),
     "22d": (22, 21),
+    "63d": (63, 62),
 }
 
 CLASSIFICATION_DESCRIPTIONS = {
@@ -80,6 +81,7 @@ REGRESSION_CASES: List[Case] = [
     ("UST", "2Y", "10Y", "1d"),
     ("UST", "2Y", "10Y", "5d"),
     ("UST", "2Y", "10Y", "22d"),
+    ("UST", "2Y", "10Y", "63d"),
 ]
 
 TOLERANCE_BY_FIELD = {
