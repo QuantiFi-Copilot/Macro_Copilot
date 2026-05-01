@@ -36,8 +36,15 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
     CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
     classify_curve_move_compute,
 )
+from rates_agent.sovereign_bonds.tools.yield_levels import (
+    CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
+)
+from rates_agent.sovereign_bonds.tools.yield_levels.compute import (
+    _conventions_from_config as _yield_metrics_kwargs_from_config,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
+from shared.analytics.levels import compute_level_metrics
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.cards")
@@ -188,15 +195,36 @@ _BATCH_YIELD_SQL = text("""
 
 
 def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
-    """Batch-compute yield metrics for all sovereign benchmark instruments."""
-    Z_SCORE_WINDOW = 252
-    buffer_days = int(Z_SCORE_WINDOW * 1.5)
+    """Batch-compute yield metrics for all sovereign benchmark instruments.
+
+    Performance shape: ONE bulk SQL query for every (curve_family,
+    tenor) pair, pivot/groupby in pandas, then per-instrument metric
+    computation via the shared ``compute_level_metrics`` primitive.
+    The primitive is the same one ``yield_levels/compute.py`` uses, so
+    the YAML at ``yield_levels/config.yaml`` is authoritative for both
+    surfaces — methodology drift between the rates page and the
+    chat-tool path is no longer possible.
+
+    Previously this function reimplemented the level-stats math
+    inline with hardcoded constants (Z_SCORE_WINDOW = 252, ffill
+    limit = 5, period offsets = 2/6/22, default field = YLD_YTM_MID).
+    Routing through the primitive + the YAML closes that drift.
+    """
+    cs_config = load_tool_config(YIELD_LEVELS_CONFIG_PATH)
+    metrics_kwargs = _yield_metrics_kwargs_from_config(cs_config)
+
+    field_name = cs_config.convention_value("default_field_name")
+    z_window = cs_config.convention_value("z_score_window_days")
+    buffer_mult = cs_config.convention_value("z_score_buffer_multiplier")
+    ffill_limit = cs_config.convention_value("ffill_limit_days")
+
+    buffer_days = int(z_window * buffer_mult)
     start_date = date.today() - timedelta(days=365 + buffer_days)
 
     with engine.connect() as conn:
         result = conn.execute(
             _BATCH_YIELD_SQL,
-            {"field_name": "YLD_YTM_MID", "start_date": start_date.isoformat()},
+            {"field_name": field_name, "start_date": start_date.isoformat()},
         )
         rows = result.fetchall()
         columns = list(result.keys())
@@ -216,45 +244,31 @@ def _compute_yield_snapshot(engine: Engine) -> list[YieldSnapshotRow]:
 
     for (curve_family, tenor), group in raw_df.groupby(["curve_family", "tenor"]):
         group = group.set_index("trade_date").sort_index()
-        group = group.ffill(limit=5)
+        group = group.ffill(limit=ffill_limit)
         yields = group["field_value"]
 
         if len(yields) < 2:
             continue
 
-        current = float(yields.iloc[-1])
         as_of = yields.index[-1].strftime("%Y-%m-%d")
 
-        daily = _safe_float((current - float(yields.iloc[-2])) * 100, 2) if len(yields) >= 2 else None
-        weekly = _safe_float((current - float(yields.iloc[-6])) * 100, 2) if len(yields) >= 6 else None
-        monthly = _safe_float((current - float(yields.iloc[-22])) * 100, 2) if len(yields) >= 22 else None
-
-        z = None
-        if len(yields) >= 60:
-            rm = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).mean()
-            rs = yields.rolling(window=Z_SCORE_WINDOW, min_periods=60).std()
-            z_series = (yields - rm) / rs
-            z = _safe_float(z_series.iloc[-1])
-
-        trailing = yields.iloc[-Z_SCORE_WINDOW:] if len(yields) >= Z_SCORE_WINDOW else yields
-        high_252 = _safe_float(trailing.max())
-        low_252 = _safe_float(trailing.min())
-        percentile = None
-        if high_252 is not None and low_252 is not None and high_252 != low_252:
-            percentile = round((current - low_252) / (high_252 - low_252) * 100, 1)
+        # Single canonical primitive — same one yield_levels/compute.py
+        # uses.  Conventions come from the same yield_levels/config.yaml
+        # via metrics_kwargs above.
+        m = compute_level_metrics(yields, **metrics_kwargs)
 
         snapshot_rows.append(
             YieldSnapshotRow(
                 curve_family=curve_family,
                 tenor=tenor,
-                yield_pct=_safe_float(current),
-                daily_change_bps=daily,
-                weekly_change_bps=weekly,
-                monthly_change_bps=monthly,
-                z_score=z,
-                high_252d_pct=high_252,
-                low_252d_pct=low_252,
-                percentile_252d=percentile,
+                yield_pct=m["current_value"],
+                daily_change_bps=m["period_changes"]["daily"],
+                weekly_change_bps=m["period_changes"]["weekly"],
+                monthly_change_bps=m["period_changes"]["monthly"],
+                z_score=m["z_score"],
+                high_252d_pct=m["high"],
+                low_252d_pct=m["low"],
+                percentile_252d=m["percentile"],
                 as_of_date=as_of,
             )
         )

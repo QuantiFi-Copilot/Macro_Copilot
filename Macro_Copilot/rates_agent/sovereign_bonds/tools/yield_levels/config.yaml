@@ -1,0 +1,172 @@
+# =============================================================================
+# get_yield_levels_tool — tool configuration
+# =============================================================================
+# This file is the canonical record of the tool's conventions and
+# methodology.  Loaded by `shared.config.load_tool_config` at compute()
+# time AND by api/routes/rates/cards.py for the batch /yield-snapshot
+# surface.  That batch surface used to reimplement these conventions
+# inline; routing both call sites through this YAML keeps the
+# methodology authoritative across them.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  The LLM cannot ask for non-standard windows or
+# thresholds.  See architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: get_yield_levels_tool
+  domain: sovereign_bonds
+  description: |
+    Single-tenor sovereign yield level snapshot — current yield,
+    daily/weekly/monthly bps changes, 252-trading-day rolling z-score,
+    trailing 252-day high/low/percentile, and the observation count.
+    Output is a one-row snapshot, not a time series.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Same convention
+      as curve_spread / curve_move_classifier — the consistency lint
+      enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches curve_spread.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x trading-day window covers weekends + holidays.  Matches
+      curve_spread.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_pct, low_252d_pct,
+  # percentile_252d) are wire-frozen for frontend backward-compat.
+  # compute() raises NotImplementedError if this is set to anything
+  # other than 252; see methodology.planned_extensions for the path
+  # to make this configurable.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.  Changing this
+      requires the schema-rename + boundary-translation work
+      documented in planned_extensions.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Same as curve_spread + curve_move_classifier; the
+      consistency lint enforces the match across all three.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  LLM/HTTP wrappers must use the empty/None
+      sentinel so this default flows through — see the wrapper
+      shadowing fix from the curve_move_classifier migration
+      (commit b2605ee).
+
+methodology:
+  what_it_does: |
+    Fetches one (curve_family, tenor) yield series, cleans it, and
+    returns a snapshot: current yield, period changes (daily / weekly
+    / monthly), rolling z-score against the 252-day window, trailing
+    range stats (high / low / percentile within the trailing 252
+    days), and the observation count over the user's lookback_days
+    window.
+
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%)."
+    - "Same z-score conventions as curve_spread + curve_move_classifier."
+    - "Trading-day-based period offsets (after ffill the series is approx daily)."
+    - "Trailing range / percentile window locked at 252 trading days
+       in V1; see planned_extensions for the path to configurability."
+    - "lookback_days controls fetch range and observation_count's
+       cutoff window, NOT the rolling stat window or the trailing
+       range window — those are independent conventions in this YAML."
+
+  citations: []
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked at
+       252 because the output fields high_252d_pct / low_252d_pct /
+       percentile_252d embed the number.  Path to configurability:
+       rename schema fields to high_window_pct / low_window_pct /
+       percentile_window + add trailing_window_days to the output;
+       update YieldView.tsx + the rates page YieldSnapshotGrid to read
+       the new names; remove the NotImplementedError guard in compute()."
+    - "Sovereign-vs-OIS observation_count anchoring consistency.
+       Sovereign yield_levels currently anchors observation_count's
+       cutoff to date.today(); OIS rate_level anchors to the latest
+       observation in the series.  Aligning these is a separate PR —
+       it's a behaviour change, not a config one."
