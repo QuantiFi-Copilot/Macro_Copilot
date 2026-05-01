@@ -4,10 +4,24 @@ Renamed from the legacy ``CurveRegime*`` family.  The previous name
 overclaimed: this tool classifies a single observed move, not a
 persistence state.
 
-The Input schema's ``lookback_period`` validator enforces the discrete
-enum drawn from ``config.yaml``'s ``allowed_lookback_periods``
-convention — invalid labels are rejected with a clear "see config.yaml
-for the supported set" message rather than silently accepted.
+Validation layering
+-------------------
+- ``front_tenor != back_tenor`` is an invariant — encoded as a
+  ``@model_validator`` here.
+- ``lookback_period`` must be one of the labels listed in
+  ``config.yaml``'s ``allowed_lookback_periods`` convention.  This is
+  also enforced at the Pydantic layer (see
+  ``_lookback_period_must_be_allowed`` below) so direct API callers
+  get a 422 input-validation error, not a generic 500 or a "compute
+  returned an error envelope".  Loading the allow-set lazily from the
+  bundled config keeps the schema and YAML in lock-step; tests that
+  pass a custom ToolConfig still work because ``compute()`` validates
+  again against the runtime config (defence in depth).
+- ``field_name`` defaults to ``None`` — the sentinel that means "use
+  the YAML's ``default_field_name`` convention".  Callers can still
+  override per-query.  ``compute()`` is the one place that resolves
+  the sentinel against the active config, so editing
+  ``default_field_name`` in YAML actually changes runtime behaviour.
 
 Validators that encode invariants (front/back tenors must differ) stay
 here in code; they are not configurable.
@@ -18,6 +32,37 @@ from __future__ import annotations
 from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+
+def _bundled_allowed_lookback_periods() -> set[str]:
+    """Read the allowed lookback set from the bundled ``config.yaml``.
+
+    Looked up lazily inside the validator so circular-import risk is
+    zero (the schema doesn't import compute or ToolConfig at module-
+    load time; only the validator path touches them).  Cached by the
+    underlying ``load_tool_config`` so this is a one-time cost.
+
+    If the bundled YAML can't be loaded for any reason, we fall back
+    to the historical default set.  The validator then short-circuits
+    against the fallback and ``compute()`` will surface any deeper
+    config error the ordinary way.
+    """
+    try:
+        # Local imports to avoid a top-of-module cycle through compute.
+        from rates_agent.sovereign_bonds.tools.curve_move_classifier.compute import (
+            CONFIG_PATH,
+        )
+        from shared.config import load_tool_config
+
+        cfg = load_tool_config(CONFIG_PATH)
+        csv = cfg.convention_value("allowed_lookback_periods")
+        return {p.strip() for p in str(csv).split(",") if p.strip()}
+    except Exception:
+        # Defensive fallback — historical set.  compute() still does
+        # the strict per-call validation against its own (possibly
+        # custom) ToolConfig, so this branch never silently breaks
+        # tests that pass a stub config.
+        return {"1d", "5d", "22d", "63d"}
 
 
 class CurveMoveInput(BaseModel):
@@ -47,10 +92,13 @@ class CurveMoveInput(BaseModel):
             "the tool's config.yaml — see allowed_lookback_periods."
         ),
     )
-    field_name: str = Field(
-        default="YLD_YTM_MID",
+    field_name: Optional[str] = Field(
+        default=None,
         description=(
-            "Bloomberg observation field.  Default mid yield-to-maturity."
+            "Bloomberg observation field.  When None (default), the "
+            "tool falls through to ``default_field_name`` from "
+            "config.yaml (currently 'YLD_YTM_MID').  Pass an explicit "
+            "field name to override per query."
         ),
     )
 
@@ -60,6 +108,28 @@ class CurveMoveInput(BaseModel):
             raise ValueError(
                 f"front_tenor and back_tenor must be different, but "
                 f"both are '{self.front_tenor}'."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _lookback_period_must_be_allowed(self) -> "CurveMoveInput":
+        """Reject lookback labels not in the bundled config's
+        ``allowed_lookback_periods`` set at the input-validation layer.
+
+        ``compute()`` re-validates against its own (possibly custom)
+        ToolConfig — that catches the case where a test or future
+        advanced-mode caller passes a config with a narrower /
+        broader allow-set.  The schema layer only protects against
+        the LLM picking a label outside the production-deployed set.
+        """
+        allowed = _bundled_allowed_lookback_periods()
+        if self.lookback_period not in allowed:
+            raise ValueError(
+                f"lookback_period '{self.lookback_period}' is not in the "
+                f"allowed set {sorted(allowed)}.  Update "
+                f"config.yaml's allowed_lookback_periods convention to "
+                f"add new labels (and add the corresponding iloc-offset "
+                f"mapping in compute._PERIOD_OFFSETS)."
             )
         return self
 

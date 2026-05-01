@@ -157,10 +157,21 @@ def classify_curve_move_compute(
     move_threshold = config.convention_value("move_threshold_bps")
     ffill_limit = config.convention_value("ffill_limit_days")
     avg_method = config.convention_value("avg_change_method")
+    default_field_name = config.convention_value("default_field_name")
     allowed_periods_csv = config.convention_value("allowed_lookback_periods")
     allowed_periods = {
         p.strip() for p in allowed_periods_csv.split(",") if p.strip()
     }
+
+    # ------------------------------------------------------------------
+    # Resolve field_name: caller's explicit value wins; None falls
+    # through to the YAML default.  This keeps default_field_name
+    # genuinely config-driven — editing it in config.yaml changes
+    # runtime behaviour for callers that don't pass an override.
+    # ------------------------------------------------------------------
+    field_name_resolved = (
+        params.field_name if params.field_name is not None else default_field_name
+    )
 
     # ------------------------------------------------------------------
     # Honest placeholder — fail loudly on not-yet-implemented methods
@@ -213,7 +224,7 @@ def classify_curve_move_compute(
         engine=engine,
         curve_family=params.curve_family,
         tenors=[params.front_tenor, params.back_tenor],
-        field_name=params.field_name,
+        field_name=field_name_resolved,
         start_date=start_date,
     )
 
@@ -222,7 +233,7 @@ def classify_curve_move_compute(
             "error": (
                 f"No data found for curve_family='{params.curve_family}', "
                 f"tenors=['{params.front_tenor}', '{params.back_tenor}'], "
-                f"field='{params.field_name}' since {start_date.isoformat()}."
+                f"field='{field_name_resolved}' since {start_date.isoformat()}."
             )
         }
 
