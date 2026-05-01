@@ -12,6 +12,7 @@ Each returns the complete tool output including time_series for charts.
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.engine import Engine
@@ -208,7 +209,15 @@ def regime_detail(
     front_tenor: str = Query(default="2Y"),
     back_tenor: str = Query(default="10Y"),
     lookback_period: str = Query(default="1d", description="'1d', '5d', '22d', or '63d'"),
-    field_name: str = Query(default="YLD_YTM_MID"),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's "
+            "bundled ``default_field_name`` convention from "
+            "config.yaml (currently 'YLD_YTM_MID').  Pass explicitly "
+            "to override per request."
+        ),
+    ),
 ):
     """User-facing endpoint name retains "regime" because that's how
     PMs and the frontend's existing typescript types reference this
@@ -216,7 +225,14 @@ def regime_detail(
     call the renamed ``classify_curve_move_compute`` and translate
     the new ``classification`` / ``description`` field names back to
     the legacy ``regime_tag`` / ``regime_description`` wire format
-    so the frontend doesn't need to change in this commit.
+    so the frontend doesn't need to change.
+
+    ``field_name`` defaults to None at the query layer (FastAPI maps
+    a missing query param to None) so the tool's compute() can
+    resolve it against the YAML's ``default_field_name`` convention.
+    A previous version hardcoded ``Query(default="YLD_YTM_MID")``,
+    which silently shadowed the YAML default — fixed alongside the
+    matching MCP-wrapper fix.
 
     The rename rationale (single-observation classifier, not a
     persistence-state regime detector) is documented in

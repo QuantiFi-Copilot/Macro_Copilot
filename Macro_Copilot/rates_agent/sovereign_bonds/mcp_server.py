@@ -405,7 +405,7 @@ def classify_curve_move_tool(
     front_tenor: str = "2Y",
     back_tenor: str = "10Y",
     lookback_period: str = "1d",
-    field_name: str = "YLD_YTM_MID",
+    field_name: str = "",
 ) -> str:
     """Classify the curve move over a discrete lookback period into one of
     six deterministic tags: BULL_STEEPENER, BEAR_STEEPENER,
@@ -437,13 +437,26 @@ def classify_curve_move_tool(
         ``allowed_lookback_periods`` convention in the tool's
         config.yaml.
     field_name : str, optional
-        Bloomberg field mnemonic (default 'YLD_YTM_MID').
+        Bloomberg field mnemonic.  Leave as the default empty string ""
+        to use the tool's bundled ``default_field_name`` convention
+        from config.yaml (currently 'YLD_YTM_MID' for sovereigns).
+        Pass an explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by ``calculate_ois_forward_rate_tool``
+        for optional tenor/date inputs — MCP serialises only flat
+        scalars, so we use "" rather than None at the wire level.
     """
+    # Translate the empty-string sentinel into a None that the schema
+    # layer recognises and the compute layer resolves against the
+    # bundled config's ``default_field_name``.  Without this, an LLM
+    # that omits ``field_name`` would still hit the YAML's value
+    # because the wrapper passed an explicit "YLD_YTM_MID" string;
+    # this keeps the convention genuinely config-driven.
+    field_name_arg = field_name if field_name else None
     try:
         params = CurveMoveInput(
             curve_family=curve_family, front_tenor=front_tenor,
             back_tenor=back_tenor, lookback_period=lookback_period,
-            field_name=field_name,
+            field_name=field_name_arg,
         )
     except ValidationError as exc:
         logger.warning("Input validation failed: %s", exc)
