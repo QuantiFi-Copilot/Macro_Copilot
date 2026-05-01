@@ -188,9 +188,17 @@ class MethodologyMeta(BaseModel):
     """The ``methodology:`` block — drives the future methodology UI card.
 
     Required ``what_it_does`` so that every tool ships with at least one
-    sentence of human-facing methodology.  ``assumptions`` and
-    ``citations`` are optional; many simple tools won't have anything
-    to put in them.
+    sentence of human-facing methodology.  ``assumptions``,
+    ``citations``, and ``planned_extensions`` are optional.
+
+    ``planned_extensions`` is the public ledger of decisions yet to be
+    implemented.  When a YAML convention exists with a ``value`` that is
+    the only currently-supported option but documents alternatives in
+    its rationale (e.g. ``avg_change_method: arithmetic_mean`` with
+    duration-weighted variants planned), list those alternatives here.
+    The corresponding ``compute()`` should raise ``NotImplementedError``
+    with a pointer to this block when an unsupported value is set, so
+    the YAML is never silently dishonest.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -198,6 +206,7 @@ class MethodologyMeta(BaseModel):
     what_it_does: str = Field(..., min_length=1)
     assumptions: List[str] = Field(default_factory=list)
     citations: List[str] = Field(default_factory=list)
+    planned_extensions: List[str] = Field(default_factory=list)
 
 
 # ============================================================================

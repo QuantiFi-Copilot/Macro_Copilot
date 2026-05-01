@@ -22,8 +22,8 @@ from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadOutput,
     CrossMarketSpreadInput,
     CrossMarketSpreadOutput,
-    CurveRegimeInput,
-    CurveRegimeOutput,
+    CurveMoveInput,
+    CurveMoveOutput,
     ButterflyInput,
     ButterflyOutput,
     YieldLevelInput,
@@ -33,8 +33,11 @@ from rates_agent.sovereign_bonds.tools.curve_spread import (
     CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
     calculate_curve_spread,
 )
+from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
+    CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
+    classify_curve_move_compute,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
-from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime
 from rates_agent.sovereign_bonds.tools.butterfly import calculate_butterfly
 from rates_agent.sovereign_bonds.tools.yield_levels import get_yield_levels
 from shared.config import load_tool_config
@@ -198,17 +201,28 @@ def butterfly_detail(
     return result
 
 
-@router.get("/detail/regime", response_model=CurveRegimeOutput, summary="Curve Regime Detail (workspace)")
+@router.get("/detail/regime", summary="Curve Regime Detail (workspace)")
 def regime_detail(
     engine: Engine = Depends(get_engine),
     curve_family: str = Query(..., description="e.g. 'UST'"),
     front_tenor: str = Query(default="2Y"),
     back_tenor: str = Query(default="10Y"),
-    lookback_period: str = Query(default="1d", description="'1d', '5d', or '22d'"),
+    lookback_period: str = Query(default="1d", description="'1d', '5d', '22d', or '63d'"),
     field_name: str = Query(default="YLD_YTM_MID"),
 ):
+    """User-facing endpoint name retains "regime" because that's how
+    PMs and the frontend's existing typescript types reference this
+    surface (``RegimeView`` / ``RegimeOutput``).  Internally we now
+    call the renamed ``classify_curve_move_compute`` and translate
+    the new ``classification`` / ``description`` field names back to
+    the legacy ``regime_tag`` / ``regime_description`` wire format
+    so the frontend doesn't need to change in this commit.
+
+    The rename rationale (single-observation classifier, not a
+    persistence-state regime detector) is documented in
+    architecture/tool_architecture.md."""
     try:
-        params = CurveRegimeInput(
+        params = CurveMoveInput(
             curve_family=curve_family, front_tenor=front_tenor,
             back_tenor=back_tenor, lookback_period=lookback_period,
             field_name=field_name,
@@ -217,11 +231,24 @@ def regime_detail(
         raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
 
     try:
-        result = classify_curve_regime(engine=engine, params=params)
+        cm_config = load_tool_config(CURVE_MOVE_CONFIG_PATH)
+        result = classify_curve_move_compute(
+            engine=engine, params=params, config=cm_config,
+        )
     except Exception as exc:
         logger.exception("detail/regime: tool failed for %s %s/%s %s",
                          curve_family, front_tenor, back_tenor, lookback_period)
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
 
     _tool_result_or_raise(result, f"Regime for {curve_family} {front_tenor}/{back_tenor} ({lookback_period})")
-    return result
+
+    # Translate to the legacy wire format the frontend expects:
+    # ``classification`` → ``regime_tag``, ``description`` → ``regime_description``.
+    metrics = result.get("current_metrics", {})
+    translated_metrics = {**metrics}
+    if "classification" in translated_metrics:
+        translated_metrics["regime_tag"] = translated_metrics.pop("classification")
+    if "description" in translated_metrics:
+        translated_metrics["regime_description"] = translated_metrics.pop("description")
+
+    return {"current_metrics": translated_metrics}

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-test_curve_regime_sql_validation.py — Sovereign curve-regime validator
+test_curve_move_classifier_sql_validation.py — Sovereign curve-move classifier validator
 ======================================================================
 
-Validate ``classify_curve_regime`` against an independent SQL baseline.
+Validate ``classify_curve_move_compute`` against an independent SQL baseline.
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from database.database import get_db_engine  # noqa: E402
-from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime  # noqa: E402
-from rates_agent.sovereign_bonds.tools.schemas import CurveRegimeInput  # noqa: E402
+from rates_agent.sovereign_bonds.tools.curve_move_classifier import classify_curve_move_compute  # noqa: E402
+from rates_agent.sovereign_bonds.tools.schemas import CurveMoveInput  # noqa: E402
 from tests.sql_validation_common import (  # noqa: E402
     add_exact_field_mismatches,
     add_numeric_field_mismatches,
@@ -44,7 +44,7 @@ LOOKBACK_OFFSETS = {
     "22d": (22, 21),
 }
 
-REGIME_DESCRIPTIONS = {
+CLASSIFICATION_DESCRIPTIONS = {
     "BULL_STEEPENER": (
         "Yields fell and the curve steepened — the front end rallied "
         "more than the back end.  Typically signals dovish repricing "
@@ -95,7 +95,7 @@ TOLERANCE_BY_FIELD = {
 }
 
 
-def curve_regime_label(front_tenor: str, back_tenor: str) -> str:
+def curve_move_label(front_tenor: str, back_tenor: str) -> str:
     """Mirror the tool's current label formatting exactly."""
     return (
         f"{front_tenor.replace('Y', '')}s"
@@ -299,19 +299,19 @@ def sql_baseline(
     avg_change_bps = round((front_change_bps + back_change_bps) / 2, 2)
 
     if abs(front_change_bps) < 0.5 and abs(back_change_bps) < 0.5:
-        regime_tag = "PARALLEL_SHIFT"
+        classification = "PARALLEL_SHIFT"
     elif front_change_bps * back_change_bps < 0:
-        regime_tag = "TWIST"
+        classification = "TWIST"
     elif abs(spread_change_bps) < 1.0:
-        regime_tag = "PARALLEL_SHIFT"
+        classification = "PARALLEL_SHIFT"
     elif avg_change_bps < 0 and spread_change_bps > 0:
-        regime_tag = "BULL_STEEPENER"
+        classification = "BULL_STEEPENER"
     elif avg_change_bps >= 0 and spread_change_bps > 0:
-        regime_tag = "BEAR_STEEPENER"
+        classification = "BEAR_STEEPENER"
     elif avg_change_bps < 0 and spread_change_bps <= 0:
-        regime_tag = "BULL_FLATTENER"
+        classification = "BULL_FLATTENER"
     else:
-        regime_tag = "BEAR_FLATTENER"
+        classification = "BEAR_FLATTENER"
 
     return {
         "current_metrics": {
@@ -319,9 +319,9 @@ def sql_baseline(
             "prior_date": row["prior_date"],
             "curve_family": curve_family,
             "lookback_period": lookback_period,
-            "spread_label": curve_regime_label(front_tenor, back_tenor),
-            "regime_tag": regime_tag,
-            "regime_description": REGIME_DESCRIPTIONS[regime_tag],
+            "spread_label": curve_move_label(front_tenor, back_tenor),
+            "classification": classification,
+            "description": CLASSIFICATION_DESCRIPTIONS[classification],
             "front_tenor": front_tenor,
             "back_tenor": back_tenor,
             "front_yield_current": row["front_yield_current"],
@@ -360,8 +360,8 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
             "curve_family",
             "lookback_period",
             "spread_label",
-            "regime_tag",
-            "regime_description",
+            "classification",
+            "description",
             "front_tenor",
             "back_tenor",
         ),
@@ -390,9 +390,9 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
 
 def run_case(engine, *, case: Case, field_name: str) -> List[str]:
     curve_family, front_tenor, back_tenor, lookback_period = case
-    tool_result = classify_curve_regime(
+    tool_result = classify_curve_move_compute(
         engine=engine,
-        params=CurveRegimeInput(
+        params=CurveMoveInput(
             curve_family=curve_family,
             front_tenor=front_tenor,
             back_tenor=back_tenor,
@@ -413,7 +413,7 @@ def run_case(engine, *, case: Case, field_name: str) -> List[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate the sovereign curve-regime tool against direct SQL."
+        description="Validate the sovereign curve-move classifier tool against direct SQL."
     )
     parser.add_argument("--cases", type=int, default=DEFAULT_CASE_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
@@ -421,7 +421,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print("=" * 80)
-    print("SOVEREIGN CURVE REGIME TOOL — SQL VALIDATION")
+    print("SOVEREIGN CURVE MOVE CLASSIFIER TOOL — SQL VALIDATION")
     print("=" * 80)
     print(f"  cases       : {args.cases}")
     print(f"  random_seed : {args.seed}")

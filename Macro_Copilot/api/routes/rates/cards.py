@@ -25,15 +25,18 @@ from api.dependencies import get_engine, settings
 from rates_agent.sovereign_bonds.tools.schemas import (
     CurveSpreadInput,
     CrossMarketSpreadInput,
-    CurveRegimeInput,
+    CurveMoveInput,
     ScannerInput,
 )
 from rates_agent.sovereign_bonds.tools.curve_spread import (
     CONFIG_PATH as CURVE_SPREAD_CONFIG_PATH,
     calculate_curve_spread,
 )
+from rates_agent.sovereign_bonds.tools.curve_move_classifier import (
+    CONFIG_PATH as CURVE_MOVE_CONFIG_PATH,
+    classify_curve_move_compute,
+)
 from rates_agent.sovereign_bonds.tools.cross_market_spread import calculate_cross_market_spread
-from rates_agent.sovereign_bonds.tools.curve_regime import classify_curve_regime
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes
 from shared.config import load_tool_config
 
@@ -474,6 +477,18 @@ def regimes(
     front_tenor: str = Query(default="2Y"),
     back_tenor: str = Query(default="10Y"),
 ):
+    """User-facing endpoint name retains "regimes" because that's how PMs
+    talk in industry chat ("today's regime is bear-flattening").  The
+    response shape's ``regime_tag`` / ``regime_description`` field names
+    are also kept for frontend backward compatibility — the workspace's
+    RegimeView and the dashboard's RegimeMonitorCard both consume these.
+
+    Internally we now call the renamed ``classify_curve_move_compute``
+    and translate the new ``classification`` / ``description`` field
+    names to the user-facing ``regime_tag`` / ``regime_description``
+    at this boundary.  See architecture/tool_architecture.md for the
+    rename rationale (single-observation classifier, not a persistence-
+    state regime detector)."""
     curve_list = (
         [c.strip() for c in curves.split(",") if c.strip()]
         if curves else settings.RATES_CURVES
@@ -481,24 +496,42 @@ def regimes(
     results: list[RegimeRow] = []
     failures = 0
 
+    # Load the curve-move classifier's config once per request and
+    # reuse across the per-(curve, period) loop.  Wrapped to convert
+    # config-load failures into a clean 503 (same shape as cards.py's
+    # curve_shapes endpoint after the Codex P2 fix).
+    try:
+        cm_config = load_tool_config(CURVE_MOVE_CONFIG_PATH)
+    except Exception as exc:
+        logger.exception("regimes: failed to load curve_move_classifier tool config")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Curve-move-classifier tool configuration unavailable: {exc}",
+        )
+
     for curve_family in curve_list:
         for period in settings.REGIME_PERIODS:
             try:
-                params = CurveRegimeInput(
+                params = CurveMoveInput(
                     curve_family=curve_family, front_tenor=front_tenor,
                     back_tenor=back_tenor, lookback_period=period,
                 )
-                output = classify_curve_regime(engine=engine, params=params)
+                output = classify_curve_move_compute(
+                    engine=engine, params=params, config=cm_config,
+                )
                 if "error" in output:
                     logger.warning("regimes: %s %s failed: %s", curve_family, period, output["error"])
                     failures += 1
                     continue
 
                 m = output.get("current_metrics", {})
+                # Field-name translation: the new tool returns
+                # ``classification`` / ``description``; the user-facing
+                # response keeps ``regime_tag`` / ``regime_description``.
                 results.append(RegimeRow(
                     curve_family=curve_family, lookback_period=period,
-                    regime_tag=m.get("regime_tag", "UNKNOWN"),
-                    regime_description=m.get("regime_description", ""),
+                    regime_tag=m.get("classification", "UNKNOWN"),
+                    regime_description=m.get("description", ""),
                     spread_label=m.get("spread_label", ""),
                     front_tenor=m.get("front_tenor", front_tenor),
                     back_tenor=m.get("back_tenor", back_tenor),

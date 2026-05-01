@@ -1,0 +1,150 @@
+# =============================================================================
+# classify_curve_move_tool — tool configuration
+# =============================================================================
+# Renamed from `classify_curve_regime_tool`.  The previous name overclaimed:
+# this tool classifies a single observed two-point curve move over a
+# fixed lookback into one of six canonical tags; it does NOT do the
+# statistical persistence-state inference that "regime" connotes in
+# rates / macro.  An actual Markov-switching regime detector is a
+# planned future Bucket 2 tool.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions; the LLM cannot ask for non-standard thresholds.  See
+# architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: classify_curve_move_tool
+  domain: sovereign_bonds
+  description: |
+    Classify a two-point sovereign curve move over a discrete lookback
+    period (1d / 5d / 22d / 63d) into one of six canonical tags:
+    BULL_STEEPENER, BEAR_STEEPENER, BULL_FLATTENER, BEAR_FLATTENER,
+    PARALLEL_SHIFT, TWIST.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Spread-change threshold for "parallel" classification
+  # ---------------------------------------------------------------------------
+  parallel_threshold_bps:
+    value: 1.0
+    source: team_judgment_pending_review
+    rationale: >-
+      If |spread_change_bps| is below this, the move is classified
+      PARALLEL_SHIFT rather than a small steepener/flattener.  Below
+      this threshold the spread movement is desk-noise rather than
+      signal.  Conservative PMs may want 2.0; aggressive PMs may
+      want 0.5.
+    valid_range: [0.1, 5.0]
+
+  # ---------------------------------------------------------------------------
+  # Per-leg movement threshold for "flat" detection
+  # ---------------------------------------------------------------------------
+  move_threshold_bps:
+    value: 0.5
+    source: team_judgment_pending_review
+    rationale: >-
+      If both legs moved less than this in absolute terms, the move is
+      classified PARALLEL_SHIFT regardless of the spread direction
+      (catches the flat-flat case where neither leg moved enough to
+      care).  Distinct from parallel_threshold_bps, which gates "spread
+      didn't change"; this gates "neither leg actually moved".
+    valid_range: [0.1, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday gaps
+      when fetching the front and back yield series.  Same value
+      curve_spread uses; the consistency lint enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield observation.
+
+  # ---------------------------------------------------------------------------
+  # Method for aggregating front-and-back leg moves into a "bull/bear"
+  # signal.  See methodology.planned_extensions for the alternatives.
+  # ---------------------------------------------------------------------------
+  avg_change_method:
+    value: arithmetic_mean
+    source: team_judgment_pending_review
+    rationale: >-
+      How the "average leg move" is computed for bull/bear designation.
+      arithmetic_mean treats both legs equally.  Alternatives
+      (duration_weighted, dv01_weighted, back_leg_only) are documented
+      in methodology.planned_extensions as future-supported but NOT
+      yet implemented.  compute() will raise NotImplementedError if
+      this is set to anything other than 'arithmetic_mean' until those
+      alternatives ship.
+
+  # ---------------------------------------------------------------------------
+  # Set of lookback periods the LLM is allowed to select.  The Pydantic
+  # input validator pulls this set from the YAML at compute() time.
+  # ---------------------------------------------------------------------------
+  allowed_lookback_periods:
+    value: "1d,5d,22d,63d"
+    source: team_judgment_pending_review
+    rationale: >-
+      Comma-separated set of lookback-period labels the LLM may select.
+      Daily / weekly / monthly / quarterly approximations.  Each label
+      is mapped to a trading-day iloc-offset by compute() (1d→2,
+      5d→6, 22d→22, 63d→63).  Adding 2d, 3d, or 132d here would give
+      finer FOMC-day or longer-horizon coverage without code changes
+      — but those lookback labels would also need an iloc-offset
+      mapping in compute(), so coordinate the YAML edit with code.
+
+methodology:
+  what_it_does: |
+    Measures how each of two tenors moved in basis points over a
+    discrete lookback window, then assigns a categorical tag from a
+    fixed six-element taxonomy: BULL_STEEPENER, BEAR_STEEPENER,
+    BULL_FLATTENER, BEAR_FLATTENER, PARALLEL_SHIFT, TWIST.  This is
+    a single-observation classification, NOT a statistical
+    persistence-state inference (which would justify the word
+    "regime").
+
+  assumptions:
+    - "Tenors are user-specified; the default 2Y front and 10Y back
+       is the industry-standard slope proxy."
+    - "Bull/bear is determined by the sign of the average leg move
+       (currently arithmetic_mean of front and back, see avg_change_method)."
+    - "Twist takes precedence over parallel: opposite-sign leg moves
+       are always TWIST, never PARALLEL."
+    - "PARALLEL_SHIFT covers two cases: both legs flat (caught by
+       move_threshold_bps), and both legs moved together with
+       negligible spread change (caught by parallel_threshold_bps)."
+    - "The 4-quadrant rule (sign of avg_change × sign of spread_change)
+       is mathematics; the two thresholds are PM-tweakable; the
+       taxonomy is domain truth."
+
+  citations:
+    - "Litterman & Scheinkman (1991) — level/slope/curvature decomposition
+       of the yield curve.  The bull/bear/steepener/flattener taxonomy
+       maps onto the slope dimension of that decomposition."
+
+  planned_extensions:
+    - "avg_change_method: duration_weighted — weight legs by modified
+       duration so the back leg counts more for the bull/bear
+       designation.  Requires per-tenor duration data we don't ingest
+       today."
+    - "avg_change_method: dv01_weighted — weight legs by DV01 dollar
+       sensitivity.  Requires per-tenor DV01 data we don't ingest today."
+    - "avg_change_method: back_leg_only — use the back leg's direction
+       directly, ignoring the front leg.  Trivial implementation; no
+       new data required.  Some desks treat the back leg as the
+       stronger macro signal."
+    - "Add 2d, 3d, 132d to allowed_lookback_periods for finer FOMC-day
+       and longer-horizon coverage.  Requires adding iloc-offset
+       mappings in compute() at the same time."

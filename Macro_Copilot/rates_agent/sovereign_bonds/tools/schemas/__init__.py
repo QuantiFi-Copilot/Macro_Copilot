@@ -53,11 +53,17 @@ from rates_agent.sovereign_bonds.tools.schemas.butterfly import (
     ButterflyOutput,
 )
 
-# Regime
-from rates_agent.sovereign_bonds.tools.schemas.regime import (
-    CurveRegimeInput,
-    CurveRegimeCurrentMetrics,
-    CurveRegimeOutput,
+# Curve-move classifier — canonical location moved to
+# ...tools.curve_move_classifier.schemas in the curve-move-classifier
+# migration commit.  The previous schemas were named ``CurveRegime*``;
+# they are renamed ``CurveMove*`` because the tool classifies a single
+# observed move, NOT a persistence state ("regime" in the technical
+# rates / macro sense).  The legacy ``...tools.schemas.regime`` shim
+# was deleted in the same commit.
+from rates_agent.sovereign_bonds.tools.curve_move_classifier.schemas import (
+    CurveMoveInput,
+    CurveMoveCurrentMetrics,
+    CurveMoveOutput,
 )
 
 # Scanner
@@ -72,6 +78,6 @@ __all__ = [
     "YieldLevelInput", "YieldLevelMetrics", "YieldLevelOutput",
     "CrossMarketSpreadInput", "CrossMarketSpreadCurrentMetrics", "CrossMarketSpreadTimeSeriesRow", "CrossMarketSpreadOutput",
     "ButterflyInput", "ButterflyCurrentMetrics", "ButterflyTimeSeriesRow", "ButterflyOutput",
-    "CurveRegimeInput", "CurveRegimeCurrentMetrics", "CurveRegimeOutput",
+    "CurveMoveInput", "CurveMoveCurrentMetrics", "CurveMoveOutput",
     "ScannerInput", "ScannerResultRow", "ScannerOutput",
 ]

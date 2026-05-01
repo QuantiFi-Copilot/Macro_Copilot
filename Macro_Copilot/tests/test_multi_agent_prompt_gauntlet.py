@@ -68,7 +68,7 @@ from rates_agent.ois.tools.schemas import (  # noqa: E402
 )
 from tests import test_butterfly_sql_validation as sov_bfly_validator  # noqa: E402
 from tests import test_cross_market_sql_validation as sov_cross_validator  # noqa: E402
-from tests import test_curve_regime_sql_validation as sov_regime_validator  # noqa: E402
+from tests import test_curve_move_classifier_sql_validation as sov_regime_validator  # noqa: E402
 from tests import test_curve_spread_sql_validation as sov_spread_validator  # noqa: E402
 from tests import test_scanner_sql_validation as sov_scanner_validator  # noqa: E402
 from tests import test_yield_levels_sql_validation as sov_yield_validator  # noqa: E402
@@ -1561,15 +1561,15 @@ def op_sov_regime(
     }
     return OperationSpec(
         name=f"{curve_family} regime {lookback_period}",
-        tool_name="classify_curve_regime_tool",
+        tool_name="classify_curve_move_tool",
         domain="sovereign_bonds",
         params=params,
         expected_param_subset={
             "curve_family": curve_family,
             "lookback_period": lookback_period,
         },
-        run_tool=lambda engine: sov_regime_validator.classify_curve_regime(
-            engine, sov_regime_validator.CurveRegimeInput(**params)
+        run_tool=lambda engine: sov_regime_validator.classify_curve_move_compute(
+            engine, sov_regime_validator.CurveMoveInput(**params)
         ),
         run_sql=lambda engine: sov_regime_validator.sql_baseline(
             engine,
