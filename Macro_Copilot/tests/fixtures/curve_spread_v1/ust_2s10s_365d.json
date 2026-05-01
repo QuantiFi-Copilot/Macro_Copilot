@@ -3,11 +3,11 @@
   "tool_module": "rates_agent.sovereign_bonds.tools.curve_spread",
   "tool_function": "calculate_curve_spread",
   "capture": {
-    "captured_at": "2026-04-30T22:07:55Z",
+    "captured_at": "2026-05-01T01:00:53Z",
     "database_name": "macrodata",
     "as_of_date": "2026-04-08",
-    "raw_rows_count": 1028,
-    "raw_rows_sha256": "81b50e2f3e084468970051ca8035f723783245b36de63be2fdaddc571c803655"
+    "raw_rows_count": 1026,
+    "raw_rows_sha256": "72ed3365370b19a0a68d37aec7b756a1cdb43ffadc2e3fb4015605514b2621ff"
   },
   "input": {
     "params": {
@@ -17,18 +17,8 @@
       "lookback_days": 365,
       "field_name": "YLD_YTM_MID"
     },
-    "frozen_today": "2026-04-30",
+    "frozen_today": "2026-05-01",
     "raw_rows": [
-      {
-        "trade_date": "2024-04-17",
-        "tenor": "10Y",
-        "field_value": 4.588
-      },
-      {
-        "trade_date": "2024-04-17",
-        "tenor": "2Y",
-        "field_value": 4.933
-      },
       {
         "trade_date": "2024-04-18",
         "tenor": "10Y",
@@ -5174,11 +5164,6 @@
       "long_tenor_yield": 4.278
     },
     "time_series": [
-      {
-        "date": "2025-04-30",
-        "spread_bps": 55.8,
-        "z_score": 1.7316
-      },
       {
         "date": "2025-05-01",
         "spread_bps": 51.9,
