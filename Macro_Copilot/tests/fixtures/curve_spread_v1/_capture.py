@@ -77,7 +77,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread  # noqa: E402
 from rates_agent.sovereign_bonds.tools.curve_spread.compute import (  # noqa: E402
-    _CONFIG_PATH as _CURVE_SPREAD_CONFIG_PATH,
+    CONFIG_PATH as _CURVE_SPREAD_CONFIG_PATH,
 )
 from rates_agent.sovereign_bonds.tools.schemas import CurveSpreadInput  # noqa: E402
 from shared.analytics.rates_fetch import fetch_tenor_pair  # noqa: E402

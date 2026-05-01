@@ -15,8 +15,8 @@ In V1 deterministic mode, conventions are **immutable from the LLM's
 reach**.  The MCP wrapper does not expose any convention as an LLM-
 overridable parameter.  Conventions become writable in a future
 advanced mode through UI controls or per-user presets — never through
-LLM phrasing interpretation.  See ``docs/tool_architecture.md`` (lands
-in commit 6).
+LLM phrasing interpretation.  See
+``architecture/tool_architecture.md``.
 
 Schema
 ------
@@ -43,7 +43,7 @@ Source-tag enforcement
 ----------------------
 For commit 1 of the tool-config refactor, ``source`` is a non-empty
 string with no enum constraint.  Commit 6 will tighten this to a
-documented enum (``docs/methodology_sources.md``) once the source set
+documented enum (``architecture/methodology_sources.md``) once the source set
 has stabilised across multiple tools.
 
 Caching

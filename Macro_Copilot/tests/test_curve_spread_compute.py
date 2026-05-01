@@ -34,7 +34,7 @@ import pandas as pd
 import pytest
 
 from rates_agent.sovereign_bonds.tools.curve_spread import calculate_curve_spread
-from rates_agent.sovereign_bonds.tools.curve_spread.compute import _CONFIG_PATH
+from rates_agent.sovereign_bonds.tools.curve_spread.compute import CONFIG_PATH
 from rates_agent.sovereign_bonds.tools.curve_spread.schemas import CurveSpreadInput
 from shared.config import (
     Convention,
@@ -100,12 +100,12 @@ class _FrozenDate(date):
 
 class TestBundledConfig:
     def test_config_yaml_exists(self):
-        assert _CONFIG_PATH.is_file(), (
-            f"Bundled config not found at {_CONFIG_PATH}"
+        assert CONFIG_PATH.is_file(), (
+            f"Bundled config not found at {CONFIG_PATH}"
         )
 
     def test_config_loads(self):
-        cfg = load_tool_config(_CONFIG_PATH)
+        cfg = load_tool_config(CONFIG_PATH)
         assert cfg.tool.name == "calculate_curve_spread_tool"
         assert cfg.tool.domain == "sovereign_bonds"
 
@@ -113,7 +113,7 @@ class TestBundledConfig:
         """Every convention compute.py reads must be in the YAML.  If
         a convention is renamed in YAML without updating compute.py
         this test fails before any tool call does."""
-        cfg = load_tool_config(_CONFIG_PATH)
+        cfg = load_tool_config(CONFIG_PATH)
         required = {
             "z_score_window_days",
             "z_score_min_periods",
@@ -129,7 +129,7 @@ class TestBundledConfig:
     def test_convention_defaults_match_legacy_constants(self):
         """The bundled defaults must reproduce the pre-commit-3 values
         exactly so the parity fixture remains valid when re-captured."""
-        cfg = load_tool_config(_CONFIG_PATH)
+        cfg = load_tool_config(CONFIG_PATH)
         assert cfg.convention_value("z_score_window_days") == 252
         assert cfg.convention_value("z_score_min_periods") == 60
         assert cfg.convention_value("z_score_ddof") == 1
@@ -139,7 +139,7 @@ class TestBundledConfig:
         assert cfg.convention_value("z_score_round_decimals") == 4
 
     def test_methodology_block_populated(self):
-        cfg = load_tool_config(_CONFIG_PATH)
+        cfg = load_tool_config(CONFIG_PATH)
         assert cfg.methodology.what_it_does
         assert len(cfg.methodology.assumptions) > 0
 
@@ -188,14 +188,14 @@ class TestComputeHappyPath:
         assert all("date" in row and "spread_bps" in row for row in ts)
 
     def test_explicit_default_config_matches_auto_loaded(self):
-        """Passing config=load_tool_config(_CONFIG_PATH) explicitly must
+        """Passing config=load_tool_config(CONFIG_PATH) explicitly must
         produce identical output to passing config=None."""
         params = CurveSpreadInput(
             curve_family="UST", short_tenor="2Y", long_tenor="10Y",
             lookback_days=365, field_name="YLD_YTM_MID",
         )
         out_auto = self._run(params, config=None)
-        out_explicit = self._run(params, config=load_tool_config(_CONFIG_PATH))
+        out_explicit = self._run(params, config=load_tool_config(CONFIG_PATH))
         assert out_auto == out_explicit
 
 

@@ -324,17 +324,38 @@ class TestMcpToolWiring:
 # ===========================================================================
 
 class TestConfigPathPublicSymbol:
-    """Commit 4 promotes ``_CONFIG_PATH`` to ``CONFIG_PATH`` and re-
-    exports it from the package init.  This regression-tests the
-    promotion: both names resolve to the same Path object, and
-    loading via either path returns the same cached ToolConfig."""
+    """Commit 4 promoted ``_CONFIG_PATH`` to ``CONFIG_PATH`` and re-
+    exported it from the package init; commit 6 removed the underscore
+    alias entirely.  These tests lock in the post-removal contract:
 
-    def test_public_and_legacy_paths_are_identical(self):
-        from rates_agent.sovereign_bonds.tools.curve_spread import CONFIG_PATH
-        from rates_agent.sovereign_bonds.tools.curve_spread.compute import (
-            _CONFIG_PATH,
+      - ``CONFIG_PATH`` is exposed by both the package init and the
+        compute submodule (and they resolve to the same Path);
+      - loading via either path returns the curve_spread ToolConfig;
+      - the underscore alias no longer exists.
+    """
+
+    def test_config_path_via_package_init_and_compute_are_identical(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread import (
+            CONFIG_PATH as via_package,
         )
-        assert CONFIG_PATH == _CONFIG_PATH
+        from rates_agent.sovereign_bonds.tools.curve_spread.compute import (
+            CONFIG_PATH as via_compute,
+        )
+        assert via_package == via_compute
+
+    def test_underscore_alias_no_longer_exists(self):
+        """``_CONFIG_PATH`` was kept for one migration step and has now
+        been removed.  If anyone restores it (out of habit or
+        copy-paste from older docs), this test fails — restoring the
+        alias should be a deliberate decision, not silent."""
+        from rates_agent.sovereign_bonds.tools.curve_spread import compute
+        assert not hasattr(compute, "_CONFIG_PATH"), (
+            "`_CONFIG_PATH` underscore alias was retired in commit 6 "
+            "of the tool-config pilot.  Use `CONFIG_PATH` (public) "
+            "instead.  If restoring the alias is intentional, also "
+            "delete this test in the same change so the rationale is "
+            "recorded together."
+        )
 
     def test_load_returns_curve_spread_config(self):
         cfg = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
