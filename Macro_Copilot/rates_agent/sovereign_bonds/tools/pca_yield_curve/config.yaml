@@ -1,0 +1,276 @@
+# =============================================================================
+# pca_yield_curve_tool — tool configuration
+# =============================================================================
+# Canonical record of the pca_yield_curve tool's conventions and
+# methodology.  Loaded by `shared.config.load_tool_config` at compute()
+# time.  The MCP wrapper and /detail/pca-yield-curve endpoint pass this
+# config explicitly so the dependency is observable at the call site.
+#
+# Central knobs (A13)
+# -------------------
+# This tool's central methodological choices — the inputs that define
+# what the fit IS — are the structural inputs `curve_family`,
+# `tenors`, `lookback_days`, `n_components`, and `change_frequency`.
+# Every other knob (`min_observations_for_pca`, `sign_anchor`,
+# `degenerate_variance_share_threshold`, `ffill_limit_days`, all
+# rounding decimals, default field) lives here in YAML and is NOT
+# user-overridable in V1.  See A13 in
+# docs/architecture/tool_architecture.md.
+#
+# Honest-placeholder pattern (sign_anchor)
+# ----------------------------------------
+# `sign_anchor` is a STRUCTURAL choice (different anchors → different
+# sign conventions → different downstream interpretation in
+# yield_change_attribution_pca).  Locked at
+# "lock_pc_long_tenor_positive" in V1; alternative anchors are
+# documented under planned_extensions as sibling-tool material;
+# compute() raises NotImplementedError on any other value with a
+# pointer to planned_extensions.  Same lock-and-document pattern
+# as butterfly's trailing_range_window_days and
+# rolling_regression's add_constant.
+#
+# Sparse-grid limitation (acknowledged)
+# -------------------------------------
+# The current sovereign playbook ingests at most 8 benchmark tenors
+# per curve_family (1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y).  PCA on this
+# sparse grid recovers level / slope / curvature reliably (PC1, PC2,
+# PC3 typically account for >99% of variance), but PC3 stability and
+# the "humped curvature" interpretation are weaker than on a dense
+# individual-bond panel.  Documented under
+# methodology.planned_extensions; tools downstream of this one (e.g.
+# yield_change_attribution_pca) inherit the limitation.
+# =============================================================================
+
+tool:
+  name: pca_yield_curve_tool
+  domain: sovereign_bonds
+  description: |
+    Principal Component Analysis on the yield-CHANGES panel of a
+    single sovereign curve.  Returns per-component loadings (one row
+    per tenor), variance shares (and cumulative shares), per-row
+    factor scores time series, plus per-component quality metadata
+    (degenerate / sign_anchor_tied flags).  The first three
+    components conventionally correspond to level, slope, and
+    curvature for normal yield-curve data; that interpretation is
+    documented under methodology.note but is NOT enforced by output
+    field names — components are labelled `pc1`, `pc2`, `pc3`, ...
+  category: quant_standard_analytic
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default n_components
+  # ---------------------------------------------------------------------------
+  default_n_components:
+    value: 3
+    source: industry_standard_level_slope_curvature
+    rationale: >-
+      Three components capture level + slope + curvature in normal
+      yield-curve data and typically explain >99% of variance on
+      sovereign panels (see Litterman & Scheinkman 1991).  User can
+      override in their request via the schema's n_components field.
+    valid_range: [1, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default change frequency for the PCA fit
+  # ---------------------------------------------------------------------------
+  default_change_frequency:
+    value: daily
+    source: industry_standard_daily_changes
+    rationale: >-
+      Daily yield changes are the canonical input for sovereign-
+      curve PCA — preserves sample size and matches the cadence of
+      most desk RV workflows.  Weekly changes are supported via
+      the user input but not the YAML default.
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations in the change panel after dropna
+  # ---------------------------------------------------------------------------
+  min_observations_for_pca:
+    value: 252
+    source: team_judgment_pending_review
+    rationale: >-
+      ~1 year of trading-day yield changes.  PCA loadings are
+      unstable below this threshold; below ~60 obs the SVD result
+      barely beats noise.  When the user-supplied lookback gives
+      fewer than this many non-NaN change rows, compute() returns a
+      controlled error envelope (FastAPI maps the phrase shape to
+      HTTP 422, mirroring the small-window guards on zscore_custom,
+      rolling_regression, and half_life).
+    valid_range: [60, 2520]
+
+  # ---------------------------------------------------------------------------
+  # Sign anchor — STRUCTURAL choice, locked at one value in V1
+  # ---------------------------------------------------------------------------
+  # See module-header note above for rationale.  compute() raises
+  # NotImplementedError on any value other than the locked one.
+  sign_anchor:
+    value: lock_pc_long_tenor_positive
+    source: numerical_stability_lock
+    rationale: >-
+      For each principal component k, flip the sign so that the
+      loading at the LONGEST tenor in the panel is non-negative.
+      Tie-break (loading exactly zero): use longest-minus-shortest
+      sign.  Both tied → emit quality_flag="sign_anchor_tied" and
+      apply no flip.  Locked at this rule because alternative
+      anchors (max_abs_loading_positive, first_tenor_positive) would
+      flip the sign of downstream yield_change_attribution_pca's
+      level/slope/curvature contribution decomposition — they are
+      sibling tools, not parameter overrides.
+
+  # ---------------------------------------------------------------------------
+  # Degenerate-component variance-share threshold
+  # ---------------------------------------------------------------------------
+  degenerate_variance_share_threshold:
+    value: 0.000000000001   # 1e-12
+    source: numerical_stability_lock
+    rationale: >-
+      Variance-share floor below which a component is flagged
+      "degenerate" and its loadings + scores are emitted as NaN.
+      1e-12 is conservative — well below numerical zero on float64
+      eigenvalues; catches rank-deficient panels (e.g., a tenor that
+      is a linear combination of other tenors) without flagging
+      small-but-real components.  Surfaced via component_metadata
+      so a downstream tool (e.g., yield_change_attribution_pca) can
+      mask suspect components rather than projecting onto noise.
+    valid_range: [0.000000000000001, 0.000001]   # 1e-15 .. 1e-6
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations in the yield panel
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps before the change panel is built.  Same as the rest of
+      the rates roster; the consistency lint enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — loadings (eigenvector entries)
+  # ---------------------------------------------------------------------------
+  loading_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round loadings to 4 decimals.  Display precision; further
+      decimals are noise given numerical jitter in the SVD.  Applied
+      at the boundary via _round_or_none() so a YAML override above
+      4 actually surfaces.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — variance shares (ratio in [0, 1])
+  # ---------------------------------------------------------------------------
+  variance_share_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round variance shares + cumulative shares to 4 decimals.
+      Display precision (4 decimals = 0.01% resolution).
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — factor scores (in factor-level units)
+  # ---------------------------------------------------------------------------
+  factor_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round factor scores (per-row PC projections) to 4 decimals.
+      Applied at the per-row TimeSeries-build boundary AND at the
+      snapshot's current_factor_levels surface.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  LLM/HTTP wrappers must use the empty/None
+      sentinel so this default flows through.
+
+methodology:
+  what_it_does: |
+    Fits PCA on the yield-CHANGES panel of one sovereign curve:
+
+      1. Fetch all (or caller-supplied) tenors of `curve_family`
+         over `lookback_days`.
+      2. ffill holiday gaps (up to ffill_limit_days).
+      3. Diff at `change_frequency` (daily or weekly) to build the
+         change panel.
+      4. Center per-tenor (subtract column means).
+      5. Run SVD on the centered panel.
+      6. Truncate to `n_components` and apply the locked sign
+         anchor (PC_k loading at longest tenor >= 0; tie-break
+         documented above).
+      7. Detect degenerate components (variance share below floor)
+         and mark via component_metadata.
+
+    Returns:
+      - loadings: per-tenor, per-component (DataFrame).
+      - variance_share + cumulative_variance_share.
+      - factor_scores time series (one TimeSeries per component).
+      - current_factor_levels: latest row of factor_scores.
+      - component_metadata: per-component quality flags.
+
+  assumptions:
+    - "PCA on yield CHANGES (not levels).  PCA on levels mixes
+       trend with factor structure and is a different statistical
+       object — sibling tool documented under planned_extensions
+       if needed."
+    - "Centered (mean-zero per tenor) but NOT scaled.  Yields are
+       already in consistent units across tenors, so covariance-
+       PCA is the canonical choice; correlation-PCA (scaled to
+       unit variance) is a sibling tool."
+    - "Sign convention: each PC's loading at the LONGEST tenor is
+       non-negative.  Documented under conventions.sign_anchor.
+       Alternative anchors are sibling tools (compute() raises
+       NotImplementedError)."
+    - "The canonical level/slope/curvature interpretation
+       (PC1=level, PC2=slope, PC3=curvature for normal yield-curve
+       data) is a PROPERTY of the input data, NOT enforced by the
+       tool's output schema.  Output components are labelled
+       `pc1`, `pc2`, `pc3`, ...  Downstream consumers
+       (yield_change_attribution_pca) MUST NOT assume the
+       interpretation; they should consume the loadings as-is."
+    - "Sparse-grid limitation: with 8 benchmark tenors, PCA
+       recovers level + slope + curvature reliably but PC3+ are
+       sample-size sensitive.  Dense individual-bond panel work
+       requires the cusip-ingestion playbook extension —
+       documented under planned_extensions."
+    - "lookback_days controls fetch + fit window.  No separate
+       'display' window; the factor scores time series spans the
+       same dates as the centered change panel."
+
+  citations:
+    - "Litterman, R., & Scheinkman, J. (1991). Common Factors
+       Affecting Bond Returns. Journal of Fixed Income, 1(1), 54-61.
+       Foundational PCA-on-yields paper."
+
+  planned_extensions:
+    - "Robust PCA / spectral clipping for outlier-resistance — a
+       sibling tool whose output schema is identical but whose
+       fit method down-weights outlier rows."
+    - "Sparse PCA (component vectors regularised toward sparsity
+       in tenor space) — sibling tool with a different methodology
+       contract; useful when the dense interpretation breaks down."
+    - "Correlation PCA (scaled to unit variance per tenor) instead
+       of today's covariance PCA — different statistical object;
+       documented as a sibling, not a parameter override."
+    - "Real-time updating via Kalman filter (DNS-style) — covered
+       by the future dynamic_nelson_siegel tool, not this one."
+    - "Dense individual-bond panel PCA when the cusip-ingestion
+       playbook extension lands — same code path, denser tenor
+       grid, more stable PC3+ loadings."
+    - "Alternative sign anchors: 'max_abs_loading_positive'
+       (anchor on whichever tenor has the largest absolute
+       loading), 'first_tenor_positive' (anchor on the shortest
+       tenor).  Each is a sibling tool whose downstream
+       interpretation differs; compute() today raises
+       NotImplementedError on any anchor other than
+       'lock_pc_long_tenor_positive'."
