@@ -311,3 +311,83 @@ class TestConfigPathPublicSymbol:
         cfg = load_tool_config(ZSCORE_CUSTOM_CONFIG_PATH)
         assert cfg.tool.name == "zscore_custom_tool"
         assert cfg.tool.category == "desk_invariant_primitive"
+
+
+# ===========================================================================
+# Cross-layer-contract → HTTP 422 mapping
+# ===========================================================================
+
+class TestSmallWindowReturns422:
+    """When the user requests `z_score_window_days < z_score_min_periods`,
+    compute() returns a controlled error envelope.  Pre-fix, the FastAPI
+    route surfaced this as a 500 because ``_tool_result_or_raise`` only
+    classified not-found (404) and infra (503) phrases.  This is a
+    user-input vs cross-layer-contract mismatch and must be 422
+    (unprocessable entity), not 500.
+
+    Pinned by mocking compute to return the exact controlled-error
+    envelope and asserting the route's HTTPException is 422.
+    """
+
+    def test_small_window_route_returns_422(self):
+        from fastapi import HTTPException
+        from api.routes.rates import detail as detail_module
+
+        mock_engine = MagicMock(name="engine")
+        # Mock compute to mimic the controlled error message produced
+        # when z_score_window_days < z_score_min_periods.
+        controlled_error = {
+            "error": (
+                "z_score_window_days=30 is smaller than the YAML's "
+                "z_score_min_periods=60.  pandas requires window >= "
+                "min_periods.  Either request a larger "
+                "z_score_window_days (>= 60), or edit z_score_min_periods "
+                "in zscore_custom/config.yaml if the desk has decided a "
+                "smaller min_periods is acceptable."
+            )
+        }
+        with patch.object(
+            detail_module,
+            "calculate_zscore_custom",
+            return_value=controlled_error,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                detail_module.zscore_custom_detail(
+                    engine=mock_engine,
+                    curve_family="UST",
+                    tenor="10Y",
+                    z_score_window_days=30,
+                    lookback_days=365,
+                    field_name=None,
+                )
+        assert exc_info.value.status_code == 422, (
+            f"small-window error must surface as 422 (unprocessable "
+            f"entity), got {exc_info.value.status_code}"
+        )
+        # The error detail still names both values for the client.
+        assert "z_score_min_periods" in str(exc_info.value.detail)
+
+    def test_unclassified_error_still_returns_500(self):
+        """Sanity check: an arbitrary error string that doesn't match
+        any of the 404/503/422 phrase lists still falls through to
+        500.  Guards against the new 422 phrase list silently
+        capturing too many error classes."""
+        from fastapi import HTTPException
+        from api.routes.rates import detail as detail_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "calculate_zscore_custom",
+            return_value={"error": "completely unexpected internal failure"},
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                detail_module.zscore_custom_detail(
+                    engine=mock_engine,
+                    curve_family="UST",
+                    tenor="10Y",
+                    z_score_window_days=252,
+                    lookback_days=365,
+                    field_name=None,
+                )
+        assert exc_info.value.status_code == 500

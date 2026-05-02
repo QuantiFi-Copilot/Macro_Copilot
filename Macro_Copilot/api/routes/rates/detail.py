@@ -69,7 +69,18 @@ router = APIRouter()
 
 def _tool_result_or_raise(result: dict, context: str) -> dict:
     """Check a tool result dict for an error key and raise the
-    correct HTTP status."""
+    correct HTTP status.
+
+    Status ladder:
+      404 — data does not exist for the requested instrument / window.
+      503 — database / infrastructure is unavailable.
+      422 — caller's input is syntactically valid but semantically
+            rejected by a tool-level cross-layer contract (e.g.,
+            zscore_custom's z_score_window_days < the YAML's
+            z_score_min_periods).  These are USER-INPUT errors, not
+            server bugs, so the client gets a 422 rather than a 500.
+      500 — unclassified.  Real server bug; should be rare.
+    """
     if "error" not in result:
         return result
 
@@ -91,6 +102,20 @@ def _tool_result_or_raise(result: dict, context: str) -> dict:
     ]
     if any(phrase in lower for phrase in infra_phrases):
         raise HTTPException(status_code=503, detail=f"{context}: {error_msg}")
+
+    # User-input mismatches against tool-level cross-layer contracts.
+    # Today's only producer is zscore_custom's small-window guard
+    # ("z_score_window_days=N is smaller than the YAML's
+    # z_score_min_periods=M"); future tools that surface similar
+    # input-vs-config errors should reuse this phrase shape so the
+    # client gets a 422 rather than a 500.
+    user_input_phrases = [
+        "is smaller than the yaml",
+        "is larger than the yaml",
+        "conflicts with the yaml",
+    ]
+    if any(phrase in lower for phrase in user_input_phrases):
+        raise HTTPException(status_code=422, detail=f"{context}: {error_msg}")
 
     raise HTTPException(status_code=500, detail=f"{context}: {error_msg}")
 
