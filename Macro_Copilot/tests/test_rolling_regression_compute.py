@@ -107,6 +107,7 @@ def _custom_config(**overrides) -> ToolConfig:
         "add_constant": True,
         "regression_solver": "numpy_lstsq_default",
         "condition_number_warning_threshold": 1e10,
+        "regression_buffer_multiplier": 1.5,
         "ffill_limit_days": 5,
         "beta_round_decimals": 4,
         "alpha_round_decimals": 4,
@@ -178,6 +179,7 @@ class TestBundledConfig:
             "add_constant",
             "regression_solver",
             "condition_number_warning_threshold",
+            "regression_buffer_multiplier",
             "ffill_limit_days",
             "beta_round_decimals",
             "alpha_round_decimals",
@@ -200,6 +202,7 @@ class TestBundledConfig:
         assert cfg.convention_value("add_constant") is True
         assert cfg.convention_value("regression_solver") == "numpy_lstsq_default"
         assert cfg.convention_value("condition_number_warning_threshold") == 1e10
+        assert cfg.convention_value("regression_buffer_multiplier") == 1.5
         assert cfg.convention_value("ffill_limit_days") == 5
         assert cfg.convention_value("default_field_name") == "YLD_YTM_MID"
 
@@ -537,7 +540,53 @@ class TestConditionFlag:
 class TestBoundaryRounding:
     """Each YAML rounding knob must reach BOTH the snapshot AND the
     time_series rows.  Same boundary-shadowing class as the
-    field_name and z_score_round_decimals fixes."""
+    field_name and z_score_round_decimals fixes.
+
+    Codex's review of the initial PR pointed out that only
+    beta_round_decimals had an explicit precision-propagation test,
+    while alpha / residual / r_squared were untested even though the
+    class docstring claimed otherwise.  This expanded class pins all
+    four rounding knobs end-to-end.
+    """
+
+    def _planted_panel(self):
+        """Build a synthetic panel where every output (beta, alpha,
+        residual, R²) has trailing precision beyond 4 decimals so
+        decimals=6 vs decimals=4 actually differ."""
+        rng = np.random.default_rng(7)
+        frozen_today = date(2026, 4, 30)
+        bdays = pd.bdate_range(frozen_today - timedelta(days=600), frozen_today)
+        bdays = bdays[-300:]
+        n = len(bdays)
+        x = np.linspace(2.0, 5.0, n)
+        # Non-round multipliers + small noise → trailing precision.
+        y = 0.123456 + 1.234567 * x + rng.normal(0, 0.002, n)
+        return (
+            pd.DataFrame({
+                "trade_date": [d.date() for d in bdays],
+                "field_value": y,
+            }),
+            pd.DataFrame({
+                "trade_date": [d.date() for d in bdays],
+                "field_value": x,
+            }),
+        )
+
+    def _params(self):
+        return RollingRegressionInput(
+            target_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
+            regressor_specs=[SeriesSpec(curve_family="DE_BUND", tenor="10Y")],
+            regression_window_days=120,
+            lookback_days=120,
+        )
+
+    def _run_at(self, decimals_kw: dict):
+        target_df, regressor_df = self._planted_panel()
+        return _run(
+            self._params(),
+            {"UST_10Y": target_df, "DE_BUND_10Y": regressor_df},
+            config=_custom_config(**decimals_kw),
+        )
 
     def test_beta_round_decimals_reaches_both_surfaces(self):
         rng = np.random.default_rng(7)
@@ -594,6 +643,112 @@ class TestBoundaryRounding:
             f"snapshot beta {beta_6} disagrees with last time_series "
             f"row {last_ts}"
         )
+
+    def test_alpha_round_decimals_reaches_both_surfaces(self):
+        out_4 = self._run_at({"alpha_round_decimals": 4})
+        out_6 = self._run_at({"alpha_round_decimals": 6})
+        a_4 = out_4["current_metrics"]["current_alpha_pct"]
+        a_6 = out_6["current_metrics"]["current_alpha_pct"]
+        assert a_4 is not None and a_6 is not None
+        assert round(a_6, 4) == a_4
+        assert a_4 != a_6, (
+            f"alpha_round_decimals=6 produced same value as =4 ({a_4}); "
+            "boundary rounding may not be reaching the snapshot."
+        )
+        last_ts = out_6["time_series_alpha"]["rows"][-1]["value"]
+        assert a_6 == last_ts, (
+            f"snapshot alpha {a_6} disagrees with last time_series "
+            f"row {last_ts}"
+        )
+
+    def test_residual_round_decimals_reaches_both_surfaces(self):
+        out_4 = self._run_at({"residual_round_decimals": 4})
+        out_6 = self._run_at({"residual_round_decimals": 6})
+        r_4 = out_4["current_metrics"]["current_residual_pct"]
+        r_6 = out_6["current_metrics"]["current_residual_pct"]
+        assert r_4 is not None and r_6 is not None
+        assert round(r_6, 4) == r_4
+        assert r_4 != r_6, (
+            f"residual_round_decimals=6 produced same value as =4 ({r_4}); "
+            "boundary rounding may not be reaching the snapshot."
+        )
+        last_ts = out_6["time_series_residual"]["rows"][-1]["value"]
+        assert r_6 == last_ts, (
+            f"snapshot residual {r_6} disagrees with last time_series "
+            f"row {last_ts}"
+        )
+
+    def test_r_squared_round_decimals_reaches_both_surfaces(self):
+        out_4 = self._run_at({"r_squared_round_decimals": 4})
+        out_6 = self._run_at({"r_squared_round_decimals": 6})
+        rsq_4 = out_4["current_metrics"]["current_r_squared"]
+        rsq_6 = out_6["current_metrics"]["current_r_squared"]
+        assert rsq_4 is not None and rsq_6 is not None
+        assert round(rsq_6, 4) == rsq_4
+        assert rsq_4 != rsq_6, (
+            f"r_squared_round_decimals=6 produced same value as =4 "
+            f"({rsq_4}); boundary rounding may not be reaching the "
+            "snapshot."
+        )
+        last_ts = out_6["time_series_r_squared"]["rows"][-1]["value"]
+        assert rsq_6 == last_ts, (
+            f"snapshot r_squared {rsq_6} disagrees with last time_series "
+            f"row {last_ts}"
+        )
+
+
+class TestBufferMultiplierIsConfigDriven:
+    """The fetch buffer multiplier is a CALIBRATION knob, not a
+    structural choice — different desks could reasonably tune it.
+    Codex's review of the initial PR caught it as hard-coded; the
+    follow-up promoted it to YAML.  This test pins the wiring:
+    overriding the YAML value changes the start_date passed to
+    fetch_single_tenor."""
+
+    def test_buffer_multiplier_changes_fetch_start_date(self):
+        target_df = _synthetic_series(noise_seed=1, drift=0.5)
+        regressor_df = _synthetic_series(noise_seed=2, drift=0.3)
+        params = RollingRegressionInput(
+            target_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
+            regressor_specs=[SeriesSpec(curve_family="DE_BUND", tenor="10Y")],
+            regression_window_days=120,
+            lookback_days=180,
+        )
+
+        captured_start_dates = []
+
+        def capture_fetch(*, engine, curve_family, tenor, field_name, start_date):
+            captured_start_dates.append(start_date)
+            key = f"{curve_family}_{tenor}"
+            return {"UST_10Y": target_df, "DE_BUND_10Y": regressor_df}[key]
+
+        for multiplier in (1.3, 1.8):
+            captured_start_dates.clear()
+            with patch(
+                "rates_agent.sovereign_bonds.tools.rolling_regression.compute.fetch_single_tenor",
+                side_effect=capture_fetch,
+            ), patch(
+                "rates_agent.sovereign_bonds.tools.rolling_regression.compute.date",
+                _FrozenDate,
+            ):
+                calculate_rolling_regression(
+                    engine=None,
+                    params=params,
+                    config=_custom_config(regression_buffer_multiplier=multiplier),
+                )
+            assert len(captured_start_dates) == 2
+            # Both fetches use the SAME start_date for the same call.
+            assert captured_start_dates[0] == captured_start_dates[1]
+
+            # Compute the expected start_date using the multiplier.
+            expected_buffer_days = int(120 * multiplier)
+            expected_start = _FrozenDate.today() - timedelta(
+                days=180 + expected_buffer_days
+            )
+            assert captured_start_dates[0] == expected_start, (
+                f"multiplier={multiplier}: expected start_date "
+                f"{expected_start}, got {captured_start_dates[0]}"
+            )
 
 
 # ===========================================================================

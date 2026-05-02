@@ -116,6 +116,29 @@ conventions:
     valid_range: [100.0, 1000000000000.0]   # 1e2 .. 1e12
 
   # ---------------------------------------------------------------------------
+  # Calendar-day buffer multiplier for the fetch window
+  # ---------------------------------------------------------------------------
+  # Calibration knob, not structural — different desks could reasonably
+  # tune the buffer (a smaller multiplier reduces data fetch but risks
+  # warmup-NaN at the start of the displayed window; a larger
+  # multiplier over-fetches but never starves the rolling fit).
+  # Distinct from the z-score tools' `z_score_buffer_multiplier`
+  # because the regression and z-score windows are different
+  # methodological objects; the lint will compare the two values when
+  # they are both declared, and any drift surfaces as a CI warning.
+  regression_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer multiplier added to the fetch window so the
+      rolling fit is fully populated from the first displayed trading
+      day.  1.5x trading-day window covers weekends + holidays.
+      Mirrors the z_score_buffer_multiplier value used by the rest of
+      the rates roster; the cross-config lint catches drift if these
+      ever disagree across tools that declare both.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
   # Forward-fill limit for missing observations
   # ---------------------------------------------------------------------------
   ffill_limit_days:

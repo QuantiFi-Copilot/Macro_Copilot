@@ -147,6 +147,9 @@ def _conventions_from_config(config: ToolConfig) -> dict:
         "condition_number_warning_threshold": config.convention_value(
             "condition_number_warning_threshold"
         ),
+        "buffer_multiplier": config.convention_value(
+            "regression_buffer_multiplier"
+        ),
         "ffill_limit": config.convention_value("ffill_limit_days"),
         "beta_round_decimals": config.convention_value("beta_round_decimals"),
         "alpha_round_decimals": config.convention_value(
@@ -289,6 +292,7 @@ def calculate_rolling_regression(
     regression_min_periods = conv["regression_min_periods"]
     add_constant = conv["add_constant"]
     cond_threshold = conv["condition_number_warning_threshold"]
+    buffer_multiplier = conv["buffer_multiplier"]
     ffill_limit = conv["ffill_limit"]
     beta_dec = conv["beta_round_decimals"]
     alpha_dec = conv["alpha_round_decimals"]
@@ -319,12 +323,12 @@ def calculate_rolling_regression(
     # ------------------------------------------------------------------
     # 1. Fetch each series
     # ------------------------------------------------------------------
-    # Fetch buffer = regression_window_days * 1.5 calendar days beyond
-    # lookback_days, so the rolling fit is fully populated from the
-    # first displayed trading day.  Hard-coded 1.5 here because
-    # regression doesn't share the z_score_buffer_multiplier YAML knob;
-    # if a future tool needs to share it, lift to YAML at that point.
-    buffer_calendar_days = int(regression_window_days * 1.5)
+    # Fetch buffer = regression_window_days * regression_buffer_multiplier
+    # calendar days beyond lookback_days, so the rolling fit is fully
+    # populated from the first displayed trading day.  Multiplier is
+    # YAML-driven (calibration, not structural identity) — see
+    # `regression_buffer_multiplier` in config.yaml.
+    buffer_calendar_days = int(regression_window_days * buffer_multiplier)
     start_date = date.today() - timedelta(
         days=params.lookback_days + buffer_calendar_days
     )
