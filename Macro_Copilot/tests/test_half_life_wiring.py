@@ -197,6 +197,104 @@ class TestMcpHalfLifeWrapper:
         assert params.pair_spec is None
         assert params.pasted_series.units == TimeSeriesUnits.BPS
 
+    def test_pasted_series_path_does_not_require_db_engine(self):
+        """The pasted_series path advertises chain-from-prior-tool
+        WITHOUT touching the database.  Pin that behaviour: when
+        pasted_series is supplied, the wrapper must NOT call
+        _get_engine() — even if the engine factory would raise.
+        Codex caught this regression in the initial PR (the wrapper
+        was unconditionally calling _get_engine() and breaking the
+        DB-free contract for the pasted path)."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        pasted = PastedTimeSeries(
+            series_name="custom_residual_bps",
+            units=TimeSeriesUnits.BPS,
+            rows=[
+                TimeSeriesRow(date="2026-04-29", value=78.5),
+                TimeSeriesRow(date="2026-04-30", value=80.1),
+            ],
+        )
+        # Make _get_engine raise — if the wrapper calls it on the
+        # pasted path the test will surface "Database connection
+        # failed" in the response.  With the fix in place,
+        # _get_engine is NEVER called.
+        with patch.object(
+            mcp_module,
+            "_get_engine",
+            side_effect=AssertionError(
+                "_get_engine() must NOT be called on the pasted_series path"
+            ),
+        ), patch.object(
+            mcp_module,
+            "calculate_half_life",
+            return_value=_well_formed_hl_output(),
+        ) as mock_compute:
+            output_json = mcp_module.half_life_tool(pasted_series=pasted)
+
+        # No 'Database connection failed' in the response.
+        parsed = json.loads(output_json)
+        assert "error" not in parsed, (
+            f"pasted_series path surfaced an error envelope: {parsed.get('error')!r}"
+        )
+        assert "current_metrics" in parsed
+        # And compute() received engine=None (the wrapper passes None
+        # explicitly on the pasted path).
+        assert mock_compute.call_count == 1
+        assert mock_compute.call_args.kwargs["engine"] is None
+
+    def test_series_spec_path_still_acquires_db_engine(self):
+        """Sibling check: the DB-backed paths must STILL acquire an
+        engine.  Verifies the conditional gating doesn't accidentally
+        starve the series_spec / pair_spec paths."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            mcp_module, "_get_engine", return_value=mock_engine,
+        ) as mock_get_engine, patch.object(
+            mcp_module,
+            "calculate_half_life",
+            return_value=_well_formed_hl_output(),
+        ) as mock_compute:
+            mcp_module.half_life_tool(
+                series_spec=SeriesSpec(curve_family="UST", tenor="10Y"),
+                lookback_days=1825,
+            )
+        # _get_engine called exactly once on the DB-backed path.
+        assert mock_get_engine.call_count == 1
+        # compute() received the live mock engine (NOT None).
+        assert mock_compute.call_args.kwargs["engine"] is mock_engine
+
+    def test_db_failure_on_pasted_path_does_not_break_request(self):
+        """Even when _get_engine would raise, the pasted_series path
+        succeeds — proves the fix actually short-circuits the engine
+        acquisition rather than just catching the exception."""
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        pasted = PastedTimeSeries(
+            series_name="x",
+            units=TimeSeriesUnits.BPS,
+            rows=[
+                TimeSeriesRow(date="2026-04-29", value=1.0),
+                TimeSeriesRow(date="2026-04-30", value=2.0),
+            ],
+        )
+        with patch.object(
+            mcp_module,
+            "_get_engine",
+            side_effect=ConnectionError("DB unavailable"),
+        ), patch.object(
+            mcp_module,
+            "calculate_half_life",
+            return_value=_well_formed_hl_output(),
+        ):
+            output_json = mcp_module.half_life_tool(pasted_series=pasted)
+        parsed = json.loads(output_json)
+        assert "current_metrics" in parsed
+        # Did NOT surface as a DB error.
+        assert "Database connection failed" not in (parsed.get("error") or "")
+
     def test_zero_inputs_surfaces_validation_error_envelope(self):
         """Calling the wrapper with no input variant returns the
         controlled-error envelope (not a Python exception).  The

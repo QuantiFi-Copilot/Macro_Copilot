@@ -1053,11 +1053,20 @@ def half_life_tool(
         logger.warning("Input validation failed: %s", exc)
         return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
 
-    try:
-        engine = _get_engine()
-    except Exception as exc:
-        logger.exception("Failed to connect to TimescaleDB")
-        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+    # Skip the DB connection entirely on the pasted_series path —
+    # compute() never touches `engine` for that branch, so requiring a
+    # live engine would break the advertised "chain a prior tool's
+    # output without DB" use case.  The DB-backed paths (series_spec /
+    # pair_spec) still acquire an engine here, with the controlled
+    # 503-equivalent error envelope on failure.
+    if params.pasted_series is not None:
+        engine = None
+    else:
+        try:
+            engine = _get_engine()
+        except Exception as exc:
+            logger.exception("Failed to connect to TimescaleDB")
+            return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
 
     # Pass the half_life tool's bundled config explicitly so the
     # dependency is observable at the call site.

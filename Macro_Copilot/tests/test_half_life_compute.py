@@ -587,12 +587,22 @@ class TestBoundaryRounding:
         )
 
     def test_r_squared_round_decimals_reaches_snapshot(self):
+        """Carries forward the v6 lesson: round-back is necessary but
+        NOT sufficient — a silent truncation to 2 decimals would also
+        pass `round(r_6, 2) == r_2`.  Add the strong assertion that
+        decimals=6 produces a finer-grained value than decimals=2 on
+        the planted synthetic series."""
         out_2 = self._run_at({"r_squared_round_decimals": 2})
         out_6 = self._run_at({"r_squared_round_decimals": 6})
         r_2 = out_2["current_metrics"]["r_squared"]
         r_6 = out_6["current_metrics"]["r_squared"]
         assert r_2 is not None and r_6 is not None
         assert round(r_6, 2) == r_2
+        assert r_2 != r_6, (
+            f"r_squared_round_decimals=6 produced same value as =2 "
+            f"({r_2}); precision is being silently truncated.  Pin "
+            "the boundary the same way the other rounding tests do."
+        )
 
     def test_yield_round_decimals_reaches_native_snapshot(self):
         out_2 = self._run_at({"yield_round_decimals": 2})
