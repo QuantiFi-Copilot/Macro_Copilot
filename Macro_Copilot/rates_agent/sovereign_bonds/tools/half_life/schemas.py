@@ -86,14 +86,20 @@ class HalfLifeInput(BaseModel):
         ge=252,
         le=7300,
         description=(
-            "Calendar days of history fetched for series_spec / "
-            "pair_spec.  Default 1825 (~5 years) because OU CIs at "
-            "252 obs are wide; 1250-2520 is the typical desk range "
-            "for half-life work.  Ignored when pasted_series is "
-            "provided (caller already chose the window).  Lower "
-            "bound 252 mirrors the YAML's min_observations floor — "
-            "any tighter and the OU primitive's controlled-error "
-            "envelope fires immediately."
+            "Calendar days of history fetched for the series_spec / "
+            "pair_spec paths.  Default 1825 (~5 years) because OU CIs "
+            "at 252 obs are wide; 1250-2520 is the typical desk range "
+            "for half-life work.  Lower bound 252 mirrors the YAML's "
+            "min_observations floor — any tighter and the OU "
+            "primitive's controlled-error envelope fires immediately.  "
+            "On the pasted_series path the caller has already chosen "
+            "the window (the rows IS the input); compute() does NOT "
+            "read this field for that path, but the bound here still "
+            "applies at validation time so the input contract stays "
+            "uniform across paths.  If a caller passes "
+            "pasted_series with fewer than min_observations rows, the "
+            "controlled-error envelope from the OU primitive fires "
+            "with a clear message naming both numbers."
         ),
     )
 
@@ -205,7 +211,10 @@ class HalfLifeMetrics(BaseModel):
         description=(
             "OLS β coefficient on the AR(1) form ``Δx = α + β · "
             "x_{t-1} + ε``.  Unitless drift coefficient; rounded per "
-            "``beta_round_decimals``.  β < 0 → mean reverting."
+            "``ou_beta_round_decimals`` (the OU-specific rounding "
+            "convention — distinct from the regression-family "
+            "``beta_round_decimals`` because OU drift β values are "
+            "much smaller in magnitude).  β < 0 → mean reverting."
         ),
     )
     beta_ci_lower: Optional[float] = Field(
