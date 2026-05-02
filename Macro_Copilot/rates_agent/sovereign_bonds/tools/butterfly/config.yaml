@@ -9,7 +9,7 @@
 #
 # In V1 deterministic mode there is NO LLM-facing override path for
 # conventions; the LLM cannot ask for non-standard windows.  See
-# architecture/tool_architecture.md.
+# docs/architecture/tool_architecture.md.
 #
 # Bumping any value in `conventions:` is a deliberate methodology change.
 # The cross-config consistency lint (shared.config.lint) enforces that

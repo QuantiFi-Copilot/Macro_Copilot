@@ -16,7 +16,20 @@ reach**.  The MCP wrapper does not expose any convention as an LLM-
 overridable parameter.  Conventions become writable in a future
 advanced mode through UI controls or per-user presets — never through
 LLM phrasing interpretation.  See
-``architecture/tool_architecture.md``.
+``docs/architecture/tool_architecture.md``.
+
+Central-knob discipline (A13)
+-----------------------------
+Each tool exposes ONLY its central methodological choice as a user-
+facing input — the choice that defines what the tool IS (e.g.
+``z_score_window_days`` for ``zscore_custom``,
+``regression_window_days`` for ``rolling_regression``,
+``groupings`` for ``yield_change_decomposition_simple``).  All
+ancillary methodology stays in YAML and is NOT user-overridable in
+V1.  Structural choices (formulas, sign conventions, anchoring,
+solver) are locked in code or guarded with the
+``NotImplementedError`` honest-placeholder pattern documented under
+``MethodologyMeta.planned_extensions``.
 
 Schema
 ------
@@ -43,8 +56,8 @@ Source-tag enforcement
 ----------------------
 For commit 1 of the tool-config refactor, ``source`` is a non-empty
 string with no enum constraint.  Commit 6 will tighten this to a
-documented enum (``architecture/methodology_sources.md``) once the source set
-has stabilised across multiple tools.
+documented enum (``docs/architecture/methodology_sources.md``) once the
+source set has stabilised across multiple tools.
 
 Caching
 -------
@@ -58,10 +71,22 @@ that load tweaked-and-rewritten YAMLs should call
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# Recognised tool categories.  This is the honesty mechanism for the
+# distinction between tools whose name a trader would recognise without
+# methodology preface vs tools that are textbook-standard but require
+# methodology specification before use.  See
+# ``docs/architecture/tool_architecture.md`` for definitions and worked
+# examples.
+ToolCategory = Literal[
+    "desk_invariant_primitive",
+    "quant_standard_analytic",
+]
 
 
 # ============================================================================
@@ -177,6 +202,28 @@ class ToolMeta(BaseModel):
         ...,
         min_length=1,
         description="One-line human description.",
+    )
+    category: ToolCategory = Field(
+        default="desk_invariant_primitive",
+        description=(
+            "Tool category — honesty mechanism for what a trader would "
+            "recognise from the name alone:\n"
+            "* ``desk_invariant_primitive`` — a trader on any major rates "
+            "desk would recognise the tool's name and know what its "
+            "inputs and outputs are without methodology preface "
+            "(curve_spread, yield_levels, butterfly, cross_market_spread, "
+            "curve_move_classifier, zscore_custom, beta_adjusted_spread, "
+            "half_life).\n"
+            "* ``quant_standard_analytic`` — textbook quant primitive "
+            "whose interpretation is universal but whose configuration "
+            "must be specified before use (yield_change_decomposition_simple, "
+            "rolling_regression, pca_yield_curve, "
+            "yield_change_attribution_pca).\n"
+            "Defaults to ``desk_invariant_primitive`` so the existing five "
+            "migrated tools keep their identity without explicit YAML "
+            "edits.  See docs/architecture/tool_architecture.md for "
+            "definitions and the per-tool category table."
+        ),
     )
 
 

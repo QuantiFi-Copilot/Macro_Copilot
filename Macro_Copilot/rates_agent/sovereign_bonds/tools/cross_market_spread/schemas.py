@@ -1,7 +1,7 @@
 """Pydantic schemas for the cross-market spread tool.
 
 Migrated from ``rates_agent/sovereign_bonds/tools/schemas/cross_market.py``
-into the per-tool-folder pattern (architecture/tool_architecture.md).
+into the per-tool-folder pattern (docs/architecture/tool_architecture.md).
 
 Validation layering
 -------------------

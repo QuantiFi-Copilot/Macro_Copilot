@@ -13,7 +13,7 @@ decimal precision and field names.
 
 The one composite helper, ``compute_level_metrics``, was added when
 ``yield_levels`` was migrated to the per-tool-folder pattern (see
-architecture/tool_architecture.md): the sovereign yield-snapshot card
+docs/architecture/tool_architecture.md): the sovereign yield-snapshot card
 is a separate batch surface that historically reimplemented the
 single-tenor level math inline, with hardcoded constants drifting
 from the tool itself.  Routing both call sites through this one

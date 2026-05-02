@@ -1,0 +1,168 @@
+# =============================================================================
+# zscore_custom_tool — tool configuration
+# =============================================================================
+# Canonical record of the zscore_custom tool's conventions and methodology.
+# Loaded by `shared.config.load_tool_config` at compute() time.  The MCP
+# wrapper and /detail/zscore-custom endpoint pass this config explicitly
+# so the dependency is observable at the call site.
+#
+# Central knob (A13)
+# ------------------
+# This tool's central methodological choice — the one input that defines
+# what the tool IS — is `z_score_window_days`.  That field is the user's
+# primary input.  Every other knob (`z_score_min_periods`, `z_score_ddof`,
+# `z_score_buffer_multiplier`, `ffill_limit_days`, rounding) lives here in
+# YAML and is NOT user-overridable in V1.  See A13 in
+# docs/architecture/tool_architecture.md.
+#
+# Cross-config consistency
+# ------------------------
+# `z_score_min_periods`, `z_score_ddof`, `z_score_buffer_multiplier`,
+# `ffill_limit_days`, `z_score_round_decimals`, and `default_field_name`
+# are declared by multiple tools.  shared.config.lint enforces value
+# agreement across them.  Editing any of those here must be matched in
+# the other tools that declare them.
+# =============================================================================
+
+tool:
+  name: zscore_custom_tool
+  domain: sovereign_bonds
+  description: |
+    Rolling z-score of a single sovereign yield series, with the rolling
+    window length set per request.  Returns the current z-score, the
+    z-score time series over the displayed lookback, and the latest
+    raw yield level.  Distinct from `yield_levels` which uses a fixed
+    252-day window — this tool exists so a desk can ask for a 60-day
+    or 504-day z-score on the same point without methodology rework.
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches curve_spread / yield_levels /
+      curve_move_classifier / butterfly / cross_market_spread; the
+      consistency lint enforces the match.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x trading-day window covers weekends + holidays.  Matches the
+      other rates tools.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Same as the other rates tools; the consistency lint
+      enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yield (percent)
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round yield output to 4 decimals.  Display precision; matches
+      the precision Bloomberg quotes use for sovereign yields and the
+      yield_round_decimals convention in shared.analytics.levels'
+      compute_level_metrics primitive.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Threaded explicitly to
+      safe_float at the output boundary so a value above 4 is not
+      silently truncated by safe_float's own default of 4 (the P2 fix
+      from the butterfly migration's Codex review).
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  LLM/HTTP wrappers must use the empty/None
+      sentinel so this default flows through — see the wrapper
+      shadowing fix from the curve_move_classifier migration
+      (commit b2605ee).
+
+methodology:
+  what_it_does: |
+    Fetches one (curve_family, tenor) yield series, cleans it, and
+    computes a rolling z-score using the user-supplied
+    `z_score_window_days`.  Returns a snapshot containing the current
+    z-score, the latest raw yield level, the actual rolling-window
+    parameters used, and the full z-score time series over the
+    displayed `lookback_days`.
+
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%)."
+    - "Z-score uses sample standard deviation (ddof=1)."
+    - "Same z-score min_periods (60) as the other rates tools, regardless
+       of the requested z_score_window_days.  This keeps the warm-up
+       behaviour comparable across tools; if a desk wants a shorter
+       min_periods for a smaller window, that is a sibling tool, not
+       a parameter override."
+    - "lookback_days controls the *display* window, NOT the rolling
+       z-score window — the latter is the user's central knob and is
+       set per request."
+    - "The fetch buffer is sized as
+       `z_score_window_days * z_score_buffer_multiplier` calendar days
+       beyond `lookback_days` so the rolling z-score is fully populated
+       from the first displayed trading day."
+
+  citations: []
+
+  planned_extensions:
+    - "Cross-sectional z-score (z-score of one tenor against the
+       cross-section of other tenors at the same point in time) — a
+       different statistical object; documented as a sibling tool, not
+       a parameter override of zscore_custom."
+    - "Robust z-score using median + MAD instead of mean + std — also a
+       sibling tool, not a parameter."
+    - "Expanding-window z-score (instead of rolling) — sibling tool."
+    - "Per-window-aware min_periods scaling (e.g., min_periods = window
+       // 4 instead of fixed 60).  Today the same min_periods=60 is
+       used regardless of requested window; for very small windows
+       this can be limiting.  Surface a warning to the caller via a
+       quality flag rather than auto-scaling, because auto-scaling is
+       a methodology change."

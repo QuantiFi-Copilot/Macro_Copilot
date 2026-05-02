@@ -50,6 +50,12 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
     get_yield_levels,
 )
+from rates_agent.sovereign_bonds.tools.zscore_custom import (
+    CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
+    ZscoreCustomInput,
+    ZscoreCustomOutput,
+    calculate_zscore_custom,
+)
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.detail")
@@ -307,7 +313,7 @@ def regime_detail(
 
     The rename rationale (single-observation classifier, not a
     persistence-state regime detector) is documented in
-    architecture/tool_architecture.md."""
+    docs/architecture/tool_architecture.md."""
     try:
         params = CurveMoveInput(
             curve_family=curve_family, front_tenor=front_tenor,
@@ -339,3 +345,75 @@ def regime_detail(
         translated_metrics["regime_description"] = translated_metrics.pop("description")
 
     return {"current_metrics": translated_metrics}
+
+
+@router.get(
+    "/detail/zscore-custom",
+    response_model=ZscoreCustomOutput,
+    summary="Custom-window rolling z-score (workspace)",
+)
+def zscore_custom_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="e.g. 'UST'"),
+    tenor: str = Query(..., description="e.g. '10Y'"),
+    z_score_window_days: int = Query(
+        ...,
+        ge=20,
+        le=1260,
+        description=(
+            "Rolling window length in trading days for the z-score.  "
+            "This is the tool's central methodological choice — set per "
+            "request.  Typical desk values: 60 (tactical), 126 "
+            "(quarterly), 252 (annual), 504 (two-year)."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's bundled "
+            "``default_field_name`` convention from "
+            "zscore_custom/config.yaml (currently 'YLD_YTM_MID').  Pass "
+            "explicitly to override per request.  Same wrapper-shadowing "
+            "fix applied as the yield_levels and curve_move_classifier "
+            "endpoints (commit b2605ee)."
+        ),
+    ),
+):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  All other methodology knobs (`min_periods`, `ddof`,
+    `buffer_multiplier`, `ffill_limit_days`, rounding) are YAML-locked
+    and not exposed at the route — see A13 in
+    docs/architecture/tool_architecture.md."""
+    try:
+        params = ZscoreCustomInput(
+            curve_family=curve_family,
+            tenor=tenor,
+            z_score_window_days=z_score_window_days,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    # Pass zscore_custom's bundled config explicitly so the dependency
+    # is observable at the endpoint.  load_tool_config is process-cached,
+    # so this is a free lookup after the first call.
+    try:
+        zc_config = load_tool_config(ZSCORE_CUSTOM_CONFIG_PATH)
+        result = calculate_zscore_custom(
+            engine=engine, params=params, config=zc_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zscore-custom: tool failed for %s %s window=%d",
+            curve_family, tenor, z_score_window_days,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Custom z-score for {curve_family} {tenor} (window={z_score_window_days}d)",
+    )
+    return result
