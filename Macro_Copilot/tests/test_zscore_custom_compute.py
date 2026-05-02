@@ -361,6 +361,49 @@ class TestSchemaBehaviour:
             )
 
 
+class TestSmallWindowControlledError:
+    """The schema accepts z_score_window_days >= 20 but the bundled
+    YAML's z_score_min_periods is 60.  pandas raises if window <
+    min_periods; compute() must intercept that and return a controlled
+    error envelope naming both values + the YAML knob, so the caller
+    sees actionable feedback instead of an unhandled crash.
+    """
+
+    def test_small_window_returns_controlled_error(self):
+        raw_df = _synthetic_raw_df()
+        params = ZscoreCustomInput(
+            curve_family="UST", tenor="10Y",
+            z_score_window_days=30, lookback_days=180,
+        )
+        out = _run(params, raw_df)  # uses bundled YAML (min_periods=60)
+        assert "error" in out
+        assert "30" in out["error"]
+        assert "60" in out["error"]
+        assert "z_score_min_periods" in out["error"]
+
+    def test_window_equal_to_min_periods_succeeds(self):
+        raw_df = _synthetic_raw_df()
+        params = ZscoreCustomInput(
+            curve_family="UST", tenor="10Y",
+            z_score_window_days=60, lookback_days=180,
+        )
+        out = _run(params, raw_df)
+        assert "error" not in out
+        assert out["current_metrics"]["z_score_window_days_used"] == 60
+
+    def test_yaml_min_periods_lowered_unblocks_smaller_window(self):
+        """If the YAML's z_score_min_periods is lowered (e.g., to 30),
+        a window of 30 should succeed.  Verifies the guard reads
+        min_periods from config rather than hardcoding 60."""
+        raw_df = _synthetic_raw_df()
+        params = ZscoreCustomInput(
+            curve_family="UST", tenor="10Y",
+            z_score_window_days=30, lookback_days=180,
+        )
+        out = _run(params, raw_df, _custom_config(z_score_min_periods=30))
+        assert "error" not in out
+
+
 # ===========================================================================
 # 6. Field name fall-through (sentinel)
 # ===========================================================================
@@ -433,8 +476,32 @@ class TestZScoreRoundDecimalsBoundary:
         z_4 = out_4["current_metrics"]["current_z_score"]
         z_6 = out_6["current_metrics"]["current_z_score"]
         assert z_4 is not None and z_6 is not None
-        # Contract: 6-decimal value rounded to 4 == 4-decimal value
+        # Weak contract: 6-decimal value rounded to 4 == 4-decimal value.
+        # This alone is satisfied by silent truncation, so we also need
+        # the strong assertion below.
         assert round(z_6, 4) == z_4
+        # Strong contract: at decimals=6 on a synthetic series with
+        # non-round drift, current_z_score MUST preserve sub-4-decimal
+        # precision — otherwise the boundary is silently truncating to
+        # safe_float's default of 4.  If this assertion fails, the
+        # decimals= kwarg is no longer reaching the metric assembly's
+        # safe_float() call.
+        assert z_4 != z_6, (
+            f"current_z_score at decimals=4 ({z_4}) equals decimals=6 "
+            f"({z_6}) — boundary is silently truncating to 4.  Fix the "
+            f"safe_float() call in metric assembly to pass decimals="
+            f"z_round_decimals."
+        )
+        # Cross-check: current_z_score at decimals=6 must equal the last
+        # time_series row's value at decimals=6.  If the boundary
+        # truncates current_z_score but not the time_series rows (or
+        # vice versa), this asymmetry surfaces it.
+        last_ts_row_6 = out_6["time_series"]["rows"][-1]["value"]
+        assert z_6 == last_ts_row_6, (
+            f"current_z_score ({z_6}) does not match the last "
+            f"time_series row ({last_ts_row_6}) at the same precision — "
+            f"the two output surfaces have drifted."
+        )
 
     def test_time_series_z_score_uses_z_round_decimals(self):
         raw_df = _synthetic_raw_df(drift_pct=-0.43217)

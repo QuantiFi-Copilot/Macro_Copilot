@@ -133,6 +133,29 @@ def calculate_zscore_custom(
     z_round_decimals = conv["z_round_decimals"]
     default_field_name = conv["default_field_name"]
 
+    # ------------------------------------------------------------------
+    # Cross-layer contract: schema accepts z_score_window_days >= 20
+    # (an absolute lower bound any reasonable methodology should clear)
+    # but the YAML's z_score_min_periods (60 in V1) determines the
+    # smallest window pandas will actually accept — pandas raises
+    # `min_periods N must be <= window` if window < min_periods.  When
+    # those two disagree, return a controlled error envelope rather
+    # than letting pandas crash, so the caller sees a clear message
+    # naming both values + the YAML knob to look at.
+    # ------------------------------------------------------------------
+    if z_window < z_min_periods:
+        return {
+            "error": (
+                f"z_score_window_days={z_window} is smaller than the "
+                f"YAML's z_score_min_periods={z_min_periods}.  pandas "
+                f"requires window >= min_periods.  Either request a "
+                f"larger z_score_window_days (>= {z_min_periods}), or "
+                f"edit z_score_min_periods in zscore_custom/config.yaml "
+                f"if the desk has decided a smaller min_periods is "
+                f"acceptable."
+            )
+        }
+
     # Resolve field_name: caller's explicit value wins; None falls
     # through to the YAML default.
     field_name_resolved = (
