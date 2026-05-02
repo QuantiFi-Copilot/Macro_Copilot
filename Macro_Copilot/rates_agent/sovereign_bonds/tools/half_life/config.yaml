@@ -1,0 +1,273 @@
+# =============================================================================
+# half_life_tool — tool configuration
+# =============================================================================
+# Canonical record of the half_life tool's conventions and methodology.
+# Loaded by `shared.config.load_tool_config` at compute() time.  The MCP
+# wrapper passes this config explicitly so the dependency is observable
+# at the call site.
+#
+# Central knob (A13)
+# ------------------
+# This tool's central methodological choice IS the choice of which
+# series to fit — that's surfaced through the union input
+# (series_spec / pair_spec / pasted_series).  Window-style knobs do
+# not exist here because OU fits are run on the WHOLE supplied series;
+# `lookback_days` controls only how much history is fetched (and
+# therefore the size of the fit panel).  Every other methodology
+# decision (`min_observations`, `confidence_level`,
+# `min_abs_beta_for_half_life`, `ffill_limit_days`, the rounding
+# decimals, default field) lives in YAML and is NOT user-overridable
+# in V1.  See A13 in docs/architecture/tool_architecture.md.
+#
+# Cross-config consistency
+# ------------------------
+# `ffill_limit_days`, `default_field_name`, `bps_round_decimals`,
+# `yield_round_decimals` (under that name elsewhere in the rates
+# roster) — all are declared by multiple tools and the cross-config
+# lint enforces value agreement.
+# =============================================================================
+
+tool:
+  name: half_life_tool
+  domain: sovereign_bonds
+  description: |
+    Ornstein-Uhlenbeck / AR(1) fit on a single time series, returning
+    the half-life of mean reversion (in series-step units, typically
+    trading days), the long-run mean, the current deviation from
+    that mean, the OLS β with its confidence interval, and the
+    delta-method CI on the half-life.  Built on the
+    `shared.analytics.stats.ou_half_life` primitive.
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Minimum non-NaN observations required to fit
+  # ---------------------------------------------------------------------------
+  min_observations:
+    value: 252
+    source: team_judgment_pending_review
+    rationale: >-
+      ~1 year of trading-day observations.  OU standard error
+      estimates are unreliable below this; the discrete AR(1)
+      coefficient itself is so noisy on shorter series that
+      half-life estimates become un-actionable.  When the supplied
+      series has fewer than this many non-NaN rows, compute()
+      returns a controlled error envelope (FastAPI maps the phrase
+      shape to HTTP 422 via detail.py's user_input_phrases list,
+      mirroring the small-window guards on zscore_custom and
+      rolling_regression).
+    valid_range: [60, 2520]
+
+  # ---------------------------------------------------------------------------
+  # Confidence level for both β and half-life CIs
+  # ---------------------------------------------------------------------------
+  confidence_level:
+    value: 0.95
+    source: industry_standard_two_sided_95
+    rationale: >-
+      Two-sided 95% confidence interval — the standard quant
+      reporting level.  Supported levels are restricted to the
+      ``shared.analytics.stats._TWO_SIDED_Z`` lookup table
+      (0.80, 0.90, 0.95, 0.99) so the primitive does not need a
+      scipy.stats dependency for this single-purpose tool.
+    valid_range: [0.80, 0.99]
+
+  # ---------------------------------------------------------------------------
+  # Numerical-stability floor on |β|
+  # ---------------------------------------------------------------------------
+  min_abs_beta_for_half_life:
+    value: 0.000001   # 1e-6
+    source: numerical_stability_lock
+    rationale: >-
+      When |β| is very close to zero, the half-life formula
+      ``-ln(2) / ln(1+β)`` becomes ill-conditioned (it blows up as
+      β → 0).  Below this threshold we return half_life=None rather
+      than emit a meaningless huge number.  Acts as the third edge-
+      case guard in the OU primitive (alongside β >= 0 and 1+β <= 0).
+    valid_range: [0.00000001, 0.001]   # 1e-8 .. 1e-3
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations (series_spec / pair_spec)
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Same as the rest of the rates roster; the consistency
+      lint enforces the match.  Applied to both legs of pair_spec
+      before the cross-market spread is computed, and to the
+      single-series fetch for series_spec.  Pasted_series input
+      bypasses ffill — caller is responsible for cleaning before
+      pasting.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — half-life (in series-step units)
+  # ---------------------------------------------------------------------------
+  half_life_round_decimals:
+    value: 1
+    source: team_judgment_pending_review
+    rationale: >-
+      Round half-life output to 1 decimal place (tenth of a trading
+      day).  Display precision; sub-decimal precision on a noisy OU
+      estimate is misleading.  Applied at the boundary via
+      _round_or_none() so a YAML override above 1 actually surfaces.
+    valid_range: [0, 4]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — OU drift β (NOT a regression hedge β)
+  # ---------------------------------------------------------------------------
+  # Deliberately a SEPARATE convention name from the regression-family
+  # tools' `beta_round_decimals` because the OU drift β and the
+  # regression hedge β are different statistical objects with
+  # different magnitude ranges.  OU β values for 1-trading-day
+  # stepping are small (≈-0.005 for a 138-day half-life) so 4
+  # decimals would truncate the difference between a fast (60d) and
+  # a slow (200d) reverter.  Regression hedge βs are O(1) so 4
+  # decimals is enough.  Naming this `ou_beta_round_decimals` keeps
+  # lint honest and prevents drift between the two unrelated knobs.
+  ou_beta_round_decimals:
+    value: 6
+    source: team_judgment_pending_review
+    rationale: >-
+      Round OU drift β to 6 decimals.  OU β = (1+β)−1 in the AR(1)
+      step form, typically ~−0.001 to −0.05; 4 decimals truncates
+      the difference between fast and slow reverters.  Distinct
+      convention from the regression-family `beta_round_decimals`.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — R²
+  # ---------------------------------------------------------------------------
+  r_squared_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round R² to 4 decimals.  Display precision.  Mirrors the
+      regression-family tools.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yield (percent space, for series_spec)
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round yield-space outputs (current_value_native, long_run_mean
+      _native, current_deviation_native) when series_units=PERCENT.
+      Matches zscore_custom and rolling_regression's percent-space
+      rounding.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (for pair_spec)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps-space outputs (current_value_native, etc.) when
+      series_units=BPS.  Matches the rest of the rates roster's
+      bps rounding.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  Each spec (series_spec / pair_spec) carries its
+      own field_name with sentinel None falling through to this
+      YAML default — applies symmetrically across both legs of
+      pair_spec.
+
+methodology:
+  what_it_does: |
+    Fits a discretized Ornstein-Uhlenbeck / AR(1) model on a single
+    time series via OLS:
+
+        Δx_t = α + β · x_{t-1} + ε_t
+
+    Returns:
+      - is_mean_reverting: bool       (β < 0; strict structural test)
+      - half_life: Optional[float]    (-ln(2)/ln(1+β) when -1<β<0
+                                        AND |β| >= floor; else None)
+      - long_run_mean: -α/β           (when mean-reverting)
+      - current_deviation             (current_value − long_run_mean)
+      - β + 95% CI from OLS standard errors
+      - half-life 95% CI via the delta method
+      - R² of the OU fit
+
+    Three input variants (exactly one must be supplied):
+      1. series_spec — one (curve_family, tenor, field_name)
+         sovereign yield series; the half-life is in trading-day
+         units; series_units = percent.
+      2. pair_spec — cross-market spread (cf1, cf2, tenor); series
+         is `(cf1_yield − cf2_yield) * 100` in bps; matches
+         cross_market_spread's direction convention.
+      3. pasted_series — caller-supplied TimeSeries (units enum +
+         rows).  Useful for chaining: a future tool that produces
+         a TimeSeries (e.g., a residual) can pipe its output here
+         without round-tripping through the database.
+
+  assumptions:
+    - "OU fit via OLS on the discretized AR(1) form, NOT exact MLE.
+       The textbook MLE for OU on continuous-time observations is a
+       sibling tool; the OLS form is the standard practitioner
+       choice."
+    - "OLS standard errors assume homoskedastic, serially
+       uncorrelated residuals.  The CI on β and the delta-method
+       CI on half_life inherit those assumptions.  Real residuals
+       on yield series often violate them; the CI should be
+       interpreted as a rough sizing tool, not a hypothesis test."
+    - "is_mean_reverting is purely structural (β < 0).  This tool
+       does NOT perform a stationarity hypothesis test (ADF / KPSS).
+       That is the cointegration_test tool's territory; it is
+       deliberately deferred behind the statsmodels dependency
+       prerequisite."
+    - "Half-life is in series-step units.  For sovereign yield
+       series at trading-day frequency the units are trading days.
+       For pair_spec (cross-market spread) the units are also
+       trading days, since both legs are aligned on a shared
+       trading-day index."
+    - "Stability range: half-life is emitted only when -1 < β < 0
+       AND |β| >= min_abs_beta_for_half_life.  Series with
+       β <= -1 (oscillating divergence) or β >= 0 (random walk /
+       divergent) get is_mean_reverting=(β<0) but half_life=None.
+       Documented in the OuFitResult dataclass."
+    - "lookback_days controls fetch + fit window for series_spec /
+       pair_spec.  Default 1825 (≈5 years of trading days) because
+       OU CIs at 252 obs are very wide; 1250-2520 is the typical
+       desk range for half-life work.  pasted_series ignores
+       lookback_days (the caller already chose the window)."
+
+  citations:
+    - "Vasicek, O. (1977). An equilibrium characterization of the
+       term structure. Journal of Financial Economics, 5(2),
+       177-188.  Original OU-on-yields formulation."
+    - "Hamilton, J.D. (1994). Time Series Analysis, Princeton, Ch. 17.
+       AR(1) OLS standard-error formulae."
+
+  planned_extensions:
+    - "Vasicek extension (OU with constant volatility added to the
+       output).  Today this primitive returns the OU drift
+       parameters only; surfacing σ_OU explicitly is a sibling
+       tool, not a parameter."
+    - "Exact MLE on continuous-time observations.  Sibling tool;
+       output schema includes a likelihood-based standard error
+       rather than the OLS one used here."
+    - "Stationarity hypothesis tests (ADF / KPSS) — covered by the
+       deferred cointegration_test tool once statsmodels is added
+       as an explicit dependency."
+    - "HMM-conditioned regime-switching OU.  Bucket 2 sibling.
+       Different statistical model whose half-life depends on the
+       inferred regime."
+    - "Heteroskedasticity-consistent / HAC-corrected SE for β and
+       the delta-method CI.  Sibling tool that surfaces the
+       robustness of today's homoskedasticity assumption."

@@ -70,8 +70,15 @@ from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (  # noqa: E4
     BetaAdjustedSpreadInput,
     calculate_beta_adjusted_spread,
 )
+from rates_agent.sovereign_bonds.tools.half_life import (  # noqa: E402
+    CONFIG_PATH as HALF_LIFE_CONFIG_PATH,
+    HalfLifeInput,
+    calculate_half_life,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
-from shared.schemas import SeriesSpec  # noqa: E402
+from shared.schemas import (  # noqa: E402
+    PairSpec, PastedTimeSeries, SeriesSpec,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -985,6 +992,98 @@ def beta_adjusted_spread_tool(
             n_beta_rows, n_residual_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 10: half_life  (nested union input — MCP only this sprint)
+# ===========================================================================
+@mcp.tool()
+def half_life_tool(
+    series_spec: Optional[SeriesSpec] = None,
+    pair_spec: Optional[PairSpec] = None,
+    pasted_series: Optional[PastedTimeSeries] = None,
+    lookback_days: int = 1825,
+) -> str:
+    """Fit an Ornstein-Uhlenbeck / AR(1) on a single time series and
+    return the half-life of mean reversion in trading days, plus the
+    long-run mean, current deviation, OLS β with 95% CI, and the
+    delta-method CI on the half-life.
+
+    Use this tool when the user asks about:
+    - Half-life of mean reversion  (e.g. "What's the half-life of
+      BTP-Bund 10Y?")
+    - Mean-reversion sizing        (e.g. "How many days for a 1σ
+      deviation in the BTP-Bund spread to halve?")
+    - OU drift coefficient         (e.g. "Estimate β for the
+      beta-adjusted residual.")
+
+    Three input variants — exactly one must be supplied:
+      1. series_spec — single sovereign yield series (yield-percent
+         units).
+      2. pair_spec — cross-market spread (cf1 − cf2) × 100, in bps.
+      3. pasted_series — caller-supplied TimeSeries; useful for
+         chaining the output of a prior tool (e.g., a residual)
+         without re-fetching from the database.
+
+    Distinct from rolling_regression / beta_adjusted_spread (those
+    estimate hedge-ratio β; this estimates OU drift β on an AR(1)).
+
+    Parameters
+    ----------
+    series_spec : SeriesSpec, optional
+        ``{curve_family, tenor, field_name?}``.  Single sovereign
+        yield series.
+    pair_spec : PairSpec, optional
+        ``{cf1, cf2, tenor, field_name?}``.  Spread = (cf1 − cf2) × 100
+        in bps; matches cross_market_spread's direction.
+    pasted_series : PastedTimeSeries, optional
+        Caller-supplied series with explicit ``units`` enum.
+    lookback_days : int, optional
+        Calendar days of history for series_spec / pair_spec.
+        Default 1825 (~5 years).  Ignored when pasted_series is set.
+    """
+    try:
+        params = HalfLifeInput(
+            series_spec=series_spec,
+            pair_spec=pair_spec,
+            pasted_series=pasted_series,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the half_life tool's bundled config explicitly so the
+    # dependency is observable at the call site.
+    try:
+        hl_config = load_tool_config(HALF_LIFE_CONFIG_PATH)
+        result = calculate_half_life(
+            engine=engine, params=params, config=hl_config,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_half_life")
+        return json.dumps({"error": f"Calculation failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: half_life input=%s → %s",
+        ("series_spec" if params.series_spec is not None
+         else "pair_spec" if params.pair_spec is not None
+         else "pasted_series"),
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # The whole output is the snapshot — no time-series payload to
+    # withhold.
+    return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
 
 
 # ===========================================================================
