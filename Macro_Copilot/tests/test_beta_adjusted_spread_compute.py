@@ -603,14 +603,30 @@ class TestResidualUnitConversion:
 
 
 # ===========================================================================
-# 10. Boundary rounding — every YAML knob reaches both surfaces
+# 10. Boundary rounding — every YAML knob reaches the surfaces it feeds
 # ===========================================================================
 
 class TestBoundaryRounding:
-    """Each YAML rounding knob must reach BOTH the snapshot AND the
-    time_series rows.  Same boundary-shadowing class as the
-    field_name and z_score_round_decimals fixes; carried forward
-    from the rolling_regression follow-up PR's expanded coverage."""
+    """Each YAML rounding knob must reach the surfaces it actually
+    feeds.  Surface map for this tool:
+
+        beta_round_decimals      → snapshot (current_beta) AND
+                                    time_series_beta rows
+        bps_round_decimals       → snapshot (current_residual_bps) AND
+                                    time_series_residual rows
+        z_score_round_decimals   → snapshot (current_residual_z_score)
+                                    AND time_series_residual_z_score rows
+        alpha_round_decimals     → snapshot (current_alpha_pct) ONLY —
+                                    no alpha time-series in this tool
+        r_squared_round_decimals → snapshot (current_r_squared) ONLY —
+                                    no R² time-series in this tool
+
+    Tests pin each knob's reach explicitly: the three knobs that feed
+    a time-series surface get a snapshot+time-series cross-check; the
+    two knobs that ONLY feed the snapshot get a snapshot-only test.
+    Adding alpha/R² time-series surfaces is out of scope (a trader
+    does not ask for "the alpha time series"; it would bloat the wire
+    payload without adding desk-recognised value)."""
 
     def _planted_panel(self):
         rng = np.random.default_rng(7)
@@ -659,7 +675,12 @@ class TestBoundaryRounding:
         last_ts = out_6["time_series_beta"]["rows"][-1]["value"]
         assert b_6 == last_ts
 
-    def test_alpha_round_decimals_reaches_snapshot(self):
+    def test_alpha_round_decimals_reaches_snapshot_only(self):
+        """alpha has no time-series surface in this tool — pin the
+        snapshot only.  Naming the test ``_only`` makes the scope
+        explicit so a future maintainer doesn't read 'alpha rounding
+        is fully tested' from the class header and miss that there's
+        no time_series_alpha field on this tool."""
         out_4 = self._run_at({"alpha_round_decimals": 4})
         out_6 = self._run_at({"alpha_round_decimals": 6})
         a_4 = out_4["current_metrics"]["current_alpha_pct"]
@@ -668,6 +689,13 @@ class TestBoundaryRounding:
         assert round(a_6, 4) == a_4
         assert a_4 != a_6, (
             f"alpha_round_decimals=6 produced same value as =4 ({a_4})"
+        )
+        # And cross-check explicitly: there is NO time_series_alpha
+        # output on this tool's wire shape.
+        assert "time_series_alpha" not in out_6, (
+            "beta_adjusted_spread does NOT emit a time_series_alpha; "
+            "if a future change adds one, this test must extend to "
+            "cross-check the snapshot vs the last row"
         )
 
     def test_bps_round_decimals_reaches_residual_both_surfaces(self):
@@ -692,13 +720,21 @@ class TestBoundaryRounding:
         last_ts = out_6["time_series_residual_z_score"]["rows"][-1]["value"]
         assert z_6 == last_ts
 
-    def test_r_squared_round_decimals_reaches_snapshot(self):
+    def test_r_squared_round_decimals_reaches_snapshot_only(self):
+        """R² has no time-series surface in this tool — pin the
+        snapshot only.  Same ``_only`` naming convention as the alpha
+        test."""
         out_4 = self._run_at({"r_squared_round_decimals": 4})
         out_6 = self._run_at({"r_squared_round_decimals": 6})
         r_4 = out_4["current_metrics"]["current_r_squared"]
         r_6 = out_6["current_metrics"]["current_r_squared"]
         assert r_4 is not None and r_6 is not None
         assert round(r_6, 4) == r_4
+        assert "time_series_r_squared" not in out_6, (
+            "beta_adjusted_spread does NOT emit a time_series_r_squared; "
+            "if a future change adds one, this test must extend to "
+            "cross-check the snapshot vs the last row"
+        )
 
 
 # ===========================================================================
@@ -708,15 +744,21 @@ class TestBoundaryRounding:
 class TestBufferMultiplierWiring:
     """The fetch buffer is the LARGER of the regression-window-buffer
     and the z-score-window-buffer.  Both knobs must reach the
-    start_date computation; pin both."""
+    start_date computation, AND the test suite must cover BOTH
+    branches of the max(.) — Codex's review of the initial PR pointed
+    out that the original tests only covered the z-score-dominant
+    branch."""
 
-    def _capture_start_dates(self, multipliers: dict):
-        target_df = _synthetic_series(noise_seed=1)
-        regressor_df = _synthetic_series(noise_seed=2)
+    def _capture_start_dates(
+        self, *, regression_window_days: int, multipliers: dict,
+        z_score_window_days: int = 252,
+    ):
+        target_df = _synthetic_series(noise_seed=1, days=2000)
+        regressor_df = _synthetic_series(noise_seed=2, days=2000)
         params = BetaAdjustedSpreadInput(
             target_curve_family="IT_BTP", target_tenor="10Y",
             regressor_curve_family="DE_BUND", regressor_tenor="10Y",
-            regression_window_days=60,  # smaller than 252 z-window
+            regression_window_days=regression_window_days,
             lookback_days=180,
         )
 
@@ -728,6 +770,9 @@ class TestBufferMultiplierWiring:
                 f"{curve_family}_{tenor}"
             ]
 
+        cfg_overrides = {"z_score_window_days": z_score_window_days}
+        cfg_overrides.update(multipliers)
+
         with patch(
             "rates_agent.sovereign_bonds.tools.beta_adjusted_spread.compute.fetch_single_tenor",
             side_effect=cap,
@@ -737,30 +782,78 @@ class TestBufferMultiplierWiring:
         ):
             calculate_beta_adjusted_spread(
                 engine=None, params=params,
-                config=_custom_config(**multipliers),
+                config=_custom_config(**cfg_overrides),
             )
         # Both legs fetched — assert same start_date for both.
         assert len(captured) == 2
         assert captured[0] == captured[1]
         return captured[0]
 
+    # ---- z-score-dominant branch ---------------------------------------
+
     def test_z_score_buffer_dominates_when_z_window_larger(self):
         """When regression_window=60 and z_window=252, the z-score
         buffer dominates the max(.).  Bumping z_score_buffer_multiplier
         from 1.5 → 1.8 must shift the start_date earlier."""
-        sd_default = self._capture_start_dates({"z_score_buffer_multiplier": 1.5})
-        sd_wider = self._capture_start_dates({"z_score_buffer_multiplier": 1.8})
-        # Wider buffer → earlier start_date.
+        sd_default = self._capture_start_dates(
+            regression_window_days=60,
+            multipliers={"z_score_buffer_multiplier": 1.5},
+        )
+        sd_wider = self._capture_start_dates(
+            regression_window_days=60,
+            multipliers={"z_score_buffer_multiplier": 1.8},
+        )
         assert sd_wider < sd_default
 
-    def test_regression_buffer_alone_does_not_reduce_below_z_buffer(self):
+    def test_regression_multiplier_no_op_in_z_dominant_branch(self):
         """When regression_window=60, the regression-window buffer at
         any reasonable multiplier (≤2.0) can never exceed the
         z-score-window-buffer at the default 1.5x of 252 = 378d.  So
         bumping regression_buffer_multiplier alone has no effect on
-        the max(.)."""
-        sd_low = self._capture_start_dates({"regression_buffer_multiplier": 1.3})
-        sd_high = self._capture_start_dates({"regression_buffer_multiplier": 2.0})
+        the max(.) — proves the max() correctly clamps to the larger
+        side."""
+        sd_low = self._capture_start_dates(
+            regression_window_days=60,
+            multipliers={"regression_buffer_multiplier": 1.3},
+        )
+        sd_high = self._capture_start_dates(
+            regression_window_days=60,
+            multipliers={"regression_buffer_multiplier": 2.0},
+        )
+        assert sd_low == sd_high
+
+    # ---- regression-dominant branch ------------------------------------
+
+    def test_regression_buffer_dominates_when_regression_window_larger(self):
+        """The other branch of the max(.).  When
+        regression_window_days=1000 and z_window=252, the regression-
+        window buffer dominates: 1000 * 1.5 = 1500d > 252 * 1.5 = 378d.
+        Bumping regression_buffer_multiplier from 1.5 → 1.8 must shift
+        the start_date earlier in this branch (whereas it had no effect
+        in the z-dominant branch above)."""
+        sd_default = self._capture_start_dates(
+            regression_window_days=1000,
+            multipliers={"regression_buffer_multiplier": 1.5},
+        )
+        sd_wider = self._capture_start_dates(
+            regression_window_days=1000,
+            multipliers={"regression_buffer_multiplier": 1.8},
+        )
+        assert sd_wider < sd_default
+
+    def test_z_multiplier_no_op_in_regression_dominant_branch(self):
+        """Sibling check.  In the regression-dominant branch, bumping
+        z_score_buffer_multiplier alone has no effect on the
+        start_date because the regression side already drives the
+        max(.).  Proves the symmetric clamping behaviour."""
+        sd_low = self._capture_start_dates(
+            regression_window_days=1000,
+            multipliers={"z_score_buffer_multiplier": 1.3},
+        )
+        sd_high = self._capture_start_dates(
+            regression_window_days=1000,
+            multipliers={"z_score_buffer_multiplier": 2.0},
+        )
         assert sd_low == sd_high
 
 

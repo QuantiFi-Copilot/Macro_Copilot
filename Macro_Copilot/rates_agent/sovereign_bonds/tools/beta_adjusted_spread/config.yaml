@@ -310,10 +310,15 @@ methodology:
        spread) — sibling tool."
     - "Configurable residual z-score window — today fixed at 252 to
        keep the residual z-score's 'beta-adjusted spread vs its 1Y
-       distribution' interpretation desk-canonical.  If a desk wants
-       a 60-day residual z-score, compose: call this tool, then
-       call zscore_custom on time_series_residual.  Lifting the
+       distribution' interpretation desk-canonical.  Lifting the
        z-score window to a user input would erode the standard
-       interpretation."
+       interpretation, so V1 keeps it locked.  A future desk request
+       for a non-standard window would be served by extending this
+       tool's input surface to expose `residual_z_score_window_days`,
+       NOT by chaining a second tool — zscore_custom only accepts
+       DB-backed (curve_family, tenor, field_name) inputs and cannot
+       consume a pasted TimeSeries.  When pasted-series support lands
+       (a separate sibling-tool track), the chained-composition path
+       becomes available; until then this knob stays internal."
     - "Robust regression (Huber, Theil-Sen) — sibling tool.  Today's
        OLS is sensitive to outlier rows."
