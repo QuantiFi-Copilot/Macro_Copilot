@@ -46,6 +46,9 @@ tool:
   name: <mcp_tool_name>          # e.g. calculate_curve_spread_tool
   domain: <sovereign_bonds | ois | ...>
   description: <one-line human description>
+  category: <desk_invariant_primitive | quant_standard_analytic>
+                                 # optional; defaults to 'desk_invariant_primitive'.
+                                 # See the "Tool category" section below for definitions.
 
 conventions:
   <key>:
