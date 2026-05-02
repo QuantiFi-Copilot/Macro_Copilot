@@ -56,6 +56,12 @@ from rates_agent.sovereign_bonds.tools.zscore_custom import (
     ZscoreCustomOutput,
     calculate_zscore_custom,
 )
+from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
+    CONFIG_PATH as BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+    BetaAdjustedSpreadInput,
+    BetaAdjustedSpreadOutput,
+    calculate_beta_adjusted_spread,
+)
 from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.rates.detail")
@@ -440,5 +446,87 @@ def zscore_custom_detail(
     _tool_result_or_raise(
         result,
         f"Custom z-score for {curve_family} {tenor} (window={z_score_window_days}d)",
+    )
+    return result
+
+
+@router.get(
+    "/detail/beta-adjusted-spread",
+    response_model=BetaAdjustedSpreadOutput,
+    summary="Beta-Adjusted Spread Detail (workspace)",
+)
+def beta_adjusted_spread_detail(
+    engine: Engine = Depends(get_engine),
+    target_curve_family: str = Query(..., description="e.g. 'IT_BTP'"),
+    target_tenor: str = Query(..., description="e.g. '10Y'"),
+    regressor_curve_family: str = Query(..., description="e.g. 'DE_BUND'"),
+    regressor_tenor: str = Query(..., description="e.g. '10Y'"),
+    regression_window_days: int = Query(
+        ...,
+        ge=10,
+        le=2520,
+        description=(
+            "Trailing-window length in trading-day rows for each "
+            "rolling fit.  Central methodological choice — set per "
+            "request.  Typical desk values: 60 (tactical), 252 "
+            "(annual), 504 (two-year)."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic — applies to BOTH legs.  Omit to "
+            "use the tool's bundled ``default_field_name`` from "
+            "beta_adjusted_spread/config.yaml (currently 'YLD_YTM_MID').  "
+            "Same wrapper-shadowing fix applied as the zscore_custom "
+            "and yield_levels endpoints (commit b2605ee)."
+        ),
+    ),
+):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  All other methodology knobs (`min_periods`, `solver`,
+    `condition`-threshold, residual-z-score window, rounding) are
+    YAML-locked and not exposed at the route — see A13 in
+    docs/architecture/tool_architecture.md.
+
+    The small-window guard (regression_window_days <
+    regression_min_periods) returns a controlled error envelope whose
+    phrase shape maps to HTTP 422 via the helper's user_input_phrases
+    list — same client-error class as zscore_custom's small-window
+    guard."""
+    try:
+        params = BetaAdjustedSpreadInput(
+            target_curve_family=target_curve_family,
+            target_tenor=target_tenor,
+            regressor_curve_family=regressor_curve_family,
+            regressor_tenor=regressor_tenor,
+            regression_window_days=regression_window_days,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bas_config = load_tool_config(BETA_ADJUSTED_SPREAD_CONFIG_PATH)
+        result = calculate_beta_adjusted_spread(
+            engine=engine, params=params, config=bas_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/beta-adjusted-spread: tool failed for %s_%s on "
+            "%s_%s window=%d",
+            target_curve_family, target_tenor,
+            regressor_curve_family, regressor_tenor,
+            regression_window_days,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Beta-adjusted {target_curve_family}-{regressor_curve_family} "
+        f"{target_tenor}/{regressor_tenor} (window={regression_window_days}d)",
     )
     return result

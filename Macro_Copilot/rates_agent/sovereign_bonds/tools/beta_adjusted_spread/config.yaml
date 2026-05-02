@@ -1,0 +1,319 @@
+# =============================================================================
+# beta_adjusted_spread_tool — tool configuration
+# =============================================================================
+# Canonical record of the beta_adjusted_spread tool's conventions and
+# methodology.  Loaded by `shared.config.load_tool_config` at compute()
+# time.  The MCP wrapper and /detail/beta-adjusted-spread endpoint
+# pass this config explicitly so the dependency is observable at the
+# call site.
+#
+# Central knob (A13)
+# ------------------
+# This tool's central methodological choice — the one input that defines
+# what the tool IS — is `regression_window_days`.  That field is the
+# user's primary input.  Every other knob (`regression_min_periods`,
+# `add_constant`, `regression_solver`,
+# `condition_number_warning_threshold`, `regression_buffer_multiplier`,
+# `ffill_limit_days`, the z-score conventions for the residual,
+# rounding) lives here in YAML and is NOT user-overridable in V1.
+# See A13 in docs/architecture/tool_architecture.md.
+#
+# Built on rolling_regression's primitive
+# ---------------------------------------
+# The bivariate regression is computed via
+# `shared.analytics.regression.rolling_ols` — the same primitive that
+# rolling_regression uses.  Keeping a single authoritative
+# implementation prevents methodology drift between the two tools.
+# Every regression-related convention here mirrors rolling_regression's
+# YAML; the cross-config lint catches any drift.
+#
+# Cross-config consistency
+# ------------------------
+# `z_score_window_days`, `z_score_min_periods`, `z_score_ddof`,
+# `z_score_buffer_multiplier`, `ffill_limit_days`, `default_field_name`,
+# `bps_round_decimals`, `z_score_round_decimals` — all are declared by
+# multiple tools and the cross-config lint enforces value agreement.
+# The regression-specific keys (`regression_min_periods`,
+# `add_constant`, `regression_solver`,
+# `condition_number_warning_threshold`, `regression_buffer_multiplier`,
+# `beta_round_decimals`, `alpha_round_decimals`,
+# `r_squared_round_decimals`) overlap with rolling_regression's
+# config; lint enforces those too.
+# =============================================================================
+
+tool:
+  name: beta_adjusted_spread_tool
+  domain: sovereign_bonds
+  description: |
+    Bivariate beta-adjusted RV: regress one sovereign yield series
+    (target) on another (regressor) over a rolling window, return the
+    hedge ratio (beta), intercept (alpha, in yield-percent), and the
+    residual signal in bps with its z-score.  This is the canonical
+    desk vocabulary "beta-adjusted X-vs-Y" computation: e.g.,
+    "beta-adjusted BTP-Bund" is `BTP yield − β·Bund yield − α` in
+    bps, where β and α are estimated by rolling OLS over the user's
+    chosen window.
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Regression conventions — mirror rolling_regression's YAML
+  # ---------------------------------------------------------------------------
+  regression_min_periods:
+    value: 30
+    source: team_judgment_pending_review
+    rationale: >-
+      Smallest window count where OLS standard errors are not
+      degenerate.  ~6 trading weeks of data; smaller min_periods
+      would silently emit volatile betas at the start of the
+      displayed window.  Constrained against the user's
+      `regression_window_days` in compute() — passing
+      regression_window_days < regression_min_periods returns a
+      controlled error envelope (matches rolling_regression's
+      and zscore_custom's small-window guards; FastAPI maps the
+      phrase shape to HTTP 422).
+    valid_range: [10, 252]
+
+  add_constant:
+    value: true
+    source: industry_standard_with_intercept
+    rationale: >-
+      With-intercept OLS.  No-intercept regression is a structurally
+      different model whose alpha is forced to zero rather than
+      estimated; that is a sibling tool, not a configuration knob.
+      compute() raises NotImplementedError on `add_constant: false`
+      with a pointer to methodology.planned_extensions.
+
+  regression_solver:
+    value: numpy_lstsq_default
+    source: numerical_stability_lock
+    rationale: >-
+      numpy.linalg.lstsq(X, y, rcond=None) — SVD-based, matches numpy's
+      default behaviour (>= 1.14).  Pinning the solver string + rcond
+      gives bit-stable behaviour across numpy versions.  Mirrors
+      rolling_regression's solver lock.  compute() raises
+      NotImplementedError on any other value.
+
+  condition_number_warning_threshold:
+    value: 10000000000.0   # 1e10
+    source: numerical_stability_lock
+    rationale: >-
+      X-matrix condition numbers above this threshold trigger a
+      condition_flag of 1 for that t and emit NaN coefficients
+      rather than fitting on a near-singular panel.  Mirrors
+      rolling_regression's threshold; for the bivariate
+      beta_adjusted_spread case the design matrix is [1, x] (with
+      intercept) so this threshold catches the rare case where the
+      regressor is constant in-window.
+    valid_range: [100.0, 1000000000000.0]
+
+  regression_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer multiplier added to the fetch window so the
+      rolling fit + the residual z-score are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Mirrors rolling_regression's
+      multiplier; lint catches drift.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Residual z-score conventions — mirror the other rates tools
+  # ---------------------------------------------------------------------------
+  # The residual z-score is computed AFTER the *100 conversion to bps,
+  # so it's the z-score of the bps-scale residual.  Window length is
+  # fixed at 252 here (NOT user-overridable in V1) — the residual's
+  # statistical context is "is the beta-adjusted spread cheap/rich vs
+  # its 1Y distribution?", which is the desk-canonical interpretation.
+  # If a desk wants a 60-day or 504-day residual z-score, that's a
+  # composition (call this tool, then call zscore_custom on the
+  # returned time_series_residual), not a parameter override.
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Same convention
+      as the rest of the rates roster.  Applies to the residual's
+      z-score (computed AFTER the *100 percent-to-bps conversion).
+    valid_range: [60, 1260]
+
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the residual z-score is
+      emitted.  Matches the rest of the rates roster.
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer multiplier for the residual z-score.
+      Combined with regression_buffer_multiplier, the effective fetch
+      buffer is `max(regression_window_days * regression_buffer_multiplier,
+      z_score_window_days * z_score_buffer_multiplier)` — see
+      compute.py's defensive max() so neither stat starves on the
+      first displayed row.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches the rest of the rates roster; the consistency
+      lint enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — bps (residual)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current_residual_bps + every time-series row
+      of time_series_residual) to 0.01 bps.  Display precision;
+      matches the rest of the rates roster's bps rounding.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — z-score (residual z-score)
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round residual z-score output to 4 decimals.  Threaded
+      explicitly to safe_float at the output boundary so a value
+      above 4 is not silently truncated by safe_float's own default
+      of 4 (the P2 fix from the butterfly migration's Codex review).
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — beta (unitless ratio)
+  # ---------------------------------------------------------------------------
+  beta_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round beta output to 4 decimals.  Display precision; further
+      decimals are noise given the underlying yield precision.
+      Mirrors rolling_regression.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — alpha (yield percent)
+  # ---------------------------------------------------------------------------
+  alpha_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round alpha output (intercept, in yield-percent units) to 4
+      decimals.  Mirrors rolling_regression and zscore_custom's
+      yield_round_decimals.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — R² (unitless ratio)
+  # ---------------------------------------------------------------------------
+  r_squared_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round R² to 4 decimals.  Display precision.  Mirrors
+      rolling_regression.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  ONE field_name applies to BOTH target and
+      regressor legs — if a future variant needs different fields
+      per leg, that's a sibling tool, not a parameter.  Sentinel
+      pattern: empty-string from MCP / None from FastAPI flows
+      through to this YAML default.
+
+methodology:
+  what_it_does: |
+    Fetches the target yield series and the regressor yield series,
+    aligns them on a shared trading-day index (with up to
+    `ffill_limit_days` of holiday-gap forward-fill), runs a rolling
+    bivariate OLS of target on regressor over `regression_window_days`,
+    and returns the hedge ratio (beta), intercept (alpha,
+    yield-percent), residual converted to bps via *100, and the bps
+    residual's rolling z-score.  Built on the
+    `shared.analytics.regression.rolling_ols` primitive — the same
+    one rolling_regression uses.
+
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%); the rolling fit is
+       in percent space.  The fitted residual is then *converted to
+       bps via *100* before the snapshot's `current_residual_bps` is
+       emitted and before the residual z-score is computed.  This
+       conversion is the explicit fix that prevented the v6 plan's
+       earlier mistake of naming a percent-space residual `_bps`."
+    - "Regression uses sample standard errors (homoskedasticity +
+       no autocorrelation assumed).  This tool does NOT report
+       p-values or confidence intervals."
+    - "OLS via numpy.linalg.lstsq(rcond=None) — SVD-based.  The
+       solver string is YAML-locked; alternatives are sibling tools."
+    - "Within each rolling window, rows where target OR regressor
+       are NaN are dropped.  If the surviving count is less than
+       regression_min_periods, that window's fit emits NaN."
+    - "X-matrix condition numbers above
+       condition_number_warning_threshold trigger a quality flag
+       and NaN coefficients for that t.  For the bivariate case
+       this catches the rare case where the regressor is constant
+       in-window."
+    - "lookback_days controls the *display* window only.  The
+       rolling regression window length is the user's central knob
+       (`regression_window_days`).  The residual z-score window is
+       fixed at 252 in V1 (see z_score_window_days)."
+    - "Spread direction convention: target − regressor (matching
+       cross_market_spread's cf1 − cf2 direction).  E.g.,
+       target=BTP, regressor=Bund → 'beta-adjusted BTP-Bund'.
+       Pasting the opposite direction is the caller's
+       responsibility."
+
+  citations:
+    - "Veronesi, P. (2010). Fixed Income Securities, Ch. 18 — beta-
+       adjusted RV via rolling regression."
+
+  planned_extensions:
+    - "Multi-regressor extension (e.g., regress target on level +
+       slope of the regressor curve simultaneously) — sibling tool;
+       use rolling_regression directly when N >= 2 regressors are
+       needed.  Keeping beta_adjusted_spread bivariate-only keeps
+       the snapshot's `current_beta` and `current_residual_bps`
+       trader-recognizable."
+    - "Zero-beta orthogonalization variant (residual minus its
+       projection onto the regressor's level rather than the fitted
+       spread) — sibling tool."
+    - "Configurable residual z-score window — today fixed at 252 to
+       keep the residual z-score's 'beta-adjusted spread vs its 1Y
+       distribution' interpretation desk-canonical.  If a desk wants
+       a 60-day residual z-score, compose: call this tool, then
+       call zscore_custom on time_series_residual.  Lifting the
+       z-score window to a user input would erode the standard
+       interpretation."
+    - "Robust regression (Huber, Theil-Sen) — sibling tool.  Today's
+       OLS is sensitive to outlier rows."

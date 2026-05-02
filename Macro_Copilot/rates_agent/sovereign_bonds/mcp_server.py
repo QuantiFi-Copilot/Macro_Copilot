@@ -65,6 +65,11 @@ from rates_agent.sovereign_bonds.tools.rolling_regression import (  # noqa: E402
     RollingRegressionInput,
     calculate_rolling_regression,
 )
+from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (  # noqa: E402
+    CONFIG_PATH as BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+    BetaAdjustedSpreadInput,
+    calculate_beta_adjusted_spread,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import SeriesSpec  # noqa: E402
 from shared.config import load_tool_config  # noqa: E402
@@ -851,6 +856,133 @@ def rolling_regression_tool(
             "Withheld time-series payload from LLM context "
             "(%d beta series, %d residual rows).",
             n_beta_series, n_residual_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 9: beta_adjusted_spread  (flat scalar inputs)
+# ===========================================================================
+@mcp.tool()
+def beta_adjusted_spread_tool(
+    target_curve_family: str,
+    target_tenor: str,
+    regressor_curve_family: str,
+    regressor_tenor: str,
+    regression_window_days: int,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Compute the bivariate beta-adjusted spread between two sovereign
+    yield series: rolling OLS hedge ratio (β), intercept (α,
+    yield-percent), residual `target − β·regressor − α` converted to
+    bps via *100, plus the residual's rolling 252d z-score.
+
+    The desk-canonical "beta-adjusted X-vs-Y" computation: e.g.,
+    "beta-adjusted BTP-Bund" pairs target=IT_BTP, regressor=DE_BUND.
+
+    Use this tool when the user asks about:
+    - Hedge ratio between two yields  (e.g. "What's the rolling beta of
+      BTP 10Y vs Bund 10Y?")
+    - Beta-adjusted RV signal         (e.g. "Is BTP-Bund 10Y rich vs
+      its beta-adjusted history?")
+    - Cross-market RV with vol asymmetry (raw spreads can mislead when
+      target and regressor have different vols)
+
+    Distinct from `cross_market_spread` (raw differential) and from
+    `rolling_regression` (which is multi-regressor and exposes the
+    full betas + residual + R² + condition flag time series).
+    `beta_adjusted_spread` is bivariate-only and bps-residual focused.
+
+    Parameters
+    ----------
+    target_curve_family : str
+        The y in y on x.  E.g. 'IT_BTP', 'FR_OAT', 'ES_BONO'.
+    target_tenor : str
+        Target tenor — e.g. '10Y'.
+    regressor_curve_family : str
+        The x in y on x — typically the core / hedge curve.  E.g.
+        'DE_BUND' for BTP-Bund or OAT-Bund.
+    regressor_tenor : str
+        Regressor tenor — e.g. '10Y'.
+    regression_window_days : int
+        Trailing-window length in trading-day rows for each rolling
+        fit.  This is the tool's central methodological choice — set
+        per request.  Constrained to [10, 2520].  Typical desk
+        values: 60 (tactical), 252 (annual), 504 (two-year).
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does NOT
+        control the rolling window length.
+    field_name : str, optional
+        Bloomberg field mnemonic — applies to BOTH target and
+        regressor legs.  Leave as the default empty string "" to use
+        the bundled ``default_field_name`` convention from
+        beta_adjusted_spread/config.yaml (currently 'YLD_YTM_MID').
+        Mirrors the empty-string sentinel pattern used by
+        zscore_custom and yield_levels.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's default_field_name.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = BetaAdjustedSpreadInput(
+            target_curve_family=target_curve_family,
+            target_tenor=target_tenor,
+            regressor_curve_family=regressor_curve_family,
+            regressor_tenor=regressor_tenor,
+            regression_window_days=regression_window_days,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the beta_adjusted_spread tool's bundled config explicitly
+    # so the dependency is observable at the call site.
+    try:
+        bas_config = load_tool_config(BETA_ADJUSTED_SPREAD_CONFIG_PATH)
+        result = calculate_beta_adjusted_spread(
+            engine=engine, params=params, config=bas_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_beta_adjusted_spread for "
+            "%s_%s on %s_%s window=%d",
+            params.target_curve_family, params.target_tenor,
+            params.regressor_curve_family, params.regressor_tenor,
+            params.regression_window_days,
+        )
+        return json.dumps({"error": f"Calculation failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: beta_adjusted_spread %s_%s on %s_%s "
+        "window=%d → %s",
+        params.target_curve_family, params.target_tenor,
+        params.regressor_curve_family, params.regressor_tenor,
+        params.regression_window_days,
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Withhold time-series payloads from the LLM (frontend / chart
+    # consumer only).
+    llm_response = {"current_metrics": result.get("current_metrics", {})}
+    n_beta_rows = len(result.get("time_series_beta", {}).get("rows", []))
+    n_residual_rows = len(result.get("time_series_residual", {}).get("rows", []))
+    if n_beta_rows or n_residual_rows:
+        logger.info(
+            "Withheld time-series payload from LLM context "
+            "(%d beta rows, %d residual rows).",
+            n_beta_rows, n_residual_rows,
         )
     return json.dumps(llm_response, default=str)
 
