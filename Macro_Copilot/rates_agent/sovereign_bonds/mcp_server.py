@@ -75,6 +75,11 @@ from rates_agent.sovereign_bonds.tools.half_life import (  # noqa: E402
     HalfLifeInput,
     calculate_half_life,
 )
+from rates_agent.sovereign_bonds.tools.pca_yield_curve import (  # noqa: E402
+    CONFIG_PATH as PCA_YIELD_CURVE_CONFIG_PATH,
+    PcaYieldCurveInput,
+    calculate_pca_yield_curve,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
     PairSpec, PastedTimeSeries, SeriesSpec,
@@ -1093,6 +1098,124 @@ def half_life_tool(
     # The whole output is the snapshot — no time-series payload to
     # withhold.
     return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
+
+
+# ===========================================================================
+# TOOL 11: pca_yield_curve  (flat scalar inputs + tenors list)
+# ===========================================================================
+@mcp.tool()
+def pca_yield_curve_tool(
+    curve_family: str,
+    tenors: Optional[List[str]] = None,
+    lookback_days: int = 1825,
+    n_components: int = 3,
+    change_frequency: str = "daily",
+    field_name: str = "",
+) -> str:
+    """Run PCA on the yield-CHANGES panel of one sovereign curve.
+
+    Returns per-component loadings (one row per tenor), variance
+    shares (and cumulative shares), per-row factor scores time
+    series, plus per-component quality metadata (degenerate /
+    sign_anchor_tied flags).  The first three components
+    conventionally correspond to LEVEL, SLOPE, and CURVATURE for
+    normal yield-curve data — but the output uses ``pc1``,
+    ``pc2``, ``pc3`` labels (the interpretation is a property of
+    the data, NOT enforced by the tool's output schema).
+
+    Use this tool when the user asks about:
+    - Curve factor structure  (e.g. "Run PCA on the UST curve over
+      the last 5 years.")
+    - Level/slope/curvature shares (e.g. "How much variance does
+      level explain in BTP yield changes?")
+    - Loadings for a downstream attribution (the next sprint tool,
+      yield_change_attribution_pca, consumes the loadings via
+      paste-from-prior-tool).
+
+    Parameters
+    ----------
+    curve_family : str
+        Sovereign curve identifier — e.g. 'UST', 'DE_BUND', 'IT_BTP'.
+    tenors : List[str], optional
+        Subset of tenor labels.  When None (default), use all
+        available tenors of the curve_family.
+    lookback_days : int, optional
+        Calendar days of history fetched for the fit.  Default 1825
+        (~5 years).  Lower bound 252 mirrors the YAML's
+        min_observations_for_pca.
+    n_components : int, optional
+        Number of components to return (default 3).  Constrained to
+        [1, 8].
+    change_frequency : str, optional
+        'daily' (default) or 'weekly'.  Frequency at which to take
+        yield differences before fitting PCA.
+    field_name : str, optional
+        Bloomberg field mnemonic.  Leave as the default empty
+        string "" to use the bundled ``default_field_name`` from
+        pca_yield_curve/config.yaml (currently 'YLD_YTM_MID').
+        Mirrors the empty-string sentinel pattern used by the rest
+        of the rates roster.
+    """
+    field_name_arg = field_name if field_name else None
+    try:
+        params = PcaYieldCurveInput(
+            curve_family=curve_family,
+            tenors=tenors,
+            lookback_days=lookback_days,
+            n_components=n_components,
+            change_frequency=change_frequency,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the pca_yield_curve tool's bundled config explicitly so
+    # the dependency is observable at the call site.
+    try:
+        pca_config = load_tool_config(PCA_YIELD_CURVE_CONFIG_PATH)
+        result = calculate_pca_yield_curve(
+            engine=engine, params=params, config=pca_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_pca_yield_curve for %s",
+            params.curve_family,
+        )
+        return json.dumps({"error": f"Calculation failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: pca_yield_curve %s (n_components=%d, %s) → %s",
+        params.curve_family, params.n_components,
+        params.change_frequency,
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Withhold per-component time-series payloads from the LLM
+    # response (frontend / orchestrator-only).  The snapshot is the
+    # LLM-relevant surface.
+    llm_response = {"current_metrics": result.get("current_metrics", {})}
+    n_factor_series = len(result.get("time_series_factors", []))
+    if n_factor_series:
+        n_rows = (
+            len(result["time_series_factors"][0].get("rows", []))
+            if result["time_series_factors"] else 0
+        )
+        logger.info(
+            "Withheld %d factor time-series (%d rows each) from LLM "
+            "context (frontend-only data).",
+            n_factor_series, n_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

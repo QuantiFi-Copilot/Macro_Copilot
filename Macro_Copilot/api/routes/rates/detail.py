@@ -12,7 +12,7 @@ Each returns the complete tool output including time_series for charts.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.engine import Engine
@@ -61,6 +61,12 @@ from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
     BetaAdjustedSpreadInput,
     BetaAdjustedSpreadOutput,
     calculate_beta_adjusted_spread,
+)
+from rates_agent.sovereign_bonds.tools.pca_yield_curve import (
+    CONFIG_PATH as PCA_YIELD_CURVE_CONFIG_PATH,
+    PcaYieldCurveInput,
+    PcaYieldCurveOutput,
+    calculate_pca_yield_curve,
 )
 from shared.config import load_tool_config
 
@@ -528,5 +534,78 @@ def beta_adjusted_spread_detail(
         result,
         f"Beta-adjusted {target_curve_family}-{regressor_curve_family} "
         f"{target_tenor}/{regressor_tenor} (window={regression_window_days}d)",
+    )
+    return result
+
+
+@router.get(
+    "/detail/pca-yield-curve",
+    response_model=PcaYieldCurveOutput,
+    summary="PCA on Yield Curve (workspace)",
+)
+def pca_yield_curve_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Sovereign curve, e.g. 'UST'"),
+    tenors: Optional[List[str]] = Query(
+        default=None,
+        description=(
+            "Subset of tenor labels.  Repeat the param: "
+            "``?tenors=1Y&tenors=2Y&tenors=10Y``.  Omit to use all "
+            "available tenors of the curve_family."
+        ),
+    ),
+    lookback_days: int = Query(default=1825, ge=252, le=7300),
+    n_components: int = Query(default=3, ge=1, le=8),
+    change_frequency: Literal["daily", "weekly"] = Query(default="daily"),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit to use the tool's "
+            "bundled ``default_field_name`` from "
+            "pca_yield_curve/config.yaml (currently 'YLD_YTM_MID').  "
+            "Same wrapper-shadowing fix applied as the rest of the "
+            "rates roster (commit b2605ee)."
+        ),
+    ),
+):
+    """``field_name`` defaults to None at the query layer so the tool's
+    compute() can resolve it against the YAML's ``default_field_name``
+    convention.  All methodology knobs (``min_observations_for_pca``,
+    ``sign_anchor``, ``degenerate_variance_share_threshold``,
+    ``ffill_limit_days``, all rounding decimals) are YAML-locked
+    and not exposed at the route — see A13 in
+    docs/architecture/tool_architecture.md.
+
+    The cross-layer min_observations guard returns a controlled error
+    envelope whose phrase shape maps to HTTP 422 via the helper's
+    user_input_phrases list."""
+    try:
+        params = PcaYieldCurveInput(
+            curve_family=curve_family,
+            tenors=tenors,
+            lookback_days=lookback_days,
+            n_components=n_components,
+            change_frequency=change_frequency,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pca_config = load_tool_config(PCA_YIELD_CURVE_CONFIG_PATH)
+        result = calculate_pca_yield_curve(
+            engine=engine, params=params, config=pca_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/pca-yield-curve: tool failed for %s n_components=%d",
+            curve_family, n_components,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"PCA for {curve_family} (n_components={n_components}, "
+        f"{change_frequency}, lookback={lookback_days}d)",
     )
     return result

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -35,6 +35,9 @@ import pandas as pd
 __all__ = [
     "OuFitResult",
     "ou_half_life",
+    "PcaResult",
+    "PcaComponentInfo",
+    "pca_yield_changes",
 ]
 
 
@@ -312,4 +315,354 @@ def ou_half_life(
         r_squared=r_squared,
         observation_count=n_obs,
         confidence_level_used=confidence_level,
+    )
+
+
+# ============================================================================
+# PCA on yield-changes panel
+# ============================================================================
+
+# Locked V1 sign-anchor rule.  Documented in
+# rates_agent/sovereign_bonds/tools/pca_yield_curve/config.yaml under
+# planned_extensions for the alternatives ("max_abs_loading_positive",
+# "first_tenor_positive").  pca_yield_changes raises ValueError on any
+# other anchor name; the PCA tool's compute() converts it to a
+# NotImplementedError with a pointer to planned_extensions.
+_LOCKED_SIGN_ANCHOR: str = "lock_pc_long_tenor_positive"
+
+
+@dataclass(frozen=True)
+class PcaComponentInfo:
+    """Per-component metadata returned by ``pca_yield_changes``.
+
+    Attributes
+    ----------
+    component_name : str
+        Lower snake-case label — ``"pc1"``, ``"pc2"``, ``"pc3"``, ...
+    quality_flag : str
+        One of:
+          - ``"ok"`` — eigenvalue > eps; sign-anchor unambiguous.
+          - ``"degenerate"`` — eigenvalue effectively zero (variance
+            share below ``degenerate_variance_share_threshold``);
+            loadings emitted as NaN; scores emitted as NaN.
+          - ``"sign_anchor_tied"`` — loadings at the longest tenor are
+            exactly zero AND ``loadings[longest] - loadings[shortest]``
+            is exactly zero, so neither tie-break can pick a side; no
+            flip applied; downstream interpretation may be ambiguous.
+    quality_note : Optional[str]
+        Human-readable detail; None when ``quality_flag == "ok"``.
+    """
+
+    component_name: str
+    quality_flag: str
+    quality_note: Optional[str]
+
+
+@dataclass(frozen=True)
+class PcaResult:
+    """Output of ``pca_yield_changes``.
+
+    All numeric outputs are bit-stable across runs given the input
+    panel, the n_components / change_frequency / sign_anchor kwargs,
+    and the tenor list.  The PCA solve uses ``numpy.linalg.svd``
+    (LAPACK driver, deterministic across numpy ≥ 1.14).
+
+    Attributes
+    ----------
+    loadings : pd.DataFrame
+        Index = tenor labels (in caller-supplied order); columns =
+        component names (``pc1``, ``pc2``, ...).  Values are eigen-
+        vector entries for the centered yield-change covariance.
+        After the sign anchor is applied, loadings at the longest
+        tenor are >= 0 for non-degenerate components.  NaN columns
+        for degenerate components.
+    factor_scores : pd.DataFrame
+        Index = trading-day dates of the change panel; columns =
+        component names.  Values are the projection of each centered
+        change row onto each component (i.e., the time series of
+        factor levels).  NaN columns for degenerate components.
+    variance_share : pd.Series
+        Index = component names; values in [0, 1] summing to ≤ 1
+        (will sum to exactly 1 when n_components == n_tenors and no
+        component is degenerate).
+    cumulative_variance_share : pd.Series
+        Cumulative sum of ``variance_share`` over component_names in
+        emission order.  Useful for "how much variance does the top
+        K components explain" queries.
+    component_metadata : List[PcaComponentInfo]
+        Per-component quality flag + note.  Emitted in the same
+        order as ``loadings.columns`` / ``variance_share.index``.
+    n_observations_in_fit : int
+        Number of trading-day rows used in the SVD (after dropping
+        rows with any NaN).  Echoed for transparency / paste-into-
+        downstream-tool provenance.
+    n_tenors : int
+        Number of tenors (columns of the input panel).
+    change_frequency_used : str
+        Echoes the ``change_frequency`` kwarg.
+    sign_anchor_used : str
+        Echoes the ``sign_anchor`` kwarg (always
+        ``"lock_pc_long_tenor_positive"`` in V1).
+    fit_window_start : str, fit_window_end : str
+        First and last dates of the change panel (YYYY-MM-DD).
+    """
+
+    loadings: pd.DataFrame
+    factor_scores: pd.DataFrame
+    variance_share: pd.Series
+    cumulative_variance_share: pd.Series
+    component_metadata: List[PcaComponentInfo]
+    n_observations_in_fit: int
+    n_tenors: int
+    change_frequency_used: str
+    sign_anchor_used: str
+    fit_window_start: str
+    fit_window_end: str
+
+
+def pca_yield_changes(
+    panel: pd.DataFrame,
+    *,
+    tenors_ordered: List[str],
+    n_components: int,
+    change_frequency: Literal["daily", "weekly"],
+    sign_anchor: str = _LOCKED_SIGN_ANCHOR,
+    min_observations: int,
+    degenerate_variance_share_threshold: float = 1e-12,
+) -> PcaResult:
+    """Run PCA on the yield-CHANGES panel of a single sovereign curve.
+
+    Parameters
+    ----------
+    panel : pd.DataFrame
+        Wide-format date-indexed yield panel.  Columns must be a
+        superset of ``tenors_ordered``.  Values are yields (in
+        percent or any consistent unit; PCA on changes is unit-
+        agnostic).
+    tenors_ordered : List[str]
+        Tenor labels in numeric-ascending order (e.g.,
+        ``["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]``).
+        Caller is responsible for the sort — the primitive uses
+        position 0 (shortest) and position -1 (longest) for the
+        sign-anchor's tie-break.  The result's loadings DataFrame
+        index follows this order.
+    n_components : int
+        Number of components to return.  Must be 1 ≤ n_components ≤
+        n_tenors.
+    change_frequency : "daily" | "weekly"
+        Frequency at which to take yield differences before fitting
+        PCA.  ``"daily"`` → ``panel.diff()``; ``"weekly"`` →
+        ``panel.diff(periods=5)`` (5 trading days).
+    sign_anchor : str
+        V1 supports only ``"lock_pc_long_tenor_positive"``.  Other
+        values raise ValueError; the consuming tool wraps that into
+        the NotImplementedError honest-placeholder pattern.
+    min_observations : int
+        Minimum non-NaN observations in the change panel after
+        dropna.  PCA on fewer than ~252 obs gives unstable factor
+        loadings; raises ValueError below this threshold.
+    degenerate_variance_share_threshold : float
+        Variance-share floor below which a component is flagged
+        ``"degenerate"`` and its loadings / scores are emitted as
+        NaN.  Default 1e-12 catches numerical zeros without flagging
+        small-but-real components.
+
+    Returns
+    -------
+    PcaResult
+        See dataclass docstring.
+
+    Raises
+    ------
+    ValueError
+        On any of: missing tenor in panel, invalid n_components,
+        unsupported sign_anchor, change panel below
+        min_observations, etc.  Caller turns into the controlled-
+        error envelope.
+    """
+    # ------------------------------------------------------------------
+    # Validate
+    # ------------------------------------------------------------------
+    if sign_anchor != _LOCKED_SIGN_ANCHOR:
+        raise ValueError(
+            f"sign_anchor={sign_anchor!r} is not supported; V1 supports "
+            f"only {_LOCKED_SIGN_ANCHOR!r}.  Alternative anchors are "
+            "documented under planned_extensions in the consuming "
+            "tool's config.yaml; the consuming tool converts this to "
+            "NotImplementedError."
+        )
+    if change_frequency not in ("daily", "weekly"):
+        raise ValueError(
+            f"change_frequency={change_frequency!r} not supported; "
+            "expected 'daily' or 'weekly'."
+        )
+    if not tenors_ordered:
+        raise ValueError("tenors_ordered must be non-empty")
+    n_tenors = len(tenors_ordered)
+    if n_components < 1 or n_components > n_tenors:
+        raise ValueError(
+            f"n_components={n_components} out of range [1, {n_tenors}]"
+        )
+    missing = [t for t in tenors_ordered if t not in panel.columns]
+    if missing:
+        raise ValueError(
+            f"panel is missing tenor columns: {missing}.  "
+            f"Available: {sorted(panel.columns)}."
+        )
+
+    # ------------------------------------------------------------------
+    # Slice + sort + diff
+    # ------------------------------------------------------------------
+    sub = panel[tenors_ordered].sort_index()
+    if change_frequency == "daily":
+        changes = sub.diff().iloc[1:]
+    else:
+        changes = sub.diff(periods=5).iloc[5:]
+    changes = changes.dropna(how="any")
+    n_obs = int(len(changes))
+    if n_obs < min_observations:
+        raise ValueError(
+            f"change panel has {n_obs} non-NaN rows after dropna at "
+            f"frequency={change_frequency!r}; PCA primitive requires "
+            f"at least {min_observations}.  Either supply a longer "
+            f"input window or reduce the YAML's "
+            "min_observations_for_pca."
+        )
+
+    fit_window_start = changes.index[0].strftime("%Y-%m-%d")
+    fit_window_end = changes.index[-1].strftime("%Y-%m-%d")
+
+    # ------------------------------------------------------------------
+    # Center per-tenor (column means subtracted)
+    # ------------------------------------------------------------------
+    X = changes.to_numpy(dtype=float, copy=True)
+    col_means = X.mean(axis=0)
+    Xc = X - col_means
+
+    # ------------------------------------------------------------------
+    # SVD: Xc = U · diag(S) · Vt
+    #   * Each column of V (= row of Vt) is a tenor-space eigenvector
+    #     (loading vector).
+    #   * Singular values S relate to eigenvalues via S² / (n_obs - 1).
+    #   * Factor scores at each date = Xc @ V_truncated (which equals
+    #     U_truncated @ diag(S_truncated)).
+    # ------------------------------------------------------------------
+    # full_matrices=False: economy SVD (deterministic LAPACK driver).
+    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    eigenvalues_full = (S ** 2) / max(n_obs - 1, 1)
+    total_variance = float(np.sum(eigenvalues_full))
+
+    # Truncate to n_components.
+    eigenvalues = eigenvalues_full[:n_components]
+    loadings = Vt[:n_components].T  # shape: [n_tenors, n_components]
+    scores = U[:, :n_components] * S[:n_components]  # [n_obs, n_components]
+
+    # ------------------------------------------------------------------
+    # Detect degenerate components (variance share below threshold)
+    # ------------------------------------------------------------------
+    if total_variance > 0:
+        full_variance_share = eigenvalues_full / total_variance
+    else:
+        full_variance_share = np.zeros_like(eigenvalues_full)
+    component_names = [f"pc{k+1}" for k in range(n_components)]
+    component_metadata: List[PcaComponentInfo] = []
+    variance_share_truncated = np.zeros(n_components, dtype=float)
+
+    longest_idx = n_tenors - 1   # tenors_ordered is asc, so last = longest
+    shortest_idx = 0             # first = shortest
+
+    for k in range(n_components):
+        var_share = float(
+            full_variance_share[k] if k < len(full_variance_share) else 0.0
+        )
+        if var_share < degenerate_variance_share_threshold:
+            # Mark degenerate, suppress loadings + scores
+            loadings[:, k] = np.nan
+            scores[:, k] = np.nan
+            variance_share_truncated[k] = 0.0
+            component_metadata.append(
+                PcaComponentInfo(
+                    component_name=component_names[k],
+                    quality_flag="degenerate",
+                    quality_note=(
+                        f"variance_share={var_share:.3e} < threshold "
+                        f"{degenerate_variance_share_threshold:.0e}; "
+                        "loadings + scores suppressed to NaN.  Likely a "
+                        "rank-deficient panel (e.g., a tenor that is a "
+                        "linear combination of others)."
+                    ),
+                )
+            )
+            continue
+
+        # Apply locked sign anchor: flip so loading at longest tenor
+        # is non-negative.
+        long_load = loadings[longest_idx, k]
+        eps = 1e-12
+        flip = False
+        flag = "ok"
+        note: Optional[str] = None
+        if long_load > eps:
+            flip = False
+        elif long_load < -eps:
+            flip = True
+        else:
+            # Tie-break: longest minus shortest difference
+            diff = loadings[longest_idx, k] - loadings[shortest_idx, k]
+            if diff > eps:
+                flip = False
+            elif diff < -eps:
+                flip = True
+            else:
+                flip = False
+                flag = "sign_anchor_tied"
+                note = (
+                    "loadings at longest tenor exactly zero AND "
+                    "(longest - shortest) exactly zero; no sign flip "
+                    "applied.  Component direction is ambiguous; "
+                    "downstream interpretation may need a different "
+                    "anchor."
+                )
+
+        if flip:
+            loadings[:, k] *= -1.0
+            scores[:, k] *= -1.0
+
+        variance_share_truncated[k] = var_share
+        component_metadata.append(
+            PcaComponentInfo(
+                component_name=component_names[k],
+                quality_flag=flag,
+                quality_note=note,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Assemble pandas outputs
+    # ------------------------------------------------------------------
+    loadings_df = pd.DataFrame(
+        loadings, index=list(tenors_ordered), columns=component_names,
+    )
+    scores_df = pd.DataFrame(
+        scores, index=changes.index, columns=component_names,
+    )
+    variance_share_s = pd.Series(
+        variance_share_truncated, index=component_names, name="variance_share",
+    )
+    cumulative_share_s = variance_share_s.cumsum().rename(
+        "cumulative_variance_share"
+    )
+
+    return PcaResult(
+        loadings=loadings_df,
+        factor_scores=scores_df,
+        variance_share=variance_share_s,
+        cumulative_variance_share=cumulative_share_s,
+        component_metadata=component_metadata,
+        n_observations_in_fit=n_obs,
+        n_tenors=n_tenors,
+        change_frequency_used=change_frequency,
+        sign_anchor_used=sign_anchor,
+        fit_window_start=fit_window_start,
+        fit_window_end=fit_window_end,
     )
