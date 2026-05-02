@@ -72,8 +72,9 @@ class RollingRegressionInput(BaseModel):
             "with even one regressor + constant; above ~2520 the data "
             "history may not support the window).  compute() returns a "
             "controlled error envelope when "
-            "regression_window_days < z_score_min_periods, mirroring "
-            "the zscore_custom small-window guard."
+            "regression_window_days < regression_min_periods (the YAML "
+            "convention), mirroring the zscore_custom small-window "
+            "guard's pattern."
         ),
     )
     lookback_days: int = Field(
