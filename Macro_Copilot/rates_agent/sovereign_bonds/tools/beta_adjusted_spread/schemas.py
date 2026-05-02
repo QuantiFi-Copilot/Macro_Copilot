@@ -179,8 +179,10 @@ class BetaAdjustedSpreadMetrics(BaseModel):
         description=(
             "Current residual `target − β·regressor − α`, converted "
             "to bps via *100, rounded per ``bps_round_decimals``.  "
-            "Positive ⇒ target rich vs the regression line; negative "
-            "⇒ target cheap.  None when the fit couldn't be computed."
+            "Positive ⇒ target yield ABOVE the regression-implied "
+            "fair value, i.e. target is CHEAP relative to the hedge "
+            "line; negative ⇒ target is RICH (yield below the line).  "
+            "None when the fit couldn't be computed."
         ),
     )
     current_residual_z_score: Optional[float] = Field(
