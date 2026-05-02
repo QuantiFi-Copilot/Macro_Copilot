@@ -50,7 +50,7 @@ tool:
 conventions:
   <key>:
     value: <scalar>              # bool / int / float / str
-    source: <documented tag>     # see architecture/methodology_sources.md
+    source: <documented tag>     # see docs/architecture/methodology_sources.md
     rationale: <one sentence>
     valid_range: [lo, hi]        # optional, numeric values only
 
@@ -243,11 +243,76 @@ same numeric default.
 ## Source-tag policy
 
 `Convention.source` is a non-empty string. The set of legitimate
-values is documented in `architecture/methodology_sources.md`. New
+values is documented in `docs/architecture/methodology_sources.md`. New
 source tags require a one-line entry there explaining what the tag
 means. At time of writing, the source field is enforced as a
 *non-empty string only* — strict enum enforcement is a planned
 tightening once the source set has stabilised.
+
+## Central-knob discipline (A13)
+
+Each tool exposes ONLY its central methodological choice as a user-
+facing input — the choice that defines what the tool IS.  All
+ancillary methodology stays in YAML and is NOT user-overridable in V1.
+
+This is the practical enforcement of the "deterministic mode" boundary:
+the LLM gets a small, well-typed input surface; the methodology stays
+locked in code + YAML.
+
+| Tool | Central knob (user input) | Ancillary (YAML, not user-overridable) |
+|---|---|---|
+| `curve_spread` | `curve_family`, `short_tenor`, `long_tenor`, `lookback_days` | z-score window, ddof, ffill, default field, rounding |
+| `yield_levels` | `curve_family`, `tenor`, `lookback_days` | z-score window, ddof, ffill, default field, rounding |
+| `butterfly` | `curve_family`, `short/belly/long_tenor`, `lookback_days` | z-score window, ddof, ffill, weights (50-50 locked), rounding |
+| `cross_market_spread` | `curve_family_1/2`, `tenor`, `lookback_days` | z-score window, ddof, ffill, rounding |
+| `curve_move_classifier` | `curve_family`, `front/back_tenor`, `lookback_period` | classifier thresholds, ffill, rounding |
+| `zscore_custom` | `curve_family`, `tenor`, **`z_score_window_days`** | z-score `min_periods`, `ddof`, `buffer_multiplier`, ffill, rounding |
+| `rolling_regression` | `target_spec`, `regressor_specs`, **`regression_window_days`** | `regression_min_periods`, `add_constant`, solver, ffill, rounding |
+
+Structural choices (formulas, sign conventions, anchoring, solver) are
+locked in code or guarded with the `NotImplementedError`
+honest-placeholder pattern documented under
+`MethodologyMeta.planned_extensions`.  See the existing
+`trailing_range_window_days = 252` guard in any of the migrated tools
+for the canonical example.
+
+## Tool category — honesty mechanism
+
+`ToolMeta.category` (added by the v6 sprint) is a `Literal`-enforced
+field on every tool's `config.yaml`.  Two values:
+
+### `desk_invariant_primitive`
+
+A trader on any major rates desk would recognise the tool's name and
+know what its inputs and outputs are without a methodology preface.
+Configuration is calibration, not interpretation.
+
+Examples:
+- `curve_spread` ("2s10s")
+- `yield_levels` ("where's UST 10Y")
+- `butterfly` ("2s5s10s fly")
+- `cross_market_spread` ("BTP-Bund 10Y")
+- `curve_move_classifier` ("today's move was a bull-steepener")
+- `zscore_custom` ("60-day z-score of UST 10Y")
+- `beta_adjusted_spread` ("beta-adjusted RV of BTP vs Bund")
+- `half_life` ("OU half-life of the residual")
+
+### `quant_standard_analytic`
+
+Textbook quant primitive whose interpretation is universal but whose
+configuration must be specified before use.  A trader recognises the
+concept; a methodology preface is needed before consuming the output.
+
+Examples:
+- `yield_change_decomposition_simple` (caller-supplied groupings)
+- `rolling_regression` (window, regressor selection are central choices)
+- `pca_yield_curve` (lookback, change frequency, n_components)
+- `yield_change_attribution_pca` (depends on PCA loadings)
+
+The default for `category` is `desk_invariant_primitive` so the
+existing five migrated tools keep their identity without explicit YAML
+edits.  Any new tool must declare its category explicitly when it does
+not fit the default.
 
 ## Doing things this way matters
 

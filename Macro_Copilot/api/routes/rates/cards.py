@@ -523,7 +523,7 @@ def regimes(
     Internally we now call the renamed ``classify_curve_move_compute``
     and translate the new ``classification`` / ``description`` field
     names to the user-facing ``regime_tag`` / ``regime_description``
-    at this boundary.  See architecture/tool_architecture.md for the
+    at this boundary.  See docs/architecture/tool_architecture.md for the
     rename rationale (single-observation classifier, not a persistence-
     state regime detector)."""
     curve_list = (

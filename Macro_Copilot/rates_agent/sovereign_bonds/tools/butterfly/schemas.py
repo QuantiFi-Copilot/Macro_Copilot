@@ -2,7 +2,7 @@
 
 Migrated from ``rates_agent/sovereign_bonds/tools/schemas/butterfly.py``
 into the per-tool-folder pattern established by the tool-config refactor
-pilot (architecture/tool_architecture.md).
+pilot (docs/architecture/tool_architecture.md).
 
 Validation layering
 -------------------

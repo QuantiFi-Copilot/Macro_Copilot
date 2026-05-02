@@ -4,7 +4,7 @@ cross-market sovereign yield differential tool.
 
 Migrated from the legacy single-file
 ``rates_agent/sovereign_bonds/tools/cross_market_spread.py`` into the
-per-tool-folder pattern (architecture/tool_architecture.md).
+per-tool-folder pattern (docs/architecture/tool_architecture.md).
 
 External callers reach the public API via this package's path:
 

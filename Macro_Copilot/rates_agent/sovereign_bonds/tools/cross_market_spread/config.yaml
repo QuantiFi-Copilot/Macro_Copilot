@@ -9,7 +9,7 @@
 # YAML keeps the methodology authoritative across them.
 #
 # In V1 deterministic mode there is NO LLM-facing override path for
-# conventions.  See architecture/tool_architecture.md.
+# conventions.  See docs/architecture/tool_architecture.md.
 #
 # Cross-config consistency
 # ------------------------

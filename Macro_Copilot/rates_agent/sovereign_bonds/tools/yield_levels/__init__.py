@@ -6,7 +6,7 @@ Migrated from the legacy single-file
 ``rates_agent/sovereign_bonds/tools/yield_levels.py`` into the per-
 tool-folder pattern established by the tool-config refactor pilot.
 See ``compute.py`` for the methodology + backward-compat detail and
-``architecture/tool_architecture.md`` for the canonical layout.
+``docs/architecture/tool_architecture.md`` for the canonical layout.
 
 External callers reach the public API via this package's path:
 

@@ -10,7 +10,7 @@
 #
 # In V1 deterministic mode there is NO LLM-facing override path for
 # conventions; the LLM cannot ask for non-standard thresholds.  See
-# architecture/tool_architecture.md.
+# docs/architecture/tool_architecture.md.
 # =============================================================================
 
 tool:

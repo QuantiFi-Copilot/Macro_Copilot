@@ -55,6 +55,11 @@ from rates_agent.sovereign_bonds.tools.butterfly import (  # noqa: E402
     CONFIG_PATH as BUTTERFLY_CONFIG_PATH,
     calculate_butterfly,
 )
+from rates_agent.sovereign_bonds.tools.zscore_custom import (  # noqa: E402
+    CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
+    ZscoreCustomInput,
+    calculate_zscore_custom,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.config import load_tool_config  # noqa: E402
 
@@ -636,6 +641,104 @@ def scan_extremes_tool(
         return json.dumps(result, default=str)
 
     return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 7: zscore_custom
+# ===========================================================================
+@mcp.tool()
+def zscore_custom_tool(
+    curve_family: str,
+    tenor: str,
+    z_score_window_days: int,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Compute a rolling z-score on one sovereign yield series using a
+    user-supplied window (set per request).
+
+    Distinct from get_yield_levels_tool, which always uses the bundled
+    252-day window.  This tool exists so a desk can ask for a 60-day
+    or 504-day z-score on the same point without methodology rework.
+
+    Use this tool when the user asks about:
+    - Custom-window z-score   (e.g. "What's the 60-day z-score of UST 10Y?")
+    - Tactical signals        (e.g. "Show me a 90-day z-score for Bund 5Y")
+    - Multi-horizon analysis  (e.g. "Compare 60d vs 252d z-scores for BTP 10Y")
+
+    Parameters
+    ----------
+    curve_family : str
+        Curve identifier.  Examples: 'UST', 'DE_BUND', 'UK_GILT', 'JGB',
+        'FR_OAT', 'IT_BTP', 'ES_BONO', 'CANADA_GOVT', 'AU_GOVT'.
+    tenor : str
+        Tenor point — e.g. '1Y', '2Y', '5Y', '7Y', '10Y', '20Y', '30Y'.
+    z_score_window_days : int
+        Rolling window length in trading days for the z-score.  This is
+        the tool's central methodological choice — set per request.
+        Constrained to [20, 1260].  Typical desk values: 60 (tactical),
+        126 (quarterly), 252 (annual), 504 (two-year).
+    lookback_days : int, optional
+        Calendar days of *displayed* z-score history (default 365).
+        Does NOT control the rolling window length — that is
+        z_score_window_days.
+    field_name : str, optional
+        Bloomberg field mnemonic.  Leave as the default empty string ""
+        to use the bundled ``default_field_name`` convention from
+        zscore_custom/config.yaml (currently 'YLD_YTM_MID').  Mirrors
+        the empty-string sentinel pattern used by curve_move_classifier
+        and yield_levels.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's default_field_name.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = ZscoreCustomInput(
+            curve_family=curve_family,
+            tenor=tenor,
+            z_score_window_days=z_score_window_days,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the zscore_custom tool's bundled config explicitly so the
+    # config dependency is observable at the call site.  load_tool_config
+    # caches by path, so this is a free lookup after the first call
+    # within the MCP subprocess's lifetime.
+    try:
+        zc_config = load_tool_config(ZSCORE_CUSTOM_CONFIG_PATH)
+        result = calculate_zscore_custom(
+            engine=engine, params=params, config=zc_config,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_zscore_custom for %s %s (window=%d)",
+                         params.curve_family, params.tenor, params.z_score_window_days)
+        return json.dumps({"error": f"Calculation failed for {params.curve_family} "
+                           f"{params.tenor} (z_score_window_days="
+                           f"{params.z_score_window_days}): {exc}"}, default=str)
+
+    logger.info("Tool call complete: %s %s window=%d → %s",
+                params.curve_family, params.tenor, params.z_score_window_days,
+                "error" if "error" in result else "OK")
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Withhold the time_series payload from the LLM (frontend-only).
+    llm_response = {"current_metrics": result.get("current_metrics", {})}
+    ts_rows = len(result.get("time_series", {}).get("rows", []))
+    if ts_rows:
+        logger.info("Withheld %d time_series rows from LLM context (frontend-only data).", ts_rows)
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================
