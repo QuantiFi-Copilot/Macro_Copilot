@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import ValidationError
 
@@ -60,7 +60,13 @@ from rates_agent.sovereign_bonds.tools.zscore_custom import (  # noqa: E402
     ZscoreCustomInput,
     calculate_zscore_custom,
 )
+from rates_agent.sovereign_bonds.tools.rolling_regression import (  # noqa: E402
+    CONFIG_PATH as ROLLING_REGRESSION_CONFIG_PATH,
+    RollingRegressionInput,
+    calculate_rolling_regression,
+)
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
+from shared.schemas import SeriesSpec  # noqa: E402
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -738,6 +744,114 @@ def zscore_custom_tool(
     ts_rows = len(result.get("time_series", {}).get("rows", []))
     if ts_rows:
         logger.info("Withheld %d time_series rows from LLM context (frontend-only data).", ts_rows)
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 8: rolling_regression  (first nested-input MCP wrapper)
+# ===========================================================================
+@mcp.tool()
+def rolling_regression_tool(
+    target_spec: SeriesSpec,
+    regressor_specs: List[SeriesSpec],
+    regression_window_days: int,
+    lookback_days: int = 365,
+) -> str:
+    """Run a rolling OLS regression of one sovereign yield series on
+    one or more regressor yield series, with a user-supplied window.
+
+    Use this tool when the user asks about:
+    - Hedge ratio between two yields  (e.g. "What's the rolling beta
+      of BTP 10Y on Bund 10Y over the last year?")
+    - Beta-adjusted RV signal         (residual after regressing one
+      yield on another)
+    - Multi-regressor decomposition   (e.g. "Regress UST 10Y on Bund
+      10Y AND Gilt 10Y; show me the residual.")
+
+    Distinct from the simpler bivariate-only `beta_adjusted_spread`
+    tool (when that lands): rolling_regression supports any number of
+    regressors and exposes the full betas + alpha + residual + R² +
+    condition-flag time series.
+
+    Parameters
+    ----------
+    target_spec : SeriesSpec
+        The y in y on X.  ``{curve_family, tenor, field_name?}``.
+        ``field_name=None`` falls through to the YAML's
+        default_field_name (currently 'YLD_YTM_MID').
+    regressor_specs : List[SeriesSpec]
+        One or more regressor specs.  Each is also a
+        ``{curve_family, tenor, field_name?}``.  Order is preserved
+        in the output betas dictionary.  Target's (curve_family,
+        tenor) cannot equal any regressor's — that would be a
+        regression of a series on itself (degenerate).
+    regression_window_days : int
+        Trailing-window length in trading-day rows for each rolling
+        fit.  This is the tool's central methodological choice — set
+        per request.  Constrained to [10, 2520].  Typical desk
+        values: 60 (tactical), 252 (annual), 504 (two-year).
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling window length — that is
+        regression_window_days.
+    """
+    try:
+        params = RollingRegressionInput(
+            target_spec=target_spec,
+            regressor_specs=regressor_specs,
+            regression_window_days=regression_window_days,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the rolling_regression tool's bundled config explicitly so
+    # the dependency is observable at the call site.  load_tool_config
+    # caches by path, so this is a free lookup after the first call
+    # within the MCP subprocess's lifetime.
+    try:
+        rr_config = load_tool_config(ROLLING_REGRESSION_CONFIG_PATH)
+        result = calculate_rolling_regression(
+            engine=engine, params=params, config=rr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_rolling_regression for "
+            "target=%s regressors=%s window=%d",
+            params.target_spec, params.regressor_specs,
+            params.regression_window_days,
+        )
+        return json.dumps({"error": f"Calculation failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: rolling_regression target=%s_%s "
+        "regressors=%d window=%d → %s",
+        params.target_spec.curve_family, params.target_spec.tenor,
+        len(params.regressor_specs), params.regression_window_days,
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Withhold time-series payloads from the LLM (frontend / chart
+    # consumer only).  Echo the snapshot only.
+    llm_response = {"current_metrics": result.get("current_metrics", {})}
+    n_beta_series = len(result.get("time_series_betas", []))
+    n_residual_rows = len(result.get("time_series_residual", {}).get("rows", []))
+    if n_beta_series or n_residual_rows:
+        logger.info(
+            "Withheld time-series payload from LLM context "
+            "(%d beta series, %d residual rows).",
+            n_beta_series, n_residual_rows,
+        )
     return json.dumps(llm_response, default=str)
 
 

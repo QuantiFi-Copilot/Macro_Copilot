@@ -1,0 +1,245 @@
+# =============================================================================
+# rolling_regression_tool — tool configuration
+# =============================================================================
+# Canonical record of the rolling_regression tool's conventions and
+# methodology.  Loaded by `shared.config.load_tool_config` at compute()
+# time.  The MCP wrapper passes this config explicitly so the
+# dependency is observable at the call site.
+#
+# Central knob (A13)
+# ------------------
+# This tool's central methodological choice — the one input that defines
+# what the tool IS — is `regression_window_days` (plus the target/
+# regressor specs).  That field is the user's primary input.  Every
+# other knob (`regression_min_periods`, `add_constant`,
+# `regression_solver`, `condition_number_warning_threshold`,
+# `ffill_limit_days`, rounding) lives here in YAML and is NOT user-
+# overridable in V1.  See A13 in docs/architecture/tool_architecture.md.
+#
+# Cross-config consistency
+# ------------------------
+# `ffill_limit_days` and `default_field_name` are declared by multiple
+# tools — the cross-config lint enforces value agreement.  The
+# regression-specific keys (regression_min_periods, add_constant,
+# regression_solver, condition_number_warning_threshold,
+# r_squared_round_decimals, beta_round_decimals,
+# residual_round_decimals) are unique to this tool today and the next
+# sprint's beta_adjusted_spread; lint will compare them once both
+# tools declare them.
+# =============================================================================
+
+tool:
+  name: rolling_regression_tool
+  domain: sovereign_bonds
+  description: |
+    Rolling ordinary-least-squares regression of one sovereign yield
+    series on one or more regressor yield series, with a user-
+    supplied window length.  Returns the time series of betas (one
+    per regressor), intercept, residual, in-window R², plus a
+    condition-number quality flag.  Built for hedge-ratio / RV
+    workflows — the `beta_adjusted_spread` tool wraps this
+    primitive for the canonical bivariate case.
+  category: quant_standard_analytic
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Minimum non-NaN observations within a window before the rolling
+  # OLS emits a row
+  # ---------------------------------------------------------------------------
+  regression_min_periods:
+    value: 30
+    source: team_judgment_pending_review
+    rationale: >-
+      Smallest window count where OLS standard errors are not
+      degenerate.  ~6 trading weeks of data; smaller min_periods
+      would silently emit volatile betas at the start of the
+      displayed window.  Constrained against the user's
+      `regression_window_days` in compute() — passing
+      regression_window_days < regression_min_periods returns a
+      controlled error envelope (same shape as zscore_custom's
+      small-window guard).
+    valid_range: [10, 252]
+
+  # ---------------------------------------------------------------------------
+  # Whether to fit an intercept
+  # ---------------------------------------------------------------------------
+  # Structural choice (not calibration): no-intercept regression is a
+  # different statistical model with different interpretation.  Locked
+  # at True in V1; documented under planned_extensions as a sibling
+  # tool.  compute() raises NotImplementedError if set to False.
+  add_constant:
+    value: true
+    source: industry_standard_with_intercept
+    rationale: >-
+      With-intercept OLS.  No-intercept regression is a structurally
+      different model whose alpha is forced to zero rather than
+      estimated; that is a sibling tool, not a configuration knob.
+      compute() raises NotImplementedError on `add_constant: false`
+      with a pointer to methodology.planned_extensions.
+
+  # ---------------------------------------------------------------------------
+  # Linear-system solver — pinned for bit-stable behaviour
+  # ---------------------------------------------------------------------------
+  # Structural choice (not calibration): different solvers can produce
+  # different beta values on near-singular X.  numpy.linalg.lstsq with
+  # rcond=None uses an SVD-based truncation rule that is the most
+  # numerically stable choice and is locked across numpy versions.
+  # compute() raises NotImplementedError on any other value.
+  regression_solver:
+    value: numpy_lstsq_default
+    source: numerical_stability_lock
+    rationale: >-
+      numpy.linalg.lstsq(X, y, rcond=None) — SVD-based, matches numpy's
+      default behaviour (>= 1.14).  Pinning the solver string + rcond
+      gives bit-stable behaviour across numpy versions.  The
+      normal-equation form (np.linalg.solve(X.T@X, X.T@y)) is NOT
+      used because it amplifies floating-point error on near-rank-
+      deficient X.  compute() raises NotImplementedError on any
+      other value with a pointer to planned_extensions.
+
+  # ---------------------------------------------------------------------------
+  # Condition-number gate — rank-deficiency catcher
+  # ---------------------------------------------------------------------------
+  condition_number_warning_threshold:
+    value: 10000000000.0   # 1e10
+    source: numerical_stability_lock
+    rationale: >-
+      X-matrix condition numbers above this threshold trigger a
+      condition_flag of 1 for that t and emit NaN coefficients
+      rather than fitting on a near-singular panel.  Typical
+      well-conditioned regression panels sit around 1e2..1e4;
+      values above 1e10 mean X is effectively rank-deficient at
+      numpy's default float64 precision.  This catches the
+      multicollinearity case where a meaningless beta would
+      otherwise be emitted silently.
+    valid_range: [100.0, 1000000000000.0]   # 1e2 .. 1e12
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Same as the other rates tools; the consistency lint
+      enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — beta (unitless ratio)
+  # ---------------------------------------------------------------------------
+  beta_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round beta output to 4 decimals.  Display precision; further
+      decimals are noise given the underlying yield precision.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — alpha + residual (yield percent)
+  # ---------------------------------------------------------------------------
+  alpha_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round alpha output (intercept, in yield-percent units) to 4
+      decimals.  Matches the yield_round_decimals convention used by
+      zscore_custom.
+    valid_range: [0, 8]
+
+  residual_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round residual output (in yield-percent units, NOT bps) to 4
+      decimals.  The bivariate downstream tool
+      (beta_adjusted_spread) explicitly converts to bps via *100;
+      this primitive returns the residual in y's native units.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — R² (unitless ratio)
+  # ---------------------------------------------------------------------------
+  r_squared_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round R² to 4 decimals.  Display precision.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  Each (curve_family, tenor) spec in target_spec /
+      regressor_specs may override field_name independently; when a
+      spec's field_name is None, this YAML default applies for that
+      spec.  Same sentinel pattern as the other rates tools.
+
+methodology:
+  what_it_does: |
+    Fetches the target yield series and one-or-more regressor yield
+    series, aligns them on a shared trading-day index (with up to
+    `ffill_limit_days` of holiday-gap forward-fill), and runs a
+    rolling OLS of target on regressors using the user's
+    `regression_window_days`.  Returns the time series of betas
+    (one per regressor), intercept (alpha, in yield-percent),
+    residual (in yield-percent), in-window R², and a per-row
+    condition-number quality flag.
+
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%); alpha and residual
+       are in percent (NOT bps).  Downstream tools that need bps
+       outputs (e.g. beta_adjusted_spread) multiply by 100
+       explicitly."
+    - "Regression uses sample standard errors (homoskedasticity +
+       no autocorrelation assumed).  This primitive does NOT report
+       p-values or confidence intervals; if those are needed,
+       that's a sibling tool whose output schema is different."
+    - "OLS via numpy.linalg.lstsq(rcond=None) — SVD-based.  The
+       solver string is YAML-locked; alternatives are sibling
+       tools, not parameters."
+    - "Within each rolling window, rows where ANY column (target
+       OR any regressor) is NaN are dropped.  If the surviving
+       count is less than regression_min_periods, that window's
+       fit emits NaN."
+    - "X-matrix condition numbers above
+       condition_number_warning_threshold trigger a quality flag
+       and NaN coefficients for that t.  This catches
+       multicollinearity (e.g., requesting two adjacent tenors as
+       regressors) before silently emitting meaningless betas."
+    - "lookback_days controls the *display* window only.  The
+       rolling regression window length is the user's central
+       knob (`regression_window_days`)."
+
+  citations:
+    - "Veronesi, P. (2010). Fixed Income Securities, Ch. 18 — beta-
+       adjusted RV via rolling regression."
+
+  planned_extensions:
+    - "No-intercept regression as a sibling tool.  compute() today
+       raises NotImplementedError if add_constant is set to false;
+       the sibling tool would expose the same input shape but force
+       alpha to zero and emit a different output schema (no alpha
+       field).  Different statistical model, not a parameter."
+    - "Robust regression (Huber, Theil-Sen) — sibling tool.  Today's
+       OLS is sensitive to outlier rows; a robust variant would
+       down-weight them.  Different methodology, different output
+       interpretation."
+    - "State-space regression with Kalman filter — Bucket 2 sibling
+       (DynamicNelsonSiegel-style time-varying betas with explicit
+       process noise).  Today's rolling OLS is the deterministic
+       analogue."
+    - "Inferential outputs (p-values, t-stats, robust standard
+       errors) — sibling tool that surfaces the OLS assumptions
+       explicitly.  This primitive returns point estimates only,
+       per scope discipline."
+    - "Heteroskedasticity-corrected residuals (White / HAC).  Today's
+       residual is the raw fit residual."
