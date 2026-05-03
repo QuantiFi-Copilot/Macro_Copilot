@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   ArrowUpRight,
   Ellipsis,
@@ -13,7 +14,7 @@ import { useCopilot } from '@/hooks/useCopilot';
 import { ChatMessageBubble } from '@/components/copilot/ChatMessage';
 import { cn } from '@/utils/cn';
 
-const STARTER_PROMPTS = [
+const RATES_STARTER_PROMPTS = [
   "Summarize today's rate moves",
   'Compare US and EUR 2s10s spreads',
   "What's implied by next FOMC meeting?",
@@ -21,7 +22,26 @@ const STARTER_PROMPTS = [
   'What is the BTP-Bund 10Y spread?',
 ];
 
+const FX_STARTER_PROMPTS = [
+  'What moved in FX today?',
+  'Scan G10 FX for z-score extremes',
+  'Show EURUSD spot level and momentum',
+  'Rank 1M FX carry across G10',
+  'Which FX pairs look stretched versus history?',
+];
+
 export function ChatDrawer() {
+  const location = useLocation();
+  const isFxPage = location.pathname.startsWith('/fx');
+
+  const starterPrompts = isFxPage ? FX_STARTER_PROMPTS : RATES_STARTER_PROMPTS;
+  const readyCopy = isFxPage
+    ? 'Ready. Ask for FX spot levels, momentum, z-score extremes, or forward-implied carry.'
+    : 'Ready. Ask for yield levels, curve spreads, cross-market RV, or regime analysis.';
+  const inputPlaceholder = isFxPage
+    ? 'Ask anything about FX...'
+    : 'Ask anything about rates...';
+
   const { messages, sendMessage, connectionStatus, isThinking, clearMessages } =
     useCopilot();
 
@@ -86,14 +106,12 @@ export function ChatDrawer() {
       ? 'bg-amber-400 animate-pulse'
       : 'bg-coral-400';
 
-  // Show starter prompts only when no messages
   const showStarters = messages.length === 0;
 
   return (
     <aside className="panel relative flex h-full min-h-0 flex-col overflow-hidden">
       <div className="panel-divider-r absolute left-0 top-0 h-full w-px" />
 
-      {/* ────────── Header ────────── */}
       <div className="flex h-[64px] shrink-0 items-center justify-between px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-line-soft bg-gradient-to-br from-ice-500/25 to-ice-700/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
@@ -128,29 +146,24 @@ export function ChatDrawer() {
 
       <div className="mx-5 shrink-0 border-b border-line-subtle" />
 
-      {/* ────────── Conversation area ────────── */}
       <div
         ref={scrollRef}
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-5 pb-4"
       >
-        {/* Empty state: starters + mode hint */}
         {showStarters && (
           <>
-            {/* Welcome */}
             <div className="relative">
               <div className="absolute -left-1 top-2 h-6 w-[2px] rounded-full bg-gradient-to-b from-ice-400 to-transparent" />
               <div className="kicker mb-1.5 pl-2 text-fg-muted">Copilot</div>
               <p className="pl-2 text-[13px] leading-[1.55] text-fg-primary">
-                Ready. Ask for yield levels, curve spreads, cross-market RV, or
-                regime analysis.
+                {readyCopy}
               </p>
             </div>
 
-            {/* Starter prompts */}
             <div>
               <div className="kicker mb-2.5 text-fg-muted">Starter prompts</div>
               <div className="space-y-1.5">
-                {STARTER_PROMPTS.map((prompt) => (
+                {starterPrompts.map((prompt) => (
                   <button
                     key={prompt}
                     type="button"
@@ -168,7 +181,6 @@ export function ChatDrawer() {
               </div>
             </div>
 
-            {/* Mode hint */}
             <div className="rounded-lg border border-line-subtle bg-white/[0.008] p-3.5">
               <div className="flex items-start gap-2.5">
                 <TerminalSquare size={13} className="mt-0.5 text-fg-muted" />
@@ -186,13 +198,11 @@ export function ChatDrawer() {
           </>
         )}
 
-        {/* Messages */}
         {messages.map((msg) => (
           <ChatMessageBubble key={msg.id} message={msg} />
         ))}
       </div>
 
-      {/* ────────── Composer ────────── */}
       <div className="shrink-0 px-5 pb-5 pt-4">
         <div
           className={cn(
@@ -202,7 +212,6 @@ export function ChatDrawer() {
               : 'border-coral-400/20 bg-coral-400/[0.03]',
           )}
         >
-          {/* Connection indicator */}
           <div className="shrink-0 rounded-md p-1 text-fg-muted">
             {isConnected ? (
               <Wifi size={13} className="text-fg-faint" />
@@ -219,7 +228,7 @@ export function ChatDrawer() {
             onKeyDown={handleKeyDown}
             placeholder={
               isConnected
-                ? 'Ask anything about rates...'
+                ? inputPlaceholder
                 : isConnecting
                   ? 'Connecting to copilot...'
                   : 'Copilot disconnected'
