@@ -1,3 +1,6 @@
 UI/macro-copilot-dashboard-polished/node_modules
+UI/macro-copilot-dashboard-polished/dist
+UI/macro-copilot-dashboard-polished/*.tsbuildinfo
+*.save
 secure_keys/
 .env

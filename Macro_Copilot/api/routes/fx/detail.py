@@ -16,6 +16,11 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
+from fx_agent.forwards.tools.forward_curve.schemas import (
+    FXForwardCurveInput,
+    FXForwardCurveOutput,
+)
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput, FXCarryOutput
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
@@ -135,4 +140,30 @@ def fx_carry_detail(
         raise HTTPException(status_code=503, detail=f"FX carry failed: {exc}")
 
     _tool_result_or_raise(result, f"FX carry for tenor={tenor}")
+    return result
+
+
+@router.get(
+    "/detail/forward-curve",
+    response_model=FXForwardCurveOutput,
+    summary="FX Forward Curve Detail (workspace)",
+)
+def fx_forward_curve_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+):
+    try:
+        params = FXForwardCurveInput(pair=pair)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_forward_curve(params=params)
+    except ValueError as exc:
+        logger.info("detail/forward-curve: no data for %s", pair)
+        raise HTTPException(status_code=404, detail=f"FX forward curve for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/forward-curve: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX forward curve failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX forward curve for {pair}")
     return result

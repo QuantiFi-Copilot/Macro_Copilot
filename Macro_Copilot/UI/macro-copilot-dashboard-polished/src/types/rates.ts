@@ -3,7 +3,11 @@
 // These types mirror the FastAPI Pydantic response models exactly.
 // Any change to the API schemas must be reflected here.
 // ============================================================================
-
+import {
+  FXCarryResponse,
+  FXForwardCurveResponse,
+  FXSpotLevelResponse,
+} from './fx';  // Assure-toi que le chemin est correct
 // --- Shared ---
 
 export type SparklinePoint = {
@@ -275,8 +279,25 @@ export type WorkspaceViewType =
   | 'cross_market'
   | 'butterfly'
   | 'yield'
-  | 'forward'      // OIS forward — backend endpoint TBD; UI ready for it
+  | 'forward'
   | 'regime'
-  | 'scanner';
+  | 'scanner'
+  | 'fx_spot'
+  | 'fx_carry'
+  | 'fx_forward_curve';
 
 export type WorkspaceParams = Record<string, string>;
+
+// ============================================================================
+// WorkspaceData Type
+// Adding fx_spot and fx_carry to the WorkspaceData type
+export type WorkspaceData =
+  | { kind: 'spread'; data: CurveSpreadOutput }
+  | { kind: 'cross_market'; data: CrossMarketSpreadOutput }
+  | { kind: 'butterfly'; data: ButterflyOutput }
+  | { kind: 'yield'; data: YieldLevelOutput }
+  | { kind: 'regime'; data: RegimeOutput }
+  | { kind: 'scanner'; data: ScannerResponse }
+  | { kind: 'fx_spot'; data: FXSpotLevelResponse }  // Ajouter cette ligne
+  | { kind: 'fx_carry'; data: FXCarryResponse }   // Ajouter cette ligne
+  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse };

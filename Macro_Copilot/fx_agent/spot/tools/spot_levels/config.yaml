@@ -1,22 +1,67 @@
-tool_name: fx_spot_levels
-version: "0.1.0"
+tool:
+  name: fx_spot_levels_tool
+  domain: fx
+  description: >
+    Single-pair FX spot snapshot: current spot, daily/weekly/monthly
+    percentage changes, 252-observation z-score, trailing range and percentile.
+
+conventions:
+  default_field_name:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Bloomberg PX_LAST is the canonical daily spot observation.
+
+  lookback_days_default:
+    value: 365
+    source: team_judgment_pending_review
+    rationale: One calendar year is the default display window for spot context.
+    valid_range: [30, 7300]
+
+  z_score_window_observations:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: 252 trading observations approximates a one-year rolling window.
+    valid_range: [60, 1260]
+
+  z_score_min_observations:
+    value: 20
+    source: team_judgment_pending_review
+    rationale: Emit a rough spot z-score once at least one trading month is present.
+    valid_range: [20, 252]
+
+  daily_change_periods:
+    value: 1
+    source: trading_day_convention
+    rationale: One observation back for daily percentage change.
+    valid_range: [1, 5]
+
+  weekly_change_periods:
+    value: 5
+    source: trading_day_convention
+    rationale: Five observations approximates one trading week.
+    valid_range: [5, 10]
+
+  monthly_change_periods:
+    value: 21
+    source: trading_day_convention
+    rationale: Twenty-one observations approximates one trading month.
+    valid_range: [20, 30]
+
+  percentile_window_observations:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: Spot percentile is measured over the same one-year window as z-score.
+    valid_range: [60, 1260]
 
 methodology:
-  default_field_name: PX_LAST
-  lookback_days_default: 365
-  z_score_window_observations: 252
-  z_score_min_observations: 20
-  daily_change_periods: 1
-  weekly_change_periods: 5
-  monthly_change_periods: 21
-  percentile_window_observations: 252
-  pct_change_units: percent
-  rounding:
-    spot: 6
-    pct_change: 3
-    z_score: 3
-    percentile: 1
-
-warnings:
-  insufficient_zscore_observations: true
-  missing_data_allowed: true
+  what_it_does: >
+    Fetches one FX spot series and returns a current snapshot with period
+    percentage changes, one-year rolling z-score, one-year high/low/percentile,
+    and observation count.
+  assumptions:
+    - "Spot pairs are stored in Bloomberg-style compact pair notation, e.g. EURUSD."
+    - "Percentage changes are computed from raw spot ratios, not log returns."
+    - "JPY pairs use the same spot-level math; only display precision differs in the UI."
+  citations: []
+  planned_extensions:
+    - "Move compute() to load this YAML directly so all conventions become single-source."

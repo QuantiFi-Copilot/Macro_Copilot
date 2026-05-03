@@ -89,14 +89,13 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
-    # ── Future agents ──────────────────────────────────────────────
-    # "fx_agent": {
-    #     "transport": "stdio",
-    #     "command": _PYTHON,
-    #     "args": ["-m", "fx_agent.mcp_server"],
-    #     "cwd": str(PROJECT_ROOT),
-    #     "env": _MCP_SUBPROCESS_ENV,
-    # },
+    "fx_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "fx_agent.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
 }
 
 
@@ -119,6 +118,9 @@ DOMAIN_MCP_SERVERS: dict = {
     },
     Domain.OIS: {
         "ois": MCP_SERVERS["ois_agent"],
+    },
+    Domain.FX: {
+        "fx": MCP_SERVERS["fx_agent"],
     },
 }
 

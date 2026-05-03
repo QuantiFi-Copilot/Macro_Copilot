@@ -12,6 +12,9 @@ const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   calculate_cross_market_spread_tool: 'Cross-market chart',
   calculate_butterfly_tool: 'Butterfly decomposition',
   scan_extremes_tool: 'Scanner results & heatmap',
+  get_fx_spot_level_tool: 'FX spot snapshot',
+  get_fx_carry_tool: 'FX carry ranking',
+  get_fx_forward_curve_tool: 'FX forward curve',
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {

@@ -1,4 +1,35 @@
-status: scaffolded
-implemented: false
-exposed_in_api: false
-notes: "Placeholder for future FX tool. Not currently used by production routes."
+tool:
+  name: fx_realized_vol_tool
+  domain: fx
+  description: >
+    Placeholder configuration for future FX realized-volatility analytics.
+
+conventions:
+  default_return_type:
+    value: log_return
+    source: quant_standard_analytic
+    rationale: Log returns are standard for realized volatility calculations.
+
+  annualization_days:
+    value: 252
+    source: trading_day_convention
+    rationale: Volatility is annualized on trading days for desk comparability.
+    valid_range: [250, 365]
+
+  default_window_observations:
+    value: 21
+    source: trading_day_convention
+    rationale: Twenty-one observations approximates one trading month.
+    valid_range: [5, 252]
+
+methodology:
+  what_it_does: >
+    Planned tool: compute annualized realized volatility from FX spot returns
+    over a user-selected rolling window.
+  assumptions:
+    - "Input series will come from fx_spot PX_LAST observations."
+    - "Window length should be the central user-facing methodological choice."
+  citations: []
+  planned_extensions:
+    - "Implement compute.py and schemas.py."
+    - "Compare realized volatility with fx_vol implied-vol playbook data."

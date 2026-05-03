@@ -74,6 +74,10 @@ _WORKSPACE_TOOLS: set[str] = {
     "calculate_ois_cross_market_spread_tool",
     "calculate_ois_forward_rate_tool",
     "scan_ois_extremes_tool",
+    # FX
+    "get_fx_spot_level_tool",
+    "get_fx_carry_tool",
+    "get_fx_forward_curve_tool",
     # rate_level is intentionally NOT in the workspace set — a single-
     # point yield/rate is better viewed inline in the chat than in a
     # dedicated analytical workspace (same decision as get_yield_levels
@@ -124,6 +128,16 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"{p.get('tenor', '10Y')} spread"
     ),
     "scan_ois_extremes_tool": lambda p: "Scanning OIS for z-score extremes",
+    # FX
+    "get_fx_spot_level_tool": lambda p: (
+        f"Fetching {p.get('pair', 'EURUSD')} spot snapshot"
+    ),
+    "get_fx_carry_tool": lambda p: (
+        f"Ranking FX carry for {p.get('tenor', '1M')}"
+    ),
+    "get_fx_forward_curve_tool": lambda p: (
+        f"Fetching {p.get('pair', 'EURUSD')} forward curve"
+    ),
 }
 
 

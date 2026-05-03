@@ -1,32 +1,42 @@
-tool_name: fx_carry
-version: "0.1.0"
+tool:
+  name: fx_carry_tool
+  domain: fx
+  description: >
+    Cross-sectional FX carry snapshot by forward tenor using latest spot and
+    forward points.
+
+conventions:
+  days_in_year:
+    value: 252
+    source: trading_day_convention
+    rationale: Annualized carry uses trading-day scaling for desk comparability.
+    valid_range: [250, 365]
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: One-month forwards are the default liquid carry lens.
+
+  jpy_forward_point_divisor:
+    value: 100
+    source: bloomberg_fx_forward_points_convention
+    rationale: JPY forward points are quoted in two decimal spot-point units.
+
+  non_jpy_forward_point_divisor:
+    value: 10000
+    source: bloomberg_fx_forward_points_convention
+    rationale: Most non-JPY G10 forward points are quoted in pips.
 
 methodology:
-  spot_field_name: PX_LAST
-  forward_field_name: PX_LAST
-  default_tenor: 1M
-  tenor_days:
-    1W: 5
-    1M: 21
-    3M: 63
-    6M: 126
-  annualization_days: 252
-  forward_points_conversion:
-    jpy_divisor: 100
-    default_divisor: 10000
-  carry_units:
-    carry_bps_spot: bps
-    carry_annualized_pct: percent
-  sorting:
-    field: carry_annualized_pct
-    ascending: false
-  rounding:
-    spot: 6
-    forward_points: 3
-    outright_forward: 6
-    carry_bps_spot: 2
-    carry_annualized_pct: 2
-
-warnings:
-  empty_result_allowed: true
-  missing_forward_pairs_allowed: true
+  what_it_does: >
+    Joins the latest spot observations to latest forward points for a requested
+    tenor, converts points to spot units, computes outright forwards, carry in
+    spot basis points and annualized percentage carry, then ranks rows by
+    annualized carry.
+  assumptions:
+    - "Positive forward points imply positive carry under this simple forward-implied lens."
+    - "Tenor day counts are fixed at 1W=5, 1M=21, 3M=63, 6M=126."
+    - "The output is a current cross-section, not a historical carry time series."
+  citations: []
+  planned_extensions:
+    - "Add historical carry changes and carry z-scores once forward curves are broader."

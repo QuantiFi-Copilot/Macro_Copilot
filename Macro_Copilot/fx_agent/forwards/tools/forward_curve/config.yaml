@@ -1,4 +1,37 @@
-status: scaffolded
-implemented: false
-exposed_in_api: false
-notes: "Placeholder for future FX tool. Not currently used by production routes."
+tool:
+  name: fx_forward_curve_tool
+  domain: fx
+  description: >
+    Single-pair FX forward curve snapshot across available tenors with forward
+    points, outright forwards and annualized carry.
+
+conventions:
+  days_in_year:
+    value: 252
+    source: trading_day_convention
+    rationale: Annualized carry uses trading-day scaling for desk comparability.
+    valid_range: [250, 365]
+
+  jpy_forward_point_divisor:
+    value: 100
+    source: bloomberg_fx_forward_points_convention
+    rationale: JPY forward points are quoted in two decimal spot-point units.
+
+  non_jpy_forward_point_divisor:
+    value: 10000
+    source: bloomberg_fx_forward_points_convention
+    rationale: Most non-JPY G10 forward points are quoted in pips.
+
+methodology:
+  what_it_does: >
+    For one FX pair, joins latest spot to the latest forward points across
+    available tenors, converts points to spot units, computes outright forwards,
+    carry in spot basis points, and annualized carry by tenor.
+  assumptions:
+    - "Supported tenor day counts are 1W=5, 1M=21, 3M=63, 6M=126."
+    - "Unknown tenors are dropped rather than annualized with an invented day count."
+    - "The output is a current curve snapshot, not a historical term-structure panel."
+  citations: []
+  planned_extensions:
+    - "Add full G10 tenor coverage to fx_forwards_curve.yml."
+    - "Expose a historical forward-curve time series once the UI supports curve charts."

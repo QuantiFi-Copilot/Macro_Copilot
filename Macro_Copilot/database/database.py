@@ -3,17 +3,29 @@ import pandas as pd
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy import create_engine, MetaData, Table, func, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.dialects.postgresql import insert
 
 
 # ==============================================================================
 # CORE DATABASE CONNECTION
 # ==============================================================================
+_DB_ENGINE: Engine | None = None
+
+
 def get_db_engine():
     """
-    Creates and returns a SQLAlchemy engine using environment variables.
+    Creates and returns a shared SQLAlchemy engine using environment variables.
     Defaults to the Docker Compose settings if variables are not set.
+
+    Tool functions call this helper directly, so returning a singleton matters:
+    otherwise each request creates a fresh connection pool and can exhaust
+    Postgres' max_connections after a few page refreshes.
     """
+    global _DB_ENGINE
+    if _DB_ENGINE is not None:
+        return _DB_ENGINE
+
     user = os.getenv("DB_USER", "quantuser")
     password = os.getenv("DB_PASSWORD", "myStrongPass")
     host = os.getenv("DB_HOST", "localhost")
@@ -21,7 +33,13 @@ def get_db_engine():
     db_name = os.getenv("DB_NAME", "macrodata")
 
     conn_str = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
-    return create_engine(conn_str, pool_size=10, max_overflow=20)
+    _DB_ENGINE = create_engine(
+        conn_str,
+        pool_size=5,
+        max_overflow=5,
+        pool_pre_ping=True,
+    )
+    return _DB_ENGINE
 
 
 # ==============================================================================

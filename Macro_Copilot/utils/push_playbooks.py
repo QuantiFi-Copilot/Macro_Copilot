@@ -15,7 +15,7 @@ def push_playbooks_to_gcp():
     
     # Dynamically find the key and playbooks relative to the project root
     gcp_key_path = project_root / "secure_keys" / "library-extractor-key.json"
-    playbooks_dir = project_root / "rates_agent" / "playbooks"
+    playbooks_dirs = sorted(project_root.glob("*_agent/playbooks"))
 
     # Verify the key actually exists before trying to authenticate
     if not gcp_key_path.exists():
@@ -32,14 +32,20 @@ def push_playbooks_to_gcp():
         print(f"Failed to authenticate with GCP: {e}")
         return
 
-    if not playbooks_dir.exists():
-        print(f"Error: Could not find playbooks directory at {playbooks_dir}")
+    if not playbooks_dirs:
+        print(f"Error: Could not find any *_agent/playbooks directory under {project_root}")
         return
 
-    print(f"Scanning for playbooks in: {playbooks_dir}")
-    
-    # Grab all .yml and .yaml files
-    playbook_files = list(playbooks_dir.glob("*.yml")) + list(playbooks_dir.glob("*.yaml"))
+    print("Scanning for playbooks in:")
+    for playbooks_dir in playbooks_dirs:
+        print(f"  - {playbooks_dir}")
+
+    # Grab all .yml and .yaml files from every agent-level playbook directory.
+    playbook_files = []
+    for playbooks_dir in playbooks_dirs:
+        playbook_files.extend(playbooks_dir.glob("*.yml"))
+        playbook_files.extend(playbooks_dir.glob("*.yaml"))
+    playbook_files = sorted(playbook_files)
     
     if not playbook_files:
         print("No YAML playbooks found to upload.")
@@ -50,8 +56,9 @@ def push_playbooks_to_gcp():
     success_count = 0
     for file_path in playbook_files:
         try:
+            agent_name = file_path.parent.parent.name
             # Create the 'playbooks/' folder structure inside the bucket
-            blob_name = f"playbooks/{file_path.name}"
+            blob_name = f"playbooks/{agent_name}/{file_path.name}"
             blob = bucket.blob(blob_name)
             
             # Execute the upload

@@ -31,6 +31,18 @@ import type {
   YieldLevelOutput,
 } from '@/types/rates';
 
+import {
+  fetchDetailFXCarry,
+  fetchDetailFXForwardCurve,
+  fetchDetailFXSpotLevel,
+} from '@/services/fxApi';
+
+import type {
+  FXCarryResponse,
+  FXForwardCurveResponse,
+  FXSpotLevelResponse,
+} from '@/types/fx';
+
 // Discriminated union — each view returns its own detail payload type so
 // downstream view components can narrow without `any`.
 export type WorkspaceData =
@@ -39,7 +51,10 @@ export type WorkspaceData =
   | { kind: 'butterfly'; data: ButterflyOutput }
   | { kind: 'yield'; data: YieldLevelOutput }
   | { kind: 'regime'; data: RegimeOutput }
-  | { kind: 'scanner'; data: ScannerResponse };
+  | { kind: 'scanner'; data: ScannerResponse }
+  | { kind: 'fx_spot'; data: FXSpotLevelResponse }
+  | { kind: 'fx_carry'; data: FXCarryResponse }
+  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse };
 
 export type UseWorkspaceDataResult = {
   data: WorkspaceData | null;
@@ -182,6 +197,39 @@ export function useWorkspaceData(
               : undefined,
           });
           result = { kind: 'scanner', data: out };
+          break;
+        }
+
+        case 'fx_spot': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_spot view requires pair');
+
+          const out = await fetchDetailFXSpotLevel({
+            pair,
+            lookback_days: pickLookback(params),
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_spot', data: out };
+          break;
+        }
+
+        case 'fx_carry': {
+          const out = await fetchDetailFXCarry({
+            tenor: pick(params, 'tenor', '1M'),
+          });
+
+          result = { kind: 'fx_carry', data: out };
+          break;
+        }
+
+        case 'fx_forward_curve': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_forward_curve view requires pair');
+
+          const out = await fetchDetailFXForwardCurve({ pair });
+
+          result = { kind: 'fx_forward_curve', data: out };
           break;
         }
 

@@ -25,15 +25,11 @@ export const TOOL_TO_VIEW: Record<string, WorkspaceViewType> = {
   calculate_cross_market_spread_tool: 'cross_market',
   calculate_butterfly_tool: 'butterfly',
   get_yield_levels_tool: 'yield',
-  // Tool name was renamed from `classify_curve_regime_tool` to
-  // `classify_curve_move_tool` because the tool classifies a single
-  // observed move, not a statistical persistence-state regime.  The
-  // workspace VIEW key stays 'regime' because that's the URL
-  // parameter / view-name the user-facing Workspace surface uses,
-  // and the user-facing word "regime" remains how PMs talk about
-  // the output.  Only the internal tool name was renamed.
   classify_curve_move_tool: 'regime',
   scan_extremes_tool: 'scanner',
+  get_fx_spot_level_tool: 'fx_spot',
+  get_fx_carry_tool: 'fx_carry',
+  get_fx_forward_curve_tool: 'fx_forward_curve',
 };
 
 // Priority for picking the "headline" tool when context has multiple — higher
@@ -46,6 +42,9 @@ const VIEW_PRIORITY: Record<WorkspaceViewType, number> = {
   regime: 3,
   scanner: 2,
   forward: 1,
+  fx_forward_curve: 1,
+  fx_spot: 0,  // Ajouter fx_spot ici
+  fx_carry: 0, // Ajouter fx_carry ici
 };
 
 export type DecodedContext = {

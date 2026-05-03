@@ -1,3 +1,8 @@
+// ============================================================================
+// Types pour les données FX
+// ============================================================================
+
+// Type pour une ligne de scanner FX
 export type FXScannerRow = {
   pair: string;
   ticker: string;
@@ -12,49 +17,74 @@ export type FXScannerRow = {
   signal: string;
 };
 
+// Type pour la réponse du scanner FX
 export type FXScannerResponse = {
   rows: FXScannerRow[];
 };
 
+// Type pour les métriques du FX Spot Level
 export type FXSpotLevelMetrics = {
-  as_of_date: string;
-  pair: string;
-  current_spot: number;
-  daily_change_pct: number | null;
-  weekly_change_pct: number | null;
-  monthly_change_pct: number | null;
-  z_score: number | null;
-  high_252d: number | null;
-  low_252d: number | null;
-  percentile_252d: number | null;
-  observation_count: number;
+  as_of_date: string;  // Date des données
+  pair: string;  // Paire de devises (ex : EURUSD)
+  current_spot: number;  // Niveau actuel du spot
+  daily_change_pct: number | null;  // Changement quotidien en pourcentage
+  weekly_change_pct: number | null;  // Changement hebdomadaire en pourcentage
+  monthly_change_pct: number | null;  // Changement mensuel en pourcentage
+  z_score: number | null;  // Z-Score
+  high_252d: number | null;  // Haut sur 252 jours
+  low_252d: number | null;  // Bas sur 252 jours
+  percentile_252d: number | null;  // Percentile sur 252 jours
+  observation_count: number;  // Nombre d'observations
 };
 
+// Type pour la réponse du FX Spot Level
 export type FXSpotLevelResponse = {
-  current_metrics: FXSpotLevelMetrics;
+  current_metrics: FXSpotLevelMetrics;  // Données de métriques du FX Spot
 };
 
+// Type pour une ligne de données du FX Carry
 export type FXCarryRow = {
+  pair: string;  // Paire de devises (ex : EURUSD)
+  spot_date: string;  // Date du spot
+  forward_date: string;  // Date du forward
+  spot: number;  // Valeur du spot
+  tenor: string;  // Terme (ex : 1M, 3M, etc.)
+  forward_points: number;  // Points de forward
+  forward_points_spot_units: number;  // Points de forward en unités de spot
+  outright_forward: number;  // Forward direct
+  carry_bps_spot: number;  // Carry en points de base au spot
+  carry_annualized_pct: number;  // Carry annualisé en pourcentage
+  carry_signal: string;  // Signal de carry (ex : "positive", "negative")
+};
+
+// Type pour la réponse du FX Carry
+export type FXCarryResponse = {
+  tenor: string;  // Terme (ex : 1M, 3M, etc.)
+  rows: FXCarryRow[];  // Liste des lignes de données du carry
+};
+
+export type FXForwardCurveRow = {
   pair: string;
   spot_date: string;
   forward_date: string;
   spot: number;
   tenor: string;
+  tenor_days: number;
   forward_points: number;
   forward_points_spot_units: number;
   outright_forward: number;
   carry_bps_spot: number;
   carry_annualized_pct: number;
-  carry_signal: string;
 };
 
-export type FXCarryResponse = {
-  tenor: string;
-  rows: FXCarryRow[];
+export type FXForwardCurveResponse = {
+  pair: string;
+  rows: FXForwardCurveRow[];
 };
 
+// Type global pour toutes les données de la page FX
 export type FXPageData = {
-  scanner: FXScannerResponse;
-  eurusd: FXSpotLevelResponse;
-  carry: FXCarryResponse;
+  scanner: FXScannerResponse;  // Données du scanner FX
+  eurusd: FXSpotLevelResponse;  // Données FX Spot Level pour EUR/USD
+  carry: FXCarryResponse;  // Données FX Carry
 };
