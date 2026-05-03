@@ -17,6 +17,35 @@ defaults:
       are a methodology choice exposed at the input layer; pin to
       a concrete value at the workflow-template level when needed.
 
+  require_matching_frequency:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      For Series-Series ops, both operands must declare the same
+      ``frequency`` tag (or both be None) by default.  Mirrors the
+      align_series discipline — silently subtracting a daily series
+      from a weekly one is a real-world data hazard the structured
+      metadata is meant to catch.  Pass false to opt into mixed-
+      frequency arithmetic explicitly; the choice is recorded in
+      lineage and the output's frequency drops to None.
+    valid_values: [true, false]
+
+  require_matching_missingness:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      For Series-Series ops, both operands must declare the same
+      missingness policy (canonical-JSON equality, recursive for
+      nested wrappers like AlignSeriesFFillV1) by default.  Default
+      strict because subtracting a clean_single_series payload from
+      a raw_no_cleaning payload is exactly the silent-mismatch case
+      the structured family exists to surface.  Pass false to opt
+      in explicitly; the choice is recorded in lineage and the
+      output preserves the left operand's policy as a deliberate
+      v1 simplification (a structured combined-policy wrapper is
+      a future extension if a workflow demands it).
+    valid_values: [true, false]
+
 methodology:
   what_it_does: >-
     Applies one of {add, subtract, multiply, divide, diff,

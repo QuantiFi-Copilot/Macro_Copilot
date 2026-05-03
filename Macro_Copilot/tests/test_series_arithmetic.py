@@ -70,6 +70,8 @@ def _series(
     dates,
     values,
     units: TimeSeriesUnits = TimeSeriesUnits.PERCENT,
+    frequency=None,
+    missingness_policy=None,
 ) -> Series:
     """Build a Series artifact with a synthesised fetch+adapter lineage."""
     fetch = FetchStep.build(
@@ -86,8 +88,8 @@ def _series(
         series_key=series_key,
         payload=payload,
         units=units,
-        frequency=None,
-        missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        frequency=frequency,
+        missingness_policy=missingness_policy or CleanSingleSeriesV1(ffill_limit=5),
         lineage=Lineage.from_steps([fetch, adapter]),
     )
 
@@ -469,3 +471,209 @@ class TestComposition:
         params = out.lineage.steps[-1].params
         assert params["left_units"] == "percent"
         assert params["output_units"] == "ratio"
+
+
+# ===========================================================================
+# 10. RHS structural-metadata enforcement (Codex P1 follow-up)
+# ===========================================================================
+
+
+class TestRHSFrequencyCompatibility:
+    """Series-Series ops must check the right operand's frequency tag,
+    not silently pass left's metadata through as if it described the
+    output."""
+
+    def test_matching_frequencies_pass_and_propagate(self):
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1, 2],
+                    frequency="B")
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10, 20],
+                    frequency="B")
+        out = series_arithmetic(a, "subtract", b)
+        assert out.frequency == "B"
+
+    def test_mismatched_frequencies_strict_raises(self):
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1, 2],
+                    frequency="B")
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10, 20],
+                    frequency="W")
+        with pytest.raises(SeriesArithmeticError, match="incompatible frequencies"):
+            series_arithmetic(a, "subtract", b)
+
+    def test_mismatched_frequencies_lenient_drops_to_none(self):
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1, 2],
+                    frequency="B")
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10, 20],
+                    frequency="W")
+        out = series_arithmetic(
+            a, "subtract", b,
+            params=SeriesArithmeticParams(
+                op="subtract", require_matching_frequency=False,
+            ),
+        )
+        # Cannot honestly emit a single tag; drops to None.
+        assert out.frequency is None
+        # Choice recorded in lineage.
+        assert out.lineage.steps[-1].params["require_matching_frequency"] is False
+
+    def test_unary_op_does_not_check_rhs_frequency(self):
+        """Unary ops (no right operand) should not run RHS checks."""
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1, 2],
+                    frequency="B")
+        out = series_arithmetic(a, "diff")
+        assert out.frequency == "B"
+
+    def test_scalar_op_does_not_check_rhs_frequency(self):
+        """Scalar right operand has no frequency tag — no check."""
+        a = _series("a", dates=["2026-01-02"], values=[1.0], frequency="B")
+        out = series_arithmetic(a, "multiply", 100)
+        assert out.frequency == "B"
+
+
+class TestRHSMissingnessCompatibility:
+    """Series-Series ops must check right operand's missingness policy.
+    Subtracting a clean_single_series payload from a raw_no_cleaning
+    one is a silent-mismatch case the structured family is meant to
+    surface."""
+
+    def test_matching_policies_pass(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        out = series_arithmetic(a, "subtract", b)
+        assert isinstance(out.missingness_policy, CleanSingleSeriesV1)
+
+    def test_different_kinds_strict_raises(self):
+        from shared.artifacts import RawNoCleaning
+        a = _series("a", dates=["2026-01-02"], values=[1.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10.0],
+                    missingness_policy=RawNoCleaning())
+        with pytest.raises(
+            SeriesArithmeticError, match="incompatible missingness"
+        ):
+            series_arithmetic(a, "subtract", b)
+
+    def test_same_kind_different_params_strict_raises(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=10))
+        with pytest.raises(
+            SeriesArithmeticError, match="incompatible missingness"
+        ):
+            series_arithmetic(a, "subtract", b)
+
+    def test_lenient_mode_passes_and_records_in_lineage(self):
+        from shared.artifacts import RawNoCleaning
+        a = _series("a", dates=["2026-01-02"], values=[1.0],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10.0],
+                    missingness_policy=RawNoCleaning())
+        out = series_arithmetic(
+            a, "subtract", b,
+            params=SeriesArithmeticParams(
+                op="subtract", require_matching_missingness=False,
+            ),
+        )
+        # v1 simplification: output preserves left's policy.
+        assert isinstance(out.missingness_policy, CleanSingleSeriesV1)
+        # Lenient choice recorded.
+        assert out.lineage.steps[-1].params[
+            "require_matching_missingness"
+        ] is False
+
+    def test_nested_policy_compat_uses_canonical_json(self):
+        """Mirror the align_series nested-policy fix: AlignSeriesFFillV1
+        carries a recursive ``upstream`` dict that ``tuple(sorted(items))``
+        cannot hash.  series_arithmetic must use the same canonical-JSON
+        comparison."""
+        from shared.artifacts import AlignSeriesFFillV1
+        wrapped = AlignSeriesFFillV1(
+            upstream=CleanSingleSeriesV1(ffill_limit=5),
+            fill_limit=3,
+        )
+        a = _series("a", dates=["2026-01-02"], values=[1.0],
+                    missingness_policy=wrapped)
+        b = _series("b", dates=["2026-01-02"], values=[10.0],
+                    missingness_policy=wrapped)
+        # Identical nested policies must pass strict mode without
+        # TypeError.
+        out = series_arithmetic(a, "subtract", b)
+        assert isinstance(out.missingness_policy, AlignSeriesFFillV1)
+
+
+# ===========================================================================
+# 11. RHS provenance recoverability (Codex P1 follow-up)
+# ===========================================================================
+
+
+class TestRHSProvenanceRecoverability:
+    """For Series-Series ops, the right operand's full lineage chain
+    MUST be recoverable from the output artifact alone — not merely
+    folded into the step's hash.  Lives in
+    ``OperatorStep.auxiliary_lineages``."""
+
+    def test_right_lineage_is_persisted_on_op_step(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02"], values=[10.0])
+        out = series_arithmetic(a, "subtract", b)
+        op_step = out.lineage.steps[-1]
+        # Step must persist exactly one auxiliary lineage (the right's).
+        assert len(op_step.auxiliary_lineages) == 1
+        right_chain = op_step.auxiliary_lineages[0]
+        assert isinstance(right_chain, Lineage)
+        # And that chain's head_hash must equal the right's lineage
+        # head_hash — i.e. it IS the right operand's chain, not a
+        # synthesised stub.
+        assert right_chain.head_hash == b.lineage.head_hash
+
+    def test_right_lineage_makes_full_dag_walkable_from_head(self):
+        """A workflow-level methodology summary should be able to
+        introspect both operands' upstream chains starting from the
+        output artifact alone.  This pins that contract."""
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02"], values=[10.0])
+        out = series_arithmetic(a, "subtract", b)
+        op_step = out.lineage.steps[-1]
+
+        # Left chain: out.lineage.steps[:-1] = a.lineage.
+        left_chain_kinds = [s.kind for s in out.lineage.steps[:-1]]
+        assert left_chain_kinds == ["fetch", "adapter"]
+
+        # Right chain: op_step.auxiliary_lineages[0].steps = b.lineage.
+        right_chain = op_step.auxiliary_lineages[0]
+        right_chain_kinds = [s.kind for s in right_chain.steps]
+        assert right_chain_kinds == ["fetch", "adapter"]
+
+        # And the step's ``input_hashes`` (newly persisted) lists both
+        # upstream heads explicitly — so the system has both
+        # introspectable identities AND the full chain text on hand.
+        assert set(op_step.input_hashes) == {
+            a.lineage.head_hash, b.lineage.head_hash,
+        }
+
+    def test_rhs_provenance_roundtrips_through_json(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02"], values=[10.0])
+        out = series_arithmetic(a, "subtract", b)
+        as_dict = out.lineage.model_dump(mode="json")
+        rec = Lineage.model_validate(as_dict)
+        # Auxiliary lineage object survives byte-identically.
+        assert rec.steps[-1].auxiliary_lineages[0].head_hash == (
+            b.lineage.head_hash
+        )
+
+    def test_unary_op_has_no_auxiliary_lineages(self):
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0])
+        out = series_arithmetic(a, "diff")
+        op_step = out.lineage.steps[-1]
+        assert op_step.auxiliary_lineages == ()
+
+    def test_scalar_op_has_no_auxiliary_lineages(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        out = series_arithmetic(a, "multiply", 100)
+        op_step = out.lineage.steps[-1]
+        assert op_step.auxiliary_lineages == ()
+        # Scalar value still recorded in step params.
+        assert op_step.params["right_scalar"] == 100.0
