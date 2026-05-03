@@ -46,6 +46,7 @@ converts to ``{"error": "..."}`` envelopes at the user boundary.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -53,6 +54,7 @@ import numpy as np
 import pandas as pd
 
 from shared.artifacts.lineage import Lineage, OperatorStep
+from shared.artifacts.missingness import MissingnessPolicy
 from shared.artifacts.types import Series
 from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
@@ -157,6 +159,9 @@ def series_arithmetic(
             f"params.op={params.op!r}.  Pass only one or make them match."
         )
 
+    require_matching_frequency = params.require_matching_frequency
+    require_matching_missingness = params.require_matching_missingness
+
     # ------------------------------------------------------------------
     # 2. Arity + structural-input validation.
     # ------------------------------------------------------------------
@@ -186,6 +191,36 @@ def series_arithmetic(
                 f"first.  left.len={len(left.payload)}, "
                 f"right.len={len(right.payload)}."
             )
+        # Frequency compatibility — same discipline as align_series.
+        # Strict mode (default) requires the two operands' frequency
+        # tags to agree (or both be None).  Lenient mode accepts
+        # mismatch and records that on the output (frequency=None).
+        if require_matching_frequency and left.frequency != right.frequency:
+            raise SeriesArithmeticError(
+                f"series_arithmetic op={op!r}: incompatible frequencies "
+                f"left={left.frequency!r} vs right={right.frequency!r}.  "
+                "Pass require_matching_frequency=False to opt into "
+                "mixed-frequency arithmetic explicitly."
+            )
+        # Missingness compatibility — JSON-string canonicalisation
+        # handles flat AND nested policies (matches the fix in
+        # align_series after the AlignSeriesFFillV1 nesting).
+        if require_matching_missingness:
+            left_sig = json.dumps(
+                left.missingness_policy.model_dump(mode="json"),
+                sort_keys=True, separators=(",", ":"),
+            )
+            right_sig = json.dumps(
+                right.missingness_policy.model_dump(mode="json"),
+                sort_keys=True, separators=(",", ":"),
+            )
+            if left_sig != right_sig:
+                raise SeriesArithmeticError(
+                    f"series_arithmetic op={op!r}: incompatible "
+                    f"missingness policies left vs right.  Pass "
+                    "require_matching_missingness=False to opt into "
+                    "mixed policies explicitly."
+                )
 
     # ------------------------------------------------------------------
     # 3. Strict unit algebra → resolve output units.
@@ -200,6 +235,7 @@ def series_arithmetic(
     # ------------------------------------------------------------------
     # 5. Build lineage step.
     # ------------------------------------------------------------------
+    auxiliary_lineages: Tuple[Lineage, ...] = ()
     if is_unary:
         input_hashes = (left.lineage.head_hash,)
         right_kind = "none"
@@ -208,6 +244,12 @@ def series_arithmetic(
         input_hashes = (left.lineage.head_hash, right.lineage.head_hash)
         right_kind = "series"
         right_units = right.units.value
+        # Persist the right operand's full lineage chain on the
+        # operator step so downstream methodology summaries can walk
+        # back into it without an external lineage cache (Codex P1
+        # follow-up — head.lineage alone otherwise loses the right
+        # operand's fetch/clean path).
+        auxiliary_lineages = (right.lineage,)
     else:
         input_hashes = (left.lineage.head_hash,)
         right_kind = "scalar"
@@ -226,39 +268,48 @@ def series_arithmetic(
             "left_units": left.units.value,
             "right_units": right_units,
             "output_units": output_units.value,
+            "require_matching_frequency": require_matching_frequency,
+            "require_matching_missingness": require_matching_missingness,
         },
         input_hashes=input_hashes,
+        auxiliary_lineages=auxiliary_lineages,
     )
 
-    # Compose lineage: prepend left's chain (and right's, when right is
-    # a Series), append this op step.  Order is left-then-right so the
-    # methodology summary reads naturally; the step hash is invariant
-    # under that order anyway because input_hashes is sorted in the
-    # hash recipe.
-    if isinstance(right, Series):
-        # When both Series come from the same upstream, we don't double-
-        # prepend; the simplest invariant is "this step's lineage is
-        # left.lineage + this step" (Lineage.append).  The right's
-        # lineage is captured via input_hashes inside the step's hash,
-        # which is the load-bearing identity for downstream caching.
-        out_lineage = left.lineage.append(op_step)
-    else:
-        out_lineage = left.lineage.append(op_step)
+    # Output lineage = left's chain + this op step.  The right's chain
+    # is reachable via op_step.auxiliary_lineages.
+    out_lineage = left.lineage.append(op_step)
 
     # ------------------------------------------------------------------
-    # 6. Determine output frequency + missingness.  Both pass through
-    #    from the left operand — arithmetic does not change index
-    #    semantics, and the missingness policy still describes how
-    #    the underlying data was prepared.  (NaN propagation is the
-    #    pandas default; configurable nan_policy is deferred per the
-    #    config's planned_extensions.)
+    # 6. Determine output frequency + missingness.  Arithmetic does
+    #    not change index semantics; we propagate the agreed-on
+    #    metadata when both operands match (or when the right is a
+    #    scalar / unary op).  Under lenient mode with disagreement,
+    #    we drop frequency to None (cannot honestly emit a single
+    #    tag) and preserve left's missingness policy with the
+    #    lenient choice recorded in lineage params.
     # ------------------------------------------------------------------
+    output_frequency = left.frequency
+    output_missingness: MissingnessPolicy = left.missingness_policy
+    if isinstance(right, Series):
+        if left.frequency == right.frequency:
+            output_frequency = left.frequency
+        else:
+            # We only get here when require_matching_frequency=False
+            # (strict path raised already).  Drop the tag to None.
+            output_frequency = None
+        # When require_matching_missingness=False let strict mismatch
+        # through, output policy is "left's policy" — a deliberate
+        # simplification for v1.  The lenient choice is logged in
+        # the step's params; introducing a structured combined-policy
+        # wrapper is deferred until a real workflow demands it.
+        output_missingness = left.missingness_policy
+
     return Series(
         series_key=_compose_series_key(left, op, right),
         payload=payload,
         units=output_units,
-        frequency=left.frequency,
-        missingness_policy=left.missingness_policy,
+        frequency=output_frequency,
+        missingness_policy=output_missingness,
         lineage=out_lineage,
     )
 

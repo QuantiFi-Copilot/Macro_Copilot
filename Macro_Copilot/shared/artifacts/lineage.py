@@ -118,7 +118,12 @@ class FetchStep(BaseModel):
 
 
 class CleanStep(BaseModel):
-    """A ``clean_single_series`` (or sibling) cleaning step."""
+    """A ``clean_single_series`` (or sibling) cleaning step.
+
+    Persists ``input_hashes`` so the chain of upstream identities is
+    recoverable from the step alone (Codex P1 follow-up: a step's
+    derived ``hash`` uniquely identifies the inputs but does not let
+    a methodology summary walk back into them without that list)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -126,6 +131,7 @@ class CleanStep(BaseModel):
     name: Literal["clean_single_series"]
     version: str = "1.0.0"
     params: Dict[str, Any]  # ffill_limit, dedup_keep, ...
+    input_hashes: Tuple[LineageHash, ...] = ()
     hash: LineageHash
 
     @classmethod
@@ -144,12 +150,18 @@ class CleanStep(BaseModel):
             params=params,
             input_hashes=input_hashes,
         )
-        return cls(name=name, version=version, params=params, hash=h)  # type: ignore[arg-type]
+        return cls(  # type: ignore[arg-type]
+            name=name, version=version, params=params,
+            input_hashes=input_hashes, hash=h,
+        )
 
 
 class AdapterStep(BaseModel):
     """An adapter step that converts a non-artifact input into a typed
-    artifact (e.g., ``raw_dataframe_to_artifact_series``)."""
+    artifact (e.g., ``raw_dataframe_to_artifact_series``).
+
+    Persists ``input_hashes`` so the upstream-identity chain is
+    recoverable from the step alone."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -157,6 +169,7 @@ class AdapterStep(BaseModel):
     name: str  # e.g., "raw_dataframe_to_artifact_series"
     version: str = "1.0.0"
     params: Dict[str, Any]  # series_key, units, source_kind, source_params, ...
+    input_hashes: Tuple[LineageHash, ...] = ()
     hash: LineageHash
 
     @classmethod
@@ -175,11 +188,35 @@ class AdapterStep(BaseModel):
             params=params,
             input_hashes=input_hashes,
         )
-        return cls(name=name, version=version, params=params, hash=h)
+        return cls(
+            name=name, version=version, params=params,
+            input_hashes=input_hashes, hash=h,
+        )
 
 
 class OperatorStep(BaseModel):
-    """A central-operator step (any tool under ``shared.operators.*``)."""
+    """A central-operator step (any tool under ``shared.operators.*``).
+
+    Persists ``input_hashes`` AND optional ``auxiliary_lineages`` for
+    binary / N-ary operators whose right-hand (or auxiliary) inputs
+    have their own provenance chains.
+
+    Why both:
+
+      - ``input_hashes``        : enough to identify upstream by hash
+        and to reconstruct what was consumed when the system has a
+        content-addressed lineage cache (deferred).
+      - ``auxiliary_lineages``  : the actual ``Lineage`` chains for
+        non-primary inputs, embedded in this step.  Required today
+        because there is no lineage cache yet — a methodology summary
+        that walks ``head.lineage`` end-to-end would otherwise lose
+        the right operand's chain entirely (Codex P1 follow-up on
+        ``series_arithmetic``).
+
+    The output ``Series.lineage`` is composed by appending this step
+    to the *primary* (left/first) input's lineage; auxiliary inputs'
+    chains live inside the step.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -187,6 +224,8 @@ class OperatorStep(BaseModel):
     name: str  # e.g., "align_series"
     version: str = "1.0.0"
     params: Dict[str, Any]
+    input_hashes: Tuple[LineageHash, ...] = ()
+    auxiliary_lineages: Tuple["Lineage", ...] = ()
     hash: LineageHash
 
     @classmethod
@@ -197,6 +236,7 @@ class OperatorStep(BaseModel):
         version: str,
         params: Dict[str, Any],
         input_hashes: Tuple[LineageHash, ...],
+        auxiliary_lineages: Tuple["Lineage", ...] = (),
     ) -> "OperatorStep":
         h = _compute_step_hash(
             kind="operator",
@@ -205,7 +245,12 @@ class OperatorStep(BaseModel):
             params=params,
             input_hashes=input_hashes,
         )
-        return cls(name=name, version=version, params=params, hash=h)
+        return cls(
+            name=name, version=version, params=params,
+            input_hashes=input_hashes,
+            auxiliary_lineages=auxiliary_lineages,
+            hash=h,
+        )
 
 
 # Discriminated union over the closed family.  Pydantic picks the right
@@ -248,6 +293,12 @@ class Lineage(BaseModel):
         ``Lineage`` is frozen — mutation is forbidden.  Use this to
         build longer chains."""
         return Lineage.from_steps(list(self.steps) + [step])
+
+
+# Resolve the recursive forward reference: OperatorStep.auxiliary_lineages
+# is Tuple["Lineage", ...].  Pydantic must rebuild the model now that
+# ``Lineage`` is defined.
+OperatorStep.model_rebuild()
 
 
 __all__ = [
