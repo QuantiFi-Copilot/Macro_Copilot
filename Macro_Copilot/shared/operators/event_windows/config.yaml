@@ -1,0 +1,65 @@
+operator:
+  name: event_windows
+  method_family: windowing
+  version: "1.0.0"
+  description: >-
+    Extract a WindowedPanel of fixed-shape windows around each event
+    date from a target Series.  Owns the explicit unit transition
+    when units_basis='level_change' (PERCENT input -> BPS output);
+    finance-blind otherwise.
+
+defaults:
+  incomplete_window_policy:
+    value: drop
+    source: operator_v1_default
+    rationale: >-
+      Default 'drop': events whose window falls off the edge of the
+      target series are excluded from the panel entirely.  This is
+      the safest default — partial windows would distort
+      conditional-aggregate stats downstream.  Use 'pad_nan' to keep
+      partial windows with NaN tails (the workflow then has to
+      decide how to aggregate over them).
+    valid_values: [drop, pad_nan]
+
+  units_basis:
+    value: raw
+    source: operator_v1_default
+    rationale: >-
+      Default 'raw': cell values are the target's values as-is.
+      'level_change' subtracts the event-day value and converts
+      percent to bps (a methodology-driven unit transition the
+      operator owns by contract — see methodology.what_it_does).
+      The user must pick 'level_change' explicitly when running an
+      event-study of moves; the safer default reflects the safer
+      reading of "windows of the target series".
+    valid_values: [raw, level_change]
+
+  require_matching_frequency:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      When true (default), events.mask and target must declare the
+      same frequency tag (or both be None).  Mirrors the
+      align_series / series_arithmetic discipline — silently
+      windowing weekly events on a daily target is a real-world
+      data hazard the structured metadata is meant to surface.
+    valid_values: [true, false]
+
+methodology:
+  what_it_does: >-
+    For each True-valued cell in events.mask, locates that date in
+    target.payload.index and extracts the slice
+    [t_e - pre_window, t_e + post_window] (inclusive of the event
+    day when inclusive_event_day=True).  Stacks the N event windows
+    into a 2D array with shape [n_events, window_length].  The
+    column offsets list event-relative day indices (e.g., [-2, -1,
+    0, 1, 2]).  When units_basis='level_change', each cell becomes
+    target_t - target_at_event_day, with the unit transition
+    PERCENT -> BPS (multiply by 100); other unit types pass through
+    unchanged.  events.mask.index MUST equal target.payload.index
+    so windows are extracted on the same trading-day grid.
+  planned_extensions:
+    - "overlap_policy ∈ {allow, drop_overlapping, merge_overlapping}"
+    - "log_return / pct_change units_basis variants"
+    - "keep_partial incomplete_window_policy"
+    - "asymmetric per-event window sizes"
