@@ -286,9 +286,7 @@ class DomainAgentSession:
         answer_parts: list[str] = []
         tool_calls_seen: list[ChildToolCallTrace] = []
         raw_tool_outputs: list[tuple[str, dict, str]] = []  # (tool, params, raw_json)
-        current_tool_name: Optional[str] = None
-        current_tool_params: dict = {}
-        current_tool_start: Optional[float] = None
+        active_tools: dict[str, dict] = {}
 
         try:
             async for event in self._graph.astream_events(
@@ -299,42 +297,55 @@ class DomainAgentSession:
                 kind = event.get("event", "")
                 name = event.get("name", "")
                 data = event.get("data", {})
+                run_id = str(event.get("run_id") or "")
 
                 if kind == "on_tool_start":
-                    current_tool_name = name
-                    current_tool_start = time.monotonic()
                     tool_input = data.get("input", {})
                     if isinstance(tool_input, str):
                         try:
                             tool_input = json.loads(tool_input)
                         except (json.JSONDecodeError, TypeError):
                             tool_input = {}
-                    current_tool_params = tool_input if isinstance(tool_input, dict) else {}
+                    tool_params = tool_input if isinstance(tool_input, dict) else {}
+                    active_tools[run_id] = {
+                        "name": name,
+                        "params": tool_params,
+                        "started": time.monotonic(),
+                    }
 
                     if on_event is not None:
-                        label = make_tool_label(name, current_tool_params)
+                        label = make_tool_label(name, tool_params)
                         await on_event(
                             SessionEvent(
                                 type="tool_call",
                                 data={
                                     "tool": name,
                                     "label": label,
-                                    "params": current_tool_params,
+                                    "params": tool_params,
                                     "domain": self.domain.value,
                                 },
                             )
                         )
 
                 elif kind == "on_tool_end":
+                    active = active_tools.pop(run_id, None)
+                    tool_name = str(active.get("name")) if active else name
+                    tool_params = (
+                        active.get("params")
+                        if active and isinstance(active.get("params"), dict)
+                        else {}
+                    )
+                    tool_started = active.get("started") if active else None
+
                     duration_ms = None
-                    if current_tool_start is not None:
-                        duration_ms = round((time.monotonic() - current_tool_start) * 1000)
+                    if tool_started is not None:
+                        duration_ms = round((time.monotonic() - tool_started) * 1000)
 
                     # The tool output is a JSON string (per our MCP server
                     # convention).  Save the raw text for fact extraction.
                     tool_output_text = _stringify_tool_output(data.get("output"))
                     raw_tool_outputs.append(
-                        (current_tool_name or name, current_tool_params, tool_output_text)
+                        (tool_name, tool_params, tool_output_text)
                     )
                     # If the tool returned {"error": "..."}, surface it on
                     # the trace so partial same-domain failures are
@@ -343,8 +354,8 @@ class DomainAgentSession:
                     tool_error = _tool_error_from_output(tool_output_text)
                     tool_calls_seen.append(
                         ChildToolCallTrace(
-                            tool=current_tool_name or name,
-                            params=current_tool_params,
+                            tool=tool_name,
+                            params=tool_params,
                             duration_ms=duration_ms,
                             error=tool_error,
                         )
@@ -355,7 +366,7 @@ class DomainAgentSession:
                             SessionEvent(
                                 type="tool_result",
                                 data={
-                                    "tool": current_tool_name or name,
+                                    "tool": tool_name,
                                     "domain": self.domain.value,
                                     "duration_ms": duration_ms,
                                     # Frontend can render an error badge
@@ -365,10 +376,6 @@ class DomainAgentSession:
                                 },
                             )
                         )
-
-                    current_tool_name = None
-                    current_tool_start = None
-                    current_tool_params = {}
 
                 elif kind == "on_chat_model_stream":
                     chunk = data.get("chunk")
