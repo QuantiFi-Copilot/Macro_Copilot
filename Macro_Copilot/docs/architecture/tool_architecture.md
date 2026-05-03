@@ -279,6 +279,88 @@ honest-placeholder pattern documented under
 `trailing_range_window_days = 252` guard in any of the migrated tools
 for the canonical example.
 
+## What makes a tool "standard"
+
+The word **standard** is load-bearing in this architecture. It does
+**not** mean:
+
+- universally optimal
+- universally parameter-free
+- uncontested across every desk
+- fixed forever
+
+It means the tool's methodology is made explicit, controlled, and
+reproducible.
+
+### Canonical definition
+
+> A tool is standard when every methodology choice it depends on —
+> including upstream dependency choices — is explicit, inspectable,
+> reproducible, and reachable from config and/or output provenance, so
+> that the same data plus the same methodology state yields the same
+> answer.
+
+Put differently:
+
+- the method is visible
+- the assumptions are visible
+- the dependency chain is visible
+- the output carries enough provenance to reconstruct what was done
+
+This is why the architecture distinguishes:
+
+- **Inputs** — user / LLM controlled per request
+- **Conventions** — YAML-locked in deterministic mode
+- **Provenance** — echoed through outputs so downstream tools and users
+  know what method was used
+
+### What this definition allows
+
+A tool can still be standard even if:
+
+- it has consequential parameter choices
+- it depends on an upstream model fit
+- it offers multiple supported methods
+- it requires a methodology preface before interpretation
+
+The requirement is not "one formula forever." The requirement is that
+the formula family, the chosen variant, and the dependency closure are
+made explicit and do not drift silently.
+
+This is why both categories below can qualify as standard:
+
+- `desk_invariant_primitive`
+- `quant_standard_analytic`
+
+They are standard in different ways, but both satisfy the same
+reproducibility / provenance contract.
+
+### What fails the standard test
+
+A tool is **not** standard if any load-bearing choice is hidden or
+unrecoverable. Typical failure modes:
+
+- a consequential method choice is hardcoded but not documented
+- two runs can differ because upstream methodology changed silently
+- output cannot tell the caller which upstream fit / proxy / method was
+  used
+- a downstream tool depends on an upstream result but does not carry
+  that upstream provenance forward
+- the same prompt can mean different things because no method state is
+  surfaced to the user
+
+### Why this matters
+
+The goal is not to replace PM judgment. The goal is to accelerate it
+without hiding the method.
+
+That means a standard tool must let the user see:
+
+- what was computed
+- which method was used
+- which upstream dependency choices matter
+- whether the answer could change materially under a different method
+
 ## Tool category — honesty mechanism
 
 `ToolMeta.category` (added by the v6 sprint) is a `Literal`-enforced
