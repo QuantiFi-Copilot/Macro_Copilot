@@ -360,10 +360,77 @@ class WindowedPanel(BaseModel):
         return len(self.offsets)
 
 
+# ============================================================================
+# EVENT RESPONSE SERIES — terminal artifact for conditional_aggregate output
+# ============================================================================
+
+
+class EventResponseSeries(BaseModel):
+    """Per-offset aggregated response of a target across events.
+
+    The natural shape of a conditional-aggregate output for an event
+    study: one (aggregator_value, dispersion, n_observations, low_n)
+    tuple per event-relative-day offset.  This is a TYPED TERMINAL
+    artifact (per ``operator_architecture.md``) — it is consumable
+    directly by templates / UI without reinterpretation, AND it
+    preserves the structural metadata (units, offsets, lineage) the
+    workflow-level methodology summary needs.
+
+    Distinct from ``Series`` because the index is integer offsets
+    (event-relative days), not a ``DatetimeIndex``.  Faking a
+    DatetimeIndex would lose the event-relative semantic and
+    require downstream consumers to reverse-engineer the encoding.
+
+    Per Phase 1A scope (build plan v5): this artifact lives at the
+    natural output shape of ``conditional_aggregate``; future operators
+    in the aggregation family (bootstrap_ci, quantile, etc.) emit the
+    same shape and can extend the per-offset metadata fields if
+    needed.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        arbitrary_types_allowed=True,
+    )
+
+    offsets: List[int]                 # event-relative day indices
+    values: "np.ndarray"               # shape [window_length] — aggregator(values across events)
+    dispersions: "np.ndarray"          # shape [window_length] — dispersion per offset (NaN when dispersion='none')
+    n_observations: "np.ndarray"       # shape [window_length] — finite-cell count per offset
+    low_n_flags: "np.ndarray"          # shape [window_length] dtype=bool
+    aggregator: str
+    dispersion_kind: Literal["none", "std"]
+    units: TimeSeriesUnits
+    target_series_key: str
+    lineage: Lineage
+
+    @model_validator(mode="after")
+    def _validate_shapes(self) -> "EventResponseSeries":
+        n = len(self.offsets)
+        for arr_name in ("values", "dispersions", "n_observations", "low_n_flags"):
+            arr = getattr(self, arr_name)
+            if arr.shape != (n,):
+                raise ValueError(
+                    f"EventResponseSeries.{arr_name} shape {arr.shape} "
+                    f"does not match offsets length {n}."
+                )
+        if self.low_n_flags.dtype != bool:
+            raise ValueError(
+                "EventResponseSeries.low_n_flags must have dtype=bool; "
+                f"got {self.low_n_flags.dtype}."
+            )
+        return self
+
+    def __len__(self) -> int:
+        return len(self.offsets)
+
+
 __all__ = [
     "Series",
     "SeriesSet",
     "EventSet",
     "Panel",
     "WindowedPanel",
+    "EventResponseSeries",
 ]
