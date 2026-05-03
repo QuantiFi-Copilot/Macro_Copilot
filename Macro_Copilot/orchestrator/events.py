@@ -78,6 +78,8 @@ _WORKSPACE_TOOLS: set[str] = {
     "get_fx_spot_level_tool",
     "get_fx_carry_tool",
     "get_fx_forward_curve_tool",
+    "scan_fx_extremes_tool",
+    "get_fx_realized_vol_tool",
     # rate_level is intentionally NOT in the workspace set — a single-
     # point yield/rate is better viewed inline in the chat than in a
     # dedicated analytical workspace (same decision as get_yield_levels
@@ -137,6 +139,10 @@ _TOOL_LABEL_TEMPLATES: dict = {
     ),
     "get_fx_forward_curve_tool": lambda p: (
         f"Fetching {p.get('pair', 'EURUSD')} forward curve"
+    ),
+    "scan_fx_extremes_tool": lambda p: "Scanning FX for z-score extremes",
+    "get_fx_realized_vol_tool": lambda p: (
+        f"Computing {p.get('pair', 'EURUSD')} realized vol"
     ),
 }
 

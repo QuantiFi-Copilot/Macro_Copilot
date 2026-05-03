@@ -30,6 +30,8 @@ export const TOOL_TO_VIEW: Record<string, WorkspaceViewType> = {
   get_fx_spot_level_tool: 'fx_spot',
   get_fx_carry_tool: 'fx_carry',
   get_fx_forward_curve_tool: 'fx_forward_curve',
+  scan_fx_extremes_tool: 'fx_scanner',
+  get_fx_realized_vol_tool: 'fx_realized_vol',
 };
 
 // Priority for picking the "headline" tool when context has multiple — higher
@@ -41,8 +43,10 @@ const VIEW_PRIORITY: Record<WorkspaceViewType, number> = {
   yield: 4,
   regime: 3,
   scanner: 2,
+  fx_scanner: 2,
   forward: 1,
   fx_forward_curve: 1,
+  fx_realized_vol: 1,
   fx_spot: 0,  // Ajouter fx_spot ici
   fx_carry: 0, // Ajouter fx_carry ici
 };

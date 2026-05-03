@@ -1,6 +1,7 @@
 import type {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
 } from '@/types/fx';
@@ -91,4 +92,18 @@ export function fetchDetailFXForwardCurve(
   params: FXForwardCurveDetailParams,
 ): Promise<FXForwardCurveResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/forward-curve${buildQuery(params)}`);
+}
+
+export type FXRealizedVolDetailParams = {
+  pair: string;
+  window_observations?: number;
+  lookback_days?: number;
+  return_type?: 'log_return' | 'simple_return';
+  field_name?: string;
+};
+
+export function fetchDetailFXRealizedVol(
+  params: FXRealizedVolDetailParams,
+): Promise<FXRealizedVolResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/realized-vol${buildQuery(params)}`);
 }

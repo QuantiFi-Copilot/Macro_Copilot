@@ -25,6 +25,11 @@ from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput, FXCarryOutput
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
 from fx_agent.spot.tools.spot_levels.schemas import FXSpotLevelInput, FXSpotLevelOutput
+from fx_agent.vol.tools.realized_vol import get_fx_realized_vol
+from fx_agent.vol.tools.realized_vol.schemas import (
+    FXRealizedVolInput,
+    FXRealizedVolOutput,
+)
 
 logger = logging.getLogger("api.routes.fx.detail")
 
@@ -166,4 +171,40 @@ def fx_forward_curve_detail(
         raise HTTPException(status_code=503, detail=f"FX forward curve failed: {exc}")
 
     _tool_result_or_raise(result, f"FX forward curve for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/realized-vol",
+    response_model=FXRealizedVolOutput,
+    summary="FX Realized Vol Detail (workspace)",
+)
+def fx_realized_vol_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+    window_observations: int = Query(default=21, ge=5, le=252),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    return_type: str = Query(default="log_return", pattern="^(log_return|simple_return)$"),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXRealizedVolInput(
+            pair=pair,
+            window_observations=window_observations,
+            lookback_days=lookback_days,
+            return_type=return_type,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_realized_vol(params=params)
+    except ValueError as exc:
+        logger.info("detail/realized-vol: no data for %s", pair)
+        raise HTTPException(status_code=404, detail=f"FX realized vol for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/realized-vol: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX realized vol failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX realized vol for {pair}")
     return result

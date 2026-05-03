@@ -56,6 +56,13 @@ export const FX_FORWARD_TENORS: { value: string; label: string }[] = [
   { value: '6M', label: '6M' },
 ];
 
+export const FX_VOL_WINDOWS: { value: string; label: string }[] = [
+  { value: '21', label: '1M' },
+  { value: '63', label: '3M' },
+  { value: '126', label: '6M' },
+  { value: '252', label: '1Y' },
+];
+
 /**
  * Build the parameter dropdown specs for a given view + current params dict.
  * The `value` on each spec falls back to the URL value, preserving any
@@ -214,6 +221,23 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_realized_vol':
+      return [
+        {
+          key: 'pair',
+          label: 'Pair',
+          options: FX_PAIRS,
+          value: get('pair', 'EURUSD'),
+        },
+        {
+          key: 'window_observations',
+          label: 'Window',
+          options: FX_VOL_WINDOWS,
+          value: get('window_observations', '21'),
+        },
+      ];
+
+    case 'fx_scanner':
     case 'scanner':
     case 'forward':
     default:
@@ -231,7 +255,8 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'cross_market' ||
     view === 'butterfly' ||
     view === 'yield' ||
-    view === 'fx_spot'
+    view === 'fx_spot' ||
+    view === 'fx_realized_vol'
   );
 }
 
@@ -298,6 +323,15 @@ export function viewTitle(
       return `${pair} forward curve`;
     }
 
+    case 'fx_realized_vol': {
+      const pair = params['pair'] ?? 'EURUSD';
+      const window = params['window_observations'] ?? '21';
+      return `${pair} realized vol · ${window}d`;
+    }
+
+    case 'fx_scanner':
+      return 'FX z-score scanner';
+
     default:
       return 'Workspace';
   }
@@ -334,6 +368,12 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_forward_curve':
       return 'Forward points, outrights and annualized carry across tenors.';
+
+    case 'fx_realized_vol':
+      return 'Annualized realized volatility and volatility z-score.';
+
+    case 'fx_scanner':
+      return 'Largest FX spot z-score and momentum signals.';
 
     default:
       return '';

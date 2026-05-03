@@ -82,6 +82,27 @@ export type FXForwardCurveResponse = {
   rows: FXForwardCurveRow[];
 };
 
+export type FXRealizedVolMetrics = {
+  as_of_date: string;
+  pair: string;
+  spot: number;
+  window_observations: number;
+  realized_vol_annualized_pct: number | null;
+  realized_vol_z_score: number | null;
+  daily_return_pct: number | null;
+  observation_count: number;
+};
+
+export type FXRealizedVolTimeSeriesRow = {
+  date: string;
+  realized_vol_annualized_pct: number | null;
+};
+
+export type FXRealizedVolResponse = {
+  current_metrics: FXRealizedVolMetrics;
+  time_series: FXRealizedVolTimeSeriesRow[];
+};
+
 // Type global pour toutes les données de la page FX
 export type FXPageData = {
   scanner: FXScannerResponse;  // Données du scanner FX

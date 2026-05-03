@@ -34,12 +34,16 @@ import type {
 import {
   fetchDetailFXCarry,
   fetchDetailFXForwardCurve,
+  fetchDetailFXRealizedVol,
   fetchDetailFXSpotLevel,
+  fetchFXScanner,
 } from '@/services/fxApi';
 
 import type {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXRealizedVolResponse,
+  FXScannerResponse,
   FXSpotLevelResponse,
 } from '@/types/fx';
 
@@ -54,7 +58,9 @@ export type WorkspaceData =
   | { kind: 'scanner'; data: ScannerResponse }
   | { kind: 'fx_spot'; data: FXSpotLevelResponse }
   | { kind: 'fx_carry'; data: FXCarryResponse }
-  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse };
+  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
+  | { kind: 'fx_scanner'; data: FXScannerResponse }
+  | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse };
 
 export type UseWorkspaceDataResult = {
   data: WorkspaceData | null;
@@ -230,6 +236,37 @@ export function useWorkspaceData(
           const out = await fetchDetailFXForwardCurve({ pair });
 
           result = { kind: 'fx_forward_curve', data: out };
+          break;
+        }
+
+        case 'fx_scanner': {
+          const out = await fetchFXScanner({
+            top_n: params['top_n'] ? Number(params['top_n']) : 10,
+            market_scope: pick(params, 'market_scope'),
+          });
+
+          result = { kind: 'fx_scanner', data: out };
+          break;
+        }
+
+        case 'fx_realized_vol': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_realized_vol view requires pair');
+
+          const out = await fetchDetailFXRealizedVol({
+            pair,
+            window_observations: params['window_observations']
+              ? Number(params['window_observations'])
+              : undefined,
+            lookback_days: pickLookback(params),
+            return_type:
+              params['return_type'] === 'simple_return'
+                ? 'simple_return'
+                : 'log_return',
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_realized_vol', data: out };
           break;
         }
 

@@ -11,6 +11,10 @@ from fx_agent.spot.tools.spot_levels.schemas import (
     FXSpotLevelMetrics,
     FXSpotLevelOutput,
 )
+from fx_agent.vol.tools.realized_vol.schemas import (
+    FXRealizedVolMetrics,
+    FXRealizedVolOutput,
+)
 
 
 def test_fx_spot_detail_route_calls_tool():
@@ -100,3 +104,35 @@ def test_fx_forward_curve_detail_route_calls_tool():
 
     assert result == output
     assert mock_tool.call_args.kwargs["params"].pair == "EURUSD"
+
+
+def test_fx_realized_vol_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXRealizedVolOutput(
+        current_metrics=FXRealizedVolMetrics(
+            as_of_date="2026-04-30",
+            pair="EURUSD",
+            spot=1.1736,
+            window_observations=21,
+            realized_vol_annualized_pct=7.5,
+            realized_vol_z_score=-0.4,
+            daily_return_pct=0.2,
+            observation_count=259,
+        ),
+        time_series=[],
+    )
+
+    with patch.object(detail_module, "get_fx_realized_vol", return_value=output) as mock_tool:
+        result = detail_module.fx_realized_vol_detail(
+            pair="EURUSD",
+            window_observations=21,
+            lookback_days=365,
+            return_type="log_return",
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.pair == "EURUSD"
+    assert params.window_observations == 21

@@ -15,6 +15,8 @@ const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   get_fx_spot_level_tool: 'FX spot snapshot',
   get_fx_carry_tool: 'FX carry ranking',
   get_fx_forward_curve_tool: 'FX forward curve',
+  scan_fx_extremes_tool: 'FX scanner',
+  get_fx_realized_vol_tool: 'FX realized volatility',
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {

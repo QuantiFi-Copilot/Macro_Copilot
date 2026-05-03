@@ -6,6 +6,8 @@
 import {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXRealizedVolResponse,
+  FXScannerResponse,
   FXSpotLevelResponse,
 } from './fx';  // Assure-toi que le chemin est correct
 // --- Shared ---
@@ -284,7 +286,9 @@ export type WorkspaceViewType =
   | 'scanner'
   | 'fx_spot'
   | 'fx_carry'
-  | 'fx_forward_curve';
+  | 'fx_forward_curve'
+  | 'fx_scanner'
+  | 'fx_realized_vol';
 
 export type WorkspaceParams = Record<string, string>;
 
@@ -300,4 +304,6 @@ export type WorkspaceData =
   | { kind: 'scanner'; data: ScannerResponse }
   | { kind: 'fx_spot'; data: FXSpotLevelResponse }  // Ajouter cette ligne
   | { kind: 'fx_carry'; data: FXCarryResponse }   // Ajouter cette ligne
-  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse };
+  | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
+  | { kind: 'fx_scanner'; data: FXScannerResponse }
+  | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse };

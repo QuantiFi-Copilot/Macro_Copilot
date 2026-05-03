@@ -31,6 +31,12 @@ from fx_agent.spot.tools.spot_levels import (  # noqa: E402
     FXSpotLevelInput,
     get_fx_spot_level,
 )
+from fx_agent.spot.tools.scanner import run_fx_scanner  # noqa: E402
+from fx_agent.spot.tools.schemas import FXScannerInput  # noqa: E402
+from fx_agent.vol.tools.realized_vol import (  # noqa: E402
+    FXRealizedVolInput,
+    get_fx_realized_vol,
+)
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -146,6 +152,93 @@ def get_fx_forward_curve_tool(pair: str) -> str:
         return _json_error(f"FX forward curve failed: {exc}")
 
     return result.model_dump_json()
+
+
+@mcp.tool()
+def scan_fx_extremes_tool(
+    market_scope: str = "",
+    top_n: int = 10,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Scan FX spot pairs for stretched z-scores and momentum signals.
+
+    Use this when the user asks which FX pairs look stretched, which G10
+    pairs have the biggest z-scores, or where spot momentum is breaking out.
+
+    Parameters
+    ----------
+    market_scope : str
+        Optional market filter, e.g. G10. Leave empty for all ingested FX spot.
+    top_n : int
+        Maximum number of pairs to return.
+    field_name : str
+        Bloomberg field. Defaults to PX_LAST.
+    """
+    try:
+        params = FXScannerInput(
+            market_scope=market_scope or None,
+            top_n=top_n,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[scan_fx_extremes_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = run_fx_scanner(params=params)
+    except Exception as exc:
+        logger.exception("[scan_fx_extremes_tool] failed")
+        return _json_error(f"FX scanner failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_realized_vol_tool(
+    pair: str,
+    window_observations: int = 21,
+    lookback_days: int = 365,
+    return_type: str = "log_return",
+    field_name: str = "PX_LAST",
+) -> str:
+    """Compute annualized realized volatility for one FX pair.
+
+    Use this when the user asks about realized vol, whether a pair is moving
+    more than usual, or wants spot context with a volatility lens.
+
+    Parameters
+    ----------
+    pair : str
+        FX pair, e.g. EURUSD, GBPUSD, USDJPY.
+    window_observations : int
+        Rolling return window, e.g. 21 for one trading month.
+    lookback_days : int
+        Calendar days of history to fetch.
+    return_type : str
+        log_return or simple_return.
+    field_name : str
+        Bloomberg field. Defaults to PX_LAST.
+    """
+    try:
+        params = FXRealizedVolInput(
+            pair=pair,
+            window_observations=window_observations,
+            lookback_days=lookback_days,
+            return_type=return_type,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_realized_vol_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_realized_vol(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_realized_vol_tool] failed")
+        return _json_error(f"FX realized vol failed: {exc}")
+
+    llm_response = {"current_metrics": result.current_metrics.model_dump()}
+    return json.dumps(llm_response, default=str)
 
 
 if __name__ == "__main__":
