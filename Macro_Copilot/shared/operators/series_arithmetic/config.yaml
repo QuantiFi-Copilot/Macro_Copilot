@@ -1,0 +1,40 @@
+operator:
+  name: series_arithmetic
+  method_family: arithmetic
+  version: "1.0.0"
+  description: >-
+    Elementwise arithmetic on typed Series with a strict unit
+    algebra.  Finance-blind; refuses unit-incoherent operations
+    rather than silently coercing.
+
+defaults:
+  period:
+    value: 1
+    source: operator_v1_default
+    rationale: >-
+      Default lag for diff / pct_change is 1 step.  Most Phase 1A
+      workflows want a 1-step diff (daily change).  Higher periods
+      are a methodology choice exposed at the input layer; pin to
+      a concrete value at the workflow-template level when needed.
+
+methodology:
+  what_it_does: >-
+    Applies one of {add, subtract, multiply, divide, diff,
+    pct_change} elementwise to a left Series and a right Series or
+    scalar.  Unit algebra is STRICT: add / subtract / divide require
+    the operand units to match (and ``divide`` of same-unit series
+    yields ``ratio``); ``multiply`` accepts a scalar only and
+    preserves left units; ``divide`` by a scalar preserves left
+    units; ``diff`` preserves units; ``pct_change`` produces
+    ``ratio``.  All other combinations raise SeriesArithmeticError —
+    no silent percent->bps coercion, no unit composition (those are
+    a separate ``convert_units`` operator deferred to
+    planned_extensions).  When both operands are Series they MUST
+    already share a DatetimeIndex (use ``align_series`` first);
+    otherwise the operator raises rather than silently aligning.
+  planned_extensions:
+    - "log and other unary nonlinear ops"
+    - "configurable nan_policy (propagate vs skip)"
+    - "configurable overflow_policy (error vs inf on div-by-zero)"
+    - "convert_units sibling operator (explicit unit conversion)"
+    - "Series * Series multiplication with unit-composition rules"
