@@ -87,7 +87,7 @@ conventions:
       input layer (`pca_lookback_days`); this YAML value is the
       schema-layer default that fires when the LLM/HTTP wrapper
       doesn't supply one.
-    valid_range: [378, 7300]
+    valid_range: [400, 7300]
 
   default_n_components:
     value: 3

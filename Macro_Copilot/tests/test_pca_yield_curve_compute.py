@@ -252,7 +252,8 @@ class TestComputeHappyPath:
 
         # Snapshot fields present
         for k in (
-            "as_of_date", "curve_family", "tenors_used",
+            "as_of_date", "fit_window_start", "fit_window_end",
+            "curve_family", "tenors_used",
             "lookback_days_used", "n_components_returned",
             "change_frequency_used", "sign_anchor_used",
             "loadings", "variance_explained",
@@ -260,6 +261,12 @@ class TestComputeHappyPath:
             "component_metadata", "observation_count",
         ):
             assert k in cm, f"missing {k}"
+
+        # fit_window_end is just an alias for as_of_date.
+        assert cm["fit_window_end"] == cm["as_of_date"]
+        # fit_window_start must be strictly before fit_window_end
+        # (the centered-change panel has at least one diff step).
+        assert cm["fit_window_start"] < cm["fit_window_end"]
 
         # Tenors numeric-ascending
         assert cm["tenors_used"] == [

@@ -1262,8 +1262,12 @@ def yield_change_attribution_pca_tool(
          output (sign_anchor, fit window, variance shares, per-
          component quality flags).
       2. pasted: caller supplies `pasted_loadings` (a
-         ``PastedPcaLoadings`` payload).  Inline-fit params are
-         ignored.  The paste's provenance is echoed in the output.
+         ``PastedPcaLoadings`` payload).  compute() does NOT read
+         the inline-fit params on this path; the paste's own
+         provenance is authoritative and is echoed in the output.
+         Schema-layer validation of the inline-fit params still
+         applies in BOTH modes (so pass in-range placeholder values
+         when paste-only — defaults work fine).
 
     Component labels are pc1, pc2, pc3, ... — NOT level/slope/
     curvature.  The canonical interpretation holds for normal
@@ -1289,17 +1293,24 @@ def yield_change_attribution_pca_tool(
         via pca_yield_curve.
     pca_lookback_days : int, optional
         Calendar days of history for the inline PCA fit.  Default
-        1825 (~5y).  Ignored when pasted_loadings is supplied.
+        1825 (~5y); valid range [400, 7300] (mirrors
+        pca_yield_curve's own lookback floor).  compute() does not
+        read this on the pasted path, but the range validator runs
+        in BOTH modes — pass an in-range value (the default works)
+        even when supplying pasted_loadings.
     n_components : int, optional
         Number of PCA components for the attribution.  Default 3.
         Must not exceed len(pasted_loadings.components) when paste
         is supplied.
     change_frequency : "daily" | "weekly", optional
-        Frequency for the inline PCA fit.  Default 'daily'.  Ignored
-        when pasted_loadings is supplied.
+        Frequency for the inline PCA fit.  Default 'daily'.
+        compute() does not read this on the pasted path (the
+        paste's change_frequency_used is authoritative there), but
+        the Literal validator runs in BOTH modes.
     tenors : list of str, optional
         Tenor list for the inline PCA fit.  Default uses the playbook
-        universe.  Ignored when pasted_loadings is supplied.
+        universe.  compute() does not read this on the pasted path;
+        the analogous tenor universe there is pasted_loadings.tenors.
     field_name : str, optional
         Bloomberg field mnemonic.  Leave as the default empty string
         "" to use the YAML's default_field_name (currently

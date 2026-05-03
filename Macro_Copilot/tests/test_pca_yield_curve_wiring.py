@@ -49,6 +49,8 @@ def _well_formed_pca_output() -> dict:
     return {
         "current_metrics": {
             "as_of_date": "2026-04-30",
+            "fit_window_start": "2021-04-30",
+            "fit_window_end": "2026-04-30",
             "curve_family": "UST",
             "tenors_used": ["1Y", "2Y", "5Y", "10Y", "30Y"],
             "lookback_days_used": 1825,

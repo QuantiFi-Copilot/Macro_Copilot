@@ -445,14 +445,33 @@ def _acquire_fit_inline(
     forwarded to the caller unchanged so the FastAPI 422-mapping
     phrase shape from pca_yield_curve flows through.
     """
-    pca_input = PcaYieldCurveInput(
-        curve_family=curve_family,
-        tenors=tenors,
-        lookback_days=pca_lookback_days,
-        n_components=n_components,
-        change_frequency=change_frequency,  # type: ignore[arg-type]
-        field_name=field_name,
-    )
+    # Construct the nested PcaYieldCurveInput inside a try/except so
+    # that if T13's schema bounds ever drift ahead of T14's (today
+    # they're synced — both lookback floors are 400 — but the inline
+    # path still bridges two independent Pydantic models), the caller
+    # gets a controlled error envelope with the "is smaller than the
+    # YAML's" / "is larger than the YAML's" phrase shape rather than
+    # an uncaught ValidationError that bubbles out as a generic
+    # "Calculation failed" at the MCP wrapper.
+    try:
+        pca_input = PcaYieldCurveInput(
+            curve_family=curve_family,
+            tenors=tenors,
+            lookback_days=pca_lookback_days,
+            n_components=n_components,
+            change_frequency=change_frequency,  # type: ignore[arg-type]
+            field_name=field_name,
+        )
+    except Exception as exc:
+        return None, {
+            "error": (
+                f"Inline PCA fit input rejected by upstream schema: {exc}.  "
+                f"This usually means T14's pca_lookback_days range is "
+                f"out of sync with pca_yield_curve's lookback_days "
+                f"range; pick a value inside both bounds, or supply "
+                f"pasted_loadings to bypass the inline path."
+            )
+        }
     pca_result = calculate_pca_yield_curve(engine=engine, params=pca_input)
     if "error" in pca_result:
         return None, pca_result
@@ -500,24 +519,11 @@ def _acquire_fit_inline(
         m.get("quality_note") for m in metadata_rows[:n_comp_returned]
     ]
 
-    # The fit window's start/end come from the PCA primitive's
-    # internals — pca_yield_curve emits as_of_date (which equals
-    # fit_window_end).  We need fit_window_start too; the snapshot
-    # doesn't expose it directly because the PCA tool considers it
-    # internal.  Re-derive via the primitive's contract: the change
-    # panel starts at the first non-NaN diff row, which we can't
-    # observe without re-doing the fetch.  Cleanest path: re-call
-    # the PCA primitive's internal fit step?  No — too expensive.
-    # Instead: surface only the as_of_date as both endpoints; the
-    # `loadings_change_window_overlap_pct` calculation will use
-    # whatever window is observable from the change-window fetch
-    # below.  This is a minor provenance loss that we'll fix in a
-    # follow-up by extending pca_yield_curve's snapshot to expose
-    # fit_window_start.  For V1 we use as_of_date for both ends and
-    # let the overlap test be conservative (will read 100% only when
-    # the change window is fully on or before as_of_date).
-    fit_window_end = cm["as_of_date"]
-    fit_window_start = fit_window_end  # see note above
+    # Pull the true fit-window endpoints from the PCA snapshot's
+    # explicit fields.  These were added so the inline path can echo
+    # honest provenance instead of fabricating a one-day window.
+    fit_window_start = cm["fit_window_start"]
+    fit_window_end = cm["fit_window_end"]
 
     return _LoadingsBundle(
         tenors_used=tenors_used,

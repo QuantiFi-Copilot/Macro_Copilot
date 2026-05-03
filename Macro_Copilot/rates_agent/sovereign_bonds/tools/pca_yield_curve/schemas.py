@@ -169,6 +169,29 @@ class PcaYieldCurveMetrics(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     as_of_date: str = Field(..., description="Latest date in the fit window (YYYY-MM-DD).")
+    fit_window_start: str = Field(
+        ...,
+        description=(
+            "First trading day of the centered-change panel actually "
+            "used to fit the PCA (YYYY-MM-DD).  This is one diff step "
+            "after the first raw-yield row, since one observation is "
+            "consumed by differencing.  Distinct from the user's "
+            "``lookback_days`` request, which is a calendar-day "
+            "request for the raw fetch — the realised window depends "
+            "on holidays, weekends, and the change_frequency lag.  "
+            "Downstream consumers (e.g. yield_change_attribution_pca) "
+            "use this to compute change-vs-fit overlap honestly."
+        ),
+    )
+    fit_window_end: str = Field(
+        ...,
+        description=(
+            "Last trading day of the centered-change panel "
+            "(YYYY-MM-DD).  Equal to ``as_of_date`` — the alias is "
+            "retained for symmetry with ``fit_window_start`` and to "
+            "make downstream provenance code less surprising."
+        ),
+    )
     curve_family: str
     tenors_used: List[str] = Field(
         ...,
