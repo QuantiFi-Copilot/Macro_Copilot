@@ -70,21 +70,26 @@ class PcaYieldCurveInput(BaseModel):
             "Subset of tenor labels to include in the fit, in any "
             "order (compute() sorts by numeric tenor before fitting).  "
             "When None (default), use ALL tenors of the curve_family "
-            "from the playbook universe.  FastAPI consumers pass "
-            "this as repeated query params: "
+            "from the playbook universe.  When supplied explicitly, "
+            "the fit uses EXACTLY those tenors or returns an error; "
+            "the tool does not silently drop missing tenors.  FastAPI "
+            "consumers pass this as repeated query params: "
             "``?tenors=1Y&tenors=2Y&tenors=10Y``."
         ),
     )
     lookback_days: int = Field(
         default=1825,
-        ge=252,
+        ge=400,
         le=7300,
         description=(
             "Calendar days of history fetched for the fit.  Default "
             "1825 (~5 years) — typical desk range for PCA on "
-            "sovereign curves.  Lower bound 252 mirrors the YAML's "
-            "min_observations_for_pca floor; tighter values would "
-            "trigger the controlled-error envelope immediately."
+            "sovereign curves.  Lower bound 400 is a conservative "
+            "calendar-day floor intended to leave enough trading-day "
+            "observations for the YAML's ``min_observations_for_pca`` "
+            "requirement after differencing, including the weekly "
+            "(``periods=5``) path.  The cross-layer observation-count "
+            "guard remains the real authority."
         ),
     )
     n_components: int = Field(

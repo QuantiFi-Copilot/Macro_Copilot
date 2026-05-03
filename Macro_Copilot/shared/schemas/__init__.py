@@ -21,6 +21,7 @@ See docs/architecture/tool_architecture.md for the canonical layout.
 
 from shared.schemas.time_series import (
     PairSpec,
+    PastedPcaComponentMetadata,
     PastedPcaLoadings,
     PastedTimeSeries,
     SeriesSpec,
@@ -37,5 +38,6 @@ __all__ = [
     "SeriesSpec",
     "PairSpec",
     "PastedTimeSeries",
+    "PastedPcaComponentMetadata",
     "PastedPcaLoadings",
 ]

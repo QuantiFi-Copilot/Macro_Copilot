@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import ValidationError
 
@@ -1109,7 +1109,7 @@ def pca_yield_curve_tool(
     tenors: Optional[List[str]] = None,
     lookback_days: int = 1825,
     n_components: int = 3,
-    change_frequency: str = "daily",
+    change_frequency: Literal["daily", "weekly"] = "daily",
     field_name: str = "",
 ) -> str:
     """Run PCA on the yield-CHANGES panel of one sovereign curve.
@@ -1138,11 +1138,15 @@ def pca_yield_curve_tool(
         Sovereign curve identifier — e.g. 'UST', 'DE_BUND', 'IT_BTP'.
     tenors : List[str], optional
         Subset of tenor labels.  When None (default), use all
-        available tenors of the curve_family.
+        playbook-configured tenors of the curve_family.  When supplied
+        explicitly, the fit uses exactly those tenors or returns an
+        error — the tool does not silently drop missing tenors.
     lookback_days : int, optional
         Calendar days of history fetched for the fit.  Default 1825
-        (~5 years).  Lower bound 252 mirrors the YAML's
-        min_observations_for_pca.
+        (~5 years).  Lower bound 400 is a conservative calendar-day
+        floor so the differenced panel usually clears the YAML's
+        ``min_observations_for_pca`` requirement; the cross-layer
+        observation-count guard remains authoritative.
     n_components : int, optional
         Number of components to return (default 3).  Constrained to
         [1, 8].

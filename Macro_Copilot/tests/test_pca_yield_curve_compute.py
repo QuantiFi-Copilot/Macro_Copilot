@@ -59,7 +59,7 @@ from shared.config import (
     clear_tool_config_cache,
     load_tool_config,
 )
-from shared.schemas import TimeSeriesUnits
+from shared.schemas import PastedPcaLoadings, TimeSeriesUnits
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +158,14 @@ def _run(params, fetched_df, config=None):
     """Patch fetch_tenor_group + date inside the compute module and
     run the tool."""
     def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
-        # fake_fetch: filter rows to the requested tenors
-        return fetched_df[fetched_df["tenor"].isin(tenors)].copy()
+        # fake_fetch: filter rows to the requested tenors and the
+        # requested calendar start date so lookback semantics stay
+        # honest in unit tests.
+        mask = (
+            fetched_df["tenor"].isin(tenors)
+            & (fetched_df["trade_date"] >= start_date)
+        )
+        return fetched_df.loc[mask].copy()
 
     with patch(
         "rates_agent.sovereign_bonds.tools.pca_yield_curve.compute.fetch_tenor_group",
@@ -537,7 +543,7 @@ class TestSchemaBehaviour:
 
     def test_lookback_days_lower_bound(self):
         with pytest.raises(Exception):
-            PcaYieldCurveInput(curve_family="UST", lookback_days=100)
+            PcaYieldCurveInput(curve_family="UST", lookback_days=399)
 
     def test_n_components_exceeds_available_tenors_returns_error(self):
         """Caller asks for 5 components but the panel only has 3
@@ -552,6 +558,46 @@ class TestSchemaBehaviour:
         out = _run(params, df)
         assert "error" in out
         assert "n_components" in out["error"]
+
+    def test_explicit_missing_tenor_returns_error_not_silent_shrink(self):
+        df = _synthetic_curve_df(tenors=("2Y", "5Y", "10Y"), n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="UST",
+            tenors=["2Y", "5Y", "10Y", "30Y"],
+            n_components=3,
+            lookback_days=1825,
+        )
+        out = _run(params, df)
+        assert "error" in out
+        assert "Missing tenor" in out["error"]
+        assert "30Y" in out["error"]
+
+    def test_duplicate_explicit_tenors_return_error(self):
+        df = _synthetic_curve_df(tenors=("2Y", "5Y", "10Y", "30Y"), n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="UST",
+            tenors=["2Y", "5Y", "5Y", "10Y"],
+            n_components=3,
+            lookback_days=1825,
+        )
+        out = _run(params, df)
+        assert "error" in out
+        assert "Duplicate tenor" in out["error"]
+
+    def test_default_playbook_universe_missing_tenor_returns_error(self):
+        df = _synthetic_curve_df(
+            tenors=("1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y"),
+            n_obs=1000,
+        )
+        params = PcaYieldCurveInput(
+            curve_family="UST",
+            n_components=3,
+            lookback_days=1825,
+        )
+        out = _run(params, df)
+        assert "error" in out
+        assert "Missing tenor" in out["error"]
+        assert "30Y" in out["error"]
 
 
 # ===========================================================================
@@ -673,3 +719,40 @@ class TestImportPathBackCompat:
             CONFIG_PATH as via_compute,
         )
         assert via_package == via_compute
+
+
+# ===========================================================================
+# 13. Shared pasted-PCA contract
+# ===========================================================================
+
+class TestPastedPcaLoadingsContract:
+    def test_accepts_component_metadata_and_suppressed_loadings(self):
+        pasted = PastedPcaLoadings(
+            curve_family="UST",
+            tenors=["1Y", "10Y", "30Y"],
+            components=[
+                [0.4, 0.5, 0.6],
+                [None, None, None],
+            ],
+            component_names=["pc1", "pc2"],
+            variance_shares=[0.95, 0.0],
+            component_metadata=[
+                {
+                    "component_name": "pc1",
+                    "quality_flag": "ok",
+                    "quality_note": None,
+                },
+                {
+                    "component_name": "pc2",
+                    "quality_flag": "degenerate",
+                    "quality_note": "suppressed",
+                },
+            ],
+            fit_window_start="2021-01-01",
+            fit_window_end="2026-01-01",
+            change_frequency_used="daily",
+            n_observations_in_fit=900,
+            sign_anchor_used="lock_pc_long_tenor_positive",
+        )
+        assert pasted.components[1] == [None, None, None]
+        assert pasted.component_metadata[1].quality_flag == "degenerate"

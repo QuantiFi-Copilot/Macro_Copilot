@@ -56,11 +56,13 @@ all live inside compute()'s namespace; tests patch them at
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import yaml
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.pca_yield_curve.schemas import (
@@ -81,6 +83,9 @@ from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 # Bundled config — public symbol so external callers can build a
 # ToolConfig from the same source the tool uses.
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+PLAYBOOK_PATH: Path = (
+    Path(__file__).resolve().parents[3] / "playbooks" / "sovereign_bonds.yml"
+)
 
 
 # Locked structural-choice value.  compute() raises NotImplementedError
@@ -168,6 +173,40 @@ def _resolve_field_name(
     return explicit if explicit is not None else default
 
 
+@lru_cache(maxsize=1)
+def _playbook_curve_family_tenors() -> Dict[str, List[str]]:
+    """Load the sovereign playbook's tenor universe by curve_family."""
+    with PLAYBOOK_PATH.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    out: Dict[str, List[str]] = {}
+    for item in raw.get("universe", []):
+        curve_family = item.get("curve_family")
+        tenor = item.get("tenor")
+        if not curve_family or not tenor:
+            continue
+        out.setdefault(str(curve_family), []).append(str(tenor))
+
+    return {
+        curve_family: sorted(
+            list(dict.fromkeys(tenors)),
+            key=_tenor_to_years,
+        )
+        for curve_family, tenors in out.items()
+    }
+
+
+def _playbook_tenors_for_curve_family(curve_family: str) -> List[str]:
+    """Return the playbook tenor universe for one sovereign curve."""
+    tenors = _playbook_curve_family_tenors().get(curve_family)
+    if not tenors:
+        raise ValueError(
+            f"Missing curve '{curve_family}' in the sovereign playbook.  "
+            "PCA requires a playbook-defined tenor universe."
+        )
+    return list(tenors)
+
+
 # ============================================================================
 # PUBLIC API
 # ============================================================================
@@ -213,18 +252,55 @@ def calculate_pca_yield_curve(
     field_name_resolved = _resolve_field_name(params.field_name, default_field)
 
     # ------------------------------------------------------------------
-    # 1. Fetch the yield panel for the requested curve_family +
-    #    tenor list.  When tenors=None we still need a non-empty
-    #    list for fetch_tenor_group; build a maximal sovereign tenor
-    #    list as the default and let pivot_and_align_tenors drop
-    #    tenors not present in the DB.
+    # 1. Resolve the exact tenor universe this fit is allowed to use.
+    #    * tenors=None   -> use the curve_family's playbook universe.
+    #    * tenors=[...]  -> validate against that universe and fit
+    #                      exactly those tenors (no silent dropping).
+    #    The frozen T13 contract requires explicit-tenor requests to be
+    #    validated rather than silently altered by data availability.
     # ------------------------------------------------------------------
-    requested_tenors = params.tenors
-    if not requested_tenors:
-        # Default sovereign tenor universe (matches the playbook).
-        requested_tenors = [
-            "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y",
+    try:
+        playbook_tenors = _playbook_tenors_for_curve_family(params.curve_family)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    if params.tenors is None:
+        requested_tenors = playbook_tenors
+    else:
+        requested_tenors = list(params.tenors)
+        duplicate_tenors = [
+            tenor for tenor in requested_tenors
+            if requested_tenors.count(tenor) > 1
         ]
+        if duplicate_tenors:
+            duplicates_unique = list(dict.fromkeys(duplicate_tenors))
+            return {
+                "error": (
+                    f"Duplicate tenor(s) requested for "
+                    f"curve_family='{params.curve_family}': "
+                    f"{duplicates_unique}.  PCA requires each tenor at "
+                    "most once in the fit."
+                )
+            }
+        invalid_tenors = [t for t in requested_tenors if t not in playbook_tenors]
+        if invalid_tenors:
+            return {
+                "error": (
+                    f"Missing tenor(s) from the playbook universe for "
+                    f"curve_family='{params.curve_family}': {invalid_tenors}.  "
+                    f"Playbook tenors: {playbook_tenors}."
+                )
+            }
+
+    if params.n_components > len(requested_tenors):
+        return {
+            "error": (
+                f"n_components={params.n_components} exceeds the number "
+                f"of requested tenors ({len(requested_tenors)}: "
+                f"{requested_tenors}).  Either request fewer components "
+                "or supply more tenors."
+            )
+        }
 
     start_date = date.today() - timedelta(days=params.lookback_days)
 
@@ -247,30 +323,22 @@ def calculate_pca_yield_curve(
         }
 
     # ------------------------------------------------------------------
-    # 2. Identify which tenors actually have data.  Caller-supplied
-    #    tenors that are missing from the DB are dropped (not error)
-    #    but reported in tenors_used.  When tenors=None we use
-    #    whatever showed up.
+    # 2. The fit must use the exact requested tenor set.  Missing tenors
+    #    are a data-availability problem, not something the tool is
+    #    allowed to silently paper over by fitting a different panel.
     # ------------------------------------------------------------------
     available = set(raw_df["tenor"].unique())
-    tenors_for_fit = [t for t in requested_tenors if t in available]
-    if not tenors_for_fit:
+    missing_from_panel = [t for t in requested_tenors if t not in available]
+    if missing_from_panel:
         return {
             "error": (
-                f"No requested tenors are available in the fetched "
-                f"panel.  Requested: {requested_tenors}; available "
-                f"in fetched data: {sorted(available)}."
+                f"Missing tenor(s) in the fetched panel for "
+                f"curve_family='{params.curve_family}': {missing_from_panel}.  "
+                f"Requested tenors: {requested_tenors}; available in fetched "
+                f"data: {sorted(available)}."
             )
         }
-    if params.n_components > len(tenors_for_fit):
-        return {
-            "error": (
-                f"n_components={params.n_components} exceeds the "
-                f"number of available tenors "
-                f"({len(tenors_for_fit)}: {tenors_for_fit}).  Either "
-                "request fewer components or supply more tenors."
-            )
-        }
+    tenors_for_fit = requested_tenors
 
     # ------------------------------------------------------------------
     # 3. Pivot to wide format + ffill holiday gaps + dropna rows

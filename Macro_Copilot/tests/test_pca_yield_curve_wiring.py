@@ -27,6 +27,7 @@ Key load-bearing properties pinned:
 from __future__ import annotations
 
 import json
+from typing import Literal, get_args, get_origin, get_type_hints
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -163,6 +164,13 @@ class TestDetailPcaEndpointWiring:
         query_obj = sig.parameters["tenors"].default
         assert query_obj.default is None
 
+    def test_lookback_days_query_lower_bound_is_400(self):
+        from api.routes.rates import detail as detail_module
+        import inspect
+        sig = inspect.signature(detail_module.pca_yield_curve_detail)
+        query_obj = sig.parameters["lookback_days"].default
+        assert query_obj.ge == 400
+
     def test_omitted_field_name_flows_none(self):
         from api.routes.rates import detail as detail_module
 
@@ -274,6 +282,13 @@ class TestMcpPcaWrapper:
         sig = inspect.signature(mcp_module.pca_yield_curve_tool)
         default = sig.parameters["field_name"].default
         assert default == ""
+
+    def test_change_frequency_annotation_is_literal(self):
+        from rates_agent.sovereign_bonds import mcp_server as mcp_module
+
+        hint = get_type_hints(mcp_module.pca_yield_curve_tool)["change_frequency"]
+        assert get_origin(hint) is Literal
+        assert get_args(hint) == ("daily", "weekly")
 
     def test_omitted_field_name_flows_none_to_input(self):
         from rates_agent.sovereign_bonds import mcp_server as mcp_module

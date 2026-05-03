@@ -125,6 +125,7 @@ def _tool_result_or_raise(result: dict, context: str) -> dict:
         "is smaller than the yaml",
         "is larger than the yaml",
         "conflicts with the yaml",
+        "duplicate tenor",
     ]
     if any(phrase in lower for phrase in user_input_phrases):
         raise HTTPException(status_code=422, detail=f"{context}: {error_msg}")
@@ -551,10 +552,12 @@ def pca_yield_curve_detail(
         description=(
             "Subset of tenor labels.  Repeat the param: "
             "``?tenors=1Y&tenors=2Y&tenors=10Y``.  Omit to use all "
-            "available tenors of the curve_family."
+            "playbook-configured tenors of the curve_family.  When "
+            "supplied explicitly, the fit uses exactly those tenors "
+            "or returns an error."
         ),
     ),
-    lookback_days: int = Query(default=1825, ge=252, le=7300),
+    lookback_days: int = Query(default=1825, ge=400, le=7300),
     n_components: int = Query(default=3, ge=1, le=8),
     change_frequency: Literal["daily", "weekly"] = Query(default="daily"),
     field_name: Optional[str] = Query(
@@ -575,6 +578,11 @@ def pca_yield_curve_detail(
     ``ffill_limit_days``, all rounding decimals) are YAML-locked
     and not exposed at the route — see A13 in
     docs/architecture/tool_architecture.md.
+
+    The ``lookback_days`` lower bound is a conservative calendar-day
+    floor, not a 1:1 mirror of ``min_observations_for_pca`` — the
+    actual fit still depends on how many non-NaN trading-day changes
+    remain after differencing.
 
     The cross-layer min_observations guard returns a controlled error
     envelope whose phrase shape maps to HTTP 422 via the helper's

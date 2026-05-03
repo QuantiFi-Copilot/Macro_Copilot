@@ -30,8 +30,9 @@ are the input shapes tools accept when an LLM orchestrator pipes
 output of a prior tool call into a downstream tool.  Each pasted
 shape carries the full provenance the consuming tool needs to
 honestly emit its outputs (e.g., ``PastedPcaLoadings`` MUST include
-variance shares because T14's per-component variance output cannot
-be derived from loadings alone).
+variance shares and component-quality metadata because T14's
+per-component variance and quality handling cannot be derived from
+loadings alone).
 """
 
 from __future__ import annotations
@@ -217,6 +218,16 @@ class PastedTimeSeries(BaseModel):
     )
 
 
+class PastedPcaComponentMetadata(BaseModel):
+    """Per-component PCA quality metadata carried across pasted fits."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    component_name: str = Field(..., min_length=1)
+    quality_flag: Literal["ok", "degenerate", "sign_anchor_tied"]
+    quality_note: Optional[str] = None
+
+
 class PastedPcaLoadings(BaseModel):
     """Caller-supplied PCA loadings the tool consumes directly.
 
@@ -236,6 +247,13 @@ class PastedPcaLoadings(BaseModel):
     check the consuming tool validates against its
     ``min_observations_for_pca`` convention).
 
+    T13 also emits per-component quality metadata
+    (``ok`` / ``degenerate`` / ``sign_anchor_tied``).  The consumer
+    needs that metadata to distinguish a clean PCA fit from one with
+    suppressed or ambiguous components, so the pasted shape carries it
+    explicitly rather than coercing every fit into a dense numeric
+    matrix.
+
     The ``sign_anchor_used`` field is a closed Literal (only one
     anchor is supported in V1); a paste declaring any other anchor is
     rejected at input validation by the consuming tool.
@@ -249,13 +267,15 @@ class PastedPcaLoadings(BaseModel):
         min_length=1,
         description="Tenor labels matching the order of ``components`` columns.",
     )
-    components: List[List[float]] = Field(
+    components: List[List[Optional[float]]] = Field(
         ...,
         min_length=1,
         description=(
             "[n_components][n_tenors] loading matrix.  Each loading vector "
-            "should be unit-norm (validated by the consuming tool with a "
-            "small tolerance)."
+            "should be unit-norm when the component is usable "
+            "(validated by the consuming tool with a small tolerance).  "
+            "None is allowed for suppressed loadings on degenerate "
+            "components."
         ),
     )
     component_names: List[str] = Field(
@@ -275,6 +295,16 @@ class PastedPcaLoadings(BaseModel):
             "fit.  REQUIRED because T14 emits this in its output; "
             "consuming tool validates ``len == len(components)``, each in "
             "[0, 1], ``sum <= 1.0 + 1e-6``."
+        ),
+    )
+    component_metadata: List[PastedPcaComponentMetadata] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Per-component quality flags from the original PCA fit.  "
+            "Length must match ``components`` and ``component_names`` so "
+            "the consumer can preserve T13's ``ok`` / ``degenerate`` / "
+            "``sign_anchor_tied`` semantics."
         ),
     )
     fit_window_start: str = Field(
