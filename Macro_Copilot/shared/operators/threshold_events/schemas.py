@@ -44,19 +44,33 @@ ThresholdBasis = Literal["raw_value", "rolling_zscore"]
 
 
 class ThresholdEventsParams(BaseModel):
-    """Parameters for ``threshold_events`` (Phase 1A surface)."""
+    """Parameters for ``threshold_events`` (Phase 1A surface).
+
+    ``threshold_basis`` and ``look_ahead_safe`` default to ``None`` so
+    the **YAML** (``config.yaml``) is authoritative for those defaults
+    at runtime — the operator resolves None → ``config.default_value(...)``
+    and then re-validates.  Codex P2 follow-up: previously the schema
+    hardcoded these defaults, so YAML changes had no runtime effect
+    unless schema also changed.
+
+    ``rule`` and ``threshold`` are user-input methodological choices
+    with no sensible defaults — they remain required.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     rule: ThresholdRule
     threshold: float
-    threshold_basis: ThresholdBasis = "raw_value"
+    threshold_basis: Optional[ThresholdBasis] = None
     rolling_window: Optional[int] = Field(default=None, ge=2)
     min_periods: Optional[int] = Field(default=None, ge=1)
-    look_ahead_safe: bool = True
+    look_ahead_safe: Optional[bool] = None
 
     @model_validator(mode="after")
     def _validate_basis_args(self) -> "ThresholdEventsParams":
+        # When threshold_basis is None at construction time, the
+        # operator will resolve it from config and re-validate; we
+        # only enforce the basis-specific rules when basis is concrete.
         if self.threshold_basis == "rolling_zscore":
             if self.rolling_window is None:
                 raise ValueError(
@@ -68,7 +82,7 @@ class ThresholdEventsParams(BaseModel):
                     f"min_periods={self.min_periods} cannot exceed "
                     f"rolling_window={self.rolling_window}."
                 )
-        else:
+        elif self.threshold_basis == "raw_value":
             # raw_value basis: rolling args are irrelevant (and would
             # silently mislead lineage if accepted).
             if self.rolling_window is not None or self.min_periods is not None:
@@ -76,8 +90,12 @@ class ThresholdEventsParams(BaseModel):
                     "threshold_basis='raw_value' does not use "
                     "rolling_window or min_periods; omit them."
                 )
+        # else basis is None → defer the basis-specific check to the
+        # operator, which re-validates after resolving from config.
+
         # rule='abs_above' implies threshold >= 0 (a negative absolute-
         # value threshold catches everything; almost certainly a bug).
+        # Always-on; does not depend on basis resolution.
         if self.rule == "abs_above" and self.threshold < 0:
             raise ValueError(
                 f"rule='abs_above' with threshold={self.threshold} < 0 "
