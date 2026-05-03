@@ -585,6 +585,159 @@ class TestFFillMetadataHonesty:
         assert isinstance(recovered.upstream, CleanSingleSeriesV1)
 
 
+class TestNestedPolicyRecomposition:
+    """Codex P1 follow-up: ``AlignSeriesFFillV1`` carries a nested
+    ``upstream`` policy.  The strict missingness check must handle
+    that nesting — comparing two such policies via
+    ``tuple(sorted(model_dump.items()))`` raises ``TypeError`` because
+    the nested ``upstream`` is a dict.  Switching to a canonical JSON
+    string is what makes nested-policy composition work.
+
+    These tests pin the contract that align_series can take its OWN
+    output (whose policy is AlignSeriesFFillV1) and re-align it
+    without crashing.
+    """
+
+    def _ffilled_series(self, series_key: str, dates, values):
+        """Helper: produce a Series whose missingness_policy is a real
+        AlignSeriesFFillV1 (i.e. the kind of policy that comes out of
+        a prior align_series with fill_policy='ffill')."""
+        a = _series("__inner_a", dates=dates, values=values)
+        b = _series(
+            "__inner_b",
+            dates=[dates[0], dates[-1]],
+            values=[values[0], values[-1]],
+        )
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(
+                join_policy="outer", fill_policy="ffill", fill_limit=3,
+            ),
+        )
+        view = out.get_series("__inner_a")
+        # Sanity: the helper actually produced a wrapper policy.
+        assert isinstance(view.missingness_policy, AlignSeriesFFillV1)
+        # Re-key the resulting Series so the caller can pass it back
+        # in alongside another input under a stable name.
+        return Series(
+            series_key=series_key,
+            payload=view.payload,
+            units=view.units,
+            frequency=view.frequency,
+            missingness_policy=view.missingness_policy,
+            lineage=view.lineage,
+        )
+
+    def test_two_identical_nested_policies_pass_strict_check(self):
+        """Two series both carrying ``AlignSeriesFFillV1(upstream=...,
+        fill_limit=3)`` with the same upstream are compatible — the
+        strict check must NOT crash and must NOT raise."""
+        a = self._ffilled_series(
+            "a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0],
+        )
+        b = self._ffilled_series(
+            "b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0],
+        )
+        # Same recipe ⇒ identical wrapper policies ⇒ should pass
+        # strict missingness compatibility without TypeError.
+        out = align_series([a, b])
+        assert out.keys() == ["a", "b"]
+
+    def test_nested_policies_with_different_fill_limits_raise_alignseries_error(self):
+        """When two nested policies differ only in their inner
+        fill_limit, the strict check must raise the controlled
+        ``AlignSeriesError`` — not a raw TypeError, and not silent
+        acceptance."""
+        # First series: AlignSeriesFFillV1(fill_limit=3, upstream=Clean(ffill_limit=5))
+        a = self._ffilled_series(
+            "a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0],
+        )
+        # Second series: hand-build a different nested wrapper
+        # (fill_limit=7) with the same upstream so the strict check
+        # has a concrete mismatch to surface.
+        b_inner = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0])
+        b = Series(
+            series_key="b",
+            payload=b_inner.payload,
+            units=b_inner.units,
+            frequency=b_inner.frequency,
+            missingness_policy=AlignSeriesFFillV1(
+                upstream=CleanSingleSeriesV1(ffill_limit=5),
+                fill_limit=7,
+            ),
+            lineage=b_inner.lineage,
+        )
+        with pytest.raises(AlignSeriesError, match="incompatible missingness"):
+            align_series([a, b])
+
+    def test_nested_vs_flat_policy_mismatch_raises_alignseries_error(self):
+        """A nested ``AlignSeriesFFillV1`` and a flat
+        ``CleanSingleSeriesV1`` are NOT compatible in strict mode.
+        The check must surface this without TypeError."""
+        a = self._ffilled_series(
+            "a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0],
+        )
+        b = _series(
+            "b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0],
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+        with pytest.raises(AlignSeriesError, match="incompatible missingness"):
+            align_series([a, b])
+
+    def test_nested_policy_lenient_mode_passes_through(self):
+        """Lenient mode accepts mixed nested/flat policies and
+        preserves them per-key (under raw fill)."""
+        a = self._ffilled_series(
+            "a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0],
+        )
+        b = _series(
+            "b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0],
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(require_matching_missingness=False),
+        )
+        # Per-key policies preserved under raw fill (no further
+        # wrapping happens because fill_policy='raw' is the default).
+        assert isinstance(
+            out.get_series("a").missingness_policy, AlignSeriesFFillV1
+        )
+        assert isinstance(
+            out.get_series("b").missingness_policy, CleanSingleSeriesV1
+        )
+
+    def test_nested_policy_re_ffill_double_wraps(self):
+        """When a series carrying ``AlignSeriesFFillV1`` goes through
+        ``align_series`` again with ``fill_policy='ffill'``, the
+        operator must wrap the *current* policy as the new
+        ``upstream`` — producing
+        ``AlignSeriesFFillV1(upstream=AlignSeriesFFillV1(...), ...)``.
+        Honest layered provenance."""
+        a = self._ffilled_series(
+            "a", dates=["2026-01-02", "2026-01-05"], values=[1.0, 2.0],
+        )
+        b = self._ffilled_series(
+            "b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0],
+        )
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(
+                join_policy="outer", fill_policy="ffill", fill_limit=2,
+            ),
+        )
+        view = out.get_series("a")
+        assert isinstance(view.missingness_policy, AlignSeriesFFillV1)
+        assert view.missingness_policy.fill_limit == 2
+        # The new wrapper's upstream is the FIRST wrapper (depth-2).
+        assert isinstance(view.missingness_policy.upstream, AlignSeriesFFillV1)
+        assert view.missingness_policy.upstream.fill_limit == 3
+        # And THAT wrapper's upstream is the original CleanSingleSeriesV1.
+        assert isinstance(
+            view.missingness_policy.upstream.upstream, CleanSingleSeriesV1
+        )
+
+
 # ===========================================================================
 # fetch_single_tenor contract (Codex P2 follow-up)
 # ===========================================================================

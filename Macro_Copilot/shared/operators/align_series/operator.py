@@ -22,6 +22,7 @@ that contract requires storing per-key upstream lineage on the
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Counter, List, Optional
 
@@ -186,17 +187,23 @@ def align_series(
         common_frequency = None
 
     # Missingness compatibility (same rationale).  We compare on the
-    # canonical JSON dump of each Pydantic policy model — same kind +
-    # same params = same dump.  Mixing CleanSingleSeriesV1 with
-    # RawNoCleaning is exactly what the structured ``MissingnessPolicy``
-    # family is supposed to catch.
+    # canonical JSON-string dump of each Pydantic policy model — same
+    # kind + same params (recursively, including nested ``upstream``
+    # for AlignSeriesFFillV1) = same string.  Using a JSON string
+    # rather than ``tuple(sorted(items()))`` is the load-bearing
+    # detail: AlignSeriesFFillV1 dumps to a nested dict, which is
+    # not hashable.  ``json.dumps(sort_keys=True)`` produces a stable
+    # canonical representation that handles arbitrary nesting and
+    # can sit in a set without TypeError.
     missingness_signatures = {
-        s.series_key: s.missingness_policy.model_dump(mode="json")
+        s.series_key: json.dumps(
+            s.missingness_policy.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         for s in series_list
     }
-    distinct_signatures = {
-        tuple(sorted(sig.items())) for sig in missingness_signatures.values()
-    }
+    distinct_signatures = set(missingness_signatures.values())
     if params.require_matching_missingness and len(distinct_signatures) > 1:
         per_series = sorted(
             f"{k}={v}" for k, v in missingness_signatures.items()
