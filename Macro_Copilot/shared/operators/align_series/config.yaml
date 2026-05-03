@@ -1,0 +1,53 @@
+operator:
+  name: align_series
+  method_family: alignment
+  version: "1.0.0"
+  description: >-
+    Align N typed Series onto a common DatetimeIndex using a chosen
+    join policy and fill policy.  Finance-blind; preserves per-series
+    units / missingness lineage.
+
+defaults:
+  join_policy:
+    value: inner
+    source: operator_v1_default
+    rationale: >-
+      Inner join is the safe default — only dates where every input
+      has a value end up in the SeriesSet, so downstream operators
+      never silently consume NaNs introduced by the alignment step.
+      Use 'outer' explicitly when the workflow needs the union and
+      will handle gaps via fill_policy.
+    valid_values: [inner, outer]
+
+  fill_policy:
+    value: raw
+    source: operator_v1_default
+    rationale: >-
+      'raw' leaves post-join NaNs as-is; downstream operators see
+      them and decide how to handle them.  'ffill' bridges holiday
+      gaps in the same way ``clean_single_series`` does upstream,
+      but at the alignment layer.  Default 'raw' avoids silent
+      imputations.
+    valid_values: [raw, ffill]
+
+  fill_limit:
+    value: null
+    source: operator_v1_default
+    rationale: >-
+      When fill_policy='ffill', the maximum number of consecutive
+      NaNs to fill.  Default null = unlimited.  Pin to a concrete
+      number (e.g. 5) at the workflow-template level when desk
+      conventions require it.
+
+methodology:
+  what_it_does: >-
+    Combines the indexes of N input Series under the chosen
+    join_policy, reindexes every input onto the combined index, and
+    optionally forward-fills NaN cells up to fill_limit.  Output is
+    a keyed SeriesSet.  Per-series units / missingness policies are
+    preserved per-key; only the index is unified.
+  planned_extensions:
+    - "left/right anchored joins (align to the index of a specific input)"
+    - "bfill and ffill_then_bfill policies"
+    - "target_frequency resampling (e.g., resample to weekly)"
+    - "explicit named-calendar parameter for trading-day alignment"

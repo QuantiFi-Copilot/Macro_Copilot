@@ -34,6 +34,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
+from shared.config.operator_config import (
+    OperatorConfig,
+    OperatorConfigError,
+    load_operator_config,
+)
 from shared.config.tool_config import ToolConfigError, load_tool_config
 
 
@@ -48,6 +53,12 @@ from shared.config.tool_config import ToolConfigError, load_tool_config
 # This glob walks all of them in one pass.
 _DEFAULT_TOOL_CONFIG_GLOBS: Tuple[str, ...] = (
     "rates_agent/*/tools/*/config.yaml",
+)
+
+# Operator configs (build plan v5 / R4) live alongside operator code.
+# Path determines kind; existing tool YAMLs are NOT touched.
+_DEFAULT_OPERATOR_CONFIG_GLOBS: Tuple[str, ...] = (
+    "shared/operators/*/config.yaml",
 )
 
 
@@ -65,6 +76,42 @@ def discover_tool_configs(
         for p in project_root.glob(pattern):
             seen.add(p.resolve())
     return sorted(seen)
+
+
+def discover_operator_configs(
+    project_root: Path,
+    globs: Iterable[str] = _DEFAULT_OPERATOR_CONFIG_GLOBS,
+) -> List[Path]:
+    """Return every operator ``config.yaml`` under ``shared/operators/``.
+
+    Mirrors ``discover_tool_configs`` but walks the operator-layer path.
+    Sorted absolute paths.
+    """
+    seen: set[Path] = set()
+    for pattern in globs:
+        for p in project_root.glob(pattern):
+            seen.add(p.resolve())
+    return sorted(seen)
+
+
+def validate_operator_configs(config_paths: Iterable[Path]) -> List[OperatorConfig]:
+    """Schema-validate every operator config; return the parsed configs.
+
+    v1 operator lint is **schema-validation-only** (build plan v5 / R4).
+    Default-drift detection across operators in the same method_family
+    is a no-op until the second operator in any family ships, so we
+    don't pretend to do it yet.  Schema validation alone is the load-
+    bearing check during Phase 1A — it catches malformed defaults,
+    missing fields, and ``valid_values`` violations.
+
+    Raises ``OperatorConfigError`` on any validation failure (CI fails
+    loudly).
+    """
+    configs: List[OperatorConfig] = []
+    for path in config_paths:
+        cfg = load_operator_config(path)  # raises OperatorConfigError on bad input
+        configs.append(cfg)
+    return configs
 
 
 # ============================================================================
@@ -225,6 +272,24 @@ def main(argv: list[str] | None = None) -> int:
     try:
         issues = check_yaml_consistency(paths)
     except ToolConfigError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+
+    # Operator configs (build plan v5 / R4) — schema-validation only in v1.
+    op_paths = discover_operator_configs(args.root)
+    if not args.quiet and op_paths:
+        print(
+            f"\nChecking {len(op_paths)} operator config(s) under "
+            f"{args.root}/shared/operators/:"
+        )
+        for p in op_paths:
+            print(
+                "  - "
+                f"{p.relative_to(args.root) if p.is_relative_to(args.root) else p}"
+            )
+    try:
+        validate_operator_configs(op_paths)
+    except OperatorConfigError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 2
 
