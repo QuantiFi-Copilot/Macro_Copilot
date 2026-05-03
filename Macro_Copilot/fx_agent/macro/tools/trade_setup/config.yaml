@@ -1,0 +1,6 @@
+tool:
+  name: fx_trade_setup_tool
+  version: 0.1.0
+  description: >
+    Combines FX spot stretch, forward-implied carry, forward curve shape and
+    realized volatility into a deterministic trade setup summary.

@@ -39,6 +39,7 @@ import FXCarryView from '../fx/FXCarryView';  // Import du composant FXCarryView
 import FXForwardCurveView from '../fx/FXForwardCurveView';
 import FXRealizedVolView from '../fx/FXRealizedVolView';
 import FXScannerView from '../fx/FXScannerView';
+import FXTradeSetupView from '../fx/FXTradeSetupView';
 
 const VALID_VIEWS = new Set<WorkspaceViewType>([
   'spread',
@@ -53,6 +54,7 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
   'fx_forward_curve',
   'fx_scanner',
   'fx_realized_vol',
+  'fx_trade_setup',
 ]);
 
 function isWorkspaceView(s: string | null | undefined): s is WorkspaceViewType {
@@ -85,6 +87,8 @@ function extractAsOfDate(data: ReturnType<typeof useWorkspaceData>['data']): str
       return data.data.rows?.[0]?.as_of_date ?? null;
     case 'fx_realized_vol':
       return data.data.current_metrics?.as_of_date ?? null;
+    case 'fx_trade_setup':
+      return data.data.as_of_date ?? null;
     default:
       return null;
   }
@@ -268,6 +272,8 @@ function ViewBody({
       return <FXScannerView payload={data.data} />;
     case 'fx_realized_vol':
       return <FXRealizedVolView payload={data.data} />;
+    case 'fx_trade_setup':
+      return <FXTradeSetupView payload={data.data} />;
     default: {
       const _exhaustive: never = data;
       return null;

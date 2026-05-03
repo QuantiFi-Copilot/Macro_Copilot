@@ -237,6 +237,28 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_trade_setup':
+      return [
+        {
+          key: 'pair',
+          label: 'Pair',
+          options: FX_PAIRS,
+          value: get('pair', 'EURUSD'),
+        },
+        {
+          key: 'tenor',
+          label: 'Carry',
+          options: FX_FORWARD_TENORS,
+          value: get('tenor', '1M'),
+        },
+        {
+          key: 'vol_window_observations',
+          label: 'Vol',
+          options: FX_VOL_WINDOWS,
+          value: get('vol_window_observations', '21'),
+        },
+      ];
+
     case 'fx_scanner':
     case 'scanner':
     case 'forward':
@@ -256,7 +278,8 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'butterfly' ||
     view === 'yield' ||
     view === 'fx_spot' ||
-    view === 'fx_realized_vol'
+    view === 'fx_realized_vol' ||
+    view === 'fx_trade_setup'
   );
 }
 
@@ -329,6 +352,11 @@ export function viewTitle(
       return `${pair} realized vol · ${window}d`;
     }
 
+    case 'fx_trade_setup': {
+      const pair = params['pair'] ?? 'EURUSD';
+      return `${pair} trade setup`;
+    }
+
     case 'fx_scanner':
       return 'FX z-score scanner';
 
@@ -371,6 +399,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_realized_vol':
       return 'Annualized realized volatility and volatility z-score.';
+
+    case 'fx_trade_setup':
+      return 'Combined spot, carry, forward curve and realized-volatility trade setup.';
 
     case 'fx_scanner':
       return 'Largest FX spot z-score and momentum signals.';

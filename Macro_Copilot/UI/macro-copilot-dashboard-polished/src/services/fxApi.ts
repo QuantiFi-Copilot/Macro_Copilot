@@ -4,6 +4,7 @@ import type {
   FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
+  FXTradeSetupResponse,
 } from '@/types/fx';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -106,4 +107,17 @@ export function fetchDetailFXRealizedVol(
   params: FXRealizedVolDetailParams,
 ): Promise<FXRealizedVolResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/realized-vol${buildQuery(params)}`);
+}
+
+export type FXTradeSetupDetailParams = {
+  pair: string;
+  tenor?: string;
+  vol_window_observations?: number;
+  lookback_days?: number;
+};
+
+export function fetchDetailFXTradeSetup(
+  params: FXTradeSetupDetailParams,
+): Promise<FXTradeSetupResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/trade-setup${buildQuery(params)}`);
 }

@@ -103,6 +103,31 @@ export type FXRealizedVolResponse = {
   time_series: FXRealizedVolTimeSeriesRow[];
 };
 
+export type FXTradeSetupSignal = {
+  name: string;
+  score: number;
+  stance: 'bullish' | 'bearish' | 'neutral';
+  description: string;
+};
+
+export type FXTradeSetupResponse = {
+  pair: string;
+  as_of_date: string;
+  tenor: string;
+  direction: 'bullish' | 'bearish' | 'neutral';
+  confidence: 'high' | 'medium' | 'low';
+  total_score: number;
+  summary: string;
+  key_drivers: string[];
+  risks: string[];
+  follow_up_questions: string[];
+  signals: FXTradeSetupSignal[];
+  spot_snapshot: FXSpotLevelMetrics;
+  carry_snapshot: FXCarryRow | null;
+  forward_curve: FXForwardCurveRow[];
+  realized_vol_snapshot: FXRealizedVolMetrics;
+};
+
 // Type global pour toutes les données de la page FX
 export type FXPageData = {
   scanner: FXScannerResponse;  // Données du scanner FX

@@ -23,6 +23,11 @@ from fx_agent.forwards.tools.forward_curve.schemas import (
 )
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput, FXCarryOutput
+from fx_agent.macro.tools.trade_setup import get_fx_trade_setup
+from fx_agent.macro.tools.trade_setup.schemas import (
+    FXTradeSetupInput,
+    FXTradeSetupOutput,
+)
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
 from fx_agent.spot.tools.spot_levels.schemas import FXSpotLevelInput, FXSpotLevelOutput
 from fx_agent.vol.tools.realized_vol import get_fx_realized_vol
@@ -207,4 +212,38 @@ def fx_realized_vol_detail(
         raise HTTPException(status_code=503, detail=f"FX realized vol failed: {exc}")
 
     _tool_result_or_raise(result, f"FX realized vol for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/trade-setup",
+    response_model=FXTradeSetupOutput,
+    summary="FX Trade Setup Detail (workspace)",
+)
+def fx_trade_setup_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+    tenor: str = Query(default="1M", description="Carry tenor, e.g. 1W, 1M, 3M, 6M."),
+    vol_window_observations: int = Query(default=21, ge=5, le=252),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+):
+    try:
+        params = FXTradeSetupInput(
+            pair=pair,
+            tenor=tenor,
+            vol_window_observations=vol_window_observations,
+            lookback_days=lookback_days,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_trade_setup(params=params)
+    except ValueError as exc:
+        logger.info("detail/trade-setup: no data for %s", pair)
+        raise HTTPException(status_code=404, detail=f"FX trade setup for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/trade-setup: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX trade setup failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX trade setup for {pair}")
     return result

@@ -36,6 +36,7 @@ import {
   fetchDetailFXForwardCurve,
   fetchDetailFXRealizedVol,
   fetchDetailFXSpotLevel,
+  fetchDetailFXTradeSetup,
   fetchFXScanner,
 } from '@/services/fxApi';
 
@@ -45,6 +46,7 @@ import type {
   FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
+  FXTradeSetupResponse,
 } from '@/types/fx';
 
 // Discriminated union — each view returns its own detail payload type so
@@ -60,7 +62,8 @@ export type WorkspaceData =
   | { kind: 'fx_carry'; data: FXCarryResponse }
   | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
   | { kind: 'fx_scanner'; data: FXScannerResponse }
-  | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse };
+  | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
+  | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse };
 
 export type UseWorkspaceDataResult = {
   data: WorkspaceData | null;
@@ -267,6 +270,23 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_realized_vol', data: out };
+          break;
+        }
+
+        case 'fx_trade_setup': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_trade_setup view requires pair');
+
+          const out = await fetchDetailFXTradeSetup({
+            pair,
+            tenor: pick(params, 'tenor', '1M'),
+            vol_window_observations: params['vol_window_observations']
+              ? Number(params['vol_window_observations'])
+              : undefined,
+            lookback_days: pickLookback(params),
+          });
+
+          result = { kind: 'fx_trade_setup', data: out };
           break;
         }
 

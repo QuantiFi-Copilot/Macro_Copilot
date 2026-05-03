@@ -27,6 +27,10 @@ from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     get_fx_forward_curve,
 )
 from fx_agent.forwards.tools.fx_carry import FXCarryInput, get_fx_carry  # noqa: E402
+from fx_agent.macro.tools.trade_setup import (  # noqa: E402
+    FXTradeSetupInput,
+    get_fx_trade_setup,
+)
 from fx_agent.spot.tools.spot_levels import (  # noqa: E402
     FXSpotLevelInput,
     get_fx_spot_level,
@@ -239,6 +243,50 @@ def get_fx_realized_vol_tool(
 
     llm_response = {"current_metrics": result.current_metrics.model_dump()}
     return json.dumps(llm_response, default=str)
+
+
+@mcp.tool()
+def get_fx_trade_setup_tool(
+    pair: str,
+    tenor: str = "1M",
+    vol_window_observations: int = 21,
+    lookback_days: int = 365,
+) -> str:
+    """Build a deterministic FX trade setup for one pair.
+
+    Use this when the user asks for a trade idea, setup, bias, directional
+    view, or risk/reward summary combining spot, carry, forwards and realized
+    volatility.
+
+    Parameters
+    ----------
+    pair : str
+        FX pair, e.g. EURUSD, GBPUSD, USDJPY.
+    tenor : str
+        Carry tenor, e.g. 1W, 1M, 3M, 6M.
+    vol_window_observations : int
+        Rolling observation window for realized volatility.
+    lookback_days : int
+        Calendar days of spot history for spot and vol context.
+    """
+    try:
+        params = FXTradeSetupInput(
+            pair=pair,
+            tenor=tenor,
+            vol_window_observations=vol_window_observations,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_trade_setup_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_trade_setup(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_trade_setup_tool] failed")
+        return _json_error(f"FX trade setup failed: {exc}")
+
+    return result.model_dump_json()
 
 
 if __name__ == "__main__":

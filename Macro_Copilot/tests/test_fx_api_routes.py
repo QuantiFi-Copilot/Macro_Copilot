@@ -15,6 +15,10 @@ from fx_agent.vol.tools.realized_vol.schemas import (
     FXRealizedVolMetrics,
     FXRealizedVolOutput,
 )
+from fx_agent.macro.tools.trade_setup.schemas import (
+    FXTradeSetupOutput,
+    FXTradeSetupSignal,
+)
 
 
 def test_fx_spot_detail_route_calls_tool():
@@ -136,3 +140,45 @@ def test_fx_realized_vol_detail_route_calls_tool():
     params = mock_tool.call_args.kwargs["params"]
     assert params.pair == "EURUSD"
     assert params.window_observations == 21
+
+
+def test_fx_trade_setup_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXTradeSetupOutput(
+        pair="EURUSD",
+        as_of_date="2026-04-30",
+        tenor="1M",
+        direction="bullish",
+        confidence="medium",
+        total_score=1.25,
+        summary="EURUSD trade setup is bullish with medium confidence.",
+        key_drivers=["Spot momentum positive."],
+        risks=["No single signal is extreme."],
+        follow_up_questions=["Show me the EURUSD forward curve."],
+        signals=[
+            FXTradeSetupSignal(
+                name="Spot momentum / stretch",
+                score=0.5,
+                stance="bullish",
+                description="Spot momentum positive.",
+            )
+        ],
+        spot_snapshot={"pair": "EURUSD", "current_spot": 1.1736},
+        carry_snapshot={"pair": "EURUSD", "carry_annualized_pct": 1.75},
+        forward_curve=[],
+        realized_vol_snapshot={"pair": "EURUSD", "realized_vol_annualized_pct": 7.5},
+    )
+
+    with patch.object(detail_module, "get_fx_trade_setup", return_value=output) as mock_tool:
+        result = detail_module.fx_trade_setup_detail(
+            pair="EURUSD",
+            tenor="1M",
+            vol_window_observations=21,
+            lookback_days=365,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.pair == "EURUSD"
+    assert params.tenor == "1M"
