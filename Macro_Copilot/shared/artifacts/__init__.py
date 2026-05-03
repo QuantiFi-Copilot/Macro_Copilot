@@ -44,6 +44,7 @@ from shared.artifacts.missingness import (
     RawNoCleaning,
 )
 from shared.artifacts.types import (
+    EventResponseSeries,
     EventSet,
     Panel,
     Series,
@@ -60,6 +61,7 @@ __all__ = [
     "EventSet",
     "Panel",
     "WindowedPanel",
+    "EventResponseSeries",
     # Lineage
     "Lineage",
     "LineageStep",
