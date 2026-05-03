@@ -19,6 +19,10 @@ from fx_agent.macro.tools.trade_setup.schemas import (
     FXTradeSetupOutput,
     FXTradeSetupSignal,
 )
+from fx_agent.macro.tools.risk_overlay.schemas import (
+    FXMacroRiskOverlayOutput,
+    FXMacroRiskProxyRow,
+)
 
 
 def test_fx_spot_detail_route_calls_tool():
@@ -182,3 +186,44 @@ def test_fx_trade_setup_detail_route_calls_tool():
     params = mock_tool.call_args.kwargs["params"]
     assert params.pair == "EURUSD"
     assert params.tenor == "1M"
+
+
+def test_fx_macro_risk_overlay_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXMacroRiskOverlayOutput(
+        pair="EURUSD",
+        as_of_date="2026-04-30",
+        spot=1.1736,
+        risk_regime="risk-on / USD softer",
+        regime_score=1.2,
+        summary="EURUSD macro risk overlay is risk-on / USD softer.",
+        implications=["DXY weakness supports non-USD FX versus USD."],
+        proxy_rows=[
+            FXMacroRiskProxyRow(
+                ticker="DXY Curncy",
+                label="DXY",
+                proxy_family="usd",
+                as_of_date="2026-04-30",
+                level=99.0,
+                daily_change_pct=-0.1,
+                monthly_change_pct=-1.2,
+                three_month_change_pct=-2.0,
+                z_score=-1.1,
+                correlation_to_pair=-0.6,
+            )
+        ],
+    )
+
+    with patch.object(detail_module, "get_fx_macro_risk_overlay", return_value=output) as mock_tool:
+        result = detail_module.fx_macro_risk_overlay_detail(
+            pair="EURUSD",
+            lookback_days=365,
+            correlation_window_observations=63,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.pair == "EURUSD"
+    assert params.correlation_window_observations == 63

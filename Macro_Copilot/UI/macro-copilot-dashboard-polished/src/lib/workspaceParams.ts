@@ -259,6 +259,22 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_macro_risk_overlay':
+      return [
+        {
+          key: 'pair',
+          label: 'Pair',
+          options: FX_PAIRS,
+          value: get('pair', 'EURUSD'),
+        },
+        {
+          key: 'correlation_window_observations',
+          label: 'Corr',
+          options: FX_VOL_WINDOWS,
+          value: get('correlation_window_observations', '63'),
+        },
+      ];
+
     case 'fx_scanner':
     case 'scanner':
     case 'forward':
@@ -279,7 +295,8 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'yield' ||
     view === 'fx_spot' ||
     view === 'fx_realized_vol' ||
-    view === 'fx_trade_setup'
+    view === 'fx_trade_setup' ||
+    view === 'fx_macro_risk_overlay'
   );
 }
 
@@ -357,6 +374,11 @@ export function viewTitle(
       return `${pair} trade setup`;
     }
 
+    case 'fx_macro_risk_overlay': {
+      const pair = params['pair'] ?? 'EURUSD';
+      return `${pair} macro risk overlay`;
+    }
+
     case 'fx_scanner':
       return 'FX z-score scanner';
 
@@ -402,6 +424,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_trade_setup':
       return 'Combined spot, carry, forward curve and realized-volatility trade setup.';
+
+    case 'fx_macro_risk_overlay':
+      return 'DXY, VIX, MOVE, SPX, WTI and gold context around one FX pair.';
 
     case 'fx_scanner':
       return 'Largest FX spot z-score and momentum signals.';

@@ -6,6 +6,7 @@
 import {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
@@ -290,7 +291,8 @@ export type WorkspaceViewType =
   | 'fx_forward_curve'
   | 'fx_scanner'
   | 'fx_realized_vol'
-  | 'fx_trade_setup';
+  | 'fx_trade_setup'
+  | 'fx_macro_risk_overlay';
 
 export type WorkspaceParams = Record<string, string>;
 
@@ -309,4 +311,5 @@ export type WorkspaceData =
   | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
   | { kind: 'fx_scanner'; data: FXScannerResponse }
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
-  | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse };
+  | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
+  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse };

@@ -31,6 +31,10 @@ from fx_agent.macro.tools.trade_setup import (  # noqa: E402
     FXTradeSetupInput,
     get_fx_trade_setup,
 )
+from fx_agent.macro.tools.risk_overlay import (  # noqa: E402
+    FXMacroRiskOverlayInput,
+    get_fx_macro_risk_overlay,
+)
 from fx_agent.spot.tools.spot_levels import (  # noqa: E402
     FXSpotLevelInput,
     get_fx_spot_level,
@@ -285,6 +289,50 @@ def get_fx_trade_setup_tool(
     except Exception as exc:
         logger.exception("[get_fx_trade_setup_tool] failed")
         return _json_error(f"FX trade setup failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_macro_risk_overlay_tool(
+    pair: str,
+    lookback_days: int = 365,
+    correlation_window_observations: int = 63,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Overlay one FX pair with macro risk proxies.
+
+    Use this when the user asks about risk-on/risk-off context, DXY, VIX,
+    MOVE, SPX, gold, oil, macro risk proxies, or whether broad risk signals
+    confirm or challenge an FX setup.
+
+    Parameters
+    ----------
+    pair : str
+        FX pair, e.g. EURUSD, GBPUSD, USDJPY.
+    lookback_days : int
+        Calendar days of history for proxy context.
+    correlation_window_observations : int
+        Observation window used for return correlation.
+    field_name : str
+        Bloomberg field. Defaults to PX_LAST.
+    """
+    try:
+        params = FXMacroRiskOverlayInput(
+            pair=pair,
+            lookback_days=lookback_days,
+            correlation_window_observations=correlation_window_observations,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_macro_risk_overlay_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_macro_risk_overlay(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_macro_risk_overlay_tool] failed")
+        return _json_error(f"FX macro risk overlay failed: {exc}")
 
     return result.model_dump_json()
 

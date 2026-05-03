@@ -1,6 +1,7 @@
 import type {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
@@ -120,4 +121,17 @@ export function fetchDetailFXTradeSetup(
   params: FXTradeSetupDetailParams,
 ): Promise<FXTradeSetupResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/trade-setup${buildQuery(params)}`);
+}
+
+export type FXMacroRiskOverlayDetailParams = {
+  pair: string;
+  lookback_days?: number;
+  correlation_window_observations?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXMacroRiskOverlay(
+  params: FXMacroRiskOverlayDetailParams,
+): Promise<FXMacroRiskOverlayResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/macro-risk-overlay${buildQuery(params)}`);
 }

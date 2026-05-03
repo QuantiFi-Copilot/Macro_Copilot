@@ -40,6 +40,7 @@ import FXForwardCurveView from '../fx/FXForwardCurveView';
 import FXRealizedVolView from '../fx/FXRealizedVolView';
 import FXScannerView from '../fx/FXScannerView';
 import FXTradeSetupView from '../fx/FXTradeSetupView';
+import FXMacroRiskOverlayView from '../fx/FXMacroRiskOverlayView';
 
 const VALID_VIEWS = new Set<WorkspaceViewType>([
   'spread',
@@ -55,6 +56,7 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
   'fx_scanner',
   'fx_realized_vol',
   'fx_trade_setup',
+  'fx_macro_risk_overlay',
 ]);
 
 function isWorkspaceView(s: string | null | undefined): s is WorkspaceViewType {
@@ -88,6 +90,8 @@ function extractAsOfDate(data: ReturnType<typeof useWorkspaceData>['data']): str
     case 'fx_realized_vol':
       return data.data.current_metrics?.as_of_date ?? null;
     case 'fx_trade_setup':
+      return data.data.as_of_date ?? null;
+    case 'fx_macro_risk_overlay':
       return data.data.as_of_date ?? null;
     default:
       return null;
@@ -274,6 +278,8 @@ function ViewBody({
       return <FXRealizedVolView payload={data.data} />;
     case 'fx_trade_setup':
       return <FXTradeSetupView payload={data.data} />;
+    case 'fx_macro_risk_overlay':
+      return <FXMacroRiskOverlayView payload={data.data} />;
     default: {
       const _exhaustive: never = data;
       return null;

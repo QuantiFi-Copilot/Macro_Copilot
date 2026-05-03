@@ -1,0 +1,6 @@
+tool:
+  name: fx_macro_risk_overlay_tool
+  version: 0.1.0
+  description: >
+    Overlays one FX pair with DXY, VIX, MOVE, SPX, WTI and gold to produce
+    deterministic macro-risk context and return correlations.

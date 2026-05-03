@@ -128,6 +128,30 @@ export type FXTradeSetupResponse = {
   realized_vol_snapshot: FXRealizedVolMetrics;
 };
 
+export type FXMacroRiskProxyRow = {
+  ticker: string;
+  label: string;
+  proxy_family: string;
+  as_of_date: string;
+  level: number;
+  daily_change_pct: number | null;
+  monthly_change_pct: number | null;
+  three_month_change_pct: number | null;
+  z_score: number | null;
+  correlation_to_pair: number | null;
+};
+
+export type FXMacroRiskOverlayResponse = {
+  pair: string;
+  as_of_date: string;
+  spot: number;
+  risk_regime: string;
+  regime_score: number;
+  summary: string;
+  implications: string[];
+  proxy_rows: FXMacroRiskProxyRow[];
+};
+
 // Type global pour toutes les données de la page FX
 export type FXPageData = {
   scanner: FXScannerResponse;  // Données du scanner FX

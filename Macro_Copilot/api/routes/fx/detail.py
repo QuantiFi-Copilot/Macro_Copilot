@@ -28,6 +28,11 @@ from fx_agent.macro.tools.trade_setup.schemas import (
     FXTradeSetupInput,
     FXTradeSetupOutput,
 )
+from fx_agent.macro.tools.risk_overlay import get_fx_macro_risk_overlay
+from fx_agent.macro.tools.risk_overlay.schemas import (
+    FXMacroRiskOverlayInput,
+    FXMacroRiskOverlayOutput,
+)
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
 from fx_agent.spot.tools.spot_levels.schemas import FXSpotLevelInput, FXSpotLevelOutput
 from fx_agent.vol.tools.realized_vol import get_fx_realized_vol
@@ -246,4 +251,38 @@ def fx_trade_setup_detail(
         raise HTTPException(status_code=503, detail=f"FX trade setup failed: {exc}")
 
     _tool_result_or_raise(result, f"FX trade setup for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/macro-risk-overlay",
+    response_model=FXMacroRiskOverlayOutput,
+    summary="FX Macro Risk Overlay Detail (workspace)",
+)
+def fx_macro_risk_overlay_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+    lookback_days: int = Query(default=365, ge=90, le=7300),
+    correlation_window_observations: int = Query(default=63, ge=20, le=252),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXMacroRiskOverlayInput(
+            pair=pair,
+            lookback_days=lookback_days,
+            correlation_window_observations=correlation_window_observations,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_macro_risk_overlay(params=params)
+    except ValueError as exc:
+        logger.info("detail/macro-risk-overlay: no data for %s", pair)
+        raise HTTPException(status_code=404, detail=f"FX macro risk overlay for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/macro-risk-overlay: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX macro risk overlay failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX macro risk overlay for {pair}")
     return result

@@ -33,6 +33,7 @@ export const TOOL_TO_VIEW: Record<string, WorkspaceViewType> = {
   scan_fx_extremes_tool: 'fx_scanner',
   get_fx_realized_vol_tool: 'fx_realized_vol',
   get_fx_trade_setup_tool: 'fx_trade_setup',
+  get_fx_macro_risk_overlay_tool: 'fx_macro_risk_overlay',
 };
 
 // Priority for picking the "headline" tool when context has multiple — higher
@@ -49,6 +50,7 @@ const VIEW_PRIORITY: Record<WorkspaceViewType, number> = {
   fx_forward_curve: 1,
   fx_realized_vol: 1,
   fx_trade_setup: 6,
+  fx_macro_risk_overlay: 5,
   fx_spot: 0,  // Ajouter fx_spot ici
   fx_carry: 0, // Ajouter fx_carry ici
 };

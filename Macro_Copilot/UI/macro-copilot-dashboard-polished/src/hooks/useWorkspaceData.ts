@@ -34,6 +34,7 @@ import type {
 import {
   fetchDetailFXCarry,
   fetchDetailFXForwardCurve,
+  fetchDetailFXMacroRiskOverlay,
   fetchDetailFXRealizedVol,
   fetchDetailFXSpotLevel,
   fetchDetailFXTradeSetup,
@@ -43,6 +44,7 @@ import {
 import type {
   FXCarryResponse,
   FXForwardCurveResponse,
+  FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
@@ -63,7 +65,8 @@ export type WorkspaceData =
   | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
   | { kind: 'fx_scanner'; data: FXScannerResponse }
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
-  | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse };
+  | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
+  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse };
 
 export type UseWorkspaceDataResult = {
   data: WorkspaceData | null;
@@ -287,6 +290,23 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_trade_setup', data: out };
+          break;
+        }
+
+        case 'fx_macro_risk_overlay': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_macro_risk_overlay view requires pair');
+
+          const out = await fetchDetailFXMacroRiskOverlay({
+            pair,
+            lookback_days: pickLookback(params),
+            correlation_window_observations: params['correlation_window_observations']
+              ? Number(params['correlation_window_observations'])
+              : undefined,
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_macro_risk_overlay', data: out };
           break;
         }
 

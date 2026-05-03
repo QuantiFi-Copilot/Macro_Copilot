@@ -81,6 +81,7 @@ _WORKSPACE_TOOLS: set[str] = {
     "scan_fx_extremes_tool",
     "get_fx_realized_vol_tool",
     "get_fx_trade_setup_tool",
+    "get_fx_macro_risk_overlay_tool",
     # rate_level is intentionally NOT in the workspace set — a single-
     # point yield/rate is better viewed inline in the chat than in a
     # dedicated analytical workspace (same decision as get_yield_levels
@@ -147,6 +148,9 @@ _TOOL_LABEL_TEMPLATES: dict = {
     ),
     "get_fx_trade_setup_tool": lambda p: (
         f"Building {p.get('pair', 'EURUSD')} FX trade setup"
+    ),
+    "get_fx_macro_risk_overlay_tool": lambda p: (
+        f"Overlaying {p.get('pair', 'EURUSD')} with macro risk proxies"
     ),
 }
 
