@@ -1,5 +1,5 @@
 export type SparklinePoint = {
-  label: string;
+  label?: string;
   value: number;
 };
 

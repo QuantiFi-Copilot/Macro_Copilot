@@ -1,0 +1,32 @@
+tool_name: fx_carry
+version: "0.1.0"
+
+methodology:
+  spot_field_name: PX_LAST
+  forward_field_name: PX_LAST
+  default_tenor: 1M
+  tenor_days:
+    1W: 5
+    1M: 21
+    3M: 63
+    6M: 126
+  annualization_days: 252
+  forward_points_conversion:
+    jpy_divisor: 100
+    default_divisor: 10000
+  carry_units:
+    carry_bps_spot: bps
+    carry_annualized_pct: percent
+  sorting:
+    field: carry_annualized_pct
+    ascending: false
+  rounding:
+    spot: 6
+    forward_points: 3
+    outright_forward: 6
+    carry_bps_spot: 2
+    carry_annualized_pct: 2
+
+warnings:
+  empty_result_allowed: true
+  missing_forward_pairs_allowed: true

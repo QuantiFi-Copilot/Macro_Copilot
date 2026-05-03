@@ -1,0 +1,22 @@
+tool_name: fx_spot_levels
+version: "0.1.0"
+
+methodology:
+  default_field_name: PX_LAST
+  lookback_days_default: 365
+  z_score_window_observations: 252
+  z_score_min_observations: 20
+  daily_change_periods: 1
+  weekly_change_periods: 5
+  monthly_change_periods: 21
+  percentile_window_observations: 252
+  pct_change_units: percent
+  rounding:
+    spot: 6
+    pct_change: 3
+    z_score: 3
+    percentile: 1
+
+warnings:
+  insufficient_zscore_observations: true
+  missing_data_allowed: true

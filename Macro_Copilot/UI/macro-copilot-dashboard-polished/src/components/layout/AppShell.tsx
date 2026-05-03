@@ -6,6 +6,7 @@ import { Dashboard } from '@/components/dashboard/Dashboard';
 import { RatesPage } from '@/components/rates/RatesPage';
 import { WorkspacePage } from '@/components/workspace/WorkspacePage';
 import { useDashboardData } from '@/hooks/useDashboardData';
+import { FXPage } from '@/components/fx/FXPage';
 
 const NAV_TABS = [
   { label: 'Home', path: '/' },
@@ -54,7 +55,7 @@ export function AppShell() {
               <Route path="/rates" element={<RatesPage />} />
 
               {/* Placeholder routes */}
-              <Route path="/fx" element={<Dashboard data={data} isLoading={isLoading} />} />
+              <Route path="/fx" element={<FXPage />} />
               <Route path="/policy" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/events" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/workspace" element={<WorkspacePage />} />
