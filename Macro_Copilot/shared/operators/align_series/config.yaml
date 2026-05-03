@@ -39,13 +39,41 @@ defaults:
       number (e.g. 5) at the workflow-template level when desk
       conventions require it.
 
+  require_matching_frequency:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      When true (default), every input must declare the same
+      ``frequency`` tag (or all be None) — silent alignment of a
+      daily series with a weekly one is a real-world data hazard
+      the operator architecture's structural-metadata contract is
+      meant to catch.  Pass false to opt into mixed-frequency
+      alignment explicitly; the choice is recorded in lineage.
+    valid_values: [true, false]
+
+  require_matching_missingness:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      When true (default), every input must declare the same
+      missingness policy (same kind AND equivalent params).  Default
+      strict because mixing CleanSingleSeriesV1 with RawNoCleaning
+      is exactly the failure mode the structured MissingnessPolicy
+      family is meant to surface.  Pass false to opt into mixed
+      policies explicitly; the choice is recorded in lineage.
+    valid_values: [true, false]
+
 methodology:
   what_it_does: >-
     Combines the indexes of N input Series under the chosen
     join_policy, reindexes every input onto the combined index, and
     optionally forward-fills NaN cells up to fill_limit.  Output is
-    a keyed SeriesSet.  Per-series units / missingness policies are
-    preserved per-key; only the index is unified.
+    a keyed SeriesSet.  Per-series units are preserved per-key.
+    Frequency tags are checked for compatibility (or merged when
+    they all agree).  When fill_policy='ffill' materially changes
+    the payload, the per-series missingness policy on the output is
+    wrapped in ``AlignSeriesFFillV1`` so consumers see the imputation
+    honestly rather than thinking the upstream policy still applies.
   planned_extensions:
     - "left/right anchored joins (align to the index of a specific input)"
     - "bfill and ffill_then_bfill policies"

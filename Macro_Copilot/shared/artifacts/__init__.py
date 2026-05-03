@@ -24,7 +24,8 @@ Plus lineage:
 
 Plus structural-metadata types:
 
-  - MissingnessPolicy  (closed family — CleanSingleSeriesV1 / RawNoCleaning)
+  - MissingnessPolicy  (closed family — CleanSingleSeriesV1 /
+    RawNoCleaning / AlignSeriesFFillV1)
   - TimeSeriesUnits    (re-exported from shared.schemas — single taxonomy)
 """
 
@@ -37,6 +38,7 @@ from shared.artifacts.lineage import (
     OperatorStep,
 )
 from shared.artifacts.missingness import (
+    AlignSeriesFFillV1,
     CleanSingleSeriesV1,
     MissingnessPolicy,
     RawNoCleaning,
@@ -69,5 +71,6 @@ __all__ = [
     "MissingnessPolicy",
     "CleanSingleSeriesV1",
     "RawNoCleaning",
+    "AlignSeriesFFillV1",
     "TimeSeriesUnits",
 ]

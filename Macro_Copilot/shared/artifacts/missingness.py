@@ -15,6 +15,12 @@ The closed family for v1:
   - ``RawNoCleaning``        — explicit "no cleaning was applied"
     marker.  Adapter requires this when the caller deliberately
     bypasses ``clean_single_series``.
+  - ``AlignSeriesFFillV1``   — wraps an upstream policy when
+    ``align_series`` materially changed the payload by ffilling
+    alignment-introduced gaps.  Without this wrapper the output's
+    metadata would still claim ``CleanSingleSeriesV1`` (or
+    ``RawNoCleaning``) even though the operator just imputed cells —
+    metadata-dishonest.
 
 Adding a policy requires adding a new dataclass here so the operator-
 layer compatibility checks remain exhaustive.
@@ -22,7 +28,7 @@ layer compatibility checks remain exhaustive.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -57,17 +63,39 @@ class RawNoCleaning(BaseModel):
     kind: Literal["raw_no_cleaning"] = "raw_no_cleaning"
 
 
+class AlignSeriesFFillV1(BaseModel):
+    """Missingness policy emitted by ``align_series`` when
+    ``fill_policy='ffill'`` materially changed the payload by filling
+    alignment-introduced gaps.
+
+    Wraps the upstream policy (what the input declared before alignment)
+    so consumers can introspect the full chain.  Without this wrapper
+    the output would still claim its upstream policy even though the
+    operator just imputed cells.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["align_series_ffill_v1"] = "align_series_ffill_v1"
+    upstream: "MissingnessPolicy"
+    fill_limit: Optional[int] = None
+
+
 # Discriminated union — Pydantic uses the ``kind`` field to pick the
 # right model on deserialization.  Closed by construction; adding a
 # policy requires editing this union and the imports above.
 MissingnessPolicy = Annotated[
-    Union[CleanSingleSeriesV1, RawNoCleaning],
+    Union[CleanSingleSeriesV1, RawNoCleaning, AlignSeriesFFillV1],
     Field(discriminator="kind"),
 ]
+
+# Resolve the recursive forward reference on AlignSeriesFFillV1.upstream.
+AlignSeriesFFillV1.model_rebuild()
 
 
 __all__ = [
     "MissingnessPolicy",
     "CleanSingleSeriesV1",
     "RawNoCleaning",
+    "AlignSeriesFFillV1",
 ]
