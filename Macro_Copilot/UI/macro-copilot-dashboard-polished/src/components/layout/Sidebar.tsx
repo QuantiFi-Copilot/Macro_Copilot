@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Activity,
   BarChart3,
@@ -21,16 +22,58 @@ type SidebarProps = {
 };
 
 const AGENT_META = [
-  { icon: <Layers size={14} />, label: 'Rates Agent', status: 'live' as const },
-  { icon: <LineChart size={14} />, label: 'FX Agent', status: 'live' as const },
-  { icon: <Activity size={14} />, label: 'Credit Agent', status: 'beta' as const },
-  { icon: <Gauge size={14} />, label: 'Macro Equity', status: 'beta' as const },
-  { icon: <ShieldCheck size={14} />, label: 'Policy / Events', status: 'live' as const },
-  { icon: <Bot size={14} />, label: 'PM Orchestrator', status: 'dev' as const },
+  {
+    icon: <Layers size={14} />,
+    label: 'Rates Agent',
+    status: 'live' as const,
+    path: '/rates',
+  },
+  {
+    icon: <LineChart size={14} />,
+    label: 'FX Agent',
+    status: 'live' as const,
+    path: '/fx',
+  },
+  {
+    icon: <Activity size={14} />,
+    label: 'Credit Agent',
+    status: 'beta' as const,
+    path: '/credit',
+  },
+  {
+    icon: <Gauge size={14} />,
+    label: 'Macro Equity',
+    status: 'beta' as const,
+    path: '/macro-equity',
+  },
+  {
+    icon: <ShieldCheck size={14} />,
+    label: 'Policy / Events',
+    status: 'live' as const,
+    path: '/policy',
+  },
+  {
+    icon: <Bot size={14} />,
+    label: 'PM Orchestrator',
+    status: 'dev' as const,
+    path: '/workspace',
+  },
+];
+
+const FX_SUB_ITEMS = [
+  'Daily Monitor',
+  'Spot Scanner',
+  'Carry Monitor',
+  'Vol Monitor',
+  'Chat with FX Agent',
 ];
 
 export function Sidebar({ groups }: SidebarProps) {
+  const location = useLocation();
   const primaryGroup = groups[0];
+
+  const isRatesPath = location.pathname.startsWith('/rates');
+  const isFxPath = location.pathname.startsWith('/fx');
 
   return (
     <aside className="panel relative flex h-full min-h-0 flex-col">
@@ -71,8 +114,8 @@ export function Sidebar({ groups }: SidebarProps) {
       <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 pb-4">
         <SectionLabel>Workspace</SectionLabel>
         <div className="-mt-3 space-y-0.5 px-1">
-          <NavRow icon={<CircleDot size={14} />} label="Home" />
-          <NavRow icon={<BarChart3 size={14} />} label="Daily Monitor" active />
+          <NavRow icon={<CircleDot size={14} />} label="Home" active={location.pathname === '/'} />
+          <NavRow icon={<BarChart3 size={14} />} label="Daily Monitor" active={location.pathname === '/'} />
           <NavRow icon={<CalendarClock size={14} />} label="Event Calendar" />
         </div>
 
@@ -80,17 +123,33 @@ export function Sidebar({ groups }: SidebarProps) {
         <div>
           <SectionLabel>Agents</SectionLabel>
           <div className="mt-1 space-y-0.5 px-1">
-            {AGENT_META.map((agent, i) => (
-              <AgentRow
-                key={agent.label}
-                icon={agent.icon}
-                label={agent.label}
-                status={agent.status}
-                active={i === 0}
-                expanded={i === 0}
-                subItems={i === 0 ? primaryGroup?.items.map((item) => item.label) : undefined}
-              />
-            ))}
+            {AGENT_META.map((agent) => {
+              const active =
+                agent.path === '/rates'
+                  ? isRatesPath
+                  : agent.path === '/fx'
+                    ? isFxPath
+                    : location.pathname.startsWith(agent.path);
+
+              const subItems =
+                agent.path === '/rates'
+                  ? primaryGroup?.items.map((item) => item.label)
+                  : agent.path === '/fx'
+                    ? FX_SUB_ITEMS
+                    : undefined;
+
+              return (
+                <AgentRow
+                  key={agent.label}
+                  icon={agent.icon}
+                  label={agent.label}
+                  status={agent.status}
+                  active={active}
+                  expanded={active}
+                  subItems={subItems}
+                />
+              );
+            })}
           </div>
         </div>
 
