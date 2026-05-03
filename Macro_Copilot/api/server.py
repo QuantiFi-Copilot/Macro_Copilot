@@ -42,6 +42,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.dependencies import init_engine, settings
 from api.routes.rates import router as rates_router
 from api.routes.fx import cards_router as fx_cards_router
+from api.routes.fx import detail_router as fx_detail_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -120,6 +121,12 @@ app.include_router(
     fx_cards_router,
     prefix="/api/v1/fx",
     tags=["FX"],
+)
+
+app.include_router(
+    fx_detail_router,
+    prefix="/api/v1/fx",
+    tags=["FX Detail"],
 )
 
 if chat_routes is not None:
