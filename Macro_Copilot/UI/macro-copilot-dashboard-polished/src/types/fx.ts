@@ -152,6 +152,32 @@ export type FXMacroRiskOverlayResponse = {
   proxy_rows: FXMacroRiskProxyRow[];
 };
 
+export type FXVolRiskPremiumMetrics = {
+  as_of_date: string;
+  pair: string;
+  tenor: string;
+  implied_vol_pct: number;
+  realized_vol_annualized_pct: number | null;
+  vol_risk_premium_pct: number | null;
+  implied_vol_z_score: number | null;
+  premium_z_score: number | null;
+  signal: 'vol rich' | 'vol cheap' | 'fair';
+  suggested_expression: 'prefer selling vol' | 'prefer owning vol' | 'neutral';
+  observation_count: number;
+};
+
+export type FXVolRiskPremiumTimeSeriesRow = {
+  date: string;
+  implied_vol_pct: number | null;
+  realized_vol_annualized_pct: number | null;
+  vol_risk_premium_pct: number | null;
+};
+
+export type FXVolRiskPremiumResponse = {
+  current_metrics: FXVolRiskPremiumMetrics;
+  time_series: FXVolRiskPremiumTimeSeriesRow[];
+};
+
 // Type global pour toutes les données de la page FX
 export type FXPageData = {
   scanner: FXScannerResponse;  // Données du scanner FX

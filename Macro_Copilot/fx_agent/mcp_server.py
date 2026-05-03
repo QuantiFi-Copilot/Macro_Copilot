@@ -45,6 +45,10 @@ from fx_agent.vol.tools.realized_vol import (  # noqa: E402
     FXRealizedVolInput,
     get_fx_realized_vol,
 )
+from fx_agent.vol.tools.vol_risk_premium import (  # noqa: E402
+    FXVolRiskPremiumInput,
+    get_fx_vol_risk_premium,
+)
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -333,6 +337,53 @@ def get_fx_macro_risk_overlay_tool(
     except Exception as exc:
         logger.exception("[get_fx_macro_risk_overlay_tool] failed")
         return _json_error(f"FX macro risk overlay failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_vol_risk_premium_tool(
+    pair: str,
+    tenor: str = "1M",
+    realized_window_observations: int = 21,
+    lookback_days: int = 365,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Compare FX implied volatility with realized volatility.
+
+    Use this when the user asks whether FX vol is rich, cheap, fair,
+    worth buying/selling, or asks about implied-vs-realized volatility.
+
+    Parameters
+    ----------
+    pair : str
+        FX pair, e.g. EURUSD, GBPUSD, USDJPY.
+    tenor : str
+        Implied-vol tenor. Current ingested universe supports 1M.
+    realized_window_observations : int
+        Rolling window for realized volatility.
+    lookback_days : int
+        Calendar days of history for the output.
+    field_name : str
+        Bloomberg field. Defaults to PX_LAST.
+    """
+    try:
+        params = FXVolRiskPremiumInput(
+            pair=pair,
+            tenor=tenor,
+            realized_window_observations=realized_window_observations,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_vol_risk_premium_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_vol_risk_premium(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_vol_risk_premium_tool] failed")
+        return _json_error(f"FX vol risk premium failed: {exc}")
 
     return result.model_dump_json()
 

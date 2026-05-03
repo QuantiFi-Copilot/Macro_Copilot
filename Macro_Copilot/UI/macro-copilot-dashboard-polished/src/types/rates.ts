@@ -11,6 +11,7 @@ import {
   FXScannerResponse,
   FXSpotLevelResponse,
   FXTradeSetupResponse,
+  FXVolRiskPremiumResponse,
 } from './fx';  // Assure-toi que le chemin est correct
 // --- Shared ---
 
@@ -292,7 +293,8 @@ export type WorkspaceViewType =
   | 'fx_scanner'
   | 'fx_realized_vol'
   | 'fx_trade_setup'
-  | 'fx_macro_risk_overlay';
+  | 'fx_macro_risk_overlay'
+  | 'fx_vol_risk_premium';
 
 export type WorkspaceParams = Record<string, string>;
 
@@ -312,4 +314,5 @@ export type WorkspaceData =
   | { kind: 'fx_scanner'; data: FXScannerResponse }
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
-  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse };
+  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
+  | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };

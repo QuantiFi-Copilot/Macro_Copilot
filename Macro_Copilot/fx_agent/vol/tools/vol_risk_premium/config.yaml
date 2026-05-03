@@ -1,0 +1,6 @@
+tool:
+  name: fx_vol_risk_premium_tool
+  version: 0.1.0
+  description: >
+    Compares FX 1M implied volatility against realized volatility to estimate
+    whether implied vol is rich, cheap, or fair.

@@ -23,6 +23,10 @@ from fx_agent.macro.tools.risk_overlay.schemas import (
     FXMacroRiskOverlayOutput,
     FXMacroRiskProxyRow,
 )
+from fx_agent.vol.tools.vol_risk_premium.schemas import (
+    FXVolRiskPremiumMetrics,
+    FXVolRiskPremiumOutput,
+)
 
 
 def test_fx_spot_detail_route_calls_tool():
@@ -227,3 +231,39 @@ def test_fx_macro_risk_overlay_detail_route_calls_tool():
     params = mock_tool.call_args.kwargs["params"]
     assert params.pair == "EURUSD"
     assert params.correlation_window_observations == 63
+
+
+def test_fx_vol_risk_premium_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXVolRiskPremiumOutput(
+        current_metrics=FXVolRiskPremiumMetrics(
+            as_of_date="2026-04-30",
+            pair="EURUSD",
+            tenor="1M",
+            implied_vol_pct=6.2,
+            realized_vol_annualized_pct=4.9,
+            vol_risk_premium_pct=1.3,
+            implied_vol_z_score=-0.2,
+            premium_z_score=0.5,
+            signal="fair",
+            suggested_expression="neutral",
+            observation_count=252,
+        ),
+        time_series=[],
+    )
+
+    with patch.object(detail_module, "get_fx_vol_risk_premium", return_value=output) as mock_tool:
+        result = detail_module.fx_vol_risk_premium_detail(
+            pair="EURUSD",
+            tenor="1M",
+            realized_window_observations=21,
+            lookback_days=365,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.pair == "EURUSD"
+    assert params.tenor == "1M"
+    assert params.realized_window_observations == 21

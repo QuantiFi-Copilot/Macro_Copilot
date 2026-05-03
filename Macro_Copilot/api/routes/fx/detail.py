@@ -40,6 +40,11 @@ from fx_agent.vol.tools.realized_vol.schemas import (
     FXRealizedVolInput,
     FXRealizedVolOutput,
 )
+from fx_agent.vol.tools.vol_risk_premium import get_fx_vol_risk_premium
+from fx_agent.vol.tools.vol_risk_premium.schemas import (
+    FXVolRiskPremiumInput,
+    FXVolRiskPremiumOutput,
+)
 
 logger = logging.getLogger("api.routes.fx.detail")
 
@@ -285,4 +290,40 @@ def fx_macro_risk_overlay_detail(
         raise HTTPException(status_code=503, detail=f"FX macro risk overlay failed: {exc}")
 
     _tool_result_or_raise(result, f"FX macro risk overlay for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/vol-risk-premium",
+    response_model=FXVolRiskPremiumOutput,
+    summary="FX Vol Risk Premium Detail (workspace)",
+)
+def fx_vol_risk_premium_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+    tenor: str = Query(default="1M", description="Implied-vol tenor, currently 1M."),
+    realized_window_observations: int = Query(default=21, ge=5, le=252),
+    lookback_days: int = Query(default=365, ge=90, le=7300),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXVolRiskPremiumInput(
+            pair=pair,
+            tenor=tenor,
+            realized_window_observations=realized_window_observations,
+            lookback_days=lookback_days,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_vol_risk_premium(params=params)
+    except ValueError as exc:
+        logger.info("detail/vol-risk-premium: no data for %s %s", pair, tenor)
+        raise HTTPException(status_code=404, detail=f"FX vol risk premium for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/vol-risk-premium: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX vol risk premium failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX vol risk premium for {pair}")
     return result

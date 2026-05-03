@@ -38,6 +38,7 @@ import {
   fetchDetailFXRealizedVol,
   fetchDetailFXSpotLevel,
   fetchDetailFXTradeSetup,
+  fetchDetailFXVolRiskPremium,
   fetchFXScanner,
 } from '@/services/fxApi';
 
@@ -49,6 +50,7 @@ import type {
   FXScannerResponse,
   FXSpotLevelResponse,
   FXTradeSetupResponse,
+  FXVolRiskPremiumResponse,
 } from '@/types/fx';
 
 // Discriminated union — each view returns its own detail payload type so
@@ -66,7 +68,8 @@ export type WorkspaceData =
   | { kind: 'fx_scanner'; data: FXScannerResponse }
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
-  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse };
+  | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
+  | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };
 
 export type UseWorkspaceDataResult = {
   data: WorkspaceData | null;
@@ -307,6 +310,24 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_macro_risk_overlay', data: out };
+          break;
+        }
+
+        case 'fx_vol_risk_premium': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_vol_risk_premium view requires pair');
+
+          const out = await fetchDetailFXVolRiskPremium({
+            pair,
+            tenor: pick(params, 'tenor', '1M'),
+            realized_window_observations: params['realized_window_observations']
+              ? Number(params['realized_window_observations'])
+              : undefined,
+            lookback_days: pickLookback(params),
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_vol_risk_premium', data: out };
           break;
         }
 

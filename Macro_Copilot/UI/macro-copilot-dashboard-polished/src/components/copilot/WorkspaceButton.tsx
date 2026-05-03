@@ -19,6 +19,7 @@ const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   get_fx_realized_vol_tool: 'FX realized volatility',
   get_fx_trade_setup_tool: 'FX trade setup',
   get_fx_macro_risk_overlay_tool: 'FX macro risk overlay',
+  get_fx_vol_risk_premium_tool: 'FX vol risk premium',
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {

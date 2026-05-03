@@ -6,6 +6,7 @@ import type {
   FXScannerResponse,
   FXSpotLevelResponse,
   FXTradeSetupResponse,
+  FXVolRiskPremiumResponse,
 } from '@/types/fx';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -134,4 +135,18 @@ export function fetchDetailFXMacroRiskOverlay(
   params: FXMacroRiskOverlayDetailParams,
 ): Promise<FXMacroRiskOverlayResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/macro-risk-overlay${buildQuery(params)}`);
+}
+
+export type FXVolRiskPremiumDetailParams = {
+  pair: string;
+  tenor?: string;
+  realized_window_observations?: number;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXVolRiskPremium(
+  params: FXVolRiskPremiumDetailParams,
+): Promise<FXVolRiskPremiumResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/vol-risk-premium${buildQuery(params)}`);
 }

@@ -275,6 +275,28 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_vol_risk_premium':
+      return [
+        {
+          key: 'pair',
+          label: 'Pair',
+          options: FX_PAIRS,
+          value: get('pair', 'EURUSD'),
+        },
+        {
+          key: 'tenor',
+          label: 'Tenor',
+          options: [{ value: '1M', label: '1M' }],
+          value: get('tenor', '1M'),
+        },
+        {
+          key: 'realized_window_observations',
+          label: 'RV',
+          options: FX_VOL_WINDOWS,
+          value: get('realized_window_observations', '21'),
+        },
+      ];
+
     case 'fx_scanner':
     case 'scanner':
     case 'forward':
@@ -296,7 +318,8 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'fx_spot' ||
     view === 'fx_realized_vol' ||
     view === 'fx_trade_setup' ||
-    view === 'fx_macro_risk_overlay'
+    view === 'fx_macro_risk_overlay' ||
+    view === 'fx_vol_risk_premium'
   );
 }
 
@@ -379,6 +402,11 @@ export function viewTitle(
       return `${pair} macro risk overlay`;
     }
 
+    case 'fx_vol_risk_premium': {
+      const pair = params['pair'] ?? 'EURUSD';
+      return `${pair} vol risk premium`;
+    }
+
     case 'fx_scanner':
       return 'FX z-score scanner';
 
@@ -427,6 +455,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_macro_risk_overlay':
       return 'DXY, VIX, MOVE, SPX, WTI and gold context around one FX pair.';
+
+    case 'fx_vol_risk_premium':
+      return 'Implied volatility versus realized volatility and premium signal.';
 
     case 'fx_scanner':
       return 'Largest FX spot z-score and momentum signals.';
