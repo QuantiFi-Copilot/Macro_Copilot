@@ -676,3 +676,206 @@ class TestComposition:
         rec_ew = rec.steps[-1]
         assert len(rec_arithmetic.auxiliary_lineages) == 1
         assert len(rec_ew.auxiliary_lineages) == 1
+
+
+# ===========================================================================
+# 13. Frequency-tag enforcement (Codex P1 follow-up — was a no-op before)
+# ===========================================================================
+
+
+class TestFrequencyEnforcement:
+    """Build plan v5 + Codex P1: require_matching_frequency must be a
+    real check.  EventSet now carries a ``frequency`` field
+    propagated from the source Series in ``threshold_events``;
+    event_windows enforces it against the target's ``frequency``."""
+
+    def _events_with_frequency(
+        self, series: Series, *, frequency: object,
+    ) -> EventSet:
+        """Build an EventSet whose ``frequency`` we control directly,
+        so we can test the enforcement without depending on the
+        threshold_events propagation chain."""
+        # Use the helper, then rebuild with the requested frequency.
+        es = _events_from(series, dates_to_fire=[series.payload.index[5]])
+        return EventSet(
+            mask=es.mask,
+            event_dates=es.event_dates,
+            per_event_metadata=es.per_event_metadata,
+            source_series_key=es.source_series_key,
+            frequency=frequency,
+            lineage=es.lineage,
+        )
+
+    def test_matching_frequencies_pass(self):
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)), frequency="B")
+        events = self._events_with_frequency(s, frequency="B")
+        target = _series("y", dates=idx, values=list(range(100, 110)),
+                         frequency="B")
+        # No exception — both tagged "B".
+        panel = event_windows(events, target,
+                              EventWindowsParams(post_window=2))
+        assert panel.n_events == 1
+
+    def test_both_none_frequencies_pass(self):
+        """``None`` matches ``None`` under strict mode."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)))  # frequency=None
+        events = self._events_with_frequency(s, frequency=None)
+        target = _series("y", dates=idx, values=list(range(100, 110)))
+        panel = event_windows(events, target,
+                              EventWindowsParams(post_window=2))
+        assert panel.n_events == 1
+
+    def test_mismatched_frequencies_strict_raises(self):
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)), frequency="B")
+        events = self._events_with_frequency(s, frequency="B")
+        target = _series("y", dates=idx, values=list(range(100, 110)),
+                         frequency="W")
+        with pytest.raises(EventWindowsError, match="incompatible frequencies"):
+            event_windows(events, target, EventWindowsParams(post_window=2))
+
+    def test_partial_tagging_strict_raises(self):
+        """Events tagged but target not (or vice versa) — partial
+        metadata is the exact silent-mismatch failure mode the strict
+        check exists to surface."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)), frequency="B")
+        events = self._events_with_frequency(s, frequency="B")
+        # Target has no frequency tag.
+        target = _series("y", dates=idx, values=list(range(100, 110)))
+        with pytest.raises(EventWindowsError, match="incompatible frequencies"):
+            event_windows(events, target, EventWindowsParams(post_window=2))
+
+    def test_lenient_mode_accepts_mismatch_and_records_choice(self):
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)), frequency="B")
+        events = self._events_with_frequency(s, frequency="B")
+        target = _series("y", dates=idx, values=list(range(100, 110)),
+                         frequency="W")
+        panel = event_windows(
+            events, target,
+            EventWindowsParams(
+                post_window=2, require_matching_frequency=False,
+            ),
+        )
+        # No exception; choice recorded in lineage.
+        assert panel.lineage.steps[-1].params["require_matching_frequency"] is False
+
+    def test_threshold_events_propagates_frequency_to_eventset(self):
+        """End-to-end check: threshold_events on a frequency-tagged
+        Series must produce an EventSet that carries that frequency
+        forward, so event_windows' check has something to compare
+        against without the caller hand-building the EventSet."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=[1.0, 2.0, 3.0, 4.0, 5.0,
+                                             6.0, 7.0, 8.0, 9.0, 10.0],
+                    frequency="B")
+        es = threshold_events(s, ThresholdEventsParams(rule="above", threshold=5.0))
+        assert es.frequency == "B"
+
+
+# ===========================================================================
+# 14. NaN event-day drop accounting (Codex P2 follow-up)
+# ===========================================================================
+
+
+class TestNanEventDayHandling:
+    """Codex P2 follow-up: NaN event-day under level_change must be
+    counted in its own counter, NOT folded into n_events_dropped_for_edge.
+    The lineage metadata must be honest about WHY events were dropped."""
+
+    def _build_target_with_nan_at_event_day(self):
+        """Target whose event-day position has a NaN value, and a
+        non-edge surrounding window so edge handling is not the
+        reason for any drop."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        # NaN at index 5 (the event day).  All other cells finite.
+        vals = [1.0, 2.0, 3.0, 4.0, 5.0, np.nan, 7.0, 8.0, 9.0, 10.0]
+        # Construct a Series artifact — the wrapper validator allows
+        # NaN values (drops only NaT index), so this passes.
+        fetch = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={"series_key": "y"},
+        )
+        adapter = AdapterStep.build(
+            name="raw_dataframe_to_artifact_series", version="1.0.0",
+            params={"series_key": "y", "units": "percent"},
+            input_hashes=(fetch.hash,),
+        )
+        payload = pd.Series(vals, index=pd.DatetimeIndex(idx), dtype=float)
+        target = Series(
+            series_key="y", payload=payload,
+            units=TimeSeriesUnits.PERCENT, frequency=None,
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            lineage=Lineage.from_steps([fetch, adapter]),
+        )
+        # Events: a single fire at index 5 (the NaN cell).
+        s_for_events = _series("x", dates=idx, values=list(range(10)))
+        es = _events_from(s_for_events, dates_to_fire=[idx[5]])
+        return target, es, idx
+
+    def test_level_change_drop_when_event_day_is_nan(self):
+        """Under units_basis='level_change' + drop, an event whose
+        event-day target value is NaN must be dropped — and the
+        drop must be counted in n_events_dropped_for_nan_event_day,
+        NOT n_events_dropped_for_edge."""
+        target, events, _ = self._build_target_with_nan_at_event_day()
+        panel = event_windows(
+            events, target,
+            EventWindowsParams(
+                pre_window=1, post_window=1,
+                units_basis="level_change",
+                incomplete_window_policy="drop",
+            ),
+        )
+        # Event was dropped (NaN event-day, can't compute level_change).
+        assert panel.n_events == 0
+        params = panel.lineage.steps[-1].params
+        # Edge counter is NOT incremented (the window had no edge issue).
+        assert params["n_events_dropped_for_edge"] == 0
+        # NaN-event-day counter IS incremented.
+        assert params["n_events_dropped_for_nan_event_day"] == 1
+        # And totals add up: in (1) = kept (0) + dropped_edge (0) +
+        # dropped_nan (1).
+        assert params["n_events_in"] == 1
+        assert params["n_events_kept"] == 0
+
+    def test_level_change_pad_nan_when_event_day_is_nan(self):
+        """Under pad_nan, the event is kept but the entire row is NaN
+        because the level-change subtraction is undefined."""
+        target, events, _ = self._build_target_with_nan_at_event_day()
+        panel = event_windows(
+            events, target,
+            EventWindowsParams(
+                pre_window=1, post_window=1,
+                units_basis="level_change",
+                incomplete_window_policy="pad_nan",
+            ),
+        )
+        assert panel.n_events == 1
+        # Whole row should be NaN (cannot subtract from NaN).
+        assert np.all(np.isnan(panel.payload[0]))
+        # Neither drop counter is incremented in pad_nan path.
+        params = panel.lineage.steps[-1].params
+        assert params["n_events_dropped_for_edge"] == 0
+        assert params["n_events_dropped_for_nan_event_day"] == 0
+
+    def test_edge_drop_does_not_increment_nan_counter(self):
+        """Regression guard: verify the EDGE drop case still increments
+        ONLY the edge counter — the split should be clean both ways."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = _series("x", dates=idx, values=list(range(10)))
+        # Events at index 0 with pre=2 — pure edge case, no NaN involved.
+        es = _events_from(s, dates_to_fire=[idx[0]])
+        panel = event_windows(
+            es, s,
+            EventWindowsParams(
+                pre_window=2, post_window=2,
+                incomplete_window_policy="drop",
+            ),
+        )
+        params = panel.lineage.steps[-1].params
+        assert params["n_events_dropped_for_edge"] == 1
+        assert params["n_events_dropped_for_nan_event_day"] == 0

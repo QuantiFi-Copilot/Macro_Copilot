@@ -209,6 +209,14 @@ class EventSet(BaseModel):
     holds per-event diagnostic context (triggering value, threshold
     used, etc.) — exactly which keys are populated depends on the
     operator that produced the EventSet.
+
+    ``frequency`` is the structural-metadata tag inherited from the
+    source Series, used by downstream operators like ``event_windows``
+    to enforce frequency-tag agreement against a target Series
+    (``require_matching_frequency=True`` is otherwise an empty
+    contract — Codex P1 follow-up on PR #54).  ``None`` means the
+    source Series didn't declare a frequency; downstream strict
+    checks treat ``None`` as agreeing only with another ``None``.
     """
 
     model_config = ConfigDict(
@@ -221,6 +229,7 @@ class EventSet(BaseModel):
     event_dates: List[pd.Timestamp]
     per_event_metadata: List[Dict[str, Any]]
     source_series_key: str  # the Series this event set was derived from
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None
     lineage: Lineage
 
     @model_validator(mode="after")

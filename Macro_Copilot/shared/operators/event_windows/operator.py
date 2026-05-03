@@ -106,11 +106,14 @@ def event_windows(
         10Y UST yield).  May also be the same series — the operator
         does not require otherwise.
     params :
-        Optional ``EventWindowsParams``.  When omitted, uses the
-        bundled config defaults for every field.  ``pre_window`` /
-        ``post_window`` default to 0 in the schema; default-zero
-        windowing only makes sense with ``inclusive_event_day=True``,
-        which the schema validator guards against.
+        Optional ``EventWindowsParams``.  Of the schema fields, ONLY
+        ``incomplete_window_policy`` and ``units_basis`` are
+        YAML-authoritative — when they are ``None`` the operator
+        resolves them from ``config.default_value(...)`` at runtime
+        (same pattern as ``threshold_events`` post PR #53).  The
+        other fields (``pre_window``, ``post_window``,
+        ``inclusive_event_day``, ``require_matching_frequency``)
+        come from schema defaults.
     config :
         Optional ``OperatorConfig``.  When omitted, the bundled
         ``config.yaml`` is loaded (process-cached).
@@ -195,22 +198,29 @@ def event_windows(
             f"target_len={len(target.payload.index)}."
         )
 
-    # Frequency-tag check.  ``EventSet`` does not carry a frequency
-    # itself (events live on a date index, not a sampled grid), so
-    # we validate against the target's frequency here only when the
-    # caller wants the strict check.  The check exists for the case
-    # where target was sourced from a Series with a known frequency
-    # and events were derived from another series with a different
-    # frequency — even though indexes happen to match (e.g., both
-    # weekly observations stored at daily timestamps), the operator
-    # surfaces the mismatch at lineage time so a downstream
-    # methodology summary can show what frequency the windows are
-    # actually on.  Today's EventSet doesn't expose its source's
-    # frequency directly; future work can extend it.  The knob is
-    # already in place so when EventSet gains a frequency tag, this
-    # operator's check is honest by default.
-    # (No-op in v1: nothing to compare against; keeping the knob in
-    # the API for forward compatibility.)
+    # Frequency-tag compatibility (Codex P1 follow-up on PR #54).
+    # ``EventSet`` carries a ``frequency`` propagated from the source
+    # Series in ``threshold_events``; here we enforce it against
+    # ``target.frequency`` when the caller wants the strict check.
+    # Strict mode (default) raises on mismatch; lenient mode passes
+    # and records the choice in lineage params.
+    # Cases:
+    #   - both None        → strict pass (no information either way)
+    #   - both equal       → strict pass
+    #   - different values → strict raise; lenient accept
+    #   - one None / other concrete (partial tagging) → strict raise;
+    #     lenient accept.  Same discipline as align_series — partial
+    #     metadata almost always means the caller forgot to tag one
+    #     side.
+    if params.require_matching_frequency:
+        if events.frequency != target.frequency:
+            raise EventWindowsError(
+                f"event_windows: incompatible frequencies "
+                f"events={events.frequency!r} vs "
+                f"target={target.frequency!r}.  Pass "
+                "require_matching_frequency=False to opt into "
+                "mixed-frequency windowing explicitly."
+            )
 
     # ------------------------------------------------------------------
     # 4. Build offsets vector.
@@ -231,7 +241,12 @@ def event_windows(
     kept_event_dates: List[pd.Timestamp] = []
     kept_event_metadata: List[Dict[str, Any]] = []
     rows: List[np.ndarray] = []
+    # Codex P2 follow-up: split drop reasons.  Previously a single
+    # ``n_dropped_for_edge`` counter incorrectly attributed
+    # NaN-event-day drops to edge effects, making the lineage
+    # metadata dishonest.
     n_dropped_for_edge = 0
+    n_dropped_for_nan_event_day = 0
 
     # Map event date → integer position in target index (lookup is
     # O(log n) via searchsorted / Index.get_loc; the index has been
@@ -273,10 +288,11 @@ def event_windows(
         if params.units_basis == "level_change":
             event_day_value = target_values[t_e]
             if not np.isfinite(event_day_value):
-                # Cannot subtract from NaN; under drop policy we skip,
-                # under pad_nan we leave NaN.
+                # Cannot subtract from NaN; under drop policy we skip
+                # (charged to the NaN-event-day counter, NOT the edge
+                # counter), under pad_nan we leave the row all-NaN.
                 if params.incomplete_window_policy == "drop":
-                    n_dropped_for_edge += 1
+                    n_dropped_for_nan_event_day += 1
                     continue
                 level_change_row = np.full_like(raw_row, np.nan)
             else:
@@ -340,6 +356,7 @@ def event_windows(
             "n_events_in": events.n_events,
             "n_events_kept": len(kept_event_dates),
             "n_events_dropped_for_edge": n_dropped_for_edge,
+            "n_events_dropped_for_nan_event_day": n_dropped_for_nan_event_day,
             "overlap_pairs_in_kept_events": overlap_pairs,
             "window_length": len(offsets),
         },
