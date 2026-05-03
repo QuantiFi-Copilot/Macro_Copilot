@@ -81,13 +81,21 @@ def threshold_events(
         Input ``Series`` artifact (one indexed numeric series).
     params :
         ``ThresholdEventsParams`` carrying the rule, threshold,
-        basis, rolling args, and ``look_ahead_safe`` flag.  The
-        operator does NOT default ``rule`` / ``threshold`` from
-        config — those are user-input choices, not v1 defaults.
-        ``threshold_basis`` and ``look_ahead_safe`` DO have config
-        defaults that fire when the caller omits them; the schema
-        already enforces the valid combinations of basis + rolling
-        args.
+        basis, rolling args, and ``look_ahead_safe`` flag.
+
+        ``rule`` and ``threshold`` are user-input methodological
+        choices with no defaults — the caller must supply both.
+
+        ``threshold_basis`` and ``look_ahead_safe`` both default to
+        ``None`` in the schema; when None, the operator resolves
+        them from ``config.default_value(...)`` at runtime.  This
+        makes the YAML authoritative — schema and YAML cannot
+        silently disagree, and a YAML change is reflected in
+        runtime behaviour without a code edit.
+
+        After resolution, the operator re-validates the resulting
+        params via the schema's ``model_validator`` so the
+        basis-vs-rolling-args coherence rules still fire.
     config :
         Optional ``OperatorConfig``.  When omitted, the bundled
         ``config.yaml`` is loaded (process-cached).
@@ -118,7 +126,40 @@ def threshold_events(
         )
 
     # ------------------------------------------------------------------
-    # 2. Structural-input validation.
+    # 2. Resolve config-defaulted fields when caller omitted them.
+    #    This makes the YAML authoritative for ``threshold_basis`` and
+    #    ``look_ahead_safe`` (Codex P2 follow-up — previously the
+    #    schema hardcoded these defaults, so YAML changes had no
+    #    runtime effect).
+    # ------------------------------------------------------------------
+    needs_resolution = (
+        params.threshold_basis is None
+        or params.look_ahead_safe is None
+    )
+    if needs_resolution:
+        resolved_basis = (
+            params.threshold_basis
+            if params.threshold_basis is not None
+            else config.default_value("threshold_basis")
+        )
+        resolved_lookahead = (
+            params.look_ahead_safe
+            if params.look_ahead_safe is not None
+            else config.default_value("look_ahead_safe")
+        )
+        # Re-construct via the schema so the basis-specific validator
+        # (rolling-args coherence) fires now that basis is concrete.
+        params = ThresholdEventsParams(
+            rule=params.rule,
+            threshold=params.threshold,
+            threshold_basis=resolved_basis,
+            rolling_window=params.rolling_window,
+            min_periods=params.min_periods,
+            look_ahead_safe=resolved_lookahead,
+        )
+
+    # ------------------------------------------------------------------
+    # 3. Structural-input validation.
     # ------------------------------------------------------------------
     if not isinstance(series, Series):
         raise ThresholdEventsError(
@@ -133,7 +174,7 @@ def threshold_events(
         )
 
     # ------------------------------------------------------------------
-    # 3. Build the threshold series per the chosen basis.
+    # 4. Build the threshold series per the chosen basis.
     # ------------------------------------------------------------------
     threshold_series, basis_metadata = _build_threshold_series(
         payload, params,

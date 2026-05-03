@@ -577,3 +577,236 @@ class TestComposition:
         # composed chain.
         rec_arithmetic_step = rec.steps[3]
         assert len(rec_arithmetic_step.auxiliary_lineages) == 1
+
+
+# ===========================================================================
+# 10. Real clean_single_series boundary (Codex P3 follow-up)
+# ===========================================================================
+
+
+class TestRealCleanSingleSeriesBoundary:
+    """Codex P3 follow-up: previously the composition tests synthesised
+    Series via the local _series() helper, which only emits FetchStep +
+    AdapterStep — no CleanStep was ever produced.  These tests run the
+    REAL ``clean_single_series`` from shared.analytics.levels and emit
+    a CleanStep, so drift at the clean stage is caught.
+    """
+
+    def _build_artifact_series_through_clean(
+        self, *, series_key: str, dates, values,
+    ) -> Series:
+        """fetch-shaped DataFrame → REAL clean_single_series →
+        raw_dataframe_to_artifact_series → Series, with explicit
+        FetchStep + CleanStep + AdapterStep lineage."""
+        from shared.analytics.levels import clean_single_series
+        from shared.artifacts.adapters import raw_dataframe_to_artifact_series
+        from shared.artifacts.lineage import CleanStep
+
+        # 1. Build a fetch-shaped DataFrame.
+        raw_df = pd.DataFrame({
+            "trade_date": [d.date() if hasattr(d, "date") else d for d in dates],
+            "field_value": values,
+        })
+
+        # 2. Real fetch + clean_single_series.
+        fetch_step = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={
+                "curve_family": "UST", "tenor": "10Y",
+                "field_name": "YLD_YTM_MID",
+            },
+        )
+        cleaned_df = clean_single_series(raw_df, ffill_limit=5)
+        clean_step = CleanStep.build(
+            name="clean_single_series", version="1.0.0",
+            params={"ffill_limit": 5},
+            input_hashes=(fetch_step.hash,),
+        )
+
+        # 3. Adapter with explicit upstream lineage.
+        return raw_dataframe_to_artifact_series(
+            cleaned_df,
+            series_key=series_key,
+            units=TimeSeriesUnits.PERCENT,
+            source_kind="fetch_single_tenor",
+            source_params={
+                "curve_family": "UST", "tenor": "10Y",
+                "field_name": "YLD_YTM_MID",
+            },
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            upstream_lineage=(fetch_step, clean_step),
+        )
+
+    def test_threshold_events_after_real_clean(self):
+        """The full Q1-shape source path: real fetch shape → real
+        clean_single_series → adapter → threshold_events.  EventSet
+        lineage must include a real CleanStep."""
+        idx = list(pd.bdate_range("2026-01-02", periods=10))
+        s = self._build_artifact_series_through_clean(
+            series_key="ust_10y", dates=idx,
+            values=[4.10, 4.12, 4.15, 4.20, 4.50, 4.18, 4.16, 4.14, 4.12, 4.10],
+        )
+        # Sanity: the input series's lineage now contains a CleanStep
+        # — the helper actually exercised the real cleaner.
+        assert "clean" in [step.kind for step in s.lineage.steps], (
+            "input series must carry a real CleanStep before the test "
+            "can prove the boundary"
+        )
+        assert s.lineage.steps[1].name == "clean_single_series"
+
+        es = threshold_events(s, ThresholdEventsParams(
+            rule="above", threshold=4.30,
+        ))
+        # Output lineage threads fetch → clean → adapter → threshold.
+        kinds = [step.kind for step in es.lineage.steps]
+        assert kinds == ["fetch", "clean", "adapter", "operator"]
+        assert es.lineage.steps[1].name == "clean_single_series"
+        # Spike at index 4 (4.50) is the only value above 4.30.
+        assert es.n_events == 1
+
+    def test_full_chain_align_arithmetic_threshold_after_real_clean(self):
+        """The most complete composition test the operator suite has:
+        two artifact Series each with a real CleanStep in their lineage,
+        aligned, subtracted, then thresholded.  Output lineage covers
+        every layer of the pipeline."""
+        idx = list(pd.bdate_range("2026-01-02", periods=12))
+        # A gentle UST 2Y series with a deliberate spike on day 8 so
+        # the spread crosses threshold there.
+        ust_2y = self._build_artifact_series_through_clean(
+            series_key="ust_2y", dates=idx,
+            values=[4.50] * 7 + [4.85] + [4.55] * 4,
+        )
+        ois_2y = self._build_artifact_series_through_clean(
+            series_key="ois_2y", dates=idx,
+            values=[4.30] * 12,
+        )
+        aligned = align_series([ust_2y, ois_2y], AlignSeriesParams())
+        spread = series_arithmetic(
+            aligned.get_series("ust_2y"),
+            "subtract",
+            aligned.get_series("ois_2y"),
+        )
+        es = threshold_events(spread, ThresholdEventsParams(
+            rule="above", threshold=0.30,
+        ))
+        # The spike day's spread is 4.85 - 4.30 = 0.55, the only value
+        # above 0.30.
+        assert es.n_events == 1
+        assert es.event_dates[0] == idx[7]
+
+        # Output lineage covers every layer:
+        # left chain: fetch + clean + adapter
+        # operators:  align_series + series_arithmetic + threshold_events
+        kinds = [step.kind for step in es.lineage.steps]
+        assert kinds == [
+            "fetch", "clean", "adapter",
+            "operator", "operator", "operator",
+        ]
+        names = [
+            step.name for step in es.lineage.steps if step.kind == "operator"
+        ]
+        assert names == ["align_series", "series_arithmetic", "threshold_events"]
+
+        # The right-hand chain ALSO has a CleanStep — verify via the
+        # arithmetic step's auxiliary_lineages contract from PR #51.
+        # ``SeriesSet.get_series`` (build plan v5 / R2) appends the
+        # alignment step to the retrieved Series's lineage, so the
+        # chain is fetch + clean + adapter + align_series operator.
+        arithmetic_step = es.lineage.steps[4]
+        assert len(arithmetic_step.auxiliary_lineages) == 1
+        right_chain = arithmetic_step.auxiliary_lineages[0]
+        right_kinds = [step.kind for step in right_chain.steps]
+        assert right_kinds == ["fetch", "clean", "adapter", "operator"]
+        assert right_chain.steps[1].name == "clean_single_series"
+        assert right_chain.steps[3].name == "align_series"
+
+
+# ===========================================================================
+# 11. YAML-default authority (Codex P2 follow-up)
+# ===========================================================================
+
+
+class TestYamlDefaultAuthority:
+    """Codex P2 follow-up: when caller omits ``threshold_basis`` or
+    ``look_ahead_safe`` from ``ThresholdEventsParams``, the operator
+    must resolve them from ``config.yaml`` — not from a hardcoded
+    schema default that would silently shadow YAML changes.
+    """
+
+    def test_basis_default_resolved_from_config(self):
+        """Construct params with basis=None (omitted); verify operator
+        resolves it to the YAML's default and records the resolved
+        value in lineage."""
+        s = _series(
+            "x", dates=["2026-01-02", "2026-01-05"], values=[1.0, 5.0],
+        )
+        # Caller omits threshold_basis entirely.
+        params = ThresholdEventsParams(rule="above", threshold=2.0)
+        assert params.threshold_basis is None  # sanity: schema didn't fill it
+        assert params.look_ahead_safe is None
+
+        es = threshold_events(s, params)
+        # Operator must have resolved basis → "raw_value" from YAML.
+        assert es.lineage.steps[-1].params["threshold_basis"] == "raw_value"
+        assert es.lineage.steps[-1].params["look_ahead_safe"] is True
+
+    def test_caller_override_takes_precedence_over_yaml(self):
+        s = _series(
+            "x",
+            dates=list(pd.bdate_range("2026-01-02", periods=10)),
+            values=list(range(10)),
+        )
+        # Caller explicitly opts out of lookahead-safe; YAML default
+        # is True but the caller's value MUST win.
+        params = ThresholdEventsParams(
+            rule="above", threshold=0.0,
+            threshold_basis="rolling_zscore",
+            rolling_window=5,
+            look_ahead_safe=False,
+        )
+        es = threshold_events(s, params)
+        assert es.lineage.steps[-1].params["look_ahead_safe"] is False
+
+    def test_yaml_default_change_reflected_at_runtime(self, tmp_path, monkeypatch):
+        """Regression test: write a tweaked YAML to a temp dir,
+        patch CONFIG_PATH (via passing an explicit OperatorConfig),
+        and verify the operator's resolved value follows the YAML —
+        not a baked-in schema default.
+
+        Without this test, schema and YAML could silently disagree
+        and the operator would still use the schema's value, which
+        is exactly the failure mode Codex P2 surfaced.
+        """
+        import yaml as _yaml
+        from shared.config.operator_config import (
+            clear_operator_config_cache,
+            load_operator_config,
+        )
+
+        # Read the bundled config, flip look_ahead_safe to False.
+        bundled = _yaml.safe_load(CONFIG_PATH.read_text())
+        bundled["defaults"]["look_ahead_safe"]["value"] = False
+        tweaked_path = tmp_path / "config.yaml"
+        tweaked_path.write_text(_yaml.safe_dump(bundled))
+
+        clear_operator_config_cache()
+        tweaked_cfg = load_operator_config(tweaked_path)
+        assert tweaked_cfg.default_value("look_ahead_safe") is False
+
+        s = _series(
+            "x",
+            dates=list(pd.bdate_range("2026-01-02", periods=10)),
+            values=list(range(10)),
+        )
+        # Caller omits look_ahead_safe → MUST pick up the tweaked
+        # YAML's False (the schema's "default" used to be True).
+        params = ThresholdEventsParams(
+            rule="above", threshold=0.0,
+            threshold_basis="rolling_zscore",
+            rolling_window=5,
+        )
+        assert params.look_ahead_safe is None  # schema didn't fill it
+        es = threshold_events(s, params, config=tweaked_cfg)
+        # Operator resolved from the tweaked config.
+        assert es.lineage.steps[-1].params["look_ahead_safe"] is False
+        assert es.lineage.steps[-1].params["lookahead_shift_applied"] is False
