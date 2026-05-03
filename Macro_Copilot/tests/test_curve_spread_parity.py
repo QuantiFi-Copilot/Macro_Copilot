@@ -294,5 +294,18 @@ def test_curve_spread_parity(fixture_path: Path) -> None:
         f"Tool returned an error for {fixture_path.name}: {actual.get('error')!r}"
     )
 
-    # 6. Compare with recorded expectation.
-    _assert_equal(actual, fx["expected_output"], path="$")
+    # 6. Strip additive top-level fields the parity contract is
+    # explicitly NOT covering.  ``canonical_time_series`` was added by
+    # the legacy-TimeSeries tech-debt cleanup as an intentionally
+    # additive field; the parity tests pin the WIRE-FROZEN shape that
+    # the frontend reads (``current_metrics`` + bespoke ``time_series``),
+    # not every key the tool emits.  When the canonical-TimeSeries
+    # contract needs its own parity coverage, that goes in a separate
+    # canonical_time_series test rather than rolling into the legacy
+    # baselines.
+    actual_for_parity = {
+        k: v for k, v in actual.items() if k != "canonical_time_series"
+    }
+
+    # 7. Compare with recorded expectation.
+    _assert_equal(actual_for_parity, fx["expected_output"], path="$")

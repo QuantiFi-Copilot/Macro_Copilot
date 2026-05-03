@@ -36,6 +36,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.schemas import TimeSeries
+
 
 class ButterflyInput(BaseModel):
     """Parameters for computing the 3-point butterfly (curvature) on a
@@ -155,10 +157,32 @@ class ButterflyTimeSeriesRow(BaseModel):
 
 
 class ButterflyOutput(BaseModel):
-    """Top-level response for the butterfly tool."""
+    """Top-level response for the butterfly tool.
+
+    ``time_series`` is the wire-frozen bespoke shape
+    (``ButterflyTimeSeriesRow``) the frontend has consumed since this
+    tool shipped.  ``canonical_time_series`` was added by the
+    legacy-TimeSeries tech-debt cleanup so the upcoming
+    primitive-to-operator bridge has a uniform closed-enum shape to
+    consume.  Both are computed from the same underlying display
+    DataFrame — they cannot drift.
+    """
 
     current_metrics: ButterflyCurrentMetrics
     time_series: List[ButterflyTimeSeriesRow]
+    canonical_time_series: List[TimeSeries] = Field(
+        default_factory=list,
+        description=(
+            "Historical butterfly value (long_wing − 2*belly + short_wing, "
+            "in BPS) over the displayed window.  Uses the canonical "
+            "``shared.schemas.time_series.TimeSeries`` shape.  One series:\n"
+            "  - units = BPS\n"
+            "  - series_name = "
+            "    '<curve_family_lower>_<short>_<belly>_<long>_butterfly'\n"
+            "  - values match ``time_series[i].butterfly_bps`` 1-to-1 "
+            "    by construction."
+        ),
+    )
 
 
 __all__ = [

@@ -123,6 +123,7 @@ from shared.analytics.spreads import (
     safe_float,
 )
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server, REST
@@ -393,7 +394,10 @@ def calculate_cross_market_spread(
     )
 
     # ------------------------------------------------------------------
-    # 8. Build time_series (withheld from LLM, frontend-only)
+    # 8. Build time_series (legacy bespoke shape — wire-frozen for the
+    #    frontend) AND canonical_time_series (closed-enum TimeSeries
+    #    for the upcoming primitive-to-operator bridge).  Both share
+    #    the same display_df rows so they cannot drift.
     # ------------------------------------------------------------------
     ts_rows = [
         CrossMarketSpreadTimeSeriesRow(
@@ -404,6 +408,54 @@ def calculate_cross_market_spread(
         )
         for row in display_df.itertuples()
     ]
+    canonical_series = _build_canonical_cross_market_series(
+        display_df,
+        curve_family_1=params.curve_family_1,
+        curve_family_2=params.curve_family_2,
+        tenor=params.tenor,
+        bps_round_decimals=bps_round_decimals,
+    )
 
-    output = CrossMarketSpreadOutput(current_metrics=metrics, time_series=ts_rows)
+    output = CrossMarketSpreadOutput(
+        current_metrics=metrics,
+        time_series=ts_rows,
+        canonical_time_series=[canonical_series],
+    )
     return output.model_dump()
+
+
+def _build_canonical_cross_market_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family_1: str,
+    curve_family_2: str,
+    tenor: str,
+    bps_round_decimals: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's spread column into the canonical
+    ``TimeSeries`` shape (closed-enum BPS units).
+
+    Naming convention: ``<cf1_lower>_<cf2_lower>_<tenor_lower>_spread``.
+    """
+    series_name = (
+        f"{curve_family_1.lower()}_"
+        f"{curve_family_2.lower()}_"
+        f"{tenor.lower()}_spread"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=round(float(row.spread_bps), bps_round_decimals),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.BPS,
+        description=(
+            f"Cross-market spread "
+            f"({curve_family_1} − {curve_family_2}) at {tenor} over "
+            "the displayed window."
+        ),
+        rows=rows,
+    )

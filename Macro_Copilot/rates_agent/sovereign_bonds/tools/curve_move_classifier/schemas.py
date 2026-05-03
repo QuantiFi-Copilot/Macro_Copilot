@@ -25,6 +25,25 @@ Validation layering
 
 Validators that encode invariants (front/back tenors must differ) stay
 here in code; they are not configurable.
+
+No canonical TimeSeries output (by design)
+------------------------------------------
+The legacy-sovereign TimeSeries tech-debt cleanup migrated four other
+tools (``yield_levels``, ``curve_spread``, ``butterfly``,
+``cross_market_spread``) to emit an additional
+``canonical_time_series: List[TimeSeries]`` field for the upcoming
+primitive-to-operator bridge.  ``curve_move_classifier`` is
+deliberately NOT migrated: it is a single-observation classifier
+that emits one set of regime tags per call.  There is no historical
+time series being computed here — adding ``canonical_time_series``
+would require a new compute path that classifies every prior day in
+the lookback window, which is a different computation, not a wire-
+format migration.
+
+If a future workflow needs a historical regime time series, that is a
+new sibling tool (e.g. ``curve_move_classifier_panel``), not an
+additive output on this one.  Documented here so the absence of
+``canonical_time_series`` is intentional, not an oversight.
 """
 
 from __future__ import annotations
