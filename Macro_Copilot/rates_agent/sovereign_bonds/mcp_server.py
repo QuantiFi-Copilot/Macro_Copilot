@@ -80,6 +80,12 @@ from rates_agent.sovereign_bonds.tools.pca_yield_curve import (  # noqa: E402
     PcaYieldCurveInput,
     calculate_pca_yield_curve,
 )
+from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (  # noqa: E402
+    CONFIG_PATH as YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+    YieldChangeAttributionPcaInput,
+    calculate_yield_change_attribution_pca,
+)
+from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
     PairSpec, PastedTimeSeries, SeriesSpec,
@@ -1220,6 +1226,138 @@ def pca_yield_curve_tool(
             n_factor_series, n_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 12: yield_change_attribution_pca  (nested input — MCP only this sprint)
+# ===========================================================================
+@mcp.tool()
+def yield_change_attribution_pca_tool(
+    curve_family: str,
+    target_tenor: str,
+    start_date: str,
+    end_date: str,
+    pasted_loadings: Optional[PastedPcaLoadings] = None,
+    pca_lookback_days: int = 1825,
+    n_components: int = 3,
+    change_frequency: Literal["daily", "weekly"] = "daily",
+    tenors: Optional[List[str]] = None,
+    field_name: str = "",
+) -> str:
+    """Decompose a sovereign yield change at one tenor over a chosen
+    calendar window into per-PCA-component contributions in basis
+    points, plus a residual.
+
+    Use this tool when the user asks about:
+    - "Was today's UST 10Y move mostly level or slope?"
+    - "How much of the BTP 10Y selloff between dates X and Y was
+      curvature?"
+    - "Decompose the JGB 30Y change last week into PC contributions."
+
+    Two input modes (mutually exclusive):
+      1. fit_inline (default — pasted_loadings omitted): compute()
+         calls pca_yield_curve internally with the user's
+         `pca_lookback_days`, `n_components`, `change_frequency`,
+         `tenors`.  The fit's full provenance is echoed in the
+         output (sign_anchor, fit window, variance shares, per-
+         component quality flags).
+      2. pasted: caller supplies `pasted_loadings` (a
+         ``PastedPcaLoadings`` payload).  Inline-fit params are
+         ignored.  The paste's provenance is echoed in the output.
+
+    Component labels are pc1, pc2, pc3, ... — NOT level/slope/
+    curvature.  The canonical interpretation holds for normal
+    sovereign panels but is documented under methodology.assumptions
+    rather than enforced on the wire.
+
+    Parameters
+    ----------
+    curve_family : str
+        Sovereign curve identifier — e.g. 'UST', 'DE_BUND', 'IT_BTP'.
+    target_tenor : str
+        Tenor whose yield change we are attributing — e.g. '10Y'.
+        Must be in the fit's tenor universe.
+    start_date : str
+        Start of the change window (YYYY-MM-DD).  Resolved forward
+        to nearest trading day.
+    end_date : str
+        End of the change window (YYYY-MM-DD).  Resolved backward
+        to nearest trading day.  Must be strictly after start_date.
+    pasted_loadings : PastedPcaLoadings, optional
+        When supplied, attribution uses these loadings AS-IS (after
+        validation).  When None (default), compute() fits PCA inline
+        via pca_yield_curve.
+    pca_lookback_days : int, optional
+        Calendar days of history for the inline PCA fit.  Default
+        1825 (~5y).  Ignored when pasted_loadings is supplied.
+    n_components : int, optional
+        Number of PCA components for the attribution.  Default 3.
+        Must not exceed len(pasted_loadings.components) when paste
+        is supplied.
+    change_frequency : "daily" | "weekly", optional
+        Frequency for the inline PCA fit.  Default 'daily'.  Ignored
+        when pasted_loadings is supplied.
+    tenors : list of str, optional
+        Tenor list for the inline PCA fit.  Default uses the playbook
+        universe.  Ignored when pasted_loadings is supplied.
+    field_name : str, optional
+        Bloomberg field mnemonic.  Leave as the default empty string
+        "" to use the YAML's default_field_name (currently
+        'YLD_YTM_MID').
+    """
+    field_name_arg = field_name if field_name else None
+    try:
+        params = YieldChangeAttributionPcaInput(
+            curve_family=curve_family,
+            target_tenor=target_tenor,
+            start_date=start_date,
+            end_date=end_date,
+            pasted_loadings=pasted_loadings,
+            pca_lookback_days=pca_lookback_days,
+            n_components=n_components,
+            change_frequency=change_frequency,
+            tenors=tenors,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    # IMPORTANT: T14 ALWAYS needs the DB engine — including on the
+    # pasted_loadings path.  ``pasted_loadings`` supplies the LOADINGS
+    # only; compute() still needs to fetch the change-window yield
+    # panel to compute Δy.  Distinct from half_life's pasted_series
+    # path (where the pasted series IS the full input).  Don't
+    # short-circuit the engine here.
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    try:
+        ycap_config = load_tool_config(YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH)
+        result = calculate_yield_change_attribution_pca(
+            engine=engine, params=params, config=ycap_config,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_yield_change_attribution_pca")
+        return json.dumps({"error": f"Calculation failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: yield_change_attribution_pca %s %s [%s..%s] "
+        "loadings=%s → %s",
+        params.curve_family, params.target_tenor,
+        params.start_date, params.end_date,
+        ("pasted" if params.pasted_loadings is not None else "fit_inline"),
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Snapshot-only tool — no time-series payload to withhold.
+    return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
 
 
 # ===========================================================================

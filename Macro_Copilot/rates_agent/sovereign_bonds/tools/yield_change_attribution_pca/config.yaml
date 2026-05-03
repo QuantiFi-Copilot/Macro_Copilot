@@ -1,0 +1,356 @@
+# =============================================================================
+# yield_change_attribution_pca_tool — tool configuration
+# =============================================================================
+# Canonical record of the yield_change_attribution_pca tool's
+# conventions and methodology.  Loaded by `shared.config.load_tool_config`
+# at compute() time.  The MCP wrapper passes this config explicitly
+# so the dependency is observable at the call site.
+#
+# Standardisation under the v6 hierarchical-config principle
+# ----------------------------------------------------------
+# This tool's output meaning depends on the upstream PCA fit.  Two
+# input modes both make the upstream choice EXPLICIT and visible in
+# the output (NOT hidden behind "use defaults"):
+#
+#   1. fit_inline (loadings_source="fit_inline"): compute() invokes
+#      pca_yield_curve's primitive directly with the user's
+#      pca_lookback_days / n_components / change_frequency / tenors.
+#      Those inputs are echoed in the output as
+#      `loadings_window_start/end`, `loadings_change_frequency_used`,
+#      `loadings_n_observations_in_fit`, etc.  Provenance is in the
+#      output itself.
+#
+#   2. pasted (loadings_source="pasted"): caller supplies a
+#      ``PastedPcaLoadings`` payload that ALREADY carries the
+#      original fit's full provenance (variance shares, change
+#      frequency, n_observations, sign anchor, fit window, per-
+#      component quality flags).  T14 validates the payload, then
+#      attributes the change against those exact loadings.
+#
+# In BOTH cases, the methodology is fully captured by the closure of
+# this tool's config + the upstream config (via fit_inline) or the
+# upstream provenance (via pasted_loadings).  Two desks running with
+# the same closure get the same answer.  This is what makes T14
+# qualify as a `quant_standard_analytic` per docs/architecture/
+# tool_architecture.md A13.
+#
+# Central knobs (A13)
+# -------------------
+# This tool's central methodological choices are the structural
+# inputs that define WHAT change is being attributed (`curve_family`,
+# `target_tenor`, `start_date`, `end_date`) AND HOW the loadings
+# come in (`loadings_source` + the loadings-source-specific fields).
+# Every other knob (`min_observations_for_pca`, all rounding
+# decimals, the date-resolution policies, ffill, default field) is
+# YAML-locked.
+#
+# Honest-placeholder pattern (date-resolution policies)
+# -----------------------------------------------------
+# `start_date_resolution` and `end_date_resolution` are STRUCTURAL
+# choices (different policies → different `total_change_bps` for the
+# same calendar request).  Locked at "forward" / "backward" in V1;
+# alternative policies are documented under planned_extensions as
+# sibling-tool material.  compute() raises NotImplementedError on
+# any other value.
+# =============================================================================
+
+tool:
+  name: yield_change_attribution_pca_tool
+  domain: sovereign_bonds
+  description: |
+    Decompose a sovereign yield change at one tenor over a chosen
+    window into per-PCA-component contributions in basis points.
+    Loadings come from EITHER an inline call to pca_yield_curve OR
+    a caller-supplied ``PastedPcaLoadings`` payload.  Output is the
+    snapshot containing per-component contribution_bps + the
+    residual_bps + full provenance of the upstream PCA fit
+    (sign_anchor, change_frequency, fit window, variance shares,
+    per-component quality flags).  Intentionally does NOT label
+    components as level/slope/curvature — output uses pc1, pc2,
+    pc3, ...; the canonical interpretation is documented under
+    methodology.assumptions but is NOT enforced on the wire.
+  category: quant_standard_analytic
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # PCA fit defaults (used when loadings_source="fit_inline" and the
+  # caller doesn't override the corresponding field at the input layer)
+  # ---------------------------------------------------------------------------
+  default_pca_lookback_days:
+    value: 1825
+    source: industry_standard_5y_window
+    rationale: >-
+      Default 5-year lookback for the inline PCA fit.  Matches
+      pca_yield_curve's default — typical desk range for sovereign-
+      curve PCA work.  The user can override per-request at the
+      input layer (`pca_lookback_days`); this YAML value is the
+      schema-layer default that fires when the LLM/HTTP wrapper
+      doesn't supply one.
+    valid_range: [378, 7300]
+
+  default_n_components:
+    value: 3
+    source: industry_standard_level_slope_curvature
+    rationale: >-
+      Default 3 components.  Matches pca_yield_curve.  Sovereign-
+      curve PCA conventionally uses 3 components (level + slope +
+      curvature) which together explain >99% of variance in normal
+      regimes.
+    valid_range: [1, 8]
+
+  default_change_frequency:
+    value: daily
+    source: industry_standard_daily_changes
+    rationale: >-
+      Default daily-change PCA.  Matches pca_yield_curve.  Weekly
+      changes are supported via the user input but not the YAML
+      default.
+
+  # ---------------------------------------------------------------------------
+  # Validation floor — also enforced against pasted_loadings
+  # ---------------------------------------------------------------------------
+  # Same convention name as pca_yield_curve so the cross-config lint
+  # enforces value agreement.  When loadings_source="fit_inline" this
+  # is forwarded to pca_yield_curve's compute(); when "pasted" it is
+  # checked against pasted_loadings.n_observations_in_fit.
+  min_observations_for_pca:
+    value: 252
+    source: team_judgment_pending_review
+    rationale: >-
+      ~1 year of trading-day yield-change observations.  PCA loadings
+      are unstable below this; below ~60 obs the SVD result barely
+      beats noise.  Cross-config-lint enforces agreement with
+      pca_yield_curve.  When pasted_loadings reports
+      n_observations_in_fit < this floor, compute() returns a
+      controlled error envelope with the
+      "is smaller than the YAML's" phrase shape that maps to
+      HTTP 422 via detail.py's user_input_phrases list.
+    valid_range: [60, 2520]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations in the change window
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps in the fetched yield panel.  Same as the rest of the
+      rates roster; the consistency lint enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Date-resolution policies — STRUCTURAL choices, locked in V1
+  # ---------------------------------------------------------------------------
+  # Different resolution policies produce different total_change_bps
+  # for the same calendar request, so each is locked behind a
+  # NotImplementedError honest-placeholder guard.  The current pair
+  # (forward / backward) anchors the change window to the observed
+  # trading day NEAREST INSIDE the requested window, which is the
+  # default sovereign-desk semantic.
+  start_date_resolution:
+    value: forward
+    source: numerical_stability_lock
+    rationale: >-
+      When the user-requested start_date is not a trading day,
+      resolve to the nearest available trading day on or AFTER
+      start_date.  Ensures the change window is fully INSIDE the
+      requested calendar range (start moves forward into the
+      window).  Locked at "forward" in V1; alternatives
+      ("backward", "nearest", "strict") are sibling tools.
+      compute() raises NotImplementedError on any other value.
+
+  end_date_resolution:
+    value: backward
+    source: numerical_stability_lock
+    rationale: >-
+      When the user-requested end_date is not a trading day,
+      resolve to the nearest available trading day on or BEFORE
+      end_date.  Same "fully inside requested window" semantic as
+      start_date_resolution.  Locked at "backward" in V1;
+      alternatives are sibling tools.  compute() raises
+      NotImplementedError on any other value.
+
+  # ---------------------------------------------------------------------------
+  # Pasted-loadings unit-norm validation tolerance
+  # ---------------------------------------------------------------------------
+  loadings_unit_norm_tolerance:
+    value: 0.000001   # 1e-6
+    source: numerical_stability_lock
+    rationale: >-
+      PCA loadings should be unit-norm eigenvectors.  Pasted
+      loadings whose ‖v_k‖ deviates from 1 by more than this
+      tolerance are rejected at validation time — a corrupted paste
+      could otherwise silently distort every contribution_bps by
+      the norm-error factor.  1e-6 absorbs float64 round-trip noise
+      while catching real corruption.
+    valid_range: [0.00000001, 0.001]   # 1e-8 .. 1e-3
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — bps (component contributions + residual + total)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output to 0.01 bps.  Display precision; matches the
+      rest of the rates roster's bps rounding.  Threaded explicitly
+      to _round_or_none() at every output surface so a YAML override
+      above 2 actually surfaces.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — loadings (echoed alongside each component
+  # contribution as `loading_at_target_tenor`)
+  # ---------------------------------------------------------------------------
+  loading_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round loading-at-target-tenor to 4 decimals.  Matches
+      pca_yield_curve's loading_round_decimals (cross-config-lint
+      enforces the match).  4 decimals is enough precision given
+      numerical jitter in the SVD.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — variance share (echoed per component)
+  # ---------------------------------------------------------------------------
+  variance_share_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round variance shares to 4 decimals (0.01% resolution).
+      Matches pca_yield_curve's variance_share_round_decimals.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding — overlap percentage between change window and
+  # loadings fit window
+  # ---------------------------------------------------------------------------
+  overlap_pct_round_decimals:
+    value: 1
+    source: team_judgment_pending_review
+    rationale: >-
+      Round the change-window-vs-fit-window overlap percentage to 1
+      decimal place (10ths of a percent).  Display precision;
+      sub-tenths-of-a-percent overlap differences are not
+      actionable.
+    valid_range: [0, 4]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  Cross-config-lint enforces the match across the
+      rates roster.
+
+methodology:
+  what_it_does: |
+    Attributes a yield change at a single target tenor over a
+    requested calendar window to per-PCA-component contributions
+    in basis points, plus a residual.
+
+      1. Resolve start_date / end_date to nearest trading days per
+         the locked forward/backward policies.  If either resolves
+         outside the available data, return a controlled error
+         envelope.
+      2. Acquire loadings:
+           * fit_inline → call pca_yield_curve's compute() with the
+             user's `pca_lookback_days`, `n_components`,
+             `change_frequency`, `tenors`.  Returned loadings carry
+             full provenance (sign_anchor, fit window, variance
+             shares, per-component quality flags).
+           * pasted → validate `pasted_loadings` (curve_family
+             match, target_tenor in `tenors`, n_components in range,
+             unit-norm loadings within tolerance,
+             n_observations_in_fit ≥ YAML floor, sign_anchor matches
+             V1 lock, component_metadata length matches).  Then use
+             the loadings as-is.
+      3. Compute per-tenor change in PERCENT:
+            Δy_i_pct = y_i[end_resolved] − y_i[start_resolved]
+      4. Project onto each component k (degenerate components
+         skipped — their contribution is reported as None and
+         folded into the residual):
+            score_k = dot(Δy_pct, v_k)
+            contribution_k_at_target_pct = score_k * v_k[target_idx]
+      5. Convert to BPS via *100:
+            contribution_k_bps = contribution_k_at_target_pct * 100
+            total_change_bps   = (Δy_pct[target_idx]) * 100
+            residual_bps       = total_change_bps − Σ_k contribution_k_bps
+      6. Compute change-vs-fit-window overlap percentage (trading
+         days the change window shares with the loadings fit window
+         divided by trading days in the change window) — surfaces
+         interpretive divergence to the caller without refusing
+         the request.
+
+  assumptions:
+    - "Yields are stored as percent (4.25 = 4.25%); per-tenor
+       changes are in percent and explicitly converted to bps via
+       *100 BEFORE every output surface (`total_change_bps`,
+       `component_contributions[k].contribution_bps`, `residual_bps`).
+       This is the explicit unit-conversion lock from the v6 plan."
+    - "Loadings are unit-norm eigenvectors of the COVARIANCE matrix
+       of centered yield changes from the upstream PCA fit
+       (pca_yield_curve uses covariance, not correlation, PCA in
+       V1).  The attribution math projects the raw change vector
+       onto these eigenvectors; the residual is the part of the
+       change that lies in the orthogonal complement of the chosen
+       n_components."
+    - "When n_components < n_tenors, residual_bps is non-zero by
+       construction even on perfect data.  When n_components ==
+       n_tenors and no component is degenerate, residual_bps is
+       ≈ 0 modulo float-precision noise."
+    - "Component labels are pc1, pc2, pc3, ..., NOT level/slope/
+       curvature.  The canonical interpretation (PC1=level for
+       normal sovereign panels) is documented but NOT enforced on
+       the wire — same discipline as pca_yield_curve."
+    - "Sparse-grid limitation inherited from pca_yield_curve: with
+       8 benchmark tenors per curve, PC1+PC2 are typically stable
+       but PC3 is sample-size sensitive.  Documented under
+       planned_extensions; the dense-individual-bond panel path
+       depends on the cusip-ingestion playbook extension."
+    - "loadings_change_window_overlap_pct is a transparency knob,
+       NOT a guard.  We do NOT refuse a request when the change
+       window does not overlap the fit window — that's a legitimate
+       'what would these PRE-ESTIMATED loadings say about a
+       NEW move?' query.  The overlap percentage lets a downstream
+       consumer judge interpretive validity."
+
+  citations:
+    - "Litterman, R., & Scheinkman, J. (1991). Common Factors
+       Affecting Bond Returns. Journal of Fixed Income, 1(1), 54-61.
+       Foundational PCA-on-yields paper; per-component attribution
+       is the natural inverse of the Litterman-Scheinkman
+       decomposition."
+
+  planned_extensions:
+    - "Multi-tenor attribution: emit per-tenor contribution_bps for
+       EVERY tenor in the panel (currently we attribute one target
+       tenor at a time).  Sibling tool with a wider output schema."
+    - "Time-varying attribution: rolling fit window with a per-date
+       attribution time series.  Sibling tool whose snapshot is
+       irrelevant; the entire output is a TimeSeries."
+    - "Non-orthogonal factor models (e.g., Nelson-Siegel-style
+       fitted level/slope/curvature with explicit functional
+       form) — different methodology contract from PCA."
+    - "Alternative date-resolution policies (`backward` for start /
+       `forward` for end → window strictly OUTSIDE the request;
+       `nearest` for both → minimum-distance resolution; `strict` →
+       reject if either is not a trading day).  Each is a sibling
+       tool; compute() today raises NotImplementedError on any
+       value other than the V1-locked pair."
+    - "Centered vs raw change vector: today we project the RAW
+       change vector onto the loadings (correct for 'where is the
+       move along each PC').  An alternative ('how unusual is the
+       move along each PC') would subtract the historical mean
+       change before projecting — different statistical object,
+       sibling tool."
+    - "Dense individual-bond panel attribution (depends on cusip
+       ingestion landing).  Same code path, denser tenor grid,
+       more stable PC3+ contributions."

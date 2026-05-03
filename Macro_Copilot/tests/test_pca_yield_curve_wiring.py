@@ -165,11 +165,23 @@ class TestDetailPcaEndpointWiring:
         assert query_obj.default is None
 
     def test_lookback_days_query_lower_bound_is_400(self):
+        """Pin the route's calendar-day floor at 400.  In current
+        FastAPI/Pydantic, ``Query`` no longer exposes ``ge`` as a
+        direct attribute — the constraint lives in ``metadata`` as
+        an ``annotated_types.Ge`` marker.  This test reads it from
+        the canonical location so the lower bound stays load-bearing
+        even as upstream APIs evolve."""
+        from annotated_types import Ge
         from api.routes.rates import detail as detail_module
         import inspect
         sig = inspect.signature(detail_module.pca_yield_curve_detail)
         query_obj = sig.parameters["lookback_days"].default
-        assert query_obj.ge == 400
+        ge_markers = [m for m in query_obj.metadata if isinstance(m, Ge)]
+        assert len(ge_markers) == 1, (
+            f"Expected exactly one Ge marker in Query metadata, "
+            f"got {query_obj.metadata!r}"
+        )
+        assert ge_markers[0].ge == 400
 
     def test_omitted_field_name_flows_none(self):
         from api.routes.rates import detail as detail_module
@@ -216,6 +228,20 @@ class TestDetailPcaEndpointWiring:
         assert params.tenors == ["1Y", "10Y", "30Y"]
 
     def test_small_window_route_returns_422(self):
+        """The compute-layer cross-layer guard returns a controlled
+        error envelope (not via ``raise``) when the actual trading-day
+        change-panel length after differencing is below the YAML's
+        ``min_observations_for_pca``.  The route must surface this as
+        HTTP 422 — same ``user_input_phrases`` shape match used by
+        zscore_custom and beta_adjusted_spread.
+
+        Note: the cross-layer guard fires on the trading-day count
+        AFTER ``ffill`` + differencing, not directly on ``lookback_days``.
+        ``lookback_days`` is only a coarse calendar-day floor at the
+        schema layer (``ge=400``).  This test passes a value that
+        clears schema validation (so the request reaches the mocked
+        compute) and pins the 422 mapping for the controlled error
+        envelope itself."""
         from fastapi import HTTPException
         from api.routes.rates import detail as detail_module
 
@@ -238,7 +264,7 @@ class TestDetailPcaEndpointWiring:
                     engine=mock_engine,
                     curve_family="UST",
                     tenors=None,
-                    lookback_days=300,
+                    lookback_days=400,
                     n_components=3,
                     change_frequency="daily",
                     field_name=None,
