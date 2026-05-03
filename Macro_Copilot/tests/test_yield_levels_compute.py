@@ -429,3 +429,96 @@ class TestImportPathBackwardCompat:
     def test_legacy_shim_path_is_deleted(self):
         with pytest.raises(ModuleNotFoundError):
             import rates_agent.sovereign_bonds.tools.schemas.yield_level  # noqa: F401
+
+
+# ===========================================================================
+# 8. Canonical TimeSeries output (legacy-TimeSeries cleanup)
+# ===========================================================================
+
+
+class TestCanonicalTimeSeries:
+    """Pin the legacy-TimeSeries cleanup contract: yield_levels emits a
+    canonical ``TimeSeries`` payload alongside its wire-frozen
+    ``current_metrics`` snapshot.  Tests cover field presence, units,
+    series naming, length consistency with ``observation_count``, and
+    value alignment with the snapshot."""
+
+    def _run(self, params, raw_df, *, config=None):
+        with patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
+            _FrozenDate,
+        ):
+            return get_yield_levels(engine=None, params=params, config=config)
+
+    def test_canonical_time_series_field_present(self):
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        assert "canonical_time_series" in out
+        assert isinstance(out["canonical_time_series"], list)
+        # yield_levels emits exactly one series.
+        assert len(out["canonical_time_series"]) == 1
+
+    def test_canonical_series_uses_closed_enum_units(self):
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["canonical_time_series"][0]
+        # PERCENT is the unit yields are expressed in (matches
+        # current_metrics.current_yield_pct's semantic).
+        assert ts["units"] == "percent"
+
+    def test_canonical_series_name_follows_convention(self):
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["canonical_time_series"][0]
+        assert ts["series_name"] == "ust_10y_yield"
+
+    def test_canonical_series_length_matches_observation_count(self):
+        """The canonical series covers the same display window the
+        snapshot's observation_count was computed from — so length is
+        identical."""
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["canonical_time_series"][0]
+        assert len(ts["rows"]) == out["current_metrics"]["observation_count"]
+
+    def test_canonical_series_last_value_matches_snapshot(self):
+        """Latest row in the canonical series MUST equal
+        current_yield_pct — proves the snapshot and the series came
+        from the same cleaned data and cannot drift."""
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["canonical_time_series"][0]
+        last_row_value = ts["rows"][-1]["value"]
+        snapshot_value = out["current_metrics"]["current_yield_pct"]
+        # Both come from the same cleaned series; the canonical row is
+        # un-rounded while the snapshot value is rounded by
+        # compute_level_metrics.  Compare with rounding tolerance.
+        assert round(last_row_value, 4) == round(snapshot_value, 4)
+
+    def test_canonical_series_dates_chronological(self):
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["canonical_time_series"][0]
+        dates = [r["date"] for r in ts["rows"]]
+        assert dates == sorted(dates)
+
+    def test_canonical_series_validates_against_TimeSeries_schema(self):
+        """The output dict must round-trip cleanly through the
+        canonical ``shared.schemas.TimeSeries`` model — guards against
+        the bespoke shape silently leaking back in."""
+        from shared.schemas import TimeSeries
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts_dict = out["canonical_time_series"][0]
+        # Must validate against the canonical schema with no extras.
+        TimeSeries.model_validate(ts_dict)

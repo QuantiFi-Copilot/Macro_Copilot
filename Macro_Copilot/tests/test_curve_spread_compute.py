@@ -492,3 +492,82 @@ class TestImportPathBackwardCompat:
         that's intentional."""
         with pytest.raises(ModuleNotFoundError):
             import rates_agent.sovereign_bonds.tools.schemas.spread  # noqa: F401
+
+
+# ===========================================================================
+# Canonical TimeSeries output (legacy-TimeSeries cleanup)
+# ===========================================================================
+
+
+class TestCanonicalTimeSeries:
+    """Pin the legacy-TimeSeries cleanup contract: curve_spread emits a
+    canonical ``TimeSeries`` payload alongside its wire-frozen bespoke
+    ``time_series: List[CurveSpreadTimeSeriesRow]`` array.  Tests
+    cover field presence, units, series naming, alignment with the
+    bespoke series so they cannot drift, and shape validation against
+    the canonical TimeSeries schema."""
+
+    def _run(self, params: CurveSpreadInput, config=None):
+        raw_df = _synthetic_raw_df()
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_curve_spread(
+                engine=None, params=params, config=config,
+            )
+
+    def _params(self):
+        return CurveSpreadInput(
+            curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+            lookback_days=365, field_name="YLD_YTM_MID",
+        )
+
+    def test_canonical_time_series_field_present(self):
+        out = self._run(self._params())
+        assert "canonical_time_series" in out
+        assert isinstance(out["canonical_time_series"], list)
+        # curve_spread emits exactly one canonical series.
+        assert len(out["canonical_time_series"]) == 1
+
+    def test_canonical_series_uses_closed_enum_units(self):
+        out = self._run(self._params())
+        ts = out["canonical_time_series"][0]
+        assert ts["units"] == "bps"
+
+    def test_canonical_series_name_follows_convention(self):
+        out = self._run(self._params())
+        ts = out["canonical_time_series"][0]
+        assert ts["series_name"] == "ust_2y_10y_spread"
+
+    def test_canonical_series_length_equals_bespoke_length(self):
+        """Both fields are computed from the same display_df rows;
+        their lengths must match exactly."""
+        out = self._run(self._params())
+        canonical = out["canonical_time_series"][0]
+        bespoke = out["time_series"]
+        assert len(canonical["rows"]) == len(bespoke)
+
+    def test_canonical_values_match_bespoke_spread_bps_pointwise(self):
+        """Every canonical row's value MUST equal the bespoke row's
+        spread_bps at the same index — proves they share the same
+        underlying display_df."""
+        out = self._run(self._params())
+        canonical = out["canonical_time_series"][0]
+        bespoke = out["time_series"]
+        for i, (c_row, b_row) in enumerate(zip(canonical["rows"], bespoke)):
+            assert c_row["date"] == b_row["date"], (
+                f"row {i}: date mismatch"
+            )
+            assert c_row["value"] == b_row["spread_bps"], (
+                f"row {i}: value mismatch"
+            )
+
+    def test_canonical_series_validates_against_TimeSeries_schema(self):
+        from shared.schemas import TimeSeries
+        out = self._run(self._params())
+        ts_dict = out["canonical_time_series"][0]
+        TimeSeries.model_validate(ts_dict)

@@ -59,6 +59,7 @@ from shared.analytics.spreads import (
     safe_float,
 )
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — relative to this file.  Loaded lazily on first call.
@@ -253,7 +254,11 @@ def calculate_curve_spread(
     )
 
     # ------------------------------------------------------------------
-    # 8. Build time_series
+    # 8. Build time_series (legacy bespoke shape — wire-frozen for
+    #    frontend backward-compat) AND canonical_time_series (closed-
+    #    enum TimeSeries for the upcoming primitive-to-operator
+    #    bridge).  Both share the same display_df rows so they cannot
+    #    drift.
     # ------------------------------------------------------------------
     ts_rows = [
         CurveSpreadTimeSeriesRow(
@@ -263,6 +268,52 @@ def calculate_curve_spread(
         )
         for row in display_df.itertuples()
     ]
+    canonical_series = _build_canonical_spread_series(
+        display_df,
+        curve_family=params.curve_family,
+        short_tenor=params.short_tenor,
+        long_tenor=params.long_tenor,
+        spread_round=spread_round,
+    )
 
-    output = CurveSpreadOutput(current_metrics=metrics, time_series=ts_rows)
+    output = CurveSpreadOutput(
+        current_metrics=metrics,
+        time_series=ts_rows,
+        canonical_time_series=[canonical_series],
+    )
     return output.model_dump()
+
+
+def _build_canonical_spread_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+    spread_round: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's spread column into the canonical
+    ``TimeSeries`` shape (closed-enum BPS units).
+
+    Naming convention: ``<curve_family_lower>_<short>_<long>_spread``.
+    """
+    series_name = (
+        f"{curve_family.lower()}_"
+        f"{short_tenor.lower()}_{long_tenor.lower()}_spread"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=round(float(row.spread_bps), spread_round),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.BPS,
+        description=(
+            f"Curve spread {long_tenor} − {short_tenor} on "
+            f"{curve_family} over the displayed window."
+        ),
+        rows=rows,
+    )

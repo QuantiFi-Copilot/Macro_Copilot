@@ -36,6 +36,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.schemas import TimeSeries
+
 
 class CrossMarketSpreadInput(BaseModel):
     """Parameters for computing the yield differential between the same
@@ -156,10 +158,33 @@ class CrossMarketSpreadTimeSeriesRow(BaseModel):
 
 
 class CrossMarketSpreadOutput(BaseModel):
-    """Top-level response for the cross-market spread tool."""
+    """Top-level response for the cross-market spread tool.
+
+    ``time_series`` is the wire-frozen bespoke shape
+    (``CrossMarketSpreadTimeSeriesRow``) the frontend has consumed
+    since this tool shipped.  ``canonical_time_series`` was added by
+    the legacy-TimeSeries tech-debt cleanup so the upcoming
+    primitive-to-operator bridge has a uniform closed-enum shape to
+    consume.  Both are computed from the same underlying display
+    DataFrame — they cannot drift.
+    """
 
     current_metrics: CrossMarketSpreadCurrentMetrics
     time_series: List[CrossMarketSpreadTimeSeriesRow]
+    canonical_time_series: List[TimeSeries] = Field(
+        default_factory=list,
+        description=(
+            "Historical cross-market spread "
+            "(curve_family_1 − curve_family_2 yield, in BPS) over the "
+            "displayed window.  Uses the canonical "
+            "``shared.schemas.time_series.TimeSeries`` shape.  One series:\n"
+            "  - units = BPS\n"
+            "  - series_name = "
+            "    '<cf1_lower>_<cf2_lower>_<tenor_lower>_spread'\n"
+            "  - values match ``time_series[i].spread_bps`` 1-to-1 "
+            "    by construction."
+        ),
+    )
 
 
 __all__ = [

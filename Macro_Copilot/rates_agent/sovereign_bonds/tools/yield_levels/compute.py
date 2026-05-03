@@ -74,6 +74,7 @@ from shared.analytics.levels import (
 )
 from shared.analytics.rates_fetch import fetch_single_tenor
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -251,7 +252,7 @@ def get_yield_levels(
         }
 
     # ------------------------------------------------------------------
-    # 6. Build output
+    # 6. Build output (snapshot)
     # ------------------------------------------------------------------
     metrics = YieldLevelMetrics(
         as_of_date=yields.index[-1].strftime("%Y-%m-%d"),
@@ -268,5 +269,56 @@ def get_yield_levels(
         observation_count=obs_count,
     )
 
-    output = YieldLevelOutput(current_metrics=metrics)
+    # ------------------------------------------------------------------
+    # 7. Canonical time series (legacy-TimeSeries cleanup; see schemas
+    #    docstring).  Built from the SAME ``display_yields`` slice the
+    #    snapshot was computed against, so a downstream consumer reading
+    #    the canonical_time_series sees the same window the
+    #    observation_count covers.
+    # ------------------------------------------------------------------
+    canonical_series = _build_canonical_time_series(
+        display_yields,
+        curve_family=params.curve_family,
+        tenor=params.tenor,
+    )
+
+    output = YieldLevelOutput(
+        current_metrics=metrics,
+        canonical_time_series=[canonical_series],
+    )
     return output.model_dump()
+
+
+# ============================================================================
+# CANONICAL TIME-SERIES BUILDER
+# ============================================================================
+
+def _build_canonical_time_series(
+    display_yields: pd.Series,
+    *,
+    curve_family: str,
+    tenor: str,
+) -> TimeSeries:
+    """Convert the cleaned, in-window yield series into the canonical
+    ``TimeSeries`` shape with closed-enum units (PERCENT).
+
+    Naming convention: ``<curve_family_lower>_<tenor_lower>_yield``.
+    """
+    series_name = f"{curve_family.lower()}_{tenor.lower()}_yield"
+    rows = [
+        TimeSeriesRow(
+            date=ts.strftime("%Y-%m-%d"),
+            value=(float(v) if pd.notna(v) else None),
+        )
+        for ts, v in display_yields.items()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.PERCENT,
+        description=(
+            f"Historical yield levels for {curve_family} {tenor} over "
+            f"the display window (cleaned, ffill'd consistent with the "
+            "snapshot)."
+        ),
+        rows=rows,
+    )

@@ -18,6 +18,17 @@ The Pydantic input only carries fields the LLM picks per query —
 ``curve_family``, ``short_tenor``, ``long_tenor``, ``lookback_days``,
 ``field_name``.  Validators that encode an invariant (``short_tenor !=
 long_tenor``) stay here in code; they are not configurable.
+
+Canonical TimeSeries output
+---------------------------
+Per the legacy-sovereign TimeSeries tech-debt cleanup: this tool also
+emits a ``canonical_time_series: List[TimeSeries]`` field using the
+closed-enum ``shared.schemas.time_series.TimeSeries`` shape.  The
+existing ``time_series: List[CurveSpreadTimeSeriesRow]`` field stays
+for frontend backward-compat (``RatesView.tsx`` reads it directly);
+the canonical field is what the upcoming primitive-to-operator
+bridge (Phase 1B) consumes.  Both fields are computed from the same
+underlying spread series — they cannot drift.
 """
 
 from __future__ import annotations
@@ -25,6 +36,8 @@ from __future__ import annotations
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+from shared.schemas import TimeSeries
 
 
 class CurveSpreadInput(BaseModel):
@@ -96,9 +109,33 @@ class CurveSpreadTimeSeriesRow(BaseModel):
 
 
 class CurveSpreadOutput(BaseModel):
-    """Top-level response the MCP server returns to the orchestrator."""
+    """Top-level response the MCP server returns to the orchestrator.
+
+    ``time_series`` is the wire-frozen bespoke shape
+    (``CurveSpreadTimeSeriesRow``) the frontend has consumed since
+    this tool shipped.  ``canonical_time_series`` was added by the
+    legacy-TimeSeries tech-debt cleanup to give the upcoming
+    primitive-to-operator bridge a uniform closed-enum shape to
+    consume.  Both are computed from the same underlying display
+    DataFrame — they cannot drift.
+    """
+
     current_metrics: CurveSpreadCurrentMetrics
     time_series: List[CurveSpreadTimeSeriesRow]
+    canonical_time_series: List[TimeSeries] = Field(
+        default_factory=list,
+        description=(
+            "Historical curve spread (long_tenor − short_tenor, in BPS) "
+            "over the displayed window.  Uses the canonical "
+            "``shared.schemas.time_series.TimeSeries`` shape with "
+            "closed-enum units (BPS).  One series:\n"
+            "  - units = BPS\n"
+            "  - series_name = "
+            "    '<curve_family_lower>_<short>_<long>_spread'\n"
+            "  - values match ``time_series[i].spread_bps`` 1-to-1 "
+            "    by construction."
+        ),
+    )
 
 
 __all__ = [

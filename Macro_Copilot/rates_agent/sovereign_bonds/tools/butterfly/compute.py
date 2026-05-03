@@ -94,6 +94,7 @@ from shared.analytics.spreads import (
     safe_float,
 )
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 # Bundled config — public symbol so external callers (mcp_server,
@@ -380,7 +381,10 @@ def calculate_butterfly(
     )
 
     # ------------------------------------------------------------------
-    # 8. Build time_series (withheld from LLM, frontend-only)
+    # 8. Build time_series (legacy bespoke shape — wire-frozen for the
+    #    frontend) AND canonical_time_series (closed-enum TimeSeries
+    #    for the upcoming primitive-to-operator bridge).  Both share
+    #    the same display_df rows so they cannot drift.
     # ------------------------------------------------------------------
     ts_rows = [
         ButterflyTimeSeriesRow(
@@ -391,6 +395,56 @@ def calculate_butterfly(
         )
         for row in display_df.itertuples()
     ]
+    canonical_series = _build_canonical_butterfly_series(
+        display_df,
+        curve_family=params.curve_family,
+        short_tenor=params.short_tenor,
+        belly_tenor=params.belly_tenor,
+        long_tenor=params.long_tenor,
+        bps_round_decimals=bps_round_decimals,
+    )
 
-    output = ButterflyOutput(current_metrics=metrics, time_series=ts_rows)
+    output = ButterflyOutput(
+        current_metrics=metrics,
+        time_series=ts_rows,
+        canonical_time_series=[canonical_series],
+    )
     return output.model_dump()
+
+
+def _build_canonical_butterfly_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    bps_round_decimals: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's butterfly column into the
+    canonical ``TimeSeries`` shape (closed-enum BPS units).
+
+    Naming convention:
+    ``<curve_family_lower>_<short>_<belly>_<long>_butterfly``.
+    """
+    series_name = (
+        f"{curve_family.lower()}_"
+        f"{short_tenor.lower()}_{belly_tenor.lower()}_"
+        f"{long_tenor.lower()}_butterfly"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=round(float(row.butterfly_bps), bps_round_decimals),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.BPS,
+        description=(
+            f"Butterfly ({long_tenor} − 2*{belly_tenor} + {short_tenor}) "
+            f"on {curve_family} over the displayed window."
+        ),
+        rows=rows,
+    )
