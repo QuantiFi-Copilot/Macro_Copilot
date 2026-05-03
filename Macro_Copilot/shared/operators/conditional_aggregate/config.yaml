@@ -3,10 +3,11 @@ operator:
   method_family: aggregation
   version: "1.0.0"
   description: >-
-    Reduce a WindowedPanel to per-offset (aggregator_value,
-    dispersion, n_observations, low_n) tuples.  Finance-blind;
-    output units inherited from the panel's units.  Final operator
-    of Phase 1A — closes the event-study skeleton.
+    Reduce a WindowedPanel to a per-offset Series of the aggregator
+    value.  Per-offset dispersion / n_observations / low_n flags are
+    recorded in lineage params.  Finance-blind; output units inherited
+    from the panel's units (or COUNT when aggregator='count').  Final
+    operator of Phase 1A — closes the event-study skeleton.
 
 defaults:
   aggregator:
@@ -15,7 +16,8 @@ defaults:
     rationale: >-
       Default 'mean': the canonical event-study central tendency.
       Switch to 'median' for fat-tailed inputs, 'std' for spread
-      analysis, 'count' for sample-size diagnostics.
+      analysis, 'count' for sample-size diagnostics (paired with
+      dispersion='none' — see schema validator).
     valid_values: [mean, median, count, std]
 
   dispersion:
@@ -26,7 +28,8 @@ defaults:
       tendency by design — a conditional mean without dispersion is
       not a useful answer.  Pass 'none' to skip the dispersion
       calculation when the workflow has decided dispersion is
-      irrelevant; lineage records the choice.
+      irrelevant; lineage records the choice.  ``count`` aggregator
+      requires this to be 'none' (not unit-coherent otherwise).
     valid_values: [none, std]
 
   min_n:
@@ -34,37 +37,29 @@ defaults:
     source: operator_v1_default
     rationale: >-
       Default 5: per-offset effective N below this triggers the
-      ``low_n`` flag on that offset's row.  The operator does NOT
-      suppress the value; the caller / template / UI decides how
-      to surface low-N evidence.  5 is conservative — even a tiny
-      event study should clear it; pin tighter (e.g., 30) at the
-      workflow-template level for fragile inferences.
-
-  ddof:
-    value: 1
-    source: operator_v1_default
-    rationale: >-
-      Default 1: sample standard deviation (Bessel's correction).
-      Matches numpy's default for ``np.nanstd`` post-pandas-default
-      and the convention used elsewhere in shared.analytics
-      (e.g., zscore_custom, rolling_zscore in stats.py).  Pass 0
-      for population std when N covers the full universe by design.
+      ``low_n`` flag on that offset's lineage entry.  The operator
+      does NOT suppress the value; the caller / template / UI
+      decides how to surface low-N evidence.  5 is conservative —
+      even a tiny event study should clear it; pin tighter (e.g.,
+      30) at the workflow-template level for fragile inferences.
 
 methodology:
   what_it_does: >-
     For each offset (column) in the WindowedPanel, computes the
     aggregator across events using NaN-aware reductions
     (np.nanmean / np.nanmedian / np.nanstd; for 'count', the count
-    of finite cells).  The dispersion estimate is reported
-    alongside the central tendency at every offset (or NaN when
-    dispersion='none').  A per-offset ``low_n`` flag is set when
-    the count of finite cells at that offset is below ``min_n``.
-    Output is an EventResponseSeries — a typed terminal artifact
-    indexed by the panel's integer event-relative offsets.  Units
-    inherited from the panel.  Lineage chains the panel's chain
-    plus this operator step.
+    of finite cells).  The dispersion estimate (np.nanstd with
+    ddof=1, Bessel's correction) is recorded per-offset in lineage
+    params alongside n_observations and a low_n flag.  Output is a
+    typed ``Series`` indexed by event-relative day offsets encoded
+    on a synthetic DatetimeIndex anchor (``1970-01-01 + offset
+    days``); the integer offsets are also stored explicitly in
+    lineage params so consumers do not have to reverse-engineer
+    the encoding.  Units inherited from the panel; ``count``
+    overrides to ``COUNT``.
   planned_extensions:
     - "aggregator ∈ {sum, min, max, quantile}"
     - "dispersion ∈ {iqr, mad, bootstrap_ci}"
+    - "configurable ddof (currently fixed at 1 — sample std)"
     - "overlap-de-weighted aggregation (uses overlap_pairs from event_windows)"
     - "MaskedSeries input overload (Q2 regime-conditioned masking)"
