@@ -236,6 +236,12 @@ def threshold_events(
         event_dates=event_dates,
         per_event_metadata=per_event_metadata,
         source_series_key=series.series_key,
+        # Propagate the source's frequency tag so downstream
+        # operators (event_windows) can enforce frequency-tag
+        # agreement against a target Series — Codex P1 follow-up
+        # on PR #54: without this, ``require_matching_frequency``
+        # in event_windows is a no-op.
+        frequency=series.frequency,
         lineage=lineage,
     )
 
