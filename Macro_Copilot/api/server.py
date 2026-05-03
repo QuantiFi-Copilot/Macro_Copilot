@@ -4,11 +4,11 @@ server.py — FastAPI Application Server
 
 Entry point for the Macro Copilot API.  Serves two classes of endpoints:
 
-1.  **REST endpoints** — power the Rates page cards and other dashboard
+1.  REST endpoints — power the Rates page cards and other dashboard
     views.  These call the Python tool functions directly (no LLM, no MCP),
     so they return in <100ms.
 
-2.  **WebSocket endpoint** (future) — powers the Copilot chat drawer.
+2.  WebSocket endpoint — powers the Copilot chat drawer.
     Routes freeform user messages through the LangGraph orchestrator,
     which decides which MCP tools to invoke.
 
@@ -41,7 +41,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import init_engine, settings
 from api.routes.rates import router as rates_router
-from api.routes import chat as chat_routes
 from api.routes.fx import cards_router as fx_cards_router
 
 # ---------------------------------------------------------------------------
@@ -55,18 +54,31 @@ logger = logging.getLogger("api.server")
 
 
 # ---------------------------------------------------------------------------
+# Optional chat routes
+# ---------------------------------------------------------------------------
+try:
+    from api.routes import chat as chat_routes
+except ModuleNotFoundError as exc:
+    chat_routes = None
+    logger.warning(
+        "Chat routes disabled because optional dependency is missing: %s",
+        exc,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lifespan — initialise shared resources on startup, clean up on shutdown
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle.
 
-    - **Startup**: create the SQLAlchemy engine pool.
-    - **Shutdown**: dispose the engine pool (close all DB connections).
+    - Startup: create the SQLAlchemy engine pool.
+    - Shutdown: dispose the engine pool.
     """
     logger.info("Initialising database engine...")
     engine = init_engine()
-    logger.info("Database engine ready.  Pool size=%s", engine.pool.size())
+    logger.info("Database engine ready. Pool size=%s", engine.pool.size())
     yield
     logger.info("Shutting down — disposing database engine.")
     engine.dispose()
@@ -79,13 +91,13 @@ app = FastAPI(
     title="Macro Copilot API",
     version="0.1.0",
     description=(
-        "REST + WebSocket API for the Macro Copilot frontend.  "
-        "Serves deterministic rates analytics and LLM-orchestrated chat."
+        "REST + WebSocket API for the Macro Copilot frontend. "
+        "Serves deterministic rates/FX analytics and LLM-orchestrated chat."
     ),
     lifespan=lifespan,
 )
 
-# CORS — allow the Vite dev server (and future production origins)
+# CORS — allow the Vite dev server and future production origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -110,11 +122,12 @@ app.include_router(
     tags=["FX"],
 )
 
-app.include_router(
-    chat_routes.router,
-    prefix="/api",
-    tags=["Chat"],
-)
+if chat_routes is not None:
+    app.include_router(
+        chat_routes.router,
+        prefix="/api",
+        tags=["Chat"],
+    )
 
 
 # ---------------------------------------------------------------------------
