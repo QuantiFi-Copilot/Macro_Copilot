@@ -448,6 +448,8 @@ def calculate_pca_yield_curve(
 
     metrics = PcaYieldCurveMetrics(
         as_of_date=fit.fit_window_end,
+        fit_window_start=fit.fit_window_start,
+        fit_window_end=fit.fit_window_end,
         curve_family=params.curve_family,
         tenors_used=tenors_ordered,
         lookback_days_used=params.lookback_days,

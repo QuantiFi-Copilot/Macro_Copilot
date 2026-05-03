@@ -166,6 +166,7 @@ def _build_pasted_loadings(
     sign_anchor: str = "lock_pc_long_tenor_positive",
     seed: int = 7,
     flag_first_component_degenerate: bool = False,
+    flag_second_component_sign_anchor_tied: bool = False,
 ) -> PastedPcaLoadings:
     """Build a PastedPcaLoadings payload with unit-norm random
     loadings.  The loadings are NOT a real PCA fit; they're just
@@ -197,15 +198,19 @@ def _build_pasted_loadings(
     variance_shares = list(map(float, raw_var))
     metadata = []
     for k in range(n_components):
-        flag = (
-            "degenerate"
-            if flag_first_component_degenerate and k == 0
-            else "ok"
-        )
+        if flag_first_component_degenerate and k == 0:
+            flag = "degenerate"
+            note = "planted-degenerate"
+        elif flag_second_component_sign_anchor_tied and k == 1:
+            flag = "sign_anchor_tied"
+            note = "planted-sign_anchor_tied"
+        else:
+            flag = "ok"
+            note = None
         metadata.append(PastedPcaComponentMetadata(
             component_name=component_names[k],
             quality_flag=flag,  # type: ignore[arg-type]
-            quality_note=("planted-degenerate" if flag == "degenerate" else None),
+            quality_note=note,
         ))
     return PastedPcaLoadings(
         curve_family=curve_family,
@@ -873,6 +878,49 @@ class TestDegenerateComponent:
         assert cm["component_contributions"][2]["quality_flag"] == "ok"
         assert cm["component_contributions"][1]["contribution_bps"] is not None
 
+    def test_sign_anchor_tied_component_propagates_flag_and_keeps_contribution(self):
+        """``sign_anchor_tied`` is upstream's "direction is ambiguous"
+        signal — the loadings are still valid unit vectors, just
+        with an indeterminate sign.  T14 must:
+          (a) propagate the flag to the per-component snapshot row
+              so the consumer can audit it, AND
+          (b) NOT suppress the contribution_bps (unlike degenerate),
+              because the math is well-defined; only the
+              interpretation needs care.
+        """
+        tenors = ["1Y", "2Y", "5Y", "10Y"]
+        panel = _synthetic_yield_panel(tenors=tenors)
+
+        def lookup(req):
+            return panel[panel["tenor"].isin(req)]
+
+        # Plant pc2 as sign_anchor_tied (loadings are still finite +
+        # unit-norm, just flagged ambiguous).
+        paste = _build_pasted_loadings(
+            tenors=tenors, n_components=3, n_obs_in_fit=1000,
+            flag_second_component_sign_anchor_tied=True,
+        )
+        params = YieldChangeAttributionPcaInput(
+            curve_family="UST", target_tenor="10Y",
+            start_date="2026-04-20", end_date="2026-04-30",
+            pasted_loadings=paste, n_components=3,
+        )
+        out = _run_pasted(params, lookup)
+        assert "error" not in out, out.get("error")
+        cm = out["current_metrics"]
+
+        pc2 = cm["component_contributions"][1]
+        assert pc2["component_name"] == "pc2"
+        # (a) flag propagated end-to-end.
+        assert pc2["quality_flag"] == "sign_anchor_tied"
+        # (b) contribution NOT suppressed — sign_anchor_tied does not
+        # nullify the math the way degenerate does.
+        assert pc2["contribution_bps"] is not None
+        assert pc2["loading_at_target_tenor"] is not None
+        # pc1 + pc3 stay ok.
+        assert cm["component_contributions"][0]["quality_flag"] == "ok"
+        assert cm["component_contributions"][2]["quality_flag"] == "ok"
+
 
 # ===========================================================================
 # 12. Boundary rounding — every YAML rounding knob reaches its surface
@@ -970,14 +1018,135 @@ class TestBoundaryRounding:
         )
 
     def test_variance_share_round_decimals_reaches_per_component_share(self):
-        out_4 = self._run_at({"variance_share_round_decimals": 4})
-        out_6 = self._run_at({"variance_share_round_decimals": 6})
+        """Strong form: vary the knob from 4 → 6 on a paste whose
+        variance shares carry > 6 fractional digits, and assert
+        BOTH (a) the round-back contract AND (b) decimals=6 surfaces
+        finer precision than decimals=4 — proving the YAML knob
+        actually reaches the snapshot's variance_share_in_fit_window
+        field rather than being shadowed by a hard-coded round."""
+        tenors = ["1Y", "2Y", "5Y", "10Y"]
+        rng = np.random.default_rng(17)
+        n_days = 400
+        bdays = pd.bdate_range(
+            date(2026, 4, 30) - timedelta(days=n_days * 2), date(2026, 4, 30),
+        )
+        bdays = bdays[-n_days:]
+        base = np.array([2.123456, 2.567891, 3.234567, 4.876543])
+        rows = []
+        for t_idx, t in enumerate(tenors):
+            cum = np.cumsum(rng.normal(0, 0.001, len(bdays)))
+            for d_idx, d in enumerate(bdays):
+                rows.append({
+                    "trade_date": d.date(), "tenor": t,
+                    "field_value": float(base[t_idx] + cum[d_idx]),
+                })
+        panel = pd.DataFrame(rows)
+
+        def lookup(req):
+            return panel[panel["tenor"].isin(req)]
+
+        # Build a paste whose variance_shares carry at least 7
+        # fractional digits, so rounding to 4 vs 6 must produce
+        # different surface values for AT LEAST the first component.
+        paste = _build_pasted_loadings(
+            tenors=tenors, n_components=3, n_obs_in_fit=1000, seed=999,
+        )
+        paste = paste.model_copy(update={
+            "variance_shares": [0.7234567, 0.1812345, 0.0512381],
+        })
+        params = YieldChangeAttributionPcaInput(
+            curve_family="UST", target_tenor="10Y",
+            start_date="2026-04-20", end_date="2026-04-30",
+            pasted_loadings=paste, n_components=3,
+        )
+        out_4 = _run_pasted(
+            params, lookup,
+            config=_custom_config(variance_share_round_decimals=4),
+        )
+        out_6 = _run_pasted(
+            params, lookup,
+            config=_custom_config(variance_share_round_decimals=6),
+        )
         v_4 = out_4["current_metrics"]["component_contributions"][0]["variance_share_in_fit_window"]
         v_6 = out_6["current_metrics"]["component_contributions"][0]["variance_share_in_fit_window"]
-        # Variance shares may already be exact at decimals=4 in this
-        # test (since paste uses round-y values); just verify the
-        # round-back contract.
+        # (a) round-back contract
         assert round(v_6, 4) == v_4
+        # (b) finer precision actually surfaces — proves the YAML
+        # knob reaches the field rather than being shadowed.
+        assert v_4 != v_6, (
+            "variance_share_round_decimals override did not reach the "
+            "per-component snapshot field — decimals=6 produced the "
+            "same surface value as decimals=4."
+        )
+
+    def test_overlap_pct_round_decimals_reaches_overlap_field(self):
+        """Pin overlap_pct_round_decimals → loadings_change_window_overlap_pct.
+
+        Construct a planted scenario where the overlap is a value
+        with non-trivial fractional digits — change window has 14
+        trading days and the fit window covers 8 of them, so
+        overlap_pct = 800 / 14 = 57.142857...  Rounding to 1 vs 4
+        decimals must produce different surface values, proving the
+        YAML knob actually reaches the snapshot field rather than
+        being shadowed by a hard-coded round.
+        """
+        tenors = ["1Y", "2Y", "5Y", "10Y"]
+        # Two full Mon-Fri weeks + Mon-Thu = 14 trading days.
+        bdays = pd.bdate_range(date(2026, 4, 13), date(2026, 4, 30))
+        assert len(bdays) == 14, (
+            f"sanity: expected 14 bdays, got {len(bdays)}"
+        )
+        rng = np.random.default_rng(42)
+        rows = []
+        base = np.array([2.0, 2.5, 3.0, 4.0])
+        for t_idx, t in enumerate(tenors):
+            cum = np.cumsum(rng.normal(0, 0.001, len(bdays)))
+            for d_idx, d in enumerate(bdays):
+                rows.append({
+                    "trade_date": d.date(), "tenor": t,
+                    "field_value": float(base[t_idx] + cum[d_idx]),
+                })
+        panel = pd.DataFrame(rows)
+
+        def lookup(req):
+            return panel[panel["tenor"].isin(req)]
+
+        # Paste's fit_window_end falls inside the change window.
+        # 8 trading days from 2026-04-13 inclusive: 13,14,15,16,17,
+        # 20,21,22 — fit_window_end = 2026-04-22.
+        paste = _build_pasted_loadings(
+            tenors=tenors, n_components=3, n_obs_in_fit=1000,
+            fit_window_start="2026-04-13",
+            fit_window_end="2026-04-22",
+            seed=23,
+        )
+        params = YieldChangeAttributionPcaInput(
+            curve_family="UST", target_tenor="10Y",
+            start_date="2026-04-13", end_date="2026-04-30",
+            pasted_loadings=paste, n_components=3,
+        )
+        out_1 = _run_pasted(
+            params, lookup,
+            config=_custom_config(overlap_pct_round_decimals=1),
+        )
+        out_4 = _run_pasted(
+            params, lookup,
+            config=_custom_config(overlap_pct_round_decimals=4),
+        )
+        ov_1 = out_1["current_metrics"]["loadings_change_window_overlap_pct"]
+        ov_4 = out_4["current_metrics"]["loadings_change_window_overlap_pct"]
+        # Sanity: overlap should be ~57.14% (8 out of 14 days).
+        assert 56.0 < ov_4 < 58.0, (
+            f"sanity: overlap_pct_4={ov_4} unexpected; expected ~57.14"
+        )
+        # (a) round-back contract
+        assert round(ov_4, 1) == ov_1
+        # (b) finer precision actually surfaces.
+        assert ov_1 != ov_4, (
+            "overlap_pct_round_decimals override did not reach the "
+            "loadings_change_window_overlap_pct field — decimals=4 "
+            "produced the same surface value as decimals=1."
+        )
 
 
 # ===========================================================================

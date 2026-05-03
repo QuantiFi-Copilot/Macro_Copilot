@@ -107,11 +107,16 @@ class YieldChangeAttributionPcaInput(BaseModel):
         default=None,
         description=(
             "When supplied, attribution uses these loadings AS-IS "
-            "(after validation) — the inline-fit params below are "
-            "ignored for that path.  When None (default), compute() "
+            "(after validation) and compute() does NOT read the "
+            "inline-fit params below.  When None (default), compute() "
             "fits PCA inline via pca_yield_curve using the inline-"
-            "fit params.  Carries the original PCA fit's full "
-            "provenance (variance_shares, change_frequency, "
+            "fit params.  Note: the inline-fit params still go "
+            "through their schema validators (range/Literal/etc.) "
+            "in BOTH modes — pasting loadings exempts them from "
+            "compute() reading them, not from validation.  Pass "
+            "in-range placeholder values when paste-only.  Paste "
+            "carries the original PCA fit's full provenance "
+            "(variance_shares, change_frequency, "
             "n_observations_in_fit, sign_anchor, fit window, per-"
             "component quality flags) — enforced by the schema's "
             "`PastedPcaLoadings` contract."
@@ -125,15 +130,22 @@ class YieldChangeAttributionPcaInput(BaseModel):
     # ------------------------------------------------------------------
     pca_lookback_days: int = Field(
         default=1825,
-        ge=378,
+        ge=400,
         le=7300,
         description=(
             "Calendar days of history for the inline PCA fit.  "
-            "Default 1825 (~5y).  Lower bound 378 mirrors "
-            "pca_yield_curve's lookback floor — the smallest window "
-            "that can satisfy `min_observations_for_pca`=252 on the "
-            "daily change-frequency path.  Ignored when "
-            "pasted_loadings is supplied."
+            "Default 1825 (~5y).  Lower bound 400 mirrors "
+            "pca_yield_curve's own ``lookback_days`` floor — keeping "
+            "the two in sync means values that pass T14's schema "
+            "also pass T13's when the inline path constructs "
+            "PcaYieldCurveInput.  Note: this validator runs "
+            "unconditionally — supplying ``pasted_loadings`` does "
+            "NOT bypass it, even though compute() never reads "
+            "pca_lookback_days on the pasted path.  If you need to "
+            "submit a paste-only request with a placeholder out-of-"
+            "range value, change THIS bound; the ``ignored on "
+            "pasted`` semantic is about compute() reading the field, "
+            "not about validation skipping it."
         ),
     )
     n_components: int = Field(
@@ -154,9 +166,10 @@ class YieldChangeAttributionPcaInput(BaseModel):
         description=(
             "Frequency at which the inline PCA fit takes yield "
             "differences.  Default 'daily' — matches the desk-"
-            "canonical sovereign-curve PCA input.  Ignored when "
-            "pasted_loadings is supplied (the paste's "
-            "change_frequency_used is authoritative)."
+            "canonical sovereign-curve PCA input.  compute() does "
+            "not read this field on the pasted path (the paste's "
+            "change_frequency_used is authoritative there), but "
+            "the Literal validator still applies in both modes."
         ),
     )
     tenors: Optional[List[str]] = Field(
@@ -164,8 +177,11 @@ class YieldChangeAttributionPcaInput(BaseModel):
         description=(
             "Tenor list for the inline PCA fit.  When None "
             "(default), the playbook's default universe is used.  "
-            "When non-None, target_tenor MUST be in this list.  "
-            "Ignored when pasted_loadings is supplied."
+            "On the inline path, when non-None, target_tenor MUST "
+            "be in this list (enforced by the schema's "
+            "model_validator).  compute() does not read this field "
+            "on the pasted path; the analogous tenor-membership "
+            "check there is against `pasted_loadings.tenors`."
         ),
     )
     field_name: Optional[str] = Field(
