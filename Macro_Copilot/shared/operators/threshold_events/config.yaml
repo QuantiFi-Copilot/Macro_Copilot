@@ -1,0 +1,49 @@
+operator:
+  name: threshold_events
+  method_family: masking
+  version: "1.0.0"
+  description: >-
+    Convert a typed Series into an EventSet by applying a
+    threshold rule on either the raw values or a rolling z-score.
+    Finance-blind; lookahead-safe by default.
+
+defaults:
+  threshold_basis:
+    value: raw_value
+    source: operator_v1_default
+    rationale: >-
+      Default basis is the raw series value — the simplest case
+      where ``threshold`` is applied directly to the input.  Switch
+      to ``rolling_zscore`` for event studies that need the
+      threshold expressed in standard-deviations of recent history.
+    valid_values: [raw_value, rolling_zscore]
+
+  look_ahead_safe:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Default true (strict): when threshold_basis='rolling_zscore',
+      the rolling stats used at time t are computed using only
+      data up to t-1 (shifted by one period).  This is the
+      canonical event-study hygiene — an event at t cannot have
+      been "predicted" by stats that included observation t
+      itself.  Pass false to opt into in-sample contamination
+      explicitly; the choice is recorded in lineage.
+    valid_values: [true, false]
+
+methodology:
+  what_it_does: >-
+    Builds a boolean EventSet from a Series + threshold rule.
+    For raw_value basis, the threshold is applied directly to the
+    series values.  For rolling_zscore basis, a rolling mean and
+    rolling std are computed; the standardised value is compared
+    against the threshold.  When look_ahead_safe is true, the
+    rolling stats are shifted by one period so the threshold at
+    time t uses only data up to t-1.  Output EventSet carries
+    per-event metadata (date, triggering value, threshold context)
+    and full lineage.
+  planned_extensions:
+    - "between / outside / abs_below rules"
+    - "expanding_zscore / rolling_quantile bases"
+    - "event_dedup policies (consecutive_collapse, min_gap_days)"
+    - "ddof knob for rolling std (currently fixed at 1 — sample std)"
