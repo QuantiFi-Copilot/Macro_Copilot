@@ -1,0 +1,4 @@
+status: scaffolded
+implemented: false
+exposed_in_api: false
+notes: "Placeholder for future FX tool. Not currently used by production routes."

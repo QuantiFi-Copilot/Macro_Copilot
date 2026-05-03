@@ -1,0 +1,72 @@
+playbook_name: "spot_fx"
+playbook_version: "1.0"
+asset_class: "fx"
+dataset_name: "spot_fx"
+description: "Daily G10 spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "spot_last"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "EURUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "EURUSD"
+    base_ccy: "EUR"
+    quote_ccy: "USD"
+
+  - ticker: "GBPUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "GBPUSD"
+    base_ccy: "GBP"
+    quote_ccy: "USD"
+
+  - ticker: "USDJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDJPY"
+    base_ccy: "USD"
+    quote_ccy: "JPY"
+
+  - ticker: "AUDUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "AUDUSD"
+    base_ccy: "AUD"
+    quote_ccy: "USD"
+
+  - ticker: "USDCAD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCAD"
+    base_ccy: "USD"
+    quote_ccy: "CAD"
+
+  - ticker: "USDCHF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCHF"
+    base_ccy: "USD"
+    quote_ccy: "CHF"

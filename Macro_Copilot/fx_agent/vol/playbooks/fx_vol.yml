@@ -1,0 +1,60 @@
+playbook_name: "fx_vol"
+playbook_version: "1.0"
+asset_class: "fx"
+dataset_name: "fx_vol"
+description: "G10 FX implied volatility proxies for regime and risk context."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "atm_vol"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "EURUSDV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "EURUSD"
+    tenor: "1M"
+
+  - ticker: "GBPUSDV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "GBPUSD"
+    tenor: "1M"
+
+  - ticker: "USDJPYV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "USDJPY"
+    tenor: "1M"
+
+  - ticker: "AUDUSDV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "AUDUSD"
+    tenor: "1M"
+
+  - ticker: "USDCADV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "USDCAD"
+    tenor: "1M"
+
+  - ticker: "USDCHFV1M Curncy"
+    instrument_type: "fx_vol"
+    fx_family: "G10_FX_VOL"
+    market_scope: "G10"
+    pair: "USDCHF"
+    tenor: "1M"
