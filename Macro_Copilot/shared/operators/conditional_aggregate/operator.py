@@ -37,6 +37,7 @@ converts to ``{"error": "..."}`` envelopes at the user boundary.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -177,10 +178,13 @@ def conditional_aggregate(
     # Aggregator: NaN-aware.
     # ``np.nanmean`` / ``np.nanmedian`` / ``np.nanstd`` raise a
     # RuntimeWarning when all values along a slice are NaN.  We
-    # suppress that and let the result be NaN — the low_n flag will
-    # already be True for those offsets, so the value is honestly
-    # "no data" rather than "data is silently bad".
-    with np.errstate(all="ignore"):
+    # suppress that AND numpy's "Mean of empty slice" /
+    # "Degrees of freedom <= 0" warnings — the result is NaN by
+    # design and the low_n flag will already be True for those
+    # offsets, so the value is honestly "no data" rather than
+    # "data is silently bad".
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore", category=RuntimeWarning)
         if aggregator == "mean":
             values = np.nanmean(payload, axis=0)
         elif aggregator == "median":
