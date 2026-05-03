@@ -1,0 +1,54 @@
+playbook_name: "macro_risk_proxies"
+playbook_version: "1.0"
+asset_class: "macro"
+dataset_name: "macro_risk_proxies"
+description: "Macro risk proxies used by the copilot to contextualize FX and rates moves."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "last_price"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "DXY Curncy"
+    instrument_type: "risk_proxy"
+    proxy_family: "usd"
+    asset_class_detail: "fx_index"
+    label: "DXY"
+
+  - ticker: "VIX Index"
+    instrument_type: "risk_proxy"
+    proxy_family: "equity_vol"
+    asset_class_detail: "volatility"
+    label: "VIX"
+
+  - ticker: "MOVE Index"
+    instrument_type: "risk_proxy"
+    proxy_family: "rates_vol"
+    asset_class_detail: "volatility"
+    label: "MOVE"
+
+  - ticker: "SPX Index"
+    instrument_type: "risk_proxy"
+    proxy_family: "equity"
+    asset_class_detail: "equity_index"
+    label: "S&P 500"
+
+  - ticker: "CL1 Comdty"
+    instrument_type: "risk_proxy"
+    proxy_family: "commodity"
+    asset_class_detail: "oil"
+    label: "WTI Front Month"
+
+  - ticker: "XAU Curncy"
+    instrument_type: "risk_proxy"
+    proxy_family: "commodity"
+    asset_class_detail: "gold"
+    label: "Gold Spot"
