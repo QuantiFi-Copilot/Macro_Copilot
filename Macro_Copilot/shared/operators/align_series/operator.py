@@ -276,10 +276,15 @@ def align_series(
             "join_policy": params.join_policy,
             "fill_policy": params.fill_policy,
             "fill_limit": params.fill_limit,
+            "require_matching_frequency": params.require_matching_frequency,
+            "require_matching_missingness": params.require_matching_missingness,
             # Stable, sorted to keep the hash invariant under input
             # reordering; per-key upstream lineage is captured via
             # input_hashes already.
             "input_series_keys": sorted(keys),
+            # Record the resolved compatibility outcomes so consumers
+            # can recover what was actually checked vs accepted.
+            "resolved_frequency": common_frequency,
         },
         input_hashes=input_hashes,
     )
@@ -291,10 +296,11 @@ def align_series(
         missingness_by_key=missingness_by_key,
         upstream_lineage_by_key=upstream_lineage_by_key,
         common_index=common_index,
-        # Frequency on the SeriesSet is left None in v1 — the operator
-        # is finance-blind and does not infer.  Workflow templates that
-        # know the calendar can wrap this with a frequency tag later.
-        frequency=None,
+        # Preserve the agreed-on frequency tag.  Drops to None only
+        # when (a) no input declared a frequency or (b) lenient mode
+        # was used and inputs disagreed — in that case we cannot
+        # honestly emit a single tag.
+        frequency=common_frequency,
         lineage=set_lineage,
     )
 
