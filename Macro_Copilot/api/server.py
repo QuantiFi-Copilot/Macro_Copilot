@@ -55,6 +55,7 @@ from api.routes.library import router as library_router
 from api.routes.workspace import router as workspace_router
 from api.routes.artifacts import router as artifacts_router
 from api.routes import chat as chat_routes
+from api.routes.fx import cards_router as fx_cards_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -230,6 +231,12 @@ app.include_router(
     artifacts_router,
     prefix="/api/v1/artifacts",
     tags=["Artifacts"],
+)
+
+app.include_router(
+    fx_cards_router,
+    prefix="/api/v1/fx",
+    tags=["FX"],
 )
 
 app.include_router(

@@ -31,8 +31,8 @@ import { TopNav } from '@/components/ui/TopNav';
 import { RatesDataProvider } from '@/components/monitor/RatesDataProvider';
 import { MonitorPage } from '@/components/monitor/MonitorPage';
 import { RatesAgentPage } from '@/components/agents/RatesAgentPage';
+import { FXPage } from '@/components/fx/FXPage';
 import {
-  FxAgentPlaceholder,
   CreditAgentPlaceholder,
   MacroEquityPlaceholder,
   PolicyEventsPlaceholder,
@@ -73,7 +73,7 @@ export function AppShell() {
       {/* Widget surfaces — Monitor + agent pages */}
       <Route path="/" element={<MonitorPage />} />
       <Route path="/rates" element={<RatesAgentPage />} />
-      <Route path="/fx" element={<FxAgentPlaceholder />} />
+      <Route path="/fx" element={<FXPage />} />
       <Route path="/credit" element={<CreditAgentPlaceholder />} />
       <Route path="/macro-equity" element={<MacroEquityPlaceholder />} />
       <Route path="/policy" element={<PolicyEventsPlaceholder />} />
