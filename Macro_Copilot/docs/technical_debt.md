@@ -240,3 +240,13 @@ True — if you ever try to from historical_extractor import run_autonomous_extr
 One cosmetic issue I spotted: ingest_parquet.py has duplicate step numbering — lines 496 and 527 are both labelled "step 6." Harmless but sloppy.
 
 ### 21. FIX GCP BUCKET ISSUE!!!!!!! 
+
+
+
+### 22. Short version
+So yes:
+
+the missed thing was the lack of shared TimeSeries adoption in the early tools
+yes, it is documented
+the best canonical place is shared/schemas/time_series.py (line 4)
+If you want, I can also point you to which current tools are already on the shared TimeSeries shape and which ones are still legacy/frozen.

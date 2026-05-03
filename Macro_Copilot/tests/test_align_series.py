@@ -7,12 +7,16 @@ Covers:
   - per-series unit / missingness preservation
   - SeriesSet.get_series propagates upstream lineage + appends alignment
     step (build plan v5 / R2)
-  - structural-metadata compatibility checks (empty, duplicates,
-    DatetimeIndex)
+  - structural-metadata compatibility checks (build plan v5 / Codex
+    follow-up): missingness compatibility, frequency compatibility,
+    ffill missingness wrapping, frequency preservation
   - error envelope phrases
   - end-to-end composition: clean_single_series → adapter → align_series
     over synthetic fetch-shaped DataFrames (the canonical Q1 source path
     minus the live DB call)
+  - fetch_single_tenor contract: signature + return-shape verified via
+    a MagicMock engine so adapter-vs-fetch drift is caught even without
+    a live DB
   - admission-checklist sanity: align_series is finance-blind (runs on
     synthetic non-rates data of the right shape)
 """
@@ -21,14 +25,17 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from shared.analytics.levels import clean_single_series
+from shared.analytics.rates_fetch import fetch_single_tenor
 from shared.artifacts import (
     AdapterStep,
+    AlignSeriesFFillV1,
     CleanSingleSeriesV1,
     FetchStep,
     Lineage,
@@ -68,6 +75,8 @@ def _series(
     dates,
     values,
     units: TimeSeriesUnits = TimeSeriesUnits.PERCENT,
+    frequency=None,
+    missingness_policy=None,
 ) -> Series:
     """Build a Series artifact with a synthesised fetch+adapter lineage."""
     fetch = FetchStep.build(
@@ -84,8 +93,8 @@ def _series(
         series_key=series_key,
         payload=payload,
         units=units,
-        frequency=None,
-        missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        frequency=frequency,
+        missingness_policy=missingness_policy or CleanSingleSeriesV1(ffill_limit=5),
         lineage=Lineage.from_steps([fetch, adapter]),
     )
 
@@ -404,3 +413,322 @@ class TestBundledConfig:
         assert head_step.params["join_policy"] == "inner"
         assert head_step.params["fill_policy"] == "raw"
         assert head_step.params["fill_limit"] is None
+        assert head_step.params["require_matching_frequency"] is True
+        assert head_step.params["require_matching_missingness"] is True
+
+
+# ===========================================================================
+# Structural-metadata compatibility (Codex P1 follow-up)
+# ===========================================================================
+
+
+class TestFrequencyCompatibility:
+    """Build plan v5 / Codex P1: frequency tags must be checked, and
+    the resolved common frequency must flow to the output."""
+
+    def test_matching_frequencies_preserved_on_output(self):
+        a = _series("a", dates=["2026-01-02", "2026-01-05"], values=[1, 2],
+                    frequency="B")
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10, 20],
+                    frequency="B")
+        out = align_series([a, b])
+        assert out.frequency == "B"
+        # And the alignment-step's params record the resolved value.
+        assert out.lineage.steps[-1].params["resolved_frequency"] == "B"
+
+    def test_all_none_frequencies_yields_none_output(self):
+        a = _series("a", dates=["2026-01-02"], values=[1])  # frequency=None default
+        b = _series("b", dates=["2026-01-02"], values=[10])
+        out = align_series([a, b])
+        assert out.frequency is None
+
+    def test_mismatched_frequencies_strict_raises(self):
+        a = _series("a", dates=["2026-01-02"], values=[1], frequency="B")
+        b = _series("b", dates=["2026-01-02"], values=[10], frequency="W")
+        with pytest.raises(AlignSeriesError, match="incompatible frequencies"):
+            align_series([a, b])
+
+    def test_partial_frequency_tagging_strict_raises(self):
+        """If some inputs declare a frequency and others don't, in
+        strict mode we surface that as a partial-metadata case rather
+        than silently picking the tagged one."""
+        a = _series("a", dates=["2026-01-02"], values=[1], frequency="B")
+        b = _series("b", dates=["2026-01-02"], values=[10])  # no tag
+        with pytest.raises(AlignSeriesError, match="some inputs declare"):
+            align_series([a, b])
+
+    def test_lenient_mode_allows_mismatch_and_drops_frequency(self):
+        """``require_matching_frequency=False`` accepts mixed-frequency
+        inputs; the output's ``frequency`` is None because we cannot
+        honestly emit a single tag."""
+        a = _series("a", dates=["2026-01-02"], values=[1], frequency="B")
+        b = _series("b", dates=["2026-01-02"], values=[10], frequency="W")
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(require_matching_frequency=False),
+        )
+        assert out.frequency is None
+        assert out.lineage.steps[-1].params["require_matching_frequency"] is False
+
+
+class TestMissingnessCompatibility:
+    """Build plan v5 / Codex P1: missingness policy is structured
+    metadata; mixing it across inputs without explicit opt-in is
+    silently unsafe and the operator must surface it."""
+
+    def test_matching_policies_pass(self):
+        a = _series("a", dates=["2026-01-02"], values=[1],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        out = align_series([a, b])
+        # No exception; payload stays as-is (fill_policy='raw' default).
+        assert out.get_series("a").missingness_policy == CleanSingleSeriesV1(
+            ffill_limit=5
+        )
+
+    def test_different_kinds_strict_raises(self):
+        a = _series("a", dates=["2026-01-02"], values=[1],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10],
+                    missingness_policy=RawNoCleaning())
+        with pytest.raises(AlignSeriesError, match="incompatible missingness"):
+            align_series([a, b])
+
+    def test_same_kind_different_params_strict_raises(self):
+        """Same kind (CleanSingleSeriesV1) but different ffill_limit is
+        also a mismatch — ``CleanSingleSeriesV1(ffill_limit=5)`` is not
+        equivalent to ``CleanSingleSeriesV1(ffill_limit=10)``."""
+        a = _series("a", dates=["2026-01-02"], values=[1],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=10))
+        with pytest.raises(AlignSeriesError, match="incompatible missingness"):
+            align_series([a, b])
+
+    def test_lenient_mode_allows_mismatch(self):
+        a = _series("a", dates=["2026-01-02"], values=[1],
+                    missingness_policy=CleanSingleSeriesV1(ffill_limit=5))
+        b = _series("b", dates=["2026-01-02"], values=[10],
+                    missingness_policy=RawNoCleaning())
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(require_matching_missingness=False),
+        )
+        # Per-key policies are preserved unchanged in lenient mode
+        # (for the raw fill policy).
+        assert isinstance(
+            out.get_series("a").missingness_policy, CleanSingleSeriesV1
+        )
+        assert isinstance(
+            out.get_series("b").missingness_policy, RawNoCleaning
+        )
+        assert out.lineage.steps[-1].params[
+            "require_matching_missingness"
+        ] is False
+
+
+class TestFFillMetadataHonesty:
+    """Build plan v5 / Codex P1: when fill_policy='ffill' materially
+    changes the payload, the output's missingness policy must be
+    wrapped in AlignSeriesFFillV1 so consumers see the imputation
+    honestly."""
+
+    def test_raw_fill_keeps_upstream_policy(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0])
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(join_policy="outer", fill_policy="raw"),
+        )
+        # Payload unchanged in shape — upstream policy intact.
+        a_view = out.get_series("a")
+        assert isinstance(a_view.missingness_policy, CleanSingleSeriesV1)
+
+    def test_ffill_wraps_upstream_policy(self):
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0])
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(
+                join_policy="outer", fill_policy="ffill", fill_limit=3,
+            ),
+        )
+        a_view = out.get_series("a")
+        # Wrapped policy + upstream preserved underneath.
+        assert isinstance(a_view.missingness_policy, AlignSeriesFFillV1)
+        assert a_view.missingness_policy.fill_limit == 3
+        assert isinstance(
+            a_view.missingness_policy.upstream, CleanSingleSeriesV1
+        )
+
+    def test_ffill_wrapper_roundtrips_through_json(self):
+        """Discriminated-union recursion must serialise cleanly."""
+        a = _series("a", dates=["2026-01-02"], values=[1.0])
+        b = _series("b", dates=["2026-01-02", "2026-01-05"], values=[10.0, 20.0])
+        out = align_series(
+            [a, b],
+            AlignSeriesParams(
+                join_policy="outer", fill_policy="ffill", fill_limit=2,
+            ),
+        )
+        a_view = out.get_series("a")
+        as_dict = a_view.missingness_policy.model_dump(mode="json")
+        # Reconstruct via the discriminated union (use Series rebuild
+        # path to validate).
+        from pydantic import TypeAdapter
+        from shared.artifacts.missingness import MissingnessPolicy
+        ta = TypeAdapter(MissingnessPolicy)
+        recovered = ta.validate_python(as_dict)
+        assert isinstance(recovered, AlignSeriesFFillV1)
+        assert recovered.fill_limit == 2
+        assert isinstance(recovered.upstream, CleanSingleSeriesV1)
+
+
+# ===========================================================================
+# fetch_single_tenor contract (Codex P2 follow-up)
+# ===========================================================================
+
+
+class TestFetchSingleTenorContract:
+    """The Week 1 plan said "prove the fetch boundary."  We can't hit a
+    live DB in unit tests, but we can verify the actual function's
+    signature + return-shape contract by mocking the engine.  If
+    fetch_single_tenor's column names ever drift away from
+    ['trade_date', 'field_value'] — which is what the adapter assumes
+    — these tests fail."""
+
+    def test_signature_is_compatible_with_adapter(self):
+        """Static signature check.  Adapter construction below assumes
+        these exact parameter names; if the fetch helper renames any of
+        them, the test fails before any DB call."""
+        import inspect
+        sig = inspect.signature(fetch_single_tenor)
+        # The five canonical params expected by every primitive that
+        # uses fetch_single_tenor + the orchestration layer.
+        for name in ("engine", "curve_family", "tenor", "field_name", "start_date"):
+            assert name in sig.parameters, (
+                f"fetch_single_tenor signature missing '{name}'; the "
+                "adapter / primitive callers depend on this name."
+            )
+
+    def test_returns_dataframe_with_expected_columns(self):
+        """End-to-end shape contract via mocked engine.  Ensures
+        fetch_single_tenor returns a DataFrame with the exact columns
+        ('trade_date', 'field_value') the adapter feeds into
+        ``raw_dataframe_to_artifact_series``."""
+        mock_engine = MagicMock(name="engine")
+        mock_conn = MagicMock(name="conn")
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        mock_result = MagicMock(name="result")
+        mock_result.fetchall.return_value = [
+            (date(2026, 1, 2), 4.10),
+            (date(2026, 1, 5), 4.15),
+        ]
+        mock_result.keys.return_value = ["trade_date", "field_value"]
+        mock_conn.execute.return_value = mock_result
+
+        df = fetch_single_tenor(
+            engine=mock_engine,
+            curve_family="UST",
+            tenor="10Y",
+            field_name="YLD_YTM_MID",
+            start_date=date(2026, 1, 1),
+        )
+        # Exact column set the adapter expects.
+        assert list(df.columns) == ["trade_date", "field_value"]
+        assert len(df) == 2
+
+    def test_full_fetch_clean_adapt_align_chain_with_mocked_engine(self):
+        """Full Q1 source path with the real fetch_single_tenor +
+        clean_single_series (no DB; engine mocked to return a
+        canonical fetch payload).  Catches drift in any link of the
+        chain (column names, dtype coercion, lineage shape)."""
+        mock_engine = MagicMock(name="engine")
+        mock_conn = MagicMock(name="conn")
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        # Two synthetic fetches (one per series we'll align).
+        bdays = pd.bdate_range("2026-01-02", periods=20)
+        rng = np.random.default_rng(7)
+        rows_a = [(d.date(), float(v)) for d, v in zip(
+            bdays, 4.0 + np.cumsum(rng.normal(0, 0.005, 20))
+        )]
+        rows_b = [(d.date(), float(v)) for d, v in zip(
+            bdays, 3.5 + np.cumsum(rng.normal(0, 0.005, 20))
+        )]
+
+        # mock_conn.execute is called twice; return different rows
+        # each time via side_effect.
+        result_a = MagicMock()
+        result_a.fetchall.return_value = rows_a
+        result_a.keys.return_value = ["trade_date", "field_value"]
+        result_b = MagicMock()
+        result_b.fetchall.return_value = rows_b
+        result_b.keys.return_value = ["trade_date", "field_value"]
+        mock_conn.execute.side_effect = [result_a, result_b]
+
+        from shared.artifacts.lineage import CleanStep
+
+        # 1. Real fetch_single_tenor.
+        df_a = fetch_single_tenor(
+            mock_engine, "UST", "10Y", "YLD_YTM_MID", date(2026, 1, 1),
+        )
+        df_b = fetch_single_tenor(
+            mock_engine, "USD", "2Y", "YLD_YTM_MID", date(2026, 1, 1),
+        )
+        # 2. Real clean_single_series.
+        clean_a = clean_single_series(df_a, ffill_limit=5)
+        clean_b = clean_single_series(df_b, ffill_limit=5)
+
+        # 3. Adapter — with explicit FetchStep + CleanStep upstream
+        #    lineage so the chain is honest.
+        fetch_step_a = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={"curve_family": "UST", "tenor": "10Y",
+                    "field_name": "YLD_YTM_MID"},
+        )
+        fetch_step_b = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={"curve_family": "USD", "tenor": "2Y",
+                    "field_name": "YLD_YTM_MID"},
+        )
+        clean_step_a = CleanStep.build(
+            name="clean_single_series", version="1.0.0",
+            params={"ffill_limit": 5},
+            input_hashes=(fetch_step_a.hash,),
+        )
+        clean_step_b = CleanStep.build(
+            name="clean_single_series", version="1.0.0",
+            params={"ffill_limit": 5},
+            input_hashes=(fetch_step_b.hash,),
+        )
+
+        s_a = raw_dataframe_to_artifact_series(
+            clean_a,
+            series_key="ust_10y",
+            units=TimeSeriesUnits.PERCENT,
+            source_kind="fetch_single_tenor",
+            source_params={"curve_family": "UST", "tenor": "10Y"},
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            upstream_lineage=(fetch_step_a, clean_step_a),
+        )
+        s_b = raw_dataframe_to_artifact_series(
+            clean_b,
+            series_key="ois_2y",
+            units=TimeSeriesUnits.PERCENT,
+            source_kind="fetch_single_tenor",
+            source_params={"curve_family": "USD", "tenor": "2Y"},
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            upstream_lineage=(fetch_step_b, clean_step_b),
+        )
+
+        # 4. align_series.
+        out = align_series([s_a, s_b])
+        assert out.keys() == ["ois_2y", "ust_10y"]
+        # Per-series lineage covers every step kind.
+        view = out.get_series("ust_10y")
+        assert [s.kind for s in view.lineage.steps] == [
+            "fetch", "clean", "adapter", "operator",
+        ]

@@ -28,6 +28,7 @@ from typing import Counter, List, Optional
 import pandas as pd
 
 from shared.artifacts.lineage import Lineage, OperatorStep
+from shared.artifacts.missingness import AlignSeriesFFillV1, MissingnessPolicy
 from shared.artifacts.types import Series, SeriesSet
 from shared.config.operator_config import (
     OperatorConfig,
@@ -93,6 +94,12 @@ def align_series(
             join_policy=config.default_value("join_policy"),
             fill_policy=config.default_value("fill_policy"),
             fill_limit=config.default_value("fill_limit"),
+            require_matching_frequency=config.default_value(
+                "require_matching_frequency"
+            ),
+            require_matching_missingness=config.default_value(
+                "require_matching_missingness"
+            ),
         )
 
     # Defensive: detect drift between config and operator schema.
@@ -136,6 +143,71 @@ def align_series(
                 f"{type(s.payload.index).__name__}; DatetimeIndex required."
             )
 
+    # Frequency compatibility (build plan v5: structural metadata is
+    # load-bearing).  Defaults to strict — silently aligning a daily
+    # series with a weekly one is the canonical hazard the structural-
+    # metadata contract is meant to surface.  Pass
+    # ``require_matching_frequency=False`` to opt into mixed
+    # frequencies; the choice is recorded in lineage either way.
+    declared_frequencies = {s.frequency for s in series_list}
+    non_none_frequencies = declared_frequencies - {None}
+    if params.require_matching_frequency and len(non_none_frequencies) > 1:
+        per_series = sorted(
+            f"{s.series_key}={s.frequency!r}" for s in series_list
+        )
+        raise AlignSeriesError(
+            f"align_series: incompatible frequencies across inputs "
+            f"({per_series}).  Pass require_matching_frequency=False to "
+            "opt into mixed-frequency alignment explicitly."
+        )
+    if (
+        params.require_matching_frequency
+        and len(non_none_frequencies) == 1
+        and None in declared_frequencies
+    ):
+        # Some inputs declare a frequency, others don't.  In strict
+        # mode this is a partial-metadata case that almost certainly
+        # means the caller forgot to tag one — surface it.
+        per_series = sorted(
+            f"{s.series_key}={s.frequency!r}" for s in series_list
+        )
+        raise AlignSeriesError(
+            f"align_series: some inputs declare a frequency, others do "
+            f"not ({per_series}).  Tag every input or pass "
+            "require_matching_frequency=False."
+        )
+    # Resolved output frequency: the single non-None value if one was
+    # agreed on; None when all inputs were untagged or when lenient
+    # mode allowed mixed values (we cannot honestly emit a single tag
+    # in that case).
+    if len(non_none_frequencies) == 1 and None not in declared_frequencies:
+        common_frequency = next(iter(non_none_frequencies))
+    else:
+        common_frequency = None
+
+    # Missingness compatibility (same rationale).  We compare on the
+    # canonical JSON dump of each Pydantic policy model — same kind +
+    # same params = same dump.  Mixing CleanSingleSeriesV1 with
+    # RawNoCleaning is exactly what the structured ``MissingnessPolicy``
+    # family is supposed to catch.
+    missingness_signatures = {
+        s.series_key: s.missingness_policy.model_dump(mode="json")
+        for s in series_list
+    }
+    distinct_signatures = {
+        tuple(sorted(sig.items())) for sig in missingness_signatures.values()
+    }
+    if params.require_matching_missingness and len(distinct_signatures) > 1:
+        per_series = sorted(
+            f"{k}={v}" for k, v in missingness_signatures.items()
+        )
+        raise AlignSeriesError(
+            f"align_series: incompatible missingness policies across "
+            f"inputs ({per_series}).  Pass "
+            "require_matching_missingness=False to opt into mixed "
+            "policies explicitly."
+        )
+
     # ------------------------------------------------------------------
     # 3. Combine indexes per join_policy.
     # ------------------------------------------------------------------
@@ -168,18 +240,29 @@ def align_series(
         )
 
     # ------------------------------------------------------------------
-    # 4. Reindex + apply fill_policy.
+    # 4. Reindex + apply fill_policy.  When ffill is applied, wrap the
+    #    upstream missingness policy in AlignSeriesFFillV1 so the
+    #    output's metadata honestly reflects that the operator imputed
+    #    cells (build plan v5 / Codex P1 follow-up: "ffill changes
+    #    payload but missingness_policy was stale").
     # ------------------------------------------------------------------
     series_by_key = {}
+    missingness_by_key: dict[str, MissingnessPolicy] = {}
     for s in series_list:
         reindexed = s.payload.reindex(common_index)
         if params.fill_policy == "ffill":
             reindexed = reindexed.ffill(limit=params.fill_limit)
-        # fill_policy == "raw": leave NaNs as-is.
+            missingness_by_key[s.series_key] = AlignSeriesFFillV1(
+                upstream=s.missingness_policy,
+                fill_limit=params.fill_limit,
+            )
+        else:
+            # fill_policy == "raw": payload is reindex-only; the
+            # upstream policy still describes it accurately.
+            missingness_by_key[s.series_key] = s.missingness_policy
         series_by_key[s.series_key] = reindexed
 
     units_by_key = {s.series_key: s.units for s in series_list}
-    missingness_by_key = {s.series_key: s.missingness_policy for s in series_list}
     upstream_lineage_by_key = {s.series_key: s.lineage for s in series_list}
 
     # ------------------------------------------------------------------
@@ -193,10 +276,15 @@ def align_series(
             "join_policy": params.join_policy,
             "fill_policy": params.fill_policy,
             "fill_limit": params.fill_limit,
+            "require_matching_frequency": params.require_matching_frequency,
+            "require_matching_missingness": params.require_matching_missingness,
             # Stable, sorted to keep the hash invariant under input
             # reordering; per-key upstream lineage is captured via
             # input_hashes already.
             "input_series_keys": sorted(keys),
+            # Record the resolved compatibility outcomes so consumers
+            # can recover what was actually checked vs accepted.
+            "resolved_frequency": common_frequency,
         },
         input_hashes=input_hashes,
     )
@@ -208,10 +296,11 @@ def align_series(
         missingness_by_key=missingness_by_key,
         upstream_lineage_by_key=upstream_lineage_by_key,
         common_index=common_index,
-        # Frequency on the SeriesSet is left None in v1 — the operator
-        # is finance-blind and does not infer.  Workflow templates that
-        # know the calendar can wrap this with a frequency tag later.
-        frequency=None,
+        # Preserve the agreed-on frequency tag.  Drops to None only
+        # when (a) no input declared a frequency or (b) lenient mode
+        # was used and inputs disagreed — in that case we cannot
+        # honestly emit a single tag.
+        frequency=common_frequency,
         lineage=set_lineage,
     )
 
