@@ -138,7 +138,32 @@ class OperatorSpec(BaseModel):
         Some operators accept a scalar OR an artifact at certain
         slots (e.g. ``series_arithmetic.right`` can be a Series or
         a Python scalar).  The validator's type-compat check
-        relaxes for slots in this set.
+        relaxes for slots in this set.  Codex P2 follow-up
+        (PR #78): scalar slots can also be filled by
+        ``LiteralBinding`` instances on the workflow.
+    arity_validator :
+        Optional per-operator arity hook.  Called by
+        ``validate_workflow`` with ``(node_params, bound_slots,
+        literal_slots)`` and returns either ``None`` (OK) or an
+        error message.  Operators with conditional arity (e.g.
+        ``series_arithmetic`` whose ``right`` slot's requiredness
+        depends on ``op``) declare one.  Operators with simple
+        always-required slots leave this as ``None`` and rely on
+        the substrate's default ``slot in accepts_scalar_input``
+        check.
+    unit_validator :
+        Optional per-operator unit-compatibility hook.  Called by
+        ``validate_workflow`` with ``(node_params,
+        source_units_by_slot)`` where ``source_units_by_slot`` is
+        a dict mapping each bound slot name to the unit string
+        ``str`` (one of ``TimeSeriesUnits`` enum values) or
+        ``None`` if the upstream source's unit is not declared.
+        Returns ``None`` (OK) or an error message.  Operators
+        with cross-slot unit-algebra (``series_arithmetic`` requires
+        same units for ``add``/``subtract``) declare one; the
+        validator skips checks where source units are
+        ``None`` (best-effort discipline — operator runtime
+        check stays as the authoritative gate).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
@@ -149,6 +174,105 @@ class OperatorSpec(BaseModel):
     input_slots: Dict[str, str]
     output_type: str
     accepts_scalar_input: tuple[str, ...] = ()
+    arity_validator: Optional[
+        Callable[[Dict[str, Any], set, set], Optional[str]]
+    ] = None
+    unit_validator: Optional[
+        Callable[[Dict[str, Any], Dict[str, Optional[str]]], Optional[str]]
+    ] = None
+
+
+# ============================================================================
+# OPERATOR-SPECIFIC ARITY + UNIT HOOKS
+# ============================================================================
+#
+# Per-operator hooks live next to the registry so any future
+# operator with conditional arity / unit algebra has a clear
+# precedent.  Hooks are pure functions (no side effects) so the
+# validator can call them repeatedly without ordering risk.
+
+
+# series_arithmetic op categorization — kept in sync with
+# shared.operators.series_arithmetic.operator._UNARY_OPS.
+_SERIES_ARITHMETIC_UNARY_OPS = ("diff", "pct_change")
+_SERIES_ARITHMETIC_BINARY_OPS = ("add", "subtract", "multiply", "divide")
+
+
+def _series_arithmetic_arity_validator(
+    node_params: Dict[str, Any],
+    bound_edge_slots: set,
+    bound_literal_slots: set,
+) -> Optional[str]:
+    """Codex P2 follow-up (PR #78): the prior validator's blanket
+    ``accepts_scalar_input`` skip allowed binary ops to validate
+    without a ``right`` operand.  This hook fixes that — binary
+    ops require ``right`` bound (via edge OR literal), unary ops
+    forbid it.
+    """
+    op = node_params.get("op")
+    has_right = "right" in bound_edge_slots or "right" in bound_literal_slots
+    if op in _SERIES_ARITHMETIC_UNARY_OPS:
+        if has_right:
+            return (
+                f"series_arithmetic op={op!r} is unary; ``right`` "
+                "must be unbound (no edge AND no literal binding "
+                "targeting ``right``)."
+            )
+    elif op in _SERIES_ARITHMETIC_BINARY_OPS:
+        if not has_right:
+            return (
+                f"series_arithmetic op={op!r} is binary; ``right`` "
+                "must be bound by either an edge (Series operand) "
+                "or a LiteralBinding (scalar operand)."
+            )
+    elif op is None:
+        return (
+            "series_arithmetic requires params.op (one of "
+            f"{_SERIES_ARITHMETIC_UNARY_OPS + _SERIES_ARITHMETIC_BINARY_OPS}) "
+            "but it was not supplied."
+        )
+    # Unknown op falls through; the operator's own *Params validator
+    # catches it at execution time.
+    return None
+
+
+def _series_arithmetic_unit_validator(
+    node_params: Dict[str, Any],
+    source_units: Dict[str, Optional[str]],
+) -> Optional[str]:
+    """Codex P2 follow-up (PR #78): substrate-level same-unit
+    enforcement for binary same-unit ops.  Mirrors the operator's
+    own _resolve_output_units logic but at validate-time so
+    template authors catch unit mismatches before any node runs.
+
+    Best-effort: if either source's units are unknown (None — e.g.
+    the upstream is a primitive whose ``output_field_units``
+    aren't declared in PrimitiveSpec, or an operator chain whose
+    unit propagation isn't yet declared in the registry), the
+    substrate skips the check and lets the operator's runtime
+    refusal fire as the authoritative gate.
+    """
+    op = node_params.get("op")
+    # Operators that require same units across left + right.
+    same_unit_ops = ("add", "subtract")
+    # divide(Series, Series) also requires same units (output is
+    # RATIO).  divide(Series, scalar) preserves left units; the
+    # validator can't easily distinguish those without the right
+    # operand in hand, so we check only when both sources are
+    # known to be Series-typed (i.e. both have a declared unit).
+    if op in same_unit_ops + ("divide",):
+        left = source_units.get("left")
+        right = source_units.get("right")
+        if left is not None and right is not None and left != right:
+            return (
+                f"series_arithmetic op={op!r} requires matching "
+                f"units across left + right, but the substrate "
+                f"detected left.units={left!r} vs right.units="
+                f"{right!r} from declared upstream sources.  Add "
+                "an explicit unit conversion at the template "
+                "layer or pass operands of matching units."
+            )
+    return None
 
 
 # The closed-family registry.  Adding a new operator requires
@@ -172,7 +296,12 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         output_type="Series",
         # `right` can be a Series OR a Python scalar (int/float)
         # for binary scalar arithmetic, or absent for unary ops.
+        # The arity_validator below enforces the conditional
+        # rules; the substrate-default ``accepts_scalar_input``
+        # blanket-skip is now superseded by the explicit hook.
         accepts_scalar_input=("right",),
+        arity_validator=_series_arithmetic_arity_validator,
+        unit_validator=_series_arithmetic_unit_validator,
     ),
     "threshold_events": OperatorSpec(
         operator_name="threshold_events",
@@ -240,6 +369,31 @@ class PrimitiveSpec(BaseModel):
         Path to the primitive's bundled ``config.yaml``.  Loaded
         via ``shared.config.load_tool_config`` (cached) and passed
         to the primitive call AND the bridge.
+    output_field_units :
+        OPTIONAL.  Map of ``time_series*`` field name (matching
+        ``PrimitiveNode.output_field``) → unit string (one of the
+        ``TimeSeriesUnits`` enum values, e.g. ``"bps"``,
+        ``"percent"``, ``"z_score"``).  When declared, the
+        substrate's validator can perform best-effort
+        unit-compatibility checks at validate-time across operator
+        boundaries (Codex P2 follow-up — PR #78).  When omitted,
+        the validator skips the unit check for primitive outputs
+        of this tool and falls back to the operator's runtime
+        unit-algebra refusal.
+
+        Each agent's primitive resolver populates this from the
+        primitive's known output declarations.  E.g. for OIS
+        curve_spread::
+
+            output_field_units = {
+                "time_series": "bps",
+                "time_series_spread": "bps",
+                "time_series_zscore": "z_score",
+            }
+
+        Best-effort discipline: declaring units here is OPTIONAL,
+        not required.  Operator runtime checks remain the
+        authoritative gate.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
@@ -249,6 +403,7 @@ class PrimitiveSpec(BaseModel):
     input_class: Type[BaseModel]
     output_class: Type[BaseModel]
     config_path: Path
+    output_field_units: Dict[str, str] = Field(default_factory=dict)
 
 
 class PrimitiveResolver(Protocol):
