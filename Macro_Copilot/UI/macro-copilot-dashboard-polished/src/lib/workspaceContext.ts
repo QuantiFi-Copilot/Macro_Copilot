@@ -36,6 +36,7 @@ export const TOOL_TO_VIEW: Record<string, WorkspaceViewType> = {
   get_fx_trade_setup_tool: 'fx_trade_setup',
   get_fx_macro_risk_overlay_tool: 'fx_macro_risk_overlay',
   get_fx_correlation_beta_tool: 'fx_correlation_beta',
+  get_fx_usd_thesis_monitor_tool: 'fx_currency_thesis_monitor',
   get_fx_currency_thesis_monitor_tool: 'fx_currency_thesis_monitor',
   classify_fx_regime_tool: 'fx_regime_classifier',
   get_fx_vol_risk_premium_tool: 'fx_vol_risk_premium',
@@ -93,10 +94,26 @@ export function decodeWorkspaceContext(raw: string): DecodedContext | null {
     const score = VIEW_PRIORITY[view];
     if (score >= bestScore) {
       bestScore = score;
-      best = { view, params: stringifyParams(t.params) };
+      best = { view, params: paramsForTool(t.tool, t.params) };
     }
   }
   return best;
+}
+
+function paramsForTool(
+  tool: string,
+  params: Record<string, unknown>,
+): WorkspaceParams {
+  if (tool === 'get_fx_usd_thesis_monitor_tool') {
+    const out = stringifyParams(params);
+    const rawView = String(params?.usd_view ?? 'long_usd');
+    out.currency = 'USD';
+    out.view = rawView === 'short_usd' ? 'short' : 'long';
+    if (!out.top_n) out.top_n = '5';
+    return out;
+  }
+
+  return stringifyParams(params);
 }
 
 /**
