@@ -1,0 +1,333 @@
+# =============================================================================
+# regime_conditioned_relationship — canonical regime-conditional response template
+# =============================================================================
+# Per docs/architecture/workflow_architecture.md (lines 75-77), the
+# ``regime_conditioned_relationship`` archetype is exactly:
+#
+#   classify regimes → split sample by mask → run a per-subsample
+#   analysis → compare across regimes
+#
+# This template implements the binary-regime form of that shape:
+# threshold the signal at TWO independent levels (high & low) to
+# carve the sample into two regime states, run the SAME forward-
+# window-and-aggregate analysis on the target inside each regime,
+# and emit the per-offset DIFFERENCE Series (high_aggregate −
+# low_aggregate) as the "regime-conditional response" deliverable.
+#
+# Why binary in V1
+# ----------------
+# Binary high/low is the simplest faithful realization of the
+# archetype that uses only the existing operator family
+# (threshold_events / event_windows / conditional_aggregate /
+# series_arithmetic).  N-way regimes (e.g. high / mid / low; or
+# regime-state classifiers via clustering) would require either
+# a fan-out / map meta-operator OR multiple pairwise comparisons,
+# both deferred per the V1 1-template-per-archetype rule
+# (workflow_architecture.md lines 229-232).
+#
+# Reference desk binding (curve-regime response):
+#   "When the OIS 2s10s curve is steep (>+50 bps) vs flat (<-50 bps),
+#   what's the average 5-day forward move in the 10Y UST yield, and
+#   how does the steep-regime response differ from the flat-regime
+#   response?"
+#
+#   signal_tool_name: calculate_ois_curve_spread_tool
+#   signal_params:
+#     curve_family: USD_SOFR_OIS
+#     short_tenor: "2Y"
+#     long_tenor: "10Y"
+#     lookback_days: 1825
+#   signal_output_field: time_series_spread     # BPS spread series
+#   target_tool_name: get_yield_levels_tool
+#   target_params:
+#     curve_family: UST
+#     tenor: "10Y"
+#     lookback_days: 1825
+#   target_output_field: time_series             # PERCENT yield series
+#   high_threshold: 50.0                         # steep regime (>+50 bps)
+#   low_threshold:  -50.0                        # flat/inverted (<-50 bps)
+#   post_window: 5
+#
+# Topology-locked methodology (NOT exposed as slots):
+#   - threshold_events (high): rule=above,  threshold_basis=raw_value
+#   - threshold_events (low):  rule=below,  threshold_basis=raw_value
+#   - both: look_ahead_safe=true (rolling-stats hygiene parity, even
+#     though raw_value basis doesn't use rolling stats — keeps the
+#     lock semantics uniform across regime branches)
+#   - event_windows (both): pre_window=0, inclusive_event_day=true,
+#     units_basis=level_change (cells = event-relative forward MOVES,
+#     not raw target levels — PERCENT target → BPS via the operator's
+#     methodology-owned PERCENT→BPS transition)
+#   - conditional_aggregate (both): aggregator=mean, dispersion=std
+#   - compare: op=subtract (high − low → regime-difference Series)
+#
+# Variants of this archetype (different regime classifiers / N-way
+# regimes / non-symmetric per-regime aggregators) ship as separate
+# templates per the V1 1-template-per-archetype discipline declared
+# in workflow_architecture.md.
+
+template_id: regime_conditioned_relationship
+archetype: regime_conditioned_relationship
+description: >-
+  Canonical regime-conditional response workflow: threshold a signal
+  series at two independent levels to split the sample into a high
+  regime and a low regime, forward-window the target series at each
+  regime-day in parallel, aggregate the per-offset moves inside each
+  regime, and emit the per-offset high-minus-low DIFFERENCE Series as
+  the regime-conditional response (with std dispersion recorded in
+  each branch's lineage).
+
+# Structural cues the future ``route_to_template`` LLM step matches
+# against prompts.  Multiple cues = OR pattern; the LLM router picks
+# the best-matching template per the workflow_architecture.md
+# template-selection contract.
+archetype_signature:
+  - "in high X vs low X regimes how does Y respond"
+  - "regime-conditional response of Y to X"
+  - "compare conditional response across regime states"
+  - "split-sample analysis by X regime"
+  - "when X is high vs low what does Y do over the next N days"
+
+slot_schema:
+
+  # -------------------------------------------------------------------------
+  # Signal series — the regime classifier (its level defines which
+  # regime each day belongs to).
+  # -------------------------------------------------------------------------
+
+  - name: signal_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits the regime-classifier
+      signal (e.g. calculate_ois_curve_spread_tool for a curve-shape
+      regime, calculate_swap_spread_tool for a credit/funding regime,
+      calculate_ois_forward_rate_tool for a forward-rate regime).
+      The primitive must emit a TimeSeries whose unit scale matches
+      the high_threshold / low_threshold the caller supplies.
+
+  - name: signal_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for the signal primitive.  Caller assembles
+      the dict shape; the primitive's *Input Pydantic validator catches
+      any field-level errors at execution time.
+
+  - name: signal_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of the signal primitive's output to lift
+      as the regime classifier (e.g. time_series_spread for a curve
+      spread in BPS, time_series_zscore for a normalized regime).
+
+  # -------------------------------------------------------------------------
+  # Target series — the response variable analyzed inside each regime.
+  # -------------------------------------------------------------------------
+
+  - name: target_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits the response series
+      (e.g. get_yield_levels_tool, calculate_ois_forward_rate_tool).
+      Must emit a TimeSeries that overlaps the signal series' date
+      range on the same trading-day grid.
+
+  - name: target_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for the target primitive.  The lookback_days
+      should typically be ≥ signal lookback_days + post_window so the
+      forward windows around late regime days have data to aggregate.
+
+  - name: target_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of the target primitive's output to lift
+      (e.g. time_series for yield_levels, time_series_spread for a
+      curve_spread, time_series_forward for the OIS forward-rate
+      primitive).
+
+  # -------------------------------------------------------------------------
+  # Regime knobs.
+  # -------------------------------------------------------------------------
+
+  - name: high_threshold
+    type: float
+    required: true
+    description: >-
+      Signal value strictly ABOVE which a day is classified as the
+      "high" regime (template-locked rule=above on this branch).  Units
+      must match the signal's units (e.g. for a BPS spread signal,
+      pass 50.0 to mean "above +50 bps").  No range constraint —
+      regime overlap (high_threshold ≤ low_threshold) is a caller
+      judgment call and may be intentional.
+
+  - name: low_threshold
+    type: float
+    required: true
+    description: >-
+      Signal value strictly BELOW which a day is classified as the
+      "low" regime (template-locked rule=below on this branch).  Units
+      must match the signal's units.  Pairs with high_threshold to
+      define a two-state classifier; the template does not enforce
+      gap or non-overlap between the two thresholds.
+
+  - name: post_window
+    type: int
+    required: false
+    default: 5
+    description: >-
+      Trading-day count for the forward window after each regime day.
+      The pre_window is template-locked to 0 (this archetype is about
+      the forward response, not retrospective inspection).  Default 5
+      = one calendar week of forward moves.
+
+# DAG topology — locked.  Slots fill node params; topology is fixed.
+#
+# Two parallel regime branches, joined by ``compare``:
+#
+#   signal ──┬──> high_regime_events ──> high_windows ──> high_aggregate ──┐
+#            │                                ▲                            │
+#            │   target ──────────────────────┤                            │
+#            │                                │                            ▼
+#            │                                │                          compare (terminal)
+#            │                                │                            ▲
+#            │                                ▼                            │
+#            └──> low_regime_events ──> low_windows ──> low_aggregate ─────┘
+#
+# ``compare`` = series_arithmetic(op=subtract, left=high_aggregate,
+#               right=low_aggregate) → per-offset high-minus-low
+#               regime-conditional response.
+nodes:
+
+  - kind: primitive
+    node_id: signal
+    tool_name: {$slot: signal_tool_name}
+    output_field: {$slot: signal_output_field}
+    params: {$slot: signal_params}
+
+  - kind: primitive
+    node_id: target
+    tool_name: {$slot: target_tool_name}
+    output_field: {$slot: target_output_field}
+    params: {$slot: target_params}
+
+  # ---- High-regime branch ----
+
+  - kind: operator
+    node_id: high_regime_events
+    operator_name: threshold_events
+    params:
+      rule: above                  # template-locked: high regime = signal > high_threshold
+      threshold: {$slot: high_threshold}
+      threshold_basis: raw_value   # template-locked
+      look_ahead_safe: true        # template-locked: rolling-hygiene parity
+
+  - kind: operator
+    node_id: high_windows
+    operator_name: event_windows
+    params:
+      pre_window: 0                # template-locked: forward-only response
+      post_window: {$slot: post_window}
+      inclusive_event_day: true    # template-locked
+      units_basis: level_change    # template-locked: cells = event-relative
+                                   # forward moves (PERCENT target → BPS via
+                                   # the operator's PERCENT→BPS transition)
+
+  - kind: operator
+    node_id: high_aggregate
+    operator_name: conditional_aggregate
+    params:
+      aggregator: mean             # template-locked: canonical central tendency
+      dispersion: std              # template-locked: always report dispersion
+
+  # ---- Low-regime branch ----
+
+  - kind: operator
+    node_id: low_regime_events
+    operator_name: threshold_events
+    params:
+      rule: below                  # template-locked: low regime = signal < low_threshold
+      threshold: {$slot: low_threshold}
+      threshold_basis: raw_value   # template-locked
+      look_ahead_safe: true        # template-locked: parity with high branch
+
+  - kind: operator
+    node_id: low_windows
+    operator_name: event_windows
+    params:
+      pre_window: 0                # template-locked: parity with high branch
+      post_window: {$slot: post_window}
+      inclusive_event_day: true    # template-locked
+      units_basis: level_change    # template-locked: parity with high branch
+                                   # (must match for series_arithmetic subtract
+                                   # to be unit-coherent)
+
+  - kind: operator
+    node_id: low_aggregate
+    operator_name: conditional_aggregate
+    params:
+      aggregator: mean             # template-locked: parity with high branch
+      dispersion: std              # template-locked: parity with high branch
+
+  # ---- Comparison (high − low) ----
+
+  - kind: operator
+    node_id: compare
+    operator_name: series_arithmetic
+    params:
+      op: subtract                 # template-locked: regime difference = high − low
+
+edges:
+
+  # High-regime branch
+  - source_node_id: signal
+    target_node_id: high_regime_events
+    target_input_slot: series
+
+  - source_node_id: high_regime_events
+    target_node_id: high_windows
+    target_input_slot: events
+
+  - source_node_id: target
+    target_node_id: high_windows
+    target_input_slot: target
+
+  - source_node_id: high_windows
+    target_node_id: high_aggregate
+    target_input_slot: panel
+
+  # Low-regime branch
+  - source_node_id: signal
+    target_node_id: low_regime_events
+    target_input_slot: series
+
+  - source_node_id: low_regime_events
+    target_node_id: low_windows
+    target_input_slot: events
+
+  - source_node_id: target
+    target_node_id: low_windows
+    target_input_slot: target
+
+  - source_node_id: low_windows
+    target_node_id: low_aggregate
+    target_input_slot: panel
+
+  # Comparison
+  - source_node_id: high_aggregate
+    target_node_id: compare
+    target_input_slot: left
+
+  - source_node_id: low_aggregate
+    target_node_id: compare
+    target_input_slot: right
+
+literal_bindings: []
+
+terminal_node_id: compare
