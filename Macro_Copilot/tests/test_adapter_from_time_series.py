@@ -38,6 +38,7 @@ from shared.artifacts import (
     TimeSeriesUnits,
 )
 from shared.artifacts.adapters import (
+    artifact_series_to_time_series,
     time_series_to_artifact_series,
     tool_output_to_artifact_series,
 )
@@ -1161,3 +1162,448 @@ class TestLineageContinuity:
         ln2 = s.lineage.append(op)
         assert [step.kind for step in ln2.steps] == ["primitive", "operator"]
         assert ln2.head_hash == op.hash
+
+
+# ===========================================================================
+# 6. Reverse path: artifact_series_to_time_series (Work Item 3)
+# ===========================================================================
+
+class TestReversePath_BasicConversion:
+    """Pure mechanical conversion — no lineage / round-trip semantics
+    yet, just the shape contract."""
+
+    def _series(
+        self, *, values, dates=None, units=TimeSeriesUnits.BPS,
+        series_key="ust_2y_10y_spread",
+    ) -> Series:
+        if dates is None:
+            dates = pd.bdate_range("2026-04-28", periods=len(values))
+        ts = TimeSeries(
+            series_name=series_key, units=units,
+            description="forward-path description",
+            rows=[
+                TimeSeriesRow(
+                    date=pd.Timestamp(d).strftime("%Y-%m-%d"),
+                    value=v,
+                )
+                for d, v in zip(dates, values)
+            ],
+        )
+        return time_series_to_artifact_series(
+            ts,
+            primitive_step=_example_primitive_step(),
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+
+    def test_returns_time_series_instance(self):
+        s = self._series(values=[24.0, 24.5, 25.0])
+        ts = artifact_series_to_time_series(s)
+        assert isinstance(ts, TimeSeries)
+
+    def test_series_key_becomes_series_name(self):
+        s = self._series(
+            values=[24.0, 24.5, 25.0],
+            series_key="usd_sofr_ois_2y_10y_ois_spread",
+        )
+        ts = artifact_series_to_time_series(s)
+        assert ts.series_name == "usd_sofr_ois_2y_10y_ois_spread"
+
+    def test_units_pass_through_for_every_enum_member(self):
+        for units in (
+            TimeSeriesUnits.PERCENT,
+            TimeSeriesUnits.BPS,
+            TimeSeriesUnits.Z_SCORE,
+            TimeSeriesUnits.RATIO,
+            TimeSeriesUnits.PCT_RANK,
+            TimeSeriesUnits.FACTOR_LEVEL,
+            TimeSeriesUnits.COUNT,
+        ):
+            s = self._series(values=[1.0, 2.0, 3.0], units=units)
+            ts = artifact_series_to_time_series(s)
+            assert ts.units == units
+
+    def test_dates_round_trip_in_iso_format(self):
+        s = self._series(
+            values=[24.0, 24.5, 25.0],
+            dates=pd.to_datetime(["2026-04-28", "2026-04-29", "2026-04-30"]),
+        )
+        ts = artifact_series_to_time_series(s)
+        assert [row.date for row in ts.rows] == [
+            "2026-04-28", "2026-04-29", "2026-04-30",
+        ]
+
+    def test_row_count_preserved(self):
+        s = self._series(values=[1.0, 2.0, 3.0, 4.0, 5.0])
+        ts = artifact_series_to_time_series(s)
+        assert len(ts.rows) == 5
+
+
+class TestReversePath_NaNToNone:
+    """The load-bearing reverse-path missingness contract: every
+    ``NaN`` in the artifact payload becomes ``None`` on the wire.
+    Mirrors the forward path's ``None → NaN`` documented in the
+    module docstring."""
+
+    def _series_with_gaps(
+        self, *, values, series_key="x"
+    ) -> Series:
+        dates = pd.bdate_range("2026-04-28", periods=len(values))
+        ts = TimeSeries(
+            series_name=series_key, units=TimeSeriesUnits.Z_SCORE,
+            description="forward-path desc",
+            rows=[
+                TimeSeriesRow(
+                    date=pd.Timestamp(d).strftime("%Y-%m-%d"),
+                    value=v,
+                )
+                for d, v in zip(dates, values)
+            ],
+        )
+        return time_series_to_artifact_series(
+            ts,
+            primitive_step=_example_primitive_step(),
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+
+    def test_nan_becomes_none_at_same_index(self):
+        # Middle row is None on the wire; flows through forward as NaN
+        # in the artifact; reverse must restore it as None.
+        s = self._series_with_gaps(values=[24.0, None, 25.0])
+        ts = artifact_series_to_time_series(s)
+        assert ts.rows[0].value == 24.0
+        assert ts.rows[1].value is None
+        assert ts.rows[2].value == 25.0
+
+    def test_all_nan_series_round_trips_as_all_none(self):
+        s = self._series_with_gaps(values=[None, None, None])
+        ts = artifact_series_to_time_series(s)
+        assert all(row.value is None for row in ts.rows)
+        assert len(ts.rows) == 3  # row count preserved
+
+    def test_no_nan_series_has_no_none_values(self):
+        s = self._series_with_gaps(values=[24.0, 24.5, 25.0])
+        ts = artifact_series_to_time_series(s)
+        assert all(row.value is not None for row in ts.rows)
+        assert [row.value for row in ts.rows] == [24.0, 24.5, 25.0]
+
+
+class TestReversePath_LineageSummary:
+    """Description population from the lineage chain.  The plan's
+    resolved Q1 was 'description-only summary this sprint' — the
+    structured chain stays on the artifact, the wire description
+    carries a human-readable summary."""
+
+    def _make_series_with_lineage(self, lineage: Lineage) -> Series:
+        # Build a minimal valid Series with the supplied lineage; the
+        # payload itself isn't load-bearing for these tests.
+        from shared.artifacts.types import Series as _S
+        return _S(
+            series_key="test_series",
+            payload=pd.Series(
+                [1.0, 2.0, 3.0],
+                index=pd.bdate_range("2026-04-28", periods=3),
+                dtype=float,
+            ),
+            units=TimeSeriesUnits.BPS,
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            lineage=lineage,
+        )
+
+    def test_single_primitive_step_summary(self):
+        prim = _example_primitive_step(
+            name="calculate_ois_curve_spread_tool",
+        )
+        ln = Lineage.from_steps([prim])
+        s = self._make_series_with_lineage(ln)
+        ts = artifact_series_to_time_series(s)
+        assert ts.description == "derived: calculate_ois_curve_spread_tool"
+
+    def test_multi_step_chain_uses_arrow_separator(self):
+        from shared.artifacts import OperatorStep
+        prim = _example_primitive_step(
+            name="calculate_ois_curve_spread_tool",
+        )
+        ln = Lineage.from_steps([prim])
+        op1 = OperatorStep.build(
+            name="align_series", version="1.0.0",
+            params={"join_policy": "outer"},
+            input_hashes=(ln.head_hash,),
+        )
+        ln = ln.append(op1)
+        op2 = OperatorStep.build(
+            name="series_arithmetic", version="1.0.0",
+            params={"op": "subtract"},
+            input_hashes=(ln.head_hash,),
+        )
+        ln = ln.append(op2)
+        s = self._make_series_with_lineage(ln)
+        ts = artifact_series_to_time_series(s)
+        assert ts.description == (
+            "derived: calculate_ois_curve_spread_tool"
+            " → align_series"
+            " → series_arithmetic"
+        )
+
+    def test_summary_excludes_auxiliary_lineages(self):
+        """Binary operators (e.g. series_arithmetic) carry the right-
+        hand operand's chain in ``OperatorStep.auxiliary_lineages``.
+        That chain is preserved on the artifact (still inspectable
+        via ``series.lineage``) but is NOT walked into the description
+        string — the wire summary is bounded + linear by design."""
+        from shared.artifacts import OperatorStep
+        prim_a = _example_primitive_step(
+            name="calculate_ois_curve_spread_tool",
+        )
+        prim_b = _example_primitive_step(
+            name="get_yield_levels_tool",
+        )
+        ln_a = Lineage.from_steps([prim_a])
+        ln_b = Lineage.from_steps([prim_b])
+        op = OperatorStep.build(
+            name="series_arithmetic", version="1.0.0",
+            params={"op": "subtract"},
+            input_hashes=(ln_a.head_hash, ln_b.head_hash),
+            auxiliary_lineages=(ln_b,),
+        )
+        ln_combined = ln_a.append(op)
+        s = self._make_series_with_lineage(ln_combined)
+        ts = artifact_series_to_time_series(s)
+        # Right-operand's primitive (get_yield_levels_tool) must NOT
+        # appear in the linear summary.
+        assert "get_yield_levels_tool" not in ts.description
+        assert ts.description == (
+            "derived: calculate_ois_curve_spread_tool → series_arithmetic"
+        )
+
+    def test_description_starts_with_documented_prefix(self):
+        prim = _example_primitive_step()
+        ln = Lineage.from_steps([prim])
+        s = self._make_series_with_lineage(ln)
+        ts = artifact_series_to_time_series(s)
+        assert ts.description.startswith("derived: ")
+
+    def test_description_override_used_verbatim(self):
+        prim = _example_primitive_step(
+            name="calculate_ois_curve_spread_tool",
+        )
+        ln = Lineage.from_steps([prim])
+        s = self._make_series_with_lineage(ln)
+        ts = artifact_series_to_time_series(
+            s, description_override="Custom desk-friendly description.",
+        )
+        assert ts.description == "Custom desk-friendly description."
+        # Bridge does NOT prepend "derived: " to the override.
+        assert not ts.description.startswith("derived: ")
+
+
+class TestReversePath_RoundTripPerPrimitive:
+    """Forward+reverse round trip per OIS primitive end-to-end.
+    ``(rows, units, series_name)`` round-trip BYTE-identical (modulo
+    the documented ``NaN`` ↔ ``None`` semantic mapping); description
+    differs by design — see module docstring."""
+
+    def _round_trip(self, ts_input: TimeSeries) -> TimeSeries:
+        """Forward into Series, then reverse back to TimeSeries."""
+        artifact = time_series_to_artifact_series(
+            ts_input,
+            primitive_step=_example_primitive_step(),
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+        return artifact_series_to_time_series(artifact)
+
+    def test_round_trip_no_gaps(self):
+        original = TimeSeries(
+            series_name="ust_2y_10y_spread",
+            units=TimeSeriesUnits.BPS,
+            description="forward-path description",
+            rows=[
+                TimeSeriesRow(date="2026-04-28", value=24.0),
+                TimeSeriesRow(date="2026-04-29", value=24.5),
+                TimeSeriesRow(date="2026-04-30", value=25.0),
+            ],
+        )
+        recovered = self._round_trip(original)
+        # Identity-bearing fields round-trip exactly.
+        assert recovered.series_name == original.series_name
+        assert recovered.units == original.units
+        assert len(recovered.rows) == len(original.rows)
+        for orig_row, rec_row in zip(original.rows, recovered.rows):
+            assert orig_row.date == rec_row.date
+            assert orig_row.value == rec_row.value
+        # Description differs by design (lineage summary).
+        assert recovered.description != original.description
+        assert recovered.description.startswith("derived: ")
+
+    def test_round_trip_with_gaps(self):
+        original = TimeSeries(
+            series_name="ust_2y_10y_zscore",
+            units=TimeSeriesUnits.Z_SCORE,
+            description="forward-path description",
+            rows=[
+                TimeSeriesRow(date="2026-04-28", value=None),  # warmup
+                TimeSeriesRow(date="2026-04-29", value=0.4),
+                TimeSeriesRow(date="2026-04-30", value=None),  # gap
+            ],
+        )
+        recovered = self._round_trip(original)
+        # Row count preserved AND None positions preserved.
+        assert len(recovered.rows) == 3
+        assert recovered.rows[0].value is None
+        assert recovered.rows[1].value == 0.4
+        assert recovered.rows[2].value is None
+
+    def test_round_trip_via_OIS_curve_spread_BPS(self):
+        """Hits the live primitive shape, not a synthetic TimeSeries.
+        End-to-end: invoke OIS curve_spread → forward → reverse →
+        compare to the primitive's emitted TimeSeries."""
+        runner = TestEndToEnd_OIS_CurveSpread()
+        tool_output, OutClass, params, cfg = runner._run()
+        artifact = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_spread",
+            tool_name="calculate_ois_curve_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        # Reverse back to wire format.
+        wire = artifact_series_to_time_series(artifact)
+
+        # Compare to the primitive's original payload (unwrapped from
+        # the dict via OutClass for type safety).
+        validated = OutClass.model_validate(tool_output)
+        original = validated.time_series_spread
+
+        assert wire.series_name == original.series_name
+        assert wire.units == original.units
+        assert len(wire.rows) == len(original.rows)
+        # Every row matches by date + value (None ↔ None, float ↔ float).
+        for orig_row, wire_row in zip(original.rows, wire.rows):
+            assert orig_row.date == wire_row.date
+            assert orig_row.value == wire_row.value
+        # Description: primitive's free-form vs bridge's lineage summary.
+        assert wire.description.startswith("derived: ")
+        assert wire.description == (
+            "derived: calculate_ois_curve_spread_tool"
+        )
+
+    def test_round_trip_via_OIS_curve_spread_ZSCORE_with_warmup_gaps(self):
+        """The z-score field has ``None`` rows during the rolling-
+        window warmup.  This is the highest-stakes round-trip case
+        for the documented ``NaN`` ↔ ``None`` mapping."""
+        runner = TestEndToEnd_OIS_CurveSpread()
+        tool_output, OutClass, params, cfg = runner._run()
+        artifact = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_zscore",
+            tool_name="calculate_ois_curve_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        wire = artifact_series_to_time_series(artifact)
+
+        validated = OutClass.model_validate(tool_output)
+        original = validated.time_series_zscore
+
+        assert wire.series_name == original.series_name
+        assert wire.units == original.units
+        assert len(wire.rows) == len(original.rows)
+        # The None positions and float positions both round-trip
+        # exactly.  This proves the NaN ↔ None contract on the live
+        # shape, not just a synthetic case.
+        for orig_row, wire_row in zip(original.rows, wire.rows):
+            assert orig_row.date == wire_row.date
+            assert orig_row.value == wire_row.value
+
+
+class TestReversePath_AfterOperatorStep:
+    """End-state Phase 1B contract: a primitive output flows through
+    the bridge into a Series whose lineage chain begins with a
+    PrimitiveStep, an operator extends that chain, and the reverse
+    path serializes the result with a multi-step lineage summary."""
+
+    def test_primitive_then_operator_chain_summary(self):
+        from shared.artifacts import OperatorStep
+
+        original = TimeSeries(
+            series_name="ust_2y_10y_spread",
+            units=TimeSeriesUnits.BPS,
+            description="primitive desc",
+            rows=[
+                TimeSeriesRow(date="2026-04-28", value=24.0),
+                TimeSeriesRow(date="2026-04-29", value=24.5),
+                TimeSeriesRow(date="2026-04-30", value=25.0),
+            ],
+        )
+        prim_step = _example_primitive_step(
+            name="calculate_ois_curve_spread_tool",
+        )
+        s_pre = time_series_to_artifact_series(
+            original,
+            primitive_step=prim_step,
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+
+        # Simulate an operator extending the lineage.  We mutate a
+        # copy via Lineage.append and rebuild a Series with the
+        # extended chain (Series is frozen, so this is the supported
+        # pattern for tests).
+        op_step = OperatorStep.build(
+            name="align_series", version="1.0.0",
+            params={"join_policy": "outer"},
+            input_hashes=(s_pre.lineage.head_hash,),
+        )
+        extended = Series(
+            series_key=s_pre.series_key,
+            payload=s_pre.payload,
+            units=s_pre.units,
+            missingness_policy=s_pre.missingness_policy,
+            lineage=s_pre.lineage.append(op_step),
+        )
+
+        wire = artifact_series_to_time_series(extended)
+        assert wire.description == (
+            "derived: calculate_ois_curve_spread_tool → align_series"
+        )
+        # And the wire payload is unchanged — the operator step was
+        # purely structural (just lineage extension for this test).
+        assert len(wire.rows) == 3
+        assert [r.value for r in wire.rows] == [24.0, 24.5, 25.0]
+
+
+class TestReversePath_EdgeCases:
+    def test_single_row_series_round_trip(self):
+        original = TimeSeries(
+            series_name="x", units=TimeSeriesUnits.BPS,
+            description="desc",
+            rows=[TimeSeriesRow(date="2026-04-30", value=42.0)],
+        )
+        s = time_series_to_artifact_series(
+            original,
+            primitive_step=_example_primitive_step(),
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+        )
+        wire = artifact_series_to_time_series(s)
+        assert len(wire.rows) == 1
+        assert wire.rows[0].date == "2026-04-30"
+        assert wire.rows[0].value == 42.0
+
+    def test_empty_description_override_rejected_by_pydantic(self):
+        """``TimeSeries.description`` has ``min_length=1`` — passing
+        an empty string as the override must raise via Pydantic, not
+        silently produce an invalid TimeSeries."""
+        from pydantic import ValidationError
+        prim = _example_primitive_step()
+        ln = Lineage.from_steps([prim])
+        s = Series(
+            series_key="x",
+            payload=pd.Series(
+                [1.0], index=pd.DatetimeIndex(["2026-04-30"]), dtype=float,
+            ),
+            units=TimeSeriesUnits.BPS,
+            missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
+            lineage=ln,
+        )
+        with pytest.raises(ValidationError):
+            artifact_series_to_time_series(s, description_override="")

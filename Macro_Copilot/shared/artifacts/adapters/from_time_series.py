@@ -1,10 +1,12 @@
-"""from_time_series — primitive ``TimeSeries`` → ``Series`` adapter.
+"""from_time_series — primitive ``TimeSeries`` ↔ ``Series`` adapter.
 
-The primitive→operator bridge (Phase 1B Work Item 2).  Lifts a
+The primitive→operator bridge (Phase 1B Work Items 2 & 3).  Lifts a
 canonical ``shared.schemas.time_series.TimeSeries`` payload — emitted
 by every per-tool-folder primitive in
 ``rates_agent.{sovereign_bonds,ois}.tools.*`` — into a typed
-``shared.artifacts.Series`` that the operator layer can consume.
+``shared.artifacts.Series`` that the operator layer can consume, AND
+demotes operator outputs back to the wire format for serialization
+to the LLM / frontend / future REST.
 
 Per the bridge plan (Phase 1B), this adapter is the ONLY path between
 primitive outputs and operator inputs.  No bypass channel: operators
@@ -14,19 +16,43 @@ trustworthy — every artifact built from a primitive output starts
 with a ``PrimitiveStep`` (added in PR #67), and downstream operators
 extend the chain via ``OperatorStep`` entries.
 
-Two functions ship from this module:
+Three functions ship from this module:
 
-  - ``time_series_to_artifact_series`` — low-level conversion.
-    Takes a ``TimeSeries`` plus a fully-built ``PrimitiveStep`` plus
-    a typed ``MissingnessPolicy``.  Used by tests and advanced
-    callers that want fine-grained control.
+  - ``time_series_to_artifact_series`` — low-level forward
+    conversion.  Takes a ``TimeSeries`` plus a fully-built
+    ``PrimitiveStep`` plus a typed ``MissingnessPolicy``.  Used by
+    tests and advanced callers that want fine-grained control.
 
-  - ``tool_output_to_artifact_series`` — high-level convenience.
-    Takes the primitive's raw output dict + tool identity bits +
-    the already-loaded ``ToolConfig``.  Auto-derives the
-    ``CleanSingleSeriesV1`` policy from the config when possible,
+  - ``tool_output_to_artifact_series`` — high-level forward
+    convenience.  Takes the primitive's raw output dict + tool
+    identity bits + the already-loaded ``ToolConfig``.  Auto-derives
+    the ``CleanSingleSeriesV1`` policy from the config when possible,
     builds the ``PrimitiveStep`` for the caller, and calls the
     low-level function.
+
+  - ``artifact_series_to_time_series`` — reverse conversion (Work
+    Item 3).  Takes a frozen ``Series`` and produces a wire-
+    compatible ``TimeSeries``.  ``NaN`` → ``None`` at every row,
+    closing the missingness round-trip documented at the forward
+    path.  ``description`` is filled with a linear lineage summary
+    (``"derived: <step0.name> → <step1.name> → ..."``) by default;
+    callers can override.  No ``TimeSeries`` schema bump — the full
+    structured lineage stays on the artifact, the wire carries a
+    human-readable summary suitable for serialization to the LLM /
+    frontend / future REST.
+
+Round-trip discipline
+---------------------
+The forward+reverse round trip is *semantic-faithful*:
+
+  - ``(rows, units, series_name)`` round-trip BYTE-identical
+    (modulo the documented ``NaN`` ↔ ``None`` semantic mapping).
+  - ``description`` differs by design — forward consumes the
+    primitive's free-form description, reverse generates a
+    lineage summary.  Recovering the original description is
+    possible from the structured lineage (``PrimitiveStep.params``
+    + downstream ``OperatorStep.params``); the wire representation
+    optimises for human-readable provenance, not lossless echo.
 
 Semantic-faithful, NOT byte-identical, on missingness
 -----------------------------------------------------
@@ -63,7 +89,7 @@ conversion concern across two namespaces.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, Optional, Type
+from typing import Any, Dict, List, Literal, Optional, Type
 
 import numpy as np
 import pandas as pd
@@ -76,7 +102,7 @@ from shared.artifacts.missingness import (
 )
 from shared.artifacts.types import Series
 from shared.config import ToolConfig
-from shared.schemas import TimeSeries
+from shared.schemas import TimeSeries, TimeSeriesRow
 
 
 _BRIDGE_NAME = "time_series_to_artifact_series"
@@ -488,7 +514,149 @@ def _extract_as_of_date(validated_output: BaseModel) -> str:
     return str(cm.as_of_date)
 
 
+# ============================================================================
+# REVERSE PATH: Series -> TimeSeries  (Work Item 3)
+# ============================================================================
+
+# Public marker that downstream consumers can match on to detect a
+# bridge-generated description.  Kept module-level so callers /
+# tests can reference it without re-deriving the prefix string —
+# avoids drift if the format ever changes.
+_LINEAGE_DESCRIPTION_PREFIX = "derived: "
+_LINEAGE_STEP_SEPARATOR = " → "
+
+
+def artifact_series_to_time_series(
+    series: Series,
+    *,
+    description_override: Optional[str] = None,
+) -> TimeSeries:
+    """Convert a frozen ``Series`` artifact into a wire ``TimeSeries``.
+
+    The reverse path of ``time_series_to_artifact_series``.  Used to
+    serialize operator outputs back to the wire format for the LLM /
+    frontend / future REST endpoints, AND to chain operator outputs
+    into downstream primitives that consume ``PastedTimeSeries``-shaped
+    inputs.
+
+    Round-trip with the forward path is *semantic-faithful*:
+
+      - ``(rows, units, series_name)`` round-trip BYTE-identical
+        (modulo the documented ``NaN`` ↔ ``None`` semantic mapping —
+        see module docstring).
+      - ``description`` differs by design.  The forward path
+        consumes the primitive's free-form description; this reverse
+        path generates a lineage summary suitable for human-readable
+        provenance.  The original description is recoverable from the
+        structured ``Series.lineage`` (``PrimitiveStep.params`` +
+        downstream ``OperatorStep.params``) but is NOT echoed on the
+        wire.  Callers who need a different description can pass
+        ``description_override``.
+
+    Parameters
+    ----------
+    series :
+        Frozen artifact to demote.  May be empty (a downstream
+        operator that produced no rows is legitimate, e.g.
+        ``align_series`` over disjoint indices); the wire shape
+        accepts an empty ``rows`` list.
+    description_override :
+        Optional explicit description to use on the wire instead of
+        the auto-generated lineage summary.  Honored verbatim — the
+        bridge does NOT prepend ``"derived: "`` or otherwise mutate.
+        Useful when the artifact will be displayed to a human and
+        the lineage summary isn't audience-appropriate (e.g.
+        marketing-friendly chart titles, free-form annotations).
+
+    Returns
+    -------
+    TimeSeries
+        Wire-compatible Pydantic model with one ``TimeSeriesRow`` per
+        index position in the artifact's payload.  ``NaN`` values
+        become ``None``.
+
+    Notes
+    -----
+    Linear lineage summary only.  ``OperatorStep.auxiliary_lineages``
+    (the chains for non-primary inputs to binary/N-ary operators
+    like ``series_arithmetic``) are NOT walked into the description
+    string — they remain visible on the structured artifact's
+    ``Series.lineage``.  A future PR can extend the format if
+    desk-facing summaries need the auxiliary chains inline; the
+    plan's resolved Q1 was "description-only summary this sprint",
+    and any richer wire format requires a ``TimeSeries`` schema
+    bump (deferred).
+    """
+    # ------------------------------------------------------------------
+    # 1. Build wire rows: NaN → None at the same DatetimeIndex
+    #    position; numeric values cast through ``float`` to drop any
+    #    pandas-native dtypes (e.g. np.float64) that would survive
+    #    ``model_dump`` but feel surprising in ad-hoc inspection.
+    # ------------------------------------------------------------------
+    rows: List[TimeSeriesRow] = []
+    for ts, val in series.payload.items():
+        wire_val: Optional[float]
+        if pd.isna(val):
+            wire_val = None
+        else:
+            wire_val = float(val)
+        rows.append(
+            TimeSeriesRow(
+                date=ts.strftime("%Y-%m-%d"),
+                value=wire_val,
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # 2. Resolve description.  Override wins when present; otherwise
+    #    derive a linear lineage summary.  ``TimeSeries.description``
+    #    is required + ``min_length=1``, so every reverse-path output
+    #    carries SOMETHING — the override path must not pass an empty
+    #    string (Pydantic will reject it loudly).
+    # ------------------------------------------------------------------
+    description: str
+    if description_override is not None:
+        description = description_override
+    else:
+        description = _format_lineage_summary(series.lineage)
+
+    return TimeSeries(
+        series_name=series.series_key,
+        units=series.units,
+        description=description,
+        rows=rows,
+    )
+
+
+# ============================================================================
+# REVERSE-PATH HELPERS
+# ============================================================================
+
+def _format_lineage_summary(lineage: Lineage) -> str:
+    """Render a ``Lineage`` chain as a one-line human-readable summary.
+
+    Format::
+
+        "derived: <step0.name>[ → <stepN.name>]*"
+
+    Steps are emitted in order from oldest to newest (matches
+    ``Lineage.steps``).  Only the linear primary chain is walked;
+    ``OperatorStep.auxiliary_lineages`` (right-hand operands of
+    binary operators) are NOT included — they remain on the
+    structured artifact via ``series.lineage``.  Keeps the wire
+    description bounded and readable; full provenance is recoverable
+    from the structured chain when needed.
+
+    A non-empty ``Lineage`` is guaranteed by ``Lineage.from_steps``
+    (which raises if given an empty list), so this helper is safe
+    to call on any ``Series.lineage``.
+    """
+    names = [step.name for step in lineage.steps]
+    return _LINEAGE_DESCRIPTION_PREFIX + _LINEAGE_STEP_SEPARATOR.join(names)
+
+
 __all__ = [
     "time_series_to_artifact_series",
     "tool_output_to_artifact_series",
+    "artifact_series_to_time_series",
 ]
