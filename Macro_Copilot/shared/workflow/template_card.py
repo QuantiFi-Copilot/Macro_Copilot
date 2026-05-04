@@ -97,11 +97,24 @@ def card_for_template(template: WorkflowTemplate) -> TemplateCard:
     """
     # Inspect nodes for the primitives + operators the template
     # touches.  Sorted for stable card output across runs.
+    #
+    # ``PrimitiveNodeTemplate.tool_name`` is slot-substitutable
+    # (per the instrument-agnostic discipline).  When tool_name
+    # is a $slot reference, the actual primitive is decided at
+    # bind time, NOT at template-author time — so the card
+    # records ``"<via $slot:NAME>"`` rather than a concrete tool
+    # name.  Operator names are NOT slot-substitutable
+    # (topology-locked), so operators_used always contains
+    # concrete names.
     primitives_used: set[str] = set()
     operators_used: set[str] = set()
     for node in template.nodes:
         if isinstance(node, PrimitiveNodeTemplate):
-            primitives_used.add(node.tool_name)
+            tool_name = node.tool_name
+            if isinstance(tool_name, str):
+                primitives_used.add(tool_name)
+            elif isinstance(tool_name, dict) and "$slot" in tool_name:
+                primitives_used.add(f"<via $slot:{tool_name['$slot']}>")
         elif isinstance(node, OperatorNodeTemplate):
             operators_used.add(node.operator_name)
 
