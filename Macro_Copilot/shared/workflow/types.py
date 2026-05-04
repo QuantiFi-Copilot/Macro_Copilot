@@ -40,6 +40,16 @@ from typing import Annotated, Any, Dict, List, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+# Closed-family type for literal scalar values that can be bound to
+# operator input slots.  Matches the scalar types operator-side
+# unit-algebra accepts (e.g. ``series_arithmetic.right`` can be a
+# Python int or float scalar).  Strings + bools are included for
+# future-proofing — some operators may take string-valued literal
+# choices in their slot schema.  Adding a new scalar type requires
+# editing this alias AND the LiteralBinding ``value`` field.
+LiteralScalar = Union[int, float, str, bool]
+
+
 # ============================================================================
 # NODE KINDS (closed family)
 # ============================================================================
@@ -170,6 +180,55 @@ class WorkflowEdge(BaseModel):
 
 
 # ============================================================================
+# LITERAL SCALAR BINDING
+# ============================================================================
+
+
+class LiteralBinding(BaseModel):
+    """Binds a literal scalar value to an operator's named input
+    slot.  Sibling of ``WorkflowEdge`` for the case where the slot
+    legitimately accepts a scalar (declared via
+    ``OperatorSpec.accepts_scalar_input``).
+
+    Why a sibling type, not an extension of WorkflowEdge
+    -----------------------------------------------------
+    Closed-family discipline: ``WorkflowEdge`` represents an
+    artifact handoff between nodes (always has a ``source_node_id``).
+    A literal scalar binding has no source node — the value is
+    declared inline.  Encoding both as the same Pydantic type would
+    require optional fields and runtime branching.  Sibling types
+    keep each shape strict + frozen + ``extra="forbid"`` and let
+    the validator + executor check both lists explicitly.
+
+    Codex P2 follow-up (PR #78): the prior substrate could not
+    express ``Series * 100.0`` — the underlying
+    ``series_arithmetic`` operator supports it, but the workflow
+    DAG had no representation for the constant.  ``LiteralBinding``
+    closes that gap.
+
+    Fields
+    ------
+    target_node_id :
+        Which operator node receives this literal.  Validator
+        confirms it references a real OperatorNode.
+    target_input_slot :
+        Which named input slot on the target operator receives the
+        literal.  Validator confirms the slot is in
+        ``accepts_scalar_input`` for the target operator (you
+        cannot bind a literal to a slot that only accepts an
+        artifact).
+    value :
+        The literal scalar value (int / float / str / bool).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    target_node_id: str = Field(..., min_length=1)
+    target_input_slot: str = Field(..., min_length=1)
+    value: LiteralScalar
+
+
+# ============================================================================
 # WORKFLOW
 # ============================================================================
 
@@ -216,6 +275,7 @@ class Workflow(BaseModel):
     workflow_id: str = Field(..., min_length=1)
     nodes: List[WorkflowNode] = Field(..., min_length=1)
     edges: List[WorkflowEdge] = Field(default_factory=list)
+    literal_bindings: List[LiteralBinding] = Field(default_factory=list)
     terminal_node_id: str = Field(..., min_length=1)
 
     @model_validator(mode="after")
@@ -260,6 +320,19 @@ class Workflow(BaseModel):
                     f"Known node IDs: {sorted(node_id_set)}."
                 )
 
+        # 4. Every literal binding references a real node.  (Slot-
+        #    accepts-scalar checks happen in
+        #    ``shared.workflow.validate.validate_workflow`` since
+        #    they require the operator registry.)
+        for binding in self.literal_bindings:
+            if binding.target_node_id not in node_id_set:
+                raise ValueError(
+                    f"Workflow {self.workflow_id!r}: literal binding "
+                    f"references unknown target_node_id="
+                    f"{binding.target_node_id!r}.  Known node IDs: "
+                    f"{sorted(node_id_set)}."
+                )
+
         return self
 
     def node_by_id(self, node_id: str) -> WorkflowNode:
@@ -280,5 +353,7 @@ __all__ = [
     "OperatorNode",
     "WorkflowNode",
     "WorkflowEdge",
+    "LiteralBinding",
+    "LiteralScalar",
     "Workflow",
 ]

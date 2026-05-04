@@ -62,6 +62,8 @@ from shared.workflow.result import (
     WorkflowResult,
 )
 from shared.workflow.types import (
+    LiteralBinding,
+    LiteralScalar,
     OperatorNode,
     PrimitiveNode,
     Workflow,
@@ -82,6 +84,8 @@ __all__ = [
     "PrimitiveNode",
     "OperatorNode",
     "WorkflowEdge",
+    "LiteralBinding",
+    "LiteralScalar",
     # Result
     "WorkflowResult",
     "TerminalArtifact",

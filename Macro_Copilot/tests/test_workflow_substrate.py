@@ -572,10 +572,10 @@ class TestValidate:
 
     def test_cycle_rejected(self):
         """Build a 2-node cycle by making op_a → op_b → op_a.  The
-        cycle detector surfaces the error."""
-        # Bypass model validation by constructing edges that
-        # reference both nodes; cycle surfaces in
-        # validate_workflow's TopologicalSorter pass.
+        cycle detector surfaces the error.  Use BINARY ops here
+        so the arity check (Codex P2 follow-up) does not fire
+        first — both operators legitimately want a ``right`` edge,
+        and the cycle is on that very edge."""
         wf = Workflow(
             workflow_id="cyclic",
             nodes=[
@@ -586,12 +586,12 @@ class TestValidate:
                 OperatorNode(
                     node_id="op_a",
                     operator_name="series_arithmetic",
-                    params={"op": "diff"},
+                    params={"op": "subtract"},  # binary
                 ),
                 OperatorNode(
                     node_id="op_b",
                     operator_name="series_arithmetic",
-                    params={"op": "diff"},
+                    params={"op": "subtract"},  # binary
                 ),
             ],
             edges=[
@@ -600,10 +600,15 @@ class TestValidate:
                     source_node_id="p", target_node_id="op_a",
                     target_input_slot="left",
                 ),
-                # op_a → op_b → op_a (cycle on the right side)
+                # Bind op_b's left from p
+                WorkflowEdge(
+                    source_node_id="p", target_node_id="op_b",
+                    target_input_slot="left",
+                ),
+                # op_a → op_b → op_a cycle via the right slots
                 WorkflowEdge(
                     source_node_id="op_a", target_node_id="op_b",
-                    target_input_slot="left",
+                    target_input_slot="right",
                 ),
                 WorkflowEdge(
                     source_node_id="op_b", target_node_id="op_a",
@@ -862,7 +867,10 @@ class TestExecutorRefusals:
 
     def test_series_arithmetic_missing_op_param(self, synthetic_resolver):
         """series_arithmetic requires ``op`` in params; missing it
-        is a structured error from the executor."""
+        is now caught by the new ``arity_validator`` hook at
+        validate-time (Codex P2 follow-up — earlier failure surface
+        than the prior behaviour, which only caught it at the
+        executor's special-case check)."""
         wf = Workflow(
             workflow_id="bad",
             nodes=[
@@ -884,7 +892,7 @@ class TestExecutorRefusals:
             ],
             terminal_node_id="op",
         )
-        with pytest.raises(WorkflowExecutionError, match="params.op"):
+        with pytest.raises(WorkflowValidationError, match="params.op"):
             execute_workflow(
                 wf, engine=None, primitive_resolver=synthetic_resolver,
             )
@@ -914,6 +922,499 @@ class TestWorkflowResult:
         )
         with pytest.raises(Exception):
             result.workflow_id = "different"
+
+
+# ===========================================================================
+# 6b. Codex P2 follow-ups — arity / literal bindings / unit compat
+# ===========================================================================
+
+
+from shared.workflow import LiteralBinding
+
+
+class TestArityValidator_SeriesArithmetic:
+    """Codex P2 follow-up #1: per-operator arity hook.  The prior
+    blanket ``accepts_scalar_input`` skip allowed binary ops to
+    validate without a ``right`` operand.  The new
+    ``arity_validator`` on series_arithmetic's OperatorSpec fixes
+    that — binary ops require ``right`` (via edge OR literal),
+    unary ops forbid it."""
+
+    def _wf_with_op(self, op: str, *, bind_right: bool, right_via: str = "edge"):
+        """Build a workflow with series_arithmetic at op=op.
+        ``bind_right`` controls whether the 'right' slot is bound;
+        ``right_via`` chooses 'edge' or 'literal'."""
+        nodes = [
+            PrimitiveNode(
+                node_id="p", tool_name="synthetic_primitive_tool",
+                output_field="time_series", params={},
+            ),
+            OperatorNode(
+                node_id="op",
+                operator_name="series_arithmetic",
+                params={"op": op},
+            ),
+        ]
+        edges = [
+            WorkflowEdge(
+                source_node_id="p", target_node_id="op",
+                target_input_slot="left",
+            ),
+        ]
+        literals = []
+        if bind_right:
+            if right_via == "edge":
+                # Add a second primitive feeding right.
+                nodes.insert(
+                    1,
+                    PrimitiveNode(
+                        node_id="p_right",
+                        tool_name="synthetic_primitive_tool",
+                        output_field="time_series",
+                        params={"series_name": "right_series"},
+                    ),
+                )
+                edges.append(
+                    WorkflowEdge(
+                        source_node_id="p_right", target_node_id="op",
+                        target_input_slot="right",
+                    )
+                )
+            else:  # literal
+                literals.append(
+                    LiteralBinding(
+                        target_node_id="op",
+                        target_input_slot="right",
+                        value=100.0,
+                    )
+                )
+        return Workflow(
+            workflow_id=f"arity_{op}",
+            nodes=nodes,
+            edges=edges,
+            literal_bindings=literals,
+            terminal_node_id="op",
+        )
+
+    def test_binary_subtract_without_right_rejected(self):
+        wf = self._wf_with_op("subtract", bind_right=False)
+        with pytest.raises(WorkflowValidationError, match="binary"):
+            validate_workflow(wf)
+
+    def test_binary_add_without_right_rejected(self):
+        wf = self._wf_with_op("add", bind_right=False)
+        with pytest.raises(WorkflowValidationError, match="binary"):
+            validate_workflow(wf)
+
+    def test_binary_multiply_without_right_rejected(self):
+        wf = self._wf_with_op("multiply", bind_right=False)
+        with pytest.raises(WorkflowValidationError, match="binary"):
+            validate_workflow(wf)
+
+    def test_binary_divide_without_right_rejected(self):
+        wf = self._wf_with_op("divide", bind_right=False)
+        with pytest.raises(WorkflowValidationError, match="binary"):
+            validate_workflow(wf)
+
+    def test_unary_diff_with_right_rejected(self):
+        wf = self._wf_with_op("diff", bind_right=True, right_via="edge")
+        with pytest.raises(WorkflowValidationError, match="unary"):
+            validate_workflow(wf)
+
+    def test_unary_pct_change_with_literal_right_rejected(self):
+        wf = self._wf_with_op(
+            "pct_change", bind_right=True, right_via="literal",
+        )
+        with pytest.raises(WorkflowValidationError, match="unary"):
+            validate_workflow(wf)
+
+    def test_binary_subtract_with_edge_right_accepted(self):
+        wf = self._wf_with_op("subtract", bind_right=True, right_via="edge")
+        validate_workflow(wf)  # no exception
+
+    def test_binary_subtract_with_literal_right_accepted(self):
+        wf = self._wf_with_op("subtract", bind_right=True, right_via="literal")
+        validate_workflow(wf)  # no exception
+
+    def test_unary_diff_without_right_accepted(self):
+        wf = self._wf_with_op("diff", bind_right=False)
+        validate_workflow(wf)  # no exception
+
+
+class TestLiteralBindings:
+    """Codex P2 follow-up #2: ``LiteralBinding`` lets workflows
+    express ``Series * 100.0`` where the constant has no upstream
+    node.  The substrate validator + executor handle both edges
+    and literal bindings for scalar-accepting slots."""
+
+    def test_literal_binding_construction(self):
+        binding = LiteralBinding(
+            target_node_id="op",
+            target_input_slot="right",
+            value=100.0,
+        )
+        assert binding.value == 100.0
+        assert binding.target_node_id == "op"
+
+    def test_literal_value_can_be_int_float_str_bool(self):
+        for value in (1, 1.5, "test", True):
+            binding = LiteralBinding(
+                target_node_id="op",
+                target_input_slot="right",
+                value=value,
+            )
+            assert binding.value == value
+
+    def test_literal_binding_targeting_unknown_node_rejected(self):
+        with pytest.raises(Exception, match="unknown target_node_id"):
+            Workflow(
+                workflow_id="bad",
+                nodes=[
+                    PrimitiveNode(
+                        node_id="p",
+                        tool_name="synthetic_primitive_tool",
+                        output_field="time_series", params={},
+                    ),
+                ],
+                edges=[],
+                literal_bindings=[
+                    LiteralBinding(
+                        target_node_id="ghost",
+                        target_input_slot="right",
+                        value=100.0,
+                    ),
+                ],
+                terminal_node_id="p",
+            )
+
+    def test_literal_binding_to_non_scalar_slot_rejected(self):
+        """``align_series.series_list`` is List[Series] — not a
+        scalar slot.  Literal binding to it must be rejected."""
+        wf = Workflow(
+            workflow_id="bad",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={},
+                ),
+                OperatorNode(
+                    node_id="op",
+                    operator_name="align_series",
+                    params={},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="p", target_node_id="op",
+                    target_input_slot="series_list",
+                ),
+            ],
+            literal_bindings=[
+                LiteralBinding(
+                    target_node_id="op",
+                    target_input_slot="series_list",
+                    value=100.0,
+                ),
+            ],
+            terminal_node_id="op",
+        )
+        with pytest.raises(
+            WorkflowValidationError,
+            match="does not accept scalar literals",
+        ):
+            validate_workflow(wf)
+
+    def test_literal_binding_to_unknown_slot_rejected(self):
+        wf = Workflow(
+            workflow_id="bad",
+            nodes=[
+                OperatorNode(
+                    node_id="op",
+                    operator_name="series_arithmetic",
+                    params={"op": "diff"},
+                ),
+            ],
+            edges=[],
+            literal_bindings=[
+                LiteralBinding(
+                    target_node_id="op",
+                    target_input_slot="not_a_real_slot",
+                    value=100.0,
+                ),
+            ],
+            terminal_node_id="op",
+        )
+        with pytest.raises(
+            WorkflowValidationError, match="unknown input slot",
+        ):
+            validate_workflow(wf)
+
+    def test_literal_binding_executes_end_to_end(self, synthetic_resolver):
+        """End-to-end: ``Series * 100.0`` via series_arithmetic with
+        a literal-bound ``right`` slot."""
+        wf = Workflow(
+            workflow_id="series_times_100",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p", tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={"series_name": "s", "n_rows": 10,
+                            "base_value": 1.0, "drift": 0.5},
+                ),
+                OperatorNode(
+                    node_id="mul",
+                    operator_name="series_arithmetic",
+                    params={"op": "multiply"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="p", target_node_id="mul",
+                    target_input_slot="left",
+                ),
+            ],
+            literal_bindings=[
+                LiteralBinding(
+                    target_node_id="mul",
+                    target_input_slot="right",
+                    value=100.0,
+                ),
+            ],
+            terminal_node_id="mul",
+        )
+        result = execute_workflow(
+            wf, engine=None, primitive_resolver=synthetic_resolver,
+        )
+        # Synthetic primitive emits 1.0, 1.5, 2.0, ... (drift=0.5).
+        # Multiply by 100 → 100.0, 150.0, 200.0, ...
+        terminal = result.terminal_artifact
+        assert isinstance(terminal, Series)
+        assert terminal.payload.iloc[0] == 100.0
+        assert terminal.payload.iloc[1] == 150.0
+        # Lineage chain has one primitive + one operator step.
+        assert len(terminal.lineage.steps) == 2
+        assert terminal.lineage.steps[1].kind == "operator"
+
+    def test_double_binding_edge_AND_literal_rejected_at_runtime(
+        self, synthetic_resolver,
+    ):
+        """A scalar slot bound by BOTH an edge and a literal is a
+        workflow-shape error; the executor catches it (the
+        validator currently allows the structure but the executor
+        refuses the ambiguous resolution)."""
+        wf = Workflow(
+            workflow_id="bad",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p_left", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "l"},
+                ),
+                PrimitiveNode(
+                    node_id="p_right", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "r"},
+                ),
+                OperatorNode(
+                    node_id="op",
+                    operator_name="series_arithmetic",
+                    params={"op": "subtract"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="p_left", target_node_id="op",
+                    target_input_slot="left",
+                ),
+                WorkflowEdge(
+                    source_node_id="p_right", target_node_id="op",
+                    target_input_slot="right",
+                ),
+            ],
+            literal_bindings=[
+                LiteralBinding(
+                    target_node_id="op",
+                    target_input_slot="right",
+                    value=100.0,  # also bound by edge above
+                ),
+            ],
+            terminal_node_id="op",
+        )
+        with pytest.raises(
+            WorkflowExecutionError,
+            match="bound BOTH by an edge and by a LiteralBinding",
+        ):
+            execute_workflow(
+                wf, engine=None, primitive_resolver=synthetic_resolver,
+            )
+
+
+class TestUnitCompatValidator:
+    """Codex P2 follow-up #3: best-effort same-unit check at
+    validate-time for series_arithmetic's add/subtract/divide
+    ops.  Uses ``PrimitiveSpec.output_field_units`` declarations
+    when present; skips silently when units are unknown
+    (operator runtime check stays as authoritative gate)."""
+
+    def _resolver_with_unit_decls(
+        self,
+        synthetic_config_path,
+        units_per_field: dict,
+    ) -> PrimitiveResolver:
+        """Resolver that declares units for each output_field.
+        Lets us test the unit-compat pass against deterministic
+        unit declarations."""
+        spec = PrimitiveSpec(
+            tool_name="synthetic_primitive_tool",
+            callable=_synthetic_primitive_callable,
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=synthetic_config_path,
+            output_field_units=units_per_field,
+        )
+
+        def _resolve(tool_name: str) -> PrimitiveSpec:
+            return spec
+
+        return _resolve
+
+    def test_subtract_same_units_validates(self, synthetic_config_path):
+        resolver = self._resolver_with_unit_decls(
+            synthetic_config_path, {"time_series": "bps"},
+        )
+        wf = Workflow(
+            workflow_id="ok",
+            nodes=[
+                PrimitiveNode(
+                    node_id="a", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "a"},
+                ),
+                PrimitiveNode(
+                    node_id="b", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "b"},
+                ),
+                OperatorNode(
+                    node_id="sub",
+                    operator_name="series_arithmetic",
+                    params={"op": "subtract"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="a", target_node_id="sub",
+                    target_input_slot="left",
+                ),
+                WorkflowEdge(
+                    source_node_id="b", target_node_id="sub",
+                    target_input_slot="right",
+                ),
+            ],
+            terminal_node_id="sub",
+        )
+        validate_workflow(wf, primitive_resolver=resolver)  # OK
+
+    def test_subtract_mismatched_units_rejected(self, tmp_path):
+        """Two primitives declared with different output units →
+        substrate catches the cross-unit subtract at validate-time."""
+        cfg_a = tmp_path / "cfg_a.yaml"
+        cfg_a.write_text(_SYNTHETIC_CONFIG_YAML)
+        cfg_b = tmp_path / "cfg_b.yaml"
+        cfg_b.write_text(_SYNTHETIC_CONFIG_YAML)
+
+        spec_a = PrimitiveSpec(
+            tool_name="tool_a",
+            callable=_synthetic_primitive_callable,
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=cfg_a,
+            output_field_units={"time_series": "bps"},
+        )
+        spec_b = PrimitiveSpec(
+            tool_name="tool_b",
+            callable=_synthetic_primitive_callable,
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=cfg_b,
+            output_field_units={"time_series": "percent"},
+        )
+
+        def _resolve(tool_name: str) -> PrimitiveSpec:
+            return {"tool_a": spec_a, "tool_b": spec_b}[tool_name]
+
+        wf = Workflow(
+            workflow_id="cross_unit",
+            nodes=[
+                PrimitiveNode(
+                    node_id="a", tool_name="tool_a",
+                    output_field="time_series", params={"series_name": "a"},
+                ),
+                PrimitiveNode(
+                    node_id="b", tool_name="tool_b",
+                    output_field="time_series", params={"series_name": "b"},
+                ),
+                OperatorNode(
+                    node_id="sub",
+                    operator_name="series_arithmetic",
+                    params={"op": "subtract"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="a", target_node_id="sub",
+                    target_input_slot="left",
+                ),
+                WorkflowEdge(
+                    source_node_id="b", target_node_id="sub",
+                    target_input_slot="right",
+                ),
+            ],
+            terminal_node_id="sub",
+        )
+        with pytest.raises(
+            WorkflowValidationError, match="matching units",
+        ):
+            validate_workflow(wf, primitive_resolver=_resolve)
+
+    def test_unit_check_skipped_when_units_undeclared(
+        self, synthetic_resolver,
+    ):
+        """When ``output_field_units`` is empty (the default),
+        the validator skips the unit check.  Operator runtime
+        refusal is the authoritative gate.  This is the
+        best-effort discipline."""
+        # The synthetic_resolver fixture does NOT declare units —
+        # so a cross-unit subtract structure validates here, and
+        # the operator's runtime check would catch any actual
+        # mismatch at execution time.
+        wf = Workflow(
+            workflow_id="undeclared",
+            nodes=[
+                PrimitiveNode(
+                    node_id="a", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "a"},
+                ),
+                PrimitiveNode(
+                    node_id="b", tool_name="synthetic_primitive_tool",
+                    output_field="time_series", params={"series_name": "b"},
+                ),
+                OperatorNode(
+                    node_id="sub",
+                    operator_name="series_arithmetic",
+                    params={"op": "subtract"},
+                ),
+            ],
+            edges=[
+                WorkflowEdge(
+                    source_node_id="a", target_node_id="sub",
+                    target_input_slot="left",
+                ),
+                WorkflowEdge(
+                    source_node_id="b", target_node_id="sub",
+                    target_input_slot="right",
+                ),
+            ],
+            terminal_node_id="sub",
+        )
+        # No exception — units undeclared, validator skips silently.
+        validate_workflow(wf, primitive_resolver=synthetic_resolver)
 
 
 # ===========================================================================

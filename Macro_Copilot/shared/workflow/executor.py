@@ -47,6 +47,7 @@ from shared.workflow.registry import (
 )
 from shared.workflow.result import WorkflowResult
 from shared.workflow.types import (
+    LiteralBinding,
     OperatorNode,
     PrimitiveNode,
     Workflow,
@@ -126,6 +127,15 @@ def execute_workflow(
             edge.target_input_slot, []
         ).append(edge)
 
+    # Same shape for literal scalar bindings.  Codex P2 follow-up
+    # (PR #78): literal bindings let workflows express
+    # ``Series * 100.0`` where the constant has no upstream node.
+    literals_by_target: Dict[str, Dict[str, List[LiteralBinding]]] = {}
+    for binding in workflow.literal_bindings:
+        literals_by_target.setdefault(binding.target_node_id, {}).setdefault(
+            binding.target_input_slot, []
+        ).append(binding)
+
     # Per-node artifact cache.  Populated as nodes execute; used
     # to resolve downstream nodes' input bindings.
     node_artifacts: Dict[str, Any] = {}
@@ -149,6 +159,7 @@ def execute_workflow(
                     node,
                     workflow=workflow,
                     edges_by_target=edges_by_target.get(node.node_id, {}),
+                    literals_by_target=literals_by_target.get(node.node_id, {}),
                     node_artifacts=node_artifacts,
                 )
             else:
@@ -259,47 +270,81 @@ def _execute_operator_node(
     *,
     workflow: Workflow,
     edges_by_target: Dict[str, List[WorkflowEdge]],
+    literals_by_target: Dict[str, List[LiteralBinding]],
     node_artifacts: Dict[str, Any],
 ) -> Any:
-    """Resolve the operator's input slots from upstream artifacts,
-    construct its ``*Params`` instance, and invoke it."""
+    """Resolve the operator's input slots from upstream artifacts
+    AND literal bindings, construct its ``*Params`` instance, and
+    invoke it.
+
+    Codex P2 follow-up (PR #78): literal scalar bindings let
+    workflows express ``Series * 100.0`` where the constant has
+    no upstream node.  For scalar-accepting slots, exactly one of
+    {edge, literal} must bind the slot (the validator catches
+    the both-bound case and other shape errors)."""
     spec = OPERATOR_REGISTRY[node.operator_name]
 
     # Resolve input bindings.  For each slot, gather the artifacts
     # produced by upstream edges in declaration order.  List-shaped
-    # slots aggregate multiple edges into a list; scalar slots
-    # take exactly one edge's artifact.
+    # slots aggregate multiple edges into a list.  Scalar slots
+    # take exactly one source — either an upstream edge OR a
+    # literal scalar binding (mutually exclusive — bug if both).
     call_kwargs: Dict[str, Any] = {}
     for slot_name, slot_type in spec.input_slots.items():
         edges = edges_by_target.get(slot_name, [])
+        literals = literals_by_target.get(slot_name, [])
         upstream_artifacts = [
             node_artifacts[edge.source_node_id] for edge in edges
         ]
         if slot_type.startswith("List[") and slot_type.endswith("]"):
             # List-shaped slot — pass the list (possibly empty;
             # operators that require min length will surface the
-            # error at their own validator).
+            # error at their own validator).  Literal bindings on
+            # list-shaped slots are not supported in v1; the
+            # validator catches the both-bound case but not the
+            # literal-on-list case explicitly — defer to operator
+            # runtime if the caller forces it.
             call_kwargs[slot_name] = upstream_artifacts
-        elif slot_name in spec.accepts_scalar_input and not edges:
-            # Scalar-accepting slot with no upstream edge — leave
-            # absent so the operator's signature default applies
-            # (e.g. ``series_arithmetic.right=None`` for unary
-            # ops).
+        elif (
+            slot_name in spec.accepts_scalar_input
+            and not edges
+            and not literals
+        ):
+            # Scalar-accepting slot with no edge AND no literal —
+            # leave absent so the operator's signature default
+            # applies (e.g. ``series_arithmetic.right=None`` for
+            # unary ops).  The arity_validator (when declared)
+            # catches the case where this fall-through is
+            # incorrect for the given op.
             continue
         else:
-            # Scalar slot — exactly one upstream artifact.  The
-            # validator already enforced "≥1 edge bound"; if more
-            # than one edge bound the same scalar slot, that's a
-            # workflow-shape error we surface here.
-            if len(upstream_artifacts) != 1:
+            # Scalar slot — exactly one source (edge OR literal).
+            if literals and edges:
                 raise WorkflowExecutionError(
                     f"Workflow {workflow.workflow_id!r}: operator "
                     f"node {node.node_id!r} ({node.operator_name!r}) "
-                    f"expects exactly one upstream edge for scalar "
-                    f"input slot {slot_name!r} (type {slot_type!r}); "
-                    f"got {len(upstream_artifacts)}."
+                    f"slot {slot_name!r} is bound BOTH by an edge "
+                    "and by a LiteralBinding — pick exactly one."
                 )
-            call_kwargs[slot_name] = upstream_artifacts[0]
+            if literals:
+                if len(literals) != 1:
+                    raise WorkflowExecutionError(
+                        f"Workflow {workflow.workflow_id!r}: operator "
+                        f"node {node.node_id!r} ({node.operator_name!r}) "
+                        f"slot {slot_name!r} has {len(literals)} "
+                        "LiteralBindings; expected exactly one."
+                    )
+                call_kwargs[slot_name] = literals[0].value
+            else:
+                if len(upstream_artifacts) != 1:
+                    raise WorkflowExecutionError(
+                        f"Workflow {workflow.workflow_id!r}: operator "
+                        f"node {node.node_id!r} ({node.operator_name!r}) "
+                        f"expects exactly one upstream edge for "
+                        f"scalar input slot {slot_name!r} (type "
+                        f"{slot_type!r}); got {len(upstream_artifacts)}."
+                    )
+                call_kwargs[slot_name] = upstream_artifacts[0]
 
     # Construct the operator's *Params instance.  An empty
     # node.params dict means "use the operator's defaults" — pass
