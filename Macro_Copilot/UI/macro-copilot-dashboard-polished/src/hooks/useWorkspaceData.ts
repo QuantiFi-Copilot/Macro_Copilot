@@ -34,6 +34,7 @@ import type {
 import {
   fetchDetailFXCarry,
   fetchDetailFXCorrelationBeta,
+  fetchDetailFXDataHealth,
   fetchDetailFXForwardCurve,
   fetchDetailFXMacroRiskOverlay,
   fetchDetailFXRealizedVol,
@@ -47,6 +48,7 @@ import {
 import type {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -66,6 +68,7 @@ export type WorkspaceData =
   | { kind: 'yield'; data: YieldLevelOutput }
   | { kind: 'regime'; data: RegimeOutput }
   | { kind: 'scanner'; data: ScannerResponse }
+  | { kind: 'fx_data_health'; data: FXDataHealthResponse }
   | { kind: 'fx_spot'; data: FXSpotLevelResponse }
   | { kind: 'fx_carry'; data: FXCarryResponse }
   | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }
@@ -218,6 +221,19 @@ export function useWorkspaceData(
               : undefined,
           });
           result = { kind: 'scanner', data: out };
+          break;
+        }
+
+        case 'fx_data_health': {
+          const out = await fetchDetailFXDataHealth({
+            lookback_days: pickLookback(params),
+            stale_after_days: params['stale_after_days']
+              ? Number(params['stale_after_days'])
+              : undefined,
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_data_health', data: out };
           break;
         }
 

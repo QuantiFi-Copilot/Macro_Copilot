@@ -191,6 +191,21 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_data_health':
+      return [
+        {
+          key: 'stale_after_days',
+          label: 'Stale',
+          options: [
+            { value: '1', label: '1d' },
+            { value: '3', label: '3d' },
+            { value: '5', label: '5d' },
+            { value: '10', label: '10d' },
+          ],
+          value: get('stale_after_days', '5'),
+        },
+      ];
+
     case 'fx_spot':
       return [
         {
@@ -353,6 +368,7 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'cross_market' ||
     view === 'butterfly' ||
     view === 'yield' ||
+    view === 'fx_data_health' ||
     view === 'fx_spot' ||
     view === 'fx_realized_vol' ||
     view === 'fx_trade_setup' ||
@@ -410,6 +426,9 @@ export function viewTitle(
 
     case 'forward':
       return 'OIS forward rates';
+
+    case 'fx_data_health':
+      return 'FX data health';
 
     case 'fx_spot': {
       const pair = params['pair'] ?? 'EURUSD';
@@ -487,6 +506,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'forward':
       return 'OIS-implied forward rates (backend wiring pending).';
+
+    case 'fx_data_health':
+      return 'Coverage, missing data and stale-series diagnostics across the FX universe.';
 
     case 'fx_spot':
       return 'FX spot level, momentum, percentile and rolling z-score.';

@@ -22,6 +22,47 @@ export type FXScannerResponse = {
   rows: FXScannerRow[];
 };
 
+export type FXDataFamilyCoverage = {
+  family: string;
+  instrument_type: string;
+  instruments: number;
+  series_with_data: number;
+  latest_date: string | null;
+  stale_series: number;
+};
+
+export type FXDataHealthPairCoverage = {
+  pair: string;
+  has_spot: boolean;
+  forward_tenors: string[];
+  vol_tenors: string[];
+  latest_spot_date: string | null;
+  latest_forward_date: string | null;
+  latest_vol_date: string | null;
+  observation_count: number;
+  status: string;
+  missing: string[];
+};
+
+export type FXDataHealthRiskProxyCoverage = {
+  ticker: string;
+  latest_date: string | null;
+  observation_count: number;
+  status: string;
+};
+
+export type FXDataHealthResponse = {
+  as_of_date: string | null;
+  field_name: string;
+  status: string;
+  summary: Record<string, number>;
+  families: FXDataFamilyCoverage[];
+  pairs: FXDataHealthPairCoverage[];
+  risk_proxies: FXDataHealthRiskProxyCoverage[];
+  missing_pairs: string[];
+  stale_series: string[];
+};
+
 // Type pour les métriques du FX Spot Level
 export type FXSpotLevelMetrics = {
   as_of_date: string;  // Date des données

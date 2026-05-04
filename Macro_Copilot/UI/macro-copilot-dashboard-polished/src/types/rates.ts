@@ -6,6 +6,7 @@
 import {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -289,6 +290,7 @@ export type WorkspaceViewType =
   | 'forward'
   | 'regime'
   | 'scanner'
+  | 'fx_data_health'
   | 'fx_spot'
   | 'fx_carry'
   | 'fx_forward_curve'
@@ -312,6 +314,7 @@ export type WorkspaceData =
   | { kind: 'yield'; data: YieldLevelOutput }
   | { kind: 'regime'; data: RegimeOutput }
   | { kind: 'scanner'; data: ScannerResponse }
+  | { kind: 'fx_data_health'; data: FXDataHealthResponse }
   | { kind: 'fx_spot'; data: FXSpotLevelResponse }  // Ajouter cette ligne
   | { kind: 'fx_carry'; data: FXCarryResponse }   // Ajouter cette ligne
   | { kind: 'fx_forward_curve'; data: FXForwardCurveResponse }

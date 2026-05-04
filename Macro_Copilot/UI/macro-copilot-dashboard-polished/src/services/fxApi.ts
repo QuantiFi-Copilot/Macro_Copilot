@@ -1,6 +1,7 @@
 import type {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -87,6 +88,18 @@ export function fetchDetailFXCarry(
   params: FXCarryDetailParams,
 ): Promise<FXCarryResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/carry${buildQuery(params)}`);
+}
+
+export type FXDataHealthDetailParams = {
+  lookback_days?: number;
+  stale_after_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXDataHealth(
+  params: FXDataHealthDetailParams,
+): Promise<FXDataHealthResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/data-health${buildQuery(params)}`);
 }
 
 export type FXForwardCurveDetailParams = {

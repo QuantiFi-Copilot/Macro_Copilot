@@ -34,6 +34,7 @@ import { YieldView } from './views/YieldView';
 import { RegimeView } from './views/RegimeView';
 import { ScannerView } from './views/ScannerView';
 import { ForwardView } from './views/ForwardView';
+import FXDataHealthView from '../fx/FXDataHealthView';
 import FXSpotView from '../fx/FXSpotView';  // Import du composant FXSpotView
 import FXCarryView from '../fx/FXCarryView';  // Import du composant FXCarryView
 import FXForwardCurveView from '../fx/FXForwardCurveView';
@@ -53,6 +54,7 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
   'forward',
   'regime',
   'scanner',
+  'fx_data_health',
   'fx_spot',  
   'fx_carry', 
   'fx_forward_curve',
@@ -85,6 +87,8 @@ function extractAsOfDate(data: ReturnType<typeof useWorkspaceData>['data']): str
       return data.data.current_metrics?.as_of_date ?? null;
     case 'scanner':
       return data.data.results?.[0]?.as_of_date ?? null;
+    case 'fx_data_health':
+      return data.data.as_of_date ?? null;
     case 'fx_spot':  // Nouveau cas ajouté
       return data.data.current_metrics?.as_of_date ?? null; // Utiliser la date appropriée
     case 'fx_carry': // Nouveau cas ajouté
@@ -278,6 +282,8 @@ function ViewBody({
       return <RegimeView payload={data.data} />;
     case 'scanner':
       return <ScannerView payload={data.data} />;
+    case 'fx_data_health':
+      return <FXDataHealthView payload={data.data} />;
     case 'fx_spot':  // Nouveau cas ajouté
       return <FXSpotView payload={data.data} />;
     case 'fx_carry': // Nouveau cas ajouté

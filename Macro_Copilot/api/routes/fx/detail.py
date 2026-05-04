@@ -16,6 +16,11 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from fx_agent.diagnostics.tools.data_health import get_fx_data_health
+from fx_agent.diagnostics.tools.data_health.schemas import (
+    FXDataHealthInput,
+    FXDataHealthOutput,
+)
 from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import (
     FXForwardCurveInput,
@@ -106,6 +111,35 @@ def _tool_result_or_raise(result: object, context: str) -> object:
 
         raise HTTPException(status_code=500, detail=f"{context}: {error_msg}")
 
+    return result
+
+
+@router.get(
+    "/detail/data-health",
+    response_model=FXDataHealthOutput,
+    summary="FX Data Health Detail (workspace)",
+)
+def fx_data_health_detail(
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    stale_after_days: int = Query(default=5, ge=1, le=365),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXDataHealthInput(
+            lookback_days=lookback_days,
+            stale_after_days=stale_after_days,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_data_health(params=params)
+    except Exception as exc:
+        logger.exception("detail/data-health: tool failed")
+        raise HTTPException(status_code=503, detail=f"FX data health failed: {exc}")
+
+    _tool_result_or_raise(result, "FX data health")
     return result
 
 

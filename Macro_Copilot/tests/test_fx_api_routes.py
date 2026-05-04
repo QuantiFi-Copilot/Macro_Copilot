@@ -6,6 +6,12 @@ from fx_agent.forwards.tools.forward_curve.schemas import (
     FXForwardCurveOutput,
     FXForwardCurveRow,
 )
+from fx_agent.diagnostics.tools.data_health.schemas import (
+    FXDataFamilyCoverage,
+    FXDataHealthOutput,
+    FXDataHealthPairCoverage,
+    FXDataHealthRiskProxyCoverage,
+)
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryOutput, FXCarryRow
 from fx_agent.spot.tools.spot_levels.schemas import (
     FXSpotLevelMetrics,
@@ -66,6 +72,70 @@ def test_fx_spot_detail_route_calls_tool():
     assert result == output
     params = mock_tool.call_args.kwargs["params"]
     assert params.pair == "EURUSD"
+
+
+def test_fx_data_health_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXDataHealthOutput(
+        as_of_date="2026-04-30",
+        field_name="PX_LAST",
+        status="partial coverage",
+        summary={
+            "instrument_count": 35,
+            "pair_count": 12,
+            "missing_pair_count": 0,
+            "partial_pair_count": 4,
+            "risk_proxy_count": 6,
+            "stale_series_count": 0,
+        },
+        families=[
+            FXDataFamilyCoverage(
+                family="Spot",
+                instrument_type="fx_spot",
+                instruments=12,
+                series_with_data=12,
+                latest_date="2026-04-30",
+                stale_series=0,
+            )
+        ],
+        pairs=[
+            FXDataHealthPairCoverage(
+                pair="EURUSD",
+                has_spot=True,
+                forward_tenors=["1W", "1M"],
+                vol_tenors=["1M"],
+                latest_spot_date="2026-04-30",
+                latest_forward_date="2026-04-30",
+                latest_vol_date="2026-04-30",
+                observation_count=700,
+                status="partial",
+                missing=["forwards:3M,6M"],
+            )
+        ],
+        risk_proxies=[
+            FXDataHealthRiskProxyCoverage(
+                ticker="DXY Curncy",
+                latest_date="2026-04-30",
+                observation_count=260,
+                status="available",
+            )
+        ],
+        missing_pairs=[],
+        stale_series=[],
+    )
+
+    with patch.object(detail_module, "get_fx_data_health", return_value=output) as mock_tool:
+        result = detail_module.fx_data_health_detail(
+            lookback_days=365,
+            stale_after_days=5,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.lookback_days == 365
+    assert params.stale_after_days == 5
 
 
 def test_fx_carry_detail_route_calls_tool():
