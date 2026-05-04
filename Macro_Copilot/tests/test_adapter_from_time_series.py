@@ -569,6 +569,76 @@ class TestHighLevelWrapper_Synthetic:
         assert isinstance(s.missingness_policy, CleanSingleSeriesV1)
         assert s.missingness_policy.ffill_limit == 7
 
+    def test_auto_derived_policy_pins_clean_single_series_invariants(self):
+        """The auto-derived ``CleanSingleSeriesV1`` must explicitly
+        match every observable invariant of ``shared.analytics.levels.
+        clean_single_series``: ``ffill_limit`` from YAML,
+        ``drop_nan=True`` (always-on in the cleaner), and
+        ``dedup_keep="last"`` (the cleaner's hardcoded choice).
+
+        Pinning ALL THREE here means a future change to either of the
+        cleaner's invariants forces a deliberate update at the bridge
+        — not silent drift through Pydantic field defaults."""
+        Output = self._output_class()
+        Input = self._input_class()
+        params = Input(
+            curve_family="USD_SOFR_OIS", short_tenor="2Y", long_tenor="10Y",
+        )
+        s = tool_output_to_artifact_series(
+            self._output_dict(),
+            output_class=Output,
+            output_field="time_series_spread",
+            tool_name="calculate_ois_curve_spread_tool",
+            tool_config=self._config(ffill_limit_days=5),
+            params=params,
+        )
+        policy = s.missingness_policy
+        assert isinstance(policy, CleanSingleSeriesV1)
+        assert policy.ffill_limit == 5
+        assert policy.drop_nan is True
+        assert policy.dedup_keep == "last"
+
+    def test_data_identity_is_NOT_in_missingness_policy(self):
+        """Architectural intent: missingness captures the cleaning
+        REGIME, not data identity.  Two artifacts from primitives
+        sharing the same ``ffill_limit_days`` MUST have identical
+        missingness policies — even if they came from different
+        primitives, different tenors, or different fields.  Data
+        identity lives in ``Series.units``, ``Series.series_key``,
+        ``PrimitiveStep.params``, etc.  Missingness mismatch is
+        reserved for genuine cleaning-regime divergence."""
+        Output = self._output_class()
+        Input = self._input_class()
+
+        cfg = self._config(ffill_limit_days=5)
+
+        # Two artifacts from the same primitive but different fields
+        # (BPS spread vs Z_SCORE) — same cleaning regime, must have
+        # IDENTICAL missingness policies.
+        params_a = Input(
+            curve_family="USD_SOFR_OIS", short_tenor="2Y", long_tenor="10Y",
+        )
+        s_spread = tool_output_to_artifact_series(
+            self._output_dict(), output_class=Output,
+            output_field="time_series_spread",
+            tool_name="calculate_ois_curve_spread_tool",
+            tool_config=cfg, params=params_a,
+        )
+        s_zscore = tool_output_to_artifact_series(
+            self._output_dict(), output_class=Output,
+            output_field="time_series_zscore",
+            tool_name="calculate_ois_curve_spread_tool",
+            tool_config=cfg, params=params_a,
+        )
+
+        # Different units, different series_key, different
+        # PrimitiveStep.output_field, different lineage hash —
+        # but identical missingness regime.
+        assert s_spread.units != s_zscore.units
+        assert s_spread.series_key != s_zscore.series_key
+        assert s_spread.lineage.head_hash != s_zscore.lineage.head_hash
+        assert s_spread.missingness_policy == s_zscore.missingness_policy
+
     def test_explicit_policy_overrides_auto_derivation(self):
         Output = self._output_class()
         Input = self._input_class()
@@ -761,11 +831,25 @@ class TestEndToEnd_OIS_RateLevel:
 
     def test_lifts_time_series_field(self):
         tool_output, OutClass, params, cfg = self._run()
+        # The bridge plan calls for ``PrimitiveStep.name`` to record
+        # the primitive's MCP tool name (the LLM-facing surface,
+        # NOT the YAML's ``tool.name``).  For OIS rate_level there
+        # is a pre-existing naming drift between the two:
+        #
+        #   YAML ``tool.name``      = "get_ois_rate_level_tool"
+        #   MCP wrapper function    = "calculate_ois_rate_level_tool"
+        #
+        # Every other OIS primitive matches across both surfaces; only
+        # rate_level has the drift.  This test pins the contract to
+        # the MCP wrapper name (the identity that future workflows /
+        # caches will key on).  The YAML drift is a separate
+        # follow-up — out of scope for the bridge.
+        MCP_NAME = "calculate_ois_rate_level_tool"
         s = tool_output_to_artifact_series(
             tool_output,
             output_class=OutClass,
             output_field="time_series",
-            tool_name="get_ois_rate_level_tool",
+            tool_name=MCP_NAME,
             tool_config=cfg,
             params=params,
         )
@@ -773,6 +857,8 @@ class TestEndToEnd_OIS_RateLevel:
         assert s.series_key == "usd_sofr_ois_2y_ois_rate"
         # PrimitiveStep carries the right output_field.
         assert s.lineage.steps[0].output_field == "time_series"
+        # And the right MCP tool name (NOT the YAML ``tool.name``).
+        assert s.lineage.steps[0].name == MCP_NAME
 
 
 class TestEndToEnd_OIS_CurveSpread:
