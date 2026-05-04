@@ -84,7 +84,8 @@ document, is exactly four:
 
 Examples of things that are **not** workflow templates:
 
-- `compute_swap_spread` (primitive — owns a finance concept)
+- `calculate_swap_spread` (primitive — owns a finance concept; the
+  cross-domain swap-spread primitive shipped in PR #76)
 - `align_series` (operator — owns a structural transform)
 - `format_event_study_report` (UI / explanation layer)
 - `sofr_ust_2y_event_study` (template instance, not a template —
@@ -489,9 +490,8 @@ The workflow layer is the highest layer in the deterministic-mode
 substrate.  The three-layer separation discipline:
 
 - A **primitive** owns a finance concept (curve_spread, yield_levels,
-  ois_treasury_spread) and is standard if its methodology and
-  dependency chain are explicit, reproducible, and
-  provenance-carrying.
+  swap_spread) and is standard if its methodology and dependency
+  chain are explicit, reproducible, and provenance-carrying.
 - A **central operator** refuses finance concepts and owns only a
   structural transformation over typed artifacts.
 - A **workflow template** owns a desk-recognizable analysis pattern
