@@ -1,0 +1,210 @@
+# =============================================================================
+# event_study — canonical conditional-event aggregation workflow template
+# =============================================================================
+# Per docs/architecture/workflow_architecture.md, this is the V1 template
+# for the ``event_study`` archetype.  Owns the canonical desk pattern:
+# threshold a signal series → extract events → forward windows on a target
+# series → conditional aggregate of forward moves.
+#
+# Proof question 1 (the canonical test prompt):
+#   "Over the last 5 years, when the 2Y OIS-Treasury spread (swap_spread)
+#   widens by more than 1.5σ in a single day, what's the average 5-day
+#   forward move in the 10Y UST yield?"
+#
+# Slot binding for proof Q1:
+#   signal_tool_name: calculate_swap_spread_tool
+#   signal_params:
+#     sovereign_curve_family: UST
+#     ois_curve_family: USD_SOFR_OIS
+#     tenor: "2Y"
+#     lookback_days: 1825
+#   signal_output_field: time_series_zscore
+#   target_tool_name: get_yield_levels_tool
+#   target_params:
+#     curve_family: UST
+#     tenor: "10Y"
+#     lookback_days: 1825
+#   target_output_field: time_series
+#   threshold: 1.5
+#   post_window: 5
+#
+# Topology-locked methodology (NOT exposed as slots):
+#   - threshold_events.rule = abs_above (canonical event-study extraction)
+#   - threshold_events.threshold_basis = raw_value (signal already z-scored)
+#   - event_windows.pre_window = 0 (forward-only windows)
+#   - event_windows.inclusive_event_day = true
+#   - conditional_aggregate.aggregator = mean (the canonical event-study stat)
+#   - conditional_aggregate.dispersion = std (per the conditional_aggregate
+#     architectural requirement to always report dispersion alongside the
+#     central tendency)
+#
+# Variants of this archetype (different aggregators / windows / threshold
+# rules) ship as separate templates per the V1 1-template-per-archetype
+# discipline declared in workflow_architecture.md.
+
+template_id: event_study
+archetype: event_study
+description: >-
+  Canonical event-study workflow: threshold a signal series, extract
+  events, forward-window a target series at each event, and emit the
+  mean (with std dispersion) of conditional forward moves.
+
+# Structural cues the future ``route_to_template`` LLM step matches
+# against prompts.  Per workflow_architecture.md:
+#   "Each template carries an archetype_signature declaration: which
+#    structural cues in a prompt indicate this template (e.g.
+#    event_study requires 'conditional aggregation across event
+#    windows')"
+# Multiple cues = OR pattern; LLM router picks the best-matching template.
+archetype_signature:
+  - "average move after / forward move when X exceeds Y"
+  - "conditional aggregation across event windows"
+  - "what happens to Y when X crosses a threshold"
+  - "event study around X moves of more than N sigma"
+
+slot_schema:
+
+  # -------------------------------------------------------------------------
+  # Signal series — the series whose extreme moves trigger events.
+  # -------------------------------------------------------------------------
+
+  - name: signal_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits the signal series
+      (e.g. calculate_swap_spread_tool, calculate_curve_spread_tool).
+      The primitive must emit a TimeSeries whose units make the chosen
+      threshold scale meaningful — Z_SCORE units paired with
+      threshold_basis=raw_value (the template-locked default) gives the
+      canonical "|z| > N" event extraction.
+
+  - name: signal_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for the signal primitive (e.g.
+      {sovereign_curve_family: UST, ois_curve_family: USD_SOFR_OIS,
+      tenor: '2Y', lookback_days: 1825} for swap_spread).  Caller
+      assembles the dict shape; the primitive's *Input Pydantic
+      validator catches any field-level errors at execution time.
+
+  - name: signal_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of the signal primitive's output to lift
+      as the event signal (e.g. time_series_zscore for the canonical
+      event-study shape).
+
+  # -------------------------------------------------------------------------
+  # Target series — the series whose forward moves get aggregated around
+  # each event.
+  # -------------------------------------------------------------------------
+
+  - name: target_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits the target series (e.g.
+      get_yield_levels_tool, calculate_swap_spread_tool).  Must emit a
+      TimeSeries that overlaps the signal series' date range.
+
+  - name: target_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for the target primitive.  The lookback_days
+      should typically be ≥ signal lookback_days + post_window so the
+      forward windows around late events have data to aggregate.
+
+  - name: target_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of the target primitive's output to lift
+      (e.g. time_series for yield_levels, time_series_spread for a
+      curve_spread, time_series_forward for a forward_rate).
+
+  # -------------------------------------------------------------------------
+  # Analysis knobs.
+  # -------------------------------------------------------------------------
+
+  - name: threshold
+    type: float
+    required: true
+    description: >-
+      Absolute-value threshold applied to the signal series (with the
+      template-locked threshold_basis=raw_value, paired with rule=
+      abs_above).  For Z_SCORE-typed signals, this is the |z| boundary
+      — e.g. 1.5 means "events when |z| > 1.5".
+
+  - name: post_window
+    type: int
+    required: false
+    default: 5
+    description: >-
+      Trading-day count for the forward window after each event.  The
+      pre_window is template-locked to 0 (event studies are about
+      forward moves; backward inspection is a separate archetype).
+      Default 5 = one calendar week of forward moves.
+
+# DAG topology — locked.  Slots fill node params; topology is fixed.
+nodes:
+
+  - kind: primitive
+    node_id: signal
+    tool_name: {$slot: signal_tool_name}
+    output_field: {$slot: signal_output_field}
+    params: {$slot: signal_params}
+
+  - kind: primitive
+    node_id: target
+    tool_name: {$slot: target_tool_name}
+    output_field: {$slot: target_output_field}
+    params: {$slot: target_params}
+
+  - kind: operator
+    node_id: events
+    operator_name: threshold_events
+    params:
+      rule: abs_above              # template-locked
+      threshold: {$slot: threshold}
+      threshold_basis: raw_value   # template-locked
+      look_ahead_safe: true        # event-study hygiene: t-1 stats only
+
+  - kind: operator
+    node_id: windows
+    operator_name: event_windows
+    params:
+      pre_window: 0                # template-locked: event studies are forward-looking
+      post_window: {$slot: post_window}
+      inclusive_event_day: true    # template-locked
+
+  - kind: operator
+    node_id: aggregate
+    operator_name: conditional_aggregate
+    params:
+      aggregator: mean             # template-locked: canonical event-study stat
+      dispersion: std              # template-locked: always report dispersion
+
+edges:
+  - source_node_id: signal
+    target_node_id: events
+    target_input_slot: series
+
+  - source_node_id: events
+    target_node_id: windows
+    target_input_slot: events
+
+  - source_node_id: target
+    target_node_id: windows
+    target_input_slot: target
+
+  - source_node_id: windows
+    target_node_id: aggregate
+    target_input_slot: panel
+
+literal_bindings: []
+
+terminal_node_id: aggregate

@@ -144,24 +144,51 @@ class SlotDeclaration(BaseModel):
 
 
 class PrimitiveNodeTemplate(BaseModel):
-    """Template-shaped variant of ``PrimitiveNode``: ``params``
-    values may include ``{"$slot": "name"}`` placeholders.  At
-    bind time, placeholders are substituted with the matching slot
-    value and the result is constructed as a concrete
-    ``PrimitiveNode``."""
+    """Template-shaped variant of ``PrimitiveNode``.
+
+    Three of the four substrate-PrimitiveNode fields can carry
+    ``{"$slot": "name"}`` placeholders (in addition to literal
+    values): ``tool_name``, ``output_field``, and ``params``
+    values.  This makes the template instrument-agnostic in the
+    sense the workflow-architecture spec requires: the same
+    template runs unchanged against any TimeSeries-emitting
+    primitive when the caller binds different
+    (tool_name, output_field, params) triples.
+
+    ``node_id`` is template-locked (it identifies the node within
+    the DAG; LLM does not get to rename nodes).  ``kind`` is the
+    discriminator.
+
+    At bind time, placeholders in tool_name / output_field are
+    substituted before constructing the concrete ``PrimitiveNode``
+    — the substrate's PrimitiveNode constructor enforces that
+    both must be non-empty strings, so a slot whose value isn't a
+    valid string surfaces with a clean Pydantic error there.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["primitive"] = "primitive"
     node_id: str = Field(..., min_length=1)
-    tool_name: str = Field(..., min_length=1)
-    output_field: str = Field(..., min_length=1)
+    # Slot-substitutable: either a literal string or a $slot ref.
+    # Concrete-PrimitiveNode constructor enforces the post-bind
+    # value is a non-empty string.
+    tool_name: Any
+    output_field: Any
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OperatorNodeTemplate(BaseModel):
     """Template-shaped variant of ``OperatorNode``: ``params``
-    values may include ``{"$slot": "name"}`` placeholders."""
+    values may include ``{"$slot": "name"}`` placeholders.
+
+    ``operator_name`` is template-locked (NOT slot-substitutable):
+    swapping operators at a node would change the DAG's
+    structural shape (different operator → different input/output
+    types → different downstream wiring), violating the topology-
+    locked discipline.  Operator-variant templates ship as
+    separate templates, not as one template with an
+    operator-name slot."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -368,14 +395,32 @@ class WorkflowTemplate(BaseModel):
                     f"{binding.target_node_id!r}."
                 )
 
-        # Every $slot reference in node params + literal bindings
-        # resolves to a declared slot
+        # Every $slot reference in node params + node tool_name /
+        # output_field (for PrimitiveNodeTemplate) + literal
+        # bindings resolves to a declared slot.
         slot_name_set = set(slot_names)
         unknown_refs: List[str] = []
         for node in self.nodes:
             unknown_refs.extend(
                 _walk_slot_refs(node.params, slot_name_set, context=node.node_id)
             )
+            if isinstance(node, PrimitiveNodeTemplate):
+                # PrimitiveNodeTemplate's tool_name and output_field
+                # are also slot-substitutable (per the instrument-
+                # agnostic discipline — same template runs against
+                # any TimeSeries-emitting primitive).
+                unknown_refs.extend(
+                    _walk_slot_refs(
+                        node.tool_name, slot_name_set,
+                        context=f"{node.node_id}.tool_name",
+                    )
+                )
+                unknown_refs.extend(
+                    _walk_slot_refs(
+                        node.output_field, slot_name_set,
+                        context=f"{node.node_id}.output_field",
+                    )
+                )
         for binding in self.literal_bindings:
             unknown_refs.extend(
                 _walk_slot_refs(
@@ -421,17 +466,25 @@ class WorkflowTemplate(BaseModel):
             template_id=self.template_id,
         )
 
-        # 2. Substitute placeholders in node params + literal
-        #    bindings.
+        # 2. Substitute placeholders in node params (all node
+        #    kinds), tool_name + output_field (PrimitiveNodeTemplate
+        #    only — OperatorNodeTemplate's operator_name is
+        #    template-locked per topology-lock discipline), and
+        #    literal-binding values.  Concrete-node constructors
+        #    enforce post-substitution types.
         concrete_nodes: List[Any] = []
         for node in self.nodes:
             resolved_params = _substitute_slots(node.params, resolved)
             if isinstance(node, PrimitiveNodeTemplate):
+                resolved_tool_name = _substitute_slots(node.tool_name, resolved)
+                resolved_output_field = _substitute_slots(
+                    node.output_field, resolved,
+                )
                 concrete_nodes.append(
                     PrimitiveNode(
                         node_id=node.node_id,
-                        tool_name=node.tool_name,
-                        output_field=node.output_field,
+                        tool_name=resolved_tool_name,
+                        output_field=resolved_output_field,
                         params=resolved_params,
                     )
                 )
