@@ -17,10 +17,20 @@ tool:
   name: get_yield_levels_tool
   domain: sovereign_bonds
   description: |
-    Single-tenor sovereign yield level snapshot — current yield,
-    daily/weekly/monthly bps changes, 252-trading-day rolling z-score,
-    trailing 252-day high/low/percentile, and the observation count.
-    Output is a one-row snapshot, not a time series.
+    Single-tenor sovereign yield level — emits both:
+
+      - ``current_metrics``: snapshot of the latest observation
+        (current yield, daily/weekly/monthly bps changes, 252-day
+        rolling z-score, trailing 252-day high/low/percentile,
+        observation count).
+
+      - ``time_series``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = PERCENT)
+        carrying the historical yield levels over the displayed
+        ``lookback_days`` window.  Each row is rounded with the same
+        ``yield_round_decimals`` convention the snapshot uses, so the
+        snapshot's ``current_yield_pct`` equals
+        ``time_series.rows[-1].value`` strictly.
 
 conventions:
 
