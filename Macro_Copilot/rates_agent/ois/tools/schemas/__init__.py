@@ -8,8 +8,12 @@ from rates_agent.ois.tools.schemas.spread import (
     OISCurveSpreadTimeSeriesRow,
 )
 
-# Rate level (single-tenor)
-from rates_agent.ois.tools.schemas.rate_level import (
+# Rate level (single-tenor) — re-exported from the per-tool-folder
+# package (``rates_agent/ois/tools/rate_level/``).  The schemas hub
+# stays as the legacy import surface for callers / tests that haven't
+# migrated to the package path; new code should prefer
+# ``from rates_agent.ois.tools.rate_level import OISRateLevelInput``.
+from rates_agent.ois.tools.rate_level.schemas import (
     OISRateLevelInput,
     OISRateLevelMetrics,
     OISRateLevelOutput,

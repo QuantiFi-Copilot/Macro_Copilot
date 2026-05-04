@@ -1,0 +1,247 @@
+# =============================================================================
+# get_ois_rate_level_tool — tool configuration
+# =============================================================================
+# This file is the canonical record of the OIS rate-level tool's
+# conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Mirrors the
+# sovereign ``yield_levels`` tool's config structure 1:1 — every
+# convention with the same name carries the same numeric value, so the
+# ``shared.config.lint`` cross-tool check stays clean as the OIS
+# domain comes online.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  The LLM cannot ask for non-standard windows or
+# thresholds.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: get_ois_rate_level_tool
+  domain: ois
+  description: |
+    Single-tenor OIS par-swap-rate level — emits both:
+
+      - ``current_metrics``: snapshot of the latest observation
+        (current rate, daily/weekly/monthly bps changes, 252-day
+        rolling z-score, trailing 252-day high/low/percentile,
+        observation count).
+
+      - ``time_series``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = PERCENT)
+        carrying the historical par-swap-rate levels over the displayed
+        ``lookback_days`` window.  Each row is rounded with the same
+        ``yield_round_decimals`` convention the snapshot uses, so the
+        snapshot's ``current_rate_pct`` equals
+        ``time_series.rows[-1].value`` strictly.
+
+    "Rate" rather than "yield" terminology because OIS quotes are par
+    swap rates, not bond yields — no coupon, no principal, no accrued.
+    The shared convention name ``yield_round_decimals`` is reused
+    intentionally so the cross-config lint enforces sovereign and OIS
+    rounding stay aligned (both want 4 decimals); the wire field is
+    named ``current_rate_pct`` to keep the OIS surface honest.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool (curve_spread, yield_levels,
+      curve_move_classifier, butterfly, cross_market_spread) — the
+      cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches sovereign yield_levels /
+      curve_spread.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x trading-day window covers weekends + holidays.  Matches
+      every sovereign rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_pct, low_252d_pct,
+  # percentile_252d) are wire-frozen for backward-compat with the
+  # legacy single-file OIS rate_level tool that this folder migrates.
+  # compute() raises NotImplementedError if this is set to anything
+  # other than 252; see methodology.planned_extensions for the path
+  # to making this configurable.  Same wire-freeze as sovereign
+  # yield_levels.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number — same situation
+      as sovereign yield_levels.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every sovereign rates tool — the cross-config
+      lint enforces the match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field — OIS-specific name
+  # ---------------------------------------------------------------------------
+  # Sovereign tools use ``default_field_name: YLD_YTM_MID`` (the mid
+  # yield-to-maturity).  OIS quotes are par swap rates, not yields, so
+  # the canonical Bloomberg observation is ``PX_LAST`` (the mid
+  # par-swap rate).  The two values are semantically distinct, so the
+  # convention is renamed here to ``default_swap_rate_field`` —
+  # otherwise the cross-config lint would flag a value disagreement
+  # between sovereign tools (YLD_YTM_MID) and OIS tools (PX_LAST) on
+  # the same convention name.  Future OIS tools should reuse this
+  # name so the OIS-side cross-tool lint stays meaningful.
+  default_swap_rate_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid par-swap rate is the canonical OIS observation.  LLM/HTTP
+      wrappers must use the empty/None sentinel so this default flows
+      through — see the wrapper-shadowing fix from the
+      curve_move_classifier migration (commit b2605ee) for the
+      sovereign analog.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to both the snapshot's current_rate_pct
+  # field AND every row of the canonical TimeSeries output, so the
+  # snapshot value equals time_series.rows[-1].value exactly (not just
+  # within tolerance).  Convention name reuses sovereign's
+  # ``yield_round_decimals`` so the cross-config lint enforces both
+  # surfaces stay aligned at 4 decimals.
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign rates tool.  Threaded through both the snapshot path
+      AND the canonical TimeSeries builder so the two cannot disagree
+      numerically.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals is the default ``compute_level_metrics`` was
+      using prior to this convention being explicit.  Snapshot's
+      ``z_score`` is rounded via this knob so YAML edits flow
+      through to runtime behaviour.  Matches sovereign yield_levels.
+    valid_range: [0, 8]
+
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches sovereign yield_levels.
+    valid_range: [0, 8]
+
+methodology:
+  what_it_does: |
+    Fetches one (curve_family, tenor) OIS par-swap-rate series, cleans
+    it, and returns a snapshot: current rate, period changes (daily /
+    weekly / monthly), rolling z-score against the 252-day window,
+    trailing range stats (high / low / percentile within the trailing
+    252 days), and the observation count over the user's lookback_days
+    window.  Plus the canonical ``time_series`` payload over the
+    displayed window.
+
+  assumptions:
+    - "Rates stored as percent (4.25 = 4.25%)."
+    - "Same z-score conventions as sovereign yield_levels / curve_spread / curve_move_classifier — cross-config lint enforces it."
+    - "Trading-day-based period offsets (after ffill the series is approx daily)."
+    - "Trailing range / percentile window locked at 252 trading days
+       in V1; see planned_extensions for the path to configurability."
+    - "lookback_days controls fetch range and observation_count's
+       cutoff window, NOT the rolling stat window or the trailing
+       range window — those are independent conventions in this YAML."
+    - "Observation-count cutoff is anchored to the data's latest
+       observation date (not date.today()), matching the legacy OIS
+       single-file tool's behaviour.  Sovereign yield_levels currently
+       anchors to date.today(); the inconsistency is documented in
+       sovereign yield_levels' planned_extensions and will be
+       reconciled in a separate PR."
+
+  citations: []
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked at
+       252 because the output fields high_252d_pct / low_252d_pct /
+       percentile_252d embed the number.  Path to configurability
+       mirrors sovereign yield_levels' planned_extensions: rename
+       schema fields to high_window_pct / low_window_pct /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute()."
+    - "Sovereign-vs-OIS observation_count anchoring consistency.  OIS
+       rate_level anchors observation_count's cutoff to the latest
+       observation in the series; sovereign yield_levels anchors to
+       date.today().  Aligning these is a separate PR — it's a
+       behaviour change, not a config one."
