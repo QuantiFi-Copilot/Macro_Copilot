@@ -59,7 +59,10 @@ from rates_agent.ois.tools.schemas import (  # noqa: E402
 from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
     calculate_ois_cross_market_spread,
 )
-from rates_agent.ois.tools.curve_spread import calculate_ois_curve_spread  # noqa: E402
+from rates_agent.ois.tools.curve_spread import (  # noqa: E402
+    CONFIG_PATH as OIS_CURVE_SPREAD_CONFIG_PATH,
+    calculate_ois_curve_spread,
+)
 from rates_agent.ois.tools.forward_rate import calculate_ois_forward_rate  # noqa: E402
 from rates_agent.ois.tools.rate_level import (  # noqa: E402
     CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
@@ -311,7 +314,7 @@ def calculate_ois_curve_spread_tool(
     short_tenor: str,
     long_tenor: str,
     lookback_days: int = 365,
-    field_name: str = "PX_LAST",
+    field_name: str = "",
 ) -> str:
     """Calculate the basis-point spread between two tenor points on the
     SAME OIS curve (e.g. SOFR 2s10s, ESTR 1s5s, SONIA 5s30s), plus its
@@ -341,20 +344,92 @@ def calculate_ois_curve_spread_tool(
     lookback_days : int, optional
         Calendar days of displayed history (default 365).
     field_name : str, optional
-        Observation field (default 'PX_LAST').
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_swap_rate_field`` convention
+        from curve_spread/config.yaml (currently 'PX_LAST').  Pass an
+        explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / curve_move_classifier so the YAML
+        default actually flows through.
     """
-    return _run_tool(
-        tool_name="calculate_ois_curve_spread_tool",
-        schema_cls=OISCurveSpreadInput,
-        tool_fn=calculate_ois_curve_spread,
-        kwargs=dict(
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_swap_rate_field``.  Without this, the LLM omitting
+    # field_name would always hit a hardcoded default regardless of
+    # what the YAML says — same shadowing pattern fixed for sovereign
+    # curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = OISCurveSpreadInput(
             curve_family=curve_family,
             short_tenor=short_tenor,
             long_tenor=long_tenor,
             lookback_days=lookback_days,
-            field_name=field_name,
-        ),
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("[calculate_ois_curve_spread_tool] input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("[calculate_ois_curve_spread_tool] failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the curve_spread tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors sovereign
+    # get_yield_levels_tool + OIS calculate_ois_rate_level_tool.
+    try:
+        cs_config = load_tool_config(OIS_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_ois_curve_spread(
+            engine=engine, params=params, config=cs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_curve_spread_tool] unhandled error for %s %s/%s",
+            params.curve_family, params.short_tenor, params.long_tenor,
+        )
+        return json.dumps(
+            {"error": f"calculate_ois_curve_spread_tool failed for "
+             f"{params.curve_family} "
+             f"{params.short_tenor}/{params.long_tenor}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_ois_curve_spread_tool] tool call complete: %s %s/%s → %s",
+        params.curve_family, params.short_tenor, params.long_tenor, status,
     )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip both the bespoke time_series list AND the canonical
+    # TimeSeries payloads from the LLM-facing response.  Frontend /
+    # future REST surfaces get the full payload via the dict
+    # result; the LLM doesn't need every historical row to answer
+    # "where's SOFR 2s10s?".
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_spread", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series") or [])
+    if bespoke_rows:
+        logger.info(
+            "[calculate_ois_curve_spread_tool] withheld %d time_series rows from LLM context.",
+            bespoke_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================
