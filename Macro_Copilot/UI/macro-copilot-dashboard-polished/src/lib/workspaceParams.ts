@@ -49,6 +49,21 @@ export const FX_PAIRS: { value: string; label: string }[] = [
   { value: 'EURJPY', label: 'EURJPY' },
 ];
 
+export const FX_CURRENCIES: { value: string; label: string }[] = [
+  { value: 'USD', label: 'USD' },
+  { value: 'EUR', label: 'EUR' },
+  { value: 'GBP', label: 'GBP' },
+  { value: 'JPY', label: 'JPY' },
+  { value: 'AUD', label: 'AUD' },
+  { value: 'CAD', label: 'CAD' },
+  { value: 'CHF', label: 'CHF' },
+];
+
+export const FX_THESIS_VIEWS: { value: string; label: string }[] = [
+  { value: 'long', label: 'Long' },
+  { value: 'short', label: 'Short' },
+];
+
 export const FX_FORWARD_TENORS: { value: string; label: string }[] = [
   { value: '1W', label: '1W' },
   { value: '1M', label: '1M' },
@@ -306,6 +321,32 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_currency_thesis_monitor':
+      return [
+        {
+          key: 'currency',
+          label: 'Currency',
+          options: FX_CURRENCIES,
+          value: get('currency', 'USD'),
+        },
+        {
+          key: 'view',
+          label: 'View',
+          options: FX_THESIS_VIEWS,
+          value: get('view', 'long'),
+        },
+        {
+          key: 'top_n',
+          label: 'Rows',
+          options: [
+            { value: '3', label: 'Top 3' },
+            { value: '5', label: 'Top 5' },
+            { value: '8', label: 'Top 8' },
+          ],
+          value: get('top_n', '5'),
+        },
+      ];
+
     case 'fx_regime_classifier':
       return [
         {
@@ -374,6 +415,7 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'fx_trade_setup' ||
     view === 'fx_macro_risk_overlay' ||
     view === 'fx_correlation_beta' ||
+    view === 'fx_currency_thesis_monitor' ||
     view === 'fx_regime_classifier' ||
     view === 'fx_vol_risk_premium'
   );
@@ -466,6 +508,12 @@ export function viewTitle(
       return `${pair} correlation beta`;
     }
 
+    case 'fx_currency_thesis_monitor': {
+      const currency = params['currency'] ?? 'USD';
+      const viewName = params['view'] ?? 'long';
+      return `${viewName} ${currency} thesis`;
+    }
+
     case 'fx_regime_classifier': {
       const pair = params['anchor_pair'] ?? 'EURUSD';
       return `FX regime · ${pair}`;
@@ -530,6 +578,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_correlation_beta':
       return 'FX return correlation, beta and dominant macro driver diagnostics.';
+
+    case 'fx_currency_thesis_monitor':
+      return 'Currency-level breadth check for validating or challenging a long/short FX thesis.';
 
     case 'fx_regime_classifier':
       return 'Broad FX regime across USD pressure, risk, volatility and carry.';

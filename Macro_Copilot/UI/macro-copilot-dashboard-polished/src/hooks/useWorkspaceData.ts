@@ -34,6 +34,7 @@ import type {
 import {
   fetchDetailFXCarry,
   fetchDetailFXCorrelationBeta,
+  fetchDetailFXCurrencyThesis,
   fetchDetailFXDataHealth,
   fetchDetailFXForwardCurve,
   fetchDetailFXMacroRiskOverlay,
@@ -48,6 +49,7 @@ import {
 import type {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXCurrencyThesisResponse,
   FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
@@ -77,6 +79,7 @@ export type WorkspaceData =
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
   | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
   | { kind: 'fx_correlation_beta'; data: FXCorrelationBetaResponse }
+  | { kind: 'fx_currency_thesis_monitor'; data: FXCurrencyThesisResponse }
   | { kind: 'fx_regime_classifier'; data: FXRegimeClassifierResponse }
   | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };
 
@@ -349,6 +352,20 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_correlation_beta', data: out };
+          break;
+        }
+
+        case 'fx_currency_thesis_monitor': {
+          const viewParam = pick(params, 'view', 'long');
+          const out = await fetchDetailFXCurrencyThesis({
+            currency: pick(params, 'currency', 'USD'),
+            view: viewParam === 'short' ? 'short' : 'long',
+            top_n: params['top_n'] ? Number(params['top_n']) : undefined,
+            lookback_days: pickLookback(params),
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_currency_thesis_monitor', data: out };
           break;
         }
 

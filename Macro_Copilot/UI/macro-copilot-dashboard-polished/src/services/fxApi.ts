@@ -1,6 +1,7 @@
 import type {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXCurrencyThesisResponse,
   FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
@@ -163,6 +164,20 @@ export function fetchDetailFXCorrelationBeta(
   params: FXCorrelationBetaDetailParams,
 ): Promise<FXCorrelationBetaResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/correlation-beta${buildQuery(params)}`);
+}
+
+export type FXCurrencyThesisDetailParams = {
+  currency?: string;
+  view?: 'long' | 'short';
+  lookback_days?: number;
+  top_n?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXCurrencyThesis(
+  params: FXCurrencyThesisDetailParams,
+): Promise<FXCurrencyThesisResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/currency-thesis-monitor${buildQuery(params)}`);
 }
 
 export type FXRegimeClassifierDetailParams = {

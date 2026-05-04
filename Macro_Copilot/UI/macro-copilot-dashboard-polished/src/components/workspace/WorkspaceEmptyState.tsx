@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LineChart, BarChart3, Activity, Zap, Gauge, Database, Network } from 'lucide-react';
+import { LineChart, BarChart3, Activity, Zap, Gauge, Database, Network, Target } from 'lucide-react';
 
 type QuickLaunch = {
   label: string;
@@ -56,6 +56,12 @@ const QUICK_LAUNCHES: QuickLaunch[] = [
     subtitle: 'Macro correlation and beta stack',
     icon: <Network size={14} />,
     url: '/workspace?tool=fx_correlation_beta&pair=EURUSD&window_observations=63',
+  },
+  {
+    label: 'Long AUD thesis',
+    subtitle: 'Currency pressure validation',
+    icon: <Target size={14} />,
+    url: '/workspace?tool=fx_currency_thesis_monitor&currency=AUD&view=long&top_n=5',
   },
   {
     label: 'FX data health',

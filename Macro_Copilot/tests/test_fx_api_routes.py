@@ -33,6 +33,11 @@ from fx_agent.macro.tools.correlation_beta.schemas import (
     FXCorrelationBetaOutput,
     FXCorrelationBetaRow,
 )
+from fx_agent.macro.tools.currency_thesis_monitor.schemas import (
+    FXCurrencyThesisExpression,
+    FXCurrencyThesisMetric,
+    FXCurrencyThesisOutput,
+)
 from fx_agent.macro.tools.regime_classifier.schemas import (
     FXRegimeClassifierOutput,
     FXRegimeComponent,
@@ -387,6 +392,65 @@ def test_fx_regime_classifier_detail_route_calls_tool():
     params = mock_tool.call_args.kwargs["params"]
     assert params.anchor_pair == "EURUSD"
     assert params.tenor == "1M"
+
+
+def test_fx_currency_thesis_monitor_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXCurrencyThesisOutput(
+        currency="AUD",
+        view="long",
+        as_of_date="2026-04-30",
+        thesis_status="supportive",
+        confidence="high",
+        confirmation_score=2.5,
+        summary="Long AUD thesis is supportive with high confidence.",
+        currency_pressure_score_pct=2.71,
+        currency_rank=1,
+        strongest_currency="AUD",
+        weakest_currency="USD",
+        confirmations=["AUD ranks #1 by pressure."],
+        challenges=[],
+        best_expressions=[
+            FXCurrencyThesisExpression(
+                pair="AUDUSD",
+                expression="Long AUD via AUDUSD",
+                rationale="AUDUSD monthly move contributes to AUD pressure.",
+                currency_contribution_pct=3.91,
+                z_score=2.13,
+                monthly_change_pct=3.91,
+            )
+        ],
+        stretched_counter_moves=[],
+        metrics_to_watch=[
+            FXCurrencyThesisMetric(
+                name="AUD pressure score",
+                value="+2.71%",
+                status="confirming",
+                detail="Positive means broad currency strength.",
+            )
+        ],
+        invalidation_signals=["AUD pressure score flips against the thesis."],
+    )
+
+    with patch.object(
+        detail_module,
+        "get_fx_currency_thesis_monitor",
+        return_value=output,
+    ) as mock_tool:
+        result = detail_module.fx_currency_thesis_monitor_detail(
+            currency="AUD",
+            view="long",
+            lookback_days=365,
+            top_n=5,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.currency == "AUD"
+    assert params.view == "long"
+    assert params.top_n == 5
 
 
 def test_fx_correlation_beta_detail_route_calls_tool():

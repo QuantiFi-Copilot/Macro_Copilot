@@ -43,6 +43,7 @@ import FXScannerView from '../fx/FXScannerView';
 import FXTradeSetupView from '../fx/FXTradeSetupView';
 import FXMacroRiskOverlayView from '../fx/FXMacroRiskOverlayView';
 import FXCorrelationBetaView from '../fx/FXCorrelationBetaView';
+import FXCurrencyThesisMonitorView from '../fx/FXCurrencyThesisMonitorView';
 import FXRegimeClassifierView from '../fx/FXRegimeClassifierView';
 import FXVolRiskPremiumView from '../fx/FXVolRiskPremiumView';
 
@@ -63,6 +64,7 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
   'fx_trade_setup',
   'fx_macro_risk_overlay',
   'fx_correlation_beta',
+  'fx_currency_thesis_monitor',
   'fx_regime_classifier',
   'fx_vol_risk_premium',
 ]);
@@ -104,6 +106,8 @@ function extractAsOfDate(data: ReturnType<typeof useWorkspaceData>['data']): str
     case 'fx_macro_risk_overlay':
       return data.data.as_of_date ?? null;
     case 'fx_correlation_beta':
+      return data.data.as_of_date ?? null;
+    case 'fx_currency_thesis_monitor':
       return data.data.as_of_date ?? null;
     case 'fx_regime_classifier':
       return data.data.as_of_date ?? null;
@@ -300,6 +304,8 @@ function ViewBody({
       return <FXMacroRiskOverlayView payload={data.data} />;
     case 'fx_correlation_beta':
       return <FXCorrelationBetaView payload={data.data} />;
+    case 'fx_currency_thesis_monitor':
+      return <FXCurrencyThesisMonitorView payload={data.data} />;
     case 'fx_regime_classifier':
       return <FXRegimeClassifierView payload={data.data} />;
     case 'fx_vol_risk_premium':

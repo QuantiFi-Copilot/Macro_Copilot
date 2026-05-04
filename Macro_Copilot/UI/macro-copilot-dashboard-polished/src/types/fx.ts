@@ -218,6 +218,42 @@ export type FXCorrelationBetaResponse = {
   follow_ups: string[];
 };
 
+export type FXCurrencyThesisMetric = {
+  name: string;
+  value: string;
+  status: 'confirming' | 'challenging' | 'neutral';
+  detail: string;
+};
+
+export type FXCurrencyThesisExpression = {
+  pair: string;
+  expression: string;
+  rationale: string;
+  currency_contribution_pct: number | null;
+  z_score: number | null;
+  monthly_change_pct: number | null;
+};
+
+export type FXCurrencyThesisResponse = {
+  currency: string;
+  view: 'long' | 'short';
+  as_of_date: string | null;
+  thesis_status: 'supportive' | 'mixed' | 'hostile';
+  confidence: 'high' | 'medium' | 'low';
+  confirmation_score: number;
+  summary: string;
+  currency_pressure_score_pct: number;
+  currency_rank: number | null;
+  strongest_currency: string | null;
+  weakest_currency: string | null;
+  confirmations: string[];
+  challenges: string[];
+  best_expressions: FXCurrencyThesisExpression[];
+  stretched_counter_moves: FXCurrencyThesisExpression[];
+  metrics_to_watch: FXCurrencyThesisMetric[];
+  invalidation_signals: string[];
+};
+
 export type FXRegimeComponent = {
   name: string;
   label: string;

@@ -6,6 +6,7 @@
 import {
   FXCarryResponse,
   FXCorrelationBetaResponse,
+  FXCurrencyThesisResponse,
   FXDataHealthResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
@@ -299,6 +300,7 @@ export type WorkspaceViewType =
   | 'fx_trade_setup'
   | 'fx_macro_risk_overlay'
   | 'fx_correlation_beta'
+  | 'fx_currency_thesis_monitor'
   | 'fx_regime_classifier'
   | 'fx_vol_risk_premium';
 
@@ -323,5 +325,6 @@ export type WorkspaceData =
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
   | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
   | { kind: 'fx_correlation_beta'; data: FXCorrelationBetaResponse }
+  | { kind: 'fx_currency_thesis_monitor'; data: FXCurrencyThesisResponse }
   | { kind: 'fx_regime_classifier'; data: FXRegimeClassifierResponse }
   | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };

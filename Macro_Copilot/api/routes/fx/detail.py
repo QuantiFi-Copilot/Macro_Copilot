@@ -43,6 +43,11 @@ from fx_agent.macro.tools.correlation_beta.schemas import (
     FXCorrelationBetaInput,
     FXCorrelationBetaOutput,
 )
+from fx_agent.macro.tools.currency_thesis_monitor import get_fx_currency_thesis_monitor
+from fx_agent.macro.tools.currency_thesis_monitor.schemas import (
+    FXCurrencyThesisInput,
+    FXCurrencyThesisOutput,
+)
 from fx_agent.macro.tools.regime_classifier import classify_fx_regime
 from fx_agent.macro.tools.regime_classifier.schemas import (
     FXRegimeClassifierInput,
@@ -368,6 +373,45 @@ def fx_correlation_beta_detail(
         raise HTTPException(status_code=503, detail=f"FX correlation/beta failed: {exc}")
 
     _tool_result_or_raise(result, f"FX correlation/beta for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/currency-thesis-monitor",
+    response_model=FXCurrencyThesisOutput,
+    summary="FX Currency Thesis Monitor Detail (workspace)",
+)
+def fx_currency_thesis_monitor_detail(
+    currency: str = Query(default="USD", description="G10 currency, e.g. USD, EUR, JPY."),
+    view: str = Query(default="long", pattern="^(long|short)$"),
+    lookback_days: int = Query(default=365, ge=90, le=7300),
+    top_n: int = Query(default=5, ge=1, le=12),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXCurrencyThesisInput(
+            currency=currency,
+            view=view,
+            lookback_days=lookback_days,
+            top_n=top_n,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_currency_thesis_monitor(params=params)
+    except ValueError as exc:
+        logger.info("detail/currency-thesis-monitor: no data for %s %s", view, currency)
+        raise HTTPException(
+            status_code=404,
+            detail=f"FX currency thesis monitor for {view} {currency}: {exc}",
+        )
+    except Exception as exc:
+        logger.exception("detail/currency-thesis-monitor: tool failed for %s", currency)
+        raise HTTPException(status_code=503, detail=f"FX currency thesis monitor failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX currency thesis monitor for {view} {currency}")
     return result
 
 
