@@ -298,6 +298,42 @@ class ToolConfig(BaseModel):
             )
         return self.conventions[key].value
 
+    def conventions_hash(self) -> str:
+        """Content-hash of the declared ``{name: value}`` pairs.
+
+        Identity-faithful by construction:
+          - Two configs with identical convention values produce the
+            same hash regardless of insertion order (canonical-JSON
+            with ``sort_keys=True``).
+          - Methodology / source / rationale / valid_range fields do
+            NOT feed the hash — they are documentation, not identity.
+            The cross-config lint (``shared.config.lint``) already
+            uses this same identity definition: it flags drift on
+            ``value`` and ignores documentary fields.
+          - A ``Convention.value`` change (e.g. someone bumps
+            ``z_score_window_days`` from 252 to 504) changes the hash
+            and therefore invalidates any cache key derived from it.
+
+        Used by the primitive→operator adapter
+        (``shared.artifacts.adapters.from_time_series``) when
+        constructing ``PrimitiveStep.tool_config_hash`` so an artifact
+        produced under one YAML is not silently mistaken for one
+        produced under a methodology-edited YAML.
+
+        Future-proofing: the hash recipe is intentionally simple
+        (``sha256(json.dumps({name: value}, sort_keys=True))``) so
+        callers in other languages can reproduce it without depending
+        on Pydantic.  Changing the recipe is a breaking change to
+        every persisted lineage object — review carefully.
+        """
+        import hashlib
+        import json
+        as_pairs = {name: conv.value for name, conv in self.conventions.items()}
+        canonical = json.dumps(
+            as_pairs, sort_keys=True, separators=(",", ":"), default=str,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 # ============================================================================
 # LOADER + CACHE
