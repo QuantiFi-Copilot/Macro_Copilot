@@ -64,7 +64,10 @@ from rates_agent.ois.tools.curve_spread import (  # noqa: E402
     CONFIG_PATH as OIS_CURVE_SPREAD_CONFIG_PATH,
     calculate_ois_curve_spread,
 )
-from rates_agent.ois.tools.forward_rate import calculate_ois_forward_rate  # noqa: E402
+from rates_agent.ois.tools.forward_rate import (  # noqa: E402
+    CONFIG_PATH as OIS_FORWARD_RATE_CONFIG_PATH,
+    calculate_ois_forward_rate,
+)
 from rates_agent.ois.tools.rate_level import (  # noqa: E402
     CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
     get_ois_rate_level,
@@ -444,7 +447,7 @@ def calculate_ois_forward_rate_tool(
     start_date: str = "",
     end_date: str = "",
     lookback_days: int = 365,
-    field_name: str = "PX_LAST",
+    field_name: str = "",
 ) -> str:
     """Calculate the implied forward rate between two points on an OIS
     curve (e.g. 1Y1Y SOFR, 5Y5Y ESTR, 2Y1Y SONIA), plus its 1-year
@@ -491,24 +494,97 @@ def calculate_ois_forward_rate_tool(
     lookback_days : int, optional
         Calendar days of displayed history (default 365).
     field_name : str, optional
-        Observation field (default 'PX_LAST').
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_swap_rate_field`` convention
+        from forward_rate/config.yaml (currently 'PX_LAST').  Pass an
+        explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / curve_move_classifier + the prior
+        OIS migrations.
     """
-    # MCP serializes scalars only — map "" → None before Pydantic validates.
-    kwargs = dict(
-        curve_family=curve_family,
-        start_tenor=start_tenor or None,
-        end_tenor=end_tenor or None,
-        start_date=start_date or None,
-        end_date=end_date or None,
-        lookback_days=lookback_days,
-        field_name=field_name,
+    # MCP serializes scalars only — map "" → None before Pydantic
+    # validates.  field_name uses the same empty-string sentinel
+    # pattern: "" → None so the YAML's ``default_swap_rate_field``
+    # actually flows through (was hardcoded "PX_LAST" which silently
+    # shadowed the YAML — same shadowing pattern fixed for sovereign
+    # curve_move_classifier in commit b2605ee).
+    field_name_arg = field_name if field_name else None
+    try:
+        params = OISForwardRateInput(
+            curve_family=curve_family,
+            start_tenor=start_tenor or None,
+            end_tenor=end_tenor or None,
+            start_date=start_date or None,
+            end_date=end_date or None,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_ois_forward_rate_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_forward_rate_tool] failed to connect to TimescaleDB"
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the forward_rate tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors sovereign
+    # get_yield_levels_tool + the prior OIS migrations.
+    try:
+        fr_config = load_tool_config(OIS_FORWARD_RATE_CONFIG_PATH)
+        result = calculate_ois_forward_rate(
+            engine=engine, params=params, config=fr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_forward_rate_tool] unhandled error for %s",
+            params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"calculate_ois_forward_rate_tool failed for "
+             f"{params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_ois_forward_rate_tool] tool call complete: %s → %s",
+        params.curve_family, status,
     )
-    return _run_tool(
-        tool_name="calculate_ois_forward_rate_tool",
-        schema_cls=OISForwardRateInput,
-        tool_fn=calculate_ois_forward_rate,
-        kwargs=kwargs,
-    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the bespoke time_series list AND both canonical TimeSeries
+    # payloads from the LLM-facing response.  Frontend / future REST
+    # surfaces consume the full dict directly via the tool result.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_forward", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series") or [])
+    if bespoke_rows:
+        logger.info(
+            "[calculate_ois_forward_rate_tool] withheld %d "
+            "time_series rows from LLM context.",
+            bespoke_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

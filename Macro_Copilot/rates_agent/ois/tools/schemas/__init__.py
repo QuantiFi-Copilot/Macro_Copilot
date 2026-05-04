@@ -24,8 +24,13 @@ from rates_agent.ois.tools.rate_level.schemas import (
     OISRateLevelOutput,
 )
 
-# Forward rate (tenor- or date-window forward)
-from rates_agent.ois.tools.schemas.forward_rate import (
+# Forward rate (tenor- or date-window forward) — re-exported from
+# the per-tool-folder package
+# (``rates_agent/ois/tools/forward_rate/``).  The schemas hub stays
+# as the legacy import surface for callers / tests that haven't
+# migrated to the package path; new code should prefer
+# ``from rates_agent.ois.tools.forward_rate import OISForwardRateInput``.
+from rates_agent.ois.tools.forward_rate.schemas import (
     OISForwardRateCurrentMetrics,
     OISForwardRateInput,
     OISForwardRateOutput,

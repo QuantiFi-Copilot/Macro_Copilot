@@ -1,0 +1,271 @@
+# =============================================================================
+# calculate_ois_forward_rate_tool — tool configuration
+# =============================================================================
+# Canonical record of the OIS forward-rate tool's conventions and
+# methodology.  Loaded by ``shared.config.load_tool_config`` at
+# compute() time.
+#
+# This is the FOURTH OIS tool brought onto the per-tool-folder pattern
+# (after rate_level — PR #61, curve_spread — PR #62/#63, and
+# cross_market_spread — PR #64/#65).  Unlike the prior three, OIS
+# forward_rate has NO sovereign analog: forward rates are an OIS-native
+# atomic unit of rates speak, derived from the par OIS curve via the
+# dual-compounding bootstrap in ``shared.analytics.curve_bootstrap``.
+# So this YAML sets the OIS forward-rate convention precedent rather
+# than mirroring an existing sovereign config.  Where the conventions
+# overlap with the prior OIS tools (z_score_*, ffill_limit_days,
+# default_swap_rate_field), the values match exactly so the cross-
+# config lint stays clean.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_ois_forward_rate_tool
+  domain: ois
+  description: |
+    Implied forward rate between two points on an OIS curve, derived
+    from the par-rate grid via the dual-compounding bootstrap (simple
+    for T ≤ 1Y, annual for T > 1Y) in
+    ``shared.analytics.curve_bootstrap``.  Two equivalent input modes:
+
+      1. Tenor-based: (start_tenor, end_tenor) — e.g. 1Y/2Y for "1Y1Y",
+         5Y/10Y for "5Y5Y".  Year fractions are constants every day.
+
+      2. Date-based: (start_date, end_date) — e.g. ad-hoc windows
+         aligned to central-bank meetings.  Year fractions re-anchor
+         per trade date using the curve's day-count basis (ACT/360 or
+         ACT/365), so the window shrinks as history approaches the
+         start date; days where the start has already passed are
+         skipped.
+
+    Emits:
+      - ``current_metrics``: snapshot of the latest observation
+        (current forward rate in percent, daily bps change, 252-day
+        rolling z-score, trailing 252-day high/low/percentile, plus
+        the interpolated start/end spot rates for context).
+
+      - bespoke wire-frozen ``time_series`` (List[
+        OISForwardRateTimeSeriesRow]) preserved for backward-compat
+        with the legacy single-file tool, AND two canonical
+        ``shared.schemas.time_series.TimeSeries`` payloads for the
+        upcoming primitive-to-operator bridge:
+
+        * ``time_series_forward`` (units = PERCENT) — the forward series
+        * ``time_series_zscore`` (units = Z_SCORE) — the rolling z-score
+
+    All three series are built from the same display window so they
+    cannot drift.
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool AND the prior three OIS tools — the
+      cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches the other rates tools.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and every other rates tool.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every sovereign rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_pct, low_252d_pct,
+  # percentile_252d) are wire-frozen.  compute() raises
+  # NotImplementedError if this is set to anything other than 252;
+  # see methodology.planned_extensions for the path to make it
+  # configurable.  Same wire-freeze rationale as rate_level /
+  # cross_market_spread / sovereign yield_levels.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — percent (forward rate, spots, range)
+  # ---------------------------------------------------------------------------
+  pct_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Round percent output (forward_rate_pct, start/end spot rates,
+      trailing high/low) to 4 decimals.  Threaded through the
+      bespoke time_series rows AND the canonical
+      ``time_series_forward`` so a YAML override above 4 is NOT
+      silently truncated by safe_float's own default of 4.  Same
+      boundary-shadowing fix class as the OIS curve_spread P2 fix
+      (PR #63), applied day one here.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (daily_change_bps)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (daily_change_bps) to 0.01 bps.  Display
+      precision; matches the precision Bloomberg / DLib use for
+      swap-curve metrics.  Threaded into ``delta_bps(decimals=...)``
+      so the daily_change_bps respects the YAML — the delta_bps
+      default of 2 would otherwise silently shadow this override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Threaded explicitly to
+      every safe_float call on the z-score column at the output
+      boundary (snapshot + bespoke time_series + canonical
+      time_series_zscore), so a YAML override above 4 is NOT silently
+      truncated by safe_float's own default of 4 — day-one
+      application of the OIS curve_spread P2 fix.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (start_years, end_years)
+  # ---------------------------------------------------------------------------
+  # Date-based forwards compute year fractions via the day-count basis
+  # (ACT/360 or ACT/365); rounding the displayed year fractions
+  # avoids spurious precision at the wire (e.g. 1.0027777... → 1.0028).
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the start_years / end_years
+      fields in current_metrics.  4 decimals matches the legacy
+      hardcoded value.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field — OIS-specific name
+  # ---------------------------------------------------------------------------
+  default_swap_rate_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid par-swap rate is the canonical OIS observation.  Same name
+      and value as the prior three OIS tools (rate_level,
+      curve_spread, cross_market_spread) — the cross-config lint
+      enforces the value match across all OIS tools that declare
+      this convention.  LLM/HTTP wrappers must use the empty/None
+      sentinel so this default flows through.
+
+methodology:
+  what_it_does: |
+    Implied forward rate between two points on an OIS curve, derived
+    from the par-rate grid via the dual-compounding bootstrap (simple
+    for T ≤ 1Y, annual for T > 1Y) in
+    ``shared.analytics.curve_bootstrap``:
+
+      DF(T) = 1 / (1 + R·T)            for T ≤ 1 year
+      DF(T) = 1 / (1 + R)**T           for T > 1 year
+      forward = (DF_start / DF_end − 1) / (end_years − start_years)
+
+    Two equivalent input modes (tenor-based and date-based) — see the
+    tool description.  Per-trade-date anchoring: tenor mode uses
+    constant year fractions; date mode re-anchors per day using the
+    curve's day-count basis (ACT/360 or ACT/365), so the window
+    shrinks as history approaches the start date.
+
+  assumptions:
+    - "OIS par swap rates are stored as percent (4.25 = 4.25%); forward
+       output also in percent."
+    - "Same z-score conventions as the other rates tools."
+    - "Dual compounding: simple for T ≤ 1Y, annual for T > 1Y (matches
+       desk convention for OIS curves)."
+    - "OIS par rates are treated as zero rates without an iterative
+       bootstrap; the float leg is daily-compounded overnight with no
+       funding spread, so the par rate ≈ the zero rate."
+    - "Day-count basis is curve-family-specific (ACT/360 for SOFR /
+       ESTR / SONIA / TONA, ACT/365 for AONIA / CORRA, etc.)."
+    - "Display window cutoff is anchored to the forward series' latest
+       date (the curve's as-of date), NOT date.today() — keeps display
+       consistent across weekends / holidays when the DB lags the
+       calendar.  Matches the other OIS tools."
+    - "lookback_days controls the *display* window only.  The rolling
+       z-score window and the trailing range window are independent
+       conventions in this YAML."
+
+  citations: []
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked at
+       252 because the output fields high_252d_pct / low_252d_pct /
+       percentile_252d embed the number.  Path to configurability:
+       rename schema fields to high_window_pct / low_window_pct /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute()."
+    - "Period changes: the legacy single-file tool only emits
+       daily_change_bps.  weekly_change_bps and monthly_change_bps
+       could be added (matching the snapshot shape on rate_level /
+       cross_market_spread) once we agree on the period_offsets
+       convention block here.  Deferred to a follow-up PR so the
+       wire shape doesn't change in this migration."
+    - "ffill behaviour on the forward-rate series uses the legacy
+       hardcoded ``ffill(limit=5)`` in compute(), but this YAML
+       declares ``ffill_limit_days`` so a future PR can thread it
+       through cleanly.  Done in this PR — see compute()."
+    - "Sovereign vs OIS: there is no sovereign forward_rate tool yet.
+       If one is built, the conventions here (z_score_window_days,
+       z_score_min_periods, z_score_ddof, z_score_buffer_multiplier,
+       ffill_limit_days, pct_round_decimals, z_score_round_decimals)
+       should be reused so the cross-config lint enforces alignment."
