@@ -1,0 +1,18 @@
+methodology:
+  description: >-
+    Deterministic FX regime classifier combining broad USD pressure, macro risk
+    proxies, implied-vs-realized volatility premium, and carry-basket
+    availability.
+  components:
+    usd_regime:
+      source: fx_agent/spot/tools/usd_pressure/compute.py::scan_usd_pressure
+    risk_regime:
+      source: fx_agent/macro/tools/risk_overlay/compute.py::get_fx_macro_risk_overlay
+    vol_regime:
+      source: fx_agent/vol/tools/vol_risk_premium_scanner/compute.py::scan_fx_vol_risk_premium
+    carry_regime:
+      source: fx_agent/forwards/tools/carry_basket/compute.py::build_fx_carry_basket
+  output_style: >-
+    The tool returns a deterministic desk-level regime label and component
+    scores. The LLM may summarize the result but should not override the labels.
+

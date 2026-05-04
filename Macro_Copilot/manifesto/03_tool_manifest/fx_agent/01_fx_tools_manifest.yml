@@ -221,6 +221,32 @@ tools:
 
     validation_status: tested
 
+  - name: classify_fx_regime
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: classify_fx_regime_tool
+      schema: fx_agent/macro/tools/regime_classifier/schemas.py::FXRegimeClassifierInput
+      compute: fx_agent/macro/tools/regime_classifier/compute.py::classify_fx_regime
+      config: fx_agent/macro/tools/regime_classifier/config.yaml
+
+    one_liner: >-
+      Classify the broad FX regime across USD pressure, risk proxies,
+      volatility premium, and carry availability.
+
+    related_tools:
+      - scan_usd_pressure_tool
+      - get_fx_macro_risk_overlay_tool
+      - scan_fx_vol_risk_premium_tool
+      - build_fx_carry_basket_tool
+
+    validation_status: tested
+
   - name: get_fx_vol_risk_premium
     domain: fx
     sub_agent: vol

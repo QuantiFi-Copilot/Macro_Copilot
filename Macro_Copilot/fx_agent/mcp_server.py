@@ -43,6 +43,10 @@ from fx_agent.macro.tools.pair_compare import (  # noqa: E402
     FXPairCompareInput,
     compare_fx_pairs,
 )
+from fx_agent.macro.tools.regime_classifier import (  # noqa: E402
+    FXRegimeClassifierInput,
+    classify_fx_regime,
+)
 from fx_agent.macro.tools.trade_setup import (  # noqa: E402
     FXTradeSetupInput,
     get_fx_trade_setup,
@@ -534,6 +538,43 @@ def compare_fx_pairs_tool(
     except Exception as exc:
         logger.exception("[compare_fx_pairs_tool] failed")
         return _json_error(f"FX pair comparison failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def classify_fx_regime_tool(
+    anchor_pair: str = "EURUSD",
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    realized_window_observations: int = 21,
+    correlation_window_observations: int = 63,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Classify the broad FX regime across USD, risk, vol, and carry.
+
+    Use this when the user asks what FX regime we are in, whether the
+    environment is carry-friendly, whether USD weakness is broad, or wants a
+    desk-level summary before trade selection.
+    """
+    try:
+        params = FXRegimeClassifierInput(
+            anchor_pair=anchor_pair,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            realized_window_observations=realized_window_observations,
+            correlation_window_observations=correlation_window_observations,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[classify_fx_regime_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = classify_fx_regime(params=params)
+    except Exception as exc:
+        logger.exception("[classify_fx_regime_tool] failed")
+        return _json_error(f"FX regime classification failed: {exc}")
 
     return result.model_dump_json()
 
