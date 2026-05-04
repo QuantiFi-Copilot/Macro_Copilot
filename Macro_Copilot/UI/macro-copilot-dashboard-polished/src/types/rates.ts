@@ -5,6 +5,7 @@
 // ============================================================================
 import {
   FXCarryResponse,
+  FXCorrelationBetaResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -295,6 +296,7 @@ export type WorkspaceViewType =
   | 'fx_realized_vol'
   | 'fx_trade_setup'
   | 'fx_macro_risk_overlay'
+  | 'fx_correlation_beta'
   | 'fx_regime_classifier'
   | 'fx_vol_risk_premium';
 
@@ -317,5 +319,6 @@ export type WorkspaceData =
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
   | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
+  | { kind: 'fx_correlation_beta'; data: FXCorrelationBetaResponse }
   | { kind: 'fx_regime_classifier'; data: FXRegimeClassifierResponse }
   | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };

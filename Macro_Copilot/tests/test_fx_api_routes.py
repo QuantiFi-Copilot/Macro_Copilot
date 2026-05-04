@@ -23,6 +23,10 @@ from fx_agent.macro.tools.risk_overlay.schemas import (
     FXMacroRiskOverlayOutput,
     FXMacroRiskProxyRow,
 )
+from fx_agent.macro.tools.correlation_beta.schemas import (
+    FXCorrelationBetaOutput,
+    FXCorrelationBetaRow,
+)
 from fx_agent.macro.tools.regime_classifier.schemas import (
     FXRegimeClassifierOutput,
     FXRegimeComponent,
@@ -313,3 +317,45 @@ def test_fx_regime_classifier_detail_route_calls_tool():
     params = mock_tool.call_args.kwargs["params"]
     assert params.anchor_pair == "EURUSD"
     assert params.tenor == "1M"
+
+
+def test_fx_correlation_beta_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXCorrelationBetaOutput(
+        pair="EURUSD",
+        as_of_date="2026-04-30",
+        window_observations=63,
+        dominant_driver="DXY",
+        dominant_correlation=-0.89,
+        rows=[
+            FXCorrelationBetaRow(
+                ticker="DXY Curncy",
+                label="DXY",
+                proxy_family="USD",
+                observations=63,
+                correlation=-0.89,
+                beta=-0.93,
+                r_squared=0.79,
+                proxy_1m_change_pct=-1.5,
+                sensitivity_label="high negative sensitivity",
+                interpretation="EURUSD tends to fall when DXY rises.",
+            )
+        ],
+        summary="EURUSD's dominant macro sensitivity is DXY.",
+        risks=["High macro beta: DXY corr -0.89."],
+        follow_ups=["Show me the EURUSD macro risk overlay."],
+    )
+
+    with patch.object(detail_module, "get_fx_correlation_beta", return_value=output) as mock_tool:
+        result = detail_module.fx_correlation_beta_detail(
+            pair="EURUSD",
+            lookback_days=365,
+            window_observations=63,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.pair == "EURUSD"
+    assert params.window_observations == 63

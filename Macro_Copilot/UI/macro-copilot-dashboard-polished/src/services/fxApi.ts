@@ -1,5 +1,6 @@
 import type {
   FXCarryResponse,
+  FXCorrelationBetaResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -136,6 +137,19 @@ export function fetchDetailFXMacroRiskOverlay(
   params: FXMacroRiskOverlayDetailParams,
 ): Promise<FXMacroRiskOverlayResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/macro-risk-overlay${buildQuery(params)}`);
+}
+
+export type FXCorrelationBetaDetailParams = {
+  pair: string;
+  lookback_days?: number;
+  window_observations?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXCorrelationBeta(
+  params: FXCorrelationBetaDetailParams,
+): Promise<FXCorrelationBetaResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/correlation-beta${buildQuery(params)}`);
 }
 
 export type FXRegimeClassifierDetailParams = {

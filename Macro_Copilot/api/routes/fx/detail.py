@@ -33,6 +33,11 @@ from fx_agent.macro.tools.risk_overlay.schemas import (
     FXMacroRiskOverlayInput,
     FXMacroRiskOverlayOutput,
 )
+from fx_agent.macro.tools.correlation_beta import get_fx_correlation_beta
+from fx_agent.macro.tools.correlation_beta.schemas import (
+    FXCorrelationBetaInput,
+    FXCorrelationBetaOutput,
+)
 from fx_agent.macro.tools.regime_classifier import classify_fx_regime
 from fx_agent.macro.tools.regime_classifier.schemas import (
     FXRegimeClassifierInput,
@@ -295,6 +300,40 @@ def fx_macro_risk_overlay_detail(
         raise HTTPException(status_code=503, detail=f"FX macro risk overlay failed: {exc}")
 
     _tool_result_or_raise(result, f"FX macro risk overlay for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/correlation-beta",
+    response_model=FXCorrelationBetaOutput,
+    summary="FX Correlation/Beta Detail (workspace)",
+)
+def fx_correlation_beta_detail(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD, GBPUSD, USDJPY."),
+    lookback_days: int = Query(default=365, ge=90, le=7300),
+    window_observations: int = Query(default=63, ge=20, le=252),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXCorrelationBetaInput(
+            pair=pair,
+            lookback_days=lookback_days,
+            window_observations=window_observations,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = get_fx_correlation_beta(params=params)
+    except ValueError as exc:
+        logger.info("detail/correlation-beta: no data for %s", pair)
+        raise HTTPException(status_code=404, detail=f"FX correlation/beta for {pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/correlation-beta: tool failed for %s", pair)
+        raise HTTPException(status_code=503, detail=f"FX correlation/beta failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX correlation/beta for {pair}")
     return result
 
 

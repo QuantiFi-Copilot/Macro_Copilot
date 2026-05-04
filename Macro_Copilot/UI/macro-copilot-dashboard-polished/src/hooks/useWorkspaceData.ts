@@ -33,6 +33,7 @@ import type {
 
 import {
   fetchDetailFXCarry,
+  fetchDetailFXCorrelationBeta,
   fetchDetailFXForwardCurve,
   fetchDetailFXMacroRiskOverlay,
   fetchDetailFXRealizedVol,
@@ -45,6 +46,7 @@ import {
 
 import type {
   FXCarryResponse,
+  FXCorrelationBetaResponse,
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
@@ -71,6 +73,7 @@ export type WorkspaceData =
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
   | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
+  | { kind: 'fx_correlation_beta'; data: FXCorrelationBetaResponse }
   | { kind: 'fx_regime_classifier'; data: FXRegimeClassifierResponse }
   | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };
 
@@ -313,6 +316,23 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_macro_risk_overlay', data: out };
+          break;
+        }
+
+        case 'fx_correlation_beta': {
+          const pair = pick(params, 'pair', 'EURUSD');
+          if (!pair) throw new Error('fx_correlation_beta view requires pair');
+
+          const out = await fetchDetailFXCorrelationBeta({
+            pair,
+            window_observations: params['window_observations']
+              ? Number(params['window_observations'])
+              : undefined,
+            lookback_days: pickLookback(params),
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_correlation_beta', data: out };
           break;
         }
 

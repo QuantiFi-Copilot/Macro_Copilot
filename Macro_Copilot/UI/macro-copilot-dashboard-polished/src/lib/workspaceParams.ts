@@ -275,6 +275,22 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_correlation_beta':
+      return [
+        {
+          key: 'pair',
+          label: 'Pair',
+          options: FX_PAIRS,
+          value: get('pair', 'EURUSD'),
+        },
+        {
+          key: 'window_observations',
+          label: 'Window',
+          options: FX_VOL_WINDOWS,
+          value: get('window_observations', '63'),
+        },
+      ];
+
     case 'fx_regime_classifier':
       return [
         {
@@ -341,6 +357,7 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'fx_realized_vol' ||
     view === 'fx_trade_setup' ||
     view === 'fx_macro_risk_overlay' ||
+    view === 'fx_correlation_beta' ||
     view === 'fx_regime_classifier' ||
     view === 'fx_vol_risk_premium'
   );
@@ -425,6 +442,11 @@ export function viewTitle(
       return `${pair} macro risk overlay`;
     }
 
+    case 'fx_correlation_beta': {
+      const pair = params['pair'] ?? 'EURUSD';
+      return `${pair} correlation beta`;
+    }
+
     case 'fx_regime_classifier': {
       const pair = params['anchor_pair'] ?? 'EURUSD';
       return `FX regime · ${pair}`;
@@ -483,6 +505,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_macro_risk_overlay':
       return 'DXY, VIX, MOVE, SPX, WTI and gold context around one FX pair.';
+
+    case 'fx_correlation_beta':
+      return 'FX return correlation, beta and dominant macro driver diagnostics.';
 
     case 'fx_regime_classifier':
       return 'Broad FX regime across USD pressure, risk, volatility and carry.';

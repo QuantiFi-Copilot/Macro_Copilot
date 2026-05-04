@@ -152,6 +152,31 @@ export type FXMacroRiskOverlayResponse = {
   proxy_rows: FXMacroRiskProxyRow[];
 };
 
+export type FXCorrelationBetaRow = {
+  ticker: string;
+  label: string;
+  proxy_family: string;
+  observations: number;
+  correlation: number | null;
+  beta: number | null;
+  r_squared: number | null;
+  proxy_1m_change_pct: number | null;
+  sensitivity_label: string;
+  interpretation: string;
+};
+
+export type FXCorrelationBetaResponse = {
+  pair: string;
+  as_of_date: string;
+  window_observations: number;
+  dominant_driver: string | null;
+  dominant_correlation: number | null;
+  rows: FXCorrelationBetaRow[];
+  summary: string;
+  risks: string[];
+  follow_ups: string[];
+};
+
 export type FXRegimeComponent = {
   name: string;
   label: string;
