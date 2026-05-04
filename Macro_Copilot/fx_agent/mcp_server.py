@@ -43,6 +43,10 @@ from fx_agent.macro.tools.pair_compare import (  # noqa: E402
     FXPairCompareInput,
     compare_fx_pairs,
 )
+from fx_agent.macro.tools.correlation_beta import (  # noqa: E402
+    FXCorrelationBetaInput,
+    get_fx_correlation_beta,
+)
 from fx_agent.macro.tools.regime_classifier import (  # noqa: E402
     FXRegimeClassifierInput,
     classify_fx_regime,
@@ -437,6 +441,38 @@ def get_fx_macro_risk_overlay_tool(
     except Exception as exc:
         logger.exception("[get_fx_macro_risk_overlay_tool] failed")
         return _json_error(f"FX macro risk overlay failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_correlation_beta_tool(
+    pair: str,
+    lookback_days: int = 365,
+    window_observations: int = 63,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Estimate FX correlation and beta to macro risk proxies.
+
+    Use this when the user asks what a pair is sensitive to, whether DXY/SPX/VIX
+    is the dominant driver, or wants a risk-factor view before sizing a trade.
+    """
+    try:
+        params = FXCorrelationBetaInput(
+            pair=pair,
+            lookback_days=lookback_days,
+            window_observations=window_observations,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_correlation_beta_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_correlation_beta(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_correlation_beta_tool] failed")
+        return _json_error(f"FX correlation/beta failed: {exc}")
 
     return result.model_dump_json()
 

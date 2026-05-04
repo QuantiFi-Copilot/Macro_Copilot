@@ -221,6 +221,31 @@ tools:
 
     validation_status: tested
 
+  - name: get_fx_correlation_beta
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_correlation_beta_tool
+      schema: fx_agent/macro/tools/correlation_beta/schemas.py::FXCorrelationBetaInput
+      compute: fx_agent/macro/tools/correlation_beta/compute.py::get_fx_correlation_beta
+      config: fx_agent/macro/tools/correlation_beta/config.yaml
+
+    one_liner: >-
+      Estimate FX return correlation, beta, R-squared, and dominant macro
+      driver across DXY, equity, volatility, rates-vol, gold, and oil proxies.
+
+    related_tools:
+      - get_fx_macro_risk_overlay_tool
+      - classify_fx_regime_tool
+      - get_fx_rates_differential_overlay_tool
+
+    validation_status: tested
+
   - name: classify_fx_regime
     domain: fx
     sub_agent: macro

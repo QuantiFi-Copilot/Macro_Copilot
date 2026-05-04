@@ -1,0 +1,22 @@
+methodology:
+  description: >-
+    Estimate rolling return correlations and simple OLS betas between one FX
+    pair and macro risk proxies. The tool is deterministic and uses stored
+    daily levels only.
+  default_return_type: simple_return
+  default_window_observations: 63
+  proxy_universe:
+    - DXY Curncy
+    - SPX Index
+    - VIX Index
+    - XAU Curncy
+    - MOVE Index
+    - CL1 Comdty
+  interpretation:
+    correlation: >-
+      Pearson correlation between daily FX returns and proxy returns over the
+      trailing window.
+    beta: >-
+      Slope from FX returns regressed on proxy returns. Positive beta means the
+      FX pair tends to rise when the proxy rises.
+
