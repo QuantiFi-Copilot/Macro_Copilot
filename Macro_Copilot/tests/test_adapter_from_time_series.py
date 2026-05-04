@@ -1133,6 +1133,421 @@ class TestEndToEnd_OIS_ForwardRate:
 
 
 # ===========================================================================
+# 4b. End-to-end against every standard SOVEREIGN primitive
+# ===========================================================================
+
+# Phase 1B acceptance criteria (revised plan): the bridge must work
+# against the standard sovereign primitives, not only OIS.  Codex P2
+# follow-up: prior coverage was OIS-only, leaving the sovereign side
+# unproved.  These tests invoke each sovereign primitive against
+# synthetic raw data (mocked DB fetcher), capture the real wire
+# output, and confirm the bridge lifts each declared TimeSeries field
+# into a valid Series artifact with the right units, name, and
+# lineage shape — same shape as the OIS coverage above.
+
+
+def _sovereign_two_curve_long_df(
+    *, days: int = 600, frozen_today: date = date(2026, 4, 30),
+) -> pd.DataFrame:
+    """Two-curve long-format frame for sovereign cross_market_spread
+    fetcher (pivots by curve_family, not tenor)."""
+    bdays = pd.bdate_range(
+        frozen_today - timedelta(days=days * 2), frozen_today,
+    )[-days:]
+    rs = np.random.RandomState(13)
+    rows = []
+    for cf, base, drift in (
+        ("IT_BTP", 4.20, +0.30),
+        ("DE_BUND", 2.60, +0.05),
+    ):
+        n = len(bdays)
+        v = np.linspace(base, base + drift, n) + rs.randn(n) * 0.012
+        for d, val in zip(bdays, v):
+            rows.append({
+                "trade_date": d.date(), "curve_family": cf,
+                "field_value": val,
+            })
+    return pd.DataFrame(rows)
+
+
+def _sovereign_two_tenor_long_df(
+    *, days: int = 600, frozen_today: date = date(2026, 4, 30),
+) -> pd.DataFrame:
+    """Two-tenor long-format frame for sovereign curve_spread
+    fetcher (single curve, pivots by tenor)."""
+    bdays = pd.bdate_range(
+        frozen_today - timedelta(days=days * 2), frozen_today,
+    )[-days:]
+    rs = np.random.RandomState(11)
+    rows = []
+    for t, base, drift in (("2Y", 4.50, -0.10), ("10Y", 4.80, +0.05)):
+        n = len(bdays)
+        v = np.linspace(base, base + drift, n) + rs.randn(n) * 0.012
+        for d, val in zip(bdays, v):
+            rows.append({
+                "trade_date": d.date(), "tenor": t, "field_value": val,
+            })
+    return pd.DataFrame(rows)
+
+
+def _sovereign_three_tenor_long_df(
+    *, days: int = 600, frozen_today: date = date(2026, 4, 30),
+) -> pd.DataFrame:
+    """Three-tenor long-format frame for butterfly fetch_tenor_group."""
+    bdays = pd.bdate_range(
+        frozen_today - timedelta(days=days * 2), frozen_today,
+    )[-days:]
+    rs = np.random.RandomState(17)
+    rows = []
+    for t, base, drift in (
+        ("2Y", 4.50, -0.10),
+        ("5Y", 4.65, -0.05),
+        ("10Y", 4.80, +0.05),
+    ):
+        n = len(bdays)
+        v = np.linspace(base, base + drift, n) + rs.randn(n) * 0.012
+        for d, val in zip(bdays, v):
+            rows.append({
+                "trade_date": d.date(), "tenor": t, "field_value": val,
+            })
+    return pd.DataFrame(rows)
+
+
+def _sovereign_single_tenor_long_df(
+    *, days: int = 600, frozen_today: date = date(2026, 4, 30),
+) -> pd.DataFrame:
+    """Single-tenor frame for sovereign yield_levels fetch_single_tenor."""
+    bdays = pd.bdate_range(
+        frozen_today - timedelta(days=days * 2), frozen_today,
+    )[-days:]
+    rs = np.random.RandomState(7)
+    n = len(bdays)
+    yields = np.linspace(4.30, 4.10, n) + rs.randn(n) * 0.01
+    return pd.DataFrame({
+        "trade_date": [d.date() for d in bdays],
+        "field_value": yields,
+    })
+
+
+class TestEndToEnd_Sovereign_YieldLevels:
+    """Single canonical TimeSeries: ``time_series`` (PERCENT)."""
+
+    def _run(self):
+        from rates_agent.sovereign_bonds.tools.yield_levels import (
+            CONFIG_PATH,
+            get_yield_levels,
+            YieldLevelInput,
+        )
+        from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
+            YieldLevelOutput,
+        )
+
+        raw_df = _sovereign_single_tenor_long_df()
+        params = YieldLevelInput(
+            curve_family="UST", tenor="10Y", lookback_days=365,
+        )
+        cfg = load_tool_config(CONFIG_PATH)
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
+            _FrozenDate,
+        ):
+            tool_output = get_yield_levels(
+                engine=None, params=params, config=cfg,
+            )
+
+        return tool_output, YieldLevelOutput, params, cfg
+
+    def test_lifts_time_series_field_with_PERCENT(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series",
+            tool_name="get_yield_levels_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.PERCENT
+        assert "ust_10y" in s.series_key.lower()
+        # Lineage rooted at PrimitiveStep with the sovereign
+        # tool name (NOT the OIS rate_level analogue).
+        assert s.lineage.steps[0].kind == "primitive"
+        assert s.lineage.steps[0].name == "get_yield_levels_tool"
+        assert s.lineage.steps[0].output_field == "time_series"
+
+
+class TestEndToEnd_Sovereign_CurveSpread:
+    """Two canonical TimeSeries: ``time_series_spread`` (BPS) +
+    ``time_series_zscore`` (Z_SCORE)."""
+
+    def _run(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread import (
+            CONFIG_PATH,
+            calculate_curve_spread,
+            CurveSpreadInput,
+        )
+        from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
+            CurveSpreadOutput,
+        )
+
+        raw_df = _sovereign_two_tenor_long_df()
+        params = CurveSpreadInput(
+            curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+            lookback_days=365,
+        )
+        cfg = load_tool_config(CONFIG_PATH)
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.fetch_tenor_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_spread.compute.date",
+            _FrozenDate,
+        ):
+            tool_output = calculate_curve_spread(
+                engine=None, params=params, config=cfg,
+            )
+
+        return tool_output, CurveSpreadOutput, params, cfg
+
+    def test_lifts_spread_field_with_BPS(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_spread",
+            tool_name="calculate_curve_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.BPS
+        # Sovereign spread suffix is just "_spread" (NOT "_ois_spread").
+        assert s.series_key.endswith("_spread")
+        assert "_ois_" not in s.series_key
+
+    def test_lifts_zscore_field_with_Z_SCORE(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_zscore",
+            tool_name="calculate_curve_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.Z_SCORE
+        assert s.series_key.endswith("_zscore")
+
+
+class TestEndToEnd_Sovereign_CrossMarketSpread:
+    """Two canonical TimeSeries: ``time_series_spread`` (BPS) +
+    ``time_series_zscore`` (Z_SCORE)."""
+
+    def _run(self):
+        from rates_agent.sovereign_bonds.tools.cross_market_spread import (
+            CONFIG_PATH,
+            calculate_cross_market_spread,
+            CrossMarketSpreadInput,
+        )
+        from rates_agent.sovereign_bonds.tools.cross_market_spread.schemas import (
+            CrossMarketSpreadOutput,
+        )
+
+        raw_df = _sovereign_two_curve_long_df()
+        params = CrossMarketSpreadInput(
+            curve_family_1="IT_BTP", curve_family_2="DE_BUND",
+            tenor="10Y", lookback_days=365,
+        )
+        cfg = load_tool_config(CONFIG_PATH)
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.cross_market_spread."
+            "compute.fetch_cross_market_pair",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.cross_market_spread.compute.date",
+            _FrozenDate,
+        ):
+            tool_output = calculate_cross_market_spread(
+                engine=None, params=params, config=cfg,
+            )
+
+        return tool_output, CrossMarketSpreadOutput, params, cfg
+
+    def test_lifts_spread_field_with_BPS(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_spread",
+            tool_name="calculate_cross_market_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.BPS
+        # Sovereign suffix is "_spread" (no OIS prefix).
+        assert s.series_key.endswith("_spread")
+        assert "_ois_cross_" not in s.series_key
+
+    def test_lifts_zscore_field_with_Z_SCORE(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_zscore",
+            tool_name="calculate_cross_market_spread_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.Z_SCORE
+        assert s.series_key.endswith("_zscore")
+
+
+class TestEndToEnd_Sovereign_Butterfly:
+    """Two canonical TimeSeries: ``time_series_butterfly`` (BPS) +
+    ``time_series_zscore`` (Z_SCORE).  Note the field name is
+    ``time_series_butterfly``, not ``_spread`` — proves the bridge's
+    ``output_field`` mechanism does NOT hardcode any field-name
+    conventions; the caller picks whichever the primitive declares."""
+
+    def _run(self):
+        from rates_agent.sovereign_bonds.tools.butterfly import (
+            CONFIG_PATH,
+            calculate_butterfly,
+            ButterflyInput,
+        )
+        from rates_agent.sovereign_bonds.tools.butterfly.schemas import (
+            ButterflyOutput,
+        )
+
+        raw_df = _sovereign_three_tenor_long_df()
+        params = ButterflyInput(
+            curve_family="UST", short_tenor="2Y",
+            belly_tenor="5Y", long_tenor="10Y", lookback_days=365,
+        )
+        cfg = load_tool_config(CONFIG_PATH)
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.butterfly.compute.fetch_tenor_group",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.butterfly.compute.date",
+            _FrozenDate,
+        ):
+            tool_output = calculate_butterfly(
+                engine=None, params=params, config=cfg,
+            )
+
+        return tool_output, ButterflyOutput, params, cfg
+
+    def test_lifts_butterfly_field_with_BPS(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_butterfly",
+            tool_name="calculate_butterfly_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.BPS
+        # Field name is ``_butterfly`` not ``_spread`` — bridge
+        # carries the primitive's wire-name convention through
+        # to the artifact's series_key without translation.
+        assert s.series_key.endswith("_butterfly")
+
+    def test_lifts_zscore_field_with_Z_SCORE(self):
+        tool_output, OutClass, params, cfg = self._run()
+        s = tool_output_to_artifact_series(
+            tool_output,
+            output_class=OutClass,
+            output_field="time_series_zscore",
+            tool_name="calculate_butterfly_tool",
+            tool_config=cfg,
+            params=params,
+        )
+        assert s.units == TimeSeriesUnits.Z_SCORE
+        assert s.series_key.endswith("_zscore")
+
+
+class TestEndToEnd_Sovereign_AllFieldsLiftSuccessfully:
+    """Sanity sweep: every standard sovereign primitive's canonical
+    TimeSeries field lifts to a valid Series under the auto-derived
+    missingness policy.  Acceptance criterion from the revised
+    Phase 1B plan: 'all standard primitives flow through
+    tool_output_to_artifact_series'."""
+
+    def test_every_standard_sovereign_primitive_lifts(self):
+        results = [
+            (
+                TestEndToEnd_Sovereign_YieldLevels(),
+                "time_series", "get_yield_levels_tool",
+                TimeSeriesUnits.PERCENT,
+            ),
+            (
+                TestEndToEnd_Sovereign_CurveSpread(),
+                "time_series_spread", "calculate_curve_spread_tool",
+                TimeSeriesUnits.BPS,
+            ),
+            (
+                TestEndToEnd_Sovereign_CurveSpread(),
+                "time_series_zscore", "calculate_curve_spread_tool",
+                TimeSeriesUnits.Z_SCORE,
+            ),
+            (
+                TestEndToEnd_Sovereign_CrossMarketSpread(),
+                "time_series_spread",
+                "calculate_cross_market_spread_tool",
+                TimeSeriesUnits.BPS,
+            ),
+            (
+                TestEndToEnd_Sovereign_CrossMarketSpread(),
+                "time_series_zscore",
+                "calculate_cross_market_spread_tool",
+                TimeSeriesUnits.Z_SCORE,
+            ),
+            (
+                TestEndToEnd_Sovereign_Butterfly(),
+                "time_series_butterfly",
+                "calculate_butterfly_tool",
+                TimeSeriesUnits.BPS,
+            ),
+            (
+                TestEndToEnd_Sovereign_Butterfly(),
+                "time_series_zscore",
+                "calculate_butterfly_tool",
+                TimeSeriesUnits.Z_SCORE,
+            ),
+        ]
+        for runner, field, tool_name, expected_units in results:
+            tool_output, OutClass, params, cfg = runner._run()
+            s = tool_output_to_artifact_series(
+                tool_output,
+                output_class=OutClass,
+                output_field=field,
+                tool_name=tool_name,
+                tool_config=cfg,
+                params=params,
+            )
+            assert s.units == expected_units, (
+                f"{tool_name}/{field}: expected {expected_units}, "
+                f"got {s.units}"
+            )
+            # Auto-derived CleanSingleSeriesV1 — proves every
+            # sovereign tool's YAML declares ffill_limit_days as
+            # the bridge's auto-derivation requires.
+            assert isinstance(s.missingness_policy, CleanSingleSeriesV1)
+            assert s.missingness_policy.drop_nan is True
+            assert s.missingness_policy.dedup_keep == "last"
+            # PrimitiveStep records the right MCP tool name.
+            assert s.lineage.steps[0].name == tool_name
+
+
+# ===========================================================================
 # 5. Lineage continuity through the bridge
 # ===========================================================================
 
