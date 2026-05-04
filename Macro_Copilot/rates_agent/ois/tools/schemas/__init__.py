@@ -1,7 +1,12 @@
 """Re-exports for OIS tool schemas."""
 
-# Curve spread (existing)
-from rates_agent.ois.tools.schemas.spread import (
+# Curve spread (single OIS curve, two-tenor) — re-exported from the
+# per-tool-folder package (``rates_agent/ois/tools/curve_spread/``).
+# The schemas hub stays as the legacy import surface for callers /
+# tests that haven't migrated to the package path; new code should
+# prefer ``from rates_agent.ois.tools.curve_spread import
+# OISCurveSpreadInput``.
+from rates_agent.ois.tools.curve_spread.schemas import (
     OISCurveSpreadCurrentMetrics,
     OISCurveSpreadInput,
     OISCurveSpreadOutput,
