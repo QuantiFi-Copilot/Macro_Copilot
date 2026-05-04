@@ -1,0 +1,103 @@
+"""shared.workflow — typed DAG substrate for workflow templates.
+
+Per ``docs/architecture/workflow_architecture.md``.  The substrate
+sits below the workflow-template layer and above the operator +
+primitive + bridge layers it composes.
+
+Layering
+--------
+- primitives  (rates_agent/<domain>/tools/)  — finance-aware
+- operators   (shared/operators/)             — finance-blind, structural
+- bridge      (shared/artifacts/adapters/)    — primitives ↔ operators
+- substrate   (shared/workflow/)              — typed DAG over the above
+- templates   (rates_agent/workflows/)        — analysis archetypes (PR 4)
+
+The substrate knows about typed artifacts, edge contracts, node
+kinds, and operator dispatch.  It does NOT know about specific
+primitives, instruments, or analysis archetypes — those live in
+the agent + template layers and reach the substrate via a caller-
+supplied ``PrimitiveResolver`` protocol.
+
+Public API
+----------
+- ``Workflow``, ``PrimitiveNode``, ``OperatorNode``, ``WorkflowEdge``
+  — typed DAG schema (closed-family discriminated union over node
+  kinds).
+- ``WorkflowResult`` — typed terminal artifact + lineage summary
+  + intermediate node-artifact map.
+- ``execute_workflow`` — the executor.  Validates the DAG, runs
+  it in topological order, dispatches primitives via the
+  resolver, lifts primitive outputs through the bridge,
+  dispatches operators via the closed registry.
+- ``validate_workflow`` — pre-execution structural validation
+  (cycles, slot/type/unit compat).  Runs implicitly inside
+  ``execute_workflow`` but exposed for static analysis of
+  templates.
+- ``WorkflowValidationError`` / ``WorkflowExecutionError`` —
+  typed error families.
+- ``OPERATOR_REGISTRY``, ``known_operators``, ``OperatorSpec`` —
+  closed-family operator dispatch (substrate-internal but
+  exposed for diagnostic / catalogue purposes).
+- ``PrimitiveResolver``, ``PrimitiveSpec`` — caller-supplied
+  primitive dispatch protocol.
+- ``ARTIFACT_TYPE_NAMES``, ``artifact_type_name`` — closed enum
+  for the artifact type names the substrate validates against.
+"""
+
+from shared.workflow.executor import (
+    WorkflowExecutionError,
+    execute_workflow,
+)
+from shared.workflow.registry import (
+    ARTIFACT_TYPE_NAMES,
+    OPERATOR_REGISTRY,
+    OperatorSpec,
+    PrimitiveResolver,
+    PrimitiveSpec,
+    artifact_type_name,
+    known_operators,
+)
+from shared.workflow.result import (
+    TerminalArtifact,
+    WorkflowResult,
+)
+from shared.workflow.types import (
+    OperatorNode,
+    PrimitiveNode,
+    Workflow,
+    WorkflowEdge,
+    WorkflowNode,
+)
+from shared.workflow.validate import (
+    WorkflowValidationError,
+    topological_order,
+    validate_workflow,
+)
+
+
+__all__ = [
+    # Schema
+    "Workflow",
+    "WorkflowNode",
+    "PrimitiveNode",
+    "OperatorNode",
+    "WorkflowEdge",
+    # Result
+    "WorkflowResult",
+    "TerminalArtifact",
+    # Execution
+    "execute_workflow",
+    "WorkflowExecutionError",
+    # Validation
+    "validate_workflow",
+    "topological_order",
+    "WorkflowValidationError",
+    # Registry / dispatch
+    "OPERATOR_REGISTRY",
+    "OperatorSpec",
+    "known_operators",
+    "PrimitiveResolver",
+    "PrimitiveSpec",
+    "ARTIFACT_TYPE_NAMES",
+    "artifact_type_name",
+]
