@@ -14,23 +14,35 @@ The YAML root is a single mapping with the same field names as
     archetype: event_study
     description: >-
       Conditional aggregation across event windows...
+    archetype_signature:
+      - "average move after / forward move when X exceeds Y"
+      - "conditional aggregation across event windows"
     slot_schema:
-      - name: signal_spec
-        type: dict
+      - name: signal_curve_family
+        type: str
         required: true
-        description: ...
+        description: which curve family the signal series uses
+      - name: signal_short_tenor
+        type: str
+        required: true
+        description: short tenor for the signal curve spread
+      - name: signal_long_tenor
+        type: str
+        required: true
+        description: long tenor for the signal curve spread
       - name: threshold
         type: float
         required: true
-        description: ...
+        description: |z| threshold for the event mask
     nodes:
       - kind: primitive
         node_id: signal
         tool_name: calculate_curve_spread_tool
         output_field: time_series_zscore
         params:
-          curve_family: {$slot: signal_spec.curve_family}
-          ...
+          curve_family: {$slot: signal_curve_family}
+          short_tenor: {$slot: signal_short_tenor}
+          long_tenor: {$slot: signal_long_tenor}
       - kind: operator
         node_id: events
         operator_name: threshold_events
@@ -43,6 +55,39 @@ The YAML root is a single mapping with the same field names as
         target_node_id: events
         target_input_slot: series
     terminal_node_id: events
+
+Slot reference syntax
+---------------------
+Placeholders use the EXACT slot name only — the binder does NOT
+support dotted-path resolution into nested objects.  Two patterns
+for handling structured caller input:
+
+  - **Flat slots (preferred for V1)**: declare one slot per
+    leaf value, as in the example above
+    (``signal_curve_family`` / ``signal_short_tenor`` /
+    ``signal_long_tenor``).  Each ``$slot`` reference is an
+    exact slot name lookup.  Type-checked at bind time.
+
+  - **Whole-dict slot (when the consuming primitive accepts a
+    nested dict)**: declare a ``type: dict`` slot and reference
+    it whole.  The consuming primitive's ``*Input`` schema
+    handles the nested-field validation::
+
+        slot_schema:
+          - name: signal_spec
+            type: dict
+            required: true
+            description: SeriesSpec-shaped dict (curve_family, tenor, ...)
+
+        nodes:
+          - kind: primitive
+            ...
+            params:
+              spec: {$slot: signal_spec}   # whole dict substituted
+
+The dotted-path style ``{$slot: signal_spec.curve_family}`` is
+NOT supported — it would fail at template construction time as
+an undeclared slot reference.
 
 Loading + validation
 --------------------
