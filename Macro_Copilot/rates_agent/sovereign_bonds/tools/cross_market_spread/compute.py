@@ -395,9 +395,11 @@ def calculate_cross_market_spread(
 
     # ------------------------------------------------------------------
     # 8. Build time_series (legacy bespoke shape — wire-frozen for the
-    #    frontend) AND canonical_time_series (closed-enum TimeSeries
-    #    for the upcoming primitive-to-operator bridge).  Both share
-    #    the same display_df rows so they cannot drift.
+    #    frontend) AND the two canonical TimeSeries
+    #    (time_series_spread for the BPS spread history,
+    #    time_series_zscore for the Z_SCORE rolling-z-score history)
+    #    for the upcoming primitive-to-operator bridge.  All three
+    #    share the same display_df rows so they cannot drift.
     # ------------------------------------------------------------------
     ts_rows = [
         CrossMarketSpreadTimeSeriesRow(
@@ -408,18 +410,26 @@ def calculate_cross_market_spread(
         )
         for row in display_df.itertuples()
     ]
-    canonical_series = _build_canonical_cross_market_series(
+    canonical_spread = _build_canonical_cross_market_series(
         display_df,
         curve_family_1=params.curve_family_1,
         curve_family_2=params.curve_family_2,
         tenor=params.tenor,
         bps_round_decimals=bps_round_decimals,
     )
+    canonical_zscore = _build_canonical_cross_market_zscore_series(
+        display_df,
+        curve_family_1=params.curve_family_1,
+        curve_family_2=params.curve_family_2,
+        tenor=params.tenor,
+        z_round_decimals=z_round_decimals,
+    )
 
     output = CrossMarketSpreadOutput(
         current_metrics=metrics,
         time_series=ts_rows,
-        canonical_time_series=[canonical_series],
+        time_series_spread=canonical_spread,
+        time_series_zscore=canonical_zscore,
     )
     return output.model_dump()
 
@@ -456,6 +466,45 @@ def _build_canonical_cross_market_series(
             f"Cross-market spread "
             f"({curve_family_1} − {curve_family_2}) at {tenor} over "
             "the displayed window."
+        ),
+        rows=rows,
+    )
+
+
+def _build_canonical_cross_market_zscore_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family_1: str,
+    curve_family_2: str,
+    tenor: str,
+    z_round_decimals: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's z_score column into the canonical
+    ``TimeSeries`` shape (closed-enum Z_SCORE units).
+
+    Naming convention: ``<cf1_lower>_<cf2_lower>_<tenor_lower>_zscore``.
+    Values match ``time_series[i].z_score`` 1-to-1 (rounded via the
+    same ``z_score_round_decimals`` convention applied to the bespoke
+    field) so the two series cannot drift.
+    """
+    series_name = (
+        f"{curve_family_1.lower()}_"
+        f"{curve_family_2.lower()}_"
+        f"{tenor.lower()}_zscore"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=safe_float(row.z_score, decimals=z_round_decimals),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.Z_SCORE,
+        description=(
+            f"Rolling z-score of the {curve_family_1}−{curve_family_2} "
+            f"spread at {tenor} vs its own trailing window."
         ),
         rows=rows,
     )

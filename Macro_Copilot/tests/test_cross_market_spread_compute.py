@@ -604,9 +604,10 @@ class TestImportPathBackwardCompat:
 
 class TestCanonicalTimeSeries:
     """Pin the legacy-TimeSeries cleanup contract: cross_market_spread
-    emits a canonical ``TimeSeries`` payload alongside its wire-frozen
-    bespoke ``time_series: List[CrossMarketSpreadTimeSeriesRow]``
-    array."""
+    emits TWO canonical ``TimeSeries`` fields (``time_series_spread``
+    in BPS, ``time_series_zscore`` in Z_SCORE) alongside its
+    wire-frozen bespoke ``time_series:
+    List[CrossMarketSpreadTimeSeriesRow]`` array."""
 
     def _params(self):
         return CrossMarketSpreadInput(
@@ -617,31 +618,51 @@ class TestCanonicalTimeSeries:
             field_name="YLD_YTM_MID",
         )
 
-    def test_canonical_time_series_field_present(self):
+    def test_canonical_time_series_legacy_field_NOT_present(self):
         out = _run(self._params(), _synthetic_raw_df())
-        assert "canonical_time_series" in out
-        assert isinstance(out["canonical_time_series"], list)
-        assert len(out["canonical_time_series"]) == 1
+        assert "canonical_time_series" not in out
 
-    def test_canonical_series_uses_closed_enum_units(self):
+    def test_time_series_spread_field_present(self):
         out = _run(self._params(), _synthetic_raw_df())
-        ts = out["canonical_time_series"][0]
-        assert ts["units"] == "bps"
+        assert "time_series_spread" in out
+        assert isinstance(out["time_series_spread"], dict)
 
-    def test_canonical_series_name_follows_convention(self):
+    def test_time_series_zscore_field_present(self):
         out = _run(self._params(), _synthetic_raw_df())
-        ts = out["canonical_time_series"][0]
-        assert ts["series_name"] == "it_btp_de_bund_10y_spread"
+        assert "time_series_zscore" in out
+        assert isinstance(out["time_series_zscore"], dict)
 
-    def test_canonical_series_length_equals_bespoke_length(self):
+    def test_spread_series_uses_BPS(self):
         out = _run(self._params(), _synthetic_raw_df())
-        canonical = out["canonical_time_series"][0]
+        assert out["time_series_spread"]["units"] == "bps"
+
+    def test_zscore_series_uses_Z_SCORE(self):
+        out = _run(self._params(), _synthetic_raw_df())
+        assert out["time_series_zscore"]["units"] == "z_score"
+
+    def test_spread_series_name_follows_convention(self):
+        out = _run(self._params(), _synthetic_raw_df())
+        assert (
+            out["time_series_spread"]["series_name"]
+            == "it_btp_de_bund_10y_spread"
+        )
+
+    def test_zscore_series_name_follows_convention(self):
+        out = _run(self._params(), _synthetic_raw_df())
+        assert (
+            out["time_series_zscore"]["series_name"]
+            == "it_btp_de_bund_10y_zscore"
+        )
+
+    def test_both_series_length_equals_bespoke_length(self):
+        out = _run(self._params(), _synthetic_raw_df())
         bespoke = out["time_series"]
-        assert len(canonical["rows"]) == len(bespoke)
+        assert len(out["time_series_spread"]["rows"]) == len(bespoke)
+        assert len(out["time_series_zscore"]["rows"]) == len(bespoke)
 
-    def test_canonical_values_match_bespoke_spread_bps_pointwise(self):
+    def test_spread_values_match_bespoke_pointwise(self):
         out = _run(self._params(), _synthetic_raw_df())
-        canonical = out["canonical_time_series"][0]
+        canonical = out["time_series_spread"]
         bespoke = out["time_series"]
         for i, (c_row, b_row) in enumerate(zip(canonical["rows"], bespoke)):
             assert c_row["date"] == b_row["date"], f"row {i}: date mismatch"
@@ -649,7 +670,20 @@ class TestCanonicalTimeSeries:
                 f"row {i}: value mismatch"
             )
 
-    def test_canonical_series_validates_against_TimeSeries_schema(self):
+    def test_zscore_values_match_bespoke_pointwise(self):
+        """Codex P1 follow-up: z_score historical signal must also be
+        canonicalized."""
+        out = _run(self._params(), _synthetic_raw_df())
+        canonical = out["time_series_zscore"]
+        bespoke = out["time_series"]
+        for i, (c_row, b_row) in enumerate(zip(canonical["rows"], bespoke)):
+            assert c_row["date"] == b_row["date"], f"row {i}: date mismatch"
+            assert c_row["value"] == b_row["z_score"], (
+                f"row {i}: value mismatch"
+            )
+
+    def test_both_canonical_series_validate_against_TimeSeries_schema(self):
         from shared.schemas import TimeSeries
         out = _run(self._params(), _synthetic_raw_df())
-        TimeSeries.model_validate(out["canonical_time_series"][0])
+        TimeSeries.model_validate(out["time_series_spread"])
+        TimeSeries.model_validate(out["time_series_zscore"])

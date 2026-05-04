@@ -136,6 +136,43 @@ conventions:
       shadowing fix from the curve_move_classifier migration
       (commit b2605ee).
 
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to both the snapshot's
+  # current_yield_pct field AND every row of the canonical TimeSeries
+  # output, so the snapshot value equals time_series.rows[-1].value
+  # exactly (not just within tolerance).
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and the
+      newer sovereign primitives' rounding convention.  Threaded
+      through both the snapshot path AND the canonical TimeSeries
+      builder so the two cannot disagree numerically.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals is the default ``compute_level_metrics`` was
+      using prior to this convention being explicit.  Snapshot's
+      ``z_score`` is rounded via this knob so YAML edits flow
+      through to runtime behaviour.
+    valid_range: [0, 8]
+
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Made explicit so future tightening is
+      visible in YAML.
+    valid_range: [0, 8]
+
 methodology:
   what_it_does: |
     Fetches one (curve_family, tenor) yield series, cleans it, and

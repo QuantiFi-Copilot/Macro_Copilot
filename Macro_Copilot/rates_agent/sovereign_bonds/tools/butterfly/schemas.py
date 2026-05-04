@@ -161,26 +161,36 @@ class ButterflyOutput(BaseModel):
 
     ``time_series`` is the wire-frozen bespoke shape
     (``ButterflyTimeSeriesRow``) the frontend has consumed since this
-    tool shipped.  ``canonical_time_series`` was added by the
-    legacy-TimeSeries tech-debt cleanup so the upcoming
-    primitive-to-operator bridge has a uniform closed-enum shape to
-    consume.  Both are computed from the same underlying display
-    DataFrame — they cannot drift.
+    tool shipped.  ``time_series_butterfly`` and ``time_series_zscore``
+    were added by the legacy-TimeSeries tech-debt cleanup so the
+    upcoming primitive-to-operator bridge has uniform closed-enum
+    shapes to consume.  All three are computed from the same
+    underlying display DataFrame — they cannot drift.
     """
 
     current_metrics: ButterflyCurrentMetrics
     time_series: List[ButterflyTimeSeriesRow]
-    canonical_time_series: List[TimeSeries] = Field(
-        default_factory=list,
+    time_series_butterfly: TimeSeries = Field(
+        ...,
         description=(
-            "Historical butterfly value (long_wing − 2*belly + short_wing, "
-            "in BPS) over the displayed window.  Uses the canonical "
-            "``shared.schemas.time_series.TimeSeries`` shape.  One series:\n"
-            "  - units = BPS\n"
-            "  - series_name = "
-            "    '<curve_family_lower>_<short>_<belly>_<long>_butterfly'\n"
-            "  - values match ``time_series[i].butterfly_bps`` 1-to-1 "
-            "    by construction."
+            "Historical butterfly value "
+            "(long_wing − 2*belly + short_wing, in BPS) over the "
+            "displayed window.  Closed-enum ``TimeSeriesUnits.BPS``; "
+            "series_name = "
+            "'<curve_family_lower>_<short>_<belly>_<long>_butterfly'.  "
+            "Values match ``time_series[i].butterfly_bps`` 1-to-1 by "
+            "construction."
+        ),
+    )
+    time_series_zscore: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical rolling z-score of the butterfly vs its own "
+            "trailing window.  Closed-enum ``TimeSeriesUnits.Z_SCORE``; "
+            "series_name = "
+            "'<curve_family_lower>_<short>_<belly>_<long>_zscore'.  "
+            "Values match ``time_series[i].z_score`` 1-to-1 (None for "
+            "rows in the rolling-window warmup)."
         ),
     )
 

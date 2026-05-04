@@ -295,16 +295,21 @@ def test_curve_spread_parity(fixture_path: Path) -> None:
     )
 
     # 6. Strip additive top-level fields the parity contract is
-    # explicitly NOT covering.  ``canonical_time_series`` was added by
-    # the legacy-TimeSeries tech-debt cleanup as an intentionally
-    # additive field; the parity tests pin the WIRE-FROZEN shape that
-    # the frontend reads (``current_metrics`` + bespoke ``time_series``),
-    # not every key the tool emits.  When the canonical-TimeSeries
-    # contract needs its own parity coverage, that goes in a separate
-    # canonical_time_series test rather than rolling into the legacy
-    # baselines.
+    # explicitly NOT covering.  ``time_series_spread`` and
+    # ``time_series_zscore`` were added by the legacy-TimeSeries
+    # tech-debt cleanup as intentionally additive fields; the parity
+    # tests pin the WIRE-FROZEN shape that the frontend reads
+    # (``current_metrics`` + bespoke ``time_series``), not every key
+    # the tool emits.  When the canonical-TimeSeries contract needs
+    # its own parity coverage, that goes in a separate fixture rather
+    # than rolling into the legacy baselines.
+    _ADDITIVE_KEYS = {
+        "canonical_time_series",  # legacy transitional name (PR #58)
+        "time_series_spread",     # canonical BPS series (PR #59)
+        "time_series_zscore",     # canonical Z_SCORE series (PR #59)
+    }
     actual_for_parity = {
-        k: v for k, v in actual.items() if k != "canonical_time_series"
+        k: v for k, v in actual.items() if k not in _ADDITIVE_KEYS
     }
 
     # 7. Compare with recorded expectation.

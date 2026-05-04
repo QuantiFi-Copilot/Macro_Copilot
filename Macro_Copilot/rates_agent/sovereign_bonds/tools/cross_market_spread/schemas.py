@@ -162,27 +162,35 @@ class CrossMarketSpreadOutput(BaseModel):
 
     ``time_series`` is the wire-frozen bespoke shape
     (``CrossMarketSpreadTimeSeriesRow``) the frontend has consumed
-    since this tool shipped.  ``canonical_time_series`` was added by
-    the legacy-TimeSeries tech-debt cleanup so the upcoming
-    primitive-to-operator bridge has a uniform closed-enum shape to
-    consume.  Both are computed from the same underlying display
-    DataFrame — they cannot drift.
+    since this tool shipped.  ``time_series_spread`` and
+    ``time_series_zscore`` were added by the legacy-TimeSeries tech-
+    debt cleanup so the upcoming primitive-to-operator bridge has
+    uniform closed-enum shapes to consume.  All three are computed
+    from the same underlying display DataFrame — they cannot drift.
     """
 
     current_metrics: CrossMarketSpreadCurrentMetrics
     time_series: List[CrossMarketSpreadTimeSeriesRow]
-    canonical_time_series: List[TimeSeries] = Field(
-        default_factory=list,
+    time_series_spread: TimeSeries = Field(
+        ...,
         description=(
             "Historical cross-market spread "
             "(curve_family_1 − curve_family_2 yield, in BPS) over the "
-            "displayed window.  Uses the canonical "
-            "``shared.schemas.time_series.TimeSeries`` shape.  One series:\n"
-            "  - units = BPS\n"
-            "  - series_name = "
-            "    '<cf1_lower>_<cf2_lower>_<tenor_lower>_spread'\n"
-            "  - values match ``time_series[i].spread_bps`` 1-to-1 "
-            "    by construction."
+            "displayed window.  Closed-enum ``TimeSeriesUnits.BPS``; "
+            "series_name = '<cf1_lower>_<cf2_lower>_<tenor_lower>_spread'.  "
+            "Values match ``time_series[i].spread_bps`` 1-to-1 by "
+            "construction."
+        ),
+    )
+    time_series_zscore: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical rolling z-score of the cross-market spread vs "
+            "its own trailing window.  Closed-enum "
+            "``TimeSeriesUnits.Z_SCORE``; series_name = "
+            "'<cf1_lower>_<cf2_lower>_<tenor_lower>_zscore'.  Values "
+            "match ``time_series[i].z_score`` 1-to-1 (None for rows in "
+            "the rolling-window warmup)."
         ),
     )
 

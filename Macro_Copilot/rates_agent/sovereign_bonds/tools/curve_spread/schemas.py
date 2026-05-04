@@ -21,14 +21,21 @@ long_tenor``) stay here in code; they are not configurable.
 
 Canonical TimeSeries output
 ---------------------------
-Per the legacy-sovereign TimeSeries tech-debt cleanup: this tool also
-emits a ``canonical_time_series: List[TimeSeries]`` field using the
-closed-enum ``shared.schemas.time_series.TimeSeries`` shape.  The
-existing ``time_series: List[CurveSpreadTimeSeriesRow]`` field stays
-for frontend backward-compat (``RatesView.tsx`` reads it directly);
-the canonical field is what the upcoming primitive-to-operator
-bridge (Phase 1B) consumes.  Both fields are computed from the same
-underlying spread series — they cannot drift.
+Per the legacy-sovereign TimeSeries tech-debt cleanup: this tool emits
+two canonical ``TimeSeries`` fields matching the v6 sovereign-primitive
+naming convention (``time_series_<purpose>: TimeSeries``):
+
+  - ``time_series_spread: TimeSeries`` (units = BPS) — the historical
+    spread values (long_tenor − short_tenor in bps).
+  - ``time_series_zscore: TimeSeries`` (units = Z_SCORE) — the rolling
+    z-score of the spread vs its own trailing window.
+
+The existing wire-frozen ``time_series: List[CurveSpreadTimeSeriesRow]``
+field stays for frontend backward-compat (``RatesView.tsx`` reads it
+directly); the canonical fields are what the upcoming
+primitive-to-operator bridge (Phase 1B) consumes.  All three fields
+are computed from the same underlying display DataFrame and cannot
+drift — proven by point-by-point parity tests.
 """
 
 from __future__ import annotations
@@ -113,27 +120,34 @@ class CurveSpreadOutput(BaseModel):
 
     ``time_series`` is the wire-frozen bespoke shape
     (``CurveSpreadTimeSeriesRow``) the frontend has consumed since
-    this tool shipped.  ``canonical_time_series`` was added by the
-    legacy-TimeSeries tech-debt cleanup to give the upcoming
-    primitive-to-operator bridge a uniform closed-enum shape to
-    consume.  Both are computed from the same underlying display
-    DataFrame — they cannot drift.
+    this tool shipped.  ``time_series_spread`` and
+    ``time_series_zscore`` were added by the legacy-TimeSeries tech-
+    debt cleanup to give the upcoming primitive-to-operator bridge
+    uniform closed-enum shapes to consume.  All three fields are
+    computed from the same underlying display DataFrame — they
+    cannot drift.
     """
 
     current_metrics: CurveSpreadCurrentMetrics
     time_series: List[CurveSpreadTimeSeriesRow]
-    canonical_time_series: List[TimeSeries] = Field(
-        default_factory=list,
+    time_series_spread: TimeSeries = Field(
+        ...,
         description=(
             "Historical curve spread (long_tenor − short_tenor, in BPS) "
-            "over the displayed window.  Uses the canonical "
-            "``shared.schemas.time_series.TimeSeries`` shape with "
-            "closed-enum units (BPS).  One series:\n"
-            "  - units = BPS\n"
-            "  - series_name = "
-            "    '<curve_family_lower>_<short>_<long>_spread'\n"
-            "  - values match ``time_series[i].spread_bps`` 1-to-1 "
-            "    by construction."
+            "over the displayed window.  Closed-enum "
+            "``TimeSeriesUnits.BPS``; series_name = "
+            "'<curve_family_lower>_<short>_<long>_spread'.  Values "
+            "match ``time_series[i].spread_bps`` 1-to-1 by construction."
+        ),
+    )
+    time_series_zscore: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical rolling z-score of the spread vs its own "
+            "trailing window.  Closed-enum ``TimeSeriesUnits.Z_SCORE``; "
+            "series_name = '<curve_family_lower>_<short>_<long>_zscore'.  "
+            "Values match ``time_series[i].z_score`` 1-to-1 (None for "
+            "rows in the rolling-window warmup)."
         ),
     )
 

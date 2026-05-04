@@ -500,12 +500,12 @@ class TestImportPathBackwardCompat:
 
 
 class TestCanonicalTimeSeries:
-    """Pin the legacy-TimeSeries cleanup contract: curve_spread emits a
-    canonical ``TimeSeries`` payload alongside its wire-frozen bespoke
-    ``time_series: List[CurveSpreadTimeSeriesRow]`` array.  Tests
-    cover field presence, units, series naming, alignment with the
-    bespoke series so they cannot drift, and shape validation against
-    the canonical TimeSeries schema."""
+    """Pin the legacy-TimeSeries cleanup contract: curve_spread emits
+    TWO canonical ``TimeSeries`` fields (``time_series_spread`` in BPS
+    and ``time_series_zscore`` in Z_SCORE) alongside its wire-frozen
+    bespoke ``time_series: List[CurveSpreadTimeSeriesRow]`` array.
+    Tests verify both canonical series align point-by-point with the
+    bespoke rows so the three cannot drift."""
 
     def _run(self, params: CurveSpreadInput, config=None):
         raw_df = _synthetic_raw_df()
@@ -526,48 +526,74 @@ class TestCanonicalTimeSeries:
             lookback_days=365, field_name="YLD_YTM_MID",
         )
 
-    def test_canonical_time_series_field_present(self):
+    def test_canonical_time_series_legacy_field_NOT_present(self):
+        """Regression guard: the transitional ``canonical_time_series``
+        name from PR #58 must be gone after the rename to v6 fields."""
         out = self._run(self._params())
-        assert "canonical_time_series" in out
-        assert isinstance(out["canonical_time_series"], list)
-        # curve_spread emits exactly one canonical series.
-        assert len(out["canonical_time_series"]) == 1
+        assert "canonical_time_series" not in out
 
-    def test_canonical_series_uses_closed_enum_units(self):
+    def test_time_series_spread_field_present(self):
         out = self._run(self._params())
-        ts = out["canonical_time_series"][0]
-        assert ts["units"] == "bps"
+        assert "time_series_spread" in out
+        assert isinstance(out["time_series_spread"], dict)
 
-    def test_canonical_series_name_follows_convention(self):
+    def test_time_series_zscore_field_present(self):
         out = self._run(self._params())
-        ts = out["canonical_time_series"][0]
-        assert ts["series_name"] == "ust_2y_10y_spread"
+        assert "time_series_zscore" in out
+        assert isinstance(out["time_series_zscore"], dict)
 
-    def test_canonical_series_length_equals_bespoke_length(self):
-        """Both fields are computed from the same display_df rows;
-        their lengths must match exactly."""
+    def test_spread_series_uses_BPS(self):
         out = self._run(self._params())
-        canonical = out["canonical_time_series"][0]
+        assert out["time_series_spread"]["units"] == "bps"
+
+    def test_zscore_series_uses_Z_SCORE(self):
+        out = self._run(self._params())
+        assert out["time_series_zscore"]["units"] == "z_score"
+
+    def test_spread_series_name_follows_convention(self):
+        out = self._run(self._params())
+        assert out["time_series_spread"]["series_name"] == "ust_2y_10y_spread"
+
+    def test_zscore_series_name_follows_convention(self):
+        out = self._run(self._params())
+        assert out["time_series_zscore"]["series_name"] == "ust_2y_10y_zscore"
+
+    def test_both_series_length_equals_bespoke_length(self):
+        out = self._run(self._params())
+        spread = out["time_series_spread"]
+        zscore = out["time_series_zscore"]
         bespoke = out["time_series"]
-        assert len(canonical["rows"]) == len(bespoke)
+        assert len(spread["rows"]) == len(bespoke)
+        assert len(zscore["rows"]) == len(bespoke)
 
-    def test_canonical_values_match_bespoke_spread_bps_pointwise(self):
-        """Every canonical row's value MUST equal the bespoke row's
-        spread_bps at the same index — proves they share the same
-        underlying display_df."""
+    def test_spread_values_match_bespoke_pointwise(self):
+        """Every spread row MUST equal the bespoke row's spread_bps at
+        the same index — proves they share the same display_df."""
         out = self._run(self._params())
-        canonical = out["canonical_time_series"][0]
+        spread = out["time_series_spread"]
         bespoke = out["time_series"]
-        for i, (c_row, b_row) in enumerate(zip(canonical["rows"], bespoke)):
-            assert c_row["date"] == b_row["date"], (
-                f"row {i}: date mismatch"
-            )
+        for i, (c_row, b_row) in enumerate(zip(spread["rows"], bespoke)):
+            assert c_row["date"] == b_row["date"], f"row {i}: date mismatch"
             assert c_row["value"] == b_row["spread_bps"], (
                 f"row {i}: value mismatch"
             )
 
-    def test_canonical_series_validates_against_TimeSeries_schema(self):
+    def test_zscore_values_match_bespoke_pointwise(self):
+        """Z-score canonical series must also align with the bespoke
+        z_score column — Codex P1 follow-up: prior cleanup canonicalized
+        only the primary value series, leaving the z-score historical
+        signal as legacy-only.  This pins the fix."""
+        out = self._run(self._params())
+        zscore = out["time_series_zscore"]
+        bespoke = out["time_series"]
+        for i, (c_row, b_row) in enumerate(zip(zscore["rows"], bespoke)):
+            assert c_row["date"] == b_row["date"], f"row {i}: date mismatch"
+            assert c_row["value"] == b_row["z_score"], (
+                f"row {i}: value mismatch"
+            )
+
+    def test_both_canonical_series_validate_against_TimeSeries_schema(self):
         from shared.schemas import TimeSeries
         out = self._run(self._params())
-        ts_dict = out["canonical_time_series"][0]
-        TimeSeries.model_validate(ts_dict)
+        TimeSeries.model_validate(out["time_series_spread"])
+        TimeSeries.model_validate(out["time_series_zscore"])
