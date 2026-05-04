@@ -520,6 +520,91 @@ class TestSchemaBehaviour:
         msg = str(exc_info.value).lower()
         assert "different" in msg or "must" in msg
 
+    def test_same_currency_validator_accepts_matching_currencies(self):
+        """Currency-match enforcement (Codex P2 follow-up): the
+        validator MUST accept legs in the same currency.  All four
+        canonical pairings flow through cleanly."""
+        for sov, ois in (
+            ("UST", "USD_SOFR_OIS"),         # USD
+            ("DE_BUND", "EUR_ESTR_OIS"),     # EUR
+            ("UK_GILT", "GBP_SONIA_OIS"),    # GBP
+            ("JGB", "JPY_OIS"),              # JPY
+        ):
+            params = SwapSpreadInput(
+                sovereign_curve_family=sov,
+                ois_curve_family=ois,
+                tenor="10Y",
+            )
+            assert params.sovereign_curve_family == sov
+            assert params.ois_curve_family == ois
+
+    def test_same_currency_validator_rejects_cross_currency(self):
+        """Cross-currency pairings (UST vs EUR_ESTR_OIS) are desk-
+        nonsensical and must trip the validator with a clear error.
+        This is the load-bearing standardization fix from Codex P2:
+        the primitive is categorized as ``desk_invariant_primitive``
+        and CANNOT silently produce a number labelled 'swap spread'
+        for a cross-currency pair."""
+        from pydantic import ValidationError
+        cross_currency_pairs = [
+            ("UST", "EUR_ESTR_OIS"),         # USD vs EUR
+            ("UST", "GBP_SONIA_OIS"),        # USD vs GBP
+            ("DE_BUND", "USD_SOFR_OIS"),     # EUR vs USD
+            ("DE_BUND", "GBP_SONIA_OIS"),    # EUR vs GBP
+            ("UK_GILT", "USD_SOFR_OIS"),     # GBP vs USD
+            ("JGB", "USD_SOFR_OIS"),         # JPY vs USD
+        ]
+        for sov, ois in cross_currency_pairs:
+            with pytest.raises(ValidationError) as exc_info:
+                SwapSpreadInput(
+                    sovereign_curve_family=sov,
+                    ois_curve_family=ois,
+                    tenor="10Y",
+                )
+            msg = str(exc_info.value).lower()
+            assert "same-currency" in msg or "currency" in msg, (
+                f"{sov} vs {ois}: expected currency-mismatch error, "
+                f"got: {exc_info.value}"
+            )
+
+    def test_unknown_curve_family_raises(self):
+        """A curve_family not in ``CURVE_FAMILY_TO_CURRENCY`` must
+        be rejected loudly — typos and newly-added curves should
+        surface at validator time, not silently accepted with
+        unspecified currency behaviour."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc_info:
+            SwapSpreadInput(
+                sovereign_curve_family="UST_TYPO_NOT_A_REAL_CURVE",
+                ois_curve_family="USD_SOFR_OIS",
+                tenor="10Y",
+            )
+        msg = str(exc_info.value)
+        assert "currency mapping" in msg.lower() or "not in" in msg.lower()
+
+    def test_currency_mapping_has_required_canonical_pairs(self):
+        """Pin the closed-family currency mapping so future changes
+        to its contents surface in code review.  These are the
+        canonical pairs every desk PM expects to be supported."""
+        from rates_agent.ois.tools.swap_spread.schemas import (
+            CURVE_FAMILY_TO_CURRENCY,
+            currency_for_curve,
+        )
+        # Sovereign side
+        assert currency_for_curve("UST") == "USD"
+        assert currency_for_curve("DE_BUND") == "EUR"
+        assert currency_for_curve("UK_GILT") == "GBP"
+        # OIS side
+        assert currency_for_curve("USD_SOFR_OIS") == "USD"
+        assert currency_for_curve("EUR_ESTR_OIS") == "EUR"
+        assert currency_for_curve("GBP_SONIA_OIS") == "GBP"
+        # Closed family — every entry has a non-empty currency code
+        for curve, ccy in CURVE_FAMILY_TO_CURRENCY.items():
+            assert isinstance(ccy, str) and len(ccy) >= 3, (
+                f"{curve!r} maps to {ccy!r} — currencies must be "
+                "ISO-style codes (3+ characters)"
+            )
+
 
 class TestPerLegYamlFallthrough:
     """End-to-end proof that BOTH per-leg YAML defaults reach the

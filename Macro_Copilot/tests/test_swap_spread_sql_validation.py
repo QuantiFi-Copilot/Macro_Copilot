@@ -54,6 +54,9 @@ from rates_agent.ois.tools.swap_spread import (  # noqa: E402
     calculate_swap_spread,
 )
 from rates_agent.ois.tools.schemas import SwapSpreadInput  # noqa: E402
+from rates_agent.ois.tools.swap_spread.schemas import (  # noqa: E402
+    CURVE_FAMILY_TO_CURRENCY,
+)
 from tests.sql_validation_common import (  # noqa: E402
     add_exact_field_mismatches,
     add_numeric_field_mismatches,
@@ -153,25 +156,35 @@ def choose_test_cases(
     for row in ois_rows:
         ois_by_tenor.setdefault(row["tenor"], set()).add(row["curve_family"])
 
-    # Same-currency mapping.  Caller responsibility (the primitive
-    # itself does NOT validate currency match), but the SQL gate
-    # picks pairs that ARE in the same currency to avoid generating
-    # nonsense baselines.
-    SAME_CURRENCY = {
-        "UST":     "USD_SOFR_OIS",
-        "DE_BUND": "EUR_ESTR_OIS",
-        "FR_OAT":  "EUR_ESTR_OIS",
-        "IT_BTP":  "EUR_ESTR_OIS",
-        "ES_BONO": "EUR_ESTR_OIS",
-        "UK_GILT": "GBP_SONIA_OIS",
-        "JGB":     "JPY_OIS",
-    }
+    # Build the sovereign→OIS same-currency mapping by inverting
+    # ``CURVE_FAMILY_TO_CURRENCY`` from the schema layer.  Single
+    # source of truth: the schema validator and this SQL gate
+    # consume the same mapping, so a future addition (e.g. AUD
+    # sovereign curve) extends the schema's dict and this gate
+    # picks it up automatically.
+    sovereign_to_ois: Dict[str, str] = {}
+    for sov_cf, sov_ccy in CURVE_FAMILY_TO_CURRENCY.items():
+        # Sovereign curves are those whose name does NOT end with
+        # "_OIS" — kept structural rather than hardcoding a list,
+        # so adding a new sovereign just requires the dict entry.
+        if sov_cf.endswith("_OIS"):
+            continue
+        # Find the OIS curve in the same currency.
+        ois_match = next(
+            (
+                ois_cf for ois_cf, ois_ccy in CURVE_FAMILY_TO_CURRENCY.items()
+                if ois_cf.endswith("_OIS") and ois_ccy == sov_ccy
+            ),
+            None,
+        )
+        if ois_match is not None:
+            sovereign_to_ois[sov_cf] = ois_match
 
     pool: List[Case] = []
     for tenor, sov_curves in sov_by_tenor.items():
         ois_at_tenor = ois_by_tenor.get(tenor, set())
         for sov in sov_curves:
-            ois_match = SAME_CURRENCY.get(sov)
+            ois_match = sovereign_to_ois.get(sov)
             if ois_match and ois_match in ois_at_tenor:
                 pool.append((sov, ois_match, tenor))
 

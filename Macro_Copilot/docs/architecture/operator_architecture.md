@@ -77,7 +77,8 @@ Examples of operator candidates:
 
 Examples of things that are **not** operators:
 
-- `compute_swap_spread`
+- `calculate_swap_spread` (a real cross-domain primitive shipped in
+  PR #76 — knows the sovereign-yield vs OIS-rate finance concept)
 - `find_curve_inversions`
 - `regress_breakeven_on_oil`
 - `event_study_pipeline`
@@ -236,7 +237,7 @@ behaviour into every operator.
 | `conditional_aggregate` | Pass | Finance-blind aggregation family with explicit aggregator choice |
 | `cross_sectional_rank` | Pass | Finance-blind ranking over a `SeriesSet` |
 | `series_arithmetic` | Pass | Finance-blind arithmetic over compatible series metadata |
-| `compute_swap_spread` | Fail | Knows finance concepts (`swap`, matched sovereign) |
+| `calculate_swap_spread` | Fail | Knows finance concepts (sovereign yield vs OIS rate); correctly shipped as a cross-domain primitive in PR #76, not as an operator |
 | `find_curve_inversions` | Fail | Domain-specific curve semantics |
 | `event_study_pipeline` | Fail | Entire workflow template, not a structural operator |
 | `regress_breakeven_on_oil` | Fail | Domain-specific workflow logic in name and behavior |
