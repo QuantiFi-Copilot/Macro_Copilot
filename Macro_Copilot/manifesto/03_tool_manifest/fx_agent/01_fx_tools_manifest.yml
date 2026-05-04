@@ -247,6 +247,32 @@ tools:
 
     validation_status: tested
 
+  - name: get_fx_rates_differential_overlay
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_rates_differential_overlay_tool
+      schema: fx_agent/macro/tools/rates_overlay/schemas.py::FXRatesDifferentialInput
+      compute: fx_agent/macro/tools/rates_overlay/compute.py::get_fx_rates_differential_overlay
+      config: fx_agent/macro/tools/rates_overlay/config.yaml
+
+    one_liner: >-
+      Compare an FX trade setup with a rates differential and return a clear
+      missing-data diagnostic when Rates/OIS series are not yet populated.
+
+    related_tools:
+      - get_fx_trade_setup_tool
+      - classify_fx_regime_tool
+      - calculate_cross_market_spread_tool
+      - calculate_ois_cross_market_spread_tool
+
+    validation_status: tested
+
   - name: get_fx_vol_risk_premium
     domain: fx
     sub_agent: vol

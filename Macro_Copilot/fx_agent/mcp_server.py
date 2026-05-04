@@ -47,6 +47,10 @@ from fx_agent.macro.tools.regime_classifier import (  # noqa: E402
     FXRegimeClassifierInput,
     classify_fx_regime,
 )
+from fx_agent.macro.tools.rates_overlay import (  # noqa: E402
+    FXRatesDifferentialInput,
+    get_fx_rates_differential_overlay,
+)
 from fx_agent.macro.tools.trade_setup import (  # noqa: E402
     FXTradeSetupInput,
     get_fx_trade_setup,
@@ -575,6 +579,47 @@ def classify_fx_regime_tool(
     except Exception as exc:
         logger.exception("[classify_fx_regime_tool] failed")
         return _json_error(f"FX regime classification failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_rates_differential_overlay_tool(
+    pair: str = "EURUSD",
+    fx_tenor: str = "1M",
+    rate_curve_family_1: str = "UST",
+    rate_curve_family_2: str = "DE_BUND",
+    rate_tenor: str = "2Y",
+    lookback_days: int = 365,
+    fx_vol_window_observations: int = 21,
+    rates_field_name: str = "YLD_YTM_MID",
+) -> str:
+    """Compare an FX trade setup with a rates differential.
+
+    Use this for cross-desk questions such as EURUSD versus US-Germany 2Y
+    rates, FX setup versus front-end rate differentials, or when the user asks
+    whether rates confirm or challenge an FX trade.
+    """
+    try:
+        params = FXRatesDifferentialInput(
+            pair=pair,
+            fx_tenor=fx_tenor,
+            rate_curve_family_1=rate_curve_family_1,
+            rate_curve_family_2=rate_curve_family_2,
+            rate_tenor=rate_tenor,
+            lookback_days=lookback_days,
+            fx_vol_window_observations=fx_vol_window_observations,
+            rates_field_name=rates_field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_rates_differential_overlay_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_rates_differential_overlay(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_rates_differential_overlay_tool] failed")
+        return _json_error(f"FX/rates differential overlay failed: {exc}")
 
     return result.model_dump_json()
 

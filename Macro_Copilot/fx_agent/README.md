@@ -26,6 +26,7 @@ volatility, implied-vs-realized volatility, and FX-to-macro overlays.
 | `get_fx_trade_setup_tool` | yes | Deterministic spot/carry/vol/forward signal stack. |
 | `get_fx_macro_risk_overlay_tool` | yes | FX setup against DXY, equity, vol, rates vol, gold, oil. |
 | `classify_fx_regime_tool` | no | Broad FX regime across USD, risk, vol, and carry. |
+| `get_fx_rates_differential_overlay_tool` | no | FX setup versus rates differential, with missing-data diagnostics. |
 | `get_fx_vol_risk_premium_tool` | yes | Implied-vs-realized volatility premium for one pair. |
 | `scan_fx_vol_risk_premium_tool` | no | Cross-pair volatility premium scan. |
 | `compare_fx_pairs_tool` | no | Relative setup comparison between two pairs. |

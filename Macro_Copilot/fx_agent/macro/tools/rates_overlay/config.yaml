@@ -1,0 +1,16 @@
+methodology:
+  description: >-
+    Compare an FX trade setup against a rates differential. The FX leg is
+    deterministic and always computed first. The rates leg reads stored rate
+    series by curve_family and tenor when available, and degrades gracefully
+    when the Rates/OIS database has not yet been populated.
+  default_rates_field_name: YLD_YTM_MID
+  default_curve_family_1: UST
+  default_curve_family_2: DE_BUND
+  default_rate_tenor: 2Y
+  directional_convention: >-
+    For XXXUSD pairs such as EURUSD, a rising curve_family_1 minus
+    curve_family_2 rate differential is treated as USD-supportive and therefore
+    bearish for the pair. A falling differential is treated as supportive for
+    the non-USD leg.
+
