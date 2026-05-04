@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LineChart, BarChart3, Activity, Zap } from 'lucide-react';
+import { LineChart, BarChart3, Activity, Zap, Gauge, Database, Network } from 'lucide-react';
 
 type QuickLaunch = {
   label: string;
@@ -44,6 +44,24 @@ const QUICK_LAUNCHES: QuickLaunch[] = [
     subtitle: 'Z-score extremes across sovereigns',
     icon: <Zap size={14} />,
     url: '/workspace?tool=scanner',
+  },
+  {
+    label: 'FX regime',
+    subtitle: 'USD, risk, vol and carry regime',
+    icon: <Gauge size={14} />,
+    url: '/workspace?tool=fx_regime_classifier&anchor_pair=EURUSD&tenor=1M',
+  },
+  {
+    label: 'EURUSD beta',
+    subtitle: 'Macro correlation and beta stack',
+    icon: <Network size={14} />,
+    url: '/workspace?tool=fx_correlation_beta&pair=EURUSD&window_observations=63',
+  },
+  {
+    label: 'FX data health',
+    subtitle: 'Coverage and stale-series diagnostics',
+    icon: <Database size={14} />,
+    url: '/workspace?tool=fx_data_health&stale_after_days=5',
   },
 ];
 
