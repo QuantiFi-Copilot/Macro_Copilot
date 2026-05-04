@@ -20,7 +20,7 @@ Phase 1A artifact set (per build plan v5):
 Plus lineage:
 
   - Lineage / LineageStep
-  - FetchStep / CleanStep / AdapterStep / OperatorStep
+  - FetchStep / CleanStep / AdapterStep / PrimitiveStep / OperatorStep
 
 Plus structural-metadata types:
 
@@ -36,6 +36,7 @@ from shared.artifacts.lineage import (
     Lineage,
     LineageStep,
     OperatorStep,
+    PrimitiveStep,
 )
 from shared.artifacts.missingness import (
     AlignSeriesFFillV1,
@@ -66,6 +67,7 @@ __all__ = [
     "FetchStep",
     "CleanStep",
     "AdapterStep",
+    "PrimitiveStep",
     "OperatorStep",
     # Structural metadata
     "MissingnessPolicy",
