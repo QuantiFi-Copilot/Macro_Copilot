@@ -1,0 +1,294 @@
+tools:
+  - name: get_fx_spot_level
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_spot_level_tool
+      schema: fx_agent/spot/tools/spot_levels/schemas.py::FXSpotLevelInput
+      compute: fx_agent/spot/tools/spot_levels/compute.py::get_fx_spot_level
+      config: fx_agent/spot/tools/spot_levels/config.yaml
+
+    one_liner: >-
+      Latest FX spot level with trailing changes, range position, z-score,
+      and chartable price history.
+
+    related_tools:
+      - scan_fx_extremes_tool
+      - get_fx_trade_setup_tool
+      - scan_usd_pressure_tool
+
+    validation_status: tested
+
+  - name: get_fx_carry
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_carry_tool
+      schema: fx_agent/forwards/tools/fx_carry/schemas.py::FXCarryInput
+      compute: fx_agent/forwards/tools/fx_carry/compute.py::get_fx_carry
+      config: fx_agent/forwards/tools/fx_carry/config.yaml
+
+    one_liner: >-
+      Cross-pair forward-implied carry ranking for a selected tenor.
+
+    related_tools:
+      - get_fx_forward_curve_tool
+      - build_fx_carry_basket_tool
+      - get_fx_trade_setup_tool
+
+    validation_status: tested
+
+  - name: get_fx_forward_curve
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_forward_curve_tool
+      schema: fx_agent/forwards/tools/forward_curve/schemas.py::FXForwardCurveInput
+      compute: fx_agent/forwards/tools/forward_curve/compute.py::get_fx_forward_curve
+      config: fx_agent/forwards/tools/forward_curve/config.yaml
+
+    one_liner: >-
+      Forward points, outright forwards, and annualized carry across available
+      tenors for a single FX pair.
+
+    related_tools:
+      - get_fx_carry_tool
+      - get_fx_trade_setup_tool
+
+    validation_status: tested
+
+  - name: scan_fx_extremes
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_extremes_tool
+      schema: fx_agent/spot/tools/schemas/__init__.py::FXScannerInput
+      compute: fx_agent/spot/tools/scanner.py::run_fx_scanner
+
+    one_liner: >-
+      Deterministic scanner for stretched FX pairs, spot z-scores, and
+      momentum signals.
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_usd_pressure_tool
+
+    validation_status: tested
+
+  - name: get_fx_realized_vol
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_realized_vol_tool
+      schema: fx_agent/vol/tools/realized_vol/schemas.py::FXRealizedVolInput
+      compute: fx_agent/vol/tools/realized_vol/compute.py::get_fx_realized_vol
+      config: fx_agent/vol/tools/realized_vol/config.yaml
+
+    one_liner: >-
+      Annualized realized volatility snapshot and historical volatility series
+      for one FX pair.
+
+    related_tools:
+      - get_fx_vol_risk_premium_tool
+      - get_fx_trade_setup_tool
+
+    validation_status: tested
+
+  - name: get_fx_trade_setup
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_trade_setup_tool
+      schema: fx_agent/macro/tools/trade_setup/schemas.py::FXTradeSetupInput
+      compute: fx_agent/macro/tools/trade_setup/compute.py::get_fx_trade_setup
+      config: fx_agent/macro/tools/trade_setup/config.yaml
+
+    one_liner: >-
+      Deterministic signal stack combining spot momentum, carry, forward curve
+      shape, and realized volatility.
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - get_fx_carry_tool
+      - get_fx_forward_curve_tool
+      - get_fx_realized_vol_tool
+      - get_fx_macro_risk_overlay_tool
+
+    validation_status: tested
+
+  - name: get_fx_macro_risk_overlay
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_macro_risk_overlay_tool
+      schema: fx_agent/macro/tools/risk_overlay/schemas.py::FXMacroRiskOverlayInput
+      compute: fx_agent/macro/tools/risk_overlay/compute.py::get_fx_macro_risk_overlay
+      config: fx_agent/macro/tools/risk_overlay/config.yaml
+
+    one_liner: >-
+      Overlay an FX pair against DXY, SPX, VIX, MOVE, gold, and oil to identify
+      macro confirmation or divergence.
+
+    related_tools:
+      - get_fx_trade_setup_tool
+      - scan_usd_pressure_tool
+      - compare_fx_pairs_tool
+
+    validation_status: tested
+
+  - name: get_fx_vol_risk_premium
+    domain: fx
+    sub_agent: vol
+    bucket: 1B
+    status: built
+    workspace_surface: true
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_risk_premium_tool
+      schema: fx_agent/vol/tools/vol_risk_premium/schemas.py::FXVolRiskPremiumInput
+      compute: fx_agent/vol/tools/vol_risk_premium/compute.py::get_fx_vol_risk_premium
+      config: fx_agent/vol/tools/vol_risk_premium/config.yaml
+
+    one_liner: >-
+      Compare implied volatility with realized volatility to classify FX vol
+      risk premium as rich, cheap, or neutral.
+
+    related_tools:
+      - get_fx_realized_vol_tool
+      - scan_fx_vol_risk_premium_tool
+
+    validation_status: tested
+
+  - name: scan_fx_vol_risk_premium
+    domain: fx
+    sub_agent: vol
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_vol_risk_premium_tool
+      schema: fx_agent/vol/tools/vol_risk_premium_scanner/schemas.py::FXVolRiskPremiumScannerInput
+      compute: fx_agent/vol/tools/vol_risk_premium_scanner/compute.py::scan_fx_vol_risk_premium
+      config: fx_agent/vol/tools/vol_risk_premium_scanner/config.yaml
+
+    one_liner: >-
+      Rank FX pairs by implied-minus-realized volatility premium.
+
+    related_tools:
+      - get_fx_vol_risk_premium_tool
+      - get_fx_realized_vol_tool
+
+    validation_status: tested
+
+  - name: compare_fx_pairs
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: compare_fx_pairs_tool
+      schema: fx_agent/macro/tools/pair_compare/schemas.py::FXPairCompareInput
+      compute: fx_agent/macro/tools/pair_compare/compute.py::compare_fx_pairs
+      config: fx_agent/macro/tools/pair_compare/config.yaml
+
+    one_liner: >-
+      Compare two FX pairs using deterministic trade-setup scores, carry,
+      volatility, and macro overlay signals.
+
+    related_tools:
+      - get_fx_trade_setup_tool
+      - get_fx_macro_risk_overlay_tool
+
+    validation_status: tested
+
+  - name: scan_usd_pressure
+    domain: fx
+    sub_agent: spot
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_usd_pressure_tool
+      schema: fx_agent/spot/tools/usd_pressure/schemas.py::FXUSDPressureInput
+      compute: fx_agent/spot/tools/usd_pressure/compute.py::scan_usd_pressure
+      config: fx_agent/spot/tools/usd_pressure/config.yaml
+
+    one_liner: >-
+      Aggregate broad USD pressure across core G10 spot pairs and compare it
+      with DXY momentum.
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_fx_extremes_tool
+      - get_fx_macro_risk_overlay_tool
+
+    validation_status: tested
+
+  - name: build_fx_carry_basket
+    domain: fx
+    sub_agent: forwards
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: build_fx_carry_basket_tool
+      schema: fx_agent/forwards/tools/carry_basket/schemas.py::FXCarryBasketInput
+      compute: fx_agent/forwards/tools/carry_basket/compute.py::build_fx_carry_basket
+      config: fx_agent/forwards/tools/carry_basket/config.yaml
+
+    one_liner: >-
+      Build candidate long/short FX carry baskets after filtering for spot
+      stretch and realized volatility risk.
+
+    related_tools:
+      - get_fx_carry_tool
+      - get_fx_realized_vol_tool
+      - get_fx_spot_level_tool
+
+    validation_status: tested
+

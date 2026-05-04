@@ -10,9 +10,9 @@ from fx_agent.spot.tools.usd_pressure.schemas import (
     FXUSDPressureOutput,
     FXUSDPressureRow,
 )
+from fx_agent.reference.conventions import G10_SPOT_PAIRS, USD_BASE_PAIRS
 
-USD_PAIRS = ["EURUSD", "GBPUSD", "AUDUSD", "USDJPY", "USDCAD", "USDCHF"]
-USD_BASE = {"USDJPY", "USDCAD", "USDCHF"}
+USD_PAIRS = list(G10_SPOT_PAIRS)
 
 
 def _dxy_monthly_change(field_name: str, lookback_days: int) -> tuple[str | None, float | None]:
@@ -65,7 +65,7 @@ def scan_usd_pressure(params: FXUSDPressureInput) -> FXUSDPressureOutput:
         # spot means USD weakness, so invert the sign.
         pressure = None
         if monthly is not None:
-            pressure = monthly if pair in USD_BASE else -monthly
+            pressure = monthly if pair in USD_BASE_PAIRS else -monthly
         signal = "USD strength" if (pressure or 0) > 0 else "USD weakness"
         if pressure is None or abs(pressure) < 0.5:
             signal = "mixed"

@@ -9,26 +9,17 @@ from fx_agent.forwards.tools.fx_carry.schemas import (
     FXCarryOutput,
     FXCarryRow,
 )
-
-
-DAYS_IN_YEAR = 252
-
-TENOR_DAYS = {
-    "1W": 5,
-    "1M": 21,
-    "3M": 63,
-    "6M": 126,
-}
-
-
-def _points_to_spot_units(pair: str, forward_points: float) -> float:
-    """Convert Bloomberg FX forward points into spot units."""
-    return forward_points / 100.0 if "JPY" in pair else forward_points / 10000.0
+from fx_agent.reference.conventions import (
+    DAYS_IN_YEAR,
+    normalize_tenor,
+    points_to_spot_units,
+    tenor_days,
+)
 
 
 def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
-    tenor = params.tenor.upper().strip()
-    tenor_days = TENOR_DAYS.get(tenor, 21)
+    tenor = normalize_tenor(params.tenor)
+    tenor_days_value = tenor_days(tenor)
 
     query = text(
         """
@@ -87,7 +78,7 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
         return FXCarryOutput(tenor=tenor, rows=[])
 
     df["forward_points_spot_units"] = df.apply(
-        lambda row: _points_to_spot_units(row["pair"], row["forward_points"]),
+        lambda row: points_to_spot_units(row["pair"], row["forward_points"]),
         axis=1,
     )
 
@@ -99,7 +90,7 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
 
     df["carry_annualized_pct"] = (
         (df["forward_points_spot_units"] / df["spot"])
-        * (DAYS_IN_YEAR / tenor_days)
+        * (DAYS_IN_YEAR / tenor_days_value)
         * 100
     )
 

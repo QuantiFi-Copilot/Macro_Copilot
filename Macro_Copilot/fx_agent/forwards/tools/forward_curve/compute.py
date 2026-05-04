@@ -9,16 +9,16 @@ from fx_agent.forwards.tools.forward_curve.schemas import (
     FXForwardCurveOutput,
     FXForwardCurveRow,
 )
-from fx_agent.forwards.tools.fx_carry.compute import DAYS_IN_YEAR, TENOR_DAYS
-
-
-def _points_to_spot_units(pair: str, forward_points: float) -> float:
-    """Convert Bloomberg FX forward points into spot units."""
-    return forward_points / 100.0 if "JPY" in pair else forward_points / 10000.0
+from fx_agent.reference.conventions import (
+    DAYS_IN_YEAR,
+    TENOR_DAYS,
+    normalize_pair,
+    points_to_spot_units,
+)
 
 
 def get_fx_forward_curve(params: FXForwardCurveInput) -> FXForwardCurveOutput:
-    pair = params.pair.upper().replace("/", "").strip()
+    pair = normalize_pair(params.pair)
 
     query = text(
         """
@@ -82,7 +82,7 @@ def get_fx_forward_curve(params: FXForwardCurveInput) -> FXForwardCurveOutput:
     df["tenor_days"] = df["tenor_days"].astype(int)
 
     df["forward_points_spot_units"] = df.apply(
-        lambda row: _points_to_spot_units(row["pair"], row["forward_points"]),
+        lambda row: points_to_spot_units(row["pair"], row["forward_points"]),
         axis=1,
     )
     df["outright_forward"] = df["spot"] + df["forward_points_spot_units"]

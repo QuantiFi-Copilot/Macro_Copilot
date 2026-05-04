@@ -6,6 +6,7 @@ from fx_agent.forwards.tools.carry_basket.schemas import (
     FXCarryBasketOutput,
 )
 from fx_agent.forwards.tools.fx_carry import FXCarryInput, get_fx_carry
+from fx_agent.reference.conventions import normalize_tenor
 from fx_agent.spot.tools.spot_levels import FXSpotLevelInput, get_fx_spot_level
 from fx_agent.vol.tools.realized_vol import FXRealizedVolInput, get_fx_realized_vol
 
@@ -29,7 +30,7 @@ def _pair_risk(pair: str, lookback_days: int) -> tuple[float | None, float | Non
 
 
 def build_fx_carry_basket(params: FXCarryBasketInput) -> FXCarryBasketOutput:
-    tenor = params.tenor.upper().strip()
+    tenor = normalize_tenor(params.tenor)
     carry = get_fx_carry(FXCarryInput(tenor=tenor))
 
     eligible: list[FXCarryBasketLeg] = []
