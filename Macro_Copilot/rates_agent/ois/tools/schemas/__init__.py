@@ -32,8 +32,14 @@ from rates_agent.ois.tools.schemas.forward_rate import (
     OISForwardRateTimeSeriesRow,
 )
 
-# Cross-market spread (same tenor, two OIS curves)
-from rates_agent.ois.tools.schemas.cross_market import (
+# Cross-market spread (same tenor, two OIS curves) — re-exported from
+# the per-tool-folder package
+# (``rates_agent/ois/tools/cross_market_spread/``).  The schemas hub
+# stays as the legacy import surface for callers / tests that haven't
+# migrated to the package path; new code should prefer
+# ``from rates_agent.ois.tools.cross_market_spread import
+# OISCrossMarketSpreadInput``.
+from rates_agent.ois.tools.cross_market_spread.schemas import (
     OISCrossMarketSpreadCurrentMetrics,
     OISCrossMarketSpreadInput,
     OISCrossMarketSpreadOutput,
