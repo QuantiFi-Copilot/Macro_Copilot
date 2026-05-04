@@ -29,6 +29,8 @@ G10_CROSS_PAIRS = (
 )
 
 G10_FX_VOL_PAIRS = G10_SPOT_PAIRS
+G10_ALL_PAIRS = tuple(dict.fromkeys((*G10_SPOT_PAIRS, *G10_CROSS_PAIRS)))
+G10_CURRENCIES = ("USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF")
 
 USD_BASE_PAIRS = frozenset({"USDJPY", "USDCAD", "USDCHF"})
 USD_QUOTE_PAIRS = frozenset({"EURUSD", "GBPUSD", "AUDUSD"})
@@ -47,6 +49,13 @@ def normalize_pair(pair: str) -> str:
     return pair.upper().replace("/", "").strip()
 
 
+def split_pair(pair: str) -> tuple[str, str]:
+    normalized = normalize_pair(pair)
+    if len(normalized) != 6:
+        raise ValueError(f"FX pair must be 6 characters after normalization: {pair}")
+    return normalized[:3], normalized[3:]
+
+
 def normalize_tenor(tenor: str) -> str:
     return tenor.upper().strip()
 
@@ -62,4 +71,3 @@ def tenor_days(tenor: str, default: int = 21) -> int:
 def points_to_spot_units(pair: str, forward_points: float) -> float:
     """Convert Bloomberg FX forward points into spot units."""
     return forward_points / 100.0 if is_jpy_pair(pair) else forward_points / 10000.0
-

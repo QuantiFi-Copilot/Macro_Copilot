@@ -73,6 +73,10 @@ from fx_agent.spot.tools.spot_levels import (  # noqa: E402
 )
 from fx_agent.spot.tools.scanner import run_fx_scanner  # noqa: E402
 from fx_agent.spot.tools.schemas import FXScannerInput  # noqa: E402
+from fx_agent.spot.tools.currency_pressure import (  # noqa: E402
+    FXCurrencyPressureInput,
+    scan_currency_pressure,
+)
 from fx_agent.spot.tools.usd_pressure import (  # noqa: E402
     FXUSDPressureInput,
     scan_usd_pressure,
@@ -309,6 +313,36 @@ def scan_fx_extremes_tool(
     except Exception as exc:
         logger.exception("[scan_fx_extremes_tool] failed")
         return _json_error(f"FX scanner failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def scan_fx_currency_pressure_tool(
+    currencies: list[str] | None = None,
+    lookback_days: int = 365,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Rank G10 currencies by broad FX pressure across available pairs.
+
+    Use this for non-USD thesis work, e.g. long EUR, short JPY, or comparing
+    which currencies are strongest/weakest across the available FX universe.
+    """
+    try:
+        params = FXCurrencyPressureInput(
+            currencies=currencies,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[scan_fx_currency_pressure_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = scan_currency_pressure(params=params)
+    except Exception as exc:
+        logger.exception("[scan_fx_currency_pressure_tool] failed")
+        return _json_error(f"FX currency pressure scan failed: {exc}")
 
     return result.model_dump_json()
 

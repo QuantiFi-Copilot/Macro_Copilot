@@ -1,0 +1,25 @@
+methodology:
+  description: >-
+    Aggregate FX pair momentum into currency-level pressure. For BASEQUOTE,
+    positive spot return is treated as base-currency strength and
+    quote-currency weakness.
+  default_universe:
+    - EURUSD
+    - GBPUSD
+    - AUDUSD
+    - USDJPY
+    - USDCAD
+    - USDCHF
+    - EURGBP
+    - EURJPY
+    - GBPJPY
+    - AUDJPY
+    - AUDCAD
+    - EURCHF
+  pressure_definition: >-
+    Currency pressure is the average signed 1M spot return contribution across
+    available pairs containing the currency.
+  labels:
+    strength_threshold_pct: 0.5
+    weakness_threshold_pct: -0.5
+

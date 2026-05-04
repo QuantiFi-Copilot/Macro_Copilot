@@ -420,6 +420,32 @@ tools:
 
     validation_status: tested
 
+  - name: scan_fx_currency_pressure
+    domain: fx
+    sub_agent: spot
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_currency_pressure_tool
+      schema: fx_agent/spot/tools/currency_pressure/schemas.py::FXCurrencyPressureInput
+      compute: fx_agent/spot/tools/currency_pressure/compute.py::scan_currency_pressure
+      config: fx_agent/spot/tools/currency_pressure/config.yaml
+
+    one_liner: >-
+      Aggregate pair-level FX momentum into currency-level pressure rankings
+      for USD, EUR, GBP, JPY, AUD, CAD and CHF.
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_usd_pressure_tool
+      - scan_fx_extremes_tool
+      - get_fx_usd_thesis_monitor_tool
+
+    validation_status: tested
+
   - name: build_fx_carry_basket
     domain: fx
     sub_agent: forwards
