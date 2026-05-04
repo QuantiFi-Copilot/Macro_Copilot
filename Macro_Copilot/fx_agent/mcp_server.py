@@ -47,6 +47,10 @@ from fx_agent.macro.tools.correlation_beta import (  # noqa: E402
     FXCorrelationBetaInput,
     get_fx_correlation_beta,
 )
+from fx_agent.macro.tools.currency_thesis_monitor import (  # noqa: E402
+    FXCurrencyThesisInput,
+    get_fx_currency_thesis_monitor,
+)
 from fx_agent.macro.tools.regime_classifier import (  # noqa: E402
     FXRegimeClassifierInput,
     classify_fx_regime,
@@ -729,6 +733,40 @@ def get_fx_usd_thesis_monitor_tool(
     except Exception as exc:
         logger.exception("[get_fx_usd_thesis_monitor_tool] failed")
         return _json_error(f"FX USD thesis monitor failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_currency_thesis_monitor_tool(
+    currency: str = "USD",
+    view: str = "long",
+    lookback_days: int = 365,
+    top_n: int = 5,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Monitor whether current FX pressure confirms a currency thesis.
+
+    Use this for long/short EUR, GBP, JPY, AUD, CAD, CHF or USD research
+    views. It evaluates breadth and pair contributions, not trade execution.
+    """
+    try:
+        params = FXCurrencyThesisInput(
+            currency=currency,
+            view=view,
+            lookback_days=lookback_days,
+            top_n=top_n,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_currency_thesis_monitor_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_currency_thesis_monitor(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_currency_thesis_monitor_tool] failed")
+        return _json_error(f"FX currency thesis monitor failed: {exc}")
 
     return result.model_dump_json()
 

@@ -446,6 +446,31 @@ tools:
 
     validation_status: tested
 
+  - name: get_fx_currency_thesis_monitor
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_currency_thesis_monitor_tool
+      schema: fx_agent/macro/tools/currency_thesis_monitor/schemas.py::FXCurrencyThesisInput
+      compute: fx_agent/macro/tools/currency_thesis_monitor/compute.py::get_fx_currency_thesis_monitor
+      config: fx_agent/macro/tools/currency_thesis_monitor/config.yaml
+
+    one_liner: >-
+      Monitor whether currency-level pressure and pair breadth confirm or
+      challenge a long/short thesis for any covered G10 currency.
+
+    related_tools:
+      - scan_fx_currency_pressure_tool
+      - scan_fx_extremes_tool
+      - get_fx_usd_thesis_monitor_tool
+
+    validation_status: tested
+
   - name: build_fx_carry_basket
     domain: fx
     sub_agent: forwards

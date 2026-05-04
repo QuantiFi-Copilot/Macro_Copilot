@@ -32,6 +32,7 @@ volatility, implied-vs-realized volatility, and FX-to-macro overlays.
 | `scan_fx_vol_risk_premium_tool` | no | Cross-pair volatility premium scan. |
 | `compare_fx_pairs_tool` | no | Relative setup comparison between two pairs. |
 | `scan_fx_currency_pressure_tool` | no | Rank G10 currencies by pressure across available pairs. |
+| `get_fx_currency_thesis_monitor_tool` | no | Validate or challenge a long/short thesis for any covered G10 currency. |
 | `scan_usd_pressure_tool` | no | Broad USD pressure across G10 spot pairs. |
 | `get_fx_usd_thesis_monitor_tool` | no | Validate or challenge a long/short USD research thesis. |
 | `build_fx_carry_basket_tool` | no | Long/short carry basket candidate builder. |

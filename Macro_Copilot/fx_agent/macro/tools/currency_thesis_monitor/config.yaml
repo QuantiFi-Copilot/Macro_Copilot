@@ -1,0 +1,21 @@
+methodology:
+  description: >-
+    Monitor whether pair-level FX pressure confirms or challenges a long/short
+    thesis for any covered G10 currency. This generalizes the USD-specific
+    thesis monitor without replacing it.
+  supported_currencies:
+    - USD
+    - EUR
+    - GBP
+    - JPY
+    - AUD
+    - CAD
+    - CHF
+  source_tools:
+    currency_pressure: fx_agent/spot/tools/currency_pressure/compute.py::scan_currency_pressure
+    fx_scanner: fx_agent/spot/tools/scanner.py::run_fx_scanner
+  status_labels:
+    supportive: currency pressure and breadth align with the thesis
+    mixed: evidence is split or weak
+    hostile: pressure and breadth mostly challenge the thesis
+
