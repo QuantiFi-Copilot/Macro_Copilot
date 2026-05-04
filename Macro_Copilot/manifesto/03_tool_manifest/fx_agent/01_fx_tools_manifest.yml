@@ -97,6 +97,31 @@ tools:
 
     validation_status: tested
 
+  - name: get_fx_carry_decay
+    domain: fx
+    sub_agent: forwards
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_carry_decay_tool
+      schema: fx_agent/forwards/tools/carry_decay/schemas.py::FXCarryDecayInput
+      compute: fx_agent/forwards/tools/carry_decay/compute.py::get_fx_carry_decay
+      config: fx_agent/forwards/tools/carry_decay/config.yaml
+
+    one_liner: >-
+      Classify whether an FX pair's carry is front-loaded, persistent, fading,
+      or negative across the available forward tenors.
+
+    related_tools:
+      - get_fx_forward_curve_tool
+      - get_fx_carry_tool
+      - get_fx_trade_setup_tool
+
+    validation_status: tested
+
   - name: scan_fx_extremes
     domain: fx
     sub_agent: spot

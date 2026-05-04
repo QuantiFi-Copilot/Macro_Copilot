@@ -20,6 +20,7 @@ volatility, implied-vs-realized volatility, and FX-to-macro overlays.
 | `get_fx_data_health_tool` | no | FX data coverage, missing series, stale-series diagnostics. |
 | `get_fx_carry_tool` | yes | Cross-pair carry ranking for a tenor. |
 | `get_fx_forward_curve_tool` | yes | Forward curve and tenor carry for one pair. |
+| `get_fx_carry_decay_tool` | no | Front-loaded vs persistent carry diagnosis across tenors. |
 | `scan_fx_extremes_tool` | yes | FX spot stretch and momentum scanner. |
 | `get_fx_realized_vol_tool` | yes | Realized volatility snapshot and time series. |
 | `get_fx_trade_setup_tool` | yes | Deterministic spot/carry/vol/forward signal stack. |

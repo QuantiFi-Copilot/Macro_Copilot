@@ -26,6 +26,10 @@ from fx_agent.diagnostics.tools.data_health import (  # noqa: E402
     FXDataHealthInput,
     get_fx_data_health,
 )
+from fx_agent.forwards.tools.carry_decay import (  # noqa: E402
+    FXCarryDecayInput,
+    get_fx_carry_decay,
+)
 from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     FXForwardCurveInput,
     get_fx_forward_curve,
@@ -222,6 +226,34 @@ def get_fx_forward_curve_tool(pair: str) -> str:
     except Exception as exc:
         logger.exception("[get_fx_forward_curve_tool] failed")
         return _json_error(f"FX forward curve failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_carry_decay_tool(pair: str) -> str:
+    """Classify whether an FX pair's carry is front-loaded or persistent.
+
+    Use this when the user asks whether carry decays across the forward curve,
+    which tenor is best, whether a carry trade is short-term or structural, or
+    whether forward carry remains attractive beyond the front end.
+
+    Parameters
+    ----------
+    pair : str
+        FX pair, e.g. EURUSD, GBPUSD, USDJPY.
+    """
+    try:
+        params = FXCarryDecayInput(pair=pair)
+    except ValidationError as exc:
+        logger.warning("[get_fx_carry_decay_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_carry_decay(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_carry_decay_tool] failed")
+        return _json_error(f"FX carry decay failed: {exc}")
 
     return result.model_dump_json()
 

@@ -1,0 +1,23 @@
+methodology:
+  description: >-
+    Diagnose whether forward-implied FX carry is front-loaded, persistent, or
+    fading across the available tenor curve.
+  source_tool: fx_agent/forwards/tools/forward_curve/compute.py::get_fx_forward_curve
+  preferred_tenors:
+    - 1W
+    - 1M
+    - 3M
+    - 6M
+  labels:
+    front_loaded_carry: >-
+      Short-dated carry is positive and meaningfully higher than long-dated
+      carry.
+    persistent_carry: >-
+      Carry remains positive across the curve and does not decay materially.
+    carry_fading: >-
+      Carry is positive in the front end but fades materially by longer tenors.
+    negative_carry: >-
+      The best available carry point is negative.
+    mixed_curve: >-
+      Carry signs or slopes are mixed and do not fit a clean label.
+
