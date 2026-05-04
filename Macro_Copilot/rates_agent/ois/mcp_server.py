@@ -61,8 +61,12 @@ from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
 )
 from rates_agent.ois.tools.curve_spread import calculate_ois_curve_spread  # noqa: E402
 from rates_agent.ois.tools.forward_rate import calculate_ois_forward_rate  # noqa: E402
-from rates_agent.ois.tools.rate_level import get_ois_rate_level  # noqa: E402
+from rates_agent.ois.tools.rate_level import (  # noqa: E402
+    CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
+    get_ois_rate_level,
+)
 from rates_agent.ois.tools.scanner import scan_ois_extremes  # noqa: E402
+from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
     stream=sys.stderr,
@@ -185,7 +189,7 @@ def calculate_ois_rate_level_tool(
     curve_family: str,
     tenor: str,
     lookback_days: int = 365,
-    field_name: str = "PX_LAST",
+    field_name: str = "",
 ) -> str:
     """Get the current par swap rate level for a single point on an OIS
     curve, plus period changes, 1-year z-score, and deterministic
@@ -214,19 +218,88 @@ def calculate_ois_rate_level_tool(
     lookback_days : int, optional
         Calendar days of history for observation counting (default 365).
     field_name : str, optional
-        Observation field (default 'PX_LAST' = mid par swap rate).
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_swap_rate_field`` convention
+        from rate_level/config.yaml (currently 'PX_LAST').  Pass an
+        explicit field name to override per call.  Mirrors the
+        empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / curve_move_classifier so the YAML
+        default actually flows through.
     """
-    return _run_tool(
-        tool_name="calculate_ois_rate_level_tool",
-        schema_cls=OISRateLevelInput,
-        tool_fn=get_ois_rate_level,
-        kwargs=dict(
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_swap_rate_field``.  Without this, the LLM omitting
+    # field_name would always hit a hardcoded default regardless of
+    # what the YAML says — same shadowing pattern fixed for sovereign
+    # curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = OISRateLevelInput(
             curve_family=curve_family,
             tenor=tenor,
             lookback_days=lookback_days,
-            field_name=field_name,
-        ),
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning("[calculate_ois_rate_level_tool] input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("[calculate_ois_rate_level_tool] failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the rate_level tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors sovereign
+    # get_yield_levels_tool exactly.
+    try:
+        rl_config = load_tool_config(OIS_RATE_LEVEL_CONFIG_PATH)
+        result = get_ois_rate_level(
+            engine=engine, params=params, config=rl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_rate_level_tool] unhandled error for %s %s",
+            params.curve_family, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"calculate_ois_rate_level_tool failed for "
+             f"{params.curve_family} {params.tenor}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_ois_rate_level_tool] tool call complete: %s %s → %s",
+        params.curve_family, params.tenor, status,
     )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload).  Same convention as sovereign
+    # get_yield_levels_tool's wrapper — the LLM doesn't need every
+    # historical row to answer "where's SOFR 2Y?".
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", {}).get("rows", []) or [])
+    if ts_rows:
+        logger.info(
+            "[calculate_ois_rate_level_tool] withheld %d time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================
