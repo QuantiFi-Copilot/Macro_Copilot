@@ -3,6 +3,7 @@ import type {
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
+  FXRegimeClassifierResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
   FXTradeSetupResponse,
@@ -135,6 +136,21 @@ export function fetchDetailFXMacroRiskOverlay(
   params: FXMacroRiskOverlayDetailParams,
 ): Promise<FXMacroRiskOverlayResponse> {
   return fetchJSON(`${FX_PREFIX}/detail/macro-risk-overlay${buildQuery(params)}`);
+}
+
+export type FXRegimeClassifierDetailParams = {
+  anchor_pair?: string;
+  tenor?: string;
+  lookback_days?: number;
+  realized_window_observations?: number;
+  correlation_window_observations?: number;
+  field_name?: string;
+};
+
+export function fetchDetailFXRegimeClassifier(
+  params: FXRegimeClassifierDetailParams,
+): Promise<FXRegimeClassifierResponse> {
+  return fetchJSON(`${FX_PREFIX}/detail/regime-classifier${buildQuery(params)}`);
 }
 
 export type FXVolRiskPremiumDetailParams = {

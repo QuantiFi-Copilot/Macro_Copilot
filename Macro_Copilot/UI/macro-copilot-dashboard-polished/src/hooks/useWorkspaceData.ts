@@ -36,6 +36,7 @@ import {
   fetchDetailFXForwardCurve,
   fetchDetailFXMacroRiskOverlay,
   fetchDetailFXRealizedVol,
+  fetchDetailFXRegimeClassifier,
   fetchDetailFXSpotLevel,
   fetchDetailFXTradeSetup,
   fetchDetailFXVolRiskPremium,
@@ -47,6 +48,7 @@ import type {
   FXForwardCurveResponse,
   FXMacroRiskOverlayResponse,
   FXRealizedVolResponse,
+  FXRegimeClassifierResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
   FXTradeSetupResponse,
@@ -69,6 +71,7 @@ export type WorkspaceData =
   | { kind: 'fx_realized_vol'; data: FXRealizedVolResponse }
   | { kind: 'fx_trade_setup'; data: FXTradeSetupResponse }
   | { kind: 'fx_macro_risk_overlay'; data: FXMacroRiskOverlayResponse }
+  | { kind: 'fx_regime_classifier'; data: FXRegimeClassifierResponse }
   | { kind: 'fx_vol_risk_premium'; data: FXVolRiskPremiumResponse };
 
 export type UseWorkspaceDataResult = {
@@ -310,6 +313,24 @@ export function useWorkspaceData(
           });
 
           result = { kind: 'fx_macro_risk_overlay', data: out };
+          break;
+        }
+
+        case 'fx_regime_classifier': {
+          const out = await fetchDetailFXRegimeClassifier({
+            anchor_pair: pick(params, 'anchor_pair', 'EURUSD'),
+            tenor: pick(params, 'tenor', '1M'),
+            realized_window_observations: params['realized_window_observations']
+              ? Number(params['realized_window_observations'])
+              : undefined,
+            correlation_window_observations: params['correlation_window_observations']
+              ? Number(params['correlation_window_observations'])
+              : undefined,
+            lookback_days: pickLookback(params),
+            field_name: pick(params, 'field_name'),
+          });
+
+          result = { kind: 'fx_regime_classifier', data: out };
           break;
         }
 

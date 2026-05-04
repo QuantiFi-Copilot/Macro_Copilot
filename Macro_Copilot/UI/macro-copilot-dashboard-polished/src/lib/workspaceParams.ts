@@ -275,6 +275,28 @@ export function paramSpecsForView(
         },
       ];
 
+    case 'fx_regime_classifier':
+      return [
+        {
+          key: 'anchor_pair',
+          label: 'Anchor',
+          options: FX_PAIRS,
+          value: get('anchor_pair', 'EURUSD'),
+        },
+        {
+          key: 'tenor',
+          label: 'Tenor',
+          options: FX_FORWARD_TENORS,
+          value: get('tenor', '1M'),
+        },
+        {
+          key: 'correlation_window_observations',
+          label: 'Corr',
+          options: FX_VOL_WINDOWS,
+          value: get('correlation_window_observations', '63'),
+        },
+      ];
+
     case 'fx_vol_risk_premium':
       return [
         {
@@ -319,6 +341,7 @@ export function viewUsesLookbackDays(view: WorkspaceViewType): boolean {
     view === 'fx_realized_vol' ||
     view === 'fx_trade_setup' ||
     view === 'fx_macro_risk_overlay' ||
+    view === 'fx_regime_classifier' ||
     view === 'fx_vol_risk_premium'
   );
 }
@@ -402,6 +425,11 @@ export function viewTitle(
       return `${pair} macro risk overlay`;
     }
 
+    case 'fx_regime_classifier': {
+      const pair = params['anchor_pair'] ?? 'EURUSD';
+      return `FX regime · ${pair}`;
+    }
+
     case 'fx_vol_risk_premium': {
       const pair = params['pair'] ?? 'EURUSD';
       return `${pair} vol risk premium`;
@@ -455,6 +483,9 @@ export function viewSubtitle(view: WorkspaceViewType): string {
 
     case 'fx_macro_risk_overlay':
       return 'DXY, VIX, MOVE, SPX, WTI and gold context around one FX pair.';
+
+    case 'fx_regime_classifier':
+      return 'Broad FX regime across USD pressure, risk, volatility and carry.';
 
     case 'fx_vol_risk_premium':
       return 'Implied volatility versus realized volatility and premium signal.';

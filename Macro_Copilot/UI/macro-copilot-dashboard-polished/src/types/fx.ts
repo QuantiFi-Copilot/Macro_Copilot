@@ -152,6 +152,29 @@ export type FXMacroRiskOverlayResponse = {
   proxy_rows: FXMacroRiskProxyRow[];
 };
 
+export type FXRegimeComponent = {
+  name: string;
+  label: string;
+  score: number;
+  summary: string;
+};
+
+export type FXRegimeClassifierResponse = {
+  as_of_date: string | null;
+  anchor_pair: string;
+  overall_regime: string;
+  confidence: 'high' | 'medium' | 'low';
+  total_score: number;
+  usd_regime: string;
+  risk_regime: string;
+  vol_regime: string;
+  carry_regime: string;
+  components: FXRegimeComponent[];
+  drivers: string[];
+  risks: string[];
+  follow_ups: string[];
+};
+
 export type FXVolRiskPremiumMetrics = {
   as_of_date: string;
   pair: string;

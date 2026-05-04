@@ -23,6 +23,10 @@ from fx_agent.macro.tools.risk_overlay.schemas import (
     FXMacroRiskOverlayOutput,
     FXMacroRiskProxyRow,
 )
+from fx_agent.macro.tools.regime_classifier.schemas import (
+    FXRegimeClassifierOutput,
+    FXRegimeComponent,
+)
 from fx_agent.vol.tools.vol_risk_premium.schemas import (
     FXVolRiskPremiumMetrics,
     FXVolRiskPremiumOutput,
@@ -267,3 +271,45 @@ def test_fx_vol_risk_premium_detail_route_calls_tool():
     assert params.pair == "EURUSD"
     assert params.tenor == "1M"
     assert params.realized_window_observations == 21
+
+
+def test_fx_regime_classifier_detail_route_calls_tool():
+    from api.routes.fx import detail as detail_module
+
+    output = FXRegimeClassifierOutput(
+        as_of_date="2026-04-30",
+        anchor_pair="EURUSD",
+        overall_regime="risk-on, USD weakness, carry-friendly",
+        confidence="high",
+        total_score=3.3,
+        usd_regime="USD weakness",
+        risk_regime="risk-on",
+        vol_regime="vol cheap/calm",
+        carry_regime="carry-friendly",
+        components=[
+            FXRegimeComponent(
+                name="USD",
+                label="USD weakness",
+                score=1.0,
+                summary="Broad USD weakness.",
+            )
+        ],
+        drivers=["DXY weakness supports EURUSD."],
+        risks=[],
+        follow_ups=["Show me EURUSD macro risk overlay."],
+    )
+
+    with patch.object(detail_module, "classify_fx_regime", return_value=output) as mock_tool:
+        result = detail_module.fx_regime_classifier_detail(
+            anchor_pair="EURUSD",
+            tenor="1M",
+            lookback_days=365,
+            realized_window_observations=21,
+            correlation_window_observations=63,
+            field_name=None,
+        )
+
+    assert result == output
+    params = mock_tool.call_args.kwargs["params"]
+    assert params.anchor_pair == "EURUSD"
+    assert params.tenor == "1M"

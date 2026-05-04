@@ -33,6 +33,11 @@ from fx_agent.macro.tools.risk_overlay.schemas import (
     FXMacroRiskOverlayInput,
     FXMacroRiskOverlayOutput,
 )
+from fx_agent.macro.tools.regime_classifier import classify_fx_regime
+from fx_agent.macro.tools.regime_classifier.schemas import (
+    FXRegimeClassifierInput,
+    FXRegimeClassifierOutput,
+)
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
 from fx_agent.spot.tools.spot_levels.schemas import FXSpotLevelInput, FXSpotLevelOutput
 from fx_agent.vol.tools.realized_vol import get_fx_realized_vol
@@ -290,6 +295,44 @@ def fx_macro_risk_overlay_detail(
         raise HTTPException(status_code=503, detail=f"FX macro risk overlay failed: {exc}")
 
     _tool_result_or_raise(result, f"FX macro risk overlay for {pair}")
+    return result
+
+
+@router.get(
+    "/detail/regime-classifier",
+    response_model=FXRegimeClassifierOutput,
+    summary="FX Regime Classifier Detail (workspace)",
+)
+def fx_regime_classifier_detail(
+    anchor_pair: str = Query(default="EURUSD", description="Reference FX pair."),
+    tenor: str = Query(default="1M", description="Carry and implied-vol tenor."),
+    lookback_days: int = Query(default=365, ge=90, le=7300),
+    realized_window_observations: int = Query(default=21, ge=5, le=252),
+    correlation_window_observations: int = Query(default=63, ge=20, le=252),
+    field_name: Optional[str] = Query(default=None),
+):
+    try:
+        params = FXRegimeClassifierInput(
+            anchor_pair=anchor_pair,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            realized_window_observations=realized_window_observations,
+            correlation_window_observations=correlation_window_observations,
+            field_name=field_name or "PX_LAST",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        result = classify_fx_regime(params=params)
+    except ValueError as exc:
+        logger.info("detail/regime-classifier: no data for %s", anchor_pair)
+        raise HTTPException(status_code=404, detail=f"FX regime classifier for {anchor_pair}: {exc}")
+    except Exception as exc:
+        logger.exception("detail/regime-classifier: tool failed for %s", anchor_pair)
+        raise HTTPException(status_code=503, detail=f"FX regime classifier failed: {exc}")
+
+    _tool_result_or_raise(result, f"FX regime classifier for {anchor_pair}")
     return result
 
 
