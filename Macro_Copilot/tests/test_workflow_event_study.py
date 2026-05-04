@@ -3,15 +3,17 @@
 Phase 2 PR 5.  Covers ``rates_agent/workflows/event_study/`` end-to-
 end:
 
-  1. Template structural validity (loads, validates, registers).
+  1. Template structural validity (loads, validates, registers, has
+     the canonical conditional-vs-unconditional 9-node DAG shape).
   2. ``archetype_signature`` cues are well-formed (≥1 cue, all
      non-empty, all ≤120 chars per the workflow_architecture spec).
   3. Slot binding rejects malformed inputs cleanly.
   4. **Real-rates end-to-end** — bind to proof-Q1 inputs (UST 10Y
      yield ↔ swap_spread 2Y signal), run via the rates primitive
      resolver against synthetic raw data (mocked DB fetchers),
-     assert the terminal artifact is a Series with conditional-
-     aggregate semantics + lineage extends through every node.
+     assert the terminal artifact is the abnormal Series in BPS
+     (PERCENT target × level_change → BPS) and lineage extends
+     through every node in both branches plus the comparison.
   5. **Mandatory instrument-agnostic test** — same template runs
      unchanged against a finance-blind synthetic primitive
      resolver.  This is the load-bearing requirement from
@@ -19,7 +21,13 @@ end:
      of running unchanged against a non-rates synthetic primitive
      that emits canonical TimeSeries payloads through the bridge."
   6. Template card content — primitives_used reflect $slot
-     references; operators_used reflect template-locked operators.
+     references; operators_used reflect template-locked operators
+     (including the comparison operator).
+  7. Resolver completeness — every primitive surfaced in the
+     template's slot-schema docstring examples is registered in
+     ``rates_primitive_resolver`` (Codex P2 follow-up: the docs
+     promised ``calculate_ois_forward_rate_tool`` and the resolver
+     must back that promise).
 """
 
 from __future__ import annotations
@@ -157,32 +165,94 @@ class TestTemplateStructure:
         assert any(t.template_id == "event_study" for t in templates)
 
     def test_template_has_expected_nodes(self):
+        """The canonical event_study DAG shape per
+        workflow_architecture.md (lines 73-74): two parallel
+        branches (conditional + unconditional) joined by a
+        per-offset subtraction = abnormal forward move."""
         t = load_event_study_template()
         node_ids = {n.node_id for n in t.nodes}
-        assert node_ids == {"signal", "target", "events", "windows", "aggregate"}
+        assert node_ids == {
+            # Primitives
+            "signal", "target",
+            # Conditional branch
+            "events", "windows", "aggregate",
+            # Unconditional branch
+            "unconditional_events", "unconditional_windows",
+            "unconditional_aggregate",
+            # Comparison
+            "compare",
+        }
 
-    def test_template_terminal_is_aggregate(self):
+    def test_template_terminal_is_compare(self):
+        """Terminal is the conditional-vs-unconditional comparison
+        (the abnormal forward-move Series), not the conditional
+        branch alone — per workflow_architecture.md's canonical
+        archetype shape."""
         t = load_event_study_template()
-        assert t.terminal_node_id == "aggregate"
+        assert t.terminal_node_id == "compare"
 
     def test_template_locks_canonical_methodology(self):
         """Topology-locked params are NOT slot-substitutable.
         Pin the locks so a future template edit can't accidentally
         relax them without explicit review."""
         t = load_event_study_template()
-        events_node = next(n for n in t.nodes if n.node_id == "events")
-        windows_node = next(n for n in t.nodes if n.node_id == "windows")
-        aggregate_node = next(n for n in t.nodes if n.node_id == "aggregate")
-        # threshold_events: rule + basis + look_ahead_safe locked
-        assert events_node.params["rule"] == "abs_above"
-        assert events_node.params["threshold_basis"] == "raw_value"
-        assert events_node.params["look_ahead_safe"] is True
-        # event_windows: pre_window=0, inclusive_event_day=true locked
-        assert windows_node.params["pre_window"] == 0
-        assert windows_node.params["inclusive_event_day"] is True
-        # conditional_aggregate: aggregator=mean, dispersion=std locked
-        assert aggregate_node.params["aggregator"] == "mean"
-        assert aggregate_node.params["dispersion"] == "std"
+        nodes = {n.node_id: n for n in t.nodes}
+        # threshold_events (conditional): rule + basis + look_ahead_safe locked
+        assert nodes["events"].params["rule"] == "abs_above"
+        assert nodes["events"].params["threshold_basis"] == "raw_value"
+        assert nodes["events"].params["look_ahead_safe"] is True
+        # event_windows (conditional): pre_window=0, inclusive_event_day=True,
+        # units_basis=level_change all locked.  The level_change lock is the
+        # one that makes the cells "event-relative forward MOVES" rather
+        # than "raw target levels" — Codex P1 fix.
+        assert nodes["windows"].params["pre_window"] == 0
+        assert nodes["windows"].params["inclusive_event_day"] is True
+        assert nodes["windows"].params["units_basis"] == "level_change"
+        # conditional_aggregate (conditional): aggregator=mean, dispersion=std locked
+        assert nodes["aggregate"].params["aggregator"] == "mean"
+        assert nodes["aggregate"].params["dispersion"] == "std"
+        # Unconditional branch: same locks for parity (so the
+        # subtraction in ``compare`` is unit-/methodology-coherent).
+        assert nodes["unconditional_events"].params["rule"] == "above"
+        assert nodes["unconditional_events"].params["threshold"] == -1.0e18
+        assert nodes["unconditional_events"].params["threshold_basis"] == "raw_value"
+        assert nodes["unconditional_events"].params["look_ahead_safe"] is True
+        assert nodes["unconditional_windows"].params["pre_window"] == 0
+        assert nodes["unconditional_windows"].params["inclusive_event_day"] is True
+        assert nodes["unconditional_windows"].params["units_basis"] == "level_change"
+        assert nodes["unconditional_aggregate"].params["aggregator"] == "mean"
+        assert nodes["unconditional_aggregate"].params["dispersion"] == "std"
+        # Comparison: subtract is the canonical abnormal-move op
+        assert nodes["compare"].params["op"] == "subtract"
+
+    def test_template_post_window_drives_both_branches(self):
+        """The post_window slot must propagate into BOTH the
+        conditional and unconditional event_windows nodes — otherwise
+        the per-offset subtraction in ``compare`` would mix windows
+        of different shapes and the abnormal series would be
+        meaningless."""
+        t = load_event_study_template()
+        binding = {
+            "signal_tool_name": "calculate_swap_spread_tool",
+            "signal_params": {
+                "sovereign_curve_family": "UST",
+                "ois_curve_family": "USD_SOFR_OIS",
+                "tenor": "2Y",
+                "lookback_days": 1825,
+            },
+            "signal_output_field": "time_series_zscore",
+            "target_tool_name": "get_yield_levels_tool",
+            "target_params": {
+                "curve_family": "UST", "tenor": "10Y", "lookback_days": 1825,
+            },
+            "target_output_field": "time_series",
+            "threshold": 1.5,
+            "post_window": 21,
+        }
+        wf = t.bind(binding)
+        nodes = {n.node_id: n for n in wf.nodes}
+        assert nodes["windows"].params["post_window"] == 21
+        assert nodes["unconditional_windows"].params["post_window"] == 21
 
 
 # ===========================================================================
@@ -338,8 +408,41 @@ class TestEndToEndRealRates:
                 primitive_resolver=rates_primitive_resolver,
             )
 
-        # Terminal is a Series (conditional_aggregate output).
+        # Terminal is the abnormal-move Series (compare = conditional
+        # - unconditional).  Target was PERCENT yield levels;
+        # event_windows.units_basis=level_change converted the
+        # PERCENT levels to BPS event-relative moves, so both
+        # branches' aggregates are BPS, and subtraction stays BPS.
         assert isinstance(result.terminal_artifact, Series)
+        assert result.terminal_artifact.units == TimeSeriesUnits.BPS
+
+    def test_terminal_offsets_match_post_window(self):
+        """The terminal abnormal-move Series carries one value per
+        event-relative offset (pre_window=0, post_window=5,
+        inclusive_event_day=True → 6 offsets: 0..5)."""
+        t = load_event_study_template()
+        wf = t.bind(self._slot_values())
+        with patch(
+            "rates_agent.ois.tools.swap_spread.compute.fetch_cross_domain_pair",
+            return_value=_synthetic_swap_spread_df(),
+        ), patch(
+            "rates_agent.ois.tools.swap_spread.compute.date",
+            _FrozenDate,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
+            return_value=_synthetic_yield_levels_df(),
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
+            _FrozenDate,
+        ):
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+        # Conditional + unconditional aggregates emit Series of length
+        # window_length = post_window + 1 (since pre=0, inclusive=True);
+        # subtraction preserves that.
+        assert len(result.terminal_artifact.payload) == 6
 
     def test_workflow_validates_with_real_resolver(self):
         """Pre-flight validation passes against the real rates
@@ -371,9 +474,13 @@ class TestEndToEndRealRates:
                 primitive_resolver=rates_primitive_resolver,
             )
 
-        # Every node produced an artifact.
+        # Every node produced an artifact (both branches + comparison).
         assert set(result.node_artifacts.keys()) == {
-            "signal", "target", "events", "windows", "aggregate",
+            "signal", "target",
+            "events", "windows", "aggregate",
+            "unconditional_events", "unconditional_windows",
+            "unconditional_aggregate",
+            "compare",
         }
 
     def test_workflow_lineage_summary_includes_every_node(self):
@@ -397,7 +504,13 @@ class TestEndToEndRealRates:
                 primitive_resolver=rates_primitive_resolver,
             )
         summary = result.workflow_lineage_summary
-        for nid in ("signal", "target", "events", "windows", "aggregate"):
+        for nid in (
+            "signal", "target",
+            "events", "windows", "aggregate",
+            "unconditional_events", "unconditional_windows",
+            "unconditional_aggregate",
+            "compare",
+        ):
             assert nid in summary
 
 
@@ -553,6 +666,7 @@ class TestInstrumentAgnostic:
                 "series_name": "synthetic_z",
                 "n_rows": 600,
                 "volatility": 1.0,
+                "units": "z_score",
             },
             "signal_output_field": "time_series",
             "target_tool_name": "synthetic_target_tool",
@@ -560,6 +674,7 @@ class TestInstrumentAgnostic:
                 "series_name": "synthetic_pct",
                 "n_rows": 600,
                 "base_value": 4.0,
+                "units": "percent",
             },
             "target_output_field": "time_series",
             "threshold": 1.5,
@@ -570,11 +685,18 @@ class TestInstrumentAgnostic:
             wf, engine=None, primitive_resolver=synthetic_resolver,
         )
 
-        # Same shape as the real-rates run.  Terminal is a Series.
+        # Same shape as the real-rates run.  Terminal is the abnormal-
+        # move Series in BPS (synthetic target declared "percent" units;
+        # event_windows.units_basis=level_change converts PERCENT to BPS).
         assert isinstance(result.terminal_artifact, Series)
-        # Lineage chain extends through every node.
+        assert result.terminal_artifact.units == TimeSeriesUnits.BPS
+        # Lineage chain extends through every node in both branches.
         assert set(result.node_artifacts.keys()) == {
-            "signal", "target", "events", "windows", "aggregate",
+            "signal", "target",
+            "events", "windows", "aggregate",
+            "unconditional_events", "unconditional_windows",
+            "unconditional_aggregate",
+            "compare",
         }
 
 
@@ -596,19 +718,71 @@ class TestTemplateCard:
         t = load_event_study_template()
         card = card_for_template(t)
         # Operators are template-locked (NOT slot-substitutable),
-        # so the card records their concrete names.
+        # so the card records their concrete names.  After the Codex
+        # P1 fix, the canonical DAG also includes ``series_arithmetic``
+        # for the conditional-vs-unconditional comparison.
         assert set(card.operators_used) == {
-            "threshold_events", "event_windows", "conditional_aggregate",
+            "threshold_events", "event_windows",
+            "conditional_aggregate", "series_arithmetic",
         }
 
     def test_card_terminal_artifact_type_is_Series(self):
         t = load_event_study_template()
         card = card_for_template(t)
-        # conditional_aggregate emits Series per OPERATOR_REGISTRY.
+        # ``compare`` (series_arithmetic op=subtract) emits Series
+        # per OPERATOR_REGISTRY.
         assert card.terminal_artifact_type == "Series"
 
     def test_card_node_and_edge_counts(self):
         t = load_event_study_template()
         card = card_for_template(t)
-        assert card.node_count == 5
-        assert card.edge_count == 4
+        # Canonical conditional-vs-unconditional shape: 9 nodes
+        # (2 primitives + 3 conditional + 3 unconditional + 1 compare),
+        # 10 edges.
+        assert card.node_count == 9
+        assert card.edge_count == 10
+
+
+# ===========================================================================
+# 7. Resolver completeness (Codex P2 follow-up)
+# ===========================================================================
+
+
+class TestResolverCompleteness:
+    """Every primitive surfaced in the template's slot-schema docstring
+    examples must be backed by an entry in ``rates_primitive_resolver``.
+    Otherwise a documented binding raises at validate-time even though
+    the docs claim it's supported."""
+
+    def test_swap_spread_registered(self):
+        spec = rates_primitive_resolver("calculate_swap_spread_tool")
+        assert spec.tool_name == "calculate_swap_spread_tool"
+
+    def test_yield_levels_registered(self):
+        spec = rates_primitive_resolver("get_yield_levels_tool")
+        assert spec.tool_name == "get_yield_levels_tool"
+
+    def test_curve_spread_registered(self):
+        # Sovereign curve_spread (the template docstring lists it as a
+        # candidate signal_tool_name).
+        spec = rates_primitive_resolver("calculate_curve_spread_tool")
+        assert spec.tool_name == "calculate_curve_spread_tool"
+
+    def test_forward_rate_registered(self):
+        # Codex P2: the template's target_output_field docstring example
+        # named ``time_series_forward for a forward_rate``; the resolver
+        # must back that promise.
+        spec = rates_primitive_resolver("calculate_ois_forward_rate_tool")
+        assert spec.tool_name == "calculate_ois_forward_rate_tool"
+        # Forward-rate primitive emits time_series_forward (PERCENT) and
+        # time_series_zscore (Z_SCORE) — both must declare units so the
+        # substrate's validate-time unit-compat checks fire.
+        assert spec.output_field_units["time_series_forward"] == "percent"
+        assert spec.output_field_units["time_series_zscore"] == "z_score"
+
+    def test_known_primitives_includes_all_seven(self):
+        # 4 OIS primitives (curve_spread, cross_market_spread,
+        # rate_level, swap_spread, forward_rate) + 3 sovereign
+        # primitives (curve_spread, cross_market_spread, yield_levels)
+        # = 8.
+        assert len(known_rates_primitives()) == 8

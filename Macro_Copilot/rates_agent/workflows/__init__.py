@@ -52,6 +52,12 @@ from rates_agent.ois.tools.curve_spread import (
     OISCurveSpreadOutput,
     calculate_ois_curve_spread,
 )
+from rates_agent.ois.tools.forward_rate import (
+    CONFIG_PATH as OIS_FORWARD_RATE_CONFIG_PATH,
+    OISForwardRateInput,
+    OISForwardRateOutput,
+    calculate_ois_forward_rate,
+)
 from rates_agent.ois.tools.rate_level import (
     CONFIG_PATH as OIS_RATE_LEVEL_CONFIG_PATH,
     OISRateLevelInput,
@@ -123,6 +129,17 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             "time_series": "bps",
             "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_ois_forward_rate_tool": PrimitiveSpec(
+        tool_name="calculate_ois_forward_rate_tool",
+        callable=calculate_ois_forward_rate,
+        input_class=OISForwardRateInput,
+        output_class=OISForwardRateOutput,
+        config_path=OIS_FORWARD_RATE_CONFIG_PATH,
+        output_field_units={
+            "time_series_forward": "percent",
             "time_series_zscore": "z_score",
         },
     ),

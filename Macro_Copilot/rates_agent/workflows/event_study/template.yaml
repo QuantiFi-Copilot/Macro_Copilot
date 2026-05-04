@@ -1,15 +1,41 @@
 # =============================================================================
-# event_study — canonical conditional-event aggregation workflow template
+# event_study — canonical conditional-vs-unconditional event-study template
 # =============================================================================
-# Per docs/architecture/workflow_architecture.md, this is the V1 template
-# for the ``event_study`` archetype.  Owns the canonical desk pattern:
-# threshold a signal series → extract events → forward windows on a target
-# series → conditional aggregate of forward moves.
+# Per docs/architecture/workflow_architecture.md (lines 73–74), the
+# ``event_study`` archetype is exactly:
 #
-# Proof question 1 (the canonical test prompt):
-#   "Over the last 5 years, when the 2Y OIS-Treasury spread (swap_spread)
-#   widens by more than 1.5σ in a single day, what's the average 5-day
-#   forward move in the 10Y UST yield?"
+#   threshold a signal → extract events → forward windows on a target
+#   → conditional vs unconditional aggregate
+#
+# This template implements that full canonical shape: TWO parallel
+# windowing-and-aggregation branches (conditional on event days,
+# unconditional on every signal-defined day) joined by a final
+# subtraction that emits the per-offset ABNORMAL forward move
+# (``conditional_aggregate - unconditional_aggregate``).  The
+# abnormal series is the canonical event-study deliverable — it
+# answers "is the post-event move different from what you'd see on a
+# random day".
+#
+# Proof question 1 (the canonical test prompt, recast to match what
+# the binding actually computes):
+#   "Over the last 5 years, on days when the 2Y OIS-Treasury spread
+#   (swap_spread) is more than 1.5σ stretched (rolling z-score of
+#   the spread level vs its trailing window), what is the average
+#   5-day forward move in the 10Y UST yield, and how does it compare
+#   to the unconditional 5-day forward move?"
+#
+# Note on signal semantics
+# ------------------------
+# ``calculate_swap_spread_tool.time_series_zscore`` is the rolling
+# z-score of the spread LEVEL (vs its own trailing window) — NOT the
+# z-score of the day-over-day change in the spread.  Picking the
+# binding above answers the "spread is stretched on this day" event
+# question.  A "single-day widening" event question (z-score of the
+# daily diff) would require either a new primitive output field or
+# a ``series_arithmetic op=diff`` step inserted before the
+# ``events`` node, and that variant ships as a separate template
+# per the V1 1-template-per-archetype rule (workflow_architecture.md
+# lines 229–232).
 #
 # Slot binding for proof Q1:
 #   signal_tool_name: calculate_swap_spread_tool
@@ -33,10 +59,18 @@
 #   - threshold_events.threshold_basis = raw_value (signal already z-scored)
 #   - event_windows.pre_window = 0 (forward-only windows)
 #   - event_windows.inclusive_event_day = true
-#   - conditional_aggregate.aggregator = mean (the canonical event-study stat)
+#   - event_windows.units_basis = level_change (cells = event-relative
+#     forward MOVES, not raw target levels — a PERCENT target becomes
+#     BPS via the operator's methodology-driven PERCENT→BPS transition)
+#   - conditional_aggregate.aggregator = mean (canonical event-study stat)
 #   - conditional_aggregate.dispersion = std (per the conditional_aggregate
-#     architectural requirement to always report dispersion alongside the
-#     central tendency)
+#     architectural requirement to always report dispersion alongside
+#     the central tendency)
+#   - unconditional branch uses the SAME signal series with a sentinel
+#     ``rule=above, threshold=-1e18`` to mark every signal-defined day
+#     as an "event" — this is the V1 mechanism for the unconditional
+#     baseline; a future ``constant_mask`` operator would replace the
+#     sentinel.
 #
 # Variants of this archetype (different aggregators / windows / threshold
 # rules) ship as separate templates per the V1 1-template-per-archetype
@@ -46,8 +80,10 @@ template_id: event_study
 archetype: event_study
 description: >-
   Canonical event-study workflow: threshold a signal series, extract
-  events, forward-window a target series at each event, and emit the
-  mean (with std dispersion) of conditional forward moves.
+  events, forward-window a target series at each event, aggregate the
+  conditional and unconditional event-relative moves in parallel, and
+  emit the per-offset abnormal (conditional minus unconditional) Series
+  with std dispersion recorded in the conditional branch's lineage.
 
 # Structural cues the future ``route_to_template`` LLM step matches
 # against prompts.  Per workflow_architecture.md:
@@ -61,6 +97,7 @@ archetype_signature:
   - "conditional aggregation across event windows"
   - "what happens to Y when X crosses a threshold"
   - "event study around X moves of more than N sigma"
+  - "abnormal forward move relative to unconditional baseline"
 
 slot_schema:
 
@@ -95,7 +132,10 @@ slot_schema:
     description: >-
       Which time_series* field of the signal primitive's output to lift
       as the event signal (e.g. time_series_zscore for the canonical
-      event-study shape).
+      level-stretched event-study shape).  Note: rates primitives'
+      time_series_zscore is the rolling z-score of the LEVEL series,
+      not of the daily change — see the template header for the
+      "single-day widening" alternative.
 
   # -------------------------------------------------------------------------
   # Target series — the series whose forward moves get aggregated around
@@ -107,8 +147,9 @@ slot_schema:
     required: true
     description: >-
       MCP tool name of the primitive that emits the target series (e.g.
-      get_yield_levels_tool, calculate_swap_spread_tool).  Must emit a
-      TimeSeries that overlaps the signal series' date range.
+      get_yield_levels_tool, calculate_swap_spread_tool,
+      calculate_ois_forward_rate_tool).  Must emit a TimeSeries that
+      overlaps the signal series' date range.
 
   - name: target_params
     type: dict
@@ -124,7 +165,8 @@ slot_schema:
     description: >-
       Which time_series* field of the target primitive's output to lift
       (e.g. time_series for yield_levels, time_series_spread for a
-      curve_spread, time_series_forward for a forward_rate).
+      curve_spread, time_series_forward for the OIS forward-rate
+      primitive).
 
   # -------------------------------------------------------------------------
   # Analysis knobs.
@@ -150,6 +192,20 @@ slot_schema:
       Default 5 = one calendar week of forward moves.
 
 # DAG topology — locked.  Slots fill node params; topology is fixed.
+#
+# Two parallel branches, joined by ``compare``:
+#
+#   signal ──┬──> events ──────────> windows ──────────> aggregate ──┐
+#            │                          ▲                            │
+#            │   target ────────────────┤                            │
+#            │                          │                            ▼
+#            │                          │                         compare (terminal)
+#            │                          │                            ▲
+#            │                          ▼                            │
+#            └──> unconditional_events ─> unconditional_windows ─> unconditional_aggregate ┘
+#
+# ``compare`` = series_arithmetic(op=subtract, left=aggregate,
+#               right=unconditional_aggregate) → abnormal forward move.
 nodes:
 
   - kind: primitive
@@ -163,6 +219,8 @@ nodes:
     tool_name: {$slot: target_tool_name}
     output_field: {$slot: target_output_field}
     params: {$slot: target_params}
+
+  # ---- Conditional branch ----
 
   - kind: operator
     node_id: events
@@ -180,6 +238,10 @@ nodes:
       pre_window: 0                # template-locked: event studies are forward-looking
       post_window: {$slot: post_window}
       inclusive_event_day: true    # template-locked
+      units_basis: level_change    # template-locked: cells = event-relative
+                                   # forward moves, not raw levels
+                                   # (PERCENT target → BPS via the operator's
+                                   # methodology-owned PERCENT→BPS transition)
 
   - kind: operator
     node_id: aggregate
@@ -188,7 +250,55 @@ nodes:
       aggregator: mean             # template-locked: canonical event-study stat
       dispersion: std              # template-locked: always report dispersion
 
+  # ---- Unconditional branch ----
+  #
+  # The unconditional baseline answers "what's the average forward move
+  # on ANY signal-defined day, not just event days?".  V1 mechanism:
+  # threshold the signal with a sentinel rule that catches every
+  # finite observation, then run the same windows + aggregate chain
+  # on the same target.  The final ``compare`` node subtracts the
+  # unconditional baseline from the conditional aggregate.
+
+  - kind: operator
+    node_id: unconditional_events
+    operator_name: threshold_events
+    params:
+      rule: above                  # template-locked: catches every finite signal value
+      threshold: -1.0e+18          # template-locked sentinel: every finite signal
+                                   # value is > -1e18 (deferred V2: a proper
+                                   # ``constant_mask`` operator would replace this)
+      threshold_basis: raw_value   # template-locked
+      look_ahead_safe: true        # template-locked: same hygiene as conditional
+
+  - kind: operator
+    node_id: unconditional_windows
+    operator_name: event_windows
+    params:
+      pre_window: 0                # template-locked: parity with conditional branch
+      post_window: {$slot: post_window}
+      inclusive_event_day: true    # template-locked
+      units_basis: level_change    # template-locked: parity with conditional
+                                   # branch (must match for series_arithmetic
+                                   # subtract to be unit-coherent)
+
+  - kind: operator
+    node_id: unconditional_aggregate
+    operator_name: conditional_aggregate
+    params:
+      aggregator: mean             # template-locked: parity with conditional
+      dispersion: std              # template-locked: parity with conditional
+
+  # ---- Comparison ----
+
+  - kind: operator
+    node_id: compare
+    operator_name: series_arithmetic
+    params:
+      op: subtract                 # template-locked: abnormal = conditional - unconditional
+
 edges:
+
+  # Conditional branch
   - source_node_id: signal
     target_node_id: events
     target_input_slot: series
@@ -205,6 +315,32 @@ edges:
     target_node_id: aggregate
     target_input_slot: panel
 
+  # Unconditional branch
+  - source_node_id: signal
+    target_node_id: unconditional_events
+    target_input_slot: series
+
+  - source_node_id: unconditional_events
+    target_node_id: unconditional_windows
+    target_input_slot: events
+
+  - source_node_id: target
+    target_node_id: unconditional_windows
+    target_input_slot: target
+
+  - source_node_id: unconditional_windows
+    target_node_id: unconditional_aggregate
+    target_input_slot: panel
+
+  # Comparison
+  - source_node_id: aggregate
+    target_node_id: compare
+    target_input_slot: left
+
+  - source_node_id: unconditional_aggregate
+    target_node_id: compare
+    target_input_slot: right
+
 literal_bindings: []
 
-terminal_node_id: aggregate
+terminal_node_id: compare
