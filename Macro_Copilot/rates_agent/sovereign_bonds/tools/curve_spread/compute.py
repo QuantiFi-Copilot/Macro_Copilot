@@ -255,10 +255,11 @@ def calculate_curve_spread(
 
     # ------------------------------------------------------------------
     # 8. Build time_series (legacy bespoke shape — wire-frozen for
-    #    frontend backward-compat) AND canonical_time_series (closed-
-    #    enum TimeSeries for the upcoming primitive-to-operator
-    #    bridge).  Both share the same display_df rows so they cannot
-    #    drift.
+    #    frontend backward-compat) AND the two canonical TimeSeries
+    #    (time_series_spread for the BPS spread history,
+    #    time_series_zscore for the Z_SCORE rolling-z-score history)
+    #    for the upcoming primitive-to-operator bridge.  All three
+    #    are built from the same display_df rows so they cannot drift.
     # ------------------------------------------------------------------
     ts_rows = [
         CurveSpreadTimeSeriesRow(
@@ -268,18 +269,25 @@ def calculate_curve_spread(
         )
         for row in display_df.itertuples()
     ]
-    canonical_series = _build_canonical_spread_series(
+    canonical_spread = _build_canonical_spread_series(
         display_df,
         curve_family=params.curve_family,
         short_tenor=params.short_tenor,
         long_tenor=params.long_tenor,
         spread_round=spread_round,
     )
+    canonical_zscore = _build_canonical_zscore_series(
+        display_df,
+        curve_family=params.curve_family,
+        short_tenor=params.short_tenor,
+        long_tenor=params.long_tenor,
+    )
 
     output = CurveSpreadOutput(
         current_metrics=metrics,
         time_series=ts_rows,
-        canonical_time_series=[canonical_series],
+        time_series_spread=canonical_spread,
+        time_series_zscore=canonical_zscore,
     )
     return output.model_dump()
 
@@ -314,6 +322,45 @@ def _build_canonical_spread_series(
         description=(
             f"Curve spread {long_tenor} − {short_tenor} on "
             f"{curve_family} over the displayed window."
+        ),
+        rows=rows,
+    )
+
+
+def _build_canonical_zscore_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+) -> TimeSeries:
+    """Convert the display DataFrame's z_score column into the canonical
+    ``TimeSeries`` shape (closed-enum Z_SCORE units).
+
+    Naming convention: ``<curve_family_lower>_<short>_<long>_zscore``.
+    Z-score values are pre-rounded by ``rolling_zscore`` upstream
+    (its ``round_decimals`` knob is threaded from
+    ``z_score_round_decimals``); rows where the rolling window has
+    not warmed up are emitted as ``None`` so the canonical shape
+    matches the bespoke ``time_series[i].z_score`` 1-to-1.
+    """
+    series_name = (
+        f"{curve_family.lower()}_"
+        f"{short_tenor.lower()}_{long_tenor.lower()}_zscore"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=safe_float(row.z_score),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.Z_SCORE,
+        description=(
+            f"Rolling z-score of the {long_tenor}−{short_tenor} spread "
+            f"on {curve_family} vs its own trailing window."
         ),
         rows=rows,
     )

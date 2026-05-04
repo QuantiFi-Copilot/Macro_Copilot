@@ -382,9 +382,11 @@ def calculate_butterfly(
 
     # ------------------------------------------------------------------
     # 8. Build time_series (legacy bespoke shape — wire-frozen for the
-    #    frontend) AND canonical_time_series (closed-enum TimeSeries
-    #    for the upcoming primitive-to-operator bridge).  Both share
-    #    the same display_df rows so they cannot drift.
+    #    frontend) AND the two canonical TimeSeries
+    #    (time_series_butterfly for the BPS history and
+    #    time_series_zscore for the Z_SCORE history) for the upcoming
+    #    primitive-to-operator bridge.  All three share the same
+    #    display_df rows so they cannot drift.
     # ------------------------------------------------------------------
     ts_rows = [
         ButterflyTimeSeriesRow(
@@ -395,7 +397,7 @@ def calculate_butterfly(
         )
         for row in display_df.itertuples()
     ]
-    canonical_series = _build_canonical_butterfly_series(
+    canonical_butterfly = _build_canonical_butterfly_series(
         display_df,
         curve_family=params.curve_family,
         short_tenor=params.short_tenor,
@@ -403,11 +405,20 @@ def calculate_butterfly(
         long_tenor=params.long_tenor,
         bps_round_decimals=bps_round_decimals,
     )
+    canonical_zscore = _build_canonical_butterfly_zscore_series(
+        display_df,
+        curve_family=params.curve_family,
+        short_tenor=params.short_tenor,
+        belly_tenor=params.belly_tenor,
+        long_tenor=params.long_tenor,
+        z_round_decimals=z_round_decimals,
+    )
 
     output = ButterflyOutput(
         current_metrics=metrics,
         time_series=ts_rows,
-        canonical_time_series=[canonical_series],
+        time_series_butterfly=canonical_butterfly,
+        time_series_zscore=canonical_zscore,
     )
     return output.model_dump()
 
@@ -445,6 +456,48 @@ def _build_canonical_butterfly_series(
         description=(
             f"Butterfly ({long_tenor} − 2*{belly_tenor} + {short_tenor}) "
             f"on {curve_family} over the displayed window."
+        ),
+        rows=rows,
+    )
+
+
+def _build_canonical_butterfly_zscore_series(
+    display_df: pd.DataFrame,
+    *,
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    z_round_decimals: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's z_score column into the
+    canonical ``TimeSeries`` shape (closed-enum Z_SCORE units).
+
+    Naming convention:
+    ``<curve_family_lower>_<short>_<belly>_<long>_zscore``.
+    Values match ``time_series[i].z_score`` 1-to-1 (rounded via the
+    same ``z_score_round_decimals`` convention applied to the bespoke
+    field) so the two series cannot drift.
+    """
+    series_name = (
+        f"{curve_family.lower()}_"
+        f"{short_tenor.lower()}_{belly_tenor.lower()}_"
+        f"{long_tenor.lower()}_zscore"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=safe_float(row.z_score, decimals=z_round_decimals),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.Z_SCORE,
+        description=(
+            f"Rolling z-score of the {long_tenor}/{belly_tenor}/"
+            f"{short_tenor} butterfly on {curve_family} vs its own "
+            "trailing window."
         ),
         rows=rows,
     )

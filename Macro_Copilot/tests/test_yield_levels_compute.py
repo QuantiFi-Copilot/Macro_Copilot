@@ -194,6 +194,9 @@ class TestConventionOverrides:
             "trailing_range_window_days": 252,
             "ffill_limit_days": 5,
             "default_field_name": "YLD_YTM_MID",
+            "yield_round_decimals": 4,
+            "z_score_round_decimals": 4,
+            "high_low_round_decimals": 4,
         }
         defaults.update(overrides)
         return ToolConfig(
@@ -288,6 +291,9 @@ class TestTrailingWindowGuard:
             "trailing_range_window_days": trailing_window,
             "ffill_limit_days": 5,
             "default_field_name": "YLD_YTM_MID",
+            "yield_round_decimals": 4,
+            "z_score_round_decimals": 4,
+            "high_low_round_decimals": 4,
         }
         return ToolConfig(
             tool=ToolMeta(name="t", domain="d", description="x"),
@@ -359,6 +365,9 @@ class TestFieldNameYamlFallthrough:
             "trailing_range_window_days": 252,
             "ffill_limit_days": 5,
             "default_field_name": default_field_name,
+            "yield_round_decimals": 4,
+            "z_score_round_decimals": 4,
+            "high_low_round_decimals": 4,
         }
         return ToolConfig(
             tool=ToolMeta(name="t", domain="d", description="x"),
@@ -439,9 +448,15 @@ class TestImportPathBackwardCompat:
 class TestCanonicalTimeSeries:
     """Pin the legacy-TimeSeries cleanup contract: yield_levels emits a
     canonical ``TimeSeries`` payload alongside its wire-frozen
-    ``current_metrics`` snapshot.  Tests cover field presence, units,
-    series naming, length consistency with ``observation_count``, and
-    value alignment with the snapshot."""
+    ``current_metrics`` snapshot.
+
+    Field name is ``time_series`` (singular ``TimeSeries`` value),
+    matching the v6 sovereign primitive convention used by
+    ``zscore_custom``.  Each row is rounded with the YAML-controlled
+    ``yield_round_decimals`` convention so the snapshot's
+    ``current_yield_pct`` equals ``time_series.rows[-1].value``
+    STRICTLY (not just within tolerance).
+    """
 
     def _run(self, params, raw_df, *, config=None):
         with patch(
@@ -453,65 +468,108 @@ class TestCanonicalTimeSeries:
         ):
             return get_yield_levels(engine=None, params=params, config=config)
 
-    def test_canonical_time_series_field_present(self):
+    def test_time_series_field_present(self):
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        assert "canonical_time_series" in out
-        assert isinstance(out["canonical_time_series"], list)
-        # yield_levels emits exactly one series.
-        assert len(out["canonical_time_series"]) == 1
+        assert "time_series" in out
+        # Singular TimeSeries object, not a list — matches v6 pattern.
+        assert isinstance(out["time_series"], dict)
 
-    def test_canonical_series_uses_closed_enum_units(self):
+    def test_canonical_time_series_legacy_name_NOT_present(self):
+        """The transitional ``canonical_time_series`` field (introduced
+        in PR #58 and renamed by PR #59) MUST be gone.  Guards against
+        a regression that re-introduces the name."""
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts = out["canonical_time_series"][0]
-        # PERCENT is the unit yields are expressed in (matches
-        # current_metrics.current_yield_pct's semantic).
+        assert "canonical_time_series" not in out
+
+    def test_time_series_uses_closed_enum_units(self):
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df)
+        ts = out["time_series"]
         assert ts["units"] == "percent"
 
-    def test_canonical_series_name_follows_convention(self):
+    def test_time_series_name_follows_convention(self):
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts = out["canonical_time_series"][0]
+        ts = out["time_series"]
         assert ts["series_name"] == "ust_10y_yield"
 
-    def test_canonical_series_length_matches_observation_count(self):
+    def test_time_series_length_matches_observation_count(self):
         """The canonical series covers the same display window the
-        snapshot's observation_count was computed from — so length is
-        identical."""
+        snapshot's observation_count was computed from — length must
+        match exactly."""
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts = out["canonical_time_series"][0]
+        ts = out["time_series"]
         assert len(ts["rows"]) == out["current_metrics"]["observation_count"]
 
-    def test_canonical_series_last_value_matches_snapshot(self):
+    def test_time_series_last_value_matches_snapshot_STRICTLY(self):
         """Latest row in the canonical series MUST equal
-        current_yield_pct — proves the snapshot and the series came
-        from the same cleaned data and cannot drift."""
+        ``current_yield_pct`` STRICTLY (not just within tolerance) —
+        both go through the same ``yield_round_decimals`` convention
+        applied via ``compute_level_metrics`` and the canonical
+        builder."""
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts = out["canonical_time_series"][0]
+        ts = out["time_series"]
         last_row_value = ts["rows"][-1]["value"]
         snapshot_value = out["current_metrics"]["current_yield_pct"]
-        # Both come from the same cleaned series; the canonical row is
-        # un-rounded while the snapshot value is rounded by
-        # compute_level_metrics.  Compare with rounding tolerance.
-        assert round(last_row_value, 4) == round(snapshot_value, 4)
+        # Strict equality — proves the YAML rounding convention is
+        # threaded through both paths.
+        assert last_row_value == snapshot_value
 
-    def test_canonical_series_dates_chronological(self):
+    def test_yaml_yield_round_decimals_change_propagates_to_time_series(self):
+        """Tweaking the YAML's ``yield_round_decimals`` MUST change
+        the precision of the canonical series.  Regression guard
+        against the canonical builder hardcoding a default instead
+        of reading the YAML."""
+        from shared.config import (
+            Convention, MethodologyMeta, ToolConfig, ToolMeta,
+            load_tool_config,
+        )
+        bundled = load_tool_config(CONFIG_PATH)
+        # Build a tweaked config with yield_round_decimals=2.
+        tweaked_conventions = dict(bundled.conventions)
+        tweaked_conventions["yield_round_decimals"] = Convention(
+            value=2, source="test_override", rationale="test",
+            valid_range=[0, 8],
+        )
+        tweaked = ToolConfig(
+            tool=bundled.tool,
+            conventions=tweaked_conventions,
+            methodology=bundled.methodology,
+        )
+
+        raw_df = _synthetic_raw_df()
+        params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
+        out = self._run(params, raw_df, config=tweaked)
+        ts = out["time_series"]
+        # Every row's value must round to ≤ 2 decimals.
+        for row in ts["rows"]:
+            v = row["value"]
+            if v is not None:
+                # Round to 2; if the value was rounded in the builder
+                # to 2 decimals already, this is a no-op.  If it was
+                # rounded to a different precision, this assertion
+                # fires.
+                assert v == round(v, 2)
+
+    def test_time_series_dates_chronological(self):
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts = out["canonical_time_series"][0]
+        ts = out["time_series"]
         dates = [r["date"] for r in ts["rows"]]
         assert dates == sorted(dates)
 
-    def test_canonical_series_validates_against_TimeSeries_schema(self):
+    def test_time_series_validates_against_TimeSeries_schema(self):
         """The output dict must round-trip cleanly through the
         canonical ``shared.schemas.TimeSeries`` model — guards against
         the bespoke shape silently leaking back in."""
@@ -519,6 +577,4 @@ class TestCanonicalTimeSeries:
         raw_df = _synthetic_raw_df()
         params = YieldLevelInput(curve_family="UST", tenor="10Y", lookback_days=365)
         out = self._run(params, raw_df)
-        ts_dict = out["canonical_time_series"][0]
-        # Must validate against the canonical schema with no extras.
-        TimeSeries.model_validate(ts_dict)
+        TimeSeries.model_validate(out["time_series"])

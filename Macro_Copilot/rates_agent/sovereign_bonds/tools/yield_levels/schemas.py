@@ -29,22 +29,23 @@ constraints already enforce.
 
 Canonical TimeSeries output
 ---------------------------
-Per the legacy-sovereign TimeSeries tech-debt cleanup: every legacy
-tool with a natural time series now emits a ``canonical_time_series:
-List[TimeSeries]`` field using the closed-enum
-``shared.schemas.time_series.TimeSeries`` shape.  This unblocks the
-upcoming primitive-to-operator bridge work (Phase 1B) — operators
-need uniform, closed-unit time-series payloads to consume.
+Per the legacy-sovereign TimeSeries tech-debt cleanup: this tool emits
+the canonical ``shared.schemas.time_series.TimeSeries`` shape for the
+historical yield levels via ``time_series: TimeSeries`` (singular,
+matching the v6 sovereign primitive convention used by
+``zscore_custom`` / ``beta_adjusted_spread`` etc.).  Each row is
+rounded with the same ``yield_round_decimals`` convention the
+snapshot uses, so the snapshot's ``current_yield_pct`` equals
+``time_series.rows[-1].value`` exactly (not just within tolerance).
 
-For ``yield_levels`` specifically, the canonical series carries the
-historical yield levels at the requested tenor in PERCENT units,
-covering the same display window as the bespoke metrics and using
-the same cleaned (ffill'd) underlying data the snapshot uses.
+This unblocks the upcoming primitive-to-operator bridge work
+(Phase 1B) — operators need uniform, closed-unit time-series payloads
+to consume.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -126,25 +127,26 @@ class YieldLevelOutput(BaseModel):
     """Top-level response for the yield_levels tool.
 
     ``current_metrics`` is the wire-frozen snapshot the frontend has
-    consumed since the legacy tool shipped.  ``canonical_time_series``
-    was added by the legacy-TimeSeries tech-debt cleanup so the
-    upcoming primitive-to-operator bridge has a uniform shape to
-    consume — see module docstring.
+    consumed since the legacy tool shipped.  ``time_series`` was added
+    by the legacy-TimeSeries tech-debt cleanup so the upcoming
+    primitive-to-operator bridge has a uniform closed-enum shape to
+    consume — see module docstring.  Singular ``TimeSeries`` field
+    matches the v6 sovereign primitive convention (see
+    ``zscore_custom``).
     """
 
     current_metrics: YieldLevelMetrics
-    canonical_time_series: List[TimeSeries] = Field(
-        default_factory=list,
+    time_series: TimeSeries = Field(
+        ...,
         description=(
             "Historical yield levels at the requested tenor over the "
             "display window (last ``lookback_days`` calendar days).  "
-            "Uses the canonical ``shared.schemas.time_series.TimeSeries`` "
-            "shape with closed-enum units.  One series:\n"
-            "  - units = PERCENT\n"
-            "  - series_name = '<curve_family_lower>_<tenor_lower>_yield'\n"
-            "  - values match ``current_metrics.current_yield_pct`` at "
-            "    the latest row by construction (same cleaned series "
-            "    the snapshot was computed from)."
+            "Closed-enum ``TimeSeriesUnits.PERCENT`` units; "
+            "series_name = '<curve_family_lower>_<tenor_lower>_yield'.  "
+            "Each row is rounded with the same ``yield_round_decimals`` "
+            "convention the snapshot uses, so the snapshot's "
+            "``current_yield_pct`` equals ``time_series.rows[-1].value`` "
+            "STRICTLY (not just within tolerance)."
         ),
     )
 

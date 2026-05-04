@@ -133,6 +133,9 @@ def _conventions_from_config(config: ToolConfig) -> dict:
             "monthly": config.convention_value("monthly_change_offset_rows"),
         },
         "trailing_window": trailing,
+        "yield_round_decimals": config.convention_value("yield_round_decimals"),
+        "z_score_round_decimals": config.convention_value("z_score_round_decimals"),
+        "high_low_round_decimals": config.convention_value("high_low_round_decimals"),
     }
 
 
@@ -270,21 +273,25 @@ def get_yield_levels(
     )
 
     # ------------------------------------------------------------------
-    # 7. Canonical time series (legacy-TimeSeries cleanup; see schemas
+    # 7. Canonical TimeSeries (legacy-TimeSeries cleanup; see schemas
     #    docstring).  Built from the SAME ``display_yields`` slice the
-    #    snapshot was computed against, so a downstream consumer reading
-    #    the canonical_time_series sees the same window the
-    #    observation_count covers.
+    #    snapshot was computed against, rounded with the SAME
+    #    ``yield_round_decimals`` convention the snapshot used, so the
+    #    snapshot's ``current_yield_pct`` equals
+    #    ``time_series.rows[-1].value`` STRICTLY (not just within
+    #    tolerance).
     # ------------------------------------------------------------------
-    canonical_series = _build_canonical_time_series(
+    yield_round_decimals = metrics_kwargs["yield_round_decimals"]
+    canonical_series = _build_canonical_yield_time_series(
         display_yields,
         curve_family=params.curve_family,
         tenor=params.tenor,
+        yield_round_decimals=yield_round_decimals,
     )
 
     output = YieldLevelOutput(
         current_metrics=metrics,
-        canonical_time_series=[canonical_series],
+        time_series=canonical_series,
     )
     return output.model_dump()
 
@@ -293,14 +300,20 @@ def get_yield_levels(
 # CANONICAL TIME-SERIES BUILDER
 # ============================================================================
 
-def _build_canonical_time_series(
+def _build_canonical_yield_time_series(
     display_yields: pd.Series,
     *,
     curve_family: str,
     tenor: str,
+    yield_round_decimals: int,
 ) -> TimeSeries:
     """Convert the cleaned, in-window yield series into the canonical
     ``TimeSeries`` shape with closed-enum units (PERCENT).
+
+    Each row is rounded with ``yield_round_decimals`` so the canonical
+    series and the snapshot's ``current_yield_pct`` agree byte-for-byte
+    at the latest row (the snapshot uses the SAME convention via
+    ``compute_level_metrics(yield_round_decimals=...)``).
 
     Naming convention: ``<curve_family_lower>_<tenor_lower>_yield``.
     """
@@ -308,7 +321,10 @@ def _build_canonical_time_series(
     rows = [
         TimeSeriesRow(
             date=ts.strftime("%Y-%m-%d"),
-            value=(float(v) if pd.notna(v) else None),
+            value=(
+                round(float(v), yield_round_decimals)
+                if pd.notna(v) else None
+            ),
         )
         for ts, v in display_yields.items()
     ]
@@ -317,8 +333,10 @@ def _build_canonical_time_series(
         units=TimeSeriesUnits.PERCENT,
         description=(
             f"Historical yield levels for {curve_family} {tenor} over "
-            f"the display window (cleaned, ffill'd consistent with the "
-            "snapshot)."
+            f"the display window (cleaned, ffill'd; rounded to "
+            f"{yield_round_decimals} decimals to match "
+            "current_metrics.current_yield_pct exactly at the latest "
+            "row)."
         ),
         rows=rows,
     )
