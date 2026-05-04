@@ -413,7 +413,25 @@ class TestPipeline_BinaryOperatorAuxiliaryLineage:
     def test_subtract_two_curve_spreads_summary_is_linear(self):
         # Two real curve_spread invocations on different tenor pairs
         # (2s10s vs 2s5s) — same primitive, same units (BPS), same
-        # missingness regime, so align + subtract is permissible.
+        # missingness regime.  Critically, we do NOT pre-align them
+        # via ``align_series`` here:
+        #
+        #   - ``align_series`` returns a ``SeriesSet`` whose member
+        #     Series SHARE the set's lineage (by design), so
+        #     post-alignment the left and right operands have the
+        #     SAME ``lineage.head_hash``.  That makes the
+        #     auxiliary-vs-left negative control vacuous.
+        #
+        #   - Both bridge outputs already share a date index because
+        #     the synthetic frame uses the same date range and
+        #     ``date.today()`` is frozen — so ``series_arithmetic``
+        #     accepts them directly.
+        #
+        # Skipping the alignment lets us prove auxiliary IDENTITY
+        # (right-operand's chain, NOT left's) on operands whose
+        # lineage hashes genuinely differ.  The "pipeline ends on
+        # SeriesSet members" shape is already pinned in
+        # ``TestPipeline_AlignSeriesAcceptsBridgeOutput``.
         s_2s10s = _bridge_curve_spread(
             output_field="time_series_spread",
             short_tenor="2Y", long_tenor="10Y", seed=11,
@@ -422,26 +440,76 @@ class TestPipeline_BinaryOperatorAuxiliaryLineage:
             output_field="time_series_spread",
             short_tenor="2Y", long_tenor="5Y", seed=11,
         )
-
-        # Align so series_arithmetic accepts shared index.
-        ss = align_series([s_2s10s, s_2s5s])
-        # Pull the aligned Series back out — get_series carries
-        # forward each input's lineage with the alignment step
-        # appended.
-        a_aligned = ss.get_series(s_2s10s.series_key)
-        b_aligned = ss.get_series(s_2s5s.series_key)
-        assert a_aligned.units == b_aligned.units == TimeSeriesUnits.BPS
+        # Pre-condition: the two operands have DIFFERENT lineage
+        # head_hashes — if they didn't, the auxiliary-vs-left check
+        # below would be vacuously true.  This fails loudly if a
+        # future fixture change accidentally aligns them.
+        assert s_2s10s.lineage.head_hash != s_2s5s.lineage.head_hash, (
+            "test fixture is degenerate: the two pre-binary operands "
+            "share a lineage head_hash, so the auxiliary-identity "
+            "check would be vacuous.  Make the two primitive "
+            "invocations differ in at least one identity bit."
+        )
+        # Pre-condition: indices match (so series_arithmetic accepts
+        # without needing an alignment step).
+        assert s_2s10s.payload.index.equals(s_2s5s.payload.index), (
+            "test fixture has misaligned indices; either align "
+            "first or fix the synthetic frame so date ranges match."
+        )
+        assert s_2s10s.units == s_2s5s.units == TimeSeriesUnits.BPS
 
         # Binary subtract.
-        diff = series_arithmetic(a_aligned, "subtract", b_aligned)
+        diff = series_arithmetic(s_2s10s, "subtract", s_2s5s)
         assert diff.units == TimeSeriesUnits.BPS  # BPS - BPS = BPS
 
-        # The OperatorStep should carry the right operand's lineage in
-        # auxiliary_lineages — this is the structured provenance.
+        # The OperatorStep should carry the RIGHT operand's lineage
+        # in ``auxiliary_lineages`` — this is the structured
+        # provenance.  Codex P2 follow-up: previously this assertion
+        # only checked PRESENCE (``len >= 1``), which would still
+        # pass if the operator silently attached the WRONG chain
+        # (e.g. the left operand's, or an empty Lineage stub).  We
+        # now assert chain IDENTITY by comparing the full head_hash
+        # AND every per-step hash.
         last_step = diff.lineage.steps[-1]
         assert last_step.kind == "operator"
         assert last_step.name == "series_arithmetic"
-        assert len(last_step.auxiliary_lineages) >= 1
+        assert len(last_step.auxiliary_lineages) == 1, (
+            "binary series_arithmetic must record EXACTLY ONE "
+            "auxiliary lineage (the right operand's chain)"
+        )
+
+        # IDENTITY check, not presence.  The auxiliary chain must
+        # be the right operand's full lineage exactly.
+        recorded_aux = last_step.auxiliary_lineages[0]
+        assert recorded_aux.head_hash == s_2s5s.lineage.head_hash, (
+            f"auxiliary_lineages[0].head_hash="
+            f"{recorded_aux.head_hash[:16]}... does not match "
+            f"s_2s5s.lineage.head_hash="
+            f"{s_2s5s.lineage.head_hash[:16]}... — operator may "
+            "have attached the wrong chain (e.g. the left operand's "
+            "chain)."
+        )
+        assert len(recorded_aux.steps) == len(s_2s5s.lineage.steps)
+        for i, (rec_step, exp_step) in enumerate(
+            zip(recorded_aux.steps, s_2s5s.lineage.steps),
+        ):
+            assert rec_step.kind == exp_step.kind, (
+                f"aux chain step {i} kind mismatch: "
+                f"recorded={rec_step.kind!r} expected={exp_step.kind!r}"
+            )
+            assert rec_step.hash == exp_step.hash, (
+                f"aux chain step {i} hash mismatch — auxiliary "
+                "lineage drift would have flowed silently into "
+                "downstream provenance summaries without this check."
+            )
+
+        # Negative-control: the aux chain must NOT match the LEFT
+        # operand's chain.  Now meaningful because the two operands
+        # have genuinely different head_hashes (asserted above).
+        assert recorded_aux.head_hash != s_2s10s.lineage.head_hash, (
+            "auxiliary_lineages[0] matches the LEFT operand's "
+            "chain — operator likely attached the wrong side."
+        )
 
         # Reverse bridge.  The wire description must summarise only
         # the LINEAR primary chain — the right-operand's chain stays
@@ -458,6 +526,15 @@ class TestPipeline_BinaryOperatorAuxiliaryLineage:
             "derived: ", "",
         ).split(" → ")
         assert len(steps_in_summary) == len(diff.lineage.steps)
+        # And critically: the right-operand's primitive name does
+        # NOT bleed into the description — the auxiliary chain
+        # stays on the structured artifact, not on the wire.
+        # (Both operands are calculate_ois_curve_spread_tool here,
+        # so the name itself appears on the wire — but only ONCE,
+        # for the primary chain.  Verify by counting.)
+        assert wire.description.count(
+            "calculate_ois_curve_spread_tool"
+        ) == 1
 
 
 # ===========================================================================
