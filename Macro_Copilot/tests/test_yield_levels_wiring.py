@@ -51,6 +51,11 @@ def _clear_cache():
 
 
 def _well_formed_yield_output() -> dict:
+    """Mock matches the post-cleanup wire shape: current_metrics PLUS
+    the canonical ``time_series: TimeSeries`` field added by the
+    legacy-TimeSeries cleanup (PRs #58/#59).  The mock MUST validate
+    against the live ``YieldLevelOutput`` model — see
+    ``test_mock_validates_against_response_model``."""
     return {
         "current_metrics": {
             "as_of_date": "2026-04-30",
@@ -65,6 +70,15 @@ def _well_formed_yield_output() -> dict:
             "low_252d_pct": 3.40,
             "percentile_252d": 58.0,
             "observation_count": 252,
+        },
+        "time_series": {
+            "series_name": "ust_10y_yield",
+            "units": "percent",
+            "description": "Test yield series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 4.28},
+                {"date": "2026-04-30", "value": 4.30},
+            ],
         },
     }
 
@@ -364,3 +378,83 @@ class TestConfigPathPublicSymbol:
         from shared.config import load_tool_config
         cfg = load_tool_config(YIELD_LEVELS_CONFIG_PATH)
         assert cfg.tool.name == "get_yield_levels_tool"
+
+
+# ===========================================================================
+# Response-model validation (Codex P2 follow-up)
+# ===========================================================================
+
+class TestDetailRouteResponseModelValidation:
+    """The wiring tests above call ``yield_detail`` directly (bypassing
+    FastAPI's response-model validation).  These tests pin the
+    HTTP-contract layer two ways:
+
+      1. The mock used by the wiring tests MUST validate against the
+         live ``YieldLevelOutput`` Pydantic response model — guards
+         against the mock drifting away from the actual schema (e.g.,
+         when a future schema change adds a required field).
+
+      2. Round-tripping the mock through ``YieldLevelOutput`` and
+         back to ``model_dump()`` produces a payload structurally
+         identical to what FastAPI would emit, including the
+         canonical ``time_series`` field added by the legacy-TimeSeries
+         cleanup (PRs #58/#59).
+    """
+
+    def test_mock_validates_against_response_model(self):
+        from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
+            YieldLevelOutput,
+        )
+        # No pytest.raises — model_validate must succeed.  If it
+        # raises, the wiring-test mock is out of sync with the live
+        # schema (which is exactly the failure mode this test pins).
+        validated = YieldLevelOutput.model_validate(_well_formed_yield_output())
+        # Canonical TimeSeries field must be present on the validated
+        # object (i.e. not silently dropped by extra='ignore' or
+        # similar).
+        assert validated.time_series is not None
+        assert validated.time_series.units.value == "percent"
+
+    def test_response_model_requires_time_series_field(self):
+        """Removing ``time_series`` from the mock MUST raise — proves
+        the field is REQUIRED on the response model, not optional.
+        Without this guard, the new canonical field could be dropped
+        in a future refactor and the wiring tests would still pass."""
+        from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
+            YieldLevelOutput,
+        )
+        from pydantic import ValidationError
+        bad_mock = _well_formed_yield_output()
+        bad_mock.pop("time_series")
+        with pytest.raises(ValidationError):
+            YieldLevelOutput.model_validate(bad_mock)
+
+    def test_route_emits_full_response_after_model_validation(self):
+        """End-to-end pin: route returns the mock dict, the response
+        model validates it, and ``model_dump()`` round-trips with the
+        canonical ``time_series`` field intact (the field FastAPI's
+        response_model layer would emit on the wire)."""
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.yield_levels.schemas import (
+            YieldLevelOutput,
+        )
+
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "get_yield_levels",
+            return_value=_well_formed_yield_output(),
+        ):
+            raw = detail_module.yield_detail(
+                engine=mock_engine,
+                curve_family="UST",
+                tenor="10Y",
+                lookback_days=365,
+                field_name=None,
+            )
+        # Simulate FastAPI's response_model coercion.
+        validated = YieldLevelOutput.model_validate(raw)
+        dumped = validated.model_dump()
+        assert "time_series" in dumped
+        assert dumped["time_series"]["units"] == "percent"
+        assert len(dumped["time_series"]["rows"]) == 2

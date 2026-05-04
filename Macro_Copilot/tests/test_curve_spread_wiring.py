@@ -56,7 +56,14 @@ def _clear_cache():
 
 def _well_formed_curve_spread_output() -> dict:
     """Return a minimal calculate_curve_spread output dict that the
-    callers can serialise without choking on missing fields."""
+    callers can serialise without choking on missing fields.
+
+    Mock matches the post-cleanup wire shape: bespoke wire-frozen
+    ``time_series`` PLUS the canonical ``time_series_spread`` and
+    ``time_series_zscore`` fields added by the legacy-TimeSeries
+    cleanup (PRs #58/#59).  Validated against the live
+    ``CurveSpreadOutput`` model via
+    ``test_mock_validates_against_response_model`` below."""
     return {
         "current_metrics": {
             "as_of_date": "2026-04-30",
@@ -73,6 +80,24 @@ def _well_formed_curve_spread_output() -> dict:
             {"date": "2026-04-29", "spread_bps": 49.0, "z_score": 0.4},
             {"date": "2026-04-30", "spread_bps": 50.0, "z_score": 0.5},
         ],
+        "time_series_spread": {
+            "series_name": "ust_2y_10y_spread",
+            "units": "bps",
+            "description": "Test spread series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 49.0},
+                {"date": "2026-04-30", "value": 50.0},
+            ],
+        },
+        "time_series_zscore": {
+            "series_name": "ust_2y_10y_zscore",
+            "units": "z_score",
+            "description": "Test z-score series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 0.4},
+                {"date": "2026-04-30", "value": 0.5},
+            ],
+        },
     }
 
 
@@ -361,3 +386,61 @@ class TestConfigPathPublicSymbol:
         cfg = load_tool_config(CURVE_SPREAD_CONFIG_PATH)
         assert cfg.tool.name == "calculate_curve_spread_tool"
         assert cfg.tool.domain == "sovereign_bonds"
+
+
+# ===========================================================================
+# Response-model validation (Codex P2 follow-up)
+# ===========================================================================
+
+class TestDetailRouteResponseModelValidation:
+    """Pin the HTTP-contract layer for /detail/spread.  See
+    test_yield_levels_wiring.py::TestDetailRouteResponseModelValidation
+    for the rationale."""
+
+    def test_mock_validates_against_response_model(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
+            CurveSpreadOutput,
+        )
+        validated = CurveSpreadOutput.model_validate(
+            _well_formed_curve_spread_output(),
+        )
+        assert validated.time_series_spread is not None
+        assert validated.time_series_zscore is not None
+        assert validated.time_series_spread.units.value == "bps"
+        assert validated.time_series_zscore.units.value == "z_score"
+
+    def test_response_model_requires_canonical_time_series_fields(self):
+        from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
+            CurveSpreadOutput,
+        )
+        from pydantic import ValidationError
+        for field in ("time_series_spread", "time_series_zscore"):
+            bad = _well_formed_curve_spread_output()
+            bad.pop(field)
+            with pytest.raises(ValidationError):
+                CurveSpreadOutput.model_validate(bad)
+
+    def test_route_emits_full_response_after_model_validation(self):
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.curve_spread.schemas import (
+            CurveSpreadOutput,
+        )
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "calculate_curve_spread",
+            return_value=_well_formed_curve_spread_output(),
+        ):
+            raw = detail_module.spread_detail(
+                engine=mock_engine,
+                curve_family="UST", short_tenor="2Y", long_tenor="10Y",
+                lookback_days=365, field_name="YLD_YTM_MID",
+            )
+        validated = CurveSpreadOutput.model_validate(raw)
+        dumped = validated.model_dump()
+        # All three time-series fields survive the round-trip.
+        assert "time_series" in dumped          # bespoke wire-frozen
+        assert "time_series_spread" in dumped   # canonical BPS
+        assert "time_series_zscore" in dumped   # canonical Z_SCORE
+        assert dumped["time_series_spread"]["units"] == "bps"
+        assert dumped["time_series_zscore"]["units"] == "z_score"

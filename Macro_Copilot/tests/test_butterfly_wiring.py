@@ -42,6 +42,12 @@ def _clear_cache():
 
 
 def _well_formed_butterfly_output() -> dict:
+    """Mock matches the post-cleanup wire shape: bespoke wire-frozen
+    ``time_series`` PLUS the canonical ``time_series_butterfly`` and
+    ``time_series_zscore`` fields added by the legacy-TimeSeries
+    cleanup (PRs #58/#59).  Validated against the live
+    ``ButterflyOutput`` model in
+    ``TestDetailRouteResponseModelValidation`` below."""
     return {
         "current_metrics": {
             "as_of_date": "2026-04-30",
@@ -60,7 +66,28 @@ def _well_formed_butterfly_output() -> dict:
             "belly_tenor_yield": 4.20,
             "long_tenor_yield": 4.40,
         },
-        "time_series": [],
+        "time_series": [
+            {"date": "2026-04-29", "butterfly_bps": -46.0, "z_score": -0.90},
+            {"date": "2026-04-30", "butterfly_bps": -45.20, "z_score": -0.85},
+        ],
+        "time_series_butterfly": {
+            "series_name": "ust_2y_5y_10y_butterfly",
+            "units": "bps",
+            "description": "Test butterfly series.",
+            "rows": [
+                {"date": "2026-04-29", "value": -46.0},
+                {"date": "2026-04-30", "value": -45.20},
+            ],
+        },
+        "time_series_zscore": {
+            "series_name": "ust_2y_5y_10y_zscore",
+            "units": "z_score",
+            "description": "Test butterfly z-score series.",
+            "rows": [
+                {"date": "2026-04-29", "value": -0.90},
+                {"date": "2026-04-30", "value": -0.85},
+            ],
+        },
     }
 
 
@@ -250,3 +277,59 @@ class TestConfigPathPublicSymbol:
         from shared.config import load_tool_config
         cfg = load_tool_config(BUTTERFLY_CONFIG_PATH)
         assert cfg.tool.name == "calculate_butterfly_tool"
+
+
+# ===========================================================================
+# Response-model validation (Codex P2 follow-up)
+# ===========================================================================
+
+class TestDetailRouteResponseModelValidation:
+    """Pin the HTTP-contract layer for /detail/butterfly."""
+
+    def test_mock_validates_against_response_model(self):
+        from rates_agent.sovereign_bonds.tools.butterfly.schemas import (
+            ButterflyOutput,
+        )
+        validated = ButterflyOutput.model_validate(
+            _well_formed_butterfly_output(),
+        )
+        assert validated.time_series_butterfly is not None
+        assert validated.time_series_zscore is not None
+        assert validated.time_series_butterfly.units.value == "bps"
+        assert validated.time_series_zscore.units.value == "z_score"
+
+    def test_response_model_requires_canonical_time_series_fields(self):
+        from rates_agent.sovereign_bonds.tools.butterfly.schemas import (
+            ButterflyOutput,
+        )
+        from pydantic import ValidationError
+        for field in ("time_series_butterfly", "time_series_zscore"):
+            bad = _well_formed_butterfly_output()
+            bad.pop(field)
+            with pytest.raises(ValidationError):
+                ButterflyOutput.model_validate(bad)
+
+    def test_route_emits_full_response_after_model_validation(self):
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.butterfly.schemas import (
+            ButterflyOutput,
+        )
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "calculate_butterfly",
+            return_value=_well_formed_butterfly_output(),
+        ):
+            raw = detail_module.butterfly_detail(
+                engine=mock_engine,
+                curve_family="UST",
+                short_tenor="2Y", belly_tenor="5Y", long_tenor="10Y",
+                lookback_days=365, field_name=None,
+            )
+        validated = ButterflyOutput.model_validate(raw)
+        dumped = validated.model_dump()
+        assert "time_series" in dumped
+        assert "time_series_butterfly" in dumped
+        assert "time_series_zscore" in dumped
+        assert dumped["time_series_butterfly"]["units"] == "bps"
+        assert dumped["time_series_zscore"]["units"] == "z_score"

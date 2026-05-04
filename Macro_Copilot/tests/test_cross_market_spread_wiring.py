@@ -50,6 +50,10 @@ def _clear_cache():
 
 
 def _well_formed_cross_market_output() -> dict:
+    """Mock matches the post-cleanup wire shape: bespoke wire-frozen
+    ``time_series`` PLUS the canonical ``time_series_spread`` and
+    ``time_series_zscore`` fields added by the legacy-TimeSeries
+    cleanup (PRs #58/#59)."""
     return {
         "current_metrics": {
             "as_of_date": "2026-04-30",
@@ -69,7 +73,28 @@ def _well_formed_cross_market_output() -> dict:
             "curve_family_1_yield": 4.50,
             "curve_family_2_yield": 3.075,
         },
-        "time_series": [],
+        "time_series": [
+            {"date": "2026-04-29", "spread_bps": 143.70, "z_score": 0.70},
+            {"date": "2026-04-30", "spread_bps": 142.50, "z_score": 0.65},
+        ],
+        "time_series_spread": {
+            "series_name": "it_btp_de_bund_10y_spread",
+            "units": "bps",
+            "description": "Test cross-market spread series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 143.70},
+                {"date": "2026-04-30", "value": 142.50},
+            ],
+        },
+        "time_series_zscore": {
+            "series_name": "it_btp_de_bund_10y_zscore",
+            "units": "z_score",
+            "description": "Test cross-market z-score series.",
+            "rows": [
+                {"date": "2026-04-29", "value": 0.70},
+                {"date": "2026-04-30", "value": 0.65},
+            ],
+        },
     }
 
 
@@ -361,3 +386,58 @@ class TestConfigPathPublicSymbol:
         from shared.config import load_tool_config
         cfg = load_tool_config(CROSS_MARKET_CONFIG_PATH)
         assert cfg.tool.name == "calculate_cross_market_spread_tool"
+
+
+# ===========================================================================
+# Response-model validation (Codex P2 follow-up)
+# ===========================================================================
+
+class TestDetailRouteResponseModelValidation:
+    """Pin the HTTP-contract layer for /detail/cross-market."""
+
+    def test_mock_validates_against_response_model(self):
+        from rates_agent.sovereign_bonds.tools.cross_market_spread.schemas import (
+            CrossMarketSpreadOutput,
+        )
+        validated = CrossMarketSpreadOutput.model_validate(
+            _well_formed_cross_market_output(),
+        )
+        assert validated.time_series_spread is not None
+        assert validated.time_series_zscore is not None
+        assert validated.time_series_spread.units.value == "bps"
+        assert validated.time_series_zscore.units.value == "z_score"
+
+    def test_response_model_requires_canonical_time_series_fields(self):
+        from rates_agent.sovereign_bonds.tools.cross_market_spread.schemas import (
+            CrossMarketSpreadOutput,
+        )
+        from pydantic import ValidationError
+        for field in ("time_series_spread", "time_series_zscore"):
+            bad = _well_formed_cross_market_output()
+            bad.pop(field)
+            with pytest.raises(ValidationError):
+                CrossMarketSpreadOutput.model_validate(bad)
+
+    def test_route_emits_full_response_after_model_validation(self):
+        from api.routes.rates import detail as detail_module
+        from rates_agent.sovereign_bonds.tools.cross_market_spread.schemas import (
+            CrossMarketSpreadOutput,
+        )
+        mock_engine = MagicMock(name="engine")
+        with patch.object(
+            detail_module,
+            "calculate_cross_market_spread",
+            return_value=_well_formed_cross_market_output(),
+        ):
+            raw = detail_module.cross_market_detail(
+                engine=mock_engine,
+                curve_family_1="IT_BTP", curve_family_2="DE_BUND",
+                tenor="10Y", lookback_days=365, field_name=None,
+            )
+        validated = CrossMarketSpreadOutput.model_validate(raw)
+        dumped = validated.model_dump()
+        assert "time_series" in dumped
+        assert "time_series_spread" in dumped
+        assert "time_series_zscore" in dumped
+        assert dumped["time_series_spread"]["units"] == "bps"
+        assert dumped["time_series_zscore"]["units"] == "z_score"
