@@ -1,0 +1,4 @@
+tool:
+  name: build_fx_carry_basket_tool
+  version: 0.1.0
+  description: Builds a simple G10 FX carry basket with volatility and stretch filters.

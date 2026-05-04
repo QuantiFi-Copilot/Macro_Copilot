@@ -1,0 +1,4 @@
+tool:
+  name: scan_usd_pressure_tool
+  version: 0.1.0
+  description: Determines whether USD moves are broad-based or pair-specific across G10 FX.

@@ -156,6 +156,14 @@ _TOOL_LABEL_TEMPLATES: dict = {
     "get_fx_vol_risk_premium_tool": lambda p: (
         f"Checking {p.get('pair', 'EURUSD')} implied vs realized vol"
     ),
+    "scan_fx_vol_risk_premium_tool": lambda p: "Scanning FX vol risk premiums",
+    "compare_fx_pairs_tool": lambda p: (
+        f"Comparing {p.get('pair_1', '?')} vs {p.get('pair_2', '?')}"
+    ),
+    "scan_usd_pressure_tool": lambda p: "Scanning broad USD pressure",
+    "build_fx_carry_basket_tool": lambda p: (
+        f"Building FX carry basket for {p.get('tenor', '1M')}"
+    ),
 }
 
 

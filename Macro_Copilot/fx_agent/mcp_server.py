@@ -26,7 +26,15 @@ from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     FXForwardCurveInput,
     get_fx_forward_curve,
 )
+from fx_agent.forwards.tools.carry_basket import (  # noqa: E402
+    FXCarryBasketInput,
+    build_fx_carry_basket,
+)
 from fx_agent.forwards.tools.fx_carry import FXCarryInput, get_fx_carry  # noqa: E402
+from fx_agent.macro.tools.pair_compare import (  # noqa: E402
+    FXPairCompareInput,
+    compare_fx_pairs,
+)
 from fx_agent.macro.tools.trade_setup import (  # noqa: E402
     FXTradeSetupInput,
     get_fx_trade_setup,
@@ -41,6 +49,10 @@ from fx_agent.spot.tools.spot_levels import (  # noqa: E402
 )
 from fx_agent.spot.tools.scanner import run_fx_scanner  # noqa: E402
 from fx_agent.spot.tools.schemas import FXScannerInput  # noqa: E402
+from fx_agent.spot.tools.usd_pressure import (  # noqa: E402
+    FXUSDPressureInput,
+    scan_usd_pressure,
+)
 from fx_agent.vol.tools.realized_vol import (  # noqa: E402
     FXRealizedVolInput,
     get_fx_realized_vol,
@@ -48,6 +60,10 @@ from fx_agent.vol.tools.realized_vol import (  # noqa: E402
 from fx_agent.vol.tools.vol_risk_premium import (  # noqa: E402
     FXVolRiskPremiumInput,
     get_fx_vol_risk_premium,
+)
+from fx_agent.vol.tools.vol_risk_premium_scanner import (  # noqa: E402
+    FXVolRiskPremiumScannerInput,
+    scan_fx_vol_risk_premium,
 )
 
 logging.basicConfig(
@@ -384,6 +400,115 @@ def get_fx_vol_risk_premium_tool(
     except Exception as exc:
         logger.exception("[get_fx_vol_risk_premium_tool] failed")
         return _json_error(f"FX vol risk premium failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def scan_fx_vol_risk_premium_tool(
+    tenor: str = "1M",
+    realized_window_observations: int = 21,
+    lookback_days: int = 365,
+    top_n: int = 10,
+) -> str:
+    """Rank FX implied vols by richness/cheapness versus realized vol."""
+    try:
+        params = FXVolRiskPremiumScannerInput(
+            tenor=tenor,
+            realized_window_observations=realized_window_observations,
+            lookback_days=lookback_days,
+            top_n=top_n,
+        )
+    except ValidationError as exc:
+        logger.warning("[scan_fx_vol_risk_premium_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = scan_fx_vol_risk_premium(params=params)
+    except Exception as exc:
+        logger.exception("[scan_fx_vol_risk_premium_tool] failed")
+        return _json_error(f"FX vol risk premium scanner failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def compare_fx_pairs_tool(
+    pair_1: str,
+    pair_2: str,
+    tenor: str = "1M",
+    vol_window_observations: int = 21,
+    lookback_days: int = 365,
+) -> str:
+    """Compare two FX pairs as relative-value trade expressions."""
+    try:
+        params = FXPairCompareInput(
+            pair_1=pair_1,
+            pair_2=pair_2,
+            tenor=tenor,
+            vol_window_observations=vol_window_observations,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("[compare_fx_pairs_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = compare_fx_pairs(params=params)
+    except Exception as exc:
+        logger.exception("[compare_fx_pairs_tool] failed")
+        return _json_error(f"FX pair comparison failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def scan_usd_pressure_tool(
+    lookback_days: int = 365,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Scan G10 USD pairs to determine broad USD strength or weakness."""
+    try:
+        params = FXUSDPressureInput(lookback_days=lookback_days, field_name=field_name)
+    except ValidationError as exc:
+        logger.warning("[scan_usd_pressure_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = scan_usd_pressure(params=params)
+    except Exception as exc:
+        logger.exception("[scan_usd_pressure_tool] failed")
+        return _json_error(f"USD pressure scanner failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def build_fx_carry_basket_tool(
+    tenor: str = "1M",
+    basket_size: int = 2,
+    max_realized_vol_pct: float = 12.0,
+    max_abs_spot_z_score: float = 2.0,
+    lookback_days: int = 365,
+) -> str:
+    """Build a simple G10 FX carry basket with risk filters."""
+    try:
+        params = FXCarryBasketInput(
+            tenor=tenor,
+            basket_size=basket_size,
+            max_realized_vol_pct=max_realized_vol_pct,
+            max_abs_spot_z_score=max_abs_spot_z_score,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("[build_fx_carry_basket_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = build_fx_carry_basket(params=params)
+    except Exception as exc:
+        logger.exception("[build_fx_carry_basket_tool] failed")
+        return _json_error(f"FX carry basket failed: {exc}")
 
     return result.model_dump_json()
 

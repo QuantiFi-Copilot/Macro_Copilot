@@ -1,0 +1,4 @@
+tool:
+  name: scan_fx_vol_risk_premium_tool
+  version: 0.1.0
+  description: Cross-sectional scanner for FX implied-versus-realized volatility premium.

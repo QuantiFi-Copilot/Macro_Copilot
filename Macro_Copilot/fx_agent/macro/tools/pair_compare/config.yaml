@@ -1,0 +1,4 @@
+tool:
+  name: compare_fx_pairs_tool
+  version: 0.1.0
+  description: Relative-value comparison of two FX pairs using setup score, vol and macro risk.
