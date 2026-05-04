@@ -264,7 +264,12 @@ def calculate_ois_curve_spread(
         spread_label=spread_label,
         current_spread_bps=current_spread,
         daily_change_bps=daily_change,
-        current_z_score=safe_float(latest.get("z_score")),
+        # ``safe_float``'s default ``decimals=4`` would silently
+        # truncate when ``z_score_round_decimals`` is set above 4 —
+        # honor the YAML knob explicitly here.  Same fix applies
+        # below to the bespoke ts_rows and to the canonical-zscore
+        # builder.
+        current_z_score=safe_float(latest.get("z_score"), decimals=zscore_round),
         rolling_window_days=z_window,
         short_tenor_rate=safe_float(latest.get(params.short_tenor)),
         long_tenor_rate=safe_float(latest.get(params.long_tenor)),
@@ -281,7 +286,7 @@ def calculate_ois_curve_spread(
         OISCurveSpreadTimeSeriesRow(
             date=row.Index.strftime("%Y-%m-%d"),
             spread_bps=round(row.spread_bps, spread_round),
-            z_score=safe_float(row.z_score),
+            z_score=safe_float(row.z_score, decimals=zscore_round),
         )
         for row in display_df.itertuples()
     ]
@@ -297,6 +302,7 @@ def calculate_ois_curve_spread(
         curve_family=params.curve_family,
         short_tenor=params.short_tenor,
         long_tenor=params.long_tenor,
+        zscore_round=zscore_round,
     )
 
     output = OISCurveSpreadOutput(
@@ -372,6 +378,7 @@ def _build_canonical_zscore_series(
     curve_family: str,
     short_tenor: str,
     long_tenor: str,
+    zscore_round: int,
 ) -> TimeSeries:
     """Convert the display DataFrame's z_score column into the canonical
     ``TimeSeries`` shape (closed-enum Z_SCORE units).
@@ -382,6 +389,12 @@ def _build_canonical_zscore_series(
     ``z_score_round_decimals``); rows where the rolling window has
     not warmed up are emitted as ``None`` so the canonical shape
     matches the bespoke ``time_series[i].z_score`` 1-to-1.
+
+    ``zscore_round`` is threaded from the YAML and passed explicitly
+    to ``safe_float`` so values above the ``safe_float`` default of
+    4 decimals are not silently truncated — keeps this surface
+    consistent with ``current_metrics.current_z_score`` and the
+    bespoke ``time_series[i].z_score`` rows.
     """
     series_name = (
         f"{curve_family.lower()}_"
@@ -390,7 +403,7 @@ def _build_canonical_zscore_series(
     rows = [
         TimeSeriesRow(
             date=row.Index.strftime("%Y-%m-%d"),
-            value=safe_float(row.z_score),
+            value=safe_float(row.z_score, decimals=zscore_round),
         )
         for row in display_df.itertuples()
     ]

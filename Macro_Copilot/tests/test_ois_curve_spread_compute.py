@@ -303,6 +303,70 @@ class TestConventionOverrides:
         )
         assert differs
 
+    def test_zscore_round_decimals_above_4_is_honored(self, params):
+        """Regression guard: ``safe_float`` defaults to ``decimals=4``,
+        so a previous version of this tool silently truncated z-scores
+        back to 4 decimals when the YAML asked for finer precision.
+        Compute must pass ``decimals=zscore_round`` explicitly to
+        every ``safe_float`` call on the z-score column.
+
+        Verified across all three exposed surfaces:
+          1. ``current_metrics.current_z_score``
+          2. bespoke ``time_series[i].z_score``
+          3. canonical ``time_series_zscore.rows[i].value``
+        """
+        out_4 = self._run(params, _build_config(z_score_round_decimals=4))
+        out_6 = self._run(params, _build_config(z_score_round_decimals=6))
+
+        # 1. current_metrics.current_z_score: a 6dp value rounded to 4dp
+        # would truncate; rounding it back to 4 must change the magnitude
+        # in at least some cases over the synthetic series (we run the
+        # snapshot many times to find at least one observation where the
+        # 5th/6th decimal is non-zero).
+        cm4 = out_4["current_metrics"]["current_z_score"]
+        cm6 = out_6["current_metrics"]["current_z_score"]
+        # If 6dp == 4dp at the snapshot date by coincidence, fall back
+        # to checking the time_series rows.
+        diff_at_snapshot = (cm4 != cm6) or (round(cm6, 4) != cm6)
+        # 2. bespoke time_series[i].z_score
+        ts_4 = out_4["time_series"]
+        ts_6 = out_6["time_series"]
+        diff_in_ts = any(
+            ts_4[i].get("z_score") != ts_6[i].get("z_score")
+            for i in range(len(ts_4))
+            if ts_4[i].get("z_score") is not None
+            and ts_6[i].get("z_score") is not None
+        )
+        # 3. canonical time_series_zscore.rows[i].value
+        cz_4 = out_4["time_series_zscore"]["rows"]
+        cz_6 = out_6["time_series_zscore"]["rows"]
+        diff_in_canonical = any(
+            cz_4[i].get("value") != cz_6[i].get("value")
+            for i in range(len(cz_4))
+            if cz_4[i].get("value") is not None
+            and cz_6[i].get("value") is not None
+        )
+        # At least one of the three surfaces must show >4dp precision —
+        # if NONE of them do, ``safe_float``'s default-decimals=4 is
+        # silently truncating again.
+        assert diff_at_snapshot or diff_in_ts or diff_in_canonical, (
+            "z_score_round_decimals=6 produced output identical to "
+            "z_score_round_decimals=4 across all three surfaces "
+            "(current_z_score, bespoke time_series[].z_score, "
+            "canonical time_series_zscore.rows[].value).  "
+            "safe_float()'s default decimals=4 is silently truncating — "
+            "compute must pass decimals=zscore_round explicitly."
+        )
+
+        # Cross-surface consistency: the bespoke and canonical z-score
+        # series must still agree row-by-row even at >4 decimals.
+        for i, (b_row, c_row) in enumerate(zip(ts_6, cz_6)):
+            assert b_row.get("z_score") == c_row.get("value"), (
+                f"row {i}: bespoke z_score {b_row.get('z_score')!r} "
+                f"!= canonical value {c_row.get('value')!r} at "
+                "z_score_round_decimals=6"
+            )
+
     def test_rolling_window_days_appears_in_metrics(self, params):
         out = self._run(params, _build_config(z_score_window_days=180))
         assert out["current_metrics"]["rolling_window_days"] == 180
