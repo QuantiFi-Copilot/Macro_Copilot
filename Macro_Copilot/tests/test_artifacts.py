@@ -23,6 +23,7 @@ from shared.artifacts import (
     Lineage,
     OperatorStep,
     Panel,
+    PrimitiveStep,
     RawNoCleaning,
     Series,
     SeriesSet,
@@ -290,6 +291,275 @@ class TestLineage:
         assert len(ln2.steps) == len(ln.steps) + 1
         # Original is untouched (frozen).
         assert len(ln.steps) == 2
+
+
+# ===========================================================================
+# PrimitiveStep — Phase 1B bridge prerequisite
+# ===========================================================================
+
+
+def _example_primitive_step(**overrides) -> PrimitiveStep:
+    """Build a PrimitiveStep matching the canonical OIS curve_spread
+    invocation shape, with overrides for individual tests."""
+    defaults = dict(
+        name="calculate_ois_curve_spread_tool",
+        params={
+            "curve_family": "USD_SOFR_OIS",
+            "short_tenor": "2Y",
+            "long_tenor": "10Y",
+            "lookback_days": 365,
+            "field_name": None,
+        },
+        tool_config_hash="conv_v1_abc123",
+        output_field="time_series_spread",
+        as_of_date="2026-04-30",
+    )
+    defaults.update(overrides)
+    return PrimitiveStep.build(**defaults)
+
+
+class TestPrimitiveStep:
+    """Phase 1B prerequisite: extend the closed lineage family with a
+    primitive/tool step kind so the primitive→operator adapter
+    (``shared.artifacts.adapters.from_time_series``, next PR) can
+    construct typed ``Series`` artifacts whose lineage chain
+    starts with a ``PrimitiveStep`` rather than a fabricated
+    ``AdapterStep``.
+
+    The schema decisions under test:
+
+      - ``kind`` is the discriminator value 'primitive' (closed-family)
+      - ``name`` is plain ``str`` (primitives are an extensible family)
+      - hash is deterministic over the four identity bits
+        (params / tool_config_hash / output_field / as_of_date)
+      - ``tool_config_path`` is bookkeeping only (NOT in hash)
+      - ``input_hashes`` defaults to ``()`` (primitives have no
+        artifact inputs in v1) but the slot is reserved
+      - JSON round-trip preserves the type via the ``kind``
+        discriminator
+      - ``Lineage.append`` works on a PrimitiveStep-rooted chain
+        AND on a chain that mixes existing step kinds with a
+        PrimitiveStep
+    """
+
+    # ----- kind discriminator + body shape ---------------------------------
+
+    def test_kind_is_primitive(self):
+        step = _example_primitive_step()
+        assert step.kind == "primitive"
+
+    def test_default_version_matches_other_steps(self):
+        step = _example_primitive_step()
+        # Same default as Fetch / Clean / Adapter / Operator.
+        assert step.version == "1.0.0"
+
+    def test_input_hashes_default_is_empty(self):
+        """v1: primitives fetch from the DB themselves; no artifact
+        inputs.  The slot is reserved for Phase 2 primitives that
+        ever take an artifact input."""
+        step = _example_primitive_step()
+        assert step.input_hashes == ()
+
+    def test_tool_config_path_default_is_none(self):
+        """``tool_config_path`` is bookkeeping for human debugging;
+        NOT in the hash.  Default None is fine."""
+        step = _example_primitive_step()
+        assert step.tool_config_path is None
+
+    def test_explicit_tool_config_path_round_trips(self):
+        step = _example_primitive_step(
+            tool_config_path="rates_agent/ois/tools/curve_spread/config.yaml",
+        )
+        assert step.tool_config_path == (
+            "rates_agent/ois/tools/curve_spread/config.yaml"
+        )
+
+    def test_frozen_no_extra_fields(self):
+        """Same closed-family discipline as the other step kinds:
+        frozen + extra='forbid'."""
+        step = _example_primitive_step()
+        with pytest.raises(Exception):
+            # Pydantic's frozen=True raises ValidationError on assignment.
+            step.name = "different_tool"  # type: ignore[misc]
+
+    # ----- hash determinism -------------------------------------------------
+
+    def test_hash_is_deterministic(self):
+        a = _example_primitive_step()
+        b = _example_primitive_step()
+        assert a.hash == b.hash
+
+    def test_hash_invariant_to_params_dict_order(self):
+        a = _example_primitive_step(params={
+            "curve_family": "USD_SOFR_OIS",
+            "short_tenor": "2Y",
+            "long_tenor": "10Y",
+            "lookback_days": 365,
+            "field_name": None,
+        })
+        b = _example_primitive_step(params={
+            "field_name": None,
+            "lookback_days": 365,
+            "long_tenor": "10Y",
+            "short_tenor": "2Y",
+            "curve_family": "USD_SOFR_OIS",
+        })
+        assert a.hash == b.hash
+
+    def test_hash_changes_on_params_change(self):
+        """Different ``*Input`` produces a different hash."""
+        a = _example_primitive_step(params={"curve_family": "USD_SOFR_OIS",
+                                            "short_tenor": "2Y",
+                                            "long_tenor": "10Y"})
+        b = _example_primitive_step(params={"curve_family": "USD_SOFR_OIS",
+                                            "short_tenor": "5Y",
+                                            "long_tenor": "10Y"})
+        assert a.hash != b.hash
+
+    def test_hash_changes_on_tool_config_hash_change(self):
+        """Same ``*Input``, different YAML content (e.g. someone bumped
+        ``z_score_window_days``) MUST produce different step hashes.
+        This is the load-bearing identity bit that lets a future cache
+        invalidate stale results when the methodology config changes."""
+        a = _example_primitive_step(tool_config_hash="conv_v1_abc")
+        b = _example_primitive_step(tool_config_hash="conv_v1_xyz")
+        assert a.hash != b.hash
+
+    def test_hash_changes_on_output_field_change(self):
+        """Different ``time_series*`` extracted = different artifact =
+        different hash.  Otherwise a downstream cache would conflate
+        ``time_series_spread`` and ``time_series_zscore``, which are
+        completely different series."""
+        a = _example_primitive_step(output_field="time_series_spread")
+        b = _example_primitive_step(output_field="time_series_zscore")
+        assert a.hash != b.hash
+
+    def test_hash_changes_on_as_of_date_change(self):
+        """Replay-determinism: a re-run tomorrow with the same params
+        has a different ``as_of_date`` (DB has a new latest), and the
+        hash MUST reflect that the underlying data is different."""
+        a = _example_primitive_step(as_of_date="2026-04-30")
+        b = _example_primitive_step(as_of_date="2026-05-01")
+        assert a.hash != b.hash
+
+    def test_hash_invariant_to_tool_config_path(self):
+        """``tool_config_path`` is bookkeeping only.  Two callers that
+        load the same YAML from different paths (test fixture vs prod
+        bundled) MUST produce the same hash if the content is
+        identical."""
+        a = _example_primitive_step(
+            tool_config_path="rates_agent/ois/tools/curve_spread/config.yaml",
+        )
+        b = _example_primitive_step(
+            tool_config_path="/abs/test/fixture/curve_spread.yaml",
+        )
+        assert a.hash == b.hash
+
+    def test_hash_changes_on_name_change(self):
+        a = _example_primitive_step(name="calculate_ois_curve_spread_tool")
+        b = _example_primitive_step(name="get_ois_rate_level_tool")
+        assert a.hash != b.hash
+
+    def test_hash_changes_on_version_change(self):
+        a = _example_primitive_step()
+        b = _example_primitive_step()
+        # Build a v2 with explicit version override.
+        b2 = PrimitiveStep.build(
+            name=b.name,
+            version="2.0.0",
+            params=b.params,
+            tool_config_hash=b.tool_config_hash,
+            output_field=b.output_field,
+            as_of_date=b.as_of_date,
+        )
+        assert a.hash != b2.hash
+
+    # ----- JSON round-trip via the discriminated union ----------------------
+
+    def test_json_round_trip_via_step_directly(self):
+        original = _example_primitive_step(
+            tool_config_path="rates_agent/ois/tools/curve_spread/config.yaml",
+        )
+        as_dict = original.model_dump(mode="json")
+        recovered = PrimitiveStep.model_validate(as_dict)
+        assert recovered == original
+        assert recovered.hash == original.hash
+        assert recovered.tool_config_path == original.tool_config_path
+
+    def test_json_round_trip_through_lineage_discriminator(self):
+        """Pydantic must resolve the right concrete class on
+        deserialization based on ``kind``.  This is what makes
+        ``Lineage`` JSON-portable across step kinds."""
+        step = _example_primitive_step()
+        ln = Lineage.from_steps([step])
+        as_dict = ln.model_dump(mode="json")
+
+        # Discriminator visible on the wire.
+        assert as_dict["steps"][0]["kind"] == "primitive"
+
+        recovered = Lineage.model_validate(as_dict)
+        assert isinstance(recovered.steps[0], PrimitiveStep)
+        assert recovered.steps[0].hash == step.hash
+        assert recovered.head_hash == ln.head_hash
+
+    # ----- Lineage chain composition ----------------------------------------
+
+    def test_primitive_can_be_root_of_lineage_chain(self):
+        """Phase 1B narrative: artifact lineage starts with a
+        PrimitiveStep when the artifact came from a primitive's
+        canonical ``TimeSeries``, NOT a fabricated AdapterStep."""
+        prim = _example_primitive_step()
+        ln = Lineage.from_steps([prim])
+        assert ln.head_hash == prim.hash
+        assert len(ln.steps) == 1
+
+    def test_operator_step_appended_after_primitive(self):
+        """The bridge milestone end-state: primitive → operator
+        composition produces a 2-step chain
+        ``(PrimitiveStep, OperatorStep)``."""
+        prim = _example_primitive_step()
+        ln = Lineage.from_steps([prim])
+        op = OperatorStep.build(
+            name="align_series", version="1.0.0",
+            params={"join_policy": "outer"},
+            input_hashes=(prim.hash,),
+        )
+        ln2 = ln.append(op)
+        assert len(ln2.steps) == 2
+        assert ln2.steps[0].kind == "primitive"
+        assert ln2.steps[1].kind == "operator"
+        assert ln2.head_hash == op.hash
+
+    def test_primitive_step_appended_after_other_kinds(self):
+        """Even though primitives are the typical chain ROOT, the
+        type system must permit a PrimitiveStep anywhere in the chain
+        (e.g. a future composite primitive that takes an artifact
+        input).  Pin the contract by appending one to a Fetch+Adapter
+        chain."""
+        ln = _trivial_lineage("ust_10y")
+        prim = _example_primitive_step(input_hashes=(ln.head_hash,))
+        ln2 = ln.append(prim)
+        assert len(ln2.steps) == 3
+        assert [s.kind for s in ln2.steps] == ["fetch", "adapter", "primitive"]
+        assert ln2.head_hash == prim.hash
+
+    # ----- discriminator union resolution -----------------------------------
+
+    def test_lineage_step_union_resolves_primitive_kind(self):
+        """An untyped dict with ``kind='primitive'`` must validate as
+        a PrimitiveStep through the LineageStep discriminated union
+        (this is what `Lineage.steps` uses on JSON load)."""
+        # Build a step, dump it, load it back through the union.
+        original = _example_primitive_step()
+        as_dict = original.model_dump(mode="json")
+        # Embed in a single-step Lineage, since Pydantic's
+        # discriminator activation is on the union field.
+        ln = Lineage.model_validate({
+            "steps": [as_dict],
+            "head_hash": as_dict["hash"],
+        })
+        assert isinstance(ln.steps[0], PrimitiveStep)
+        assert ln.steps[0].name == original.name
 
 
 # ===========================================================================

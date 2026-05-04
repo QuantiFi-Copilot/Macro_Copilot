@@ -17,6 +17,16 @@ Step kinds in v1:
     ffill_limit and other cleaning params actually used.
   - ``AdapterStep``  — ``raw_dataframe_to_artifact_series`` (or
     sibling); records adapter version + units assigned.
+  - ``PrimitiveStep`` — a per-tool-folder primitive in
+    ``rates_agent.{sovereign_bonds,ois}.tools.*`` (e.g.
+    ``calculate_ois_curve_spread_tool``).  Records the MCP tool
+    name, the primitive's ``*Input.model_dump()``, the bundled
+    config's content hash, the ``time_series*`` field that was
+    extracted, and the snapshot ``as_of_date``.  The primitive→
+    operator adapter (``shared.artifacts.adapters.from_time_series``)
+    constructs this step when it lifts a primitive's
+    canonical ``TimeSeries`` payload into a typed ``Series``
+    artifact.  See the build-plan v5 / Phase 1B bridge milestone.
   - ``OperatorStep`` — any operator in ``shared.operators.*``;
     records operator name + version + canonical-JSON params + the
     list of input lineage hashes consumed.
@@ -30,7 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Annotated, Any, Dict, List, Literal, Tuple, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -194,6 +204,117 @@ class AdapterStep(BaseModel):
         )
 
 
+class PrimitiveStep(BaseModel):
+    """A per-tool-folder primitive step.
+
+    Records *which primitive was invoked* and *what identity bits
+    define this artifact*.  Constructed by the primitive→operator
+    adapter (``shared.artifacts.adapters.from_time_series``) when it
+    lifts a primitive's canonical ``TimeSeries`` payload into a
+    typed ``Series``.
+
+    Schema design — what feeds the hash, what is bookkeeping
+    ----------------------------------------------------------
+    The step body has two field categories:
+
+      Identity-bearing (folded into the hash via ``build()``):
+        - ``name``               — the MCP tool name (e.g.
+          ``calculate_ois_curve_spread_tool``).  Plain ``str`` (not
+          ``Literal``) because the primitive family is extensible
+          and lineage must not couple to a fixed tool registry.
+        - ``params``             — the primitive's ``*Input.model_dump()``.
+        - ``tool_config_hash``   — content-hash of the bundled
+          ``ToolConfig.conventions`` block.  Two calls with the
+          same ``*Input`` but different YAMLs (e.g. someone bumped
+          ``z_score_window_days``) MUST produce different step
+          hashes — that's what this captures.
+        - ``output_field``       — which ``time_series*`` field of
+          the primitive's output was extracted (e.g.
+          ``time_series_spread`` vs ``time_series_zscore``).
+          Different field → different artifact → different hash.
+        - ``as_of_date``         — the snapshot's
+          ``current_metrics.as_of_date``.  Replay-determinism: a
+          re-run tomorrow with the same params has a different
+          ``as_of_date`` (DB has a new latest), and the hash
+          reflects that the underlying data is different.
+        - ``input_hashes``       — always ``()`` in v1 (primitives
+          fetch from the DB themselves; they have no upstream
+          artifact inputs).  Slot reserved for Phase 2 primitives
+          that ever accept an artifact input.
+
+      Bookkeeping-only (NOT in the hash):
+        - ``tool_config_path``   — the path the YAML was loaded
+          from.  Two callers loading the same YAML from different
+          paths (test fixture vs prod) MUST produce the same hash
+          if the content is identical.  So path is metadata for
+          human debugging, not identity.
+
+    Why the four identity bits ride inside the hash via a derived
+    dict instead of through an extended ``_compute_step_hash``
+    recipe: extending the recipe is a breaking change to every
+    persisted lineage object across the codebase.  Folding the
+    primitive identity bits into a derived ``hashed_params`` dict
+    inside ``build()`` keeps the recipe untouched, which keeps
+    every existing ``FetchStep`` / ``CleanStep`` / ``AdapterStep``
+    / ``OperatorStep`` hash stable.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["primitive"] = "primitive"
+    name: str  # e.g., "calculate_ois_curve_spread_tool"
+    version: str = "1.0.0"
+    params: Dict[str, Any]  # primitive's *Input.model_dump()
+    tool_config_hash: str
+    tool_config_path: Optional[str] = None  # NOT in hash
+    output_field: str  # e.g., "time_series_spread"
+    as_of_date: str  # ISO YYYY-MM-DD from the primitive snapshot
+    input_hashes: Tuple[LineageHash, ...] = ()  # always () in v1
+    hash: LineageHash
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        name: str,
+        version: str = "1.0.0",
+        params: Dict[str, Any],
+        tool_config_hash: str,
+        output_field: str,
+        as_of_date: str,
+        tool_config_path: Optional[str] = None,
+        input_hashes: Tuple[LineageHash, ...] = (),
+    ) -> "PrimitiveStep":
+        # Fold the primitive identity bits into a derived dict so
+        # the existing _compute_step_hash recipe applies unchanged.
+        # Keys are alphabetized by _canonical_json (sort_keys=True),
+        # so the order they're added here is irrelevant.
+        hashed_params: Dict[str, Any] = {
+            "input_params": params,
+            "tool_config_hash": tool_config_hash,
+            "output_field": output_field,
+            "as_of_date": as_of_date,
+        }
+        h = _compute_step_hash(
+            kind="primitive",
+            name=name,
+            version=version,
+            params=hashed_params,
+            input_hashes=input_hashes,
+        )
+        return cls(
+            name=name,
+            version=version,
+            params=params,
+            tool_config_hash=tool_config_hash,
+            tool_config_path=tool_config_path,
+            output_field=output_field,
+            as_of_date=as_of_date,
+            input_hashes=input_hashes,
+            hash=h,
+        )
+
+
 class OperatorStep(BaseModel):
     """A central-operator step (any tool under ``shared.operators.*``).
 
@@ -256,8 +377,13 @@ class OperatorStep(BaseModel):
 # Discriminated union over the closed family.  Pydantic picks the right
 # concrete class by ``kind`` on deserialization, so ``Lineage`` round-
 # trips through JSON without losing type information.
+#
+# Order is for documentation only; the discriminator resolves by
+# ``kind`` value, not by union position.  Adding a new step kind
+# requires extending this union AND adding the class above —
+# closed-family discipline.
 LineageStep = Annotated[
-    Union[FetchStep, CleanStep, AdapterStep, OperatorStep],
+    Union[FetchStep, CleanStep, AdapterStep, PrimitiveStep, OperatorStep],
     Field(discriminator="kind"),
 ]
 
@@ -308,5 +434,6 @@ __all__ = [
     "FetchStep",
     "CleanStep",
     "AdapterStep",
+    "PrimitiveStep",
     "OperatorStep",
 ]
