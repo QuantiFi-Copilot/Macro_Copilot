@@ -253,8 +253,26 @@ def tool_output_to_artifact_series(
     missingness_policy :
         Optional explicit policy.  When ``None`` (default), the
         bridge auto-derives a ``CleanSingleSeriesV1`` from
-        ``tool_config.conventions['ffill_limit_days'].value``.  If
-        that convention is not declared, the bridge raises
+        ``tool_config.conventions['ffill_limit_days'].value``, with
+        ``drop_nan=True`` and ``dedup_keep="last"`` passed explicitly
+        to match ``shared.analytics.levels.clean_single_series``'s
+        invariants — these defaults are pinned at the bridge so a
+        future change to those invariants surfaces here as a
+        deliberate update rather than silent drift.
+
+        The auto-derived policy captures the cleaning REGIME of the
+        primitive's upstream pipeline (ffill_limit / drop_nan /
+        dedup_keep), NOT data identity.  Source field /
+        as_of_date / output_field / curve+tenor are identity bits
+        that live elsewhere on the artifact (``Series.units``,
+        ``Series.series_key``, ``PrimitiveStep.params``,
+        ``PrimitiveStep.as_of_date``, ``PrimitiveStep.output_field``).
+        Two artifacts whose primitives share the same cleaning
+        regime ARE compatible at the missingness layer by
+        construction — even if they came from different primitives,
+        different fields, or different markets.
+
+        If that convention is not declared, the bridge raises
         ``ValueError`` with a pointer to pass an explicit policy
         rather than silently defaulting to ``RawNoCleaning``.
     frequency :
@@ -321,6 +339,39 @@ def tool_output_to_artifact_series(
     # ------------------------------------------------------------------
     # 3. Resolve the missingness policy.
     # ------------------------------------------------------------------
+    # The MissingnessPolicy captures the CLEANING REGIME of the
+    # primitive's upstream pipeline, NOT data identity.  Three
+    # observable knobs in v1, all from ``shared.analytics.levels.
+    # clean_single_series``:
+    #
+    #   - ``ffill_limit``   — max consecutive ffilled rows.  Read from
+    #     the tool's YAML convention ``ffill_limit_days`` (the only
+    #     parameterized knob; declared by every rates primitive).
+    #   - ``drop_nan``      — always True under ``clean_single_series``.
+    #     Passed explicitly so a future change to that invariant
+    #     forces a deliberate update here.
+    #   - ``dedup_keep``    — always "last" under ``clean_single_series``.
+    #     Same explicit-pass-through rationale as ``drop_nan``.
+    #
+    # What missingness policy does NOT carry (data identity, captured
+    # elsewhere on the artifact and lineage):
+    #
+    #   - source field name (``PX_LAST`` vs ``YLD_YTM_MID``) — lives in
+    #     ``PrimitiveStep.params['field_name']`` and the lineage hash.
+    #   - snapshot ``as_of_date``                          — lives in
+    #     ``PrimitiveStep.as_of_date``.
+    #   - which TimeSeries field was extracted              — lives in
+    #     ``PrimitiveStep.output_field`` and ``Series.units``.
+    #   - which curve / tenor / pair                        — lives in
+    #     ``PrimitiveStep.params`` and ``Series.series_key``.
+    #
+    # Architectural intent: two artifacts whose primitives share the
+    # SAME cleaning regime (e.g. both used ``ffill_limit_days=5`` with
+    # the same ``clean_single_series`` invariants) ARE compatible at
+    # the missingness layer by construction — even if they came from
+    # different primitives, different fields, or different markets.
+    # Operators discriminate via units / series_key / lineage; they
+    # don't need missingness to also encode data identity.
     resolved_policy: MissingnessPolicy
     if missingness_policy is not None:
         resolved_policy = missingness_policy
@@ -341,7 +392,17 @@ def tool_output_to_artifact_series(
                 "fields) — the bridge will not assume the regime."
             )
         ffill_limit = int(tool_config.convention_value("ffill_limit_days"))
-        resolved_policy = CleanSingleSeriesV1(ffill_limit=ffill_limit)
+        # Pass drop_nan / dedup_keep explicitly even though they
+        # match the Pydantic field defaults — self-documenting at
+        # the call site, and pins the bridge to the matching
+        # ``clean_single_series`` invariants.  If those invariants
+        # ever change, this line forces a deliberate update here
+        # rather than silently inheriting drift from a default.
+        resolved_policy = CleanSingleSeriesV1(
+            ffill_limit=ffill_limit,
+            drop_nan=True,
+            dedup_keep="last",
+        )
 
     # ------------------------------------------------------------------
     # 4. Pull the snapshot's as_of_date.  Every canonical primitive
