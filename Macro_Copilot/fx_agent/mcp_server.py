@@ -22,6 +22,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
+from fx_agent.diagnostics.tools.data_health import (  # noqa: E402
+    FXDataHealthInput,
+    get_fx_data_health,
+)
 from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     FXForwardCurveInput,
     get_fx_forward_curve,
@@ -87,6 +91,46 @@ mcp = FastMCP(
 
 def _json_error(message: str) -> str:
     return json.dumps({"error": message}, default=str)
+
+
+@mcp.tool()
+def get_fx_data_health_tool(
+    lookback_days: int = 365,
+    stale_after_days: int = 5,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Check FX data coverage and freshness across spot, forwards, vol and proxies.
+
+    Use this before cross-desk workflows, demos, or debugging "no data"
+    responses. It reports missing pairs, missing tenors, stale series, and
+    broad family-level coverage.
+
+    Parameters
+    ----------
+    lookback_days : int
+        Calendar days used when counting recent observations.
+    stale_after_days : int
+        Series is stale if it lags the FX dataset as-of date by more than this.
+    field_name : str
+        Bloomberg field. Defaults to PX_LAST.
+    """
+    try:
+        params = FXDataHealthInput(
+            lookback_days=lookback_days,
+            stale_after_days=stale_after_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_data_health_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_data_health(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_data_health_tool] failed")
+        return _json_error(f"FX data health failed: {exc}")
+
+    return result.model_dump_json()
 
 
 @mcp.tool()

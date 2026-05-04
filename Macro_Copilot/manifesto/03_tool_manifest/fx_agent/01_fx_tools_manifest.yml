@@ -1,4 +1,29 @@
 tools:
+  - name: get_fx_data_health
+    domain: fx
+    sub_agent: diagnostics
+    bucket: 1A
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_data_health_tool
+      schema: fx_agent/diagnostics/tools/data_health/schemas.py::FXDataHealthInput
+      compute: fx_agent/diagnostics/tools/data_health/compute.py::get_fx_data_health
+      config: fx_agent/diagnostics/tools/data_health/config.yaml
+
+    one_liner: >-
+      Check FX data coverage, missing pairs, missing forward/vol tenors, and
+      stale series before running research workflows.
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - get_fx_forward_curve_tool
+      - get_fx_vol_risk_premium_tool
+
+    validation_status: tested
+
   - name: get_fx_spot_level
     domain: fx
     sub_agent: spot
@@ -291,4 +316,3 @@ tools:
       - get_fx_spot_level_tool
 
     validation_status: tested
-

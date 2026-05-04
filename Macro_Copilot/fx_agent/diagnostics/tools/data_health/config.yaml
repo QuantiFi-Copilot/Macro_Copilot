@@ -1,0 +1,29 @@
+methodology:
+  description: >-
+    Deterministic FX data coverage check over instrument_master and
+    market_data_daily.
+  freshness_reference: >-
+    Staleness is measured against the latest trade date available in the FX
+    diagnostic universe, not the wall-clock date. This keeps seeded historical
+    environments testable while still identifying stale series relative to the
+    dataset.
+  expected_spot_pairs:
+    - EURUSD
+    - GBPUSD
+    - AUDUSD
+    - USDJPY
+    - USDCAD
+    - USDCHF
+    - EURGBP
+    - EURJPY
+    - GBPJPY
+    - AUDJPY
+    - AUDCAD
+    - EURCHF
+  expected_forward_tenors:
+    - 1W
+    - 1M
+    - 3M
+    - 6M
+  default_field_name: PX_LAST
+

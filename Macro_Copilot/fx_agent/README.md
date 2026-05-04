@@ -17,6 +17,7 @@ volatility, implied-vs-realized volatility, and FX-to-macro overlays.
 | Tool | Workspace | Purpose |
 | --- | --- | --- |
 | `get_fx_spot_level_tool` | yes | Spot level, changes, range, z-score. |
+| `get_fx_data_health_tool` | no | FX data coverage, missing series, stale-series diagnostics. |
 | `get_fx_carry_tool` | yes | Cross-pair carry ranking for a tenor. |
 | `get_fx_forward_curve_tool` | yes | Forward curve and tenor carry for one pair. |
 | `scan_fx_extremes_tool` | yes | FX spot stretch and momentum scanner. |
@@ -38,4 +39,3 @@ conversion, and default market-data fields.
 The REST API may expose full chartable payloads for workspace views. The MCP
 surface should keep returning compact deterministic JSON for orchestration and
 LLM summarization.
-
