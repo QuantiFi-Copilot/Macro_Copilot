@@ -327,10 +327,13 @@ class TestSlotBinding:
         assert nodes["high_windows"].params["post_window"] == 21
         assert nodes["low_windows"].params["post_window"] == 21
 
-    def test_high_and_low_thresholds_are_independent(self):
-        """The two thresholds bind to their respective regime branches
-        independently — the template does not constrain the gap or
-        ordering between them (caller judgment call)."""
+    def test_high_and_low_thresholds_bind_to_their_branches(self):
+        """The two thresholds bind to their respective regime branches.
+        The DISJOINT contract (high >= low) is a load-bearing
+        template-author contract — see the template header's
+        ``Threshold-disjoint contract`` section.  This test pins a
+        correctly-disjoint binding (high > low) and verifies the
+        slots reach the right nodes."""
         t = load_regime_conditioned_template()
         wf = t.bind(self._full_slot_values(
             high_threshold=25.0, low_threshold=-100.0,
@@ -338,6 +341,48 @@ class TestSlotBinding:
         nodes = {n.node_id: n for n in wf.nodes}
         assert nodes["high_regime_events"].params["threshold"] == 25.0
         assert nodes["low_regime_events"].params["threshold"] == -100.0
+        # Disjoint contract is satisfied (25 >= -100): "high" =
+        # signal > 25, "low" = signal < -100, gap (-100, 25] feeds
+        # neither.  No date can be in both regimes.
+        assert (
+            nodes["high_regime_events"].params["threshold"]
+            >= nodes["low_regime_events"].params["threshold"]
+        )
+
+    def test_canonical_binding_satisfies_disjoint_contract(self):
+        """Codex P2 follow-up: the reference desk binding documented
+        in the template MUST satisfy the ``high_threshold >=
+        low_threshold`` disjoint contract.  This guards against a
+        future doc-edit that accidentally inverts the example."""
+        canonical = self._full_slot_values()
+        assert canonical["high_threshold"] >= canonical["low_threshold"], (
+            "Canonical binding violates the disjoint-regime contract — "
+            "high_threshold must be >= low_threshold so the two regimes "
+            "do not overlap.  See the template header."
+        )
+
+    def test_overlap_pathology_documented_not_enforced(self):
+        """The substrate has no cross-slot validator hook, so the
+        DISJOINT contract is documented and tested at the template
+        layer, not enforced at bind time.  This test pins the
+        current behavior (bind succeeds even when contract is
+        violated) so any future enforcement change is intentional
+        and visible in the diff."""
+        t = load_regime_conditioned_template()
+        # Contract-violating binding: high < low → regimes overlap.
+        # Bind succeeds (no enforcement); the resulting workflow's
+        # economic meaning is undermined, per the template header.
+        wf = t.bind(self._full_slot_values(
+            high_threshold=-100.0, low_threshold=25.0,
+        ))
+        nodes = {n.node_id: n for n in wf.nodes}
+        assert nodes["high_regime_events"].params["threshold"] == -100.0
+        assert nodes["low_regime_events"].params["threshold"] == 25.0
+        # If a future PR adds substrate-level cross-slot validation,
+        # this test should flip to ``with pytest.raises(...)`` and
+        # the template header's "Threshold-disjoint contract" section
+        # should be updated to remove the "documented contract; not
+        # enforced" caveat.
 
 
 # ===========================================================================
@@ -472,6 +517,91 @@ class TestEndToEndRealRates:
             "compare",
         ):
             assert nid in summary
+
+    def test_signal_and_target_indices_align_under_canonical_binding(self):
+        """Codex P2 follow-up: the template doesn't ship an explicit
+        ``align_series`` step (deferred — see template header's
+        ``Index-alignment contract`` section).  This test asserts
+        the structural invariant that the contract relies on:
+        under the canonical binding, the bridged signal Series and
+        target Series share an identical DatetimeIndex.  If a future
+        rates primitive change breaks this invariant, this test
+        catches it BEFORE event_windows raises at runtime."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+        signal_series = result.node_artifacts["signal"]
+        target_series = result.node_artifacts["target"]
+        assert isinstance(signal_series, Series)
+        assert isinstance(target_series, Series)
+        assert signal_series.payload.index.equals(target_series.payload.index), (
+            "Index-alignment contract violated: signal and target Series "
+            "do not share an identical DatetimeIndex.  event_windows "
+            "would have refused this at runtime; until the explicit "
+            "align_series step is added (deferred — see template "
+            "header), the canonical binding MUST produce aligned "
+            "indices by construction."
+        )
+
+    def test_compare_equals_high_minus_low_numerically(self):
+        """Codex P3 follow-up: pin the comparison's numeric semantics.
+        The terminal ``compare`` Series MUST equal
+        ``high_aggregate − low_aggregate`` value-by-value.  A future
+        regression that swaps the left/right edges OR changes
+        compare.op would silently flip the economic meaning; this
+        test catches that."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+        p1, p2, p3, p4 = self._patches()
+        with p1, p2, p3, p4:
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+
+        terminal = result.terminal_artifact
+        high_agg = result.node_artifacts["high_aggregate"]
+        low_agg = result.node_artifacts["low_aggregate"]
+
+        # Sign convention: terminal == high − low (NOT low − high).
+        expected = high_agg.payload.values - low_agg.payload.values
+        np.testing.assert_array_almost_equal(
+            terminal.payload.values, expected, decimal=10,
+        )
+        # Index parity (synthetic 1970-01-01 + offset days encoding
+        # from conditional_aggregate is identical across both
+        # branches because both used the same offsets vector).
+        assert terminal.payload.index.equals(high_agg.payload.index)
+        assert terminal.payload.index.equals(low_agg.payload.index)
+
+    def test_compare_edge_wiring_pins_left_high_right_low(self):
+        """Codex P3 follow-up: pin the structural sign convention via
+        edge inspection.  ``compare.left`` MUST receive
+        ``high_aggregate``; ``compare.right`` MUST receive
+        ``low_aggregate``.  A swap would invert the economic meaning
+        of the terminal Series ("low minus high" instead of
+        "high minus low")."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+
+        compare_inbound = [
+            e for e in wf.edges if e.target_node_id == "compare"
+        ]
+        edge_by_slot = {e.target_input_slot: e.source_node_id for e in compare_inbound}
+        assert edge_by_slot == {
+            "left": "high_aggregate",
+            "right": "low_aggregate",
+        }, (
+            "Comparison sign convention compromised: compare.left must "
+            "be high_aggregate and compare.right must be low_aggregate "
+            "so the terminal Series carries the documented "
+            "high-minus-low semantics."
+        )
 
 
 # ===========================================================================
