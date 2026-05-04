@@ -70,6 +70,36 @@ from shared.workflow.types import (
     WorkflowEdge,
     WorkflowNode,
 )
+from shared.workflow.template import (
+    LiteralBindingTemplate,
+    OperatorNodeTemplate,
+    PrimitiveNodeTemplate,
+    SlotBindingError,
+    SlotDeclaration,
+    WORKFLOW_ARCHETYPES,
+    WorkflowArchetype,
+    WorkflowNodeTemplate,
+    WorkflowTemplate,
+)
+from shared.workflow.template_card import (
+    TemplateCard,
+    card_for_template,
+)
+from shared.workflow.template_loader import (
+    WorkflowTemplateError,
+    clear_workflow_template_cache,
+    load_workflow_template,
+)
+from shared.workflow.template_registry import (
+    TemplateRegistryError,
+    clear_template_registry,
+    get_template,
+    known_archetypes,
+    known_template_ids,
+    list_templates,
+    register_template,
+    unregister_template,
+)
 from shared.workflow.validate import (
     WorkflowValidationError,
     topological_order,
@@ -104,4 +134,30 @@ __all__ = [
     "PrimitiveSpec",
     "ARTIFACT_TYPE_NAMES",
     "artifact_type_name",
+    # Template layer
+    "WorkflowTemplate",
+    "WorkflowArchetype",
+    "WORKFLOW_ARCHETYPES",
+    "SlotDeclaration",
+    "PrimitiveNodeTemplate",
+    "OperatorNodeTemplate",
+    "WorkflowNodeTemplate",
+    "LiteralBindingTemplate",
+    "SlotBindingError",
+    # Template loader
+    "load_workflow_template",
+    "clear_workflow_template_cache",
+    "WorkflowTemplateError",
+    # Template registry
+    "register_template",
+    "unregister_template",
+    "get_template",
+    "list_templates",
+    "known_template_ids",
+    "known_archetypes",
+    "clear_template_registry",
+    "TemplateRegistryError",
+    # Template card
+    "TemplateCard",
+    "card_for_template",
 ]
