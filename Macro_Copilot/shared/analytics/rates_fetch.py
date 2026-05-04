@@ -207,6 +207,77 @@ def fetch_cross_market_pair(
 
 
 # ============================================================================
+# CROSS-DOMAIN PAIR (ONE SOVEREIGN + ONE OIS, ONE TENOR)
+# ============================================================================
+#
+# Distinct from ``fetch_cross_market_pair`` because the two legs use
+# DIFFERENT ``field_name``s on the wire — sovereign yields are
+# typically ``YLD_YTM_MID`` while OIS par swap rates are
+# ``PX_LAST``.  ``fetch_cross_market_pair`` filters on a single
+# field_name and therefore cannot be reused for cross-domain
+# spreads.  This fetcher issues a single SQL query whose WHERE
+# clause matches each leg's (curve_family, field_name) pair and
+# returns the long-format frame the existing
+# ``pivot_and_align_tenors(key_col='curve_family')`` consumes —
+# same shape as ``fetch_cross_market_pair``'s output, so the
+# downstream pipeline is unchanged.
+
+_FETCH_CROSS_DOMAIN_SQL = text("""
+    SELECT
+        trade_date,
+        curve_family,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE tenor = :tenor
+      AND trade_date >= :start_date
+      AND (
+            (curve_family = :sovereign_curve_family
+             AND field_name = :sovereign_field_name)
+         OR (curve_family = :ois_curve_family
+             AND field_name = :ois_field_name)
+      )
+    ORDER BY trade_date
+""")
+
+
+def fetch_cross_domain_pair(
+    engine: Engine,
+    sovereign_curve_family: str,
+    sovereign_field_name: str,
+    ois_curve_family: str,
+    ois_field_name: str,
+    tenor: str,
+    start_date: date,
+) -> pd.DataFrame:
+    """Fetch the same tenor on one sovereign curve + one OIS curve.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'curve_family', 'field_value']`` — same shape
+    as ``fetch_cross_market_pair`` returns, so the downstream
+    pivot-and-align pipeline is unchanged.
+
+    The two legs use different ``field_name`` mnemonics by
+    convention (sovereign ``YLD_YTM_MID`` vs OIS ``PX_LAST``), so
+    each leg's filter is matched explicitly in the WHERE clause.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_CROSS_DOMAIN_SQL,
+            {
+                "sovereign_curve_family": sovereign_curve_family,
+                "sovereign_field_name": sovereign_field_name,
+                "ois_curve_family": ois_curve_family,
+                "ois_field_name": ois_field_name,
+                "tenor": tenor,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
 # SCAN UNIVERSE (ALL INSTRUMENTS OF ONE TYPE)
 # ============================================================================
 

@@ -12,7 +12,8 @@ Tool surface
 2. calculate_ois_curve_spread_tool         — SOFR 2s10s, ESTR 1s5s, etc.
 3. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
 4. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
-5. scan_ois_extremes_tool                  — z-score screener across OIS universe
+5. calculate_swap_spread_tool              — UST-SOFR, BUND-ESTR, GILT-SONIA — cross-domain
+6. scan_ois_extremes_tool                  — z-score screener across OIS universe
 
 Meeting-pricing was removed: the prior implementation approximated
 central-bank meeting moves by linearly interpolating par OIS rates,
@@ -55,6 +56,7 @@ from rates_agent.ois.tools.schemas import (  # noqa: E402
     OISForwardRateInput,
     OISRateLevelInput,
     OISScannerInput,
+    SwapSpreadInput,
 )
 from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
     CONFIG_PATH as OIS_CROSS_MARKET_SPREAD_CONFIG_PATH,
@@ -73,6 +75,10 @@ from rates_agent.ois.tools.rate_level import (  # noqa: E402
     get_ois_rate_level,
 )
 from rates_agent.ois.tools.scanner import scan_ois_extremes  # noqa: E402
+from rates_agent.ois.tools.swap_spread import (  # noqa: E402
+    CONFIG_PATH as SWAP_SPREAD_CONFIG_PATH,
+    calculate_swap_spread,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -724,7 +730,150 @@ def calculate_ois_cross_market_spread_tool(
 
 
 # ===========================================================================
-# TOOL 5: scan_ois_extremes
+# TOOL 5: calculate_swap_spread (cross-domain — sovereign vs OIS)
+# ===========================================================================
+@mcp.tool()
+def calculate_swap_spread_tool(
+    sovereign_curve_family: str,
+    ois_curve_family: str,
+    tenor: str,
+    lookback_days: int = 365,
+    sovereign_field_name: str = "",
+    ois_field_name: str = "",
+) -> str:
+    """Calculate the cross-domain swap spread between a sovereign yield
+    curve and an OIS curve at the SAME tenor (e.g. UST 10Y vs SOFR 10Y,
+    BUND 5Y vs ESTR 5Y, GILT 2Y vs SONIA 2Y).
+
+    Sign convention: spread = (sovereign_yield − ois_rate) × 100 in bps.
+    Positive means the sovereign trades CHEAP to OIS (the canonical
+    "asset-swap spread" direction).
+
+    Use this tool when the user asks about:
+    - Asset-swap spreads        (e.g. "10Y UST swap spread", "Bund-OIS")
+    - Bond-vs-OIS rich/cheap    (e.g. "Is the 5Y Treasury cheap to OIS?")
+    - Cross-asset RV            (e.g. "How wide is the 2Y swap spread?")
+
+    Do NOT use this tool for:
+    - Sovereign cross-market spreads (BTP-Bund, UST-Bund)
+      → use calculate_cross_market_spread_tool (sovereign).
+    - OIS cross-currency spreads (SOFR-ESTR)
+      → use calculate_ois_cross_market_spread_tool.
+    - Same-curve tenor spreads (UST 2s10s, SOFR 2s10s)
+      → use calculate_curve_spread_tool / calculate_ois_curve_spread_tool.
+
+    Parameters
+    ----------
+    sovereign_curve_family : str
+        Sovereign curve family for the cash-bond leg.  Examples: 'UST',
+        'DE_BUND', 'IT_BTP', 'FR_OAT', 'UK_GILT', 'JGB'.
+    ois_curve_family : str
+        OIS curve family for the swap leg.  Examples: 'USD_SOFR_OIS',
+        'EUR_ESTR_OIS', 'GBP_SONIA_OIS', 'JPY_OIS'.  Should be the OIS
+        curve in the same currency as the sovereign leg (caller
+        responsibility — the primitive does not enforce currency match).
+    tenor : str
+        Tenor point.  Examples: '1Y', '2Y', '5Y', '10Y', '30Y'.
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365).
+    sovereign_field_name : str, optional
+        Bloomberg field mnemonic for the sovereign leg.  Leave as the
+        default empty string "" to use the bundled
+        ``sovereign_leg_default_field`` convention from
+        swap_spread/config.yaml (currently 'YLD_YTM_MID').  Empty-string
+        sentinel pattern, same as every other rates MCP wrapper.
+    ois_field_name : str, optional
+        Bloomberg field mnemonic for the OIS leg.  Leave as the default
+        empty string "" to use the bundled ``ois_leg_default_field``
+        (currently 'PX_LAST').
+    """
+    # Translate empty-string sentinels into None so the schema +
+    # compute layers resolve against the YAML's per-leg defaults.
+    # Same shadowing pattern fixed for sovereign curve_move_classifier
+    # in commit b2605ee, applied per-leg here.
+    sov_field_arg = sovereign_field_name if sovereign_field_name else None
+    ois_field_arg = ois_field_name if ois_field_name else None
+    try:
+        params = SwapSpreadInput(
+            sovereign_curve_family=sovereign_curve_family,
+            ois_curve_family=ois_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            sovereign_field_name=sov_field_arg,
+            ois_field_name=ois_field_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_swap_spread_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_swap_spread_tool] failed to connect to TimescaleDB"
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the swap_spread tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path; this is a free lookup after the first call.
+    try:
+        ss_config = load_tool_config(SWAP_SPREAD_CONFIG_PATH)
+        result = calculate_swap_spread(
+            engine=engine, params=params, config=ss_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_swap_spread_tool] unhandled error for %s vs %s at %s",
+            params.sovereign_curve_family,
+            params.ois_curve_family,
+            params.tenor,
+        )
+        return json.dumps(
+            {"error": f"calculate_swap_spread_tool failed for "
+             f"{params.sovereign_curve_family} vs "
+             f"{params.ois_curve_family} at {params.tenor}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_swap_spread_tool] tool call complete: %s vs %s at %s → %s",
+        params.sovereign_curve_family, params.ois_curve_family,
+        params.tenor, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the bespoke time_series list AND both canonical TimeSeries
+    # payloads from the LLM-facing response.  Frontend / future REST
+    # surfaces consume the full dict directly via the tool result.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_spread", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series") or [])
+    if bespoke_rows:
+        logger.info(
+            "[calculate_swap_spread_tool] withheld %d "
+            "time_series rows from LLM context.",
+            bespoke_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 6: scan_ois_extremes
 # ===========================================================================
 @mcp.tool()
 def scan_ois_extremes_tool(

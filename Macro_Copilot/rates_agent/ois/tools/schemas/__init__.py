@@ -51,6 +51,19 @@ from rates_agent.ois.tools.cross_market_spread.schemas import (
     OISCrossMarketSpreadTimeSeriesRow,
 )
 
+# Swap spread (cross-domain — one sovereign leg + one OIS leg) —
+# re-exported from the per-tool-folder package
+# (``rates_agent/ois/tools/swap_spread/``).  This is the FIRST cross-
+# domain primitive in the repo; lives under OIS because the OIS MCP
+# server is its natural host (existing routing pattern), but the
+# primitive itself spans both domains.
+from rates_agent.ois.tools.swap_spread.schemas import (
+    SwapSpreadCurrentMetrics,
+    SwapSpreadInput,
+    SwapSpreadOutput,
+    SwapSpreadTimeSeriesRow,
+)
+
 # Scanner (z-score extremes across the OIS universe)
 from rates_agent.ois.tools.schemas.scanner import (
     OISScannerInput,
@@ -85,6 +98,11 @@ __all__ = [
     "OISCrossMarketSpreadInput",
     "OISCrossMarketSpreadOutput",
     "OISCrossMarketSpreadTimeSeriesRow",
+    # swap_spread (cross-domain)
+    "SwapSpreadCurrentMetrics",
+    "SwapSpreadInput",
+    "SwapSpreadOutput",
+    "SwapSpreadTimeSeriesRow",
     # scanner
     "OISScannerInput",
     "OISScannerOutput",
