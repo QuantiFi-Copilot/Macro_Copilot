@@ -201,6 +201,39 @@ Always:
   `/curve-shapes` endpoint loops over multiple curves) instead of
   re-loading per iteration.
 
+### Feeding the operator layer (the bridge)
+
+When a caller wants to compose a tool's output with the operator
+layer (`shared/operators/<operator>/`) — e.g. align two tools'
+canonical `TimeSeries` payloads, run `series_arithmetic` between
+them, threshold the result — go through the primitive→operator
+bridge:
+
+```python
+from shared.artifacts.adapters import tool_output_to_artifact_series
+
+artifact = tool_output_to_artifact_series(
+    tool_output,                                 # the dict above
+    output_class=<Tool>Output,                   # the schema class
+    output_field="time_series_spread",           # which TimeSeries field
+    tool_name="calculate_<tool>_tool",           # MCP wrapper name
+    tool_config=cfg,                             # already-loaded ToolConfig
+    params=params,                               # the *Input model
+)
+```
+
+The bridge produces a frozen `Series` artifact carrying typed
+units, a structured `MissingnessPolicy` derived from the YAML's
+`ffill_limit_days`, and a `Lineage` chain rooted at a
+`PrimitiveStep` recording the tool's identity bits.  Operators
+consume this directly; downstream operator outputs go back to
+wire format via `artifact_series_to_time_series`.
+
+Full design rationale + contracts in
+[`docs/architecture/bridge.md`](bridge.md).  The runnable worked
+example lives at
+[`tests/test_bridge_reference_recipe.py`](../../tests/test_bridge_reference_recipe.py).
+
 ## Snapshot parity test
 
 Every tool ships with a parity fixture that locks the *real production
