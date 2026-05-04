@@ -298,6 +298,32 @@ tools:
 
     validation_status: tested
 
+  - name: get_fx_usd_thesis_monitor
+    domain: fx
+    sub_agent: macro
+    bucket: 1B
+    status: built
+    workspace_surface: false
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_usd_thesis_monitor_tool
+      schema: fx_agent/macro/tools/usd_thesis_monitor/schemas.py::FXUSDThesisInput
+      compute: fx_agent/macro/tools/usd_thesis_monitor/compute.py::get_fx_usd_thesis_monitor
+      config: fx_agent/macro/tools/usd_thesis_monitor/config.yaml
+
+    one_liner: >-
+      Monitor whether current FX breadth, regime, macro beta and stretched-pair
+      signals confirm or challenge a long-USD or short-USD research thesis.
+
+    related_tools:
+      - scan_usd_pressure_tool
+      - classify_fx_regime_tool
+      - scan_fx_extremes_tool
+      - get_fx_correlation_beta_tool
+
+    validation_status: tested
+
   - name: get_fx_vol_risk_premium
     domain: fx
     sub_agent: vol

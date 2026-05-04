@@ -1,0 +1,25 @@
+methodology:
+  description: >-
+    Deterministically evaluate whether current FX breadth, macro regime,
+    macro-beta and stretched-pair signals confirm or challenge a user-specified
+    USD thesis. This is a research monitor, not a trade recommendation engine.
+  supported_views:
+    - long_usd
+    - short_usd
+  components:
+    usd_breadth:
+      source: fx_agent/spot/tools/usd_pressure/compute.py::scan_usd_pressure
+    fx_regime:
+      source: fx_agent/macro/tools/regime_classifier/compute.py::classify_fx_regime
+    stretched_pairs:
+      source: fx_agent/spot/tools/scanner.py::run_fx_scanner
+    macro_beta:
+      source: fx_agent/macro/tools/correlation_beta/compute.py::get_fx_correlation_beta
+  status_labels:
+    supportive: >-
+      Current deterministic signals broadly support the specified USD thesis.
+    mixed: >-
+      Some deterministic signals confirm and others challenge the thesis.
+    hostile: >-
+      Current deterministic signals mostly argue against the thesis.
+

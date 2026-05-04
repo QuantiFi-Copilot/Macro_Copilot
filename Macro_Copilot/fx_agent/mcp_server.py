@@ -55,6 +55,10 @@ from fx_agent.macro.tools.rates_overlay import (  # noqa: E402
     FXRatesDifferentialInput,
     get_fx_rates_differential_overlay,
 )
+from fx_agent.macro.tools.usd_thesis_monitor import (  # noqa: E402
+    FXUSDThesisInput,
+    get_fx_usd_thesis_monitor,
+)
 from fx_agent.macro.tools.trade_setup import (  # noqa: E402
     FXTradeSetupInput,
     get_fx_trade_setup,
@@ -656,6 +660,41 @@ def get_fx_rates_differential_overlay_tool(
     except Exception as exc:
         logger.exception("[get_fx_rates_differential_overlay_tool] failed")
         return _json_error(f"FX/rates differential overlay failed: {exc}")
+
+    return result.model_dump_json()
+
+
+@mcp.tool()
+def get_fx_usd_thesis_monitor_tool(
+    usd_view: str = "long_usd",
+    anchor_pair: str = "EURUSD",
+    lookback_days: int = 365,
+    top_n: int = 5,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Monitor whether current FX conditions confirm a USD thesis.
+
+    Use this when the user has a long-USD or short-USD macro view and wants to
+    know whether breadth, regime, stretched pairs and macro beta confirm or
+    challenge the thesis. This is a research monitor, not a trade recommender.
+    """
+    try:
+        params = FXUSDThesisInput(
+            usd_view=usd_view,
+            anchor_pair=anchor_pair,
+            lookback_days=lookback_days,
+            top_n=top_n,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("[get_fx_usd_thesis_monitor_tool] validation failed: %s", exc)
+        return _json_error(f"Invalid parameters: {exc.errors()}")
+
+    try:
+        result = get_fx_usd_thesis_monitor(params=params)
+    except Exception as exc:
+        logger.exception("[get_fx_usd_thesis_monitor_tool] failed")
+        return _json_error(f"FX USD thesis monitor failed: {exc}")
 
     return result.model_dump_json()
 
