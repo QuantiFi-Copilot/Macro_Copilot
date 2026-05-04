@@ -230,6 +230,33 @@ class WorkflowTemplate(BaseModel):
     terminal_node_id :
         Which node's output is the workflow's terminal artifact.
         Template-locked (the LLM does not choose this).
+    archetype_signature :
+        Short structural-cue strings the future
+        ``route_to_template`` LLM step uses to decide whether a
+        prompt matches this template.  Per
+        ``docs/architecture/workflow_architecture.md`` (the
+        "Template-selection contract" section):
+
+            Each template carries an ``archetype_signature``
+            declaration: which structural cues in a prompt
+            indicate this template (e.g. event_study requires
+            "conditional aggregation across event windows";
+            attribution_decomposition requires "decompose / drove
+            / explained-vs-residual phrasing").
+
+        Each cue is a short string (≤120 chars) that captures one
+        recognisable phrase or pattern the desk would use when
+        asking for this analysis.  V1 lower-bound: 1 cue per
+        template.  Multiple cues are an OR pattern (any matching
+        cue → template is a candidate); the LLM router picks the
+        single best-matching template per prompt.
+
+        Cues are caller-controlled, NOT closed-enum: each
+        template author writes the cues that match their
+        archetype's desk vocabulary.  But the linter in PR 5+
+        will check that every shipped template has at least one
+        cue declared so the routing layer always has something to
+        match against.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -242,11 +269,49 @@ class WorkflowTemplate(BaseModel):
     edges: List[WorkflowEdge] = Field(default_factory=list)
     literal_bindings: List[LiteralBindingTemplate] = Field(default_factory=list)
     terminal_node_id: str = Field(..., min_length=1)
+    archetype_signature: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Structural cue strings the future ``route_to_template`` "
+            "LLM step matches against prompts to decide whether this "
+            "template is a candidate.  Each cue is a short phrase "
+            "(≤120 chars) capturing one recognisable pattern the "
+            "desk would use.  Multiple cues = OR (any matching cue "
+            "→ candidate)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_template_shape(self) -> "WorkflowTemplate":
         """Construction-time gate: slot-schema uniqueness, slot
-        references resolve, terminal node + edge endpoints exist."""
+        references resolve, terminal node + edge endpoints exist,
+        archetype signature cues are well-formed."""
+        # Archetype signature cue length cap.  The
+        # ``route_to_template`` LLM step pattern-matches against
+        # each cue; very long cues are likely to be sentences
+        # rather than recognisable phrases and dilute the match
+        # signal.
+        for i, cue in enumerate(self.archetype_signature):
+            if not isinstance(cue, str):
+                raise ValueError(
+                    f"WorkflowTemplate {self.template_id!r}: "
+                    f"archetype_signature[{i}] must be a string; "
+                    f"got {type(cue).__name__}."
+                )
+            stripped = cue.strip()
+            if not stripped:
+                raise ValueError(
+                    f"WorkflowTemplate {self.template_id!r}: "
+                    f"archetype_signature[{i}] is empty."
+                )
+            if len(cue) > 120:
+                raise ValueError(
+                    f"WorkflowTemplate {self.template_id!r}: "
+                    f"archetype_signature[{i}] is {len(cue)} "
+                    "characters; cues must be ≤120 chars (short "
+                    "recognisable phrases, not sentences)."
+                )
+
         # Slot names unique
         slot_names = [s.name for s in self.slot_schema]
         if len(slot_names) != len(set(slot_names)):

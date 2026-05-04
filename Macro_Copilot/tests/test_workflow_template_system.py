@@ -901,6 +901,216 @@ terminal_node_id: p
 """
 
 
+class TestArchetypeSignature:
+    """Codex P2 follow-up #1 (PR #80): the
+    ``workflow_architecture.md`` "Template-selection contract"
+    section requires every template card to carry an
+    ``archetype_signature`` declaration so the future
+    ``route_to_template`` LLM step can match prompts to templates
+    via structural cues.  PR #80 shipped without this field; the
+    fix adds it to ``WorkflowTemplate`` AND propagates it to
+    ``TemplateCard``."""
+
+    def _template_with_signature(self, *, signature):
+        return WorkflowTemplate(
+            template_id="sig_test",
+            archetype="event_study",
+            description="...",
+            archetype_signature=signature,
+            slot_schema=[],
+            nodes=[
+                PrimitiveNodeTemplate(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={},
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+
+    def test_default_empty_signature_is_legal(self):
+        """Backward-compat: existing templates without an
+        archetype_signature still construct cleanly.  PR 5+ will
+        require ≥1 cue at the lint layer; the substrate stays
+        permissive."""
+        t = self._template_with_signature(signature=[])
+        assert t.archetype_signature == []
+
+    def test_single_cue_round_trips(self):
+        t = self._template_with_signature(
+            signature=["average move after / forward move when X exceeds Y"],
+        )
+        assert len(t.archetype_signature) == 1
+
+    def test_multiple_cues_round_trip(self):
+        t = self._template_with_signature(
+            signature=[
+                "conditional aggregation across event windows",
+                "average move after threshold",
+                "forward move conditional on X exceeding Y",
+            ],
+        )
+        assert len(t.archetype_signature) == 3
+
+    def test_empty_string_cue_rejected(self):
+        with pytest.raises(Exception, match="empty"):
+            self._template_with_signature(signature=[""])
+
+    def test_whitespace_only_cue_rejected(self):
+        with pytest.raises(Exception, match="empty"):
+            self._template_with_signature(signature=["   "])
+
+    def test_overlong_cue_rejected(self):
+        long_cue = "x" * 121
+        with pytest.raises(Exception, match="≤120 chars"):
+            self._template_with_signature(signature=[long_cue])
+
+    def test_120_char_cue_at_boundary_accepted(self):
+        cue_120 = "x" * 120
+        t = self._template_with_signature(signature=[cue_120])
+        assert len(t.archetype_signature[0]) == 120
+
+    def test_card_propagates_signature(self):
+        cues = [
+            "conditional aggregation across event windows",
+            "forward window after event",
+        ]
+        t = self._template_with_signature(signature=cues)
+        card = card_for_template(t)
+        assert card.archetype_signature == cues
+
+    def test_card_default_empty_signature(self):
+        """Cards inherit the template's default empty signature
+        list (back-compat with PR #80 templates)."""
+        t = self._template_with_signature(signature=[])
+        card = card_for_template(t)
+        assert card.archetype_signature == []
+
+
+class TestSlotReferenceSyntax:
+    """Codex P3 follow-up (PR #80): the loader docstring used to
+    show ``{$slot: signal_spec.curve_family}`` (dotted path), but
+    the binder only supports exact slot-name lookup.  These tests
+    pin the EXACT semantics the binder actually implements so a
+    future template author cannot accidentally rely on the
+    discontinued dotted-path style."""
+
+    def test_dotted_path_style_is_NOT_supported(self):
+        """Slot references like ``{$slot: foo.bar}`` are NOT
+        magic dotted paths — the binder treats the whole string
+        as the literal slot name.  The construction-time
+        validator catches the undeclared reference."""
+        with pytest.raises(Exception, match="undeclared slot references"):
+            WorkflowTemplate(
+                template_id="dotted",
+                archetype="event_study",
+                description="...",
+                slot_schema=[
+                    SlotDeclaration(
+                        name="signal_spec", type="dict",
+                        required=True, description="...",
+                    ),
+                ],
+                nodes=[
+                    PrimitiveNodeTemplate(
+                        node_id="p",
+                        tool_name="synthetic_primitive_tool",
+                        output_field="time_series",
+                        # Dotted-style reference to a sub-field —
+                        # NOT supported by the binder.
+                        params={
+                            "curve_family": {"$slot": "signal_spec.curve_family"},
+                        },
+                    ),
+                ],
+                edges=[],
+                terminal_node_id="p",
+            )
+
+    def test_whole_dict_slot_supported(self):
+        """The supported pattern for nested data: declare a
+        ``type: dict`` slot and reference it whole.  The
+        consuming primitive's ``*Input`` schema handles nested
+        validation."""
+        t = WorkflowTemplate(
+            template_id="dict_slot",
+            archetype="event_study",
+            description="...",
+            slot_schema=[
+                SlotDeclaration(
+                    name="signal_spec", type="dict",
+                    required=True, description="SeriesSpec dict",
+                ),
+            ],
+            nodes=[
+                PrimitiveNodeTemplate(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    # Whole-dict slot reference: the dict
+                    # substitutes in entirely.
+                    params={"spec": {"$slot": "signal_spec"}},
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        wf = t.bind({
+            "signal_spec": {
+                "curve_family": "UST",
+                "tenor": "10Y",
+                "field_name": None,
+            },
+        })
+        # The whole dict is substituted into the params slot.
+        assert wf.nodes[0].params == {
+            "spec": {
+                "curve_family": "UST",
+                "tenor": "10Y",
+                "field_name": None,
+            },
+        }
+
+    def test_flat_slots_recommended_pattern(self):
+        """The recommended V1 pattern: one slot per leaf value.
+        Each $slot reference is an exact slot name."""
+        t = WorkflowTemplate(
+            template_id="flat",
+            archetype="event_study",
+            description="...",
+            slot_schema=[
+                SlotDeclaration(
+                    name="curve_family", type="str",
+                    required=True, description="...",
+                ),
+                SlotDeclaration(
+                    name="tenor", type="str",
+                    required=True, description="...",
+                ),
+            ],
+            nodes=[
+                PrimitiveNodeTemplate(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={
+                        "curve_family": {"$slot": "curve_family"},
+                        "tenor": {"$slot": "tenor"},
+                    },
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        wf = t.bind({"curve_family": "DE_BUND", "tenor": "10Y"})
+        assert wf.nodes[0].params == {
+            "curve_family": "DE_BUND",
+            "tenor": "10Y",
+        }
+
+
 class TestEndToEnd:
     def test_load_bind_execute(self, tmp_path, synthetic_resolver):
         """Load YAML → bind slot values → execute via substrate."""

@@ -23,6 +23,10 @@ Card contents
   invokes)
 - ``node_count`` (substrate-shape diagnostic)
 - ``edge_count`` (substrate-shape diagnostic)
+- ``archetype_signature`` (the structural cues the
+  ``route_to_template`` LLM step matches against prompts; per
+  the workflow-architecture spec's "Template-selection
+  contract" section)
 
 The card is INTENTIONALLY the same shape across all templates so
 the LLM template-selection layer can iterate over the catalogue
@@ -76,6 +80,10 @@ class TemplateCard(BaseModel):
     operators_used: List[str] = Field(default_factory=list)
     node_count: int = Field(..., ge=1)
     edge_count: int = Field(..., ge=0)
+    # Structural cues the future ``route_to_template`` LLM step
+    # matches against prompts.  Echoed verbatim from the
+    # template's declaration; cards do not synthesise cues.
+    archetype_signature: List[str] = Field(default_factory=list)
 
 
 def card_for_template(template: WorkflowTemplate) -> TemplateCard:
@@ -128,6 +136,7 @@ def card_for_template(template: WorkflowTemplate) -> TemplateCard:
         operators_used=sorted(operators_used),
         node_count=len(template.nodes),
         edge_count=len(template.edges),
+        archetype_signature=list(template.archetype_signature),
     )
 
 
