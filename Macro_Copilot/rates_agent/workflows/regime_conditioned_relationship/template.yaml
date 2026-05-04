@@ -25,6 +25,82 @@
 # both deferred per the V1 1-template-per-archetype rule
 # (workflow_architecture.md lines 229-232).
 #
+# Deferred enrichment paths (NOT shipped in this V1 template;
+# documented here so future PRs do not re-litigate the design)
+# -------------------------------------------------------------
+#  (a) Categorical-regime classifier instead of two thresholds:
+#      ``rates_agent/sovereign_bonds/tools/curve_move_classifier``
+#      already emits a categorical regime label per day (bull-
+#      steepen / bull-flatten / bear-steepen / bear-flatten).
+#      Wiring it as the regime classifier requires a new operator
+#      that turns a categorical-label Series into per-class
+#      boolean masks (closed-family extension to the operator
+#      registry).  Once that operator exists, an N-way variant of
+#      this template can fan out the per-class masks into N
+#      parallel windows + aggregate branches.
+#
+#  (b) Per-regime *relationship* analysis (not just per-regime
+#      forward mean).  ``rates_agent/sovereign_bonds/tools/
+#      rolling_regression`` already emits regression betas + R^2
+#      Series; a future variant template would split the sample
+#      by regime mask (operator (a) above) and run the
+#      rolling_regression analysis inside each subsample, then
+#      compare the per-regime regression coefficients.  Requires
+#      both the categorical-mask operator (a) AND a
+#      Series-from-SeriesSet extraction operator so the
+#      regression's per-regime input can be lifted out cleanly.
+#
+# Both enrichments are intentionally future work — the V1 binary
+# forward-response template ships now because (i) it cleanly
+# realizes the abstract archetype's "split sample by mask, run
+# per-subsample analysis, compare across regimes" shape using
+# only existing operators, (ii) the per-subsample analysis
+# (forward-window aggregate) is itself a desk-recognized
+# response-conditioned-on-regime question, and (iii) shipping the
+# binary form first lets the substrate's slot-binding + lineage
+# mechanics get exercised before the operator family grows.
+#
+# Index-alignment contract
+# ------------------------
+# event_windows requires ``events.mask.index == target.payload.index``
+# (operator-level invariant, see
+# shared/operators/event_windows/operator.py:192).  This template
+# does NOT carry an explicit ``align_series`` step because:
+#   - align_series outputs a SeriesSet (not two separate Series),
+#     and the substrate currently has no Series-from-SeriesSet
+#     extraction operator that could lift each aligned series
+#     back out to feed threshold_events / event_windows
+#     individually.
+#   - Real-rates primitives all fetch from the same daily
+#     trading-day grid (``macro_data.v_market_data_daily_enriched``),
+#     so the canonical bindings produce signal + target Series
+#     with identical DatetimeIndex by construction.
+# When the Series-from-SeriesSet operator lands, this template
+# will gain an explicit ``align_series`` → extract → branches
+# topology so cross-calendar / cross-instrument bindings (e.g.
+# UK gilts vs US-calendar OIS) work robustly.  Until then, the
+# caller's responsibility is to supply ``signal_params`` and
+# ``target_params`` whose lookback windows + curve calendars
+# yield identical DatetimeIndex on the bridged Series; the
+# operator surfaces a clean error otherwise.
+#
+# Threshold-disjoint contract
+# ---------------------------
+# The two regime branches use STRICT inequalities (rule=above for
+# high, rule=below for low).  For the regimes to be disjoint
+# (i.e. for ``high_aggregate − low_aggregate`` to be a coherent
+# difference of non-overlapping samples), the caller MUST supply
+# ``high_threshold >= low_threshold``.  When this contract is
+# violated (high < low) the workflow still RUNS — the operators
+# are finance-blind and process whichever events the threshold
+# rules generate — but the comparison's economic meaning is
+# undermined because some dates feed BOTH branches.  The
+# substrate does not currently support cross-slot validators
+# (it would need to be a closed-family extension to
+# SlotDeclaration); enforcement is therefore a documented
+# template-author contract that the canonical bindings respect
+# and the test suite asserts on the reference desk binding.
+#
 # Reference desk binding (curve-regime response):
 #   "When the OIS 2s10s curve is steep (>+50 bps) vs flat (<-50 bps),
 #   what's the average 5-day forward move in the 10Y UST yield, and
@@ -139,9 +215,19 @@ slot_schema:
     type: dict
     required: true
     description: >-
-      Complete *Input dict for the target primitive.  The lookback_days
-      should typically be ≥ signal lookback_days + post_window so the
-      forward windows around late regime days have data to aggregate.
+      Complete *Input dict for the target primitive.  TWO load-bearing
+      contracts apply (see template header):
+      (1) ``lookback_days`` should typically be ≥ signal
+      ``lookback_days`` + ``post_window`` so the forward windows
+      around late regime days have data to aggregate.
+      (2) The resulting target Series must share an identical
+      DatetimeIndex with the signal Series — the template currently
+      relies on both primitives fetching from the same trading-day
+      grid (``macro_data.v_market_data_daily_enriched``).  Mismatched
+      lookbacks or mixed calendars (e.g. US-only signal vs gilts
+      target) will trip ``event_windows``' index-equality check at
+      runtime.  An explicit ``align_series`` step is deferred until
+      the Series-from-SeriesSet extraction operator lands.
 
   - name: target_output_field
     type: str
@@ -161,21 +247,26 @@ slot_schema:
     required: true
     description: >-
       Signal value strictly ABOVE which a day is classified as the
-      "high" regime (template-locked rule=above on this branch).  Units
-      must match the signal's units (e.g. for a BPS spread signal,
-      pass 50.0 to mean "above +50 bps").  No range constraint —
-      regime overlap (high_threshold ≤ low_threshold) is a caller
-      judgment call and may be intentional.
+      "high" regime (template-locked rule=above on this branch).
+      Units must match the signal's units (e.g. for a BPS spread
+      signal, pass 50.0 to mean "above +50 bps").
+      LOAD-BEARING CONTRACT: the caller MUST supply
+      ``high_threshold >= low_threshold`` so the two regimes are
+      DISJOINT.  See the template header's
+      "Threshold-disjoint contract" section for the rationale and
+      the failure mode when violated.
 
   - name: low_threshold
     type: float
     required: true
     description: >-
       Signal value strictly BELOW which a day is classified as the
-      "low" regime (template-locked rule=below on this branch).  Units
-      must match the signal's units.  Pairs with high_threshold to
-      define a two-state classifier; the template does not enforce
-      gap or non-overlap between the two thresholds.
+      "low" regime (template-locked rule=below on this branch).
+      Units must match the signal's units.  Paired with
+      ``high_threshold`` to define a two-state DISJOINT classifier
+      — see ``high_threshold`` above and the template header's
+      "Threshold-disjoint contract" section for the
+      ``high_threshold >= low_threshold`` requirement.
 
   - name: post_window
     type: int
