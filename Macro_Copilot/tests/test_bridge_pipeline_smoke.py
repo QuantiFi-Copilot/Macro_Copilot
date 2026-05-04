@@ -735,6 +735,123 @@ class TestPipeline_StructuralMetadataRefusalAtOperator:
 
 
 # ===========================================================================
+# 8b. Cross-unit refusals on REAL bridge outputs
+# ===========================================================================
+
+class TestPipeline_CrossUnitRefusalAtOperator:
+    """The bridge plan + ``docs/architecture/bridge.md`` explicitly say
+    the bridge is NOT a unit converter — a primitive returning BPS and
+    an operator wanting PERCENT must NOT be papered over.  The bridge
+    hands the operator a Series with closed-enum ``units`` attached;
+    the operator's strict unit-algebra refuses cross-unit arithmetic.
+
+    This test pins the refusal locus on REAL bridge outputs (Codex P2
+    follow-up: prior smoke coverage proved structural-metadata
+    refusals fire at the operator boundary for FREQUENCY and INDEX
+    mismatches but never for UNIT mismatches, leaving the bridge
+    plan's "not a unit converter" claim under-proved at the
+    integration-smoke level).
+    """
+
+    def test_subtract_refuses_PERCENT_minus_BPS(self):
+        """rate_level (PERCENT) vs curve_spread (BPS) on aligned
+        indices — series_arithmetic.subtract refuses cross-unit
+        arithmetic AT the operator boundary."""
+        from shared.operators.series_arithmetic.operator import (
+            SeriesArithmeticError,
+        )
+
+        s_pct = _bridge_rate_level()  # PERCENT
+        s_bps = _bridge_curve_spread(  # BPS
+            output_field="time_series_spread",
+        )
+        # Sanity: the two operands have different units.
+        assert s_pct.units == TimeSeriesUnits.PERCENT
+        assert s_bps.units == TimeSeriesUnits.BPS
+
+        # Pre-condition: confirm the indices are compatible enough that
+        # ``series_arithmetic`` would otherwise accept (i.e. the
+        # refusal is genuinely on UNITS, not on shape drift).  If the
+        # two synthetic frames don't share an index here, align them
+        # explicitly.
+        if not s_pct.payload.index.equals(s_bps.payload.index):
+            ss = align_series([s_pct, s_bps])
+            s_pct = ss.get_series(s_pct.series_key)
+            s_bps = ss.get_series(s_bps.series_key)
+        assert s_pct.payload.index.equals(s_bps.payload.index)
+
+        # The refusal fires AT the operator with a clear
+        # "incompatible units" error pointing the caller toward an
+        # explicit unit conversion.
+        with pytest.raises(
+            SeriesArithmeticError, match="(?i)incompatible units",
+        ):
+            series_arithmetic(s_pct, "subtract", s_bps)
+
+    def test_add_refuses_PERCENT_plus_BPS(self):
+        """Symmetric to the subtract test: ``add`` is the other half of
+        the strict unit-algebra requirement that left.units ==
+        right.units for additive ops."""
+        from shared.operators.series_arithmetic.operator import (
+            SeriesArithmeticError,
+        )
+
+        s_pct = _bridge_rate_level()
+        s_bps = _bridge_curve_spread(output_field="time_series_spread")
+        if not s_pct.payload.index.equals(s_bps.payload.index):
+            ss = align_series([s_pct, s_bps])
+            s_pct = ss.get_series(s_pct.series_key)
+            s_bps = ss.get_series(s_bps.series_key)
+
+        with pytest.raises(
+            SeriesArithmeticError, match="(?i)incompatible units",
+        ):
+            series_arithmetic(s_pct, "add", s_bps)
+
+    def test_divide_refuses_cross_unit_series_div_series(self):
+        """``divide`` with two Series demands matching units (the
+        result type is ``RATIO``, but the two operands' units must
+        agree).  ``BPS / PERCENT`` is meaningless and refused."""
+        from shared.operators.series_arithmetic.operator import (
+            SeriesArithmeticError,
+        )
+
+        s_pct = _bridge_rate_level()
+        s_bps = _bridge_curve_spread(output_field="time_series_spread")
+        if not s_pct.payload.index.equals(s_bps.payload.index):
+            ss = align_series([s_pct, s_bps])
+            s_pct = ss.get_series(s_pct.series_key)
+            s_bps = ss.get_series(s_bps.series_key)
+
+        with pytest.raises(
+            SeriesArithmeticError, match="(?i)matching units",
+        ):
+            series_arithmetic(s_bps, "divide", s_pct)
+
+    def test_subtract_accepts_matching_units_baseline(self):
+        """Negative-control sanity: same primitive, same units →
+        no refusal.  Confirms the cross-unit refusals above are
+        genuinely about UNIT mismatch, not some other coincidence
+        (e.g. lineage hash collision, missingness drift).
+
+        The failure mode this guards against: if the unit refusal
+        check above passed for the wrong reason, this test would
+        ALSO fail — making the cross-unit tests vacuous.
+        """
+        s_a = _bridge_curve_spread(output_field="time_series_spread")
+        s_b = _bridge_curve_spread(
+            output_field="time_series_spread",
+            short_tenor="2Y", long_tenor="5Y",
+        )
+        # Same units (both BPS), same fixture-driven indices.
+        assert s_a.units == s_b.units == TimeSeriesUnits.BPS
+        assert s_a.payload.index.equals(s_b.payload.index)
+        # No refusal — the operator accepts.
+        diff = series_arithmetic(s_a, "subtract", s_b)
+        assert diff.units == TimeSeriesUnits.BPS  # BPS - BPS = BPS
+
+
+# ===========================================================================
 # 9. Per-primitive lineage carries the YAML-aware tool_config_hash
 # ===========================================================================
 
