@@ -5,6 +5,8 @@ import { TopNav } from '@/components/ui/TopNav';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { RatesPage } from '@/components/rates/RatesPage';
 import { WorkspacePage } from '@/components/workspace/WorkspacePage';
+import { ToolsCataloguePage } from '@/components/catalogue/ToolsCataloguePage';
+import { WorkflowsCataloguePage } from '@/components/catalogue/WorkflowsCataloguePage';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
 const NAV_TABS = [
@@ -14,6 +16,10 @@ const NAV_TABS = [
   { label: 'Policy', path: '/policy' },
   { label: 'Events', path: '/events' },
   { label: 'Workspace', path: '/workspace' },
+  // PR 10 — discovery surfaces for the LLM-orchestrated workflow
+  // template layer + the underlying primitive tool catalogue.
+  { label: 'Workflows', path: '/workflows' },
+  { label: 'Tools', path: '/tools' },
 ];
 
 export function AppShell() {
@@ -58,6 +64,10 @@ export function AppShell() {
               <Route path="/policy" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/events" element={<Dashboard data={data} isLoading={isLoading} />} />
               <Route path="/workspace" element={<WorkspacePage />} />
+
+              {/* PR 10 — workflow + tool catalogue surfaces */}
+              <Route path="/workflows" element={<WorkflowsCataloguePage />} />
+              <Route path="/tools" element={<ToolsCataloguePage />} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

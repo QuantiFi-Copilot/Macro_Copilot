@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import type { CopilotMessage } from '@/types/copilot';
 import { ToolExecutionTrace } from '@/components/copilot/ToolExecutionTrace';
+import { WorkflowResultCard } from '@/components/copilot/WorkflowResultCard';
 import { WorkspaceButton } from '@/components/copilot/WorkspaceButton';
 import { cn } from '@/utils/cn';
 
@@ -39,7 +40,9 @@ function UserMessage({ content }: { content: string }) {
 function AssistantMessage({ message }: { message: CopilotMessage }) {
   const hasContent = message.content.length > 0;
   const hasTrace = message.traceSteps.length > 0;
-  const showThinking = message.phase === 'thinking' && !hasContent && !hasTrace;
+  const hasWorkflow = !!message.workflow;
+  const showThinking =
+    message.phase === 'thinking' && !hasContent && !hasTrace && !hasWorkflow;
   const showCursor = message.isStreaming && hasContent;
 
   return (
@@ -48,7 +51,9 @@ function AssistantMessage({ message }: { message: CopilotMessage }) {
       <div className="absolute -left-1 top-2 h-6 w-[2px] rounded-full bg-gradient-to-b from-ice-400 to-transparent" />
 
       {/* Label */}
-      <div className="kicker mb-1.5 pl-2 text-fg-muted">Copilot</div>
+      <div className="kicker mb-1.5 pl-2 text-fg-muted">
+        {hasWorkflow ? 'Copilot · Workflow' : 'Copilot'}
+      </div>
 
       <div className="pl-2">
         {/* Thinking indicator */}
@@ -59,7 +64,7 @@ function AssistantMessage({ message }: { message: CopilotMessage }) {
           </div>
         )}
 
-        {/* Tool execution trace */}
+        {/* Tool execution trace (existing supervisor path) */}
         {hasTrace && (
           <ToolExecutionTrace
             steps={message.traceSteps}
@@ -78,7 +83,12 @@ function AssistantMessage({ message }: { message: CopilotMessage }) {
           </div>
         )}
 
-        {/* Workspace button */}
+        {/* PR 10 — workflow result card (workflow-router path) */}
+        {hasWorkflow && message.workflow && (
+          <WorkflowResultCard payload={message.workflow} />
+        )}
+
+        {/* Workspace button (existing supervisor path) */}
         {!message.isStreaming && message.workspaceContext && (
           <WorkspaceButton context={message.workspaceContext} />
         )}

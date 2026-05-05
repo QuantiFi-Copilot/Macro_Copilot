@@ -276,6 +276,87 @@ export function useCopilot(): UseCopilotResult {
         setIsThinking(false);
         break;
       }
+
+      // ----------------------------------------------------------------
+      // PR 10 — workflow events
+      // ----------------------------------------------------------------
+      case 'workflow_route_decision': {
+        // Promote a workflow_route_decision to the streaming assistant
+        // bubble even when no prior 'status: thinking' was emitted
+        // (the workflow gate runs BEFORE the supervisor, so the
+        // bubble may not exist yet).
+        if (!streamingMsgId.current) {
+          const id = nextId();
+          streamingMsgId.current = id;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id,
+              role: 'assistant',
+              content: '',
+              timestamp: new Date(),
+              traceSteps: [],
+              workspaceContext: null,
+              isStreaming: true,
+              phase: 'running_tools',
+              workflow: null,
+            },
+          ]);
+        }
+        if (event.action !== 'route' || !event.template_id) {
+          // CLARIFY / OUT_OF_SCOPE — clear any partial workflow
+          // state so the assistant message renders the existing
+          // clarification path.
+          updateStreamingMessage((msg) => ({ ...msg, workflow: null }));
+          break;
+        }
+        updateStreamingMessage((msg) => ({
+          ...msg,
+          phase: 'running_tools',
+          workflow: {
+            routeDecision: {
+              template_id: event.template_id!,
+              slot_values: event.slot_values,
+              rationale: event.rationale,
+            },
+            status: 'running',
+            result: undefined,
+          },
+        }));
+        break;
+      }
+
+      case 'workflow_status': {
+        updateStreamingMessage((msg) => {
+          if (!msg.workflow) return msg;
+          return {
+            ...msg,
+            workflow: { ...msg.workflow, status: event.status },
+          };
+        });
+        break;
+      }
+
+      case 'workflow_result': {
+        updateStreamingMessage((msg) => {
+          if (!msg.workflow) return msg;
+          return {
+            ...msg,
+            workflow: {
+              ...msg.workflow,
+              status: event.ok ? 'complete' : 'error',
+              result: {
+                ok: event.ok,
+                template_id: event.template_id,
+                terminal_artifact: event.terminal_artifact,
+                workflow_lineage_summary: event.workflow_lineage_summary,
+                error: event.error,
+              },
+            },
+          };
+        });
+        break;
+      }
     }
   }, [updateStreamingMessage]);
 

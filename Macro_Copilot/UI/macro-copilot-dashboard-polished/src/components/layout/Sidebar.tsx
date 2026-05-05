@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import {
   Activity,
   BarChart3,
@@ -12,6 +13,8 @@ import {
   LineChart,
   Settings,
   ShieldCheck,
+  Workflow,
+  Wrench,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import type { SidebarGroup } from '@/types/dashboard';
@@ -31,6 +34,7 @@ const AGENT_META = [
 
 export function Sidebar({ groups }: SidebarProps) {
   const primaryGroup = groups[0];
+  const location = useLocation();
 
   return (
     <aside className="panel relative flex h-full min-h-0 flex-col">
@@ -91,6 +95,25 @@ export function Sidebar({ groups }: SidebarProps) {
                 subItems={i === 0 ? primaryGroup?.items.map((item) => item.label) : undefined}
               />
             ))}
+          </div>
+        </div>
+
+        {/* PR 10 — Library: workflows + primitive tools catalogue */}
+        <div>
+          <SectionLabel>Library</SectionLabel>
+          <div className="mt-1 space-y-0.5 px-1">
+            <NavLinkRow
+              icon={<Workflow size={14} />}
+              label="Workflows"
+              to="/workflows"
+              active={location.pathname.startsWith('/workflows')}
+            />
+            <NavLinkRow
+              icon={<Wrench size={14} />}
+              label="Tools"
+              to="/tools"
+              active={location.pathname.startsWith('/tools')}
+            />
           </div>
         </div>
 
@@ -175,6 +198,43 @@ function NavRow({
       <span className="flex-1 truncate">{label}</span>
       {trailing}
     </button>
+  );
+}
+
+// PR 10 — Sidebar entry that routes via react-router instead of being
+// a click-only stub.  Same visual treatment as ``NavRow`` so the
+// existing rows + the new Library entries are visually homogeneous.
+function NavLinkRow({
+  icon,
+  label,
+  to,
+  active,
+}: {
+  icon: ReactNode;
+  label: string;
+  to: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        'group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12.5px] font-medium tracking-[-0.005em] transition-colors duration-150 ease-sleek',
+        active
+          ? 'nav-active-rail bg-white/[0.035] text-fg-primary'
+          : 'text-fg-secondary hover:bg-white/[0.025] hover:text-fg-primary',
+      )}
+    >
+      <span
+        className={cn(
+          'flex h-4 w-4 items-center justify-center transition-colors',
+          active ? 'text-ice-300' : 'text-fg-muted group-hover:text-fg-secondary',
+        )}
+      >
+        {icon}
+      </span>
+      <span className="flex-1 truncate">{label}</span>
+    </Link>
   );
 }
 
