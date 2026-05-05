@@ -571,6 +571,29 @@ class CopilotSession:
         # actually runs.
         from rates_agent.workflows._runner import run_template
 
+        # Source the SQLAlchemy engine the same way the REST routes do —
+        # the substrate's executor needs a live engine to dispatch the
+        # primitives' DB-bound calls.  Falling through with engine=None
+        # surfaces as ``AttributeError: 'NoneType' has no attribute
+        # 'connect'`` deep inside the first primitive, which is the bug
+        # the chat path showed.  We swallow init errors and degrade
+        # gracefully so a missing DB doesn't take down the chat.
+        engine = None
+        try:
+            from api.dependencies import get_engine, init_engine
+            try:
+                engine = get_engine()
+            except RuntimeError:
+                # Lifespan hook didn't run (e.g. orchestrator launched
+                # outside FastAPI) — initialise the singleton on first
+                # use.
+                engine = init_engine()
+        except Exception as exc:
+            logger.warning(
+                "[%s] %s could not acquire DB engine for workflow run: %s",
+                self.thread_id, turn_label, exc,
+            )
+
         # The substrate's executor is synchronous; offload to a thread
         # so the WebSocket event loop isn't blocked.
         try:
@@ -578,6 +601,7 @@ class CopilotSession:
                 run_template,
                 decision.template_id,
                 dict(decision.slot_values or {}),
+                engine=engine,
             )
         except Exception as exc:
             logger.exception(
