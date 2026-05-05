@@ -45,6 +45,7 @@ from shared.workflow import (
     PrimitiveNodeTemplate,
     PrimitiveResolver,
     PrimitiveSpec,
+    RelativeOrderConstraint,
     SlotBindingError,
     SlotDeclaration,
     TemplateCard,
@@ -1203,3 +1204,237 @@ class TestTemplateLayerFinanceBlindness:
                             f"FINANCE-BLINDNESS VIOLATION in "
                             f"{module.__name__}: from {node.module}"
                         )
+
+
+# ===========================================================================
+# 9. Cross-slot constraints (Codex P2 follow-up to PR #86)
+# ===========================================================================
+#
+# ``slot_constraints`` is a closed-family discriminated union of
+# substrate-enforced cross-slot validators applied at ``bind()`` time
+# AFTER individual-slot type/required checks pass.  V1 closed family
+# is a single kind: ``relative_order`` (used by
+# regime_conditioned_relationship to enforce
+# ``high_threshold >= low_threshold``).
+#
+# These tests pin the substrate behaviour independently of any
+# specific template binding so a future closed-family extension or
+# bind-path change surfaces here, not in a downstream template's
+# real-rates suite.
+
+
+def _template_with_relative_order_constraint(
+    *,
+    operator: str = "gte",
+    higher_type: str = "float",
+    lower_type: str = "float",
+) -> WorkflowTemplate:
+    """A minimal template that declares two numeric slots + one
+    relative-order constraint.  ``operator`` and the slot types are
+    parameterised so individual tests can exercise each branch."""
+    return WorkflowTemplate(
+        template_id="relative_order_test",
+        archetype="event_study",
+        description="test",
+        slot_schema=[
+            SlotDeclaration(
+                name="series_name",
+                type="str", required=True,
+                description="caller series name",
+            ),
+            SlotDeclaration(
+                name="high",
+                type=higher_type, required=True,
+                description="upper bound",
+            ),
+            SlotDeclaration(
+                name="low",
+                type=lower_type, required=True,
+                description="lower bound",
+            ),
+        ],
+        slot_constraints=[
+            RelativeOrderConstraint(
+                higher="high",
+                lower="low",
+                operator=operator,
+                rationale="Disjoint regions (high >= low).",
+            ),
+        ],
+        nodes=[
+            PrimitiveNodeTemplate(
+                node_id="p",
+                tool_name="synthetic_primitive_tool",
+                output_field="time_series",
+                params={"series_name": {"$slot": "series_name"}},
+            ),
+        ],
+        edges=[],
+        terminal_node_id="p",
+    )
+
+
+class TestSlotConstraints:
+    """Codex P2 follow-up to PR #86: cross-slot constraints are now
+    a real substrate guarantee, not docs-only."""
+
+    def test_satisfied_constraint_binds_cleanly(self):
+        t = _template_with_relative_order_constraint(operator="gte")
+        wf = t.bind({"series_name": "s", "high": 5.0, "low": -5.0})
+        assert wf is not None
+
+    def test_violated_gte_constraint_raises(self):
+        t = _template_with_relative_order_constraint(operator="gte")
+        with pytest.raises(SlotBindingError, match=r"must be >="):
+            t.bind({"series_name": "s", "high": -5.0, "low": 5.0})
+
+    def test_equal_values_satisfy_gte(self):
+        """``gte`` accepts equal values (not strictly greater)."""
+        t = _template_with_relative_order_constraint(operator="gte")
+        wf = t.bind({"series_name": "s", "high": 0.0, "low": 0.0})
+        assert wf is not None
+
+    def test_equal_values_violate_strict_gt(self):
+        """``gt`` rejects equal values."""
+        t = _template_with_relative_order_constraint(operator="gt")
+        with pytest.raises(SlotBindingError, match=r"must be >"):
+            t.bind({"series_name": "s", "high": 0.0, "low": 0.0})
+
+    def test_lt_operator(self):
+        t = _template_with_relative_order_constraint(operator="lt")
+        with pytest.raises(SlotBindingError, match=r"must be <"):
+            t.bind({"series_name": "s", "high": 5.0, "low": 5.0})
+        # Strict less-than satisfied:
+        wf = t.bind({"series_name": "s", "high": -5.0, "low": 5.0})
+        assert wf is not None
+
+    def test_lte_operator(self):
+        t = _template_with_relative_order_constraint(operator="lte")
+        # Equal satisfies lte:
+        wf = t.bind({"series_name": "s", "high": 0.0, "low": 0.0})
+        assert wf is not None
+
+    def test_int_slots_supported(self):
+        t = _template_with_relative_order_constraint(
+            higher_type="int", lower_type="int",
+        )
+        with pytest.raises(SlotBindingError, match=r"must be >="):
+            t.bind({"series_name": "s", "high": -3, "low": 5})
+
+    def test_str_slot_rejected_at_template_construction(self):
+        """Construction-time gate: relative_order constraints only
+        make sense on numeric slots.  A constraint referencing a str
+        slot must be rejected loudly at template-build time, not
+        silently accepted (and then crash at bind-time when the
+        substrate tries to compare strings via < / >)."""
+        with pytest.raises(ValueError, match="relative_order"):
+            WorkflowTemplate(
+                template_id="bad_constraint",
+                archetype="event_study",
+                description="test",
+                slot_schema=[
+                    SlotDeclaration(
+                        name="series_name",
+                        type="str", required=True,
+                        description="series",
+                    ),
+                    SlotDeclaration(
+                        name="other",
+                        type="str", required=True,
+                        description="series",
+                    ),
+                ],
+                slot_constraints=[
+                    RelativeOrderConstraint(
+                        higher="series_name", lower="other",
+                        operator="gte", rationale="bad",
+                    ),
+                ],
+                nodes=[
+                    PrimitiveNodeTemplate(
+                        node_id="p",
+                        tool_name="synthetic_primitive_tool",
+                        output_field="time_series",
+                        params={"series_name": {"$slot": "series_name"}},
+                    ),
+                ],
+                edges=[],
+                terminal_node_id="p",
+            )
+
+    def test_undeclared_slot_in_constraint_rejected_at_construction(self):
+        """A constraint referencing a non-declared slot name is
+        caught at template-build time (before any bind() call)."""
+        with pytest.raises(ValueError, match="undeclared slot"):
+            WorkflowTemplate(
+                template_id="bad_constraint",
+                archetype="event_study",
+                description="test",
+                slot_schema=[
+                    SlotDeclaration(
+                        name="series_name",
+                        type="str", required=True,
+                        description="series",
+                    ),
+                    SlotDeclaration(
+                        name="high",
+                        type="float", required=True,
+                        description="high",
+                    ),
+                ],
+                slot_constraints=[
+                    RelativeOrderConstraint(
+                        higher="high", lower="ghost_slot",
+                        operator="gte", rationale="bad",
+                    ),
+                ],
+                nodes=[
+                    PrimitiveNodeTemplate(
+                        node_id="p",
+                        tool_name="synthetic_primitive_tool",
+                        output_field="time_series",
+                        params={"series_name": {"$slot": "series_name"}},
+                    ),
+                ],
+                edges=[],
+                terminal_node_id="p",
+            )
+
+    def test_no_constraints_default_no_op(self):
+        """A template without slot_constraints binds exactly as
+        before (no behavioural change for templates that don't opt
+        in)."""
+        t = WorkflowTemplate(
+            template_id="no_constraints",
+            archetype="event_study",
+            description="test",
+            slot_schema=[
+                SlotDeclaration(
+                    name="series_name",
+                    type="str", required=True,
+                    description="series",
+                ),
+            ],
+            nodes=[
+                PrimitiveNodeTemplate(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="time_series",
+                    params={"series_name": {"$slot": "series_name"}},
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        assert t.slot_constraints == []
+        # Bind succeeds with any value.
+        assert t.bind({"series_name": "s"}) is not None
+
+    def test_constraint_rationale_surfaces_in_error_message(self):
+        """The rationale string the template author declared MUST
+        appear in the SlotBindingError message — that is the whole
+        point of carrying the rationale at all."""
+        t = _template_with_relative_order_constraint(operator="gte")
+        with pytest.raises(SlotBindingError) as exc_info:
+            t.bind({"series_name": "s", "high": -5.0, "low": 5.0})
+        assert "Disjoint regions" in str(exc_info.value)

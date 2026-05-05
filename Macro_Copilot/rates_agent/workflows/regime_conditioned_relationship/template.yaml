@@ -53,21 +53,49 @@
 # The test suite asserts the canonical Q2 binding answers Q2 end-to-
 # end against the rates primitive resolver.
 #
-# Reference Q2 desk binding
-# -------------------------
+# Reference Q2 desk binding (steepening vs flattening regimes)
+# ------------------------------------------------------------
 #   lhs (dependent / target)             : UST 10Y yield (PERCENT)
 #   rhs (independent / regressor)        : 2Y SOFR OIS rate (PERCENT)
 #   regime_signal (regime classifier)    : 2s10s OIS curve spread (BPS)
 #   regression_window                    : 60 trading days
 #   regression_min_periods               : 30
-#   high_threshold (steep regime)        : +50.0 bps
-#   low_threshold  (flat / inverted)     : -50.0 bps
+#   high_threshold (steepening regime)   : +3.0 bps  (curve moved UP by ≥3bps today)
+#   low_threshold  (flattening regime)   : -3.0 bps  (curve moved DOWN by ≥3bps today)
 #
 #   Both lhs and rhs are PERCENT-typed; the rolling_regression
 #   operator's level_change basis (template-locked) converts each
 #   PERCENT diff to BPS via the methodology-owned PERCENT→BPS
 #   transition (×100), so the regression is on BPS daily changes
 #   on both sides → β has units RATIO (BPS / BPS).
+#
+# Steepening vs flattening — move-based, not level-based
+# ------------------------------------------------------
+# Q2 asks about "steepening vs flattening REGIMES of the 2s10s
+# curve" — i.e. days when the curve is GETTING STEEPER (positive
+# daily move in the 2s10s spread) vs days when it is GETTING
+# FLATTER (negative daily move).  This is a MOVE-based regime, not
+# the spread LEVEL.  Codex P1 follow-up: shipping the template with
+# a level-thresholded curve_spread would answer the closely-related
+# but distinct "steep regime (curve_spread > +50 bps) vs flat
+# regime (< -50 bps)" question — same archetype shape but a
+# different regime question.
+#
+# To get the move-based semantic, the template's regime branch
+# inserts a ``regime_diff`` operator (``series_arithmetic op=diff``)
+# between ``regime_signal`` and the high/low threshold_events nodes.
+# That operator differences the regime signal day-over-day; the
+# resulting signal is in the SAME units as the input (BPS in / BPS
+# out for the canonical 2s10s binding), so the high/low thresholds
+# represent BPS-daily-move boundaries.
+#
+# V1 design lock: the regime is a SINGLE-DAY move ("the curve
+# steepened today, vs flattened today").  V2 enrichment paths:
+#  - rolling-mean smoother on the diff (persistent "steepening
+#    trend" regime over a multi-day window);
+#  - HMM / changepoint regime classifier;
+#  - categorical-mask consumer for N-way regime states.
+# All three ship as separate templates per V1 1-template-per-archetype.
 #
 # Why binary regimes in V1
 # ------------------------
@@ -249,8 +277,14 @@ slot_schema:
     description: >-
       Which time_series* field of the regime-signal primitive's output
       to lift (e.g. ``time_series_spread`` for a curve_spread, BPS).
-      The unit scale of this field must match the
-      ``high_threshold`` / ``low_threshold`` the caller supplies.
+      The lifted Series feeds an internal ``regime_diff``
+      (``series_arithmetic op=diff``) step BEFORE the threshold_events
+      nodes, so the regime classification is based on the DAILY MOVE
+      of this signal, not its level.  The high/low thresholds are
+      therefore in the SAME UNITS as the signal but interpreted as
+      "minimum daily move to qualify" (e.g. for a BPS curve_spread
+      input, +3.0 means "the curve steepened by at least 3 bps
+      today").
 
   # -------------------------------------------------------------------------
   # Regression knobs.
@@ -284,31 +318,54 @@ slot_schema:
     type: float
     required: true
     description: >-
-      Signal value strictly ABOVE which a day is classified as the
-      "high" regime (template-locked rule=above on that branch).
-      Units must match the regime signal's units (e.g. for a BPS
-      spread signal, pass 50.0 to mean "above +50 bps").
-      LOAD-BEARING CONTRACT: the caller MUST supply
+      Daily-move threshold strictly ABOVE which a day is classified
+      as the "high" (e.g. steepening) regime — applied to the
+      regime_signal's day-over-day diff (NOT its level; see template
+      header's "Steepening vs flattening" note).  Units match the
+      regime signal's level units; for a BPS curve_spread, pass
+      ``+3.0`` to mean "the curve steepened by at least 3 bps
+      today."  LOAD-BEARING CONTRACT: the caller MUST supply
       ``high_threshold >= low_threshold`` so the two regimes are
-      DISJOINT.  When violated, dates that satisfy BOTH branches
-      feed BOTH per-regime apply_mask outputs and the per-regime
-      β-summary difference becomes a difference of overlapping
-      samples — the comparison's economic meaning is undermined
-      even though the operators run.
+      DISJOINT.  This contract is now ENFORCED by the substrate at
+      bind() time via the slot_constraints declaration below — a
+      violation raises ``SlotBindingError``, no longer a docs-only
+      invariant (Codex P2 follow-up).
 
   - name: low_threshold
     type: float
     required: true
     description: >-
-      Signal value strictly BELOW which a day is classified as the
-      "low" regime (template-locked rule=below).  Units must match
-      the regime signal's units.  Paired with ``high_threshold``
-      for the disjoint two-state classifier (see ``high_threshold``).
+      Daily-move threshold strictly BELOW which a day is classified
+      as the "low" (e.g. flattening) regime.  Units match the regime
+      signal's level units; for a BPS curve_spread, pass ``-3.0`` to
+      mean "the curve flattened by at least 3 bps today."  Paired
+      with ``high_threshold`` for the substrate-enforced disjoint
+      two-state classifier (see ``high_threshold``).
+
+slot_constraints:
+  # Cross-slot validators applied at bind() time.  V1 closed family:
+  # ``relative_order`` — pin ``high_threshold >= low_threshold`` so
+  # the two regime branches operate on DISJOINT date sets and the
+  # downstream compare is a difference of non-overlapping samples.
+  # Codex P2 follow-up: previously this was a docs-only invariant
+  # that the bind() path silently accepted; now violations raise
+  # SlotBindingError before any node runs.
+  - kind: relative_order
+    higher: high_threshold
+    lower: low_threshold
+    operator: gte
+    rationale: >-
+      Disjoint regimes — the steepening (high) and flattening (low)
+      branches must operate on non-overlapping daily-move samples,
+      otherwise high_summary − low_summary is a difference of
+      overlapping samples and its economic meaning is undermined.
 
 # DAG topology — locked.  Slots fill node params; topology is fixed.
 #
-# Three primitive legs converge into the relationship branch + the
-# two regime-mask branches; the per-regime apply_mask outputs
+# Three primitive legs converge.  The regime branch differences the
+# regime_signal day-over-day BEFORE thresholding so the regime
+# classification is move-based (steepening / flattening), not
+# level-based (steep / flat).  Per-regime apply_mask outputs
 # summarize to the sentinel-aligned scalars; compare emits the
 # regime-difference β scalar:
 #
@@ -317,11 +374,11 @@ slot_schema:
 #   rhs ──────┘                                                     │                                                       │
 #                                                                   │                                                       ├─ compare (terminal)
 #                                                                   │                                                       │
-#   regime_signal ─┬─ high_mask (threshold_events rule=above) ──────┘                                                       │
-#                  │                                                                                                        │
-#                  └─ low_mask  (threshold_events rule=below) ────── low_betas (apply_mask) ─── low_summary (summarize) ────┘
+#   regime_signal ─ regime_diff (series_arithmetic op=diff) ─┬─ high_mask (threshold_events rule=above) ──────────┘         │
+#                                                            │                                                              │
+#                                                            └─ low_mask  (threshold_events rule=below) ─── low_betas (apply_mask) ── low_summary (summarize) ─┘
 #
-# 12 nodes, 13 edges.  Terminal: compare (per-regime β difference at
+# 13 nodes, 14 edges.  Terminal: compare (per-regime β difference at
 # the summarize_series sentinel date 1900-01-01).
 nodes:
 
@@ -363,22 +420,39 @@ nodes:
     params:
       series_key: beta              # template-locked: β is the deliverable
 
+  # ---- Regime-diff (move-based regime classification) ----
+  #
+  # Differences the regime_signal day-over-day so the high/low
+  # threshold_events nodes operate on the DAILY MOVE rather than
+  # the level.  Closes the "steepening vs flattening" semantic gap
+  # Codex P1 surfaced — without this step the regime classification
+  # would be steep-vs-flat (level state), not steepening-vs-
+  # flattening (move direction), which is a different question
+  # from the canonical Q2 prompt.
+
+  - kind: operator
+    node_id: regime_diff
+    operator_name: series_arithmetic
+    params:
+      op: diff                     # template-locked: 1-day move semantic
+      period: 1                    # template-locked: single-day diff
+
   # ---- Regime-mask producers ----
 
   - kind: operator
     node_id: high_mask
     operator_name: threshold_events
     params:
-      rule: above                  # template-locked: high regime
+      rule: above                  # template-locked: high (steepening) regime
       threshold: {$slot: high_threshold}
-      threshold_basis: raw_value   # template-locked: regime defined by level
+      threshold_basis: raw_value   # template-locked: regime defined by daily move
       look_ahead_safe: true        # template-locked: no future-leak
 
   - kind: operator
     node_id: low_mask
     operator_name: threshold_events
     params:
-      rule: below                  # template-locked: low regime
+      rule: below                  # template-locked: low (flattening) regime
       threshold: {$slot: low_threshold}
       threshold_basis: raw_value
       look_ahead_safe: true
@@ -439,11 +513,21 @@ edges:
     target_input_slot: series_set
 
   # Regime-mask branches
+  # regime_signal → regime_diff: differences the signal so regime
+  # classification is move-based, not level-based.  ``regime_diff``
+  # is a series_arithmetic node with op=diff; the substrate executor
+  # routes its single-Series input through the operator's ``left``
+  # slot (per shared/operators/series_arithmetic/operator.py — unary
+  # ops accept the input via ``left`` and leave ``right`` unbound).
   - source_node_id: regime_signal
+    target_node_id: regime_diff
+    target_input_slot: left
+
+  - source_node_id: regime_diff
     target_node_id: high_mask
     target_input_slot: series
 
-  - source_node_id: regime_signal
+  - source_node_id: regime_diff
     target_node_id: low_mask
     target_input_slot: series
 
