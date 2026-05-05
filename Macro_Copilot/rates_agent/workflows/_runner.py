@@ -1,0 +1,376 @@
+"""rates_agent.workflows._runner — finance-aware workflow runtime helpers.
+
+The MCP server (``rates_agent.workflows.mcp_server``), the CLI
+(``rates_agent.workflows.cli``), the WorkflowRouter
+(``orchestrator.workflow_router``), and any future eval harness all
+need the same primitives:
+
+  - render the live template catalogue as a list of TemplateCards
+  - resolve a template_id + slot_values triple to a concrete
+    Workflow, validate it, execute it against the rates primitive
+    resolver, and summarize the terminal artifact
+
+Keeping that runtime logic in one finance-aware (but transport-blind)
+module means:
+
+  - the MCP server decorator surface stays thin (one ``@mcp.tool()``
+    wrapper per template; body delegates to ``run_template``)
+  - the CLI imports the same code, NOT a parallel re-implementation
+  - the test suite can exercise ``run_template`` directly without
+    requiring the ``mcp`` package (which isn't always available in
+    every test environment, e.g. CI containers without it installed)
+
+Why this module is finance-aware
+--------------------------------
+It imports from ``rates_agent.workflows`` (the rates primitive
+resolver) and from the registered template packages — that's the
+WHOLE POINT.  The substrate stays finance-blind by accepting a
+``primitive_resolver`` callable; the runner here is the agent-side
+binding that supplies the rates resolver.  An FX agent's runner
+would import ``fx_agent.workflows.fx_primitive_resolver`` instead,
+following the same shape.
+
+Public surface
+--------------
+- ``run_template(template_id, slot_values, *, engine=None) -> dict``
+- ``run_template_with_resolver(template_id, slot_values, *, engine, primitive_resolver) -> dict``
+  (split out so the unit tests can pass synthetic resolvers without
+  monkey-patching the module-level ``rates_primitive_resolver``)
+- ``summarize_terminal(artifact) -> dict``
+- ``list_workflow_cards() -> List[dict]``
+- ``describe_workflow_card(template_id) -> dict``
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from typing import Any, Dict, List, Optional
+
+from rates_agent.workflows import rates_primitive_resolver
+from shared.artifacts.types import (
+    EventSet,
+    Panel,
+    Series,
+    SeriesSet,
+    WindowedPanel,
+)
+from shared.workflow import (
+    PrimitiveResolver,
+    SlotBindingError,
+    WorkflowExecutionError,
+    card_for_template,
+    execute_workflow,
+    get_template,
+    known_template_ids,
+    list_templates,
+    validate_workflow,
+)
+from shared.workflow.template_registry import TemplateRegistryError
+
+logger = logging.getLogger("rates_agent.workflows._runner")
+
+
+# ===========================================================================
+# TERMINAL-ARTIFACT SUMMARIZER
+# ===========================================================================
+# Workflows return one of five typed artifact kinds.  The wire shape
+# (MCP / CLI / eval) is JSON-friendly dicts, so we summarize each
+# kind into a uniform dict.  Full pandas payloads are intentionally
+# NOT included — they would blow the LLM's context budget and most
+# downstream consumers only need {units, length, head/tail values,
+# summary stats}.
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """Convert numpy / pandas scalars to plain Python floats, ``None``
+    for non-finite or non-numeric values (so JSON serialization cannot
+    trip on NaN / inf)."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
+
+
+def _summarize_series(s: Series) -> Dict[str, Any]:
+    payload = s.payload
+    n_rows = int(len(payload))
+    if n_rows == 0:
+        return {
+            "type": "Series",
+            "series_key": s.series_key,
+            "units": s.units.value,
+            "frequency": s.frequency,
+            "n_rows": 0,
+        }
+    head_idx, head_val = payload.index[0], payload.iloc[0]
+    tail_idx, tail_val = payload.index[-1], payload.iloc[-1]
+    cleaned = payload.dropna()
+    summary_stats: Dict[str, Optional[float]] = {}
+    if len(cleaned) > 0:
+        summary_stats = {
+            "mean": _safe_float(cleaned.mean()),
+            "std": _safe_float(cleaned.std(ddof=1)) if len(cleaned) > 1 else None,
+            "min": _safe_float(cleaned.min()),
+            "max": _safe_float(cleaned.max()),
+            "n_finite": int(len(cleaned)),
+        }
+    return {
+        "type": "Series",
+        "series_key": s.series_key,
+        "units": s.units.value,
+        "frequency": s.frequency,
+        "n_rows": n_rows,
+        "first_row": {
+            "date": head_idx.strftime("%Y-%m-%d"),
+            "value": _safe_float(head_val),
+        },
+        "last_row": {
+            "date": tail_idx.strftime("%Y-%m-%d"),
+            "value": _safe_float(tail_val),
+        },
+        "summary_stats": summary_stats,
+    }
+
+
+def _summarize_series_set(s: SeriesSet) -> Dict[str, Any]:
+    return {
+        "type": "SeriesSet",
+        "keys": s.keys(),
+        "units_by_key": {k: u.value for k, u in s.units_by_key.items()},
+        "frequency": s.frequency,
+        "n_rows": int(len(s.common_index)),
+        "first_date": (
+            s.common_index[0].strftime("%Y-%m-%d")
+            if len(s.common_index) > 0 else None
+        ),
+        "last_date": (
+            s.common_index[-1].strftime("%Y-%m-%d")
+            if len(s.common_index) > 0 else None
+        ),
+    }
+
+
+def _summarize_event_set(e: EventSet) -> Dict[str, Any]:
+    return {
+        "type": "EventSet",
+        "source_series_key": e.source_series_key,
+        "frequency": e.frequency,
+        "n_dates": int(len(e.mask)),
+        "n_events": e.n_events,
+    }
+
+
+def _summarize_panel(p: Panel) -> Dict[str, Any]:
+    return {
+        "type": "Panel",
+        "n_rows": int(len(p.payload)),
+        "columns": list(p.payload.columns),
+        "units_by_column": {k: u.value for k, u in p.units_by_column.items()},
+    }
+
+
+def _summarize_windowed_panel(w: WindowedPanel) -> Dict[str, Any]:
+    return {
+        "type": "WindowedPanel",
+        "n_events": int(w.payload.shape[0]),
+        "window_length": int(w.payload.shape[1]),
+    }
+
+
+def summarize_terminal(artifact: Any) -> Dict[str, Any]:
+    """Dispatch on the closed-family artifact union and return a
+    JSON-friendly summary dict.
+
+    Adding a new artifact wrapper requires adding a branch here AND
+    in ``shared.artifacts.types``.
+    """
+    if isinstance(artifact, Series):
+        return _summarize_series(artifact)
+    if isinstance(artifact, SeriesSet):
+        return _summarize_series_set(artifact)
+    if isinstance(artifact, EventSet):
+        return _summarize_event_set(artifact)
+    if isinstance(artifact, Panel):
+        return _summarize_panel(artifact)
+    if isinstance(artifact, WindowedPanel):
+        return _summarize_windowed_panel(artifact)
+    return {"type": type(artifact).__name__, "summary": "unknown artifact"}
+
+
+# ===========================================================================
+# CATALOGUE HELPERS
+# ===========================================================================
+
+
+def list_workflow_cards() -> List[Dict[str, Any]]:
+    """Return every registered template's TemplateCard as a list of
+    JSON-friendly dicts.  Stable sort order (by template_id) so
+    catalogue rendering is deterministic across runs."""
+    cards = [card_for_template(t) for t in list_templates()]
+    return [c.model_dump(mode="json") for c in cards]
+
+
+def describe_workflow_card(template_id: str) -> Dict[str, Any]:
+    """Return one template's TemplateCard as a JSON-friendly dict.
+
+    Returns an envelope:
+      - on success: ``{"ok": true, "card": {...}}``
+      - on unknown id: ``{"ok": false, "error": "...", "known_template_ids": [...]}``
+    """
+    try:
+        template = get_template(template_id)
+    except TemplateRegistryError as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "known_template_ids": known_template_ids(),
+        }
+    card = card_for_template(template)
+    return {"ok": True, "card": card.model_dump(mode="json")}
+
+
+# ===========================================================================
+# RUN-TEMPLATE
+# ===========================================================================
+
+
+def run_template_with_resolver(
+    template_id: str,
+    slot_values: Dict[str, Any],
+    *,
+    engine: Any = None,
+    primitive_resolver: PrimitiveResolver,
+) -> Dict[str, Any]:
+    """Resolve a template by id, bind the supplied slot_values,
+    pre-flight validate, execute against the supplied resolver +
+    engine, and return a JSON-friendly envelope summarizing the
+    terminal artifact.
+
+    This is the resolver-injected variant — tests pass synthetic
+    resolvers; production callers (MCP server, CLI) wrap this via
+    ``run_template`` which injects ``rates_primitive_resolver``.
+
+    Failure modes (each surfaces a distinct envelope so callers can
+    react appropriately):
+
+      - Unknown template_id            → ``{"ok": false, "error": "..."}``
+      - Slot binding failure           → ``{"ok": false, "error": "..."}``
+      - Validate-time refusal          → same
+      - Execution failure              → same
+
+    The DB engine is the caller's responsibility — None is acceptable
+    for synthetic-fetcher tests; production callers pass a live
+    SQLAlchemy engine.
+    """
+    logger.info("[%s] template invoked", template_id)
+
+    # --- 1. Resolve template -----------------------------------------
+    try:
+        template = get_template(template_id)
+    except TemplateRegistryError as exc:
+        logger.warning("[%s] unknown template: %s", template_id, exc)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": str(exc),
+        }
+
+    # --- 2. Slot binding ---------------------------------------------
+    try:
+        workflow = template.bind(slot_values)
+    except SlotBindingError as exc:
+        logger.warning("[%s] slot binding failed: %s", template_id, exc)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": f"Slot binding failed: {exc}",
+        }
+    except Exception as exc:  # defensive guard
+        logger.exception("[%s] unexpected error during bind", template_id)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": f"Unexpected error during bind: {exc}",
+        }
+
+    # --- 3. Pre-flight validate (catches resolver / unit / arity
+    #        errors BEFORE any node runs).  ``execute_workflow`` re-
+    #        runs validation internally, but doing it here too lets
+    #        us surface validate-time refusals as a distinct error
+    #        class from execution-time failures.
+    try:
+        validate_workflow(workflow, primitive_resolver=primitive_resolver)
+    except Exception as exc:
+        logger.warning("[%s] pre-flight validation failed: %s", template_id, exc)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": f"Workflow validation failed: {exc}",
+        }
+
+    # --- 4. Execute ---------------------------------------------------
+    try:
+        result = execute_workflow(
+            workflow,
+            engine=engine,
+            primitive_resolver=primitive_resolver,
+        )
+    except WorkflowExecutionError as exc:
+        logger.warning("[%s] execution failed: %s", template_id, exc)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": f"Workflow execution failed: {exc}",
+        }
+    except Exception as exc:
+        logger.exception("[%s] unexpected error during execute", template_id)
+        return {
+            "ok": False,
+            "template_id": template_id,
+            "error": f"Unexpected error during execute: {exc}",
+        }
+
+    # --- 5. Summarize terminal artifact ------------------------------
+    summary = summarize_terminal(result.terminal_artifact)
+    envelope: Dict[str, Any] = {
+        "ok": True,
+        "template_id": template_id,
+        "terminal_artifact": summary,
+        "workflow_lineage_summary": result.workflow_lineage_summary,
+    }
+    logger.info(
+        "[%s] template execution complete; terminal type=%s",
+        template_id, summary.get("type"),
+    )
+    return envelope
+
+
+def run_template(
+    template_id: str,
+    slot_values: Dict[str, Any],
+    *,
+    engine: Any = None,
+) -> Dict[str, Any]:
+    """Production wrapper: same as ``run_template_with_resolver`` but
+    with the rates_primitive_resolver injected.  This is what the MCP
+    server, CLI, and orchestrator-side code call.
+    """
+    return run_template_with_resolver(
+        template_id,
+        slot_values,
+        engine=engine,
+        primitive_resolver=rates_primitive_resolver,
+    )
+
+
+__all__ = [
+    "run_template",
+    "run_template_with_resolver",
+    "summarize_terminal",
+    "list_workflow_cards",
+    "describe_workflow_card",
+]
