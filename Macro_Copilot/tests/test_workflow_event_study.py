@@ -168,12 +168,18 @@ class TestTemplateStructure:
         """The canonical event_study DAG shape per
         workflow_architecture.md (lines 73-74): two parallel
         branches (conditional + unconditional) joined by a
-        per-offset subtraction = abnormal forward move."""
+        per-offset subtraction = abnormal forward move.  Codex P2
+        follow-up to PR #86 added an explicit alignment branch
+        (``align`` + 2× ``select_from_series_set``) so the same
+        template runs unchanged across instrument families with
+        different trading-day calendars."""
         t = load_event_study_template()
         node_ids = {n.node_id for n in t.nodes}
         assert node_ids == {
             # Primitives
             "signal", "target",
+            # Cross-calendar alignment branch (Codex P2 follow-up)
+            "align", "signal_aligned", "target_aligned",
             # Conditional branch
             "events", "windows", "aggregate",
             # Unconditional branch
@@ -241,11 +247,15 @@ class TestTemplateStructure:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
+            "signal_series_key": (
+                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
+            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST", "tenor": "10Y", "lookback_days": 1825,
             },
             "target_output_field": "time_series",
+            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 21,
         }
@@ -290,7 +300,10 @@ class TestArchetypeSignature:
 class TestSlotBinding:
     def _full_slot_values(self, **overrides):
         """Canonical proof-Q1 slot binding (single-day widening event
-        study: z-score of the day-over-day spread CHANGE)."""
+        study: z-score of the day-over-day spread CHANGE).  Includes
+        the ``signal_series_key`` / ``target_series_key`` slots
+        added in the cross-calendar genericity revision (Codex P2
+        follow-up to PR #86)."""
         defaults = {
             "signal_tool_name": "calculate_swap_spread_tool",
             "signal_params": {
@@ -300,6 +313,9 @@ class TestSlotBinding:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
+            "signal_series_key": (
+                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
+            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -307,6 +323,7 @@ class TestSlotBinding:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
+            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }
@@ -379,6 +396,9 @@ class TestEndToEndRealRates:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
+            "signal_series_key": (
+                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
+            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -386,6 +406,7 @@ class TestEndToEndRealRates:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
+            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }
@@ -479,9 +500,11 @@ class TestEndToEndRealRates:
                 primitive_resolver=rates_primitive_resolver,
             )
 
-        # Every node produced an artifact (both branches + comparison).
+        # Every node produced an artifact (both branches + alignment +
+        # comparison).
         assert set(result.node_artifacts.keys()) == {
             "signal", "target",
+            "align", "signal_aligned", "target_aligned",
             "events", "windows", "aggregate",
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
@@ -511,6 +534,7 @@ class TestEndToEndRealRates:
         summary = result.workflow_lineage_summary
         for nid in (
             "signal", "target",
+            "align", "signal_aligned", "target_aligned",
             "events", "windows", "aggregate",
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
@@ -674,6 +698,7 @@ class TestInstrumentAgnostic:
                 "units": "z_score",
             },
             "signal_output_field": "time_series",
+            "signal_series_key": "synthetic_z",
             "target_tool_name": "synthetic_target_tool",
             "target_params": {
                 "series_name": "synthetic_pct",
@@ -682,6 +707,7 @@ class TestInstrumentAgnostic:
                 "units": "percent",
             },
             "target_output_field": "time_series",
+            "target_series_key": "synthetic_pct",
             "threshold": 1.5,
             "post_window": 5,
         })
@@ -695,9 +721,11 @@ class TestInstrumentAgnostic:
         # event_windows.units_basis=level_change converts PERCENT to BPS).
         assert isinstance(result.terminal_artifact, Series)
         assert result.terminal_artifact.units == TimeSeriesUnits.BPS
-        # Lineage chain extends through every node in both branches.
+        # Lineage chain extends through every node in both branches +
+        # the cross-calendar alignment branch (Codex P2 follow-up).
         assert set(result.node_artifacts.keys()) == {
             "signal", "target",
+            "align", "signal_aligned", "target_aligned",
             "events", "windows", "aggregate",
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
@@ -724,11 +752,16 @@ class TestTemplateCard:
         card = card_for_template(t)
         # Operators are template-locked (NOT slot-substitutable),
         # so the card records their concrete names.  After the Codex
-        # P1 fix, the canonical DAG also includes ``series_arithmetic``
-        # for the conditional-vs-unconditional comparison.
+        # P2 follow-up to PR #86, the canonical DAG also includes
+        # ``align_series`` and ``select_from_series_set`` for the
+        # cross-calendar alignment branch.
         assert set(card.operators_used) == {
-            "threshold_events", "event_windows",
-            "conditional_aggregate", "series_arithmetic",
+            "align_series",
+            "select_from_series_set",
+            "threshold_events",
+            "event_windows",
+            "conditional_aggregate",
+            "series_arithmetic",
         }
 
     def test_card_terminal_artifact_type_is_Series(self):
@@ -741,11 +774,14 @@ class TestTemplateCard:
     def test_card_node_and_edge_counts(self):
         t = load_event_study_template()
         card = card_for_template(t)
-        # Canonical conditional-vs-unconditional shape: 9 nodes
-        # (2 primitives + 3 conditional + 3 unconditional + 1 compare),
-        # 10 edges.
-        assert card.node_count == 9
-        assert card.edge_count == 10
+        # Codex P2 follow-up to PR #86 added 3 nodes (align +
+        # signal_aligned + target_aligned) and 4 net new edges
+        # (signal/target → align ×2, align → 2 selects ×2, then
+        # 4 select-output edges replace the prior direct
+        # signal/target → events/windows/uncond_events/uncond_windows
+        # edges).
+        assert card.node_count == 12
+        assert card.edge_count == 14
 
 
 # ===========================================================================
@@ -870,6 +906,61 @@ class TestTopologyArchetypeFit:
         assert compare_node.operator_name == "series_arithmetic"
         assert compare_node.params["op"] == "subtract"
 
+    def test_uses_align_series_for_cross_calendar_genericity(self):
+        """Codex P2 follow-up to PR #86: the canonical event_study
+        template must include an alignment branch so the same
+        template runs unchanged across instrument families with
+        different trading-day calendars (e.g. UK gilts target with
+        US-calendar OIS signal)."""
+        t = load_event_study_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("align_series") == 1
+        # Two select_from_series_set nodes — one per aligned input.
+        assert op_names.count("select_from_series_set") == 2
+
+    def test_align_branch_wires_signal_and_target_then_aligned(self):
+        """The alignment branch's edges must be exactly:
+          - signal → align (series_list)
+          - target → align (series_list)
+          - align → signal_aligned (series_set)
+          - align → target_aligned (series_set)
+          - signal_aligned → events / unconditional_events
+          - target_aligned → windows / unconditional_windows
+        Catches an accidental rewire that would feed raw signal /
+        target into the threshold/window branches."""
+        t = load_event_study_template()
+        edges_by_target = {}
+        for e in t.edges:
+            edges_by_target.setdefault(
+                e.target_node_id, {},
+            ).setdefault(e.target_input_slot, []).append(e.source_node_id)
+        # align: list slot fed by signal AND target.
+        assert sorted(edges_by_target["align"]["series_list"]) == [
+            "signal", "target",
+        ]
+        # signal_aligned / target_aligned: each fed by align via
+        # the series_set slot.
+        assert (
+            edges_by_target["signal_aligned"]["series_set"] == ["align"]
+        )
+        assert (
+            edges_by_target["target_aligned"]["series_set"] == ["align"]
+        )
+        # events / unconditional_events: fed by signal_aligned (NOT raw signal).
+        assert edges_by_target["events"]["series"] == ["signal_aligned"]
+        assert (
+            edges_by_target["unconditional_events"]["series"]
+            == ["signal_aligned"]
+        )
+        # windows / unconditional_windows target slot: fed by target_aligned.
+        assert edges_by_target["windows"]["target"] == ["target_aligned"]
+        assert (
+            edges_by_target["unconditional_windows"]["target"]
+            == ["target_aligned"]
+        )
+
     def test_does_not_use_relationship_archetype_operators(self):
         """event_study MUST NOT use rolling_regression / apply_mask /
         summarize_series — those are relationship-archetype operators
@@ -922,6 +1013,9 @@ class TestAbnormalMoveSignConvention:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
+            "signal_series_key": (
+                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
+            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -929,6 +1023,7 @@ class TestAbnormalMoveSignConvention:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
+            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }

@@ -202,8 +202,11 @@ class TestTemplateStructure:
 
     def test_template_has_expected_nodes(self):
         """Canonical relationship-archetype shape: 3 primitives +
-        9 operators (relationship, beta select, 2 masks, 2 apply,
-        2 summary, 1 compare) = 12 nodes."""
+        10 operators (relationship, beta select, regime_diff, 2 masks,
+        2 apply, 2 summary, 1 compare) = 13 nodes.  ``regime_diff``
+        was added in the Codex P1 follow-up to PR #86 so the regime
+        classification is move-based (steepening / flattening) not
+        level-based (steep / flat / inverted)."""
         t = load_regime_conditioned_template()
         node_ids = {n.node_id for n in t.nodes}
         assert node_ids == {
@@ -211,7 +214,9 @@ class TestTemplateStructure:
             "lhs", "rhs", "regime_signal",
             # Relationship branch
             "relationship", "beta",
-            # Regime-mask producers
+            # Regime classification (move-based; Codex P1 follow-up)
+            "regime_diff",
+            # Regime-mask producers (consume regime_diff, not raw signal)
             "high_mask", "low_mask",
             # Per-regime β subsamples
             "high_betas", "low_betas",
@@ -314,6 +319,10 @@ class TestArchetypeSignature:
 
 class TestSlotBinding:
     def _full_slot_values(self, **overrides):
+        # Canonical Q2 binding: thresholds are BPS DAILY MOVES on the
+        # 2s10s curve_spread (NOT level thresholds).  +3.0 = "the
+        # curve steepened by ≥3 bps today", -3.0 = "flattened by
+        # ≥3 bps today".  Codex P1 follow-up to PR #86.
         defaults = {
             "lhs_tool_name": "get_yield_levels_tool",
             "lhs_params": {
@@ -336,8 +345,8 @@ class TestSlotBinding:
             "regime_signal_output_field": "time_series_spread",
             "regression_window": 60,
             "regression_min_periods": 30,
-            "high_threshold": 50.0,
-            "low_threshold": -50.0,
+            "high_threshold": 3.0,
+            "low_threshold": -3.0,
         }
         defaults.update(overrides)
         return defaults
@@ -378,6 +387,33 @@ class TestSlotBinding:
             n for n in wf.nodes if n.node_id == "relationship"
         )
         assert rel_node.params["min_periods"] == 30
+
+    def test_disjoint_threshold_contract_enforced(self):
+        """Codex P2 follow-up to PR #86: the
+        ``high_threshold >= low_threshold`` contract is now enforced
+        by the substrate at bind() time (declared via the template's
+        slot_constraints block).  Previously this was a docs-only
+        invariant — overlapping thresholds bound silently and
+        executed with shared-date regime samples that undermined
+        the per-regime comparison's economic meaning.  Now a
+        violation raises SlotBindingError."""
+        t = load_regime_conditioned_template()
+        # Inverted order: high < low.  MUST raise.
+        bad = self._full_slot_values(high_threshold=-5.0, low_threshold=5.0)
+        with pytest.raises(SlotBindingError, match="must be >="):
+            t.bind(bad)
+
+    def test_equal_thresholds_accepted(self):
+        """``gte`` operator: equal high == low is a degenerate but
+        legal binding (regimes are technically still disjoint —
+        no day satisfies BOTH branches' strict-inequality rules).
+        The constraint accepts it; downstream operators surface
+        the empty-mask case if applicable."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._full_slot_values(
+            high_threshold=0.0, low_threshold=0.0,
+        ))
+        assert isinstance(wf, Workflow)
 
 
 # ===========================================================================
@@ -460,6 +496,51 @@ class TestTopologyArchetypeFit:
         assert compare_node.operator_name == "series_arithmetic"
         assert compare_node.params["op"] == "subtract"
 
+    def test_uses_regime_diff_for_move_based_classification(self):
+        """Codex P1 follow-up to PR #86: the regime classification
+        is MOVE-based (steepening / flattening), not LEVEL-based
+        (steep / flat).  This is enforced by inserting a
+        ``series_arithmetic op=diff`` step between regime_signal
+        and the high/low threshold_events nodes.  The fork between
+        the two compare-feeding chains uses op=subtract; this test
+        pins the SECOND series_arithmetic instance to op=diff so a
+        future edit cannot remove the diff and silently revert to
+        level-based regimes."""
+        t = load_regime_conditioned_template()
+        regime_diff_node = next(
+            (n for n in t.nodes if n.node_id == "regime_diff"),
+            None,
+        )
+        assert regime_diff_node is not None, (
+            "regime_diff node is missing; the regime classification "
+            "would silently revert to level-based without it."
+        )
+        assert regime_diff_node.operator_name == "series_arithmetic"
+        assert regime_diff_node.params["op"] == "diff"
+        assert regime_diff_node.params["period"] == 1
+
+    def test_regime_diff_wires_signal_to_masks(self):
+        """Pin the regime_diff edges:
+          - regime_signal → regime_diff (left)
+          - regime_diff → high_mask (series)
+          - regime_diff → low_mask (series)
+        Catches a regression that would re-route raw regime_signal
+        into the masks (which would silently bring back level-based
+        regime classification)."""
+        t = load_regime_conditioned_template()
+        edges_by_target = {}
+        for e in t.edges:
+            edges_by_target.setdefault(
+                e.target_node_id, {},
+            ).setdefault(e.target_input_slot, []).append(
+                e.source_node_id,
+            )
+        # regime_diff: left slot fed by regime_signal.
+        assert edges_by_target["regime_diff"]["left"] == ["regime_signal"]
+        # masks: series slot fed by regime_diff (NOT regime_signal).
+        assert edges_by_target["high_mask"]["series"] == ["regime_diff"]
+        assert edges_by_target["low_mask"]["series"] == ["regime_diff"]
+
     def test_does_not_use_event_study_archetype_operators(self):
         """LOAD-BEARING: regime_conditioned_relationship MUST NOT use
         event_windows or conditional_aggregate.  Those are the
@@ -488,12 +569,14 @@ class TestTopologyArchetypeFit:
         )
 
     def test_node_and_edge_counts(self):
-        """Canonical relationship-archetype shape: 12 nodes, 13
-        edges.  Pin these so accidental adds/removals surface in
-        code review."""
+        """Canonical relationship-archetype shape after the Codex P1
+        follow-up to PR #86: 13 nodes (3 primitives + 10 operators
+        — relationship, beta select, regime_diff, 2 masks, 2 apply,
+        2 summary, 1 compare), 14 edges.  Pin these so accidental
+        adds/removals surface in code review."""
         t = load_regime_conditioned_template()
-        assert len(t.nodes) == 12
-        assert len(t.edges) == 13
+        assert len(t.nodes) == 13
+        assert len(t.edges) == 14
 
 
 # ===========================================================================
@@ -508,6 +591,14 @@ class TestEndToEndProofQ2:
     difference."""
 
     def _slot_values(self):
+        # Canonical Q2 binding: thresholds are BPS DAILY MOVES on the
+        # 2s10s curve_spread (steepening / flattening).  +3.0 = "the
+        # curve steepened by ≥3 bps today", -3.0 = "flattened by
+        # ≥3 bps today".  Codex P1 follow-up to PR #86: the previous
+        # binding used level thresholds (+50 / -50) which classified
+        # steep-vs-flat (level state), not steepening-vs-flattening
+        # (move direction) — answering a different question from the
+        # canonical Q2 prompt.
         return {
             "lhs_tool_name": "get_yield_levels_tool",
             "lhs_params": {
@@ -530,8 +621,8 @@ class TestEndToEndProofQ2:
             "regime_signal_output_field": "time_series_spread",
             "regression_window": 60,
             "regression_min_periods": 30,
-            "high_threshold": 50.0,
-            "low_threshold": -50.0,
+            "high_threshold": 3.0,
+            "low_threshold": -3.0,
         }
 
     def _patches(self):
@@ -652,6 +743,7 @@ class TestEndToEndProofQ2:
         assert set(result.node_artifacts.keys()) == {
             "lhs", "rhs", "regime_signal",
             "relationship", "beta",
+            "regime_diff",
             "high_mask", "low_mask",
             "high_betas", "low_betas",
             "high_summary", "low_summary",
@@ -671,6 +763,7 @@ class TestEndToEndProofQ2:
         for nid in (
             "lhs", "rhs", "regime_signal",
             "relationship", "beta",
+            "regime_diff",
             "high_mask", "low_mask",
             "high_betas", "low_betas",
             "high_summary", "low_summary",
@@ -848,19 +941,25 @@ class TestInstrumentAgnostic:
             "regime_signal_params": {
                 "series_name": "synthetic_regime",
                 "n_rows": 800,
-                # Build a regime signal that oscillates around 0 in BPS
-                # space so both regimes (>+50 / <-50) fire.
+                # Build a regime signal whose DAILY DIFF oscillates
+                # around 0 in BPS space (small noise → many days fall
+                # in steepening / flattening regimes after the
+                # template's regime_diff step fires).  Codex P1
+                # follow-up to PR #86: the regime classification is
+                # now MOVE-based, so the signal series itself just
+                # needs a non-trivial day-over-day variance.
                 "base_value": 0.0,
                 "drift": 0.0,
-                "noise": 80.0,
+                "noise": 5.0,
                 "units": "bps",
                 "seed": 3,
             },
             "regime_signal_output_field": "time_series",
             "regression_window": 60,
             "regression_min_periods": 30,
-            "high_threshold": 50.0,
-            "low_threshold": -50.0,
+            # Daily-move thresholds (steepening / flattening regimes).
+            "high_threshold": 1.0,
+            "low_threshold": -1.0,
         })
 
         result = execute_workflow(
@@ -878,6 +977,7 @@ class TestInstrumentAgnostic:
         assert set(result.node_artifacts.keys()) == {
             "lhs", "rhs", "regime_signal",
             "relationship", "beta",
+            "regime_diff",
             "high_mask", "low_mask",
             "high_betas", "low_betas",
             "high_summary", "low_summary",
@@ -926,8 +1026,10 @@ class TestTemplateCard:
     def test_card_node_and_edge_counts(self):
         t = load_regime_conditioned_template()
         card = card_for_template(t)
-        assert card.node_count == 12
-        assert card.edge_count == 13
+        # Codex P1 follow-up to PR #86: regime_diff added → 13 nodes,
+        # 14 edges.
+        assert card.node_count == 13
+        assert card.edge_count == 14
 
     def test_card_archetype_is_regime_conditioned_relationship(self):
         t = load_regime_conditioned_template()

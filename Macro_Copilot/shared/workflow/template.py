@@ -216,6 +216,90 @@ class LiteralBindingTemplate(BaseModel):
 
 
 # ============================================================================
+# SLOT CONSTRAINTS (cross-slot validators)
+# ============================================================================
+#
+# Closed-family discriminated union of cross-slot constraints applied
+# at ``bind()`` time after individual-slot validation succeeds.  Each
+# template can declare zero or more constraints; a violation raises
+# ``SlotBindingError`` BEFORE the concrete Workflow is constructed,
+# so a downstream node never runs against a slot binding the
+# template's authors knew was incoherent.
+#
+# Codex P2 follow-up (PR #86): previously the
+# regime_conditioned_relationship template declared
+# ``high_threshold >= low_threshold`` as a docs-only invariant.  The
+# bind path validated each slot independently and then constructed
+# the Workflow without any cross-slot check, so an overlapping binding
+# (high_threshold < low_threshold) silently produced shared-date
+# regime samples and undermined the per-regime comparison.
+# ``slot_constraints`` makes that contract a real substrate guarantee.
+#
+# V1 closed family: just ``relative_order``.  Future kinds
+# (``mutual_exclusion``, ``conditional_required``, ``set_membership``,
+# ``regex_match``) extend this Union.
+
+
+_RELATIVE_ORDER_OPERATORS = ("gt", "gte", "lt", "lte")
+
+
+class RelativeOrderConstraint(BaseModel):
+    """``higher`` slot's value must satisfy a relative-order relation
+    against ``lower`` slot's value.
+
+    Fields
+    ------
+    kind :
+        Discriminator; literally ``"relative_order"``.
+    higher :
+        Name of the slot whose value sits on the LHS of the relation.
+    lower :
+        Name of the slot whose value sits on the RHS of the relation.
+    operator :
+        One of ``{"gt", "gte", "lt", "lte"}``.  The constraint
+        evaluates to ``higher_value <op> lower_value``; a violation
+        raises ``SlotBindingError``.
+    rationale :
+        Human-readable reason for the constraint.  Surfaced in the
+        bind-time error message so template consumers know WHY the
+        binding was rejected (not just that it was).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["relative_order"] = "relative_order"
+    higher: str = Field(..., min_length=1)
+    lower: str = Field(..., min_length=1)
+    operator: Literal["gt", "gte", "lt", "lte"] = "gte"
+    rationale: str = Field(..., min_length=1)
+
+    def evaluate(self, slot_values: Dict[str, Any]) -> None:
+        """Raise ``SlotBindingError`` if the constraint is violated."""
+        higher_val = slot_values[self.higher]
+        lower_val = slot_values[self.lower]
+        op_to_check = {
+            "gt": (higher_val > lower_val, ">"),
+            "gte": (higher_val >= lower_val, ">="),
+            "lt": (higher_val < lower_val, "<"),
+            "lte": (higher_val <= lower_val, "<="),
+        }
+        ok, op_str = op_to_check[self.operator]
+        if not ok:
+            raise SlotBindingError(
+                f"slot constraint violated: "
+                f"{self.higher}={higher_val!r} must be {op_str} "
+                f"{self.lower}={lower_val!r}.  Rationale: "
+                f"{self.rationale}"
+            )
+
+
+SlotConstraint = Annotated[
+    Union[RelativeOrderConstraint],
+    Field(discriminator="kind"),
+]
+
+
+# ============================================================================
 # WORKFLOW TEMPLATE
 # ============================================================================
 
@@ -292,6 +376,16 @@ class WorkflowTemplate(BaseModel):
     archetype: WorkflowArchetype
     description: str = Field(..., min_length=1)
     slot_schema: List[SlotDeclaration] = Field(default_factory=list)
+    slot_constraints: List[SlotConstraint] = Field(
+        default_factory=list,
+        description=(
+            "Cross-slot constraints validated at bind() time AFTER "
+            "individual-slot type/required checks pass.  Closed-family "
+            "discriminated union (V1: ``relative_order``).  A "
+            "violation raises ``SlotBindingError`` before the concrete "
+            "Workflow is constructed.  Codex P2 follow-up to PR #86."
+        ),
+    )
     nodes: List[WorkflowNodeTemplate] = Field(..., min_length=1)
     edges: List[WorkflowEdge] = Field(default_factory=list)
     literal_bindings: List[LiteralBindingTemplate] = Field(default_factory=list)
@@ -435,6 +529,42 @@ class WorkflowTemplate(BaseModel):
                 "slots in slot_schema or remove the references."
             )
 
+        # Cross-slot constraints (Codex P2 follow-up to PR #86).
+        # Each constraint must reference declared slot names; types
+        # must support the relational operator declared by the
+        # constraint kind.
+        for i, constraint in enumerate(self.slot_constraints):
+            if isinstance(constraint, RelativeOrderConstraint):
+                missing = []
+                if constraint.higher not in slot_name_set:
+                    missing.append(constraint.higher)
+                if constraint.lower not in slot_name_set:
+                    missing.append(constraint.lower)
+                if missing:
+                    raise ValueError(
+                        f"WorkflowTemplate {self.template_id!r}: "
+                        f"slot_constraints[{i}] references "
+                        f"undeclared slot(s) {missing}.  Both "
+                        f"``higher`` ({constraint.higher!r}) and "
+                        f"``lower`` ({constraint.lower!r}) must be "
+                        "declared in slot_schema."
+                    )
+                # The relative-order operators only make sense on
+                # ordered numeric types in V1.  Reject str/dict/list/
+                # bool slot types loudly.
+                slot_by_name = {s.name: s for s in self.slot_schema}
+                for slot_name in (constraint.higher, constraint.lower):
+                    decl = slot_by_name[slot_name]
+                    if decl.type not in ("int", "float"):
+                        raise ValueError(
+                            f"WorkflowTemplate {self.template_id!r}: "
+                            f"slot_constraints[{i}] (kind="
+                            f"relative_order) references slot "
+                            f"{slot_name!r} of type {decl.type!r}; "
+                            "relative_order constraints only apply "
+                            "to ``int`` or ``float`` slots in V1."
+                        )
+
         return self
 
     def bind(self, slot_values: Dict[str, Any]) -> Workflow:
@@ -465,6 +595,13 @@ class WorkflowTemplate(BaseModel):
             slot_values=slot_values,
             template_id=self.template_id,
         )
+
+        # 1b. Cross-slot constraint validation (Codex P2 follow-up).
+        # Each declared constraint evaluates against the resolved
+        # slot values; a violation raises SlotBindingError before
+        # any node is constructed.
+        for constraint in self.slot_constraints:
+            constraint.evaluate(resolved)
 
         # 2. Substitute placeholders in node params (all node
         #    kinds), tool_name + output_field (PrimitiveNodeTemplate
