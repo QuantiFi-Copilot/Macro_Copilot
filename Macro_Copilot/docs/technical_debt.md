@@ -243,10 +243,9 @@ One cosmetic issue I spotted: ingest_parquet.py has duplicate step numbering —
 
 
 
-### 22. Short version
-So yes:
+### 22. Swap Spread - IN OIS TOOLS 
+this should maybe not live under the OIS domain namespace, because it is cross-domain - architectural decision to be made
 
-the missed thing was the lack of shared TimeSeries adoption in the early tools
-yes, it is documented
-the best canonical place is shared/schemas/time_series.py (line 4)
-If you want, I can also point you to which current tools are already on the shared TimeSeries shape and which ones are still legacy/frozen.
+### 23. Operator (summarize_series)
+Might not be standard!! 
+Probably just a temporary workaround: It is basically a temporary bridge because the artifact layer is still missing the right scalar output type.
