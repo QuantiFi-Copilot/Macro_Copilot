@@ -885,3 +885,177 @@ class TestFetchSingleTenorContract:
         assert [s.kind for s in view.lineage.steps] == [
             "fetch", "clean", "adapter", "operator",
         ]
+
+
+# ===========================================================================
+# output_keys (Codex P2 follow-up to PR #87)
+# ===========================================================================
+#
+# The leaked-implementation-detail-slot fix: align_series now accepts
+# an optional ``output_keys`` param so template authors can rename
+# SeriesSet members from each input's bridge-derived series_key (a
+# wire-naming detail) to template-controlled names like
+# ["signal", "target"].  Downstream select_from_series_set then
+# references those template-controlled names as hard-coded literals,
+# restoring the workflow-architecture contract's "templates expose
+# only central analysis knobs, not wiring internals" discipline.
+
+
+class TestOutputKeysRename:
+    def test_default_no_rename(self):
+        """Without ``output_keys``, the SeriesSet's per-key dicts use
+        each input's series_key verbatim — backward-compatible."""
+        a = _series(
+            "ust_usd_sofr_ois_2y_swap_spread_change_zscore",
+            dates=["2026-01-05", "2026-01-06"], values=[1.0, 2.0],
+            units=TimeSeriesUnits.Z_SCORE,
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "ust_10y_yield",
+            dates=["2026-01-05", "2026-01-06"], values=[4.30, 4.31],
+            units=TimeSeriesUnits.PERCENT,
+            missingness_policy=RawNoCleaning(),
+        )
+        out = align_series([a, b], AlignSeriesParams(
+            join_policy="inner", require_matching_missingness=False,
+        ))
+        assert out.keys() == sorted([
+            "ust_usd_sofr_ois_2y_swap_spread_change_zscore",
+            "ust_10y_yield",
+        ])
+
+    def test_explicit_output_keys_renames(self):
+        """When ``output_keys`` is supplied, the SeriesSet uses those
+        names instead of the inputs' series_keys."""
+        a = _series(
+            "ust_usd_sofr_ois_2y_swap_spread_change_zscore",
+            dates=["2026-01-05", "2026-01-06"], values=[1.0, 2.0],
+            units=TimeSeriesUnits.Z_SCORE,
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "ust_10y_yield",
+            dates=["2026-01-05", "2026-01-06"], values=[4.30, 4.31],
+            units=TimeSeriesUnits.PERCENT,
+            missingness_policy=RawNoCleaning(),
+        )
+        out = align_series([a, b], AlignSeriesParams(
+            join_policy="inner",
+            require_matching_missingness=False,
+            output_keys=["signal", "target"],
+        ))
+        assert out.keys() == ["signal", "target"]
+        # Per-key metadata follows declaration order.
+        assert out.units_by_key["signal"] == TimeSeriesUnits.Z_SCORE
+        assert out.units_by_key["target"] == TimeSeriesUnits.PERCENT
+        # Original input series_keys do NOT appear as output keys.
+        assert (
+            "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
+            not in out.series_by_key
+        )
+        assert "ust_10y_yield" not in out.series_by_key
+
+    def test_get_series_works_against_renamed_keys(self):
+        """Downstream operators retrieve members by the new name."""
+        a = _series(
+            "primitive_a_series",
+            dates=["2026-01-05", "2026-01-06"], values=[1.0, 2.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "primitive_b_series",
+            dates=["2026-01-05", "2026-01-06"], values=[3.0, 4.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        out = align_series([a, b], AlignSeriesParams(
+            join_policy="inner",
+            require_matching_missingness=False,
+            output_keys=["signal", "target"],
+        ))
+        signal_series = out.get_series("signal")
+        assert signal_series.series_key == "signal"
+        # The original primitive's series_key survives in the upstream
+        # lineage chain (the FetchStep / AdapterStep params carry it).
+        chain_params = [s.params for s in signal_series.lineage.steps]
+        param_blob = " ".join(str(p) for p in chain_params)
+        assert "primitive_a_series" in param_blob
+
+    def test_rename_recorded_in_lineage_step_params(self):
+        """The align step's params record both the input keys AND
+        the output keys, plus the input→output map, so a downstream
+        lineage walker can recover the rename even when the SeriesSet
+        is consumed by ordinal."""
+        a = _series(
+            "primitive_a", dates=["2026-01-05"], values=[1.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "primitive_b", dates=["2026-01-05"], values=[2.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        out = align_series([a, b], AlignSeriesParams(
+            join_policy="inner",
+            require_matching_missingness=False,
+            output_keys=["signal", "target"],
+        ))
+        align_step = out.lineage.steps[-1]
+        assert align_step.params["output_series_keys"] == [
+            "signal", "target",
+        ]
+        assert align_step.params["input_to_output_key_map"] == {
+            "primitive_a": "signal",
+            "primitive_b": "target",
+        }
+
+    def test_rename_omitted_does_not_emit_output_keys_in_step_params(self):
+        """When output_keys is None (default), the step params don't
+        record an empty / null rename — keeps lineage frames small
+        and signals to a downstream walker that no rename happened."""
+        a = _series(
+            "primitive_a", dates=["2026-01-05"], values=[1.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "primitive_b", dates=["2026-01-05"], values=[2.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        out = align_series([a, b], AlignSeriesParams(
+            join_policy="inner",
+            require_matching_missingness=False,
+        ))
+        align_step = out.lineage.steps[-1]
+        assert "output_series_keys" not in align_step.params
+        assert "input_to_output_key_map" not in align_step.params
+
+    def test_output_keys_length_mismatch_raises(self):
+        a = _series(
+            "primitive_a", dates=["2026-01-05"], values=[1.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        b = _series(
+            "primitive_b", dates=["2026-01-05"], values=[2.0],
+            missingness_policy=RawNoCleaning(),
+        )
+        with pytest.raises(AlignSeriesError, match="output_keys length"):
+            align_series([a, b], AlignSeriesParams(
+                join_policy="inner",
+                require_matching_missingness=False,
+                output_keys=["only_one"],
+            ))
+
+    def test_duplicate_output_keys_rejected_at_param_construction(self):
+        """The validator on AlignSeriesParams catches duplicate output
+        names BEFORE the operator sees them — clearer error path."""
+        with pytest.raises(ValueError, match="duplicate"):
+            AlignSeriesParams(
+                join_policy="inner",
+                output_keys=["same", "same"],
+            )
+
+    def test_empty_output_key_string_rejected(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            AlignSeriesParams(
+                join_policy="inner",
+                output_keys=["signal", ""],
+            )
