@@ -1,0 +1,74 @@
+operator:
+  name: apply_mask
+  method_family: masking
+  version: "1.0.0"
+  description: >-
+    Subsample a Series by a boolean EventSet mask.  Output is a new
+    Series whose values are the input restricted to the dates where
+    mask=True.  Finance-blind; the operator does NOT know whether
+    the mask represents sparse trigger events (event_study archetype)
+    or persistent regime states (regime_conditioned_relationship
+    archetype) — that semantic is owned by the upstream operator
+    that produced the EventSet (e.g. threshold_events with
+    rule=above|below|abs_above) and surfaced via lineage.
+
+defaults:
+  index_policy:
+    value: intersect
+    source: operator_v1_default
+    rationale: >-
+      Real-world masks and target series can come from operators on
+      slightly different calendars (e.g. a mask built from a 2s10s
+      curve_spread fetcher and applied to a UST 10Y yield level
+      series).  ``intersect`` (default) computes the index
+      intersection and applies the mask on that common subset, so
+      the operator works robustly across the canonical desk
+      bindings.  Pass ``strict_match`` when the caller wants a hard
+      guarantee that both inputs share the exact same index (e.g.
+      both went through the same align_series step and any drift is
+      a bug).
+    valid_values: [intersect, strict_match]
+
+  preserve_full_index:
+    value: false
+    source: operator_v1_default
+    rationale: >-
+      ``false`` (default): output is sparse — payload index contains
+      only the dates where mask=True.  Matches the natural
+      "subsample by regime" semantic and lets downstream
+      summarization compute statistics over the regime sample
+      directly.  Pass ``true`` when a downstream operator needs the
+      full date axis preserved (e.g. for index-aligned arithmetic
+      with another series); cells where mask=False become NaN in
+      that mode.
+    valid_values: [true, false]
+
+methodology:
+  what_it_does: >-
+    Given a typed ``Series`` and a typed ``EventSet`` (whose ``mask``
+    is a per-date boolean Series), returns a new ``Series`` whose
+    payload is the input subsampled to the dates where the mask is
+    True.  Lineage records the operator step + the EventSet's
+    upstream provenance (via ``auxiliary_lineages``) so a
+    downstream lineage walker sees both the data chain and the mask
+    chain.
+
+    Index-policy detail:
+      - ``intersect``    : payload becomes input.payload.loc[I & M]
+                           where I = series.payload.index and M =
+                           mask.mask.index.  Robust to small index
+                           mismatches.
+      - ``strict_match`` : raises ``ApplyMaskError`` unless
+                           series.payload.index == mask.mask.index.
+
+    Preserve-index detail:
+      - false : output payload is the True-cell subset.
+      - true  : output payload retains the (intersected) full index
+                with mask=False cells set to NaN.
+
+    Units / frequency / missingness propagate 1:1 from the input
+    Series.
+  planned_extensions:
+    - "categorical-mask support (when a CategoricalMask artifact lands)"
+    - "negation knob (apply_mask with rule=invert returning the complement)"
+    - "fail-fast empty-output refusal (raise when zero True dates)"

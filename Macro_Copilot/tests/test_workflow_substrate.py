@@ -1480,35 +1480,85 @@ class TestFinanceBlindness:
         is the runtime check — even if no static-source scan
         finds a rates_agent reference, a transitive import via
         some unexpected path would still load rates_agent into
-        sys.modules."""
-        # Fresh clean slate: drop any pre-existing rates_agent
-        # sub-modules so we can confirm none get loaded by the
-        # substrate's import chain.  Note this is a smoke check:
-        # tests in this suite that USE the bridge legitimately
-        # import shared.artifacts.adapters.from_time_series, which
-        # is finance-blind.  rates_agent is what we forbid.
+        sys.modules.
+
+        Snapshot/restore discipline: deleting shared.workflow.* from
+        sys.modules and re-importing creates fresh class objects —
+        which then BREAKS subsequent tests' ``isinstance(node,
+        PrimitiveNode)`` checks (the executor's PrimitiveNode reference
+        becomes stale relative to nodes built by previously-imported
+        templates).  We snapshot the substrate modules + dependent
+        downstream modules before the reload and restore them on the
+        way out so cross-file test ordering stays clean.  Codex P1
+        follow-up surfaced when the regime_conditioned_relationship
+        suite cross-imported PrimitiveNode and hit a stale-class
+        ``unknown kind='primitive'`` execution error.
+        """
         import sys
         # Snapshot which rates_agent modules existed before this
         # test (other tests may have legitimately imported them).
         before = {k for k in sys.modules if k.startswith("rates_agent")}
-        # Force a fresh import of the substrate.
-        for mod_name in list(sys.modules):
-            if mod_name.startswith("shared.workflow"):
-                del sys.modules[mod_name]
-        importlib.import_module("shared.workflow")
-        importlib.import_module("shared.workflow.types")
-        importlib.import_module("shared.workflow.validate")
-        importlib.import_module("shared.workflow.executor")
-        importlib.import_module("shared.workflow.result")
-        importlib.import_module("shared.workflow.registry")
-        after = {k for k in sys.modules if k.startswith("rates_agent")}
-        newly_imported = after - before
-        assert not newly_imported, (
-            f"FINANCE-BLINDNESS VIOLATION: importing shared.workflow "
-            f"transitively loaded rates_agent modules: "
-            f"{sorted(newly_imported)}.  The substrate must not pull "
-            "in any agent-specific code via its import graph."
+
+        # Snapshot every module whose freshness this test will
+        # disturb, so we can restore them after the assertion.
+        # ``shared.workflow.*`` is what we delete; ``rates_agent.*``,
+        # ``shared.operators.*``, and ``rates_agent.workflows.*``
+        # carry references to the OLD shared.workflow classes that
+        # would otherwise leak stale class identities into later
+        # tests.  Snapshotting all three groups + restoring on the
+        # way out keeps cross-file test ordering deterministic.
+        prefixes_to_isolate = (
+            "shared.workflow",
+            "shared.operators",
+            "rates_agent",
         )
+        snapshot = {
+            k: v for k, v in sys.modules.items()
+            if any(k.startswith(p) for p in prefixes_to_isolate)
+        }
+        try:
+            # Force a fresh import of the substrate.
+            for mod_name in list(sys.modules):
+                if mod_name.startswith("shared.workflow"):
+                    del sys.modules[mod_name]
+            importlib.import_module("shared.workflow")
+            importlib.import_module("shared.workflow.types")
+            importlib.import_module("shared.workflow.validate")
+            importlib.import_module("shared.workflow.executor")
+            importlib.import_module("shared.workflow.result")
+            importlib.import_module("shared.workflow.registry")
+            after = {k for k in sys.modules if k.startswith("rates_agent")}
+            newly_imported = after - before
+            assert not newly_imported, (
+                f"FINANCE-BLINDNESS VIOLATION: importing shared.workflow "
+                f"transitively loaded rates_agent modules: "
+                f"{sorted(newly_imported)}.  The substrate must not pull "
+                "in any agent-specific code via its import graph."
+            )
+        finally:
+            # Restore the snapshotted modules so subsequent tests see
+            # the SAME class identities they had before this test ran.
+            # Without this restore, ``isinstance(some_old_node,
+            # NewlyImportedPrimitiveNode)`` would fail in any test
+            # that runs after this one and consumes a workflow node
+            # built before this point.
+            for mod_name in list(sys.modules):
+                if any(
+                    mod_name.startswith(p) for p in prefixes_to_isolate
+                ):
+                    if mod_name in snapshot:
+                        sys.modules[mod_name] = snapshot[mod_name]
+                    else:
+                        # Module was added during the reload
+                        # (e.g. a fresh import_module call) but
+                        # wasn't in the original snapshot — drop it
+                        # so the next time it's imported, the
+                        # original module is the one that loads.
+                        del sys.modules[mod_name]
+            # Restore any snapshot entries that were deleted from
+            # sys.modules during the reload itself.
+            for mod_name, mod in snapshot.items():
+                sys.modules[mod_name] = mod
 
     def test_operator_registry_has_only_shared_operators(self):
         """Sanity: every entry in OPERATOR_REGISTRY references a

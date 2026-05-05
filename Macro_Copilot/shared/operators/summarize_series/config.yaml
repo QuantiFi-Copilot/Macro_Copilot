@@ -1,0 +1,71 @@
+operator:
+  name: summarize_series
+  method_family: aggregation
+  version: "1.0.0"
+  description: >-
+    Collapse a typed Series to a 1-row summary Series at a hard-coded
+    sentinel date so downstream same-shape arithmetic operators
+    (notably series_arithmetic.subtract) can compare two
+    per-regime summaries that originally had disjoint date indexes.
+    Always reports dispersion in lineage.  Finance-blind.
+
+defaults:
+  statistic:
+    value: mean
+    source: operator_v1_default
+    rationale: >-
+      Default ``mean`` matches the canonical desk summary for per-
+      regime relationship analyses (mean β over the regime sample).
+      ``median`` is the robust alternative; ``std``/``sum``/``count``
+      cover the dispersion / aggregation cases when the central
+      tendency is not the deliverable.
+    valid_values: [mean, median, std, sum, count]
+
+  dispersion:
+    value: std
+    source: operator_v1_default
+    rationale: >-
+      Always report dispersion alongside the central tendency —
+      mirrors the ``conditional_aggregate`` discipline so per-regime
+      summaries have parity with event-study summaries.  Default
+      ``std`` is the canonical sample standard deviation; ``mad``
+      (median-absolute-deviation) is the robust alternative for
+      heavy-tailed distributions; ``none`` opts out (rare; only when
+      the caller has a methodology reason to suppress the
+      dispersion record).
+    valid_values: [std, mad, none]
+
+methodology:
+  what_it_does: >-
+    Given a typed ``Series``, the operator:
+
+      1. Drops NaN cells from the payload (the rolling-fit warmup
+         and any per-regime no-coverage gaps would otherwise bias
+         the statistic).
+      2. Applies the chosen ``statistic`` — mean / median / std /
+         sum / count — on the cleaned payload.
+      3. Computes the chosen ``dispersion`` (std / mad) on the
+         same cleaned payload, OR records "none" when dispersion
+         is suppressed.
+      4. Builds a single-row payload at the hard-coded sentinel
+         date ``1900-01-01`` (see operator docstring; this date
+         identifies "this is a scalar summary," not a meaningful
+         timestamp).
+      5. Wraps the 1-row payload as a typed ``Series``.  Units are
+         inherited 1:1 from the input.  Lineage records the central-
+         tendency value, dispersion value, n_observations, and
+         n_dropped (for diagnostic clarity); a downstream
+         ``series_arithmetic.subtract`` can compare two such
+         summaries because both share the sentinel date.
+
+    Why a sentinel rather than a real date: per-regime masked Series
+    in the ``regime_conditioned_relationship`` archetype have
+    DISJOINT date indexes by construction (steepening regime days vs
+    flattening regime days never overlap), so a real-date summary
+    would still produce two single-row Series at different dates and
+    the downstream subtract would have an empty intersection.  The
+    sentinel guarantees alignment.
+  planned_extensions:
+    - "ScalarMetric artifact (build plan v5 / R5 — proper scalar type, no sentinel)"
+    - "weighted aggregations (weighted mean / weighted median)"
+    - "trimmed-mean and winsorized statistics for tail-robust summaries"

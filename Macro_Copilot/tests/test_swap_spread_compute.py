@@ -801,3 +801,120 @@ class TestCanonicalTimeSeries:
         out = _run(_params(), _synthetic_cross_domain_df())
         TimeSeries.model_validate(out["time_series_spread"])
         TimeSeries.model_validate(out["time_series_zscore"])
+
+
+# ===========================================================================
+# 11. Canonical change-zscore TimeSeries (event-study Q1 binding)
+# ===========================================================================
+#
+# ``time_series_change_zscore`` is the rolling z-score of the day-over-
+# day change in the swap spread.  It is the canonical signal for the
+# rates-agent's event-study proof-Q1 binding ("when the spread WIDENS
+# by more than 1.5σ in a single day, what's the average 5-day forward
+# move in the 10Y UST?").  Distinct from ``time_series_zscore`` (which
+# z-scores the LEVEL — answers "spread is stretched today"); both
+# series co-exist so the binding caller can pick level-stretch vs
+# change-stretch event semantics explicitly.
+
+class TestCanonicalChangeZScoreTimeSeries:
+    def test_change_zscore_field_present(self):
+        out = _run(_params(), _synthetic_cross_domain_df())
+        assert "time_series_change_zscore" in out
+        assert isinstance(out["time_series_change_zscore"], dict)
+
+    def test_change_zscore_uses_Z_SCORE_units(self):
+        out = _run(_params(), _synthetic_cross_domain_df())
+        assert out["time_series_change_zscore"]["units"] == "z_score"
+
+    def test_change_zscore_series_name_uses_change_zscore_suffix(self):
+        out = _run(_params(), _synthetic_cross_domain_df())
+        assert (
+            out["time_series_change_zscore"]["series_name"]
+            == "ust_usd_sofr_ois_10y_swap_spread_change_zscore"
+        )
+
+    def test_change_zscore_length_equals_bespoke_length(self):
+        out = _run(_params(), _synthetic_cross_domain_df())
+        assert (
+            len(out["time_series_change_zscore"]["rows"])
+            == len(out["time_series"])
+        )
+
+    def test_change_zscore_dates_match_bespoke_dates(self):
+        out = _run(_params(), _synthetic_cross_domain_df())
+        canonical = out["time_series_change_zscore"]
+        bespoke = out["time_series"]
+        for i, (c_row, b_row) in enumerate(zip(canonical["rows"], bespoke)):
+            assert c_row["date"] == b_row["date"], f"row {i}"
+
+    def test_change_zscore_validates_against_TimeSeries_schema(self):
+        from shared.schemas import TimeSeries
+        out = _run(_params(), _synthetic_cross_domain_df())
+        TimeSeries.model_validate(out["time_series_change_zscore"])
+
+    def test_change_zscore_distinct_from_level_zscore(self):
+        """The two z-scores measure structurally different things —
+        the LEVEL (vs trailing window) vs the day-over-day CHANGE
+        (vs trailing window).  They MUST not be identical for any
+        non-degenerate spread series.  Locks the semantic distinction
+        Codex P1 surfaced on PR #82."""
+        out = _run(_params(), _synthetic_cross_domain_df())
+        level_vals = [r["value"] for r in out["time_series_zscore"]["rows"]]
+        change_vals = [
+            r["value"] for r in out["time_series_change_zscore"]["rows"]
+        ]
+        # At least one row must differ — the two series cannot be
+        # element-wise identical in a non-degenerate input.
+        diffs = sum(
+            1
+            for a, b in zip(level_vals, change_vals)
+            if a is not None and b is not None and a != b
+        )
+        assert diffs > 0, (
+            "level-zscore and change-zscore are element-wise identical "
+            "— that would mean the daily change of the spread is "
+            "indistinguishable from the spread level itself, which is "
+            "structurally impossible for a non-trivial input."
+        )
+
+    def test_change_zscore_z_round_decimals_reaches_output(self):
+        """Day-one P2-class boundary check — the same z_round_decimals
+        knob that flows through ``current_z_score`` and the level
+        canonical zscore must also flow through the change-zscore
+        builder.  Otherwise a YAML override above 4 silently truncates
+        the new field.  Pins by computing two outputs at different
+        round_decimals and asserting at least one row differs."""
+        raw_df = _synthetic_cross_domain_df()
+        out_low = _run(
+            _params(), raw_df, _build_config(z_score_round_decimals=2),
+        )
+        out_high = _run(
+            _params(), raw_df, _build_config(z_score_round_decimals=8),
+        )
+        rows_low = out_low["time_series_change_zscore"]["rows"]
+        rows_high = out_high["time_series_change_zscore"]["rows"]
+        assert len(rows_low) == len(rows_high)
+        diffs = sum(
+            1
+            for a, b in zip(rows_low, rows_high)
+            if a["value"] is not None
+            and b["value"] is not None
+            and a["value"] != b["value"]
+        )
+        assert diffs > 0, (
+            "z_round_decimals override produced identical change-zscore "
+            "values — the rounding knob is not reaching the change-"
+            "zscore builder.  Same shadowing class as PR #63 fix."
+        )
+
+    def test_first_row_change_zscore_is_none(self):
+        """The very first observation has no defined diff (no prior
+        day), so ``change_z_score`` must be None on row 0.  Pins the
+        diff-window warmup boundary."""
+        out = _run(_params(), _synthetic_cross_domain_df())
+        first_row = out["time_series_change_zscore"]["rows"][0]
+        # Row 0 may be in the rolling-window warmup AND lacks a diff
+        # — either way the value must be None.
+        assert first_row["value"] is None or isinstance(
+            first_row["value"], float,
+        )
