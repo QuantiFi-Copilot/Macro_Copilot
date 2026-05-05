@@ -85,6 +85,19 @@ export function WorkflowsCataloguePage() {
         open={!!selected}
         onClose={closePanel}
         workflow={cardDetail}
+        onOpenInWorkspace={
+          selected && TEMPLATE_STARTER_PROMPTS[selected]
+            ? () => {
+                window.dispatchEvent(
+                  new CustomEvent('copilot:set-input', {
+                    detail: TEMPLATE_STARTER_PROMPTS[selected],
+                  }),
+                );
+                closePanel();
+              }
+            : undefined
+        }
+        primaryCtaLabel="Try in copilot"
       />
     </div>
   );

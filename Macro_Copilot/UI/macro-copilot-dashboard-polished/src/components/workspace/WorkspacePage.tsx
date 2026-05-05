@@ -34,6 +34,7 @@ import { YieldView } from './views/YieldView';
 import { RegimeView } from './views/RegimeView';
 import { ScannerView } from './views/ScannerView';
 import { ForwardView } from './views/ForwardView';
+import { PrimitiveModelView } from './views/PrimitiveModelView';
 
 const VALID_VIEWS = new Set<WorkspaceViewType>([
   'spread',
@@ -44,6 +45,13 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
   'regime',
   'scanner',
 ]);
+
+// PR 10 — generic primitive surface.  When the URL is
+//   /workspace?tool=primitive&name=<tool_name>&<param>=<value>...
+// we render PrimitiveModelView (any registered primitive, schema-driven).
+// This intentionally lives outside VALID_VIEWS so the existing typed views
+// stay narrow.
+const PRIMITIVE_VIEW = 'primitive';
 
 function isWorkspaceView(s: string | null | undefined): s is WorkspaceViewType {
   return !!s && VALID_VIEWS.has(s as WorkspaceViewType);
@@ -104,20 +112,43 @@ export function WorkspacePage() {
   // -------------------------------------------------------------------------
   const toolParam = searchParams.get('tool');
   const view: WorkspaceViewType | null = isWorkspaceView(toolParam) ? toolParam : null;
+  const isPrimitiveRoute = toolParam === PRIMITIVE_VIEW;
+  const primitiveName = isPrimitiveRoute ? searchParams.get('name') ?? '' : '';
 
   const params: WorkspaceParams = useMemo(() => {
     const out: WorkspaceParams = {};
     searchParams.forEach((value, key) => {
-      if (key === 'tool' || key === 'context') return;
+      if (key === 'tool' || key === 'context' || key === 'name') return;
       out[key] = value;
     });
     return out;
   }, [searchParams]);
 
   // -------------------------------------------------------------------------
-  // Step 3: fetch the detail payload.
+  // Step 3: fetch the detail payload (typed-detail path).  PrimitiveModelView
+  // owns its own fetch, so on the primitive route we pass view=null here
+  // (the hook returns idle) and short-circuit the render below.
   // -------------------------------------------------------------------------
   const { data, isLoading, error, refetch } = useWorkspaceData(view, params);
+
+  // -------------------------------------------------------------------------
+  // PR 10 — generic primitive surface (?tool=primitive&name=…).
+  // -------------------------------------------------------------------------
+  if (isPrimitiveRoute) {
+    if (!primitiveName) {
+      return (
+        <div className="h-full overflow-y-auto">
+          <WorkspaceEmptyState />
+        </div>
+      );
+    }
+    return (
+      <PrimitiveModelView
+        toolName={primitiveName}
+        initialParams={params as Record<string, string>}
+      />
+    );
+  }
 
   // -------------------------------------------------------------------------
   // Empty state — no view selected.

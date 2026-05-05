@@ -174,3 +174,43 @@ export type WorkflowServerEvent =
   | WorkflowRouteDecisionEvent
   | WorkflowStatusEvent
   | WorkflowResultEvent;
+
+// ---------------------------------------------------------------------------
+// Primitive direct-run envelope (POST /api/v1/tools/{tool_name}/run)
+// ---------------------------------------------------------------------------
+//
+// Shape mirrors api/routes/workflows/execute.py::run_primitive_tool:
+//
+//   { ok: true,  tool_name: "...", output: <raw primitive *Output dict> }
+//   { ok: false, tool_name: "...", error: "..." }
+//
+// `output` is intentionally untyped — every primitive's *Output schema is
+// different.  Consumers call into typed helpers to render the relevant
+// shape (TimeSeries → line chart, scalar → KPI tile, etc).
+
+export type PrimitiveRunResult =
+  | {
+      ok: true;
+      tool_name: string;
+      output: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      tool_name: string;
+      error: string;
+      known_tool_names?: string[];
+    };
+
+// One row of a canonical TimeSeries payload (date + value, plus optional
+// auxiliary fields the primitive's *Output may include).  Most rates
+// primitives emit `time_series` with this shape.
+export type PrimitiveTimeSeriesRow = {
+  date: string;
+  value?: number | null;
+  spread_bps?: number | null;
+  z_score?: number | null;
+  yield_pct?: number | null;
+  forward_pct?: number | null;
+  change_z_score?: number | null;
+  [k: string]: unknown;
+};

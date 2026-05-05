@@ -34,6 +34,12 @@ type InspectionPanelProps = {
   // Either (tool) OR (workflow), not both.
   tool?: ToolCard | null;
   workflow?: WorkflowTemplateCard | null;
+  /** Optional CTA — when supplied, shown in the panel footer next to the
+   *  tab navigator.  For tools this routes into PrimitiveModelView in the
+   *  workspace; for workflows it pre-fills the chat composer with a
+   *  starter prompt (handled by the catalogue page). */
+  onOpenInWorkspace?: () => void;
+  primaryCtaLabel?: string;
 };
 
 const TABS = [
@@ -50,6 +56,8 @@ export function InspectionPanel({
   onClose,
   tool,
   workflow,
+  onOpenInWorkspace,
+  primaryCtaLabel,
 }: InspectionPanelProps) {
   const [tab, setTab] = useState<TabId>('what');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -124,7 +132,12 @@ export function InspectionPanel({
               : <WorkflowInterpretTab workflow={workflow!} />
           )}
         </div>
-        <PanelFooter tab={tab} onChange={setTab} />
+        <PanelFooter
+          tab={tab}
+          onChange={setTab}
+          onOpenInWorkspace={onOpenInWorkspace}
+          primaryCtaLabel={primaryCtaLabel}
+        />
       </div>
     </div>
   );
@@ -225,15 +238,19 @@ function PanelTabs({
 function PanelFooter({
   tab,
   onChange,
+  onOpenInWorkspace,
+  primaryCtaLabel,
 }: {
   tab: TabId;
   onChange: (t: TabId) => void;
+  onOpenInWorkspace?: () => void;
+  primaryCtaLabel?: string;
 }) {
   const idx = TABS.findIndex((t) => t.id === tab);
   const prev = idx > 0 ? TABS[idx - 1] : null;
   const next = idx < TABS.length - 1 ? TABS[idx + 1] : null;
   return (
-    <footer className="flex items-center justify-between border-t border-line-subtle px-6 py-4">
+    <footer className="flex items-center justify-between gap-3 border-t border-line-subtle px-6 py-4">
       <button
         type="button"
         onClick={() => prev && onChange(prev.id)}
@@ -248,20 +265,33 @@ function PanelFooter({
         <ChevronLeft size={13} />
         {prev?.label ?? ''}
       </button>
-      <button
-        type="button"
-        onClick={() => next && onChange(next.id)}
-        disabled={!next}
-        className={cn(
-          'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-semibold transition-all',
-          next
-            ? 'border-ice-400/30 bg-gradient-to-b from-ice-500/15 to-ice-700/15 text-ice-100 hover:border-ice-400/50 hover:from-ice-500/25 hover:to-ice-700/25'
-            : 'cursor-not-allowed border-line-soft bg-white/[0.02] text-fg-faint',
-        )}
-      >
-        Next: {next?.label ?? '—'}
-        <ChevronRight size={13} />
-      </button>
+
+      <div className="flex items-center gap-2">
+        {onOpenInWorkspace ? (
+          <button
+            type="button"
+            onClick={onOpenInWorkspace}
+            className="flex items-center gap-1.5 rounded-md border border-ice-400/40 bg-gradient-to-b from-ice-500/25 to-ice-700/25 px-3 py-1.5 text-[12px] font-semibold text-ice-100 transition-all hover:border-ice-400/60 hover:from-ice-500/35 hover:to-ice-700/35"
+          >
+            {primaryCtaLabel ?? 'Open in workspace'}
+            <ChevronRight size={12} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => next && onChange(next.id)}
+          disabled={!next}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-semibold transition-all',
+            next
+              ? 'border-line-soft bg-white/[0.02] text-fg-secondary hover:border-line-strong hover:text-fg-primary'
+              : 'cursor-not-allowed border-line-soft bg-white/[0.02] text-fg-faint',
+          )}
+        >
+          Next: {next?.label ?? '—'}
+          <ChevronRight size={13} />
+        </button>
+      </div>
     </footer>
   );
 }

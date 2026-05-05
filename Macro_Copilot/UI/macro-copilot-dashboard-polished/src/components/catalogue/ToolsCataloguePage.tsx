@@ -7,8 +7,8 @@
 // ============================================================================
 
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Wrench, AlertCircle } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Wrench, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { useTools, useTool } from '@/hooks/useWorkflows';
 import { InspectionPanel } from './InspectionPanel';
 import { cn } from '@/utils/cn';
@@ -16,11 +16,16 @@ import { cn } from '@/utils/cn';
 type DomainFilter = 'all' | 'sovereign_bonds' | 'ois';
 
 export function ToolsCataloguePage() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useTools();
   const [domain, setDomain] = useState<DomainFilter>('all');
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedTool = searchParams.get('tool');
   const { data: toolDetail } = useTool(selectedTool);
+
+  const openInWorkspace = (toolName: string) => {
+    navigate(`/workspace?tool=primitive&name=${encodeURIComponent(toolName)}`);
+  };
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -76,6 +81,7 @@ export function ToolsCataloguePage() {
                 category={t.category}
                 description={t.description}
                 onClick={() => openTool(t.tool_name)}
+                onOpenInWorkspace={() => openInWorkspace(t.tool_name)}
               />
             ))}
           </div>
@@ -92,6 +98,9 @@ export function ToolsCataloguePage() {
         open={!!selectedTool}
         onClose={closePanel}
         tool={toolDetail}
+        onOpenInWorkspace={
+          selectedTool ? () => openInWorkspace(selectedTool) : undefined
+        }
       />
     </div>
   );
@@ -160,19 +169,28 @@ function ToolTile({
   category,
   description,
   onClick,
+  onOpenInWorkspace,
 }: {
   toolName: string;
   domain: string;
   category?: string | null;
   description: string;
   onClick: () => void;
+  onOpenInWorkspace: () => void;
 }) {
   const shortDescription = description.split('\n').slice(0, 2).join(' ').slice(0, 200);
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="group flex flex-col gap-3 rounded-xl border border-line-soft bg-white/[0.014] px-4 py-4 text-left transition-all duration-150 ease-sleek hover:border-ice-400/30 hover:bg-ice-500/[0.04]"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="group flex cursor-pointer flex-col gap-3 rounded-xl border border-line-soft bg-white/[0.014] px-4 py-4 text-left transition-all duration-150 ease-sleek hover:border-ice-400/30 hover:bg-ice-500/[0.04]"
     >
       <div className="flex items-start gap-2.5">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line-soft bg-gradient-to-br from-ice-500/15 to-ice-700/15 text-ice-300 group-hover:border-ice-400/30">
@@ -197,6 +215,20 @@ function ToolTile({
       <p className="line-clamp-3 text-[11.5px] leading-[1.5] text-fg-secondary">
         {shortDescription}
       </p>
-    </button>
+      <div className="mt-1 flex items-center justify-between gap-2 border-t border-line-subtle pt-2.5">
+        <span className="text-[10.5px] text-fg-faint">Click for inspection</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenInWorkspace();
+          }}
+          className="flex items-center gap-1 rounded-md border border-ice-400/20 bg-ice-500/10 px-2 py-1 text-[10.5px] font-semibold text-ice-200 transition-colors hover:border-ice-400/40 hover:bg-ice-500/20"
+        >
+          Open in workspace
+          <ArrowUpRight size={10} />
+        </button>
+      </div>
+    </div>
   );
 }

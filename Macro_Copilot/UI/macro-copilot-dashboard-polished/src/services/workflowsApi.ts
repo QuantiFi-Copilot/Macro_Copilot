@@ -7,6 +7,7 @@
 // ============================================================================
 
 import type {
+  PrimitiveRunResult,
   ToolCard,
   ToolCardEnvelope,
   ToolCatalogueResponse,
@@ -76,4 +77,29 @@ export async function fetchToolCard(toolName: string): Promise<ToolCard | null> 
     `${PREFIX}/tools/${encodeURIComponent(toolName)}`,
   );
   return res.ok ? res.card : null;
+}
+
+// ---------------------------------------------------------------------------
+// Primitive direct execution — POST /api/v1/tools/{tool_name}/run
+// ---------------------------------------------------------------------------
+// Used by PrimitiveModelView in the workspace.  The user fills in the
+// controls rail (a form auto-rendered from the tool's *Input JSON
+// schema), clicks Run, and we hand the params dict to the backend.
+// The backend re-validates with Pydantic, executes the primitive, and
+// returns the raw *Output dict (or an `ok:false` envelope if the
+// validation / execution fails — both surface in the workspace
+// inline rather than as red HTTP errors).
+
+export async function runPrimitive(
+  toolName: string,
+  params: Record<string, unknown>,
+): Promise<PrimitiveRunResult> {
+  return fetchJSON<PrimitiveRunResult>(
+    `${PREFIX}/tools/${encodeURIComponent(toolName)}/run`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ params }),
+    },
+  );
 }

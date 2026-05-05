@@ -36,7 +36,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 
 from api.dependencies import get_engine
+from rates_agent.workflows import (
+    known_rates_primitives,
+    rates_primitive_resolver,
+)
 from rates_agent.workflows._runner import run_template
+from shared.config import load_tool_config
 
 logger = logging.getLogger("api.routes.workflows.execute")
 
@@ -85,3 +90,94 @@ def run_workflow_template(
             detail=f"Unexpected workflow execution error: {exc}",
         )
     return envelope
+
+
+# ===========================================================================
+# PRIMITIVE EXECUTION (per-tool)
+# ===========================================================================
+#
+# POST /tools/{tool_name}/run
+# ---------------------------
+# Body: { "params": { ... } } where params satisfies the primitive's
+# *Input schema (use GET /tools/{tool_name} to inspect).
+#
+# Response::
+#
+#     { "ok": true,  "tool_name": "...", "output": <raw primitive output> }
+#     { "ok": false, "tool_name": "...", "error": "<diagnostic>" }
+#
+# This is the building block the workspace's PrimitiveModelView fires
+# every time the user clicks "Run" — same call shape the workflow
+# executor uses internally, exposed as a one-shot REST endpoint.
+
+
+class RunPrimitiveRequest(BaseModel):
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Primitive input bindings.  Must satisfy the named "
+            "primitive's *Input Pydantic schema (use GET "
+            "/tools/{tool_name} to inspect input_fields)."
+        ),
+    )
+
+
+@router.post(
+    "/tools/{tool_name}/run",
+    summary="Run a single primitive tool with the supplied params",
+)
+def run_primitive_tool(
+    tool_name: str,
+    body: RunPrimitiveRequest,
+    engine: Engine = Depends(get_engine),
+):
+    """Execute a single primitive directly (no workflow, no LLM).
+
+    Same call shape the substrate executor uses internally:
+    ``spec.callable(engine=engine, params=spec.input_class(**params),
+    config=load_tool_config(spec.config_path))``.  Returns the raw
+    output dict (already schema-conformant with the primitive's
+    *Output class).  Validation errors and primitive runtime errors
+    surface as HTTP 200 with ``{"ok": false, "error": "..."}`` so the
+    workspace's controls rail can show the failure inline.  HTTP 500
+    is reserved for unexpected server-side faults.
+    """
+    if tool_name not in known_rates_primitives():
+        return {
+            "ok": False,
+            "tool_name": tool_name,
+            "error": (
+                f"tool_name={tool_name!r} is not registered.  Use "
+                "GET /tools for the full catalogue."
+            ),
+            "known_tool_names": known_rates_primitives(),
+        }
+
+    spec = rates_primitive_resolver(tool_name)
+    config = load_tool_config(spec.config_path)
+
+    # Pydantic validation step — surface clean errors back to the UI.
+    try:
+        params = spec.input_class(**body.params)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "tool_name": tool_name,
+            "error": f"Input validation failed: {exc}",
+        }
+
+    try:
+        output = spec.callable(engine=engine, params=params, config=config)
+    except Exception as exc:
+        logger.exception("[tools/%s] execute failed", tool_name)
+        return {
+            "ok": False,
+            "tool_name": tool_name,
+            "error": f"Primitive execution failed: {exc}",
+        }
+
+    return {
+        "ok": True,
+        "tool_name": tool_name,
+        "output": output,
+    }
