@@ -89,6 +89,23 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
+    # PR 9: workflow-template MCP server.  Distinct from the per-domain
+    # primitive servers above — exposes DAG-shaped analyses
+    # (event_study, regime_conditioned_relationship, ...) plus the
+    # ``list_workflows`` / ``describe_workflow_template`` catalogue
+    # tools.  Not yet wired into ``DOMAIN_MCP_SERVERS`` because
+    # WorkflowRouter (orchestrator/workflow_router.py) is a separate
+    # routing layer parallel to Supervisor; folding workflows into the
+    # main session pipeline is a follow-up PR.  This entry exists so
+    # the config map already documents the workflows server's stdio
+    # subprocess shape for that future integration.
+    "workflows_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.workflows.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
     # ── Future agents ──────────────────────────────────────────────
     # "fx_agent": {
     #     "transport": "stdio",
