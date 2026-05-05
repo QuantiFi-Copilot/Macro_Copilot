@@ -36,6 +36,7 @@ from orchestrator.workflow_contracts import (
 )
 from orchestrator.workflow_prompts import (
     render_catalogue,
+    render_primitive_input_shapes,
     render_router_system_prompt,
 )
 from orchestrator.workflow_router import (
@@ -136,8 +137,128 @@ class TestCatalogueRendering:
             "system-prompt template's {catalogue} placeholder was "
             "not substituted"
         )
+        assert "{primitive_shapes}" not in prompt, (
+            "system-prompt template's {primitive_shapes} placeholder "
+            "was not substituted"
+        )
         assert "event_study" in prompt
         assert "regime_conditioned_relationship" in prompt
+
+
+# ===========================================================================
+# 1b. Primitive *Input shape rendering (PR9 follow-up: closes the
+#      LLM-binding errors where the LLM reused param names across
+#      primitives + emitted short-form curve_family identifiers
+#      ("BUND" instead of "DE_BUND", "GILT" instead of "UK_GILT")).
+# ===========================================================================
+
+
+class TestPrimitiveShapesRendering:
+    def test_render_includes_every_known_primitive(self):
+        """Every primitive registered in
+        ``rates_agent.workflows.rates_primitive_resolver`` MUST
+        appear in the rendered shapes block — otherwise the LLM
+        cannot bind that primitive's *_params slot reliably."""
+        from rates_agent.workflows import known_rates_primitives
+        rendered = render_primitive_input_shapes()
+        for tool_name in known_rates_primitives():
+            assert tool_name in rendered, (
+                f"primitive {tool_name!r} missing from rendered shapes; "
+                "the LLM cannot bind its *_params slot reliably without it"
+            )
+
+    def test_swap_spread_shape_lists_distinct_per_leg_field_names(self):
+        """The single most common LLM-binding bug surfaced on PR #89
+        was reusing ``sovereign_curve_family`` in get_yield_levels_tool's
+        params (where it should be ``curve_family``).  Pin both
+        primitives' shapes here so the LLM has an authoritative
+        reference."""
+        rendered = render_primitive_input_shapes()
+        assert "### calculate_swap_spread_tool" in rendered
+        # swap_spread distinguishes the two legs by per-leg names.
+        # The shape MUST list both.
+        ss_block = rendered.split("### calculate_swap_spread_tool", 1)[1]
+        ss_block = ss_block.split("### ", 1)[0]
+        assert "sovereign_curve_family" in ss_block
+        assert "ois_curve_family" in ss_block
+        assert "tenor" in ss_block
+
+    def test_yield_levels_shape_uses_curve_family_not_sovereign_curve_family(self):
+        rendered = render_primitive_input_shapes()
+        assert "### get_yield_levels_tool" in rendered
+        yl_block = rendered.split("### get_yield_levels_tool", 1)[1]
+        yl_block = yl_block.split("### ", 1)[0]
+        assert "curve_family" in yl_block
+        # CRITICAL: yield_levels does NOT carry a sovereign_curve_family
+        # field — the LLM was wrongly inferring it from swap_spread's
+        # shape.  This assertion locks the distinction.
+        assert "sovereign_curve_family" not in yl_block, (
+            "yield_levels shape leaked sovereign_curve_family; the "
+            "LLM-binding-error fix would regress"
+        )
+
+    def test_descriptions_carry_canonical_curve_family_examples(self):
+        """The Pydantic field descriptions list canonical
+        enum-style identifiers (UST, DE_BUND, UK_GILT, etc.) — the
+        LLM reads those when binding curve_family slots.  Pin a few
+        so the LLM never sees short forms in the rendered prompt."""
+        rendered = render_primitive_input_shapes()
+        for canonical in (
+            "UST", "DE_BUND", "UK_GILT", "IT_BTP",
+            "USD_SOFR_OIS", "EUR_ESTR_OIS", "GBP_SONIA_OIS",
+        ):
+            assert canonical in rendered, (
+                f"canonical curve_family identifier {canonical!r} "
+                "missing from primitive shapes — short-form bindings "
+                "may slip through"
+            )
+
+    def test_full_router_prompt_includes_primitive_shapes_section(self):
+        """End-to-end: the assembled router system prompt MUST
+        include the PRIMITIVE *Input SHAPES section AND the
+        anti-name-reuse warning + curve-family translation rules
+        added in this fix."""
+        prompt = render_router_system_prompt()
+        assert "PRIMITIVE *Input SHAPES" in prompt
+        # The warning about reusing param names across primitives.
+        assert "Reuse param names across primitives" in prompt
+        # The explicit short-form-to-canonical translation rules.
+        assert "BUND →" in prompt
+        assert "GILT →" in prompt
+        assert "SOFR →" in prompt
+        # The "never invent primitive *Input field names" rule.
+        assert (
+            "NEVER invent primitive *Input field names" in prompt
+        )
+
+    def test_render_with_explicit_resolver_and_names(self):
+        """The renderer accepts an explicit (resolver, names) tuple
+        for tests + future agent overrides.  Smoke-test the
+        injection path with a synthetic spec."""
+        from rates_agent.workflows import (
+            known_rates_primitives, rates_primitive_resolver,
+        )
+        # Pass a subset of names to verify selective rendering.
+        subset = ["calculate_swap_spread_tool"]
+        rendered = render_primitive_input_shapes(
+            primitive_resolver=rates_primitive_resolver,
+            primitive_names=subset,
+        )
+        assert "calculate_swap_spread_tool" in rendered
+        assert "get_yield_levels_tool" not in rendered, (
+            "selective rendering leaked an unrequested primitive"
+        )
+
+    def test_render_with_empty_primitive_list_emits_marker(self):
+        """An empty primitive list MUST render an explicit marker so
+        the LLM sees the section is empty rather than a silently-
+        truncated prompt."""
+        from rates_agent.workflows import rates_primitive_resolver
+        rendered = render_primitive_input_shapes(
+            primitive_resolver=rates_primitive_resolver,
+            primitive_names=[],
+        )
+        assert "no primitives registered" in rendered.lower()
 
 
 # ===========================================================================
