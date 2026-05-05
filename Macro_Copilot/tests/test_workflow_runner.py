@@ -315,6 +315,68 @@ class TestRunTemplateHappyPath:
         assert terminal["n_rows"] == 1
         assert terminal["first_row"]["date"] == "1900-01-01"
 
+    def test_non_canonical_curve_family_binding_runs_end_to_end(self):
+        """Param-aware synthetic fetchers (PR9 follow-up to the
+        post-#91 gauntlet failure): an LLM binding that picks a
+        non-canonical curve_family (UK_GILT + GBP_SONIA_OIS) MUST
+        execute end-to-end.  Earlier the synthetic fetchers were
+        hardcoded to UST/USD_SOFR_OIS; non-canonical bindings hit
+        "Missing leg data" inside the swap_spread compute and the
+        bridge then failed to validate the error envelope as
+        SwapSpreadOutput.  This test locks the new behavior."""
+        non_canonical = dict(CANONICAL_Q1_SLOT_VALUES)
+        non_canonical["signal_params"] = {
+            "sovereign_curve_family": "UK_GILT",
+            "ois_curve_family": "GBP_SONIA_OIS",
+            "tenor": "10Y",
+            "lookback_days": 1825,
+        }
+        non_canonical["target_params"] = {
+            "curve_family": "UK_GILT",
+            "tenor": "10Y",
+            "lookback_days": 1830,
+        }
+        non_canonical["threshold"] = 2.0
+
+        with q1_canonical_fetchers_context():
+            envelope = run_template("event_study", non_canonical)
+        assert envelope["ok"] is True, envelope.get("error")
+        assert envelope["terminal_artifact"]["type"] == "Series"
+        # Sanity: lineage names every node, including align_series
+        # (which exercises the pair of select_from_series_set
+        # nodes), so the cross-calendar genericity branch ran.
+        for nid in (
+            "signal", "target",
+            "align", "signal_aligned", "target_aligned",
+            "events", "windows", "aggregate",
+            "compare",
+        ):
+            assert nid in envelope["workflow_lineage_summary"]
+
+    def test_non_canonical_binding_with_sovereign_curve_spread_signal(self):
+        """An LLM picking ``calculate_curve_spread_tool`` (sovereign,
+        UST 2s10s) for the signal MUST also execute end-to-end —
+        proves the comprehensive synthetic-fetcher coverage covers
+        every fetcher every V1 primitive uses, not just swap_spread
+        + yield_levels."""
+        non_canonical = dict(CANONICAL_Q1_SLOT_VALUES)
+        non_canonical["signal_tool_name"] = "calculate_curve_spread_tool"
+        non_canonical["signal_params"] = {
+            "curve_family": "UST",
+            "short_tenor": "2Y",
+            "long_tenor": "10Y",
+            "lookback_days": 1825,
+        }
+        non_canonical["signal_output_field"] = "time_series_zscore"
+        non_canonical["target_tool_name"] = "get_yield_levels_tool"
+        non_canonical["target_params"] = {
+            "curve_family": "UST", "tenor": "30Y", "lookback_days": 1825,
+        }
+        non_canonical["threshold"] = 1.5
+        with q1_canonical_fetchers_context():
+            envelope = run_template("event_study", non_canonical)
+        assert envelope["ok"] is True, envelope.get("error")
+
     def test_envelope_carries_workflow_lineage_summary(self):
         """The envelope MUST carry the substrate's
         ``workflow_lineage_summary`` so callers (LLM, CLI, eval
