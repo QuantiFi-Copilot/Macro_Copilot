@@ -193,16 +193,21 @@ function TerminalArtifactBlock({
   artifact: WorkflowTerminalArtifact;
 }) {
   if (artifact.type === 'Series') {
+    // Event-relative offset Series (e.g. conditional_aggregate output):
+    // index is "days from event" — render as a horizon strip, not a
+    // calendar range, so we don't print the synthetic 1970 anchor.
+    const isEventRelative = artifact.index_kind === 'event_relative_offset';
+
     return (
       <div className="mt-2 space-y-2.5">
         <div className="flex items-baseline gap-3 text-[11px]">
           <span className="rounded-md border border-line-soft bg-white/[0.02] px-1.5 py-[1px] text-[10px] font-semibold uppercase tracking-[0.1em] text-ice-200">
-            Series
+            {isEventRelative ? 'Series · Event-Relative' : 'Series'}
           </span>
           <span className="mono text-fg-secondary">{artifact.units ?? '?'}</span>
           <span className="mono text-fg-faint">·</span>
           <span className="mono text-fg-secondary">
-            {artifact.n_rows} rows
+            {artifact.n_rows} {isEventRelative ? 'horizons' : 'rows'}
           </span>
         </div>
 
@@ -215,20 +220,24 @@ function TerminalArtifactBlock({
           </div>
         )}
 
-        {(artifact.first_row || artifact.last_row) && (
-          <div className="flex items-baseline gap-2 rounded-md border border-line-subtle bg-white/[0.012] px-3 py-2 text-[10.5px]">
-            {artifact.first_row && (
-              <span className="mono text-fg-muted">
-                {artifact.first_row.date}: {formatNumber(artifact.first_row.value)}
-              </span>
-            )}
-            <span className="text-fg-faint">→</span>
-            {artifact.last_row && (
-              <span className="mono text-fg-secondary">
-                {artifact.last_row.date}: {formatNumber(artifact.last_row.value)}
-              </span>
-            )}
-          </div>
+        {isEventRelative ? (
+          <EventRelativeStrip artifact={artifact} />
+        ) : (
+          (artifact.first_row || artifact.last_row) && (
+            <div className="flex items-baseline gap-2 rounded-md border border-line-subtle bg-white/[0.012] px-3 py-2 text-[10.5px]">
+              {artifact.first_row && (
+                <span className="mono text-fg-muted">
+                  {artifact.first_row.date}: {formatNumber(artifact.first_row.value)}
+                </span>
+              )}
+              <span className="text-fg-faint">→</span>
+              {artifact.last_row && (
+                <span className="mono text-fg-secondary">
+                  {artifact.last_row.date}: {formatNumber(artifact.last_row.value)}
+                </span>
+              )}
+            </div>
+          )
         )}
       </div>
     );
@@ -279,6 +288,99 @@ function TerminalArtifactBlock({
     <p className="mt-2 mono text-[11px] text-fg-secondary">
       {artifact.type}
     </p>
+  );
+}
+
+function EventRelativeStrip({
+  artifact,
+}: {
+  artifact: WorkflowTerminalArtifact;
+}) {
+  // Prefer the full offset_rows; fall back to head + tail when the
+  // backend didn't ship them (older builds).
+  const rows: Array<{ offset: number; value: number | null }> =
+    artifact.offset_rows && artifact.offset_rows.length > 0
+      ? artifact.offset_rows
+      : [
+          artifact.first_row?.offset != null
+            ? {
+                offset: artifact.first_row.offset,
+                value: artifact.first_row.value,
+              }
+            : null,
+          artifact.last_row?.offset != null
+            ? {
+                offset: artifact.last_row.offset,
+                value: artifact.last_row.value,
+              }
+            : null,
+        ].filter((r): r is { offset: number; value: number | null } => !!r);
+
+  if (rows.length === 0) return null;
+
+  // Symmetric scale so positive and negative bars share a baseline.
+  const finite = rows
+    .map((r) => r.value)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  const absMax = finite.length > 0 ? Math.max(...finite.map(Math.abs)) : 1;
+  const denom = absMax === 0 ? 1 : absMax;
+
+  const unit = artifact.units ?? '';
+
+  return (
+    <div className="rounded-md border border-line-subtle bg-white/[0.012] px-3 py-2.5">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
+          Mean by horizon ({artifact.offset_unit ?? 'days'} from event)
+        </span>
+        <span className="mono text-[9.5px] text-fg-faint">
+          {unit}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {rows.map((r) => {
+          const v = typeof r.value === 'number' ? r.value : 0;
+          const pct = (Math.abs(v) / denom) * 100;
+          const positive = v >= 0;
+          return (
+            <div
+              key={r.offset}
+              className="flex items-center gap-2 text-[10.5px]"
+            >
+              <span className="mono w-10 shrink-0 text-fg-muted">
+                Day {r.offset >= 0 ? `+${r.offset}` : r.offset}
+              </span>
+              <div className="relative flex h-3 flex-1 items-center">
+                {/* Center axis */}
+                <div className="absolute inset-y-0 left-1/2 w-px bg-line-subtle" />
+                {/* Bar */}
+                <div
+                  className={cn(
+                    'absolute h-2 rounded-[2px]',
+                    positive
+                      ? 'left-1/2 bg-mint-400/60'
+                      : 'right-1/2 bg-coral-400/60',
+                  )}
+                  style={{ width: `${pct / 2}%` }}
+                />
+              </div>
+              <span
+                className={cn(
+                  'mono w-14 shrink-0 text-right',
+                  v > 0
+                    ? 'text-mint-300'
+                    : v < 0
+                      ? 'text-coral-300'
+                      : 'text-fg-muted',
+                )}
+              >
+                {formatNumber(r.value)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

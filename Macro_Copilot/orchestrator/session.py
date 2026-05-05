@@ -1378,17 +1378,24 @@ def _format_workflow_prose(envelope: dict) -> str:
     terminal = envelope.get("terminal_artifact") or {}
     units = terminal.get("units") or "?"
     n_rows = terminal.get("n_rows", "?")
+    # Event-relative Series (e.g. event_study terminal aggregate) is
+    # indexed by integer horizon, not calendar date — so we use the
+    # noun "horizons" instead of "rows".
+    row_noun = (
+        "horizons" if terminal.get("index_kind") == "event_relative_offset"
+        else "rows"
+    )
     summary_stats = terminal.get("summary_stats") or {}
     mean = summary_stats.get("mean")
     if mean is not None and isinstance(mean, (int, float)):
         return (
             f"Ran ``{template_id}``. Terminal Series ({units}, "
-            f"{n_rows} rows) — mean {mean:.4g}. See the workflow "
+            f"{n_rows} {row_noun}) — mean {mean:.4g}. See the workflow "
             "result card for the full per-offset / per-regime view."
         )
     artifact_type = terminal.get("type", "Series")
     return (
         f"Ran ``{template_id}``. Terminal artifact: {artifact_type} "
-        f"({units}, {n_rows} rows). See the workflow result card "
+        f"({units}, {n_rows} {row_noun}). See the workflow result card "
         "for details."
     )

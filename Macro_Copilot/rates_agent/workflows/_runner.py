@@ -95,6 +95,43 @@ def _safe_float(value: Any) -> Optional[float]:
     return f
 
 
+def _detect_event_relative_index(s: Series) -> Optional[Dict[str, Any]]:
+    """Inspect the Series lineage for a synthetic-anchor (event-relative
+    offset) index encoding.
+
+    Some operators (notably ``conditional_aggregate``) emit a Series whose
+    ``DatetimeIndex`` is *not* a calendar — it's an integer offset
+    (event-relative day) packed onto a synthetic anchor (1970-01-01) so
+    the canonical ``Series`` shape is preserved.  Without this hint, UI
+    renderers will literally print "1970-01-01" which is misleading.
+
+    The encoding is signalled by the operator step's params carrying
+    BOTH ``offset_anchor`` (an ISO date string) AND
+    ``event_relative_offsets`` (a list of ints).  Returns the offsets +
+    anchor when detected; ``None`` for normal calendar series.
+
+    We walk lineage in reverse so the most recent step wins (operators
+    that re-anchor to calendar after the conditional_aggregate would
+    correctly suppress the offset semantic — though no such operator
+    exists today).
+    """
+    try:
+        steps = list(s.lineage.steps)
+    except Exception:
+        return None
+    for step in reversed(steps):
+        params = getattr(step, "params", None) or {}
+        anchor = params.get("offset_anchor")
+        offsets = params.get("event_relative_offsets")
+        if anchor and isinstance(offsets, list):
+            return {
+                "anchor": str(anchor),
+                "offsets": [int(x) for x in offsets],
+                "produced_by": getattr(step, "name", None),
+            }
+    return None
+
+
 def _summarize_series(s: Series) -> Dict[str, Any]:
     payload = s.payload
     n_rows = int(len(payload))
@@ -105,9 +142,16 @@ def _summarize_series(s: Series) -> Dict[str, Any]:
             "units": s.units.value,
             "frequency": s.frequency,
             "n_rows": 0,
+            "index_kind": "calendar",
         }
-    head_idx, head_val = payload.index[0], payload.iloc[0]
-    tail_idx, tail_val = payload.index[-1], payload.iloc[-1]
+
+    # Detect synthetic-anchor (event-relative offset) encoding.  If
+    # detected, we emit *offset-keyed* head/tail rather than calendar
+    # dates — same payload, different framing — so the consumer renders
+    # "Day 0 → Day 5" instead of "1970-01-01 → 1970-01-06".
+    offset_meta = _detect_event_relative_index(s)
+    head_val = payload.iloc[0]
+    tail_val = payload.iloc[-1]
     cleaned = payload.dropna()
     summary_stats: Dict[str, Optional[float]] = {}
     if len(cleaned) > 0:
@@ -118,22 +162,62 @@ def _summarize_series(s: Series) -> Dict[str, Any]:
             "max": _safe_float(cleaned.max()),
             "n_finite": int(len(cleaned)),
         }
-    return {
+
+    out: Dict[str, Any] = {
         "type": "Series",
         "series_key": s.series_key,
         "units": s.units.value,
         "frequency": s.frequency,
         "n_rows": n_rows,
-        "first_row": {
-            "date": head_idx.strftime("%Y-%m-%d"),
-            "value": _safe_float(head_val),
-        },
-        "last_row": {
-            "date": tail_idx.strftime("%Y-%m-%d"),
-            "value": _safe_float(tail_val),
-        },
         "summary_stats": summary_stats,
     }
+
+    if offset_meta is not None:
+        # Event-relative offset Series — surface the integer offsets
+        # explicitly + offset-keyed head/tail.  Keep ``first_row`` /
+        # ``last_row`` for backwards compatibility with consumers that
+        # haven't read ``index_kind`` yet, but their ``date`` field is
+        # the anchor-encoded date (existing behaviour, not a regression).
+        offsets = offset_meta["offsets"]
+        out["index_kind"] = "event_relative_offset"
+        out["offset_anchor"] = offset_meta["anchor"]
+        out["offsets"] = offsets
+        out["offset_unit"] = "days"
+        out["first_row"] = {
+            "offset": offsets[0] if offsets else None,
+            "value": _safe_float(head_val),
+        }
+        out["last_row"] = {
+            "offset": offsets[-1] if offsets else None,
+            "value": _safe_float(tail_val),
+        }
+        # All offset/value pairs — useful for the UI to render a small
+        # bar / line chart of "mean move by horizon".  Cheap: capped by
+        # the workflow's window_length (typically <= 30).
+        try:
+            out["offset_rows"] = [
+                {
+                    "offset": int(k),
+                    "value": _safe_float(v),
+                }
+                for k, v in zip(offsets, payload.tolist())
+            ]
+        except Exception:
+            pass
+    else:
+        head_idx = payload.index[0]
+        tail_idx = payload.index[-1]
+        out["index_kind"] = "calendar"
+        out["first_row"] = {
+            "date": head_idx.strftime("%Y-%m-%d"),
+            "value": _safe_float(head_val),
+        }
+        out["last_row"] = {
+            "date": tail_idx.strftime("%Y-%m-%d"),
+            "value": _safe_float(tail_val),
+        }
+
+    return out
 
 
 def _summarize_series_set(s: SeriesSet) -> Dict[str, Any]:

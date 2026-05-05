@@ -100,14 +100,34 @@ export type ToolCardEnvelope =
 // Workflow execution envelope (mirrors _runner.run_template return shape)
 // ---------------------------------------------------------------------------
 
+/** Discriminator for the Series index — calendar dates vs synthetic-anchor
+ *  event-relative offsets (e.g. conditional_aggregate output where the
+ *  index is "days from event" not "calendar day").  When the backend
+ *  reports `event_relative_offset`, the renderer should label rows as
+ *  "Day N" using `offsets`, not the misleading 1970-anchored date. */
+export type SeriesIndexKind = 'calendar' | 'event_relative_offset';
+
 export type WorkflowTerminalArtifact = {
   type: string; // "Series" | "SeriesSet" | ...
   series_key?: string;
   units?: string | null;
   frequency?: string | null;
   n_rows: number;
-  first_row?: { date: string; value: number | null };
-  last_row?: { date: string; value: number | null };
+  /** Calendar vs event-relative offset semantics — defaults to
+   *  calendar when absent (older backends). */
+  index_kind?: SeriesIndexKind;
+  /** Calendar-shaped head/tail (date + value).  Present when
+   *  `index_kind === "calendar"` (or absent). */
+  first_row?: {
+    date?: string;
+    offset?: number | null;
+    value: number | null;
+  };
+  last_row?: {
+    date?: string;
+    offset?: number | null;
+    value: number | null;
+  };
   summary_stats?: {
     mean?: number | null;
     std?: number | null;
@@ -115,6 +135,16 @@ export type WorkflowTerminalArtifact = {
     max?: number | null;
     n_finite?: number;
   };
+  // Event-relative-offset Series:
+  /** ISO date string the offsets are encoded onto on the wire. */
+  offset_anchor?: string;
+  /** The integer event-relative offsets (e.g. [0,1,2,3,4,5] for a 5-day
+   *  forward window).  Same length as `offset_rows`. */
+  offsets?: number[];
+  offset_unit?: 'days';
+  /** Full offset → value pairs.  Small (<=30 typically), so the chat
+   *  card can render every horizon as a row / bar inline. */
+  offset_rows?: Array<{ offset: number; value: number | null }>;
   // SeriesSet-shaped:
   keys?: string[];
   units_by_key?: Record<string, string>;
