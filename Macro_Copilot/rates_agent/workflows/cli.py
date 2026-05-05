@@ -20,6 +20,21 @@ This is the developer-facing surface for the gauntlet walkthrough
                          text the router sees in its system prompt).
                          Useful when authoring new prompts.
 
+Configuration / .env discipline
+-------------------------------
+This CLI reuses ``orchestrator.config`` for ``.env`` loading +
+``ANTHROPIC_API_KEY`` validation.  Importing the config module
+triggers ``load_dotenv`` against the project root's ``.env`` file,
+matching the existing CLI in ``orchestrator/graph.py``.  When the
+LLM-using subcommands run (``route`` / ``run``), ``main`` calls
+``orchestrator.config.validate()`` to fail-fast with a clear
+diagnostic if ``ANTHROPIC_API_KEY`` is missing — rather than letting
+a deep langchain stack trace surface.
+
+The CLI's ``--model`` flag defaults to ``orchestrator.config.LLM_MODEL``
+so the workflow router and the existing supervisor see the same
+model unless the developer overrides explicitly.
+
 Synthetic vs real DB
 --------------------
 ``run`` defaults to synthetic DB fetchers
@@ -63,6 +78,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Importing ``orchestrator.config`` triggers ``load_dotenv`` against
+# the project root's .env file (matches the existing
+# ``orchestrator.graph`` CLI's bootstrap discipline).  Must run BEFORE
+# any LLM-binding import so ``ANTHROPIC_API_KEY`` is in os.environ by
+# the time langchain-anthropic constructs its client.
+from orchestrator import config as _orchestrator_config  # noqa: F401, E402
+
 # Importing each template package triggers ``register_template`` via
 # its __init__.py.  Required so ``list_workflows()`` /
 # ``WorkflowRouter`` see every template.
@@ -87,9 +109,11 @@ logger = logging.getLogger("rates_agent.workflows.cli")
 
 
 # ---------------------------------------------------------------------------
-# Default LLM model — match orchestrator/config.py's default.
+# Default LLM model — sourced from orchestrator/config.py so the CLI,
+# the existing Supervisor, and any future session integration share
+# one model knob (settable via env var ``LLM_MODEL``).
 # ---------------------------------------------------------------------------
-_DEFAULT_LLM_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_LLM_MODEL = _orchestrator_config.LLM_MODEL
 
 
 # ===========================================================================
@@ -294,6 +318,14 @@ def build_argparser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     parser = build_argparser()
     args = parser.parse_args(argv)
+
+    # ``catalogue`` doesn't call the LLM; the other two do.  Validate
+    # ``ANTHROPIC_API_KEY`` (and any other required env vars) BEFORE
+    # constructing the WorkflowRouter so the failure mode is a clear
+    # diagnostic, not a deep langchain stack trace.  Mirrors the
+    # ``orchestrator.graph`` CLI's discipline.
+    if args.command in ("route", "run"):
+        _orchestrator_config.validate()
 
     if args.command == "catalogue":
         return _cmd_catalogue()
