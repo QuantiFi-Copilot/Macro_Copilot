@@ -61,33 +61,35 @@
 # ``event_windows`` requires ``events.mask.index ==
 # target.payload.index`` (operator-level invariant — see
 # shared/operators/event_windows/operator.py).  This template's DAG
-# now ships with an EXPLICIT alignment branch — the signal and
-# target Series feed into ``align`` (align_series with
-# join_policy=inner) BEFORE the threshold_events / event_windows
-# branches consume them, and ``signal_aligned`` /
-# ``target_aligned`` (select_from_series_set) extract each member
-# from the resulting SeriesSet onto a common DatetimeIndex.  This
-# closes the cross-calendar genericity gap Codex P2 surfaced on
-# PR #86: the SAME event_study template now runs unchanged across
-# instrument families with different trading-day calendars (e.g.
-# UK gilts target with US-calendar OIS signal — different holiday
-# sets).
+# ships with an EXPLICIT alignment branch — the signal and target
+# Series feed into ``align`` (align_series with join_policy=inner)
+# BEFORE the threshold_events / event_windows branches consume them,
+# and ``signal_aligned`` / ``target_aligned`` (select_from_series_set)
+# extract each member from the resulting SeriesSet onto a common
+# DatetimeIndex.  This closes the cross-calendar genericity gap
+# Codex P2 surfaced on PR #86: the SAME event_study template runs
+# unchanged across instrument families with different trading-day
+# calendars (e.g. UK gilts target with US-calendar OIS signal —
+# different holiday sets).
 #
-# Two new slots support this:
-#   - ``signal_series_key`` : the series_key the bridge sets on the
-#     signal primitive's lifted Series (= the primitive's
-#     ``time_series_*.series_name``).  E.g. for the canonical Q1
-#     binding the swap_spread primitive sets
-#     ``ust_usd_sofr_ois_2y_swap_spread_change_zscore``.
-#   - ``target_series_key`` : same idea for the target primitive's
-#     lifted Series.  E.g. for yield_levels(UST, 10Y), it's
-#     ``ust_10y_yield``.
+# Template-controlled SeriesSet keys (Codex P2 follow-up to PR #87)
+# ----------------------------------------------------------------
+# The ``align`` node sets ``output_keys: ["signal", "target"]`` so
+# the SeriesSet's per-key dicts use those template-controlled names
+# instead of each input primitive's bridge-derived series_key (which
+# would be a wire-naming detail like
+# ``ust_usd_sofr_ois_2y_swap_spread_change_zscore``).  The two
+# ``select_from_series_set`` nodes downstream then reference the
+# literal strings ``"signal"`` and ``"target"`` directly — NO slot
+# is exposed to template callers for this wiring detail.  The
+# workflow-architecture contract's "templates expose only central
+# analysis knobs, not wiring internals" discipline is preserved.
 #
 # Same-calendar bindings (the canonical case) are unaffected by the
 # alignment step: align_series's inner-join produces the identical
 # index when both inputs already share it.  The lineage records
-# that alignment ran, so cross-instrument workflows are honest
-# about their alignment provenance.
+# that alignment ran (and any rename), so cross-instrument
+# workflows are honest about their alignment provenance.
 #
 # require_matching_missingness=false is set on the align node
 # explicitly so cross-instrument bindings whose primitives carry
@@ -192,20 +194,6 @@ slot_schema:
       The binding caller picks which event semantics they want
       explicitly.
 
-  - name: signal_series_key
-    type: str
-    required: true
-    description: >-
-      The ``series_key`` the bridge sets on the lifted signal Series
-      (= the value of ``time_series_*.series_name`` on the primitive's
-      output).  Required so the template's ``align`` →
-      ``select_from_series_set`` pair can extract the signal Series
-      back out of the aligned SeriesSet.  E.g. for the canonical Q1
-      binding (swap_spread.time_series_change_zscore on UST + OIS,
-      tenor 2Y), pass
-      ``ust_usd_sofr_ois_2y_swap_spread_change_zscore``.  Each
-      primitive's ``compute()`` documents its series_name convention.
-
   # -------------------------------------------------------------------------
   # Target series — the series whose forward moves get aggregated around
   # each event.
@@ -236,18 +224,6 @@ slot_schema:
       (e.g. time_series for yield_levels, time_series_spread for a
       curve_spread, time_series_forward for the OIS forward-rate
       primitive).
-
-  - name: target_series_key
-    type: str
-    required: true
-    description: >-
-      The ``series_key`` the bridge sets on the lifted target Series
-      (= the value of ``time_series_*.series_name`` on the primitive's
-      output).  Required so the template's ``align`` →
-      ``select_from_series_set`` pair can extract the target Series
-      back out of the aligned SeriesSet.  E.g. for yield_levels(UST,
-      10Y), pass ``ust_10y_yield``.  Each primitive's ``compute()``
-      documents its series_name convention.
 
   # -------------------------------------------------------------------------
   # Analysis knobs.
@@ -327,18 +303,26 @@ nodes:
       # the alignment step's lineage so a downstream consumer
       # sees the resolution honestly.
       require_matching_missingness: false
+      # Template-controlled SeriesSet member names.  Without this
+      # rename, downstream select_from_series_set nodes would have
+      # to know each primitive's bridge-derived series_key (a wire-
+      # naming detail), which would force the template to expose
+      # ``signal_series_key`` / ``target_series_key`` slots —
+      # leaking implementation detail into the slot surface.  Codex
+      # P2 follow-up to PR #87.
+      output_keys: [signal, target]
 
   - kind: operator
     node_id: signal_aligned
     operator_name: select_from_series_set
     params:
-      series_key: {$slot: signal_series_key}
+      series_key: signal               # template-locked: matches align.output_keys[0]
 
   - kind: operator
     node_id: target_aligned
     operator_name: select_from_series_set
     params:
-      series_key: {$slot: target_series_key}
+      series_key: target               # template-locked: matches align.output_keys[1]
 
   # ---- Conditional branch ----
 

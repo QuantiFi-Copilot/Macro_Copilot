@@ -250,8 +250,12 @@ slot_schema:
       (e.g. ``time_series`` for ois_rate_level).
 
   # -------------------------------------------------------------------------
-  # Regime signal — the per-date series whose level defines which regime
-  # each day belongs to (steepening / flattening / etc.).
+  # Regime signal — the per-date series whose DAILY MOVE defines which
+  # regime each day belongs to (steepening / flattening / etc.).  The
+  # template's internal ``regime_diff`` step differences this signal
+  # day-over-day BEFORE the threshold_events nodes consume it, so
+  # the high/low thresholds operate on the daily move (NOT on the
+  # signal's level).
   # -------------------------------------------------------------------------
 
   - name: regime_signal_tool_name
@@ -261,9 +265,16 @@ slot_schema:
       MCP tool name of the primitive that emits the regime-classifier
       signal.  Canonical Q2 example: ``calculate_ois_curve_spread_tool``
       (2s10s OIS curve spread, BPS).  The regime is defined by
-      thresholding this signal's LEVEL — i.e. "steep" = signal > +N bps,
-      "flat" = signal < -N bps.  See ``high_threshold`` / ``low_threshold``
-      below.
+      thresholding this signal's DAILY MOVE (not its level) — the
+      template's internal ``regime_diff`` step
+      (``series_arithmetic op=diff, period=1``) differences the lifted
+      Series day-over-day before the threshold_events branches see
+      it.  So for the canonical 2s10s binding: "steepening" = the
+      curve moved UP by ≥ ``high_threshold`` bps today,
+      "flattening" = the curve moved DOWN by ≥ |``low_threshold``|
+      bps today.  See ``high_threshold`` / ``low_threshold`` below
+      for the exact semantics + the template header's
+      "Steepening vs flattening" note for the design rationale.
 
   - name: regime_signal_params
     type: dict

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Counter, List, Optional
+from typing import Any, Counter, List, Optional
 
 import pandas as pd
 
@@ -91,6 +91,10 @@ def align_series(
     if params is None:
         # Pull each scalar default out of the operator config.  The
         # config's valid_values check already gates them at load time.
+        # ``output_keys`` is intentionally NOT in the operator config
+        # (it's a per-template choice, not a default the operator
+        # author can pre-declare); it stays None unless the caller /
+        # template node explicitly supplies it.
         params = AlignSeriesParams(
             join_policy=config.default_value("join_policy"),
             fill_policy=config.default_value("fill_policy"),
@@ -132,6 +136,21 @@ def align_series(
             f"align_series: duplicate series_key(s) {duplicates!r}; "
             "every input must have a unique series_key."
         )
+
+    # Resolve output keys.  When the caller passed ``output_keys``,
+    # the SeriesSet's per-key dicts use those template-controlled
+    # names instead of each input's ``series_key``.  Closes the
+    # leaked-implementation-detail-slot gap Codex surfaced on PR #87.
+    if params.output_keys is not None:
+        if len(params.output_keys) != len(series_list):
+            raise AlignSeriesError(
+                f"align_series: output_keys length "
+                f"({len(params.output_keys)}) must equal the number "
+                f"of input series ({len(series_list)})."
+            )
+        output_keys = list(params.output_keys)
+    else:
+        output_keys = list(keys)
 
     # Index-type compatibility.  ``Series.__init__`` already enforces
     # DatetimeIndex per artifact, but a defensive recheck protects
@@ -255,44 +274,63 @@ def align_series(
     # ------------------------------------------------------------------
     series_by_key = {}
     missingness_by_key: dict[str, MissingnessPolicy] = {}
-    for s in series_list:
+    for i, s in enumerate(series_list):
+        out_key = output_keys[i]
         reindexed = s.payload.reindex(common_index)
         if params.fill_policy == "ffill":
             reindexed = reindexed.ffill(limit=params.fill_limit)
-            missingness_by_key[s.series_key] = AlignSeriesFFillV1(
+            missingness_by_key[out_key] = AlignSeriesFFillV1(
                 upstream=s.missingness_policy,
                 fill_limit=params.fill_limit,
             )
         else:
             # fill_policy == "raw": payload is reindex-only; the
             # upstream policy still describes it accurately.
-            missingness_by_key[s.series_key] = s.missingness_policy
-        series_by_key[s.series_key] = reindexed
+            missingness_by_key[out_key] = s.missingness_policy
+        series_by_key[out_key] = reindexed
 
-    units_by_key = {s.series_key: s.units for s in series_list}
-    upstream_lineage_by_key = {s.series_key: s.lineage for s in series_list}
+    units_by_key = {
+        output_keys[i]: s.units for i, s in enumerate(series_list)
+    }
+    upstream_lineage_by_key = {
+        output_keys[i]: s.lineage for i, s in enumerate(series_list)
+    }
 
     # ------------------------------------------------------------------
     # 5. Build the alignment lineage step.
     # ------------------------------------------------------------------
     input_hashes = tuple(s.lineage.head_hash for s in series_list)
+    # Step params record the rename when caller supplied ``output_keys``,
+    # so a downstream lineage walker can recover both the original
+    # input series_keys (via ``input_series_keys``) AND the
+    # template-controlled names the SeriesSet exposes downstream
+    # (via ``output_series_keys`` and the input→output map).
+    step_params: dict[str, Any] = {
+        "join_policy": params.join_policy,
+        "fill_policy": params.fill_policy,
+        "fill_limit": params.fill_limit,
+        "require_matching_frequency": params.require_matching_frequency,
+        "require_matching_missingness": params.require_matching_missingness,
+        # Stable, sorted to keep the hash invariant under input
+        # reordering; per-key upstream lineage is captured via
+        # input_hashes already.
+        "input_series_keys": sorted(keys),
+        # Record the resolved compatibility outcomes so consumers
+        # can recover what was actually checked vs accepted.
+        "resolved_frequency": common_frequency,
+    }
+    if params.output_keys is not None:
+        # Preserve declaration-order pairing so a downstream lineage
+        # walker can reconstruct which input went to which output
+        # name.
+        step_params["output_series_keys"] = list(output_keys)
+        step_params["input_to_output_key_map"] = dict(
+            zip(keys, output_keys)
+        )
     align_step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
-        params={
-            "join_policy": params.join_policy,
-            "fill_policy": params.fill_policy,
-            "fill_limit": params.fill_limit,
-            "require_matching_frequency": params.require_matching_frequency,
-            "require_matching_missingness": params.require_matching_missingness,
-            # Stable, sorted to keep the hash invariant under input
-            # reordering; per-key upstream lineage is captured via
-            # input_hashes already.
-            "input_series_keys": sorted(keys),
-            # Record the resolved compatibility outcomes so consumers
-            # can recover what was actually checked vs accepted.
-            "resolved_frequency": common_frequency,
-        },
+        params=step_params,
         input_hashes=input_hashes,
     )
     set_lineage = Lineage.from_steps([align_step])

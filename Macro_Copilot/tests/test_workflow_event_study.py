@@ -247,15 +247,11 @@ class TestTemplateStructure:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
-            "signal_series_key": (
-                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
-            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST", "tenor": "10Y", "lookback_days": 1825,
             },
             "target_output_field": "time_series",
-            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 21,
         }
@@ -300,10 +296,14 @@ class TestArchetypeSignature:
 class TestSlotBinding:
     def _full_slot_values(self, **overrides):
         """Canonical proof-Q1 slot binding (single-day widening event
-        study: z-score of the day-over-day spread CHANGE).  Includes
-        the ``signal_series_key`` / ``target_series_key`` slots
-        added in the cross-calendar genericity revision (Codex P2
-        follow-up to PR #86)."""
+        study: z-score of the day-over-day spread CHANGE).  The
+        ``signal_series_key`` / ``target_series_key`` slots that
+        previously appeared on this template were dropped in Codex
+        P2 follow-up to PR #87 — the alignment branch's SeriesSet
+        members are now renamed to template-controlled "signal" /
+        "target" via ``align_series.output_keys``, so the template
+        no longer leaks bridge-naming details into its slot
+        surface."""
         defaults = {
             "signal_tool_name": "calculate_swap_spread_tool",
             "signal_params": {
@@ -313,9 +313,6 @@ class TestSlotBinding:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
-            "signal_series_key": (
-                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
-            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -323,7 +320,6 @@ class TestSlotBinding:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
-            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }
@@ -396,9 +392,6 @@ class TestEndToEndRealRates:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
-            "signal_series_key": (
-                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
-            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -406,7 +399,6 @@ class TestEndToEndRealRates:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
-            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }
@@ -698,7 +690,6 @@ class TestInstrumentAgnostic:
                 "units": "z_score",
             },
             "signal_output_field": "time_series",
-            "signal_series_key": "synthetic_z",
             "target_tool_name": "synthetic_target_tool",
             "target_params": {
                 "series_name": "synthetic_pct",
@@ -707,7 +698,6 @@ class TestInstrumentAgnostic:
                 "units": "percent",
             },
             "target_output_field": "time_series",
-            "target_series_key": "synthetic_pct",
             "threshold": 1.5,
             "post_window": 5,
         })
@@ -730,6 +720,298 @@ class TestInstrumentAgnostic:
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
             "compare",
+        }
+
+
+# ===========================================================================
+# 5b. Cross-calendar genericity (Codex P3 follow-up to PR #87)
+# ===========================================================================
+#
+# The TestInstrumentAgnostic suite proves the template runs unchanged
+# against a finance-blind synthetic primitive — but signal AND target
+# in that test share the same bdate_range (US business days), so the
+# cross-calendar genericity claim is structurally present in the DAG
+# but not actually exercised by the test.  Codex P3 follow-up to
+# PR #87: add a dedicated test where signal and target use DIFFERENT
+# trading-day grids (different holiday sets), prove the workflow
+# succeeds end-to-end, and prove the alignment branch's inner-join
+# computed the calendar intersection.
+#
+# Implementation: two new synthetic primitive callables emit Series
+# whose indexes deliberately drop different holidays:
+#
+#   _us_calendar_signal_callable : standard bdate_range MINUS one
+#                                  US-only holiday (Independence Day
+#                                  2025-07-04).  Mimics a US-rooted
+#                                  primitive's calendar.
+#   _uk_calendar_target_callable : standard bdate_range MINUS one
+#                                  UK-only holiday (UK Spring Bank
+#                                  Holiday 2025-05-26).  Mimics a
+#                                  UK-rooted primitive's calendar.
+#
+# The two indexes overlap on every business day EXCEPT those two
+# holidays.  Inner-join of the two indexes drops both, so the aligned
+# common index has exactly len(bdate_range) - 2 dates (when the
+# bdate_range covers both 2025-05-26 AND 2025-07-04).
+
+
+# Hard-coded "country-specific" holiday dates for the cross-calendar
+# fixtures.  Locked in code so the fixtures' "calendar mismatch" is
+# explicit, deterministic, and surfaces clearly in lineage.
+_US_ONLY_HOLIDAY = pd.Timestamp("2025-07-04").date()
+_UK_ONLY_HOLIDAY = pd.Timestamp("2025-05-26").date()
+
+
+def _us_calendar_signal_callable(*, engine, params, config) -> dict:
+    """Synthetic signal on a US calendar — bdate_range minus one
+    US-only holiday (Independence Day).  UK Spring Bank Holiday
+    (2025-05-26) is a normal business day on the US calendar so it
+    DOES appear in this signal's index."""
+    rs = np.random.RandomState(43)
+    bdays_full = pd.bdate_range(
+        _FROZEN_TODAY - timedelta(days=900), _FROZEN_TODAY,
+    )[-params.n_rows:]
+    # Drop the US-only holiday.
+    us_calendar = bdays_full[
+        ~(bdays_full.normalize().date == _US_ONLY_HOLIDAY)
+    ]
+    values = rs.randn(len(us_calendar)) * params.volatility + params.base_value
+    rows = [
+        TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=float(v))
+        for d, v in zip(us_calendar, values)
+    ]
+    return {
+        "current_metrics": {"as_of_date": rows[-1].date},
+        "time_series": {
+            "series_name": params.series_name,
+            "units": params.units,
+            "description": "Synthetic US-calendar signal series.",
+            "rows": [r.model_dump() for r in rows],
+        },
+    }
+
+
+def _uk_calendar_target_callable(*, engine, params, config) -> dict:
+    """Synthetic target on a UK calendar — bdate_range minus one
+    UK-only holiday (UK Spring Bank Holiday).  US Independence Day
+    (2025-07-04) is a normal business day on the UK calendar so it
+    DOES appear in this target's index."""
+    rs = np.random.RandomState(57)
+    bdays_full = pd.bdate_range(
+        _FROZEN_TODAY - timedelta(days=900), _FROZEN_TODAY,
+    )[-params.n_rows:]
+    # Drop the UK-only holiday.
+    uk_calendar = bdays_full[
+        ~(bdays_full.normalize().date == _UK_ONLY_HOLIDAY)
+    ]
+    values = np.linspace(
+        params.base_value, params.base_value + 1.0, len(uk_calendar),
+    ) + rs.randn(len(uk_calendar)) * 0.02
+    rows = [
+        TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=float(v))
+        for d, v in zip(uk_calendar, values)
+    ]
+    return {
+        "current_metrics": {"as_of_date": rows[-1].date},
+        "time_series": {
+            "series_name": params.series_name,
+            "units": params.units,
+            "description": "Synthetic UK-calendar target series.",
+            "rows": [r.model_dump() for r in rows],
+        },
+    }
+
+
+@pytest.fixture
+def cross_calendar_resolver(tmp_path) -> PrimitiveResolver:
+    """Resolver pairing a US-calendar signal primitive with a
+    UK-calendar target primitive.  The two indexes overlap on every
+    business day EXCEPT 2025-05-26 (UK-only holiday) and 2025-07-04
+    (US-only holiday).  Inner-join drops both.
+    """
+    cfg_signal = tmp_path / "us_calendar_signal.yaml"
+    cfg_signal.write_text(_SYNTHETIC_CONFIG_YAML)
+    cfg_target = tmp_path / "uk_calendar_target.yaml"
+    cfg_target.write_text(_SYNTHETIC_CONFIG_YAML)
+
+    signal_spec = PrimitiveSpec(
+        tool_name="us_calendar_signal_tool",
+        callable=_us_calendar_signal_callable,
+        input_class=_SyntheticInput,
+        output_class=_SyntheticOutput,
+        config_path=cfg_signal,
+        output_field_units={"time_series": "z_score"},
+    )
+    target_spec = PrimitiveSpec(
+        tool_name="uk_calendar_target_tool",
+        callable=_uk_calendar_target_callable,
+        input_class=_SyntheticInput,
+        output_class=_SyntheticOutput,
+        config_path=cfg_target,
+        output_field_units={"time_series": "percent"},
+    )
+    catalog = {
+        "us_calendar_signal_tool": signal_spec,
+        "uk_calendar_target_tool": target_spec,
+    }
+
+    def _resolve(tool_name: str) -> PrimitiveSpec:
+        if tool_name not in catalog:
+            raise KeyError(f"unknown synthetic tool: {tool_name!r}")
+        return catalog[tool_name]
+
+    return _resolve
+
+
+class TestCrossCalendarGenericity:
+    """End-to-end proof that the alignment branch ACTUALLY closes
+    the cross-calendar genericity gap — not just structurally
+    present in the DAG.  Codex P3 follow-up to PR #87."""
+
+    _BINDING_TEMPLATE = {
+        "signal_tool_name": "us_calendar_signal_tool",
+        "signal_params": {
+            "series_name": "us_signal",
+            "n_rows": 600,
+            "volatility": 1.0,
+            "units": "z_score",
+        },
+        "signal_output_field": "time_series",
+        "target_tool_name": "uk_calendar_target_tool",
+        "target_params": {
+            "series_name": "uk_target",
+            "n_rows": 600,
+            "base_value": 4.0,
+            "units": "percent",
+        },
+        "target_output_field": "time_series",
+        "threshold": 1.5,
+        "post_window": 5,
+    }
+
+    def test_workflow_runs_end_to_end_on_mismatched_calendars(
+        self, cross_calendar_resolver,
+    ):
+        """The whole workflow executes without an
+        index-mismatch error.  Without the alignment branch this
+        would fail at event_windows' index-equality check (the
+        operator-level invariant in
+        shared/operators/event_windows/operator.py)."""
+        t = load_event_study_template()
+        wf = t.bind(self._BINDING_TEMPLATE)
+
+        result = execute_workflow(
+            wf, engine=None,
+            primitive_resolver=cross_calendar_resolver,
+        )
+        assert isinstance(result.terminal_artifact, Series)
+
+    def test_alignment_drops_both_country_specific_holidays(
+        self, cross_calendar_resolver,
+    ):
+        """The aligned signal + aligned target Series's indexes both
+        EXCLUDE the UK-only AND the US-only holiday — proving the
+        inner-join actually computed the calendar intersection
+        (not just passed through one side's index)."""
+        t = load_event_study_template()
+        wf = t.bind(self._BINDING_TEMPLATE)
+
+        result = execute_workflow(
+            wf, engine=None,
+            primitive_resolver=cross_calendar_resolver,
+        )
+
+        signal_aligned = result.node_artifacts["signal_aligned"]
+        target_aligned = result.node_artifacts["target_aligned"]
+        # Both aligned indexes are the SAME (alignment contract).
+        assert signal_aligned.payload.index.equals(
+            target_aligned.payload.index
+        )
+        # Neither holiday appears in the aligned index.
+        aligned_dates = {
+            d.date() for d in signal_aligned.payload.index
+        }
+        assert _US_ONLY_HOLIDAY not in aligned_dates, (
+            f"alignment did not drop the US-only holiday "
+            f"{_US_ONLY_HOLIDAY}; the inner-join is broken."
+        )
+        assert _UK_ONLY_HOLIDAY not in aligned_dates, (
+            f"alignment did not drop the UK-only holiday "
+            f"{_UK_ONLY_HOLIDAY}; the inner-join is broken."
+        )
+
+    def test_raw_signal_index_includes_uk_holiday_pre_alignment(
+        self, cross_calendar_resolver,
+    ):
+        """Sanity: BEFORE alignment, the raw signal Series (US
+        calendar) DOES include the UK-only holiday — proving the
+        alignment branch actually had something to drop, not
+        merely a no-op."""
+        t = load_event_study_template()
+        wf = t.bind(self._BINDING_TEMPLATE)
+
+        result = execute_workflow(
+            wf, engine=None,
+            primitive_resolver=cross_calendar_resolver,
+        )
+        raw_signal = result.node_artifacts["signal"]
+        raw_signal_dates = {d.date() for d in raw_signal.payload.index}
+        # UK holiday is a normal business day on the US calendar →
+        # appears in the raw signal.
+        assert _UK_ONLY_HOLIDAY in raw_signal_dates
+        # US holiday is dropped on the US calendar → does NOT appear.
+        assert _US_ONLY_HOLIDAY not in raw_signal_dates
+
+    def test_raw_target_index_includes_us_holiday_pre_alignment(
+        self, cross_calendar_resolver,
+    ):
+        """Sanity: BEFORE alignment, the raw target Series (UK
+        calendar) DOES include the US-only holiday — mirror of the
+        above."""
+        t = load_event_study_template()
+        wf = t.bind(self._BINDING_TEMPLATE)
+
+        result = execute_workflow(
+            wf, engine=None,
+            primitive_resolver=cross_calendar_resolver,
+        )
+        raw_target = result.node_artifacts["target"]
+        raw_target_dates = {d.date() for d in raw_target.payload.index}
+        # US holiday is a normal business day on the UK calendar.
+        assert _US_ONLY_HOLIDAY in raw_target_dates
+        # UK holiday is dropped on the UK calendar.
+        assert _UK_ONLY_HOLIDAY not in raw_target_dates
+
+    def test_align_step_lineage_records_template_output_keys(
+        self, cross_calendar_resolver,
+    ):
+        """The align node ran with output_keys=["signal","target"];
+        the operator step's params record the template-controlled
+        rename so a downstream lineage walker sees both the
+        original primitive series_keys AND the workflow-graph
+        names (Codex P2 follow-up to PR #87)."""
+        t = load_event_study_template()
+        wf = t.bind(self._BINDING_TEMPLATE)
+
+        result = execute_workflow(
+            wf, engine=None,
+            primitive_resolver=cross_calendar_resolver,
+        )
+        align_set = result.node_artifacts["align"]
+        # The SeriesSet exposes the template-controlled names, NOT
+        # the primitive series_names.
+        assert sorted(align_set.series_by_key.keys()) == [
+            "signal", "target",
+        ]
+        # The align step's params capture the rename map so a lineage
+        # consumer can recover which input went to which output name.
+        align_step = align_set.lineage.steps[-1]
+        assert align_step.params["output_series_keys"] == [
+            "signal", "target",
+        ]
+        assert align_step.params["input_to_output_key_map"] == {
+            "us_signal": "signal",
+            "uk_target": "target",
         }
 
 
@@ -1013,9 +1295,6 @@ class TestAbnormalMoveSignConvention:
                 "lookback_days": 1825,
             },
             "signal_output_field": "time_series_change_zscore",
-            "signal_series_key": (
-                "ust_usd_sofr_ois_2y_swap_spread_change_zscore"
-            ),
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -1023,7 +1302,6 @@ class TestAbnormalMoveSignConvention:
                 "lookback_days": 1825,
             },
             "target_output_field": "time_series",
-            "target_series_key": "ust_10y_yield",
             "threshold": 1.5,
             "post_window": 5,
         }
