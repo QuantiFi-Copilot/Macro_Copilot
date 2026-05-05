@@ -360,6 +360,25 @@ class SwapSpreadOutput(BaseModel):
             "in the rolling-window warmup)."
         ),
     )
+    time_series_change_zscore: TimeSeries = Field(
+        ...,
+        description=(
+            "Historical rolling z-score of the **day-over-day change** "
+            "in the swap spread (i.e. z-score of "
+            "``spread.diff()`` vs its own trailing window).  Closed-"
+            "enum ``TimeSeriesUnits.Z_SCORE``; series_name = "
+            "'<sov_lower>_<ois_lower>_<tenor_lower>_swap_spread_change_zscore'.  "
+            "This is the canonical signal for \"the spread WIDENED a "
+            "lot today\" event-study questions (event-study proof Q1 "
+            "in the rates-agent workflow architecture).  Distinguished "
+            "from ``time_series_zscore`` (which z-scores the spread "
+            "LEVEL — a \"spread is stretched today\" signal); the two "
+            "co-exist so binding callers can pick the level-stretch "
+            "OR change-stretch event question explicitly.  None for "
+            "rows in the rolling-window warmup AND for the very first "
+            "observation (no diff defined)."
+        ),
+    )
 
 
 __all__ = [

@@ -1,0 +1,32 @@
+operator:
+  name: select_from_series_set
+  method_family: mapping
+  version: "1.0.0"
+  description: >-
+    Extract one named Series from a SeriesSet by series_key.  The
+    returned Series carries the full upstream lineage of THAT input
+    series with the SeriesSet-producing step (e.g. align_series)
+    appended, plus this select step.  Finance-blind.
+
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Looks up ``series_key`` in the input SeriesSet's
+    ``series_by_key`` map and returns the corresponding Series
+    artifact.  Per the SeriesSet contract (build plan v5 / R2),
+    ``SeriesSet.get_series(key)`` returns a Series whose lineage
+    transitively includes the alignment step; this operator wraps
+    that accessor as a workflow-graph step so templates can
+    sequence ``align_series`` → ``select_from_series_set`` →
+    ``threshold_events`` (or any other Series-consuming operator)
+    with explicit per-series lineage propagation.
+
+    The operator does NOT alter the payload — it only renames /
+    rewraps.  Units, frequency, and missingness policy on the
+    output Series come 1:1 from the input SeriesSet's per-key
+    metadata.
+  planned_extensions:
+    - "by-prefix selection (return SeriesSet sub-selection)"
+    - "wildcard glob selection"
+    - "ordinal selection (e.g. 'first non-empty series')"

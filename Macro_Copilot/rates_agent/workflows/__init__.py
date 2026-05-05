@@ -163,6 +163,12 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series": "bps",
             "time_series_spread": "bps",
             "time_series_zscore": "z_score",
+            # NEW: rolling z-score of the day-over-day CHANGE in the
+            # swap spread.  Canonical signal for the event-study
+            # proof-Q1 binding ("spread widened by more than Nσ in a
+            # single day").  See SwapSpreadOutput.time_series_change_zscore
+            # docstring + the swap_spread compute change_zscore builder.
+            "time_series_change_zscore": "z_score",
         },
     ),
     # ---- Sovereign domain ----

@@ -1,0 +1,94 @@
+operator:
+  name: rolling_regression
+  method_family: aggregation
+  version: "1.0.0"
+  description: >-
+    Rolling-OLS regression of a typed Series ``lhs`` on a typed Series
+    ``rhs`` (single regressor in V1).  Emits a SeriesSet keyed by
+    {beta, alpha, r_squared}.  Wraps shared.analytics.regression.
+    rolling_ols (the same compute primitive used by the
+    rolling_regression sovereign-bond tool) so methodology cannot
+    drift between the operator-graph surface and the primitive
+    surface.  Finance-blind in shape; unit algebra is owned here
+    (PERCENT level_change → BPS, beta = RATIO).
+
+defaults:
+  min_periods:
+    value: 30
+    source: rolling_regression_primitive_v1
+    rationale: >-
+      Matches the rolling_regression sovereign-bond tool's V1 default
+      so the operator-graph surface and the standalone-primitive
+      surface produce identical betas for the same window.  Below 30
+      the rolling estimate becomes noisy; above ~252 (1 year of
+      daily) the window is too long for typical regime-conditioned
+      analyses.
+
+  add_constant:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      Default ``true`` matches the with-intercept convention used by
+      every existing rates analytic (rolling_regression sovereign-
+      bond tool, beta_adjusted_spread, etc.).  Pass ``false`` for
+      no-intercept regressions; the operator emits alpha = 0 in that
+      mode so the SeriesSet shape is uniform.
+    valid_values: [true, false]
+
+  lhs_basis:
+    value: level_change
+    source: operator_v1_default
+    rationale: >-
+      Default ``level_change`` matches the canonical regime-conditioned
+      relationship question ("how does Y CHANGE relate to X CHANGE,
+      conditioned on regime?").  ``raw_value`` regresses LEVELS — a
+      desk-meaningful but rarer case (cointegration-style regressions).
+      Must match ``rhs_basis`` in V1.
+    valid_values: [raw_value, level_change]
+
+  rhs_basis:
+    value: level_change
+    source: operator_v1_default
+    rationale: >-
+      Default ``level_change`` mirrors ``lhs_basis``.  Required to
+      match ``lhs_basis`` in V1 — mixed level/change regressions ship
+      as a separate operator when a real workflow demands them.
+    valid_values: [raw_value, level_change]
+
+methodology:
+  what_it_does: >-
+    Given two typed ``Series`` (``lhs`` = dependent / target,
+    ``rhs`` = single regressor), the operator:
+
+      1. Inner-joins lhs and rhs on their DatetimeIndex to a common
+         panel.  Out-of-sample indexes on either side are dropped.
+      2. Optionally diffs each side per ``lhs_basis`` / ``rhs_basis``.
+         When ``basis = level_change`` AND the input is PERCENT-typed,
+         the diff is multiplied by 100 to convert to BPS — same
+         methodology-owned PERCENT→BPS transition that
+         ``event_windows`` performs (operator-architecture
+         consistency).
+      3. Calls ``shared.analytics.regression.rolling_ols`` with the
+         configured ``window`` / ``min_periods`` / ``add_constant``.
+      4. Wraps the three numeric outputs (betas — single column in
+         V1, alpha, r_squared) as a typed ``SeriesSet`` with keys
+         ``beta``, ``alpha``, ``r_squared``.
+
+    Unit algebra:
+      - ``beta``       : RATIO (effective_lhs_unit / effective_rhs_unit;
+                        require both bases match so the ratio is
+                        unambiguous).
+      - ``alpha``      : same units as the effective lhs after basis
+                        transition (PERCENT→BPS when basis=level_change
+                        on a PERCENT input).
+      - ``r_squared``  : RATIO ([0, 1] dimensionless).
+
+    Lineage records the operator step + the rhs's lineage as an
+    ``auxiliary_lineage`` so a downstream lineage walker can recover
+    both upstream chains.
+  planned_extensions:
+    - "multi-regressor support (rhs as List[Series] / SeriesSet)"
+    - "mixed lhs_basis / rhs_basis (e.g. level_change vs raw_value)"
+    - "no-constant regression as a separately-namable operator"
+    - "explicit calendar-handling parameter (per-trading-day vs per-row)"
+    - "PERCENT_CHANGE / LOG_RETURN bases for non-rates time series"

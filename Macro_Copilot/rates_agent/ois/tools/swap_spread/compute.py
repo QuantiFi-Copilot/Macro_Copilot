@@ -300,6 +300,19 @@ def calculate_swap_spread(
         ddof=z_ddof,
         round_decimals=z_round_decimals,
     )
+    # Day-over-day change z-score: z-score of spread.diff() vs its own
+    # trailing window.  Distinct from ``z_score`` above (which scores
+    # the LEVEL).  Powers the canonical event-study Q1 binding ("when
+    # the swap spread WIDENS by more than 1.5σ in a single day...").
+    # Same window / min_periods / ddof / rounding as the level z-score
+    # so a |z|>N threshold has consistent semantics across signals.
+    wide["change_z_score"] = rolling_zscore(
+        wide["spread_bps"].diff(),
+        window=z_window,
+        min_periods=z_min_periods,
+        ddof=z_ddof,
+        round_decimals=z_round_decimals,
+    )
 
     # ------------------------------------------------------------------
     # 6. Trim to requested display lookback.  Anchor the cutoff to the
@@ -401,12 +414,20 @@ def calculate_swap_spread(
         tenor=params.tenor,
         z_round_decimals=z_round_decimals,
     )
+    canonical_change_zscore = _build_canonical_swap_change_zscore_series(
+        display_df,
+        sovereign_curve_family=params.sovereign_curve_family,
+        ois_curve_family=params.ois_curve_family,
+        tenor=params.tenor,
+        z_round_decimals=z_round_decimals,
+    )
 
     output = SwapSpreadOutput(
         current_metrics=metrics,
         time_series=ts_rows,
         time_series_spread=canonical_spread,
         time_series_zscore=canonical_zscore,
+        time_series_change_zscore=canonical_change_zscore,
     )
     return output.model_dump()
 
@@ -496,6 +517,53 @@ def _build_canonical_swap_zscore_series(
             f"Rolling z-score of the {sovereign_curve_family}−"
             f"{ois_curve_family} swap spread at {tenor} vs its own "
             "trailing window."
+        ),
+        rows=rows,
+    )
+
+
+def _build_canonical_swap_change_zscore_series(
+    display_df: pd.DataFrame,
+    *,
+    sovereign_curve_family: str,
+    ois_curve_family: str,
+    tenor: str,
+    z_round_decimals: int,
+) -> TimeSeries:
+    """Convert the display DataFrame's ``change_z_score`` column into
+    the canonical ``TimeSeries`` shape (closed-enum Z_SCORE units).
+
+    Naming convention:
+      ``<sov_lower>_<ois_lower>_<tenor_lower>_swap_spread_change_zscore``.
+
+    This series is the canonical signal for "spread WIDENED a lot
+    today" event-study questions (the canonical event-study proof Q1
+    in the rates-agent workflow architecture).  Distinguished from
+    ``time_series_zscore`` (which z-scores the spread LEVEL); the two
+    co-exist so binding callers can pick level-stretch vs change-
+    stretch event semantics explicitly.
+    """
+    series_name = (
+        f"{sovereign_curve_family.lower()}_"
+        f"{ois_curve_family.lower()}_"
+        f"{tenor.lower()}_swap_spread_change_zscore"
+    )
+    rows = [
+        TimeSeriesRow(
+            date=row.Index.strftime("%Y-%m-%d"),
+            value=safe_float(row.change_z_score, decimals=z_round_decimals),
+        )
+        for row in display_df.itertuples()
+    ]
+    return TimeSeries(
+        series_name=series_name,
+        units=TimeSeriesUnits.Z_SCORE,
+        description=(
+            f"Rolling z-score of the day-over-day CHANGE in the "
+            f"{sovereign_curve_family}−{ois_curve_family} swap spread "
+            f"at {tenor} (z-score of spread.diff() vs its own trailing "
+            "window).  Canonical signal for single-day-widening "
+            "event-study questions."
         ),
         rows=rows,
     )

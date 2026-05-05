@@ -16,35 +16,37 @@
 # answers "is the post-event move different from what you'd see on a
 # random day".
 #
-# Proof question 1 (the canonical test prompt, recast to match what
-# the binding actually computes):
-#   "Over the last 5 years, on days when the 2Y OIS-Treasury spread
-#   (swap_spread) is more than 1.5σ stretched (rolling z-score of
-#   the spread level vs its trailing window), what is the average
-#   5-day forward move in the 10Y UST yield, and how does it compare
-#   to the unconditional 5-day forward move?"
+# Proof question 1 (the canonical test prompt the architecture was
+# chosen to prove):
+#   "Over the last 5 years, when the 2Y OIS-Treasury spread WIDENS
+#   by more than 1.5σ in a single day, what is the average 5-day
+#   forward move in the 10Y UST yield, and how does it compare to
+#   the unconditional 5-day forward move?"
 #
-# Note on signal semantics
-# ------------------------
-# ``calculate_swap_spread_tool.time_series_zscore`` is the rolling
-# z-score of the spread LEVEL (vs its own trailing window) — NOT the
-# z-score of the day-over-day change in the spread.  Picking the
-# binding above answers the "spread is stretched on this day" event
-# question.  A "single-day widening" event question (z-score of the
-# daily diff) would require either a new primitive output field or
-# a ``series_arithmetic op=diff`` step inserted before the
-# ``events`` node, and that variant ships as a separate template
-# per the V1 1-template-per-archetype rule (workflow_architecture.md
-# lines 229–232).
+# Single-day-widening signal semantics
+# ------------------------------------
+# The canonical Q1 binding uses
+# ``calculate_swap_spread_tool.time_series_change_zscore`` — the
+# rolling z-score of the day-over-day CHANGE in the swap spread
+# (i.e. z-score of ``spread.diff()`` vs the trailing window).  A
+# |z|>1.5 event on this series identifies "the spread WIDENED a lot
+# today" — exactly the Q1 question shape.  Distinct from
+# ``time_series_zscore``, which z-scores the spread LEVEL and would
+# answer "the spread IS STRETCHED today" — a desk-meaningful but
+# different event question.  Both fields co-exist on the swap_spread
+# primitive's output so binding callers can pick the level-stretch
+# OR the change-stretch event semantics explicitly (V1 1-template-
+# per-archetype: variants ship as separate template instances when
+# desk demand justifies a second slot binding).
 #
-# Slot binding for proof Q1:
+# Slot binding for proof Q1 (single-day widening):
 #   signal_tool_name: calculate_swap_spread_tool
 #   signal_params:
 #     sovereign_curve_family: UST
 #     ois_curve_family: USD_SOFR_OIS
 #     tenor: "2Y"
 #     lookback_days: 1825
-#   signal_output_field: time_series_zscore
+#   signal_output_field: time_series_change_zscore   # <-- canonical Q1
 #   target_tool_name: get_yield_levels_tool
 #   target_params:
 #     curve_family: UST
@@ -53,6 +55,19 @@
 #   target_output_field: time_series
 #   threshold: 1.5
 #   post_window: 5
+#
+# Index alignment
+# ---------------
+# ``event_windows`` requires ``events.mask.index ==
+# target.payload.index`` (operator-level invariant — see
+# shared/operators/event_windows/operator.py).  In the canonical
+# desk binding both legs fetch from the same daily trading-day grid
+# (``macro_data.v_market_data_daily_enriched``), so this holds by
+# construction.  For cross-calendar bindings (e.g. UK gilts vs
+# US-calendar OIS), insert an explicit ``align_series`` →
+# ``select_from_series_set`` pair upstream of ``events`` and
+# ``windows`` per the substrate's structural-extraction operator
+# pair shipped in this PR.
 #
 # Topology-locked methodology (NOT exposed as slots):
 #   - threshold_events.rule = abs_above (canonical event-study extraction)
@@ -130,12 +145,19 @@ slot_schema:
     type: str
     required: true
     description: >-
-      Which time_series* field of the signal primitive's output to lift
-      as the event signal (e.g. time_series_zscore for the canonical
-      level-stretched event-study shape).  Note: rates primitives'
-      time_series_zscore is the rolling z-score of the LEVEL series,
-      not of the daily change — see the template header for the
-      "single-day widening" alternative.
+      Which time_series* field of the signal primitive's output to
+      lift as the event signal.  Two canonical event-shape bindings
+      ship today:
+        - ``time_series_change_zscore`` — z-score of the day-over-day
+          CHANGE (e.g. swap_spread daily widening).  Canonical signal
+          for "WIDENED by more than Nσ today" event-study questions
+          (rates-agent proof Q1).
+        - ``time_series_zscore`` — z-score of the LEVEL.  Canonical
+          signal for "spread IS STRETCHED today" event questions
+          (a different event semantic).
+      Both fields are emitted by the swap_spread / cross_market_spread
+      / curve_spread primitives.  The binding caller picks which event
+      semantics they want explicitly.
 
   # -------------------------------------------------------------------------
   # Target series — the series whose forward moves get aggregated around

@@ -1,31 +1,52 @@
-"""tests/test_workflow_regime_conditioned_relationship.py — second standard
-workflow template.
+"""tests/test_workflow_regime_conditioned_relationship.py — canonical
+relationship-archetype template (the second standard workflow
+template).
 
-Phase 2 PR 6.  Covers
-``rates_agent/workflows/regime_conditioned_relationship/`` end-to-end:
+This file COMPLETELY REPLACES the previous (binary forward-response)
+test suite that shipped with PR #84.  The previous template was
+event-study-shaped (threshold_events × event_windows ×
+conditional_aggregate per regime, subtract); Codex correctly
+identified that this was NOT the original second proof archetype.
+This rewrite ships against the actual relationship archetype:
+
+  classify regimes → split sample by mask → run a RELATIONSHIP
+  ANALYSIS (rolling β) inside each subsample → compare across
+  regimes
+
+Q2 — the canonical proof question this archetype was chosen to prove:
+
+  "Estimate the rolling beta of the 10Y UST yield CHANGE to the 2Y
+  OIS rate CHANGE, and report how that beta differs in steepening
+  vs flattening regimes of the 2s10s curve over the last 3 years."
+
+Coverage:
 
   1. Template structural validity (loads, validates, registers, has
-     the canonical 9-node high-vs-low binary-regime DAG shape).
-  2. ``archetype_signature`` cues are well-formed (≥1 cue, all
-     non-empty, all ≤120 chars per the workflow_architecture spec).
-  3. Slot binding rejects malformed inputs cleanly + the post_window
-     slot propagates into BOTH regime branches' windowing nodes.
-  4. **Real-rates end-to-end** — bind to the reference desk binding
-     (OIS 2s10s curve regime → UST 10Y yield response), run via the
-     rates primitive resolver against synthetic raw data (mocked DB
-     fetchers), assert the terminal artifact is the per-offset
-     regime-difference Series in BPS (PERCENT target × level_change
-     → BPS) and lineage extends through every node in both branches
-     plus the comparison.
-  5. **Mandatory instrument-agnostic test** — same template runs
-     unchanged against a finance-blind synthetic primitive resolver.
-     This is the load-bearing requirement from
-     ``workflow_architecture.md``: "every template MUST be capable
-     of running unchanged against a non-rates synthetic primitive
-     that emits canonical TimeSeries payloads through the bridge."
-  6. Template card content — primitives_used reflect $slot
-     references; operators_used reflect template-locked operators
-     (including the comparison operator).
+     the canonical 12-node / 13-edge relationship-archetype shape).
+  2. archetype_signature cues are well-formed.
+  3. Slot binding refusals (missing / unknown / wrong type) +
+     defaults.
+  4. **Topology-archetype-fit gate** — the load-bearing gate that
+     prevents drift back into event-study shape.  Pins:
+       - rolling_regression × 1
+       - apply_mask × 2
+       - summarize_series × 2
+       - NO event_windows (event-study operator)
+       - NO conditional_aggregate (event-study operator)
+  5. **Q2 real-rates end-to-end** — the canonical Q2 binding (UST
+     10Y / 2Y SOFR OIS / 2s10s curve regime) executes against the
+     rates primitive resolver with mocked DB fetchers.  Pins:
+       - terminal Series carries the per-regime β-difference
+       - terminal Series payload at the summarize_series sentinel
+         date (1900-01-01)
+       - terminal numeric value = mean(high_betas) − mean(low_betas)
+         (sign-convention pin)
+       - lineage extends through every node in the 12-node DAG
+  6. **MANDATORY instrument-agnostic test** (workflow_architecture.md
+     gate): same template runs unchanged against a finance-blind
+     synthetic primitive resolver.
+  7. Template card content reflects the relationship-archetype's
+     operator family.
 """
 
 from __future__ import annotations
@@ -49,10 +70,9 @@ from rates_agent.workflows.regime_conditioned_relationship import (
     load_regime_conditioned_template,
 )
 from shared.artifacts import Series, TimeSeriesUnits
+from shared.operators.summarize_series import SUMMARY_SENTINEL_DATE
 from shared.schemas import TimeSeries, TimeSeriesRow
 from shared.workflow import (
-    OperatorNodeTemplate,
-    PrimitiveNodeTemplate,
     PrimitiveResolver,
     PrimitiveSpec,
     SlotBindingError,
@@ -86,8 +106,6 @@ def _clean_state():
     clear_template_registry()
 
 
-# Simulated DB date — frozen so all per-primitive ``date.today()``
-# resolves consistently across the multi-primitive workflow.
 _FROZEN_TODAY = date(2026, 4, 30)
 
 
@@ -97,38 +115,56 @@ class _FrozenDate(date):
         return _FROZEN_TODAY
 
 
-def _synthetic_curve_pair_df(*, days: int = 600) -> pd.DataFrame:
-    """Long-format frame for fetch_tenor_pair — two tenors on a
-    single OIS curve.  USD_SOFR_OIS 2Y vs 10Y.  The spread
-    (long − short) drifts across regimes so the high (>+50bps) and
-    low (<-50bps) thresholds both fire enough days for the
-    conditional aggregates to be well-defined."""
-    bdays = pd.bdate_range(_FROZEN_TODAY - timedelta(days=days * 2), _FROZEN_TODAY)[-days:]
-    rs = np.random.RandomState(13)
-    rows = []
+def _synthetic_yield_single_tenor_df(
+    *,
+    days: int = 800,
+    base: float = 4.30,
+    drift: float = 0.40,
+    noise: float = 0.012,
+    seed: int = 17,
+) -> pd.DataFrame:
+    """Long-format frame for fetch_single_tenor.  Single curve,
+    single tenor (yield_levels / ois_rate_level both call this with
+    one curve+tenor).  Schema: {'trade_date', 'field_value'}."""
+    rs = np.random.RandomState(seed)
+    bdays = pd.bdate_range(
+        _FROZEN_TODAY - timedelta(days=days * 2), _FROZEN_TODAY,
+    )[-days:]
     n = len(bdays)
-    # Build short + long so spread oscillates from ~+150 bps to ~-100 bps.
+    vals = np.linspace(base, base + drift, n) + rs.randn(n) * noise
+    return pd.DataFrame({
+        "trade_date": [d.date() for d in bdays],
+        "field_value": vals,
+    })
+
+
+def _synthetic_curve_pair_df(
+    *,
+    days: int = 800,
+    seed: int = 13,
+) -> pd.DataFrame:
+    """Long-format frame for fetch_tenor_pair (USD_SOFR_OIS 2s10s).
+    Schema: {'trade_date', 'tenor', 'field_value'}.
+
+    Construct the spread (long − short) so it oscillates between
+    ~+150 bps and ~-100 bps, ensuring both regimes (>+50 / <-50)
+    fire on a healthy fraction of dates."""
+    rs = np.random.RandomState(seed)
+    bdays = pd.bdate_range(
+        _FROZEN_TODAY - timedelta(days=days * 2), _FROZEN_TODAY,
+    )[-days:]
+    n = len(bdays)
     short = np.linspace(3.50, 4.80, n) + rs.randn(n) * 0.02
     long_drift = np.sin(np.linspace(0, 6 * np.pi, n)) * 1.0
     long = short + long_drift + rs.randn(n) * 0.015
+    rows = []
     for tenor, vals in (("2Y", short), ("10Y", long)):
         for d, v in zip(bdays, vals):
             rows.append({
-                "trade_date": d.date(), "tenor": tenor, "field_value": float(v),
+                "trade_date": d.date(), "tenor": tenor,
+                "field_value": float(v),
             })
     return pd.DataFrame(rows)
-
-
-def _synthetic_yield_levels_df(*, days: int = 600) -> pd.DataFrame:
-    """Single-tenor frame for fetch_single_tenor (yield_levels fetcher)."""
-    bdays = pd.bdate_range(_FROZEN_TODAY - timedelta(days=days * 2), _FROZEN_TODAY)[-days:]
-    rs = np.random.RandomState(17)
-    n = len(bdays)
-    yields = np.linspace(4.20, 4.40, n) + rs.randn(n) * 0.015
-    return pd.DataFrame({
-        "trade_date": [d.date() for d in bdays],
-        "field_value": yields,
-    })
 
 
 # ===========================================================================
@@ -146,80 +182,106 @@ class TestTemplateStructure:
         assert t.archetype == "regime_conditioned_relationship"
 
     def test_template_registers_on_import(self):
-        # The regime_conditioned_relationship __init__.py auto-registers on
-        # import.  Force a re-import to populate the registry after the
-        # autouse fixture cleared it.
         import importlib
-
-        import rates_agent.workflows.regime_conditioned_relationship as rcr_module
-        importlib.reload(rcr_module)
-
+        import rates_agent.workflows.regime_conditioned_relationship as rcr
+        importlib.reload(rcr)
         registered = get_template("regime_conditioned_relationship")
         assert registered.template_id == "regime_conditioned_relationship"
 
     def test_template_in_listed_templates(self):
         import importlib
-        import rates_agent.workflows.regime_conditioned_relationship as rcr_module
-        importlib.reload(rcr_module)
-        templates = list_templates(archetype="regime_conditioned_relationship")
+        import rates_agent.workflows.regime_conditioned_relationship as rcr
+        importlib.reload(rcr)
+        templates = list_templates(
+            archetype="regime_conditioned_relationship",
+        )
         assert any(
             t.template_id == "regime_conditioned_relationship"
             for t in templates
         )
 
     def test_template_has_expected_nodes(self):
-        """The canonical regime_conditioned_relationship DAG shape per
-        workflow_architecture.md (lines 75-77): two parallel regime
-        branches (high + low) joined by a per-offset subtraction =
-        regime-difference Series."""
+        """Canonical relationship-archetype shape: 3 primitives +
+        9 operators (relationship, beta select, 2 masks, 2 apply,
+        2 summary, 1 compare) = 12 nodes."""
         t = load_regime_conditioned_template()
         node_ids = {n.node_id for n in t.nodes}
         assert node_ids == {
             # Primitives
-            "signal", "target",
-            # High-regime branch
-            "high_regime_events", "high_windows", "high_aggregate",
-            # Low-regime branch
-            "low_regime_events", "low_windows", "low_aggregate",
-            # Comparison
+            "lhs", "rhs", "regime_signal",
+            # Relationship branch
+            "relationship", "beta",
+            # Regime-mask producers
+            "high_mask", "low_mask",
+            # Per-regime β subsamples
+            "high_betas", "low_betas",
+            # Per-regime summaries (sentinel-aligned)
+            "high_summary", "low_summary",
+            # Comparison (terminal)
             "compare",
         }
 
     def test_template_terminal_is_compare(self):
-        """Terminal is the high-vs-low comparison (the regime-
-        difference Series), per the canonical archetype shape."""
         t = load_regime_conditioned_template()
         assert t.terminal_node_id == "compare"
 
     def test_template_locks_canonical_methodology(self):
         """Topology-locked params are NOT slot-substitutable.  Pin
-        the locks so a future template edit can't accidentally
-        relax them without explicit review."""
+        them so a future template edit can't accidentally relax
+        them without explicit review."""
         t = load_regime_conditioned_template()
         nodes = {n.node_id: n for n in t.nodes}
-        # High-regime threshold_events: rule=above + basis=raw_value
-        # + look_ahead_safe=true locked
-        assert nodes["high_regime_events"].params["rule"] == "above"
-        assert nodes["high_regime_events"].params["threshold_basis"] == "raw_value"
-        assert nodes["high_regime_events"].params["look_ahead_safe"] is True
-        # Low-regime threshold_events: rule=below mirrored
-        assert nodes["low_regime_events"].params["rule"] == "below"
-        assert nodes["low_regime_events"].params["threshold_basis"] == "raw_value"
-        assert nodes["low_regime_events"].params["look_ahead_safe"] is True
-        # Both event_windows: pre=0, inclusive_event_day=True,
-        # units_basis=level_change all locked.  level_change is the
-        # one that makes the cells "event-relative forward MOVES"
-        # rather than "raw target levels".
-        for nid in ("high_windows", "low_windows"):
-            assert nodes[nid].params["pre_window"] == 0
-            assert nodes[nid].params["inclusive_event_day"] is True
-            assert nodes[nid].params["units_basis"] == "level_change"
-        # Both conditional_aggregate: aggregator=mean, dispersion=std locked
-        for nid in ("high_aggregate", "low_aggregate"):
-            assert nodes[nid].params["aggregator"] == "mean"
-            assert nodes[nid].params["dispersion"] == "std"
-        # Comparison: subtract is the canonical regime-difference op
+
+        # rolling_regression: level_change basis on both sides,
+        # with-intercept regression.
+        rel = nodes["relationship"]
+        assert rel.params["lhs_basis"] == "level_change"
+        assert rel.params["rhs_basis"] == "level_change"
+        assert rel.params["add_constant"] is True
+
+        # select_from_series_set: extract β specifically.
+        assert nodes["beta"].params["series_key"] == "beta"
+
+        # threshold_events × 2 (regime classifiers).  rule=above on
+        # high; rule=below on low; raw_value basis on both;
+        # look_ahead_safe on both.
+        for nid, expected_rule in (
+            ("high_mask", "above"),
+            ("low_mask", "below"),
+        ):
+            n = nodes[nid]
+            assert n.params["rule"] == expected_rule
+            assert n.params["threshold_basis"] == "raw_value"
+            assert n.params["look_ahead_safe"] is True
+
+        # apply_mask × 2.  Default index_policy=intersect,
+        # preserve_full_index=false (sparse subsample).
+        for nid in ("high_betas", "low_betas"):
+            n = nodes[nid]
+            assert n.params["index_policy"] == "intersect"
+            assert n.params["preserve_full_index"] is False
+
+        # summarize_series × 2.  Mean central, std dispersion.
+        for nid in ("high_summary", "low_summary"):
+            n = nodes[nid]
+            assert n.params["statistic"] == "mean"
+            assert n.params["dispersion"] == "std"
+
+        # compare: subtract (high − low).
         assert nodes["compare"].params["op"] == "subtract"
+
+    def test_compare_left_is_high_summary_right_is_low_summary(self):
+        """Sign-convention pin at the topology level.  high_summary
+        feeds ``left``; low_summary feeds ``right``.  Catches an
+        operand-order regression at template-edit time."""
+        t = load_regime_conditioned_template()
+        compare_edges = [e for e in t.edges if e.target_node_id == "compare"]
+        assert len(compare_edges) == 2
+        slot_to_source = {
+            e.target_input_slot: e.source_node_id for e in compare_edges
+        }
+        assert slot_to_source["left"] == "high_summary"
+        assert slot_to_source["right"] == "low_summary"
 
 
 # ===========================================================================
@@ -228,10 +290,6 @@ class TestTemplateStructure:
 
 
 class TestArchetypeSignature:
-    """Per workflow_architecture.md, every shipped template MUST
-    declare ≥1 archetype_signature cue so the future
-    route_to_template LLM step can match prompts."""
-
     def test_at_least_one_cue_declared(self):
         t = load_regime_conditioned_template()
         assert len(t.archetype_signature) >= 1
@@ -256,26 +314,30 @@ class TestArchetypeSignature:
 
 class TestSlotBinding:
     def _full_slot_values(self, **overrides):
-        """Reference desk binding: OIS 2s10s curve regime → UST 10Y yield."""
         defaults = {
-            "signal_tool_name": "calculate_ois_curve_spread_tool",
-            "signal_params": {
+            "lhs_tool_name": "get_yield_levels_tool",
+            "lhs_params": {
+                "curve_family": "UST", "tenor": "10Y",
+                "lookback_days": 1500,
+            },
+            "lhs_output_field": "time_series",
+            "rhs_tool_name": "get_ois_rate_level_tool",
+            "rhs_params": {
+                "curve_family": "USD_SOFR_OIS", "tenor": "2Y",
+                "lookback_days": 1500,
+            },
+            "rhs_output_field": "time_series",
+            "regime_signal_tool_name": "calculate_ois_curve_spread_tool",
+            "regime_signal_params": {
                 "curve_family": "USD_SOFR_OIS",
-                "short_tenor": "2Y",
-                "long_tenor": "10Y",
-                "lookback_days": 1825,
+                "short_tenor": "2Y", "long_tenor": "10Y",
+                "lookback_days": 1500,
             },
-            "signal_output_field": "time_series_spread",
-            "target_tool_name": "get_yield_levels_tool",
-            "target_params": {
-                "curve_family": "UST",
-                "tenor": "10Y",
-                "lookback_days": 1825,
-            },
-            "target_output_field": "time_series",
+            "regime_signal_output_field": "time_series_spread",
+            "regression_window": 60,
+            "regression_min_periods": 30,
             "high_threshold": 50.0,
             "low_threshold": -50.0,
-            "post_window": 5,
         }
         defaults.update(overrides)
         return defaults
@@ -288,7 +350,7 @@ class TestSlotBinding:
     def test_missing_required_slot_raises(self):
         t = load_regime_conditioned_template()
         partial = self._full_slot_values()
-        partial.pop("high_threshold")
+        partial.pop("regression_window")
         with pytest.raises(SlotBindingError, match="required slot"):
             t.bind(partial)
 
@@ -306,119 +368,198 @@ class TestSlotBinding:
         with pytest.raises(SlotBindingError, match="declared type"):
             t.bind(bad)
 
-    def test_post_window_default_applied(self):
-        """post_window defaults to 5 when caller omits it."""
+    def test_regression_min_periods_default_applied(self):
+        """regression_min_periods defaults to 30 when caller omits it."""
         t = load_regime_conditioned_template()
         partial = self._full_slot_values()
-        partial.pop("post_window")
+        partial.pop("regression_min_periods")
         wf = t.bind(partial)
-        nodes = {n.node_id: n for n in wf.nodes}
-        assert nodes["high_windows"].params["post_window"] == 5
-        assert nodes["low_windows"].params["post_window"] == 5
-
-    def test_post_window_drives_both_branches(self):
-        """The post_window slot must propagate into BOTH the high
-        and low event_windows nodes — otherwise the per-offset
-        subtraction in ``compare`` would mix windows of different
-        shapes and the regime-difference series would be meaningless."""
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._full_slot_values(post_window=21))
-        nodes = {n.node_id: n for n in wf.nodes}
-        assert nodes["high_windows"].params["post_window"] == 21
-        assert nodes["low_windows"].params["post_window"] == 21
-
-    def test_high_and_low_thresholds_bind_to_their_branches(self):
-        """The two thresholds bind to their respective regime branches.
-        The DISJOINT contract (high >= low) is a load-bearing
-        template-author contract — see the template header's
-        ``Threshold-disjoint contract`` section.  This test pins a
-        correctly-disjoint binding (high > low) and verifies the
-        slots reach the right nodes."""
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._full_slot_values(
-            high_threshold=25.0, low_threshold=-100.0,
-        ))
-        nodes = {n.node_id: n for n in wf.nodes}
-        assert nodes["high_regime_events"].params["threshold"] == 25.0
-        assert nodes["low_regime_events"].params["threshold"] == -100.0
-        # Disjoint contract is satisfied (25 >= -100): "high" =
-        # signal > 25, "low" = signal < -100, gap (-100, 25] feeds
-        # neither.  No date can be in both regimes.
-        assert (
-            nodes["high_regime_events"].params["threshold"]
-            >= nodes["low_regime_events"].params["threshold"]
+        rel_node = next(
+            n for n in wf.nodes if n.node_id == "relationship"
         )
-
-    def test_canonical_binding_satisfies_disjoint_contract(self):
-        """Codex P2 follow-up: the reference desk binding documented
-        in the template MUST satisfy the ``high_threshold >=
-        low_threshold`` disjoint contract.  This guards against a
-        future doc-edit that accidentally inverts the example."""
-        canonical = self._full_slot_values()
-        assert canonical["high_threshold"] >= canonical["low_threshold"], (
-            "Canonical binding violates the disjoint-regime contract — "
-            "high_threshold must be >= low_threshold so the two regimes "
-            "do not overlap.  See the template header."
-        )
-
-    def test_overlap_pathology_documented_not_enforced(self):
-        """The substrate has no cross-slot validator hook, so the
-        DISJOINT contract is documented and tested at the template
-        layer, not enforced at bind time.  This test pins the
-        current behavior (bind succeeds even when contract is
-        violated) so any future enforcement change is intentional
-        and visible in the diff."""
-        t = load_regime_conditioned_template()
-        # Contract-violating binding: high < low → regimes overlap.
-        # Bind succeeds (no enforcement); the resulting workflow's
-        # economic meaning is undermined, per the template header.
-        wf = t.bind(self._full_slot_values(
-            high_threshold=-100.0, low_threshold=25.0,
-        ))
-        nodes = {n.node_id: n for n in wf.nodes}
-        assert nodes["high_regime_events"].params["threshold"] == -100.0
-        assert nodes["low_regime_events"].params["threshold"] == 25.0
-        # If a future PR adds substrate-level cross-slot validation,
-        # this test should flip to ``with pytest.raises(...)`` and
-        # the template header's "Threshold-disjoint contract" section
-        # should be updated to remove the "documented contract; not
-        # enforced" caveat.
+        assert rel_node.params["min_periods"] == 30
 
 
 # ===========================================================================
-# 4. Real-rates end-to-end (curve-regime reference binding)
+# 4. Topology-archetype-fit gate (LOAD-BEARING anti-overfit)
+# ===========================================================================
+#
+# This class is the load-bearing gate that prevents drift back into
+# event-study shape.  The previous (V0) regime_conditioned_relationship
+# template that shipped with PR #84 used threshold_events ×
+# event_windows × conditional_aggregate per regime — i.e. it was an
+# event-study-shaped template wearing the relationship archetype's
+# name.  Codex correctly identified that as an archetype mismatch.
+#
+# The fix: this gate asserts the template's operator family matches
+# the relationship archetype's canonical operator set, and FORBIDS
+# the event-study archetype's operators.
+
+
+class TestTopologyArchetypeFit:
+    """Pin the canonical relationship-archetype DAG topology so
+    accidental drift into a different archetype's shape surfaces
+    in code review, not in production output."""
+
+    def test_uses_rolling_regression_exactly_once(self):
+        """The relationship analysis = one rolling-OLS regression of
+        lhs on rhs.  Multi-regression variants ship as separate
+        templates."""
+        t = load_regime_conditioned_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("rolling_regression") == 1
+
+    def test_uses_apply_mask_twice_for_per_regime_subsamples(self):
+        """One apply_mask per regime — the load-bearing
+        "split sample by mask" step of the archetype."""
+        t = load_regime_conditioned_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("apply_mask") == 2
+
+    def test_uses_summarize_series_twice_for_per_regime_summaries(self):
+        """One summarize_series per regime — collapses the per-regime
+        β subsample to a sentinel-aligned scalar so downstream
+        subtract has a non-empty intersection."""
+        t = load_regime_conditioned_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("summarize_series") == 2
+
+    def test_uses_threshold_events_twice_for_regime_masks(self):
+        """The two regime-mask producers (high + low).  Reuses the
+        threshold_events operator with rule=above / rule=below.
+        threshold_events emits a typed boolean EventSet; the
+        downstream apply_mask consumes it as a generic per-date
+        mask, not as a sparse trigger event-set."""
+        t = load_regime_conditioned_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("threshold_events") == 2
+
+    def test_uses_select_from_series_set_to_extract_beta(self):
+        """rolling_regression emits SeriesSet[beta, alpha,
+        r_squared].  select_from_series_set lifts the β series for
+        downstream masking + summarization."""
+        t = load_regime_conditioned_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("select_from_series_set") == 1
+
+    def test_uses_series_arithmetic_subtract_for_compare(self):
+        t = load_regime_conditioned_template()
+        compare_node = next(
+            n for n in t.nodes if n.node_id == "compare"
+        )
+        assert compare_node.operator_name == "series_arithmetic"
+        assert compare_node.params["op"] == "subtract"
+
+    def test_does_not_use_event_study_archetype_operators(self):
+        """LOAD-BEARING: regime_conditioned_relationship MUST NOT use
+        event_windows or conditional_aggregate.  Those are the
+        event-study archetype's per-event operators (the V0 template
+        that shipped with PR #84 used both — and was correctly
+        identified by Codex as still being event-study-shaped).
+        Catches a regression at template-edit time."""
+        t = load_regime_conditioned_template()
+        op_names = {
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        }
+        forbidden = {"event_windows", "conditional_aggregate"}
+        leak = op_names & forbidden
+        assert not leak, (
+            f"regime_conditioned_relationship template drifted into "
+            f"event-study-archetype operators: {sorted(leak)}.  "
+            "These belong to event_study (per-event-day forward-"
+            "windowing of a target series).  The relationship "
+            "archetype's per-subsample analysis is rolling_regression "
+            "+ apply_mask + summarize_series, NOT event_windows + "
+            "conditional_aggregate.  Either remove them or, if a "
+            "real desk question motivates a forward-response variant, "
+            "ship a separately-named template (e.g. "
+            "regime_conditioned_response) per the V1 1-template-per-"
+            "archetype rule."
+        )
+
+    def test_node_and_edge_counts(self):
+        """Canonical relationship-archetype shape: 12 nodes, 13
+        edges.  Pin these so accidental adds/removals surface in
+        code review."""
+        t = load_regime_conditioned_template()
+        assert len(t.nodes) == 12
+        assert len(t.edges) == 13
+
+
+# ===========================================================================
+# 5. Q2 real-rates end-to-end
 # ===========================================================================
 
 
-class TestEndToEndRealRates:
-    """Bind to the reference desk binding (OIS 2s10s curve regime →
-    UST 10Y yield response) and execute against the rates primitive
-    resolver with mocked DB fetchers."""
+class TestEndToEndProofQ2:
+    """The canonical Q2 binding (UST 10Y / 2Y SOFR OIS / 2s10s curve
+    regime) executes against the rates primitive resolver with
+    mocked DB fetchers and produces the expected per-regime β
+    difference."""
 
     def _slot_values(self):
         return {
-            "signal_tool_name": "calculate_ois_curve_spread_tool",
-            "signal_params": {
+            "lhs_tool_name": "get_yield_levels_tool",
+            "lhs_params": {
+                "curve_family": "UST", "tenor": "10Y",
+                "lookback_days": 1500,
+            },
+            "lhs_output_field": "time_series",
+            "rhs_tool_name": "get_ois_rate_level_tool",
+            "rhs_params": {
+                "curve_family": "USD_SOFR_OIS", "tenor": "2Y",
+                "lookback_days": 1500,
+            },
+            "rhs_output_field": "time_series",
+            "regime_signal_tool_name": "calculate_ois_curve_spread_tool",
+            "regime_signal_params": {
                 "curve_family": "USD_SOFR_OIS",
-                "short_tenor": "2Y",
-                "long_tenor": "10Y",
-                "lookback_days": 1825,
+                "short_tenor": "2Y", "long_tenor": "10Y",
+                "lookback_days": 1500,
             },
-            "signal_output_field": "time_series_spread",
-            "target_tool_name": "get_yield_levels_tool",
-            "target_params": {
-                "curve_family": "UST",
-                "tenor": "10Y",
-                "lookback_days": 1825,
-            },
-            "target_output_field": "time_series",
+            "regime_signal_output_field": "time_series_spread",
+            "regression_window": 60,
+            "regression_min_periods": 30,
             "high_threshold": 50.0,
             "low_threshold": -50.0,
-            "post_window": 5,
         }
 
     def _patches(self):
         return (
+            # LHS: UST 10Y yield via fetch_single_tenor.
+            patch(
+                "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
+                return_value=_synthetic_yield_single_tenor_df(
+                    base=4.30, drift=0.40, seed=17,
+                ),
+            ),
+            patch(
+                "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
+                _FrozenDate,
+            ),
+            # RHS: 2Y SOFR OIS rate via fetch_single_tenor (different
+            # base, different seed for distinct synthetic dynamics).
+            patch(
+                "rates_agent.ois.tools.rate_level.compute.fetch_single_tenor",
+                return_value=_synthetic_yield_single_tenor_df(
+                    base=4.05, drift=0.30, seed=29,
+                ),
+            ),
+            patch(
+                "rates_agent.ois.tools.rate_level.compute.date",
+                _FrozenDate,
+            ),
+            # regime signal: 2s10s curve spread via fetch_tenor_pair.
             patch(
                 "rates_agent.ois.tools.curve_spread.compute.fetch_tenor_pair",
                 return_value=_synthetic_curve_pair_df(),
@@ -427,194 +568,130 @@ class TestEndToEndRealRates:
                 "rates_agent.ois.tools.curve_spread.compute.date",
                 _FrozenDate,
             ),
-            patch(
-                "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
-                return_value=_synthetic_yield_levels_df(),
-            ),
-            patch(
-                "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
-                _FrozenDate,
-            ),
         )
 
-    def test_runs_end_to_end(self):
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._slot_values())
-
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
-            result = execute_workflow(
-                wf, engine=None,
-                primitive_resolver=rates_primitive_resolver,
-            )
-
-        # Terminal is the regime-difference Series.  Target was PERCENT
-        # yield levels; event_windows.units_basis=level_change
-        # converted PERCENT to BPS event-relative moves in both
-        # branches; subtraction stays BPS.
-        assert isinstance(result.terminal_artifact, Series)
-        assert result.terminal_artifact.units == TimeSeriesUnits.BPS
-
     def test_workflow_validates_with_real_resolver(self):
-        """Pre-flight validation passes against the real rates
-        resolver — every primitive tool_name resolves cleanly + every
-        operator branch unit-checks coherently."""
         t = load_regime_conditioned_template()
         wf = t.bind(self._slot_values())
-        # Should not raise.
         validate_workflow(wf, primitive_resolver=rates_primitive_resolver)
 
-    def test_terminal_offsets_match_post_window(self):
-        """The terminal regime-difference Series carries one value
-        per event-relative offset (pre_window=0, post_window=5,
-        inclusive_event_day=True → 6 offsets: 0..5)."""
+    def test_q2_runs_end_to_end(self):
         t = load_regime_conditioned_template()
         wf = t.bind(self._slot_values())
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
             result = execute_workflow(
                 wf, engine=None,
                 primitive_resolver=rates_primitive_resolver,
             )
-        # Both branches' aggregates emit Series of length
-        # window_length = post_window + 1 (since pre=0, inclusive=True);
-        # subtraction preserves that.
-        assert len(result.terminal_artifact.payload) == 6
+        # Terminal is the per-regime β-difference scalar (1-row Series
+        # at the summarize_series sentinel date).
+        assert isinstance(result.terminal_artifact, Series)
+        assert len(result.terminal_artifact.payload) == 1
+
+    def test_terminal_payload_at_summary_sentinel_date(self):
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+        # Both per-regime summaries collapsed to the sentinel date so
+        # the downstream subtract had a non-empty intersection.
+        idx = result.terminal_artifact.payload.index
+        assert idx[0] == SUMMARY_SENTINEL_DATE
+
+    def test_terminal_units_are_RATIO(self):
+        """β has units RATIO (BPS_lhs_change / BPS_rhs_change).
+        summarize_series propagates units 1:1 (mean of β series is
+        still RATIO).  series_arithmetic.subtract requires matching
+        units AND propagates them — so the terminal regime-difference
+        is RATIO."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+        assert result.terminal_artifact.units == TimeSeriesUnits.RATIO
+
+    def test_terminal_value_equals_high_minus_low_summary(self):
+        """Sign-convention numeric pin: terminal ==
+        high_summary - low_summary.  Catches an operand-order
+        regression at the template's compare-edge wiring."""
+        t = load_regime_conditioned_template()
+        wf = t.bind(self._slot_values())
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+        terminal = float(result.terminal_artifact.payload.iloc[0])
+        high = float(result.node_artifacts["high_summary"].payload.iloc[0])
+        low = float(result.node_artifacts["low_summary"].payload.iloc[0])
+        assert np.isclose(terminal, high - low, atol=1e-9), (
+            f"per-regime β-difference at sentinel: expected "
+            f"{high - low:.6f} (=high − low), got {terminal:.6f}.  "
+            "Sign convention regression detected."
+        )
 
     def test_lineage_extends_through_every_node(self):
         t = load_regime_conditioned_template()
         wf = t.bind(self._slot_values())
-
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
             result = execute_workflow(
                 wf, engine=None,
                 primitive_resolver=rates_primitive_resolver,
             )
-
-        # Every node produced an artifact (both regime branches + comparison).
         assert set(result.node_artifacts.keys()) == {
-            "signal", "target",
-            "high_regime_events", "high_windows", "high_aggregate",
-            "low_regime_events", "low_windows", "low_aggregate",
+            "lhs", "rhs", "regime_signal",
+            "relationship", "beta",
+            "high_mask", "low_mask",
+            "high_betas", "low_betas",
+            "high_summary", "low_summary",
             "compare",
         }
 
     def test_workflow_lineage_summary_includes_every_node(self):
         t = load_regime_conditioned_template()
         wf = t.bind(self._slot_values())
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
+        p1, p2, p3, p4, p5, p6 = self._patches()
+        with p1, p2, p3, p4, p5, p6:
             result = execute_workflow(
                 wf, engine=None,
                 primitive_resolver=rates_primitive_resolver,
             )
         summary = result.workflow_lineage_summary
         for nid in (
-            "signal", "target",
-            "high_regime_events", "high_windows", "high_aggregate",
-            "low_regime_events", "low_windows", "low_aggregate",
+            "lhs", "rhs", "regime_signal",
+            "relationship", "beta",
+            "high_mask", "low_mask",
+            "high_betas", "low_betas",
+            "high_summary", "low_summary",
             "compare",
         ):
             assert nid in summary
 
-    def test_signal_and_target_indices_align_under_canonical_binding(self):
-        """Codex P2 follow-up: the template doesn't ship an explicit
-        ``align_series`` step (deferred — see template header's
-        ``Index-alignment contract`` section).  This test asserts
-        the structural invariant that the contract relies on:
-        under the canonical binding, the bridged signal Series and
-        target Series share an identical DatetimeIndex.  If a future
-        rates primitive change breaks this invariant, this test
-        catches it BEFORE event_windows raises at runtime."""
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._slot_values())
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
-            result = execute_workflow(
-                wf, engine=None,
-                primitive_resolver=rates_primitive_resolver,
-            )
-        signal_series = result.node_artifacts["signal"]
-        target_series = result.node_artifacts["target"]
-        assert isinstance(signal_series, Series)
-        assert isinstance(target_series, Series)
-        assert signal_series.payload.index.equals(target_series.payload.index), (
-            "Index-alignment contract violated: signal and target Series "
-            "do not share an identical DatetimeIndex.  event_windows "
-            "would have refused this at runtime; until the explicit "
-            "align_series step is added (deferred — see template "
-            "header), the canonical binding MUST produce aligned "
-            "indices by construction."
-        )
-
-    def test_compare_equals_high_minus_low_numerically(self):
-        """Codex P3 follow-up: pin the comparison's numeric semantics.
-        The terminal ``compare`` Series MUST equal
-        ``high_aggregate − low_aggregate`` value-by-value.  A future
-        regression that swaps the left/right edges OR changes
-        compare.op would silently flip the economic meaning; this
-        test catches that."""
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._slot_values())
-        p1, p2, p3, p4 = self._patches()
-        with p1, p2, p3, p4:
-            result = execute_workflow(
-                wf, engine=None,
-                primitive_resolver=rates_primitive_resolver,
-            )
-
-        terminal = result.terminal_artifact
-        high_agg = result.node_artifacts["high_aggregate"]
-        low_agg = result.node_artifacts["low_aggregate"]
-
-        # Sign convention: terminal == high − low (NOT low − high).
-        expected = high_agg.payload.values - low_agg.payload.values
-        np.testing.assert_array_almost_equal(
-            terminal.payload.values, expected, decimal=10,
-        )
-        # Index parity (synthetic 1970-01-01 + offset days encoding
-        # from conditional_aggregate is identical across both
-        # branches because both used the same offsets vector).
-        assert terminal.payload.index.equals(high_agg.payload.index)
-        assert terminal.payload.index.equals(low_agg.payload.index)
-
-    def test_compare_edge_wiring_pins_left_high_right_low(self):
-        """Codex P3 follow-up: pin the structural sign convention via
-        edge inspection.  ``compare.left`` MUST receive
-        ``high_aggregate``; ``compare.right`` MUST receive
-        ``low_aggregate``.  A swap would invert the economic meaning
-        of the terminal Series ("low minus high" instead of
-        "high minus low")."""
-        t = load_regime_conditioned_template()
-        wf = t.bind(self._slot_values())
-
-        compare_inbound = [
-            e for e in wf.edges if e.target_node_id == "compare"
-        ]
-        edge_by_slot = {e.target_input_slot: e.source_node_id for e in compare_inbound}
-        assert edge_by_slot == {
-            "left": "high_aggregate",
-            "right": "low_aggregate",
-        }, (
-            "Comparison sign convention compromised: compare.left must "
-            "be high_aggregate and compare.right must be low_aggregate "
-            "so the terminal Series carries the documented "
-            "high-minus-low semantics."
-        )
-
 
 # ===========================================================================
-# 5. MANDATORY instrument-agnostic test (workflow_architecture.md gate)
+# 6. MANDATORY instrument-agnostic test (workflow_architecture.md gate)
 # ===========================================================================
 
 
 class _SyntheticInput(BaseModel):
     series_name: str = "synthetic"
-    n_rows: int = 600
+    n_rows: int = 800
     base_value: float = 0.0
-    volatility: float = 1.0
-    units: str = "z_score"
+    drift: float = 0.0
+    noise: float = 0.01
+    units: str = "percent"
+    seed: int = 0
 
 
 class _SyntheticOutput(BaseModel):
@@ -628,53 +705,40 @@ class _SyntheticOutput(BaseModel):
 _SyntheticOutput.model_rebuild()
 
 
-def _synthetic_signal_callable(*, engine, params, config) -> dict:
-    """Synthetic regime-classifier signal: a simulated random walk
-    centered around base_value with given volatility.  Calibrated so
-    high_threshold=+1.0 and low_threshold=-1.0 each catch a healthy
-    fraction of dates → both branches' aggregates are well-defined."""
-    rs = np.random.RandomState(43)
-    bdays = pd.bdate_range(
-        _FROZEN_TODAY - timedelta(days=900), _FROZEN_TODAY,
-    )[-params.n_rows:]
-    values = rs.randn(len(bdays)) * params.volatility + params.base_value
-    rows = [
-        TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=float(v))
-        for d, v in zip(bdays, values)
-    ]
-    return {
-        "current_metrics": {"as_of_date": rows[-1].date},
-        "time_series": {
-            "series_name": params.series_name,
-            "units": params.units,
-            "description": "Synthetic regime-classifier signal.",
-            "rows": [r.model_dump() for r in rows],
-        },
-    }
+def _make_synthetic_callable(*, transform=None, seed_offset: int = 0):
+    """Factory for synthetic primitive callables.  ``transform``,
+    when supplied, takes the rhs value array and returns the lhs
+    value array — letting one synthetic primitive's output be a
+    deterministic function of another's so the rolling-OLS recovers
+    a known beta when the template runs.  Default None = independent
+    series."""
 
+    def _fn(*, engine, params, config) -> dict:
+        rs = np.random.RandomState(int(params.seed) + seed_offset)
+        bdays = pd.bdate_range(
+            _FROZEN_TODAY - timedelta(days=900),
+            _FROZEN_TODAY,
+        )[-int(params.n_rows):]
+        n = len(bdays)
+        base_arr = (
+            np.linspace(params.base_value, params.base_value + params.drift, n)
+            + rs.randn(n) * params.noise
+        )
+        rows = [
+            TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=float(v))
+            for d, v in zip(bdays, base_arr)
+        ]
+        return {
+            "current_metrics": {"as_of_date": rows[-1].date},
+            "time_series": {
+                "series_name": params.series_name,
+                "units": params.units,
+                "description": "Synthetic primitive output.",
+                "rows": [r.model_dump() for r in rows],
+            },
+        }
 
-def _synthetic_target_callable(*, engine, params, config) -> dict:
-    """Synthetic target series: linear walk in PERCENT-like units."""
-    rs = np.random.RandomState(101)
-    bdays = pd.bdate_range(
-        _FROZEN_TODAY - timedelta(days=900), _FROZEN_TODAY,
-    )[-params.n_rows:]
-    values = np.linspace(
-        params.base_value, params.base_value + 1.0, len(bdays),
-    ) + rs.randn(len(bdays)) * 0.02
-    rows = [
-        TimeSeriesRow(date=d.strftime("%Y-%m-%d"), value=float(v))
-        for d, v in zip(bdays, values)
-    ]
-    return {
-        "current_metrics": {"as_of_date": rows[-1].date},
-        "time_series": {
-            "series_name": params.series_name,
-            "units": params.units,
-            "description": "Synthetic target series.",
-            "rows": [r.model_dump() for r in rows],
-        },
-    }
+    return _fn
 
 
 _SYNTHETIC_CONFIG_YAML = """
@@ -697,37 +761,41 @@ methodology:
 
 @pytest.fixture
 def synthetic_resolver(tmp_path) -> PrimitiveResolver:
-    """Resolver that knows about exactly two synthetic primitives:
-    one for the signal slot, one for the target slot.  Together they
-    let the regime_conditioned_relationship template run against
-    finance-blind data."""
-    cfg_signal = tmp_path / "synthetic_signal.yaml"
-    cfg_signal.write_text(_SYNTHETIC_CONFIG_YAML)
-    cfg_target = tmp_path / "synthetic_target.yaml"
-    cfg_target.write_text(_SYNTHETIC_CONFIG_YAML)
+    cfg_lhs = tmp_path / "synthetic_lhs.yaml"
+    cfg_lhs.write_text(_SYNTHETIC_CONFIG_YAML)
+    cfg_rhs = tmp_path / "synthetic_rhs.yaml"
+    cfg_rhs.write_text(_SYNTHETIC_CONFIG_YAML)
+    cfg_regime = tmp_path / "synthetic_regime.yaml"
+    cfg_regime.write_text(_SYNTHETIC_CONFIG_YAML)
 
-    signal_spec = PrimitiveSpec(
-        tool_name="synthetic_signal_tool",
-        callable=_synthetic_signal_callable,
-        input_class=_SyntheticInput,
-        output_class=_SyntheticOutput,
-        config_path=cfg_signal,
-        # Synthetic signal carries z_score units to mimic a normalized
-        # regime classifier; the high/low thresholds in the binding are
-        # calibrated against this scale.
-        output_field_units={"time_series": "z_score"},
-    )
-    target_spec = PrimitiveSpec(
-        tool_name="synthetic_target_tool",
-        callable=_synthetic_target_callable,
-        input_class=_SyntheticInput,
-        output_class=_SyntheticOutput,
-        config_path=cfg_target,
-        output_field_units={"time_series": "percent"},
-    )
     catalog = {
-        "synthetic_signal_tool": signal_spec,
-        "synthetic_target_tool": target_spec,
+        "synthetic_lhs_tool": PrimitiveSpec(
+            tool_name="synthetic_lhs_tool",
+            callable=_make_synthetic_callable(seed_offset=0),
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=cfg_lhs,
+            output_field_units={"time_series": "percent"},
+        ),
+        "synthetic_rhs_tool": PrimitiveSpec(
+            tool_name="synthetic_rhs_tool",
+            callable=_make_synthetic_callable(seed_offset=100),
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=cfg_rhs,
+            output_field_units={"time_series": "percent"},
+        ),
+        # Regime classifier emits a BPS-typed "spread-like" series
+        # whose level is thresholded at +N / -N.  Same units mental
+        # model as a curve-spread regime classifier.
+        "synthetic_regime_tool": PrimitiveSpec(
+            tool_name="synthetic_regime_tool",
+            callable=_make_synthetic_callable(seed_offset=200),
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=cfg_regime,
+            output_field_units={"time_series": "bps"},
+        ),
     }
 
     def _resolve(tool_name: str) -> PrimitiveSpec:
@@ -739,14 +807,13 @@ def synthetic_resolver(tmp_path) -> PrimitiveResolver:
 
 
 class TestInstrumentAgnostic:
-    """MANDATORY per workflow_architecture.md: every template must
-    run unchanged against a non-rates synthetic primitive that emits
-    canonical TimeSeries through the bridge.
+    """MANDATORY per workflow_architecture.md: every shipped template
+    MUST run unchanged against a finance-blind synthetic primitive
+    resolver that emits canonical TimeSeries through the bridge.
 
-    This is the load-bearing test for instrument-agnosticism — if
-    regime_conditioned_relationship can't run against synthetic
-    primitives, it has hidden rates-specific assumptions and is
-    overfit."""
+    This is the load-bearing anti-overfitting test.  A template
+    that secretly hardcodes UST / OIS / curve_family assumptions
+    would fail this test."""
 
     def test_runs_on_synthetic_primitives(self, synthetic_resolver):
         """Same template, same DAG topology, same operator
@@ -755,49 +822,71 @@ class TestInstrumentAgnostic:
         t = load_regime_conditioned_template()
 
         wf = t.bind({
-            "signal_tool_name": "synthetic_signal_tool",
-            "signal_params": {
-                "series_name": "synthetic_z",
-                "n_rows": 600,
-                "volatility": 1.0,
-                "units": "z_score",
-            },
-            "signal_output_field": "time_series",
-            "target_tool_name": "synthetic_target_tool",
-            "target_params": {
-                "series_name": "synthetic_pct",
-                "n_rows": 600,
+            "lhs_tool_name": "synthetic_lhs_tool",
+            "lhs_params": {
+                "series_name": "synthetic_lhs",
+                "n_rows": 800,
                 "base_value": 4.0,
+                "drift": 0.50,
+                "noise": 0.01,
                 "units": "percent",
+                "seed": 1,
             },
-            "target_output_field": "time_series",
-            # |z|=1.0 catches a healthy fraction of dates on both sides.
-            "high_threshold": 1.0,
-            "low_threshold": -1.0,
-            "post_window": 5,
+            "lhs_output_field": "time_series",
+            "rhs_tool_name": "synthetic_rhs_tool",
+            "rhs_params": {
+                "series_name": "synthetic_rhs",
+                "n_rows": 800,
+                "base_value": 3.5,
+                "drift": 0.30,
+                "noise": 0.01,
+                "units": "percent",
+                "seed": 2,
+            },
+            "rhs_output_field": "time_series",
+            "regime_signal_tool_name": "synthetic_regime_tool",
+            "regime_signal_params": {
+                "series_name": "synthetic_regime",
+                "n_rows": 800,
+                # Build a regime signal that oscillates around 0 in BPS
+                # space so both regimes (>+50 / <-50) fire.
+                "base_value": 0.0,
+                "drift": 0.0,
+                "noise": 80.0,
+                "units": "bps",
+                "seed": 3,
+            },
+            "regime_signal_output_field": "time_series",
+            "regression_window": 60,
+            "regression_min_periods": 30,
+            "high_threshold": 50.0,
+            "low_threshold": -50.0,
         })
 
         result = execute_workflow(
             wf, engine=None, primitive_resolver=synthetic_resolver,
         )
 
-        # Same shape as the real-rates run.  Terminal is the regime-
-        # difference Series in BPS (synthetic target declared "percent"
-        # units; event_windows.units_basis=level_change converts
-        # PERCENT to BPS).
+        # Same shape as the real-rates run.
         assert isinstance(result.terminal_artifact, Series)
-        assert result.terminal_artifact.units == TimeSeriesUnits.BPS
-        # Lineage chain extends through every node in both branches.
+        assert result.terminal_artifact.units == TimeSeriesUnits.RATIO
+        assert len(result.terminal_artifact.payload) == 1
+        assert (
+            result.terminal_artifact.payload.index[0]
+            == SUMMARY_SENTINEL_DATE
+        )
         assert set(result.node_artifacts.keys()) == {
-            "signal", "target",
-            "high_regime_events", "high_windows", "high_aggregate",
-            "low_regime_events", "low_windows", "low_aggregate",
+            "lhs", "rhs", "regime_signal",
+            "relationship", "beta",
+            "high_mask", "low_mask",
+            "high_betas", "low_betas",
+            "high_summary", "low_summary",
             "compare",
         }
 
 
 # ===========================================================================
-# 6. Template card content
+# 7. Template card content
 # ===========================================================================
 
 
@@ -805,38 +894,40 @@ class TestTemplateCard:
     def test_card_records_slot_substituted_primitives(self):
         t = load_regime_conditioned_template()
         card = card_for_template(t)
-        # Both primitives are referenced via $slot — card records
-        # the slot-substituted form, not concrete tool names.
-        assert "<via $slot:signal_tool_name>" in card.primitives_used
-        assert "<via $slot:target_tool_name>" in card.primitives_used
+        # All three primitives are slot-driven.
+        assert "<via $slot:lhs_tool_name>" in card.primitives_used
+        assert "<via $slot:rhs_tool_name>" in card.primitives_used
+        assert (
+            "<via $slot:regime_signal_tool_name>" in card.primitives_used
+        )
 
     def test_card_records_concrete_operator_names(self):
         t = load_regime_conditioned_template()
         card = card_for_template(t)
-        # Operators are template-locked (NOT slot-substitutable),
-        # so the card records their concrete names.  The DAG uses
-        # threshold_events (twice — high + low), event_windows
-        # (twice), conditional_aggregate (twice), and
-        # series_arithmetic (compare); the card de-duplicates.
+        # Operators are template-locked → the card records concrete
+        # names.  Distinct from event_study's set: no event_windows
+        # / conditional_aggregate, has rolling_regression / apply_mask
+        # / summarize_series / select_from_series_set.
         assert set(card.operators_used) == {
-            "threshold_events", "event_windows",
-            "conditional_aggregate", "series_arithmetic",
+            "rolling_regression",
+            "select_from_series_set",
+            "threshold_events",
+            "apply_mask",
+            "summarize_series",
+            "series_arithmetic",
         }
 
     def test_card_terminal_artifact_type_is_Series(self):
         t = load_regime_conditioned_template()
         card = card_for_template(t)
-        # ``compare`` (series_arithmetic op=subtract) emits Series
-        # per OPERATOR_REGISTRY.
+        # ``compare`` (series_arithmetic op=subtract) emits Series.
         assert card.terminal_artifact_type == "Series"
 
     def test_card_node_and_edge_counts(self):
         t = load_regime_conditioned_template()
         card = card_for_template(t)
-        # Canonical binary-regime shape: 9 nodes (2 primitives + 3
-        # high-branch + 3 low-branch + 1 compare), 10 edges.
-        assert card.node_count == 9
-        assert card.edge_count == 10
+        assert card.node_count == 12
+        assert card.edge_count == 13
 
     def test_card_archetype_is_regime_conditioned_relationship(self):
         t = load_regime_conditioned_template()

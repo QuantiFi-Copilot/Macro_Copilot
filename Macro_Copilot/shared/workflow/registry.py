@@ -42,14 +42,27 @@ from shared.artifacts.types import (
     WindowedPanel,
 )
 from shared.operators.align_series import align_series, AlignSeriesParams
+from shared.operators.apply_mask import apply_mask, ApplyMaskParams
 from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
 )
 from shared.operators.event_windows import event_windows, EventWindowsParams
+from shared.operators.rolling_regression import (
+    rolling_regression,
+    RollingRegressionParams,
+)
+from shared.operators.select_from_series_set import (
+    select_from_series_set,
+    SelectFromSeriesSetParams,
+)
 from shared.operators.series_arithmetic import (
     series_arithmetic,
     SeriesArithmeticParams,
+)
+from shared.operators.summarize_series import (
+    summarize_series,
+    SummarizeSeriesParams,
 )
 from shared.operators.threshold_events import (
     threshold_events,
@@ -288,6 +301,15 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={"series_list": "List[Series]"},
         output_type="SeriesSet",
     ),
+    "select_from_series_set": OperatorSpec(
+        operator_name="select_from_series_set",
+        callable=select_from_series_set,
+        params_class=SelectFromSeriesSetParams,
+        # The lone consumer slot accepts a SeriesSet (e.g. produced by
+        # align_series upstream).  Output is a single Series.
+        input_slots={"series_set": "SeriesSet"},
+        output_type="Series",
+    ),
     "series_arithmetic": OperatorSpec(
         operator_name="series_arithmetic",
         callable=series_arithmetic,
@@ -322,6 +344,35 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         callable=conditional_aggregate,
         params_class=ConditionalAggregateParams,
         input_slots={"panel": "WindowedPanel"},
+        output_type="Series",
+    ),
+    "apply_mask": OperatorSpec(
+        operator_name="apply_mask",
+        callable=apply_mask,
+        params_class=ApplyMaskParams,
+        # Two slots: a Series payload + an EventSet boolean mask.
+        # Output is a Series subsampled to mask=True dates.
+        input_slots={"series": "Series", "mask": "EventSet"},
+        output_type="Series",
+    ),
+    "rolling_regression": OperatorSpec(
+        operator_name="rolling_regression",
+        callable=rolling_regression,
+        params_class=RollingRegressionParams,
+        # lhs = dependent / target; rhs = single regressor in V1.
+        # Output is a SeriesSet keyed by {beta, alpha, r_squared}.
+        input_slots={"lhs": "Series", "rhs": "Series"},
+        output_type="SeriesSet",
+    ),
+    "summarize_series": OperatorSpec(
+        operator_name="summarize_series",
+        callable=summarize_series,
+        params_class=SummarizeSeriesParams,
+        # Single-Series input → single-row summary Series at a fixed
+        # sentinel date.  Lets two per-regime summaries feed into
+        # series_arithmetic.subtract for the canonical "compare across
+        # regimes" step.
+        input_slots={"series": "Series"},
         output_type="Series",
     ),
 }

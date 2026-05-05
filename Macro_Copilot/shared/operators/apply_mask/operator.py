@@ -1,0 +1,206 @@
+"""apply_mask — finance-blind subsample of a Series by a boolean EventSet mask.
+
+Implements the "split sample by mask" load-bearing primitive of the
+``regime_conditioned_relationship`` archetype:
+
+  classify regimes → split sample by mask → run a per-subsample
+  analysis → compare across regimes
+
+The operator does NOT know whether the mask represents sparse
+trigger events (event_study archetype's threshold_events output) or
+persistent regime states (a regime classifier's output).  Both
+shape into the same boolean ``EventSet.mask`` typed artifact;
+downstream consumers see only "the input restricted to mask=True
+dates."  The semantic distinction lives in lineage (the
+``threshold_events`` step's params record the rule that produced
+the mask).
+
+Lineage contract
+----------------
+The output ``Series.lineage`` is composed by appending an
+``OperatorStep`` to the *input Series's* lineage.  The
+``EventSet`` mask is recorded as an ``auxiliary_lineages`` entry
+on the operator step so downstream lineage walkers can recover
+which mask was applied.  Mirrors the discipline ``series_arithmetic``
+established for binary operators (PR #75).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+from shared.artifacts.lineage import Lineage, OperatorStep
+from shared.artifacts.types import EventSet, Series
+from shared.config.operator_config import (
+    OperatorConfig,
+    OperatorConfigError,
+    load_operator_config,
+)
+from shared.operators.apply_mask.schemas import ApplyMaskParams
+
+
+_OPERATOR_NAME = "apply_mask"
+_OPERATOR_VERSION = "1.0.0"
+
+_CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+
+
+class ApplyMaskError(ValueError):
+    """Raised by ``apply_mask`` on a recoverable user-facing failure."""
+
+
+def apply_mask(
+    series: Series,
+    mask: EventSet,
+    params: Optional[ApplyMaskParams] = None,
+    config: Optional[OperatorConfig] = None,
+) -> Series:
+    """Subsample ``series`` by ``mask``'s boolean values.
+
+    Parameters
+    ----------
+    series :
+        The input ``Series`` to subsample.
+    mask :
+        The ``EventSet`` whose ``.mask`` (a per-date bool Series)
+        defines which dates to keep.
+    params :
+        Optional ``ApplyMaskParams``.  Defaults loaded from bundled
+        config.yaml when omitted.
+    config :
+        Optional ``OperatorConfig``; defaults to the bundled
+        ``config.yaml`` (process-cached).
+
+    Returns
+    -------
+    Series
+        Output Series with payload subsampled to mask=True dates per
+        ``preserve_full_index`` policy.  Lineage extends the input
+        series's chain with this operator step; the mask's lineage
+        is captured as an ``auxiliary_lineage``.
+    """
+    if config is None:
+        config = load_operator_config(_CONFIG_PATH)
+
+    # Name-check config BEFORE reading defaults — a wrong-named config
+    # would otherwise surface as a confusing "no default named X"
+    # error from a sibling operator's config rather than the clearer
+    # "config name mismatch" diagnostic.
+    if not isinstance(config, OperatorConfig):
+        raise OperatorConfigError(
+            f"apply_mask: 'config' must be an OperatorConfig "
+            f"instance; got {type(config).__name__}."
+        )
+    if config.operator.name != _OPERATOR_NAME:
+        raise OperatorConfigError(
+            f"apply_mask: config name mismatch — expected "
+            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
+        )
+
+    if params is None:
+        params = ApplyMaskParams(
+            index_policy=config.default_value("index_policy"),
+            preserve_full_index=config.default_value("preserve_full_index"),
+        )
+
+    series_index = series.payload.index
+    mask_index = mask.mask.index
+
+    # ------------------------------------------------------------------
+    # Index-policy resolution
+    # ------------------------------------------------------------------
+    if params.index_policy == "strict_match":
+        if not series_index.equals(mask_index):
+            raise ApplyMaskError(
+                f"apply_mask: index_policy='strict_match' requires "
+                f"series.payload.index == mask.mask.index, but they "
+                f"differ.  Lengths: series={len(series_index)}, "
+                f"mask={len(mask_index)}.  Either align both inputs "
+                "via align_series upstream or pass "
+                "index_policy='intersect'."
+            )
+        common_index = series_index
+    elif params.index_policy == "intersect":
+        common_index = pd.DatetimeIndex(
+            series_index.intersection(mask_index),
+        ).sort_values()
+        if len(common_index) == 0:
+            raise ApplyMaskError(
+                f"apply_mask: series and mask indexes have NO dates "
+                f"in common (series has {len(series_index)} dates, "
+                f"mask has {len(mask_index)}).  Subsample is empty; "
+                "check that both inputs cover overlapping date ranges."
+            )
+    else:
+        # Pydantic Literal already enforces this; defensive guard.
+        raise ApplyMaskError(
+            f"apply_mask: unsupported index_policy="
+            f"{params.index_policy!r}."
+        )
+
+    # ------------------------------------------------------------------
+    # Subsample
+    # ------------------------------------------------------------------
+    series_aligned = series.payload.reindex(common_index)
+    mask_aligned = mask.mask.reindex(common_index).fillna(False).astype(bool)
+
+    if params.preserve_full_index:
+        # Keep the full intersected index; mask=False cells become NaN.
+        new_payload = series_aligned.where(mask_aligned)
+    else:
+        # Sparse output: only mask=True dates survive.
+        new_payload = series_aligned[mask_aligned]
+
+    # The Series wrapper requires at least one row + a DatetimeIndex.
+    if len(new_payload) == 0:
+        raise ApplyMaskError(
+            f"apply_mask: after applying the mask "
+            f"({int(mask_aligned.sum())} True / {len(mask_aligned)} "
+            "dates) and the preserve_full_index="
+            f"{params.preserve_full_index} policy, the output "
+            "payload is empty.  Either widen the mask, change the "
+            "index_policy, or pass preserve_full_index=true."
+        )
+
+    # Preserve the input series's series_key (the data identity is
+    # unchanged — we just subsampled).
+    new_payload = new_payload.copy()
+    new_payload.name = series.payload.name
+
+    # ------------------------------------------------------------------
+    # Lineage step
+    # ------------------------------------------------------------------
+    step = OperatorStep.build(
+        name=_OPERATOR_NAME,
+        version=_OPERATOR_VERSION,
+        params={
+            "index_policy": params.index_policy,
+            "preserve_full_index": params.preserve_full_index,
+            # Pin the realized mask cardinality for diagnostic clarity
+            # (a templater reading the lineage can confirm the mask
+            # actually fired on a non-empty subset).
+            "n_true": int(mask_aligned.sum()),
+            "n_total": int(len(mask_aligned)),
+        },
+        input_hashes=(series.lineage.head_hash, mask.lineage.head_hash),
+        auxiliary_lineages=(mask.lineage,),
+    )
+    new_lineage = series.lineage.append(step)
+
+    return Series(
+        series_key=series.series_key,
+        payload=new_payload,
+        units=series.units,
+        frequency=series.frequency,
+        missingness_policy=series.missingness_policy,
+        lineage=new_lineage,
+    )
+
+
+__all__ = [
+    "apply_mask",
+    "ApplyMaskError",
+]

@@ -240,7 +240,7 @@ class TestTemplateStructure:
                 "tenor": "2Y",
                 "lookback_days": 1825,
             },
-            "signal_output_field": "time_series_zscore",
+            "signal_output_field": "time_series_change_zscore",
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST", "tenor": "10Y", "lookback_days": 1825,
@@ -289,7 +289,8 @@ class TestArchetypeSignature:
 
 class TestSlotBinding:
     def _full_slot_values(self, **overrides):
-        """Canonical proof-Q1 slot binding."""
+        """Canonical proof-Q1 slot binding (single-day widening event
+        study: z-score of the day-over-day spread CHANGE)."""
         defaults = {
             "signal_tool_name": "calculate_swap_spread_tool",
             "signal_params": {
@@ -298,7 +299,7 @@ class TestSlotBinding:
                 "tenor": "2Y",
                 "lookback_days": 1825,
             },
-            "signal_output_field": "time_series_zscore",
+            "signal_output_field": "time_series_change_zscore",
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -365,6 +366,10 @@ class TestEndToEndRealRates:
     DB fetchers."""
 
     def _slot_values(self):
+        # Canonical proof-Q1 single-day-widening binding.  Uses
+        # ``time_series_change_zscore`` (z-score of the day-over-day
+        # spread CHANGE) — the signal that fires "spread widened a
+        # lot today" events, exactly the Q1 question shape.
         return {
             "signal_tool_name": "calculate_swap_spread_tool",
             "signal_params": {
@@ -373,7 +378,7 @@ class TestEndToEndRealRates:
                 "tenor": "2Y",
                 "lookback_days": 1825,
             },
-            "signal_output_field": "time_series_zscore",
+            "signal_output_field": "time_series_change_zscore",
             "target_tool_name": "get_yield_levels_tool",
             "target_params": {
                 "curve_family": "UST",
@@ -786,3 +791,207 @@ class TestResolverCompleteness:
         # primitives (curve_spread, cross_market_spread, yield_levels)
         # = 8.
         assert len(known_rates_primitives()) == 8
+
+    def test_swap_spread_change_zscore_registered(self):
+        """The canonical Q1 binding lifts
+        ``calculate_swap_spread_tool.time_series_change_zscore`` —
+        the new "spread WIDENED today" signal added in this PR.  The
+        resolver MUST declare its Z_SCORE units so the substrate's
+        validate-time unit-compat checks fire on the canonical
+        binding."""
+        spec = rates_primitive_resolver("calculate_swap_spread_tool")
+        assert (
+            spec.output_field_units["time_series_change_zscore"]
+            == "z_score"
+        )
+
+
+# ===========================================================================
+# 8. Topology-archetype-fit gate (workflow_architecture.md anti-overfit gate)
+# ===========================================================================
+#
+# Codex follow-up on PR #84: the prior "instrument-agnostic" test
+# proved slots accept synthetic primitives, but it did NOT prove the
+# DAG topology matches the abstract event_study archetype.  Without
+# this gate, a regime-conditioned-relationship template could
+# accidentally drift into event-study shape (or vice versa) and the
+# slot-driven test would still pass.  This class pins the topology
+# explicitly:
+#
+#   event_study REQUIRES: threshold_events × 2 (conditional +
+#   unconditional), event_windows × 2, conditional_aggregate × 2,
+#   series_arithmetic.subtract for the compare step.
+#
+#   event_study FORBIDS:  rolling_regression, apply_mask,
+#   summarize_series — those are relationship-archetype operators
+#   and their presence here would mean we drifted off the canonical
+#   event-study shape.
+
+
+class TestTopologyArchetypeFit:
+    """Pin the canonical event_study DAG topology so accidental
+    drift into a different archetype's shape surfaces in code
+    review."""
+
+    def test_uses_threshold_events_twice(self):
+        """Both the conditional branch (rule=abs_above) and the
+        unconditional baseline branch (sentinel rule=above) use
+        threshold_events."""
+        t = load_event_study_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("threshold_events") == 2
+
+    def test_uses_event_windows_twice(self):
+        """One per branch — windowing the target around conditional
+        event days vs unconditional baseline days."""
+        t = load_event_study_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("event_windows") == 2
+
+    def test_uses_conditional_aggregate_twice(self):
+        """One per branch — the per-offset mean + std dispersion."""
+        t = load_event_study_template()
+        op_names = [
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        ]
+        assert op_names.count("conditional_aggregate") == 2
+
+    def test_compare_is_series_arithmetic_subtract(self):
+        """The terminal compare step is canonical: subtract the
+        unconditional aggregate from the conditional aggregate to
+        emit the abnormal forward-move Series."""
+        t = load_event_study_template()
+        compare_node = next(n for n in t.nodes if n.node_id == "compare")
+        assert compare_node.kind == "operator"
+        assert compare_node.operator_name == "series_arithmetic"
+        assert compare_node.params["op"] == "subtract"
+
+    def test_does_not_use_relationship_archetype_operators(self):
+        """event_study MUST NOT use rolling_regression / apply_mask /
+        summarize_series — those are relationship-archetype operators
+        (regime_conditioned_relationship's per-subsample analysis
+        family).  Their presence here would mean the template
+        drifted off the event-study canonical shape."""
+        t = load_event_study_template()
+        op_names = {
+            n.operator_name for n in t.nodes if n.kind == "operator"
+        }
+        forbidden = {
+            "rolling_regression", "apply_mask", "summarize_series",
+        }
+        leak = op_names & forbidden
+        assert not leak, (
+            f"event_study template drifted into relationship-archetype "
+            f"operators: {sorted(leak)}.  These belong to "
+            "regime_conditioned_relationship; remove them or, if a "
+            "real desk question motivates them, ship a separately-"
+            "named template per the V1 1-template-per-archetype rule."
+        )
+
+
+# ===========================================================================
+# 9. Numeric / sign-convention pin on the abnormal-move series
+# ===========================================================================
+#
+# Codex P3 follow-up on PR #82+#83: the prior real-rates suite
+# checked the terminal artifact's type, units, length, validation,
+# and lineage — but it never asserted the load-bearing arithmetic
+# identity ``compare == aggregate − unconditional_aggregate``.  A
+# future regression that flips the operand order (left=unconditional,
+# right=conditional) or swaps the op (add vs subtract) would still
+# pass every existing test.  This class pins the sign convention
+# numerically against synthetic data with a known structural answer.
+
+
+class TestAbnormalMoveSignConvention:
+    """Pin ``compare = aggregate − unconditional_aggregate`` so a
+    sign or operand-order regression surfaces in the test suite,
+    not in production output."""
+
+    def _synthetic_slot_values(self, **overrides):
+        defaults = {
+            "signal_tool_name": "calculate_swap_spread_tool",
+            "signal_params": {
+                "sovereign_curve_family": "UST",
+                "ois_curve_family": "USD_SOFR_OIS",
+                "tenor": "2Y",
+                "lookback_days": 1825,
+            },
+            "signal_output_field": "time_series_change_zscore",
+            "target_tool_name": "get_yield_levels_tool",
+            "target_params": {
+                "curve_family": "UST",
+                "tenor": "10Y",
+                "lookback_days": 1825,
+            },
+            "target_output_field": "time_series",
+            "threshold": 1.5,
+            "post_window": 5,
+        }
+        defaults.update(overrides)
+        return defaults
+
+    def test_compare_equals_conditional_minus_unconditional(self):
+        """Numerically pin: terminal_artifact[t] ==
+        aggregate[t] - unconditional_aggregate[t] for every offset.
+        If a future edit inverts the operands (right=aggregate,
+        left=unconditional) the abnormal series would silently flip
+        sign and every other test would still pass — this catches it."""
+        import numpy as np
+
+        t = load_event_study_template()
+        wf = t.bind(self._synthetic_slot_values())
+        with patch(
+            "rates_agent.ois.tools.swap_spread.compute.fetch_cross_domain_pair",
+            return_value=_synthetic_swap_spread_df(),
+        ), patch(
+            "rates_agent.ois.tools.swap_spread.compute.date",
+            _FrozenDate,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.fetch_single_tenor",
+            return_value=_synthetic_yield_levels_df(),
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.yield_levels.compute.date",
+            _FrozenDate,
+        ):
+            result = execute_workflow(
+                wf, engine=None,
+                primitive_resolver=rates_primitive_resolver,
+            )
+
+        terminal = result.terminal_artifact.payload
+        cond = result.node_artifacts["aggregate"].payload
+        uncond = result.node_artifacts["unconditional_aggregate"].payload
+        # All three Series must share length = post_window + 1.
+        assert len(terminal) == len(cond) == len(uncond) == 6
+        # Numeric identity.
+        for i in range(len(terminal)):
+            expected = float(cond.iloc[i]) - float(uncond.iloc[i])
+            actual = float(terminal.iloc[i])
+            assert np.isclose(actual, expected, atol=1e-9), (
+                f"abnormal series at offset {i}: expected "
+                f"{expected:.6f} (=conditional-unconditional) but got "
+                f"{actual:.6f}.  Sign convention regression detected."
+            )
+
+    def test_compare_node_left_is_aggregate_right_is_unconditional(self):
+        """Static gate (no execution): the compare node's incoming
+        edges MUST wire ``aggregate`` → left and
+        ``unconditional_aggregate`` → right.  Catches an operand-
+        order regression at template-edit time, before any test
+        execution."""
+        t = load_event_study_template()
+        compare_edges = [
+            e for e in t.edges if e.target_node_id == "compare"
+        ]
+        # Exactly two edges feed compare.
+        assert len(compare_edges) == 2
+        slot_to_source = {
+            e.target_input_slot: e.source_node_id for e in compare_edges
+        }
+        assert slot_to_source["left"] == "aggregate"
+        assert slot_to_source["right"] == "unconditional_aggregate"
