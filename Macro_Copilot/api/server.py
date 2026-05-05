@@ -41,6 +41,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import init_engine, settings
 from api.routes.rates import router as rates_router
+from api.routes.workflows import router as workflows_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -101,6 +102,16 @@ app.include_router(
     rates_router,
     prefix="/api/v1/rates",
     tags=["Rates"],
+)
+
+# PR 10: workflow-template + tool catalogue REST surface.  Sits
+# alongside the rates routes — same in-process compute path, distinct
+# concern (workflows are DAG-level; rates routes are primitive-level).
+# See ``api/routes/workflows/__init__.py`` for the full surface.
+app.include_router(
+    workflows_router,
+    prefix="/api/v1",
+    tags=["Workflows"],
 )
 
 app.include_router(

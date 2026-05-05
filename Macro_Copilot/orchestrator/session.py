@@ -78,6 +78,12 @@ from orchestrator.prompts import (
     SOVEREIGN_BONDS_SYSTEM_PROMPT,
 )
 from orchestrator.supervisor import Supervisor
+from orchestrator.workflow_contracts import (
+    WorkflowExecutionResult,
+    WorkflowRouteAction,
+    WorkflowRouteDecision,
+)
+from orchestrator.workflow_router import WorkflowRouter
 
 logger = logging.getLogger("orchestrator.session")
 
@@ -121,6 +127,15 @@ class CopilotSession:
         self._turn_counter = 0
 
         self._supervisor: Supervisor | None = None
+        # PR 10: workflow router parallel to the supervisor.  Built at
+        # ``open()`` time alongside the supervisor.  Gates every turn
+        # BEFORE the supervisor so a prompt that fits a registered
+        # workflow template (event_study, regime_conditioned_relationship)
+        # routes to the workflow path instead of the per-domain ReAct
+        # path.  When the workflow router returns OUT_OF_SCOPE (e.g. a
+        # primitive-only question like "where's SOFR 2Y?"), the turn
+        # falls through to the existing supervisor flow unchanged.
+        self._workflow_router: WorkflowRouter | None = None
         self._children: dict[Domain, DomainAgentSession] = {}
         # Per-domain async locks serialise concurrent "open" requests for
         # the same child.  Child objects are constructed eagerly at
@@ -167,6 +182,39 @@ class CopilotSession:
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS,
         )
+
+        # PR 10: workflow router.  Constructing it triggers the rendered
+        # template-catalogue + primitive-shape system prompt build (one
+        # static prefix, cache-eligible).  Importing the registered
+        # template packages here makes sure the substrate's process-wide
+        # template registry is populated before the router renders its
+        # catalogue.
+        try:
+            import rates_agent.workflows.event_study  # noqa: F401
+            import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
+        except Exception as exc:
+            logger.warning(
+                "[%s] failed to import workflow templates; workflow "
+                "routing disabled for this session: %s",
+                self.thread_id, exc,
+            )
+        else:
+            try:
+                self._workflow_router = WorkflowRouter(
+                    model_name=LLM_MODEL,
+                    temperature=LLM_TEMPERATURE,
+                    max_tokens=LLM_MAX_TOKENS,
+                )
+                logger.info(
+                    "[%s] workflow router ready (templates registered)",
+                    self.thread_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[%s] failed to build workflow router; workflow "
+                    "routing disabled for this session: %s",
+                    self.thread_id, exc,
+                )
 
         for domain in Domain:
             if domain not in DOMAIN_MCP_SERVERS:
@@ -421,6 +469,183 @@ class CopilotSession:
     # Internal turn pipeline
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # PR 10 — workflow-router pre-gate
+    # ------------------------------------------------------------------
+
+    async def _maybe_run_workflow(
+        self,
+        user_message: str,
+        turn_label: str,
+        emit,
+        turn_start: float,
+    ) -> bool:
+        """Try to handle the turn as a workflow-template execution.
+
+        Returns ``True`` when the workflow router emitted ROUTE and the
+        turn was completed via the workflow event channel.  Returns
+        ``False`` when the router emitted OUT_OF_SCOPE — the caller
+        falls through to the existing supervisor flow.
+
+        ``CLARIFY`` is treated like ``ROUTE`` (turn-completing) so the
+        workflow-aware clarification question doesn't bounce through
+        the supervisor a second time.
+
+        Errors during workflow routing or execution are logged and
+        the gate returns ``False`` so the supervisor still gets a
+        chance to answer the prompt — graceful degradation.
+        """
+        assert self._workflow_router is not None
+        try:
+            decision = await self._workflow_router.route(user_message)
+        except Exception as exc:
+            logger.exception(
+                "[%s] %s workflow router failed; falling through to "
+                "supervisor: %s",
+                self.thread_id, turn_label, exc,
+            )
+            return False
+
+        # OUT_OF_SCOPE → not a workflow shape.  Fall through cleanly;
+        # the supervisor will handle it on the existing path.  We
+        # intentionally do NOT emit a ``workflow_route_decision`` event
+        # for the out-of-scope case — that would surface workflow-
+        # internals to a turn that the user expected as a primitive
+        # query.
+        if decision.action == WorkflowRouteAction.OUT_OF_SCOPE:
+            return False
+
+        # Surface the routing decision regardless of ROUTE / CLARIFY so
+        # the frontend can render the structured envelope.
+        await emit(
+            SessionEvent(
+                type="workflow_route_decision",
+                data={
+                    "action": decision.action.value,
+                    "template_id": decision.template_id,
+                    "slot_values": dict(decision.slot_values or {}),
+                    "rationale": decision.rationale,
+                    "clarification_question": decision.clarification_question,
+                    "adjustments": list(decision.adjustments),
+                },
+            )
+        )
+
+        if decision.action == WorkflowRouteAction.CLARIFY:
+            question = (
+                decision.clarification_question
+                or "Could you clarify which workflow you want to run?"
+            )
+            # Emit a generic clarification event for the existing chat
+            # UI plus a token stream so the assistant message renders
+            # the clarification as ordinary prose.
+            await emit(
+                SessionEvent(type="clarification", data={"question": question})
+            )
+            await emit(SessionEvent(type="token", data={"content": question}))
+            await emit(
+                SessionEvent(
+                    type="done",
+                    data={
+                        "workspace_context": None,
+                        "tool_calls": [],
+                        "total_duration_ms": round(
+                            (time.monotonic() - turn_start) * 1000
+                        ),
+                    },
+                )
+            )
+            return True
+
+        # ROUTE → execute the bound workflow.  Surface a workflow_status
+        # "running" chip so the UI can show progress.
+        await emit(
+            SessionEvent(
+                type="workflow_status",
+                data={"status": "running"},
+            )
+        )
+
+        # Lazy-import the runner so the orchestrator package stays
+        # transport-blind w.r.t. the rates resolver until a workflow
+        # actually runs.
+        from rates_agent.workflows._runner import run_template
+
+        # The substrate's executor is synchronous; offload to a thread
+        # so the WebSocket event loop isn't blocked.
+        try:
+            envelope = await asyncio.to_thread(
+                run_template,
+                decision.template_id,
+                dict(decision.slot_values or {}),
+            )
+        except Exception as exc:
+            logger.exception(
+                "[%s] %s workflow execution raised: %s",
+                self.thread_id, turn_label, exc,
+            )
+            envelope = {
+                "ok": False,
+                "template_id": decision.template_id,
+                "error": f"Workflow execution raised: {exc}",
+            }
+
+        await emit(
+            SessionEvent(
+                type="workflow_status",
+                data={
+                    "status": "complete" if envelope.get("ok") else "error",
+                },
+            )
+        )
+
+        # Stream a one-line prose summary as a token so the chat
+        # assistant bubble shows readable text alongside the structured
+        # workflow_result card.
+        prose = _format_workflow_prose(envelope)
+        if prose:
+            await emit(SessionEvent(type="token", data={"content": prose}))
+
+        await emit(
+            SessionEvent(
+                type="workflow_result",
+                data={
+                    "ok": bool(envelope.get("ok")),
+                    "template_id": envelope.get("template_id"),
+                    "terminal_artifact": envelope.get("terminal_artifact"),
+                    "workflow_lineage_summary": envelope.get(
+                        "workflow_lineage_summary"
+                    ),
+                    "error": envelope.get("error"),
+                    "route": {
+                        "template_id": decision.template_id,
+                        "slot_values": dict(decision.slot_values or {}),
+                        "rationale": decision.rationale,
+                    },
+                },
+            )
+        )
+
+        await emit(
+            SessionEvent(
+                type="done",
+                data={
+                    # Workflow turns don't currently surface a
+                    # workspace_context (the workflow result IS the
+                    # workspace surface).  Future PR can route the
+                    # bound workflow back into the existing workspace
+                    # by translating the slot_values into the legacy
+                    # ?tool=... query string when applicable.
+                    "workspace_context": None,
+                    "tool_calls": [],
+                    "total_duration_ms": round(
+                        (time.monotonic() - turn_start) * 1000
+                    ),
+                },
+            )
+        )
+        return True
+
     async def _run_turn(
         self,
         user_message: str,
@@ -429,7 +654,21 @@ class CopilotSession:
     ) -> None:
         """End-to-end orchestration for one user turn.
 
+        PR 10 inserted a workflow-router pre-gate BEFORE the supervisor
+        path.  The pre-gate runs the prompt against the
+        ``WorkflowRouter`` (a separate LLM call returning a typed
+        ``WorkflowRouteDecision``).  When the action is ROUTE, the
+        bound workflow template executes and the turn closes via the
+        workflow event channel — the supervisor + per-domain agents
+        are NEVER called.  When the action is OUT_OF_SCOPE (e.g. a
+        primitive-only question like "where's SOFR 2Y?") or CLARIFY,
+        the turn falls through to the existing supervisor flow
+        unchanged.
+
         Steps:
+          0. (PR 10) workflow router pre-gate.  ROUTE → run workflow +
+             return; OUT_OF_SCOPE → fall through; CLARIFY → emit
+             question + return (same shape as supervisor's clarify).
           1. emit ``status=routing`` and get the RouteDecision from the
              supervisor.
           2. emit ``route_decision`` with action/domains/rationale.
@@ -438,6 +677,16 @@ class CopilotSession:
              whichever children ran.
         """
         turn_start = time.monotonic()
+
+        # ------------------------------------------------------------------
+        # 0. WORKFLOW ROUTER PRE-GATE (PR 10)
+        # ------------------------------------------------------------------
+        if self._workflow_router is not None:
+            workflow_handled = await self._maybe_run_workflow(
+                user_message, turn_label, emit, turn_start,
+            )
+            if workflow_handled:
+                return
 
         # ------------------------------------------------------------------
         # 1. Supervisor routing
@@ -1083,3 +1332,39 @@ def _format_scalar(value) -> str:
     if isinstance(value, float):
         return f"{value:.4g}"
     return str(value)
+
+
+# ===========================================================================
+# PR 10 — workflow-result prose formatter
+# ===========================================================================
+
+
+def _format_workflow_prose(envelope: dict) -> str:
+    """Render a one-line PM-readable summary of a workflow execution
+    envelope.  Streamed as a single ``token`` event so the chat
+    assistant bubble shows readable text alongside the structured
+    ``workflow_result`` event the frontend renders separately.
+    """
+    template_id = envelope.get("template_id") or "?"
+    if not envelope.get("ok"):
+        err = envelope.get("error") or "(no detail)"
+        return (
+            f"Workflow ``{template_id}`` did not execute cleanly: {err}"
+        )
+    terminal = envelope.get("terminal_artifact") or {}
+    units = terminal.get("units") or "?"
+    n_rows = terminal.get("n_rows", "?")
+    summary_stats = terminal.get("summary_stats") or {}
+    mean = summary_stats.get("mean")
+    if mean is not None and isinstance(mean, (int, float)):
+        return (
+            f"Ran ``{template_id}``. Terminal Series ({units}, "
+            f"{n_rows} rows) — mean {mean:.4g}. See the workflow "
+            "result card for the full per-offset / per-regime view."
+        )
+    artifact_type = terminal.get("type", "Series")
+    return (
+        f"Ran ``{template_id}``. Terminal artifact: {artifact_type} "
+        f"({units}, {n_rows} rows). See the workflow result card "
+        "for details."
+    )

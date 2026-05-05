@@ -27,6 +27,27 @@ Event types
                         with the same error semantics as ``tool_result``.
 - ``error``             {"message"}
 
+PR 10 — workflow-template events (the LLM can choose to run a workflow
+DAG instead of routing to a domain agent).  These flow on the same
+WebSocket alongside the existing event types so the frontend's
+streaming-message reducer can handle them as additional cases:
+
+- ``workflow_route_decision`` workflow router's pick:
+                        {"action": "route" | "out_of_scope" | "clarify",
+                         "template_id"?: str,
+                         "slot_values"?: dict,
+                         "rationale": str,
+                         "clarification_question"?: str,
+                         "adjustments": list[str]}
+- ``workflow_status``   workflow execution status chip:
+                        {"status": "running" | "complete" | "error"}
+- ``workflow_result``   final workflow execution envelope:
+                        {"ok": bool,
+                         "template_id": str,
+                         "terminal_artifact"?: dict,
+                         "workflow_lineage_summary"?: str,
+                         "error"?: str}
+
 The frontend ignores unknown event types (forward-compatible), so we can add
 new ones without breaking the chat UI.
 """

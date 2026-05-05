@@ -19,6 +19,12 @@ const STARTER_PROMPTS = [
   "What's implied by next FOMC meeting?",
   'Scan for z-score extremes above 2.0',
   'What is the BTP-Bund 10Y spread?',
+  // PR 10 — workflow-shaped prompts (the workflow router gates these
+  // before the supervisor; they execute as event_study /
+  // regime_conditioned_relationship templates and return a structured
+  // workflow result card).
+  "Over the last 5 years, when the 2Y OIS-Treasury spread widens by more than 1.5σ in a single day, what's the average 5-day forward move in the 10Y UST yield, and how does it compare to the unconditional 5-day move?",
+  "Estimate the rolling beta of the 10Y UST yield change to the 2Y OIS rate change, and report how that beta differs in steepening vs flattening regimes of the 2s10s curve over the last 3 years.",
 ];
 
 export function ChatDrawer() {
@@ -42,10 +48,22 @@ export function ChatDrawer() {
     const handleFocusComposer = () => {
       inputRef.current?.focus();
     };
+    // PR 10 — let other pages (e.g. WorkflowsCataloguePage) drop a
+    // starter prompt directly into the composer.  Read once, focus
+    // the input, scroll the composer into view.
+    const handleSetInput = (evt: Event) => {
+      const detail = (evt as CustomEvent).detail;
+      if (typeof detail === 'string') {
+        setInputValue(detail);
+        inputRef.current?.focus();
+      }
+    };
 
     window.addEventListener('copilot:focus-input', handleFocusComposer);
+    window.addEventListener('copilot:set-input', handleSetInput);
     return () => {
       window.removeEventListener('copilot:focus-input', handleFocusComposer);
+      window.removeEventListener('copilot:set-input', handleSetInput);
     };
   }, []);
 
