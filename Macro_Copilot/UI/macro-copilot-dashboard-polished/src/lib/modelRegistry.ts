@@ -111,6 +111,15 @@ export type ModelMetadata = {
   interpretationCards?: InterpretationCard[];
   /** Optional one-liner above the methodology block in the workspace. */
   oneLineSummary?: string;
+  /** Default form values used when the workspace boots with no URL
+   *  overrides and no saved preset.  Keys are schema field names; values
+   *  are either:
+   *    - structured (SeriesSpecValue, SeriesSpecValue[], string[]) for
+   *      rich controls
+   *    - strings for scalar text/number/select inputs
+   *  These defaults must produce a *runnable* configuration — the user
+   *  should be able to click Run on first load and get a real result. */
+  defaultParams?: Record<string, unknown>;
 };
 
 // ---------------------------------------------------------------------------
@@ -136,6 +145,12 @@ const MODELS: ModelMetadata[] = [
     outputRenderer: 'rolling_regression',
     oneLineSummary:
       'Trailing-window OLS of one sovereign yield series on one or more regressor yield series. Single methodological knob: window length.',
+    defaultParams: {
+      target_spec: { curve_family: 'UST', tenor: '10Y' },
+      regressor_specs: [{ curve_family: 'UST', tenor: '5Y' }],
+      regression_window_days: '60',
+      lookback_days: '730',
+    },
     paramHints: {
       target_spec: {
         control: 'series_spec',
@@ -187,6 +202,14 @@ const MODELS: ModelMetadata[] = [
     outputRenderer: 'pca',
     oneLineSummary:
       'Principal-component decomposition of a sovereign curve\'s yield changes — surfaces level, slope, and curvature factors plus their daily scores.',
+    defaultParams: {
+      curve_family: 'UST',
+      lookback_days: '1825',
+      n_components: '3',
+      change_frequency: 'daily',
+      // tenors: empty array → use the curve's full tenor universe.
+      tenors: [],
+    },
     paramHints: {
       curve_family: {
         control: 'curve_family',
@@ -251,6 +274,20 @@ const MODELS: ModelMetadata[] = [
     outputRenderer: 'attribution',
     oneLineSummary:
       'Decomposes a single tenor\'s yield change between two dates into per-PCA-component contributions in basis points.',
+    defaultParams: (() => {
+      // Default window: ~last quarter, ending today.  ISO YYYY-MM-DD.
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(start.getDate() - 90);
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      return {
+        curve_family: 'UST',
+        target_tenor: '10Y',
+        start_date: fmt(start),
+        end_date: fmt(today),
+        n_components: '3',
+      };
+    })(),
     paramHints: {
       curve_family: { control: 'curve_family', label: 'Curve family' },
       target_tenor: { control: 'tenor', label: 'Target tenor' },
@@ -301,6 +338,9 @@ const MODELS: ModelMetadata[] = [
     outputRenderer: 'auto',
     oneLineSummary:
       'Fits an Ornstein-Uhlenbeck / AR(1) process and reports the half-life of mean reversion — how long it takes a deviation to decay by half.',
+    defaultParams: {
+      series_spec: { curve_family: 'UST', tenor: '10Y' },
+    },
     paramHints: {
       series_spec: { control: 'series_spec', label: 'Series', hidden: false },
       pair_spec: { control: 'auto', hidden: true },
@@ -319,6 +359,12 @@ const MODELS: ModelMetadata[] = [
     outputRenderer: 'series_panel',
     oneLineSummary:
       'Bivariate beta-adjusted RV: rolling hedge ratio of one yield on another, residual in bps, residual z-score.',
+    defaultParams: {
+      target_spec: { curve_family: 'IT_BTP', tenor: '10Y' },
+      hedge_spec: { curve_family: 'DE_BUND', tenor: '10Y' },
+      regression_window_days: '60',
+      lookback_days: '730',
+    },
     paramHints: {
       target_spec: { control: 'series_spec', label: 'Target series' },
       hedge_spec: { control: 'series_spec', label: 'Hedge series' },

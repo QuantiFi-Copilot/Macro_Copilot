@@ -109,9 +109,22 @@ export function WorkspacePage() {
     }
 
     const next = new URLSearchParams();
-    next.set('tool', decoded.view);
-    for (const [k, v] of Object.entries(decoded.params)) {
-      next.set(k, v);
+    if (decoded.kind === 'model') {
+      // Model workspace — name + scalar params.  Nested params (target_spec,
+      // regressor_specs, tenors[]) are dropped on the URL because the model
+      // workspace's controls have richer defaults than a flat URL can encode;
+      // we surface them via deep-linking from the chat with the params dict
+      // already inside `decoded.params` for top-level scalars.
+      next.set('tool', 'model');
+      next.set('name', decoded.toolName);
+      for (const [k, v] of Object.entries(decoded.params)) {
+        next.set(k, v);
+      }
+    } else {
+      next.set('tool', decoded.view);
+      for (const [k, v] of Object.entries(decoded.params)) {
+        next.set(k, v);
+      }
     }
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
