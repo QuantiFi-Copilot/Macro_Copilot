@@ -35,6 +35,7 @@ import { RegimeView } from './views/RegimeView';
 import { ScannerView } from './views/ScannerView';
 import { ForwardView } from './views/ForwardView';
 import { PrimitiveModelView } from './views/PrimitiveModelView';
+import { ModelWorkspacePage } from '@/components/model-workspace/ModelWorkspacePage';
 
 const VALID_VIEWS = new Set<WorkspaceViewType>([
   'spread',
@@ -52,6 +53,14 @@ const VALID_VIEWS = new Set<WorkspaceViewType>([
 // This intentionally lives outside VALID_VIEWS so the existing typed views
 // stay narrow.
 const PRIMITIVE_VIEW = 'primitive';
+
+// Model playground surface — when the URL is
+//   /workspace?tool=model&name=<tool_name>
+// we render ModelWorkspacePage, the rich research workspace with rich
+// controls + bespoke output renderers + presets + comparison + lineage.
+// Reserved for primitives with a registry entry in lib/modelRegistry.ts;
+// other primitives still route to the simpler PrimitiveModelView.
+const MODEL_VIEW = 'model';
 
 function isWorkspaceView(s: string | null | undefined): s is WorkspaceViewType {
   return !!s && VALID_VIEWS.has(s as WorkspaceViewType);
@@ -113,7 +122,10 @@ export function WorkspacePage() {
   const toolParam = searchParams.get('tool');
   const view: WorkspaceViewType | null = isWorkspaceView(toolParam) ? toolParam : null;
   const isPrimitiveRoute = toolParam === PRIMITIVE_VIEW;
-  const primitiveName = isPrimitiveRoute ? searchParams.get('name') ?? '' : '';
+  const isModelRoute = toolParam === MODEL_VIEW;
+  const routeName = (isPrimitiveRoute || isModelRoute)
+    ? searchParams.get('name') ?? ''
+    : '';
 
   const params: WorkspaceParams = useMemo(() => {
     const out: WorkspaceParams = {};
@@ -132,10 +144,29 @@ export function WorkspacePage() {
   const { data, isLoading, error, refetch } = useWorkspaceData(view, params);
 
   // -------------------------------------------------------------------------
+  // Model playground surface (?tool=model&name=…).
+  // -------------------------------------------------------------------------
+  if (isModelRoute) {
+    if (!routeName) {
+      return (
+        <div className="h-full overflow-y-auto">
+          <WorkspaceEmptyState />
+        </div>
+      );
+    }
+    return (
+      <ModelWorkspacePage
+        toolName={routeName}
+        initialParams={params as Record<string, string>}
+      />
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // PR 10 — generic primitive surface (?tool=primitive&name=…).
   // -------------------------------------------------------------------------
   if (isPrimitiveRoute) {
-    if (!primitiveName) {
+    if (!routeName) {
       return (
         <div className="h-full overflow-y-auto">
           <WorkspaceEmptyState />
@@ -144,7 +175,7 @@ export function WorkspacePage() {
     }
     return (
       <PrimitiveModelView
-        toolName={primitiveName}
+        toolName={routeName}
         initialParams={params as Record<string, string>}
       />
     );

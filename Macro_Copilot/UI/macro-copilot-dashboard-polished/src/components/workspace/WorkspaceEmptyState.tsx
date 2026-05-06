@@ -110,6 +110,44 @@ const PRIMITIVE_MODELS: QuickLaunch[] = [
   },
 ];
 
+// Analytical models — deep-link straight into the rich ModelWorkspacePage
+// (controls rail + bespoke output renderer + presets + comparison).
+// One tile per registered model in lib/modelRegistry.ts; the URL carries
+// just the tool_name because the rich controls have their own defaults
+// per param.
+const ANALYTICAL_MODELS: QuickLaunch[] = [
+  {
+    label: 'Rolling Regression',
+    subtitle: 'Trailing-window OLS · betas + alpha + R²',
+    icon: <BarChart3 size={14} />,
+    url: '/workspace?tool=model&name=calculate_rolling_regression_tool',
+  },
+  {
+    label: 'PCA · Yield Curve',
+    subtitle: 'Level / slope / curvature decomposition',
+    icon: <LineChart size={14} />,
+    url: '/workspace?tool=model&name=calculate_pca_yield_curve_tool',
+  },
+  {
+    label: 'Yield-Change Attribution',
+    subtitle: 'Decompose a tenor\'s move into PCA components',
+    icon: <Activity size={14} />,
+    url: '/workspace?tool=model&name=calculate_yield_change_attribution_pca_tool',
+  },
+  {
+    label: 'Beta-Adjusted Spread',
+    subtitle: 'Rolling hedge ratio + bps residual + z-score',
+    icon: <BarChart3 size={14} />,
+    url: '/workspace?tool=model&name=calculate_beta_adjusted_spread_tool',
+  },
+  {
+    label: 'Mean-Reversion Half-Life',
+    subtitle: 'OU / AR(1) decay-rate diagnostics',
+    icon: <Activity size={14} />,
+    url: '/workspace?tool=model&name=calculate_half_life_tool',
+  },
+];
+
 export function WorkspaceEmptyState() {
   const navigate = useNavigate();
 
@@ -140,11 +178,11 @@ export function WorkspaceEmptyState() {
           ))}
         </div>
 
-        {/* PR 10 — interactive primitive models */}
+        {/* Analytical models — rich workspace surface */}
         <div className="mt-10">
           <div className="mb-4 flex items-baseline justify-between">
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-fg-faint">
-              Primitive models · interactive
+              Analytical models · research workspace
             </p>
             <button
               type="button"
@@ -154,6 +192,20 @@ export function WorkspaceEmptyState() {
               <Wrench size={11} />
               Browse all in catalogue →
             </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+            {ANALYTICAL_MODELS.map((q) => (
+              <QuickLaunchTile key={q.label} q={q} onNavigate={navigate} />
+            ))}
+          </div>
+        </div>
+
+        {/* PR 10 — interactive primitive models */}
+        <div className="mt-10">
+          <div className="mb-4 flex items-baseline justify-between">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-fg-faint">
+              Desk primitives · interactive
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
             {PRIMITIVE_MODELS.map((q) => (
