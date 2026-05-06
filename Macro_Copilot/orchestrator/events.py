@@ -95,6 +95,16 @@ _WORKSPACE_TOOLS: set[str] = {
     "calculate_ois_cross_market_spread_tool",
     "calculate_ois_forward_rate_tool",
     "scan_ois_extremes_tool",
+    # Analytical model primitives — the chat surfaces a "See more in
+    # workspace" CTA that routes into the rich ModelWorkspacePage
+    # (controls rail + bespoke output renderer + presets + comparison).
+    # The frontend's decodeWorkspaceContext recognises these tool names
+    # and rewrites ?context= into ?tool=model&name=<tool_name>.
+    "calculate_rolling_regression_tool",
+    "calculate_pca_yield_curve_tool",
+    "calculate_yield_change_attribution_pca_tool",
+    "calculate_half_life_tool",
+    "calculate_beta_adjusted_spread_tool",
     # rate_level is intentionally NOT in the workspace set — a single-
     # point yield/rate is better viewed inline in the chat than in a
     # dedicated analytical workspace (same decision as get_yield_levels
@@ -145,7 +155,39 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"{p.get('tenor', '10Y')} spread"
     ),
     "scan_ois_extremes_tool": lambda p: "Scanning OIS for z-score extremes",
+    # Analytical models
+    "calculate_rolling_regression_tool": lambda p: _rolling_regression_label(p),
+    "calculate_pca_yield_curve_tool": lambda p: (
+        f"PCA on {p.get('curve_family', '?')} curve "
+        f"({p.get('n_components', 3)} components)"
+    ),
+    "calculate_yield_change_attribution_pca_tool": lambda p: (
+        f"PCA attribution · {p.get('curve_family', '?')} {p.get('target_tenor', '?')}"
+    ),
+    "calculate_half_life_tool": lambda p: "Estimating mean-reversion half-life",
+    "calculate_beta_adjusted_spread_tool": lambda p: "Computing beta-adjusted spread",
 }
+
+
+def _rolling_regression_label(p: dict) -> str:
+    """Render a rolling_regression label.  Both target_spec and
+    regressor_specs are nested, so we walk into them when the dict
+    shape is the canonical one."""
+    target = p.get("target_spec") or {}
+    regs = p.get("regressor_specs") or []
+    target_label = (
+        f"{target.get('curve_family', '?')} {target.get('tenor', '?')}"
+        if isinstance(target, dict) else "?"
+    )
+    if isinstance(regs, list) and regs:
+        first = regs[0] if isinstance(regs[0], dict) else {}
+        reg_label = f"{first.get('curve_family', '?')} {first.get('tenor', '?')}"
+        if len(regs) > 1:
+            reg_label += f" + {len(regs) - 1} more"
+    else:
+        reg_label = "?"
+    win = p.get("regression_window_days", "?")
+    return f"Rolling β · {target_label} ~ {reg_label} ({win}d window)"
 
 
 def _ois_forward_label(p: dict) -> str:

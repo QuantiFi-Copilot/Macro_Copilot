@@ -16,6 +16,7 @@
 
 import type { WorkspaceContext } from '@/types/copilot';
 import type { WorkspaceParams, WorkspaceViewType } from '@/types/rates';
+import { hasModelMetadata } from '@/lib/modelRegistry';
 
 // Map MCP tool names → workspace view types.  Order matters for picking the
 // most-interesting tool out of a multi-tool context: spread/cross-market are
@@ -48,15 +49,22 @@ const VIEW_PRIORITY: Record<WorkspaceViewType, number> = {
   forward: 1,
 };
 
-export type DecodedContext = {
-  view: WorkspaceViewType;
-  params: WorkspaceParams;
-};
+/** Discriminator: legacy typed-view route vs the rich model workspace. */
+export type DecodedContext =
+  | { kind: 'view'; view: WorkspaceViewType; params: WorkspaceParams }
+  | { kind: 'model'; toolName: string; params: WorkspaceParams };
+
+// Model-class tool calls beat the typed-view priorities — the rich
+// model workspace is always the right surface when an analytical
+// primitive (rolling_regression, pca_yield_curve, …) is in the context.
+const MODEL_PRIORITY = 100;
 
 /**
- * Decode a `?context=` JSON blob into a single (view, params) tuple.  Picks
- * the most informative tool when several are present.  Returns null if the
- * payload is malformed or contains no recognised tools.
+ * Decode a `?context=` JSON blob into a single decoded route.  Picks
+ * the most informative tool when several are present:
+ *   - any registered model primitive wins (routes to the model workspace)
+ *   - otherwise fall back to the typed-view priority map
+ * Returns null if the payload is malformed or contains no recognised tools.
  */
 export function decodeWorkspaceContext(raw: string): DecodedContext | null {
   let parsed: WorkspaceContext;
@@ -67,16 +75,29 @@ export function decodeWorkspaceContext(raw: string): DecodedContext | null {
   }
   if (!parsed?.tools?.length) return null;
 
-  // Score each tool by view priority; higher wins, last-call wins on tie.
-  let best: { view: WorkspaceViewType; params: WorkspaceParams } | null = null;
+  let best: DecodedContext | null = null;
   let bestScore = -1;
+
   for (const t of parsed.tools) {
+    // Model-class primitives (registry-backed) → rich workspace.
+    if (hasModelMetadata(t.tool)) {
+      if (MODEL_PRIORITY >= bestScore) {
+        bestScore = MODEL_PRIORITY;
+        best = {
+          kind: 'model',
+          toolName: t.tool,
+          params: stringifyParams(t.params),
+        };
+      }
+      continue;
+    }
+    // Typed-view fall-through.
     const view = TOOL_TO_VIEW[t.tool];
     if (!view) continue;
     const score = VIEW_PRIORITY[view];
     if (score >= bestScore) {
       bestScore = score;
-      best = { view, params: stringifyParams(t.params) };
+      best = { kind: 'view', view, params: stringifyParams(t.params) };
     }
   }
   return best;

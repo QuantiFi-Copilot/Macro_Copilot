@@ -373,20 +373,30 @@ function humanLabel(snake: string): string {
 function seedForm(card: ToolCard, initialParams: Record<string, string>): FormState {
   const out: FormState = {};
   const visible = sortFields(card.input_fields, new Set());
+  const meta = getModelMetadata(card.tool_name);
+  const registryDefaults = meta?.defaultParams ?? {};
+
   for (const f of visible) {
     const hint = paramHintFor(card.tool_name, f.name);
-    // Honour URL overrides for scalar fields only (richer shapes need a dedicated
-    // de-marshaller — out of scope for V1 deep-linking).
-    if (
+
+    // Priority order, highest first:
+    //   1. URL override (scalar fields only — nested shapes can't ride the URL)
+    //   2. Registry-supplied defaultParams (structured + scalar)
+    //   3. Pydantic schema default (from ToolCard.input_fields[].default)
+    const isScalarControl =
       hint.control !== 'series_spec' &&
       hint.control !== 'series_spec_list' &&
-      hint.control !== 'multi_tenor' &&
-      initialParams[f.name] !== undefined
-    ) {
+      hint.control !== 'multi_tenor';
+
+    if (isScalarControl && initialParams[f.name] !== undefined) {
       out[f.name] = initialParams[f.name];
-    } else {
-      out[f.name] = defaultFormValue(f, hint.control);
+      continue;
     }
+    if (registryDefaults[f.name] !== undefined) {
+      out[f.name] = registryDefaults[f.name] as FieldValue;
+      continue;
+    }
+    out[f.name] = defaultFormValue(f, hint.control);
   }
   return out;
 }

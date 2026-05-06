@@ -6,12 +6,20 @@ type WorkspaceButtonProps = {
   context: WorkspaceContext;
 };
 
-// Human-readable tool labels for the workspace button subtitle
+// Human-readable tool labels for the workspace button subtitle.
+// Existing chartable tools route to typed views; the analytical models
+// route to the rich ModelWorkspacePage (see lib/workspaceContext.ts).
 const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   calculate_curve_spread_tool: 'Spread chart & history',
   calculate_cross_market_spread_tool: 'Cross-market chart',
   calculate_butterfly_tool: 'Butterfly decomposition',
   scan_extremes_tool: 'Scanner results & heatmap',
+  // Analytical models — open in the model playground.
+  calculate_rolling_regression_tool: 'Rolling regression playground',
+  calculate_pca_yield_curve_tool: 'PCA loadings, variance, factor scores',
+  calculate_yield_change_attribution_pca_tool: 'PCA-based attribution decomposition',
+  calculate_half_life_tool: 'Mean-reversion half-life diagnostics',
+  calculate_beta_adjusted_spread_tool: 'Beta-adjusted spread playground',
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {
