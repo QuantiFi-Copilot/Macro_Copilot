@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Wrench, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { useTools, useTool } from '@/hooks/useWorkflows';
+import { hasModelMetadata } from '@/lib/modelRegistry';
 import { InspectionPanel } from './InspectionPanel';
 import { cn } from '@/utils/cn';
 
@@ -24,7 +25,14 @@ export function ToolsCataloguePage() {
   const { data: toolDetail } = useTool(selectedTool);
 
   const openInWorkspace = (toolName: string) => {
-    navigate(`/workspace?tool=primitive&name=${encodeURIComponent(toolName)}`);
+    // Primitives that have a model-registry entry route to the rich
+    // ModelWorkspacePage; everything else stays on the simpler
+    // schema-driven PrimitiveModelView.  This is what makes the
+    // workspace feel like a "playground" for the model-class primitives
+    // (rolling_regression, pca_yield_curve, …) without forcing the
+    // simpler desk primitives through the same heavy surface.
+    const view = hasModelMetadata(toolName) ? 'model' : 'primitive';
+    navigate(`/workspace?tool=${view}&name=${encodeURIComponent(toolName)}`);
   };
 
   const filtered = useMemo(() => {

@@ -88,6 +88,42 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     YieldLevelOutput,
     get_yield_levels,
 )
+
+# Analytical model primitives — registered so the workspace UI's
+# model-playground can surface + run them via the same /tools catalogue
+# + /tools/{name}/run REST surface used for the desk primitives.
+# Registration is purely additive — no behaviour change to any of
+# these primitives.
+from rates_agent.sovereign_bonds.tools.rolling_regression import (
+    CONFIG_PATH as ROLLING_REGRESSION_CONFIG_PATH,
+    RollingRegressionInput,
+    RollingRegressionOutput,
+    calculate_rolling_regression,
+)
+from rates_agent.sovereign_bonds.tools.pca_yield_curve import (
+    CONFIG_PATH as PCA_YIELD_CURVE_CONFIG_PATH,
+    PcaYieldCurveInput,
+    PcaYieldCurveOutput,
+    calculate_pca_yield_curve,
+)
+from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (
+    CONFIG_PATH as YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+    YieldChangeAttributionPcaInput,
+    YieldChangeAttributionPcaOutput,
+    calculate_yield_change_attribution_pca,
+)
+from rates_agent.sovereign_bonds.tools.half_life import (
+    CONFIG_PATH as HALF_LIFE_CONFIG_PATH,
+    HalfLifeInput,
+    HalfLifeOutput,
+    calculate_half_life,
+)
+from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
+    CONFIG_PATH as BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+    BetaAdjustedSpreadInput,
+    BetaAdjustedSpreadOutput,
+    calculate_beta_adjusted_spread,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -204,6 +240,72 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=YIELD_LEVELS_CONFIG_PATH,
         output_field_units={
             "time_series": "percent",
+        },
+    ),
+
+    # ---- Analytical models (workspace model-playground surface) ----
+    #
+    # These are the same per-tool-folder primitives the v6 sprint
+    # built; registration here exposes them through the
+    # rates_primitive_resolver so the /tools catalogue endpoint and
+    # the /tools/{name}/run endpoint surface them uniformly with the
+    # desk primitives above.  Output unit declarations follow each
+    # primitive's schemas.py field documentation.
+    "calculate_rolling_regression_tool": PrimitiveSpec(
+        tool_name="calculate_rolling_regression_tool",
+        callable=calculate_rolling_regression,
+        input_class=RollingRegressionInput,
+        output_class=RollingRegressionOutput,
+        config_path=ROLLING_REGRESSION_CONFIG_PATH,
+        output_field_units={
+            # betas / r-squared are unitless ratios; alpha + residual
+            # live in yield-percent space.
+            "time_series_betas": "ratio",
+            "time_series_alpha": "percent",
+            "time_series_residual": "percent",
+            "time_series_r_squared": "ratio",
+            "time_series_condition_flag": "count",
+        },
+    ),
+    "calculate_pca_yield_curve_tool": PrimitiveSpec(
+        tool_name="calculate_pca_yield_curve_tool",
+        callable=calculate_pca_yield_curve,
+        input_class=PcaYieldCurveInput,
+        output_class=PcaYieldCurveOutput,
+        config_path=PCA_YIELD_CURVE_CONFIG_PATH,
+        output_field_units={
+            # Factor scores are unitless eigen-coordinates.
+            "time_series_factors": "factor_level",
+        },
+    ),
+    "calculate_yield_change_attribution_pca_tool": PrimitiveSpec(
+        tool_name="calculate_yield_change_attribution_pca_tool",
+        callable=calculate_yield_change_attribution_pca,
+        input_class=YieldChangeAttributionPcaInput,
+        output_class=YieldChangeAttributionPcaOutput,
+        config_path=YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+        # Pure-snapshot primitive (no time_series_* fields).
+        output_field_units={},
+    ),
+    "calculate_half_life_tool": PrimitiveSpec(
+        tool_name="calculate_half_life_tool",
+        callable=calculate_half_life,
+        input_class=HalfLifeInput,
+        output_class=HalfLifeOutput,
+        config_path=HALF_LIFE_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "calculate_beta_adjusted_spread_tool": PrimitiveSpec(
+        tool_name="calculate_beta_adjusted_spread_tool",
+        callable=calculate_beta_adjusted_spread,
+        input_class=BetaAdjustedSpreadInput,
+        output_class=BetaAdjustedSpreadOutput,
+        config_path=BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Beta is unitless; residual is bps; z-score is z_score.
+            "time_series_beta": "ratio",
+            "time_series_residual": "bps",
+            "time_series_residual_z_score": "z_score",
         },
     ),
 }
