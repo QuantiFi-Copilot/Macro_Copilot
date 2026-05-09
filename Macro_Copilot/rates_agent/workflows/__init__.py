@@ -130,6 +130,12 @@ from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread import (
     InflationSwapCurveSpreadOutput,
     calculate_inflation_swap_curve_spread,
 )
+from rates_agent.inflation_swaps.tools.inflation_swap_forward import (
+    CONFIG_PATH as INFLATION_SWAP_FORWARD_CONFIG_PATH,
+    InflationSwapForwardInput,
+    InflationSwapForwardOutput,
+    calculate_inflation_swap_forward,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -407,6 +413,29 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # BPS, rolling z-score in Z_SCORE units.  Operator-
             # layer unit-compat checks rely on these declarations.
             "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_inflation_swap_forward_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_forward_tool",
+        callable=calculate_inflation_swap_forward,
+        input_class=InflationSwapForwardInput,
+        output_class=InflationSwapForwardOutput,
+        config_path=INFLATION_SWAP_FORWARD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS forward row list — frontend
+            # consumes ``forward_zcis_pct`` (percent) and
+            # ``forward_zcis_bps`` (bps) per row.  Declare PERCENT
+            # for the bespoke list to match the canonical forward
+            # series unit (operator unit-compat checks key off the
+            # primary unit per row).
+            "time_series": "percent",
+            # Canonical TimeSeries: forward ZCIS rate (a level) in
+            # PERCENT — mirrors OIS forward_rate; do NOT ship in
+            # BPS (that's the spread convention).  Rolling z-score
+            # in Z_SCORE units.  Operator-layer unit-compat checks
+            # rely on these declarations.
+            "time_series_forward": "percent",
             "time_series_zscore": "z_score",
         },
     ),
