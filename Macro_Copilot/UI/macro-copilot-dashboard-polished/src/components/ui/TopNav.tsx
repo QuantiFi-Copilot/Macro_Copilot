@@ -42,7 +42,19 @@ const SURFACES: SurfaceDef[] = [
   {
     label: 'Monitor',
     to: '/',
-    alsoActiveOn: ['/rates', '/fx', '/policy', '/events'],
+    // Agent surfaces (Rates, FX, Credit, etc.) are conceptually
+    // "Monitor zoomed in on a domain" — they share the Monitor tab so
+    // the user has a single mental anchor for "where I'm watching the
+    // markets" regardless of which agent they're zoomed into.
+    alsoActiveOn: [
+      '/rates',
+      '/fx',
+      '/credit',
+      '/macro-equity',
+      '/policy',
+      '/events',
+      '/pm-orchestrator',
+    ],
   },
   { label: 'Ask', to: '/ask' },
   { label: 'Build', to: '/workspace' },
