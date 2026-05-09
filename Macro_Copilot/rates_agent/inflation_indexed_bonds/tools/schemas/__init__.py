@@ -36,6 +36,19 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.schema
     BreakevenInflationSimpleTimeSeriesRow,
 )
 
+# Forward breakeven inflation (simple, year-weighted linear) — re-
+# exported from the per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/``).
+# Composes ``breakeven_inflation_simple`` twice (once per endpoint
+# tenor) into a year-weighted forward; inherits the spot primitive's
+# no-proxy guard and same-country invariant transitively.
+from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple.schemas import (
+    ForwardBreakevenSimpleCurrentMetrics,
+    ForwardBreakevenSimpleInput,
+    ForwardBreakevenSimpleOutput,
+    ForwardBreakevenSimpleTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -47,4 +60,9 @@ __all__ = [
     "BreakevenInflationSimpleCurrentMetrics",
     "BreakevenInflationSimpleOutput",
     "BreakevenInflationSimpleTimeSeriesRow",
+    # forward_breakeven_simple
+    "ForwardBreakevenSimpleInput",
+    "ForwardBreakevenSimpleCurrentMetrics",
+    "ForwardBreakevenSimpleOutput",
+    "ForwardBreakevenSimpleTimeSeriesRow",
 ]
