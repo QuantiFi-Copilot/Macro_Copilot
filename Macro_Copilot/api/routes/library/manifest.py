@@ -33,6 +33,7 @@ visible at request time (Pydantic validation error → 500).
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -123,6 +124,7 @@ def _load_agent_manifest(agent_dir: Path) -> AgentManifest:
     tools: list[ManifestTool] = []
     sub_counts: dict[str, int] = {}
     cat_counts: dict[str, int] = {}
+    dropped: list[str] = []
 
     for yml in sorted(agent_dir.glob("*.yml")):
         with yml.open() as f:
@@ -130,8 +132,18 @@ def _load_agent_manifest(agent_dir: Path) -> AgentManifest:
         if not raw or "tools" not in raw:
             continue
         for entry in raw["tools"]:
-            # Coerce YAML's `schema` key into the pydantic model's
-            # `schema_` field (avoids the BaseModel.schema clash).
+            # Normalise the entry before Pydantic instantiation:
+            #
+            # 1. PyYAML auto-parses dates like `2026-05-01` into
+            #    datetime.date objects.  Our schema declares
+            #    `built_date: str`, and Pydantic v2 will refuse the
+            #    coercion in strict mode — silently dropping every
+            #    entry.  Stringify any date/datetime values
+            #    recursively so the schema stays simple.
+            # 2. YAML's `schema` key clashes with BaseModel.schema, so
+            #    we rename it to `schema_` to match the field name on
+            #    ToolImplementation.
+            entry = _stringify_dates(entry)
             impl = entry.get("implementation", {})
             if "schema" in impl and "schema_" not in impl:
                 impl["schema_"] = impl.pop("schema")
@@ -139,22 +151,33 @@ def _load_agent_manifest(agent_dir: Path) -> AgentManifest:
             try:
                 tool = ManifestTool(**entry)
             except Exception as exc:
-                logger.warning(
-                    "manifest entry %r failed schema validation: %s",
-                    entry.get("name"),
-                    exc,
-                )
+                # Visible failure — every dropped entry surfaces in
+                # the server log AND in the response payload (via
+                # `dropped`) so the operator can spot a manifest
+                # drift without having to tail logs.
+                msg = f"validation failed for {entry.get('name')!r}: {exc}"
+                logger.warning("manifest: %s", msg)
+                dropped.append(msg)
                 continue
 
             # File-existence sweep.  Skip entries whose backend
             # is stale; emit a warning so it shows up in server logs.
             if not _validate_paths(tool):
+                dropped.append(f"path missing for {tool.name!r}")
                 continue
 
             tools.append(tool)
             sub_counts[tool.sub_agent] = sub_counts.get(tool.sub_agent, 0) + 1
             if tool.category:
                 cat_counts[tool.category] = cat_counts.get(tool.category, 0) + 1
+
+    if dropped:
+        logger.warning(
+            "manifest: %d entries dropped from %s — %s",
+            len(dropped),
+            agent_dir.name,
+            "; ".join(dropped),
+        )
 
     return AgentManifest(
         agent=agent_dir.name,
@@ -163,6 +186,26 @@ def _load_agent_manifest(agent_dir: Path) -> AgentManifest:
         sub_agent_counts=sub_counts,
         category_counts=cat_counts,
     )
+
+
+def _stringify_dates(value: Any) -> Any:
+    """Recursively coerce any date / datetime values inside a YAML-parsed
+    structure into ISO-format strings.
+
+    PyYAML auto-parses ``2026-05-01`` into ``datetime.date(2026, 5, 1)``;
+    our manifest schema declares date-shaped fields as ``str`` so the
+    JSON response is straightforward.  Without this coercion, Pydantic
+    v2 strict mode rejects the entry and the tool gets dropped from
+    the response — invisibly to the user (was the bug that caused
+    every entry to vanish on first deploy).
+    """
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _stringify_dates(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_stringify_dates(v) for v in value]
+    return value
 
 
 def _validate_paths(tool: ManifestTool) -> bool:
