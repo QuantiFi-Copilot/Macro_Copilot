@@ -21,7 +21,6 @@ import {
   Activity,
   Bot,
   ChevronRight,
-  Command,
   Gauge,
   Home,
   Layers,
@@ -53,20 +52,10 @@ export function Sidebar() {
 
   return (
     <aside className="relative flex h-full min-h-0 flex-col overflow-hidden border-r border-line-subtle">
-      {/* Workspace search button — opens ⌘K palette in V2; for V1 it
-          routes to /ask which is the de facto search surface. */}
-      <div className="px-4 pt-5">
-        <Link
-          to="/ask"
-          className="flex w-full items-center gap-2.5 rounded-md border border-line-soft bg-white/[0.012] px-3 py-2 text-[12px] text-fg-muted transition-colors duration-150 ease-sleek hover:border-line-strong hover:bg-white/[0.025] hover:text-fg-secondary"
-        >
-          <Command size={12} className="text-fg-muted" />
-          <span className="flex-1 text-left">Search workspace</span>
-          <kbd className="rounded border border-line-soft bg-white/[0.02] px-1 py-px text-[9px] font-medium text-fg-muted">
-            ⌘K
-          </kbd>
-        </Link>
-      </div>
+      {/* No top-of-rail search button: the TopNav already exposes the
+          same ⌘K → /ask affordance.  Two search buttons in the same
+          column became visual noise once TopNav was lifted to a
+          global position above the sidebar. */}
 
       <nav className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4">
         {/* WORKSPACE section */}
