@@ -58,6 +58,17 @@ from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread.schema
     CrossMarketInflationSwapSpreadTimeSeriesRow,
 )
 
+# Swap-breakeven basis (ZCIS minus same-tenor, same-currency
+# linker-implied breakeven) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/``).
+from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple.schemas import (
+    SwapBreakevenBasisSimpleCurrentMetrics,
+    SwapBreakevenBasisSimpleInput,
+    SwapBreakevenBasisSimpleOutput,
+    SwapBreakevenBasisSimpleTimeSeriesRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -80,4 +91,9 @@ __all__ = [
     "CrossMarketInflationSwapSpreadCurrentMetrics",
     "CrossMarketInflationSwapSpreadTimeSeriesRow",
     "CrossMarketInflationSwapSpreadOutput",
+    # swap_breakeven_basis_simple
+    "SwapBreakevenBasisSimpleInput",
+    "SwapBreakevenBasisSimpleCurrentMetrics",
+    "SwapBreakevenBasisSimpleTimeSeriesRow",
+    "SwapBreakevenBasisSimpleOutput",
 ]

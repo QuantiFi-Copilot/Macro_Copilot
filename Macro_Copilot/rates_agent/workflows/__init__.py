@@ -142,6 +142,12 @@ from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import
     CrossMarketInflationSwapSpreadOutput,
     calculate_cross_market_inflation_swap_spread,
 )
+from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (
+    CONFIG_PATH as SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
+    SwapBreakevenBasisSimpleInput,
+    SwapBreakevenBasisSimpleOutput,
+    calculate_swap_breakeven_basis_simple,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -463,6 +469,24 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # Operator-layer unit-compat checks rely on these
             # declarations.
             "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_swap_breakeven_basis_simple_tool": PrimitiveSpec(
+        tool_name="calculate_swap_breakeven_basis_simple_tool",
+        callable=calculate_swap_breakeven_basis_simple,
+        input_class=SwapBreakevenBasisSimpleInput,
+        output_class=SwapBreakevenBasisSimpleOutput,
+        config_path=SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen swap-breakeven basis row list —
+            # frontend consumes ``basis_bps`` per row, so the unit
+            # is BPS (the basis is a spread object, NOT a level).
+            "time_series": "bps",
+            # Canonical TimeSeries: swap-breakeven basis history
+            # in BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_basis": "bps",
             "time_series_zscore": "z_score",
         },
     ),
