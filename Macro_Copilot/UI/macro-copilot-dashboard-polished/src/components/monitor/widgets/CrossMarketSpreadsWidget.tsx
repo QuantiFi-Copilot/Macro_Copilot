@@ -1,9 +1,19 @@
 // ============================================================================
-// CrossMarketWidget — sovereign cross-market spreads
+// CrossMarketSpreadsWidget — pre-aggregated cross-sovereign spreads
 // ----------------------------------------------------------------------------
-// Pre-aggregated.  Renders the default cross-market pairs (BTP-Bund,
-// OAT-Bund, UST-Bund) with a sparkline strip per pair, current spread,
-// daily change, monthly change, percentile, z-score chip.
+// Pre-aggregated.  Surface for `calculate_cross_market_spread_tool`
+// evaluated against the default pairs (BTP-Bund, OAT-Bund, UST-Bund)
+// at the 10Y point.  Renders one row per pair: label, sparkline,
+// current spread, daily change, monthly change, percentile, z-score.
+//
+// Was named "CrossMarketWidget" with title "Sovereign Spreads" in V0.
+// Renamed to mirror the backing tool's name
+// (`calculate_cross_market_spread_tool`).
+//
+// Note: the singular `CrossMarketSpreadWidget` (in
+// CrossMarketSpreadWidget.tsx) is the parameterized variant — user
+// picks the specific pair + tenor.  This widget is the pre-aggregated
+// "show all the default pairs" one.
 // ============================================================================
 
 import { useRatesDataContext } from '@/components/monitor/RatesDataProvider';
@@ -16,19 +26,20 @@ import { Sparkline } from '@/components/ui/Sparkline';
 import { WidgetLoading, WidgetError } from './shared';
 import { cn } from '@/utils/cn';
 
-export function CrossMarketWidget() {
+export function CrossMarketSpreadsWidget() {
   const { data, isLoading, error } = useRatesDataContext();
 
   if (error && !data) return <WidgetError message={error.message} />;
-  if (!data || isLoading) return <WidgetLoading label="Loading cross-market…" />;
+  if (!data || isLoading)
+    return <WidgetLoading label="Loading cross-market spreads…" />;
 
   const pairs = data.crossMarket.pairs;
 
   return (
     <>
       <WidgetHeader
-        kicker="CROSS-MARKET RV · 10Y"
-        title="Sovereign Spreads"
+        kicker="CALCULATE_CROSS_MARKET_SPREAD · 10Y"
+        title="Cross-Market Spreads"
         meta={
           <span className="font-mono text-[10.5px] text-fg-muted">
             {pairs.length} pairs

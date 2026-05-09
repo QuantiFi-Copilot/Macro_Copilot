@@ -133,33 +133,39 @@ export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
     parameterized: false,
     sourceTool: 'scan_extremes_tool',
   },
-  cross_market: {
-    id: 'cross_market',
-    label: 'Cross-Market RV',
+  cross_market_spreads: {
+    // Was `cross_market` with label "Cross-Market RV".  Renamed to
+    // mirror the backing tool name (`calculate_cross_market_spread_tool`).
+    id: 'cross_market_spreads',
+    label: 'Cross-Market Spreads',
     description:
-      'Sovereign cross-market spreads (BTP-Bund, OAT-Bund, UST-Bund) with z-scores and sparklines.',
+      'Cross-sovereign spreads (BTP-Bund, OAT-Bund, UST-Bund) at the 10Y point, with daily / monthly change, percentile, z-score. Backed by calculate_cross_market_spread_tool.',
     category: 'analysis',
     defaultSize: 'medium',
     allowedSizes: ['medium'],
     parameterized: false,
     sourceTool: 'calculate_cross_market_spread_tool',
   },
-  curve_shapes: {
-    id: 'curve_shapes',
-    label: 'Curve Shapes · 2s10s',
+  curve_spreads: {
+    id: 'curve_spreads',
+    label: 'Curve Spreads',
     description:
-      'Slope monitor across G4 curves — current spread, daily change, z-score, sparkline.',
+      '2s10s slope across G4 curves — current spread, daily change, z-score, sparkline. Backed by calculate_curve_spread_tool.',
     category: 'data',
     defaultSize: 'medium',
     allowedSizes: ['medium'],
     parameterized: false,
     sourceTool: 'calculate_curve_spread_tool',
   },
-  regime_monitor: {
-    id: 'regime_monitor',
-    label: 'Regime Monitor',
+  curve_classifier: {
+    // Renamed in PR (was `regime_monitor`).  The principle: widget
+    // ids and labels mirror the backing tool name in user-friendly
+    // form.  Backing tool here is `classify_curve_move_tool`, so the
+    // widget reads "Curve Classifier", not "Regime Monitor".
+    id: 'curve_classifier',
+    label: 'Curve Classifier',
     description:
-      'Curve-move classification (steepener / flattener / twist) over 1D and 5D windows.',
+      'Classifies daily / weekly curve moves as steepener, flattener, twist, or parallel shift across G4 curves. Backed by classify_curve_move_tool.',
     category: 'analysis',
     defaultSize: 'medium',
     allowedSizes: ['medium'],
@@ -292,9 +298,9 @@ export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
 export const CATALOG_ORDER: string[] = [
   'yield_snapshot',
   'scanner',
-  'cross_market',
-  'curve_shapes',
-  'regime_monitor',
+  'cross_market_spreads',
+  'curve_spreads',
+  'curve_classifier',
   'yield_level',
   'spread_chart',
   'cross_market_spread',
@@ -306,8 +312,17 @@ export const CATALOG_ORDER: string[] = [
 /** Bumping this invalidates all user layouts.  Bump only when the
  *  schema is structurally incompatible (renamed fields, new required
  *  fields, etc.).  Adding a new widget type to WIDGET_TYPES does NOT
- *  require a bump. */
-export const LAYOUT_VERSION = 1;
+ *  require a bump.
+ *
+ *  v1 → v2: renamed widget ids to mirror their backing tool names.
+ *    - regime_monitor       → curve_classifier
+ *    - cross_market         → cross_market_spreads
+ *    - curve_shapes         → curve_spreads
+ *  Existing localStorage layouts referencing the old ids would have
+ *  their widgets dropped on read (defensive filter), so we bump the
+ *  version to force a clean reset to defaults.
+ */
+export const LAYOUT_VERSION = 2;
 
 export type WidgetInstance = {
   /** Unique per-instance id; minted via crypto.randomUUID. */

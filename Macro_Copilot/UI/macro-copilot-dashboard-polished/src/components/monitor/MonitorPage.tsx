@@ -126,6 +126,23 @@ function MonitorPageInner({ defaultLayout }: InnerProps) {
 // Headline derivation — pulls live rates data from context (provider
 // is mounted in MonitorPage above) so the headline reflects today's
 // market state instead of static placeholder text.
+//
+// IMPORTANT — threshold honesty:
+// `data.scanner.results` comes from a request with hardcoded params
+// `top_n=8` + `min_abs_z_score=1.5` (see useRatesData.ts).  These are
+// OUR display defaults, not user preferences — the user has no way to
+// configure them in V1.  An earlier version of this headline read
+// "above your threshold" which is misleading.  The headline here
+// names the actual numeric threshold (1.5σ) and the cap (top 8) so
+// the user can read the truth without inspecting code.
+//
+// V2 will let users override `min_abs_z_score` + `top_n` via the
+// Scanner widget's config form; at that point the headline can read
+// the active threshold from the user's Scanner instance instead of
+// the constants below.
+
+const SCANNER_THRESHOLD_SIGMA = 1.5;
+const SCANNER_TOP_N = 8;
 
 function useMonitorHeadline(): {
   kicker: string;
@@ -148,6 +165,12 @@ function useMonitorHeadline(): {
   }, []);
 
   const flagged = data?.scanner.results.length ?? null;
+  // The scanner endpoint returns up to `SCANNER_TOP_N` rows; if it
+  // returned exactly that many, the true count above the threshold is
+  // ≥ that — so we hedge the wording rather than overstating
+  // precision.  Resolved properly in V2 when the backend reports both
+  // filtered + total counts.
+  const isAtCap = flagged !== null && flagged >= SCANNER_TOP_N;
 
   if (flagged === null) {
     return {
@@ -164,14 +187,18 @@ function useMonitorHeadline(): {
       headlinePrefix: 'Markets are',
       headlineAccent: 'quiet',
       headlineSuffix: ' today.',
-      subline: 'No instruments above the z-score threshold.',
+      subline: `No instruments above the ${SCANNER_THRESHOLD_SIGMA}σ z-score threshold.`,
     };
   }
+  // Keep the serif-italic editorial accent on a real word
+  // ("threshold").  Numbers go in the plain prefix — putting "1.5σ"
+  // in the serif accent would render numerals in italic display
+  // serif, which reads strangely.
   return {
     kicker: `${dayKicker} · DAILY MONITOR`,
-    headlinePrefix: `${flagged} ${flagged === 1 ? 'instrument' : 'instruments'} above your`,
+    headlinePrefix: `${isAtCap ? 'At least ' : ''}${flagged} ${flagged === 1 ? 'instrument' : 'instruments'} above the ${SCANNER_THRESHOLD_SIGMA}σ`,
     headlineAccent: 'threshold',
     headlineSuffix: ' today.',
-    subline: 'Scanner is live; widget data is computed from TimescaleDB.',
+    subline: `Scanner threshold ≥ ${SCANNER_THRESHOLD_SIGMA}σ · top ${SCANNER_TOP_N} returned · widget data computed from TimescaleDB.`,
   };
 }

@@ -31,6 +31,13 @@ const CURVE_SHORT: Record<string, string> = {
   CANADA_GOVT: 'CAN',
 };
 
+// Display constants surfaced as visible meta on the widget header so
+// the user can read the filter without inspecting code.  These mirror
+// the request params hardcoded in useRatesData.ts; in V2 they become
+// configurable widget params and this constant goes away.
+const SCANNER_THRESHOLD_SIGMA = 1.5;
+const SCANNER_TOP_N = 8;
+
 export function ScannerWidget() {
   const { data, isLoading, error } = useRatesDataContext();
 
@@ -46,16 +53,24 @@ export function ScannerWidget() {
         kicker="ANOMALY DETECTION · Z-SCORE EXTREMES"
         title="Scanner"
         meta={
-          <span
-            className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.02em]',
-              flaggedCount > 0
-                ? 'bg-amber-400/[0.12] text-amber-300 ring-1 ring-amber-400/30'
-                : 'bg-mint-400/[0.10] text-mint-300 ring-1 ring-mint-400/25',
-            )}
-          >
-            {flaggedCount} flagged
-          </span>
+          <div className="flex items-center gap-1.5">
+            {/* Filter chip — names the actual threshold + cap so the
+                user can read the truth at a glance.  Refusing to
+                claim "your threshold" until V2 makes it configurable. */}
+            <span className="inline-flex items-center rounded-full bg-white/[0.025] px-2 py-0.5 font-mono text-[10px] tracking-[0.02em] text-fg-muted ring-1 ring-line-soft">
+              ≥ {SCANNER_THRESHOLD_SIGMA}σ · top {SCANNER_TOP_N}
+            </span>
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium tracking-[0.02em]',
+                flaggedCount > 0
+                  ? 'bg-amber-400/[0.12] text-amber-300 ring-1 ring-amber-400/30'
+                  : 'bg-mint-400/[0.10] text-mint-300 ring-1 ring-mint-400/25',
+              )}
+            >
+              {flaggedCount} flagged
+            </span>
+          </div>
         }
       />
       <WidgetBody className="px-2.5 pb-2">
