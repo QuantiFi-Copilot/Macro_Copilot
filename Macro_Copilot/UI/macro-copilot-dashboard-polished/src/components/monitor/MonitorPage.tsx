@@ -20,27 +20,23 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useWidgetLayout } from '@/hooks/useWidgetLayout';
-import {
-  RatesDataProvider,
-  useRatesDataContext,
-} from './RatesDataProvider';
+import { useRatesDataContext } from './RatesDataProvider';
 import { MonitorHeader } from './MonitorHeader';
 import { WidgetGrid } from './WidgetGrid';
 import { WidgetCatalogModal } from './WidgetCatalogModal';
 import { defaultMonitorLayout } from './defaults';
 import type { WidgetInstance } from './registry';
 
+// RatesDataProvider is now mounted at the AppShell layout level so
+// the Sidebar's Today panel can share the same fetch.  This page
+// just reads from the context without wrapping its own provider.
+
 export function MonitorPage() {
   // The default layout is built once at first render — its widgets get
   // freshly minted ids each time this function runs, but we only call
   // it on first paint via the lazy initializer in useState below.
   const defaultLayout = useMemo(() => defaultMonitorLayout(), []);
-
-  return (
-    <RatesDataProvider>
-      <MonitorPageInner defaultLayout={defaultLayout} />
-    </RatesDataProvider>
-  );
+  return <MonitorPageInner defaultLayout={defaultLayout} />;
 }
 
 type InnerProps = {

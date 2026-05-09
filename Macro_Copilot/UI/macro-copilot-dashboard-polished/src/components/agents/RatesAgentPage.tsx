@@ -18,24 +18,20 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useWidgetLayout } from '@/hooks/useWidgetLayout';
-import {
-  RatesDataProvider,
-  useRatesDataContext,
-} from '@/components/monitor/RatesDataProvider';
+import { useRatesDataContext } from '@/components/monitor/RatesDataProvider';
 import { MonitorHeader } from '@/components/monitor/MonitorHeader';
 import { WidgetGrid } from '@/components/monitor/WidgetGrid';
 import { WidgetCatalogModal } from '@/components/monitor/WidgetCatalogModal';
 import { defaultRatesAgentLayout } from '@/components/monitor/defaults';
 import type { WidgetInstance } from '@/components/monitor/registry';
 
+// RatesDataProvider is mounted at the AppShell layout level (shared
+// with the Sidebar's Today panel).  This page reads from context
+// directly without wrapping its own provider.
+
 export function RatesAgentPage() {
   const defaultLayout = useMemo(() => defaultRatesAgentLayout(), []);
-
-  return (
-    <RatesDataProvider>
-      <RatesAgentInner defaultLayout={defaultLayout} />
-    </RatesDataProvider>
-  );
+  return <RatesAgentInner defaultLayout={defaultLayout} />;
 }
 
 type InnerProps = {

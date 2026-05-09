@@ -26,6 +26,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatDrawer } from '@/components/layout/ChatDrawer';
 import { TopNav } from '@/components/ui/TopNav';
+import { RatesDataProvider } from '@/components/monitor/RatesDataProvider';
 import { MonitorPage } from '@/components/monitor/MonitorPage';
 import { RatesAgentPage } from '@/components/agents/RatesAgentPage';
 import {
@@ -92,15 +93,28 @@ export function AppShell() {
         {isFullWidth ? (
           <main className="h-full overflow-hidden">{Routed}</main>
         ) : isWidgetSurface ? (
-          <div
-            className="grid h-full"
-            style={{
-              gridTemplateColumns: 'clamp(220px, 14vw, 264px) minmax(0, 1fr)',
-            }}
-          >
-            <Sidebar />
-            <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
-          </div>
+          // RatesDataProvider lifted to the layout level so the
+          // Sidebar's "Today" panel + status ribbon can read live
+          // rates state (data freshness, scanner count, curve
+          // universe size) without a separate fetch.  Monitor and
+          // Rates Agent pages used to mount their own providers
+          // internally; with the provider here, both pages share a
+          // single fetch + the data persists across navigation
+          // between widget surfaces.  Agent placeholder routes
+          // (FX, Credit, etc.) don't read the data themselves but
+          // the provider stays mounted so the sidebar's Today panel
+          // works on every widget route.
+          <RatesDataProvider>
+            <div
+              className="grid h-full"
+              style={{
+                gridTemplateColumns: 'clamp(220px, 14vw, 264px) minmax(0, 1fr)',
+              }}
+            >
+              <Sidebar />
+              <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
+            </div>
+          </RatesDataProvider>
         ) : (
           // Legacy three-column shell — keeps Workspace / Tools /
           // Workflows working until each ships its redesign.
