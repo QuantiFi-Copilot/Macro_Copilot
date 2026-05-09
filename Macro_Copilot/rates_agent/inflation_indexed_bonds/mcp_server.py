@@ -6,15 +6,17 @@ Exposes the linker-domain tools to the orchestrator via stdio MCP.
 Each tool has flat scalar parameters; Pydantic validation happens
 inside.  Lazy engine singleton.  Logging to stderr.
 
-Tool surface (build_order=4 milestone)
---------------------------------------
+Tool surface
+------------
 1. get_real_yield_level_tool — single-point linker real-yield level,
    period changes, 252-day z-score, trailing 1Y high/low/percentile.
+2. calculate_breakeven_inflation_simple_tool — generic bond-implied
+   breakeven inflation (nominal-minus-real yield differential at the
+   same tenor); inflation compensation, NOT a clean expected-inflation
+   read.
 
-This is the FIRST tool in the inflation_indexed_bonds domain.
-Subsequent linker primitives (breakeven_inflation_simple,
-forward_breakeven_simple, real_yield_curve_spread, scanner_linkers,
-etc., per
+Subsequent linker primitives (forward_breakeven_simple,
+real_yield_curve_spread, scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
 Section 9 "Bucket 1A") will land here as separate primitive builds.
 
@@ -43,7 +45,12 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
+    BreakevenInflationSimpleInput,
     RealYieldLevelInput,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (  # noqa: E402
+    CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+    calculate_breakeven_inflation_simple,
 )
 from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (  # noqa: E402
     CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
@@ -79,12 +86,19 @@ mcp = FastMCP(
         "deterministic calculations over a TimescaleDB database of "
         "daily sovereign-linker (TIPS / inflation-linked Gilts / OATi-"
         "OATei / Canadian RRB) real-yield quotes.  Use these tools to "
-        "answer questions about real-yield levels and (in future "
-        "releases of this agent) breakeven inflation, real-yield curve "
-        "spreads, and inflation-compensation extremes.  Never attempt "
-        "the math yourself — always call a tool and relay its output.  "
-        "Do not route nominal sovereign yield questions here — those "
-        "belong to the sovereign-bond agent's get_yield_levels_tool."
+        "answer questions about real-yield levels and bond-implied "
+        "breakeven inflation (the nominal-minus-real yield "
+        "differential, a.k.a. inflation compensation).  Future "
+        "releases will add real-yield curve spreads, forward "
+        "breakevens, and inflation-compensation scanners.  Never "
+        "attempt the math yourself — always call a tool and relay its "
+        "output.  Do not route nominal sovereign yield questions here "
+        "— those belong to the sovereign-bond agent's "
+        "get_yield_levels_tool.  When relaying breakeven output, "
+        "always preserve the methodology disclosure: bond-implied "
+        "breakeven is inflation compensation, not a clean expected-"
+        "inflation read (it carries an inflation risk premium and a "
+        "liquidity premium between the nominal and linker bond)."
     ),
 )
 
@@ -220,6 +234,188 @@ def get_real_yield_level_tool(
         logger.info(
             "[get_real_yield_level_tool] withheld %d time_series rows "
             "from LLM context.", ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 2: calculate_breakeven_inflation_simple
+# ===========================================================================
+@mcp.tool()
+def calculate_breakeven_inflation_simple_tool(
+    nominal_curve_family: str,
+    linker_curve_family: str,
+    tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current generic bond-implied breakeven inflation between
+    a nominal sovereign curve and the corresponding sovereign linker
+    curve at the same tenor, plus period changes, 1-year z-score, and
+    deterministic historical context (high, low, percentile in bps).
+
+        breakeven_pct = nominal_yield_pct - real_yield_pct
+        breakeven_bps = breakeven_pct * 100
+
+    The output is INFLATION COMPENSATION, NOT a clean expected-inflation
+    read — the differential carries an inflation risk premium and a
+    relative liquidity premium between the nominal sovereign and the
+    linker bond.  The tool's output includes an explicit
+    ``methodology_label`` field carrying that disclosure; preserve it
+    when summarising the result to the user.
+
+    Use this tool when the user asks about:
+    - Breakeven inflation levels  (e.g. "Where's US 10Y breakeven?")
+    - Breakeven moves              (e.g. "How much has UK 10Y breakeven
+      moved this week?")
+    - Breakeven extremes           (e.g. "Is US 5Y breakeven at a 1-year
+      high?")
+    - Decomposing inflation compensation (this tool returns BOTH the
+      breakeven and the two underlying yields used to form it).
+
+    Do NOT use this tool for:
+    - Pure expected-inflation reads — bond-implied breakevens are
+      compensation, not expectations.  An IRP- and liquidity-adjusted
+      variant is documented in the tool's
+      ``methodology.planned_extensions`` and will ship as a separate
+      primitive when the required metadata lands.
+    - Inflation-swap-implied breakevens (different instrument, not yet
+      ingested).
+    - Real-yield-only or nominal-yield-only questions — call the
+      respective single-leg level tools (``get_real_yield_level_tool``
+      here, ``get_yield_levels_tool`` on the sovereign-bond agent).
+
+    Parameters
+    ----------
+    nominal_curve_family : str
+        Nominal sovereign curve identifier exactly as stored in
+        instrument_master.  Examples: 'UST' (US), 'UK_GILT' (UK),
+        'FR_OAT' (France), 'CANADA_GOVT' (Canada).  This leg is
+        filtered honestly with instrument_type='sovereign_benchmark'
+        on the DB read; passing a linker curve here returns a
+        controlled error envelope (the tool will not silently
+        substitute linker data).
+    linker_curve_family : str
+        Sovereign linker curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_TIPS' (US), 'GBP_LINKER'
+        (UK), 'EUR_FR_LINKER' (France), 'CAD_RRB' (Canada).  This leg
+        is filtered honestly with instrument_type='inflation_linker'
+        on the DB read; passing a nominal sovereign curve here returns
+        a controlled error envelope.
+    tenor : str
+        Tenor point on both curves.  Available tenor intersections are
+        country-specific (e.g. UST + USD_TIPS overlap at
+        5Y/10Y/20Y/30Y; UK_GILT + GBP_LINKER overlap across a wide
+        range from 1Y to 50Y).
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does NOT
+        control the rolling z-score window or the trailing range
+        window.
+    field_name : str, optional
+        Bloomberg field mnemonic for BOTH legs.  Leave as the default
+        empty string ""  to use the bundled ``default_field_name``
+        convention from breakeven_inflation_simple/config.yaml
+        (currently 'YLD_YTM_MID').  Pass an explicit field name to
+        override per call.  Mirrors the empty-string sentinel pattern
+        used by the other rates tools so the YAML default actually
+        flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_breakeven_inflation_simple_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_inflation_simple_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the breakeven_inflation_simple tool's bundled config
+    # explicitly so the dependency is observable here.
+    # load_tool_config caches by path, so this is a free lookup after
+    # the first call within the MCP subprocess's lifetime.  Mirrors
+    # the get_real_yield_level_tool wrapper exactly.
+    try:
+        bei_config = load_tool_config(BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH)
+        result = calculate_breakeven_inflation_simple(
+            engine=engine, params=params, config=bei_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_inflation_simple_tool] unhandled "
+            "error for %s vs %s @ %s",
+            params.nominal_curve_family,
+            params.linker_curve_family,
+            params.tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_breakeven_inflation_simple_tool failed "
+                    f"for {params.nominal_curve_family} vs "
+                    f"{params.linker_curve_family} @ "
+                    f"{params.tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_breakeven_inflation_simple_tool] tool call "
+        "complete: %s vs %s @ %s → %s",
+        params.nominal_curve_family,
+        params.linker_curve_family,
+        params.tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the LLM
+    # (frontend REST path returns the full payload).  The LLM doesn't
+    # need every historical row to answer "where's US 10Y breakeven?".
+    # Same convention as the other rates tools.
+    stripped_keys = {"time_series", "time_series_breakeven", "time_series_zscore"}
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_breakeven", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_breakeven_inflation_simple_tool] withheld "
+            "%d bespoke + %d canonical breakeven rows + %d zscore "
+            "rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
         )
     return json.dumps(llm_response, default=str)
 

@@ -94,6 +94,12 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (
     RealYieldLevelOutput,
     get_real_yield_level,
 )
+from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (
+    CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+    BreakevenInflationSimpleInput,
+    BreakevenInflationSimpleOutput,
+    calculate_breakeven_inflation_simple,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -263,6 +269,23 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # the snapshot is ``real_yield_pct``; series_name carries
             # the ``_real_yield`` suffix (set in the per-tool config).
             "time_series": "percent",
+        },
+    ),
+    "calculate_breakeven_inflation_simple_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_inflation_simple_tool",
+        callable=calculate_breakeven_inflation_simple,
+        input_class=BreakevenInflationSimpleInput,
+        output_class=BreakevenInflationSimpleOutput,
+        config_path=BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven row list — frontend
+            # consumes ``breakeven_bps`` per row, so the unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven history in BPS, rolling
+            # z-score in Z_SCORE units.  Operator-layer unit-compat
+            # checks rely on these declarations.
+            "time_series_breakeven": "bps",
+            "time_series_zscore": "z_score",
         },
     ),
 

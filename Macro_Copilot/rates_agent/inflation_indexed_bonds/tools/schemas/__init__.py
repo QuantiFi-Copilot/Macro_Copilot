@@ -26,10 +26,25 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_level.schemas import (
     RealYieldLevelOutput,
 )
 
+# Breakeven inflation (simple two-leg primitive) — re-exported from the
+# per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/``).
+from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.schemas import (
+    BreakevenInflationSimpleCurrentMetrics,
+    BreakevenInflationSimpleInput,
+    BreakevenInflationSimpleOutput,
+    BreakevenInflationSimpleTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
     "RealYieldLevelInput",
     "RealYieldLevelMetrics",
     "RealYieldLevelOutput",
+    # breakeven_inflation_simple
+    "BreakevenInflationSimpleInput",
+    "BreakevenInflationSimpleCurrentMetrics",
+    "BreakevenInflationSimpleOutput",
+    "BreakevenInflationSimpleTimeSeriesRow",
 ]
