@@ -65,4 +65,5 @@ collect_ignore = [
     "test_breakeven_curve_spread_sql_validation.py",
     "test_cross_country_breakeven_spread_simple_sql_validation.py",
     "test_inflation_swap_rate_level_sql_validation.py",
+    "test_inflation_swap_curve_spread_sql_validation.py",
 ]

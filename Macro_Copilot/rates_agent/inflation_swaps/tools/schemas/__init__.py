@@ -28,6 +28,16 @@ from rates_agent.inflation_swaps.tools.inflation_swap_rate_level.schemas import 
     InflationSwapRateLevelTimeSeriesRow,
 )
 
+# Inflation-swap curve spread (same-curve, two-tenor) — re-exported
+# from the per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/``).
+from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread.schemas import (
+    InflationSwapCurveSpreadCurrentMetrics,
+    InflationSwapCurveSpreadInput,
+    InflationSwapCurveSpreadOutput,
+    InflationSwapCurveSpreadTimeSeriesRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -35,4 +45,9 @@ __all__ = [
     "InflationSwapRateLevelCurrentMetrics",
     "InflationSwapRateLevelTimeSeriesRow",
     "InflationSwapRateLevelOutput",
+    # inflation_swap_curve_spread
+    "InflationSwapCurveSpreadInput",
+    "InflationSwapCurveSpreadCurrentMetrics",
+    "InflationSwapCurveSpreadTimeSeriesRow",
+    "InflationSwapCurveSpreadOutput",
 ]

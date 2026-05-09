@@ -15,8 +15,15 @@ Tool surface
    (``inflation_index_family`` / ``index_lag`` / ``interpolation`` /
    ``underlying_index``) for honest cross-curve interpretation.
 
-Subsequent inflation-swap primitives (curve spread, forward, cross-
-market spread, swap-breakeven basis) will land here as separate
+2. calculate_inflation_swap_curve_spread_tool — same-curve ZCIS
+   tenor spread (e.g. USD_ZCIS 5s10s, EUR_ZCIS 5s30s) computed by
+   composing the level primitive twice and applying the per-trade-
+   date difference (long - short) * 100 in bps.  Surfaces the same
+   reference-metadata fields (shared by both legs by the same-
+   curve invariant).
+
+Subsequent inflation-swap primitives (forward, cross-market
+spread, swap-breakeven basis) will land here as separate
 primitive builds.
 
 Each tool description tells the LLM:
@@ -44,11 +51,16 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_swaps.tools.schemas import (  # noqa: E402
+    InflationSwapCurveSpreadInput,
     InflationSwapRateLevelInput,
 )
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (  # noqa: E402
     CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
     calculate_inflation_swap_rate_level,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread import (  # noqa: E402
+    CONFIG_PATH as INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+    calculate_inflation_swap_curve_spread,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -251,6 +263,180 @@ def calculate_inflation_swap_rate_level_tool(
             "[calculate_inflation_swap_rate_level_tool] withheld "
             "%d time_series rows from LLM context.",
             ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 2: calculate_inflation_swap_curve_spread
+# ===========================================================================
+@mcp.tool()
+def calculate_inflation_swap_curve_spread_tool(
+    curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the same-curve zero-coupon inflation swap (ZCIS) tenor
+    spread between two pillars of the same ZCIS curve family
+    (e.g. USD_ZCIS 5s10s, EUR_ZCIS 5s30s, GBP_ZCIS 2s10s), plus
+    daily/weekly/monthly bps changes, 1-year z-score, and trailing
+    1Y high/low/percentile in bps.  Surfaces the load-bearing
+    reference metadata (``inflation_index_family``, ``index_lag``,
+    ``interpolation``, ``underlying_index``) shared by both legs
+    so the desk can interpret the spread honestly.
+
+    Use this tool when the user asks about:
+    - ZCIS curve shape           (e.g. "Is USD ZCIS 5s10s
+      flattening?")
+    - ZCIS tenor spreads         (e.g. "Where's EUR 5s30s ZCIS?")
+    - ZCIS curve-spread moves    (e.g. "How much has GBP 2s10s
+      ZCIS curve moved this week?")
+    - ZCIS curve-spread extremes (e.g. "Is USD 5s10s ZCIS at a
+      1-year high?")
+
+    Do NOT use this tool for:
+    - Cross-curve ZCIS spreads (e.g. USD ZCIS 5Y vs EUR ZCIS 5Y) —
+      that's a separate primitive
+      (``calculate_cross_market_inflation_swap_spread_tool``,
+      build_order 12) currently deferred.
+    - Sovereign-linker bond-implied breakeven curve spreads — call
+      the inflation_indexed_bonds agent's
+      ``calculate_breakeven_curve_spread_tool`` (linker bonds vs
+      nominal sovereigns) instead.
+    - Nominal sovereign curve spreads — call the sovereign_bonds
+      agent's ``calculate_curve_spread_tool``.
+    - OIS curve spreads — call the ois agent's
+      ``calculate_ois_curve_spread_tool``.
+
+    Parameters
+    ----------
+    curve_family : str
+        Inflation-swap curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_ZCIS', 'EUR_ZCIS',
+        'GBP_ZCIS'.  See
+        ``rates_agent/playbooks/inflation_swaps.yml``.  Same-curve
+        invariant: a single ``curve_family`` is shared by both
+        endpoints; cross-curve combinations are a separate
+        primitive.
+    short_tenor : str
+        Short tenor pillar (e.g. '2Y' for 2s10s, '5Y' for 5s10s
+        or 5s30s).  Must be a supported ZCIS pillar on this
+        curve_family — current ingested grid is 1Y / 2Y / 3Y / 5Y
+        / 10Y / 20Y / 30Y on each of USD_ZCIS / EUR_ZCIS /
+        GBP_ZCIS.
+    long_tenor : str
+        Long tenor pillar (e.g. '10Y' for 2s10s / 5s10s, '30Y'
+        for 5s30s).  Must be strictly longer than ``short_tenor``.
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365).
+    field_name : str, optional
+        Bloomberg field mnemonic for the ZCIS rate.  Leave as the
+        default empty string ""  to use the bundled
+        ``default_zcis_rate_field`` convention from
+        inflation_swap_curve_spread/config.yaml (currently
+        'PX_MID').  Mirrors the empty-string sentinel pattern
+        used by sovereign / OIS / linker / ZCIS level tools so
+        the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_zcis_rate_field``.  Same shadowing pattern fixed for
+    # sovereign curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = InflationSwapCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_inflation_swap_curve_spread_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_inflation_swap_curve_spread_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the inflation_swap_curve_spread tool's bundled config
+    # explicitly so the dependency is observable here.  The cross-
+    # config lint enforces the value-agreement on the shared
+    # convention names with the inner level primitive's bundled
+    # config, so threading this same ToolConfig into the inner
+    # calls keeps methodology consistent end-to-end.
+    try:
+        iscs_config = load_tool_config(
+            INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+        )
+        result = calculate_inflation_swap_curve_spread(
+            engine=engine, params=params, config=iscs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_inflation_swap_curve_spread_tool] unhandled "
+            "error for %s %s/%s",
+            params.curve_family, params.short_tenor, params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_inflation_swap_curve_spread_tool "
+                    f"failed for {params.curve_family} "
+                    f"{params.short_tenor}/{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_inflation_swap_curve_spread_tool] tool call "
+        "complete: %s %s/%s → %s",
+        params.curve_family, params.short_tenor, params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip both bespoke and canonical TimeSeries payloads before
+    # returning to the LLM (frontend REST path returns the full
+    # payload).  Same convention as sibling rate-level / curve-
+    # spread tools.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_spread", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    spread_rows = len(
+        result.get("time_series_spread", {}).get("rows", []) or []
+    )
+    zscore_rows = len(
+        result.get("time_series_zscore", {}).get("rows", []) or []
+    )
+    if bespoke_rows or spread_rows or zscore_rows:
+        logger.info(
+            "[calculate_inflation_swap_curve_spread_tool] withheld "
+            "bespoke=%d spread=%d zscore=%d rows from LLM context.",
+            bespoke_rows, spread_rows, zscore_rows,
         )
     return json.dumps(llm_response, default=str)
 

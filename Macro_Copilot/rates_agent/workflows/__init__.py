@@ -124,6 +124,12 @@ from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     InflationSwapRateLevelOutput,
     calculate_inflation_swap_rate_level,
 )
+from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread import (
+    CONFIG_PATH as INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+    InflationSwapCurveSpreadInput,
+    InflationSwapCurveSpreadOutput,
+    calculate_inflation_swap_curve_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -384,6 +390,24 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # name on the snapshot is ``zcis_rate_pct``;
             # series_name carries the ``_zcis_rate`` suffix.
             "time_series": "percent",
+        },
+    ),
+    "calculate_inflation_swap_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_curve_spread_tool",
+        callable=calculate_inflation_swap_curve_spread,
+        input_class=InflationSwapCurveSpreadInput,
+        output_class=InflationSwapCurveSpreadOutput,
+        config_path=INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS curve-spread row list —
+            # frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: ZCIS curve spread history in
+            # BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
         },
     ),
 
