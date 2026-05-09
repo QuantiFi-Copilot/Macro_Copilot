@@ -48,6 +48,16 @@ from rates_agent.inflation_swaps.tools.inflation_swap_forward.schemas import (
     InflationSwapForwardTimeSeriesRow,
 )
 
+# Cross-market inflation-swap spread (same-tenor, two-curve) —
+# re-exported from the per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/cross_market_inflation_swap_spread/``).
+from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread.schemas import (
+    CrossMarketInflationSwapSpreadCurrentMetrics,
+    CrossMarketInflationSwapSpreadInput,
+    CrossMarketInflationSwapSpreadOutput,
+    CrossMarketInflationSwapSpreadTimeSeriesRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -65,4 +75,9 @@ __all__ = [
     "InflationSwapForwardCurrentMetrics",
     "InflationSwapForwardTimeSeriesRow",
     "InflationSwapForwardOutput",
+    # cross_market_inflation_swap_spread
+    "CrossMarketInflationSwapSpreadInput",
+    "CrossMarketInflationSwapSpreadCurrentMetrics",
+    "CrossMarketInflationSwapSpreadTimeSeriesRow",
+    "CrossMarketInflationSwapSpreadOutput",
 ]

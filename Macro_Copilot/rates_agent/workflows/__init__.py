@@ -136,6 +136,12 @@ from rates_agent.inflation_swaps.tools.inflation_swap_forward import (
     InflationSwapForwardOutput,
     calculate_inflation_swap_forward,
 )
+from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import (
+    CONFIG_PATH as CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+    CrossMarketInflationSwapSpreadInput,
+    CrossMarketInflationSwapSpreadOutput,
+    calculate_cross_market_inflation_swap_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -436,6 +442,27 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # in Z_SCORE units.  Operator-layer unit-compat checks
             # rely on these declarations.
             "time_series_forward": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_market_inflation_swap_spread_tool": PrimitiveSpec(
+        tool_name="calculate_cross_market_inflation_swap_spread_tool",
+        callable=calculate_cross_market_inflation_swap_spread,
+        input_class=CrossMarketInflationSwapSpreadInput,
+        output_class=CrossMarketInflationSwapSpreadOutput,
+        config_path=CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-market ZCIS spread row list
+            # — frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS (mirrors sovereign cross_market_spread /
+            # inflation_swap_curve_spread; cross-market spreads
+            # are spread objects, not levels).
+            "time_series": "bps",
+            # Canonical TimeSeries: cross-market ZCIS spread
+            # history in BPS, rolling z-score in Z_SCORE units.
+            # Operator-layer unit-compat checks rely on these
+            # declarations.
+            "time_series_spread": "bps",
             "time_series_zscore": "z_score",
         },
     ),
