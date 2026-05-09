@@ -1,0 +1,303 @@
+# =============================================================================
+# inflation_swap_rate_level — tool configuration
+# =============================================================================
+# This file is the canonical record of the ZCIS rate-level tool's
+# conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Mirrors the
+# linker ``real_yield_level`` and OIS ``rate_level`` configs 1:1 — every
+# shared convention (z_score_window_days, ffill_limit_days, rounding)
+# carries the same numeric value, so the ``shared.config.lint``
+# cross-tool check stays clean as the inflation-swaps domain comes
+# online.
+#
+# The concept is genuinely new (a zero-coupon inflation swap is its own
+# instrument family with its own index_lag / inflation_index_family /
+# interpolation conventions — NOT a linker bond, NOT a nominal
+# sovereign), but the level-statistic methodology a desk uses on top of
+# a single ZCIS rate series is the same canonical level-stat math the
+# sibling level tools use.  Conventions stay aligned by design.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  The LLM cannot ask for non-standard windows or
+# thresholds.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: inflation_swap_rate_level
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Single-curve-pillar zero-coupon inflation swap (ZCIS) rate level
+    — emits both:
+
+      - ``current_metrics``: snapshot of the latest observation
+        (current ZCIS rate, daily/weekly/monthly bps changes,
+        252-day rolling z-score, trailing 252-day high/low/percentile,
+        observation count) PLUS the load-bearing reference metadata
+        ``inflation_index_family``, ``index_lag``, ``interpolation``,
+        and ``underlying_index`` so a desk reader can interpret the
+        level honestly.
+
+      - ``time_series``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = PERCENT)
+        carrying the historical ZCIS rate levels over the displayed
+        ``lookback_days`` window.  Each row is rounded with the same
+        ``yield_round_decimals`` convention the snapshot uses, so the
+        snapshot's ``zcis_rate_pct`` equals
+        ``time_series.rows[-1].value`` strictly.
+
+    "ZCIS rate" terminology — distinct from the linker
+    ``real_yield_level`` tool — because the underlying series is the
+    par rate the inflation swap pays for the headline inflation index
+    over the swap tenor, NOT a bond's real-yield-to-maturity.  Field
+    name on the wire is ``zcis_rate_pct``; series_name carries the
+    ``_zcis_rate`` suffix.  Distinguishing in the wire surface keeps
+    downstream operator panels from silently mixing ZCIS rates,
+    nominal yields, OIS rates, and linker real yields.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool, the OIS rate_level tool, and the linker
+      real_yield_level tool — the cross-config lint enforces the
+      match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches sovereign yield_levels /
+      curve_spread / OIS rate_level / linker real_yield_level.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x trading-day window covers weekends + holidays.  Matches
+      every sovereign rates tool, OIS rate_level, and linker
+      real_yield_level.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_pct, low_252d_pct,
+  # percentile_252d) are wire-frozen because the number is embedded in
+  # the identifiers.  compute() raises NotImplementedError if this is
+  # set to anything other than 252; see methodology.planned_extensions
+  # for the path to making it configurable.  Same wire-freeze as
+  # sovereign yield_levels / OIS rate_level / linker real_yield_level.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number — same situation
+      as sibling level tools.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every sovereign rates tool, OIS rate_level, and
+      linker real_yield_level — the cross-config lint enforces the
+      match.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field — ZCIS-specific name
+  # ---------------------------------------------------------------------------
+  # Sovereign / linker tools use ``default_field_name: YLD_YTM_MID``
+  # (the mid yield-to-maturity).  OIS tools use
+  # ``default_swap_rate_field: PX_LAST`` (the OIS par swap rate).
+  # ZCIS is its own instrument family — the canonical Bloomberg
+  # observation is ``PX_MID`` (the mid quoted ZCIS rate, matching the
+  # playbook's ``target_metrics`` mapping ``yield_mid`` → ``PX_MID``).
+  # The three values are semantically distinct, so the convention is
+  # renamed here to ``default_zcis_rate_field`` — otherwise the
+  # cross-config lint would flag a value disagreement on the same
+  # convention name across the three families.  Future inflation_swaps
+  # tools should reuse this name so the swaps-side cross-tool lint
+  # stays meaningful.  Same renaming pattern OIS established with
+  # ``default_swap_rate_field`` (commit predating this build).
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` (``yield_mid`` → ``PX_MID``).  LLM/HTTP
+      wrappers must use the empty/None sentinel so this default
+      flows through — see the curve_move_classifier
+      wrapper-shadowing fix (commit b2605ee) for the canonical
+      pattern.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to both the snapshot's zcis_rate_pct
+  # field AND every row of the canonical TimeSeries output, so the
+  # snapshot value equals time_series.rows[-1].value exactly (not just
+  # within tolerance).  Convention names reuse sovereign's
+  # ``yield_round_decimals`` / ``z_score_round_decimals`` /
+  # ``high_low_round_decimals`` so the cross-config lint enforces all
+  # rates surfaces stay aligned at 4 decimals.
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker rates tool.  Threaded through both the
+      snapshot path AND the canonical TimeSeries builder so the two
+      cannot disagree numerically.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals is the default ``compute_level_metrics`` was
+      using prior to this convention being explicit.  Snapshot's
+      ``z_score`` is rounded via this knob so YAML edits flow
+      through to runtime behaviour.  Matches sibling level tools.
+    valid_range: [0, 8]
+
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches sibling level tools.
+    valid_range: [0, 8]
+
+methodology:
+  what_it_does: |
+    ZCIS rate level for a single (curve_family, tenor) curve pillar
+    read directly from
+    ``macro_data.instrument_master`` × ``macro_data.v_market_data_daily_enriched``
+    filtered by ``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` AND ``curve_family=?``
+    AND ``tenor=?``.  Returns the current rate, period changes
+    (daily / weekly / monthly), rolling z-score against the 252-day
+    window, trailing range stats (high / low / percentile within
+    the trailing 252 days), the observation count over the user's
+    lookback_days window, AND the load-bearing reference metadata
+    ``inflation_index_family`` / ``index_lag`` / ``interpolation``
+    / ``underlying_index`` so a desk reader can interpret the level
+    honestly: USD_ZCIS references US_CPI_URBAN with a 3M lag and
+    daily interpolation; EUR_ZCIS references EU_HICP (ex-tobacco)
+    with a 3M lag and monthly interpolation; GBP_ZCIS references
+    UK_RPI with a 2M lag and monthly interpolation — these
+    conventions are NOT comparable cross-curve without harmonising
+    them.  Plus the canonical ``time_series`` payload over the
+    displayed window.
+
+  assumptions:
+    - "ZCIS rates stored as percent (2.45 = 2.45%).  ZCIS rates can
+       be negative across parts of the post-2020 EUR / GBP history;
+       the level math is unchanged."
+    - "Same level-stat methodology as the sovereign yield_levels,
+       OIS rate_level, and linker real_yield_level tools — the
+       cross-config lint enforces the convention values match."
+    - "Trading-day-based period offsets (after ffill the series is
+       approximately daily)."
+    - "Trailing range / percentile window locked at 252 trading
+       days in V1; see planned_extensions for the path to
+       configurability."
+    - "lookback_days controls fetch range and observation_count's
+       cutoff window, NOT the rolling stat window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Observation-count cutoff is anchored to the data's latest
+       observation date (not date.today()), matching the OIS
+       rate_level and linker real_yield_level convention."
+    - "Cross-curve comparability caveat: ``inflation_index_family``,
+       ``index_lag``, and ``interpolation`` differ across USD_ZCIS
+       (US_CPI_URBAN / 3M / Daily), EUR_ZCIS (EU_HICP / 3M /
+       Monthly), and GBP_ZCIS (UK_RPI / 2M / Monthly).  A 'USD vs
+       EUR 5Y ZCIS' read is a CPI-U vs HICP differential, NOT a
+       pure cross-country expected-inflation differential.  These
+       fields are surfaced on ``current_metrics`` and in the
+       canonical TimeSeries description so that caveat is visible
+       on the wire."
+
+  citations: []
+
+  planned_extensions:
+    - "Inflation-swap curve spread (between two tenors of the same
+       ZCIS curve family — e.g. USD ZCIS 2s10s, EUR ZCIS 5s30s).
+       Will be the next primitive in this domain."
+    - "Inflation-swap forward (e.g. 5Y5Y, 5Y10Y, 2Y3Y) constructed
+       from two endpoint ZCIS rates."
+    - "Cross-market inflation-swap spread (e.g. USD ZCIS 5Y minus
+       EUR ZCIS 5Y) — subject to the same INDEX-FAMILY MISMATCH
+       caveat the cross-country breakeven primitive carries."
+    - "Swap-breakeven basis (ZCIS rate minus same-tenor linker
+       bond-implied breakeven) — the canonical desk read of the
+       relative-value spread between the inflation-swap and the
+       linker-bond inflation-compensation curves."
+    - "trailing_range_window_days: configurable.  Currently locked
+       at 252 because the output fields high_252d_pct /
+       low_252d_pct / percentile_252d embed the number.  Path to
+       configurability mirrors sibling level tools'
+       planned_extensions: rename schema fields to high_window_pct
+       / low_window_pct / percentile_window + add
+       trailing_window_days to the output; remove the
+       NotImplementedError guard in compute()."

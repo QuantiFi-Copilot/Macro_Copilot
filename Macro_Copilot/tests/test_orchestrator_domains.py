@@ -44,6 +44,9 @@ class TestDomainEnumMembers:
     def test_inflation_indexed_bonds_present(self):
         assert Domain.INFLATION_INDEXED_BONDS.value == "inflation_indexed_bonds"
 
+    def test_inflation_swaps_present(self):
+        assert Domain.INFLATION_SWAPS.value == "inflation_swaps"
+
 
 class TestDomainMcpServersMapping:
     """Every Domain enum member MUST resolve to a non-empty MCP-server
@@ -98,6 +101,19 @@ class TestDomainMcpServersMapping:
             ],
         }
 
+    def test_inflation_swaps_uses_dedicated_subprocess(self):
+        """The inflation-swaps domain must spawn its own MCP
+        subprocess, distinct from the linker / sovereign / OIS
+        subprocesses.  Sharing would let linker-side tools answer ZCIS
+        queries (or vice versa) via the same MCP client — a proxy
+        violation forbidden by the same instrument_type / pricing_type
+        guard the ZCIS rate-level tool ships with."""
+        cfg = DOMAIN_MCP_SERVERS[Domain.INFLATION_SWAPS]
+        assert cfg, "inflation_swaps domain has empty MCP server config"
+        assert cfg == {
+            "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
+        }
+
 
 class TestDomainPrompts:
     """Each Domain enum member MUST have a registered system prompt.
@@ -134,6 +150,25 @@ class TestDomainPrompts:
         # nominal language end-to-end).
         assert "real yield" in prompt.lower()
 
+    def test_inflation_swaps_prompt_is_zcis_specific(self):
+        """The inflation-swaps prompt must scope the agent to ZCIS
+        tools and explicitly forbid the linker / sovereign / OIS
+        domains.  Without this, the LLM would route linker breakeven
+        or nominal yield questions here and either hit a runtime guard
+        or silently misinterpret the output."""
+        prompts = self._domain_prompts()
+        prompt = prompts[Domain.INFLATION_SWAPS]
+        # Curve families it owns.
+        assert "USD_ZCIS" in prompt
+        assert "EUR_ZCIS" in prompt
+        assert "GBP_ZCIS" in prompt
+        # Explicit out-of-scope routing for sibling domains.
+        assert "out_of_scope" in prompt or "out of scope" in prompt.lower()
+        # The "ZCIS rate" / "inflation-swap rate" terminology
+        # discipline (separates ZCIS from linker bond-implied
+        # breakeven and from OIS rate end-to-end).
+        assert "ZCIS" in prompt
+
 
 class TestDomainBoundariesLabel:
     """The multi-domain fan-out builds per-domain "stay in your lane"
@@ -155,6 +190,18 @@ class TestDomainBoundariesLabel:
         # the OTHER agent owns explicitly.
         assert "cash sovereign bonds" in linker_text
 
+    def test_inflation_swaps_has_friendly_label(self):
+        from orchestrator.session import _build_domain_boundaries
+
+        boundaries = _build_domain_boundaries(
+            [Domain.SOVEREIGN_BONDS, Domain.INFLATION_SWAPS]
+        )
+        zcis_text = boundaries[Domain.INFLATION_SWAPS]
+        # The friendly label, not the bare enum value.
+        assert "zero-coupon inflation swaps" in zcis_text
+        # And the sibling label survives.
+        assert "cash sovereign bonds" in zcis_text
+
 
 class TestSupervisorPromptMentionsLinkerDomain:
     """The supervisor LLM cannot route to a domain it has never been
@@ -174,6 +221,22 @@ class TestSupervisorPromptMentionsLinkerDomain:
         for needle in ("TIPS", "real yield"):
             assert needle in SUPERVISOR_SYSTEM_PROMPT, (
                 f"supervisor prompt missing linker signal {needle!r}"
+            )
+
+    def test_supervisor_prompt_advertises_inflation_swaps_domain(self):
+        from orchestrator.prompts import SUPERVISOR_SYSTEM_PROMPT
+
+        assert "inflation_swaps" in SUPERVISOR_SYSTEM_PROMPT, (
+            "supervisor prompt does not advertise the inflation_swaps "
+            "domain — the LLM cannot pick a domain it has not been "
+            "told exists."
+        )
+        # The signal vocabulary the supervisor needs to discriminate
+        # ZCIS queries from sibling rates queries.
+        for needle in ("ZCIS", "USD_ZCIS"):
+            assert needle in SUPERVISOR_SYSTEM_PROMPT, (
+                f"supervisor prompt missing inflation_swaps signal "
+                f"{needle!r}"
             )
 
 
@@ -197,6 +260,23 @@ class TestDomainAgentSessionConstruction:
             max_tokens=1024,
         )
         assert session.domain is Domain.INFLATION_INDEXED_BONDS
+        # Construction must not eagerly spawn a subprocess.  The
+        # spawn happens lazily on first use via session.open().
+        assert getattr(session, "_is_open", False) is False
+
+    def test_can_construct_for_inflation_swaps(self):
+        from orchestrator.domain_agent import DomainAgentSession
+        from orchestrator.session import _DOMAIN_PROMPTS
+
+        session = DomainAgentSession(
+            domain=Domain.INFLATION_SWAPS,
+            system_prompt=_DOMAIN_PROMPTS[Domain.INFLATION_SWAPS],
+            mcp_servers=DOMAIN_MCP_SERVERS[Domain.INFLATION_SWAPS],
+            model_name="claude-test",
+            temperature=0.0,
+            max_tokens=1024,
+        )
+        assert session.domain is Domain.INFLATION_SWAPS
         # Construction must not eagerly spawn a subprocess.  The
         # spawn happens lazily on first use via session.open().
         assert getattr(session, "_is_open", False) is False

@@ -96,6 +96,13 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
+    "inflation_swaps_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.inflation_swaps.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
     # PR 9: workflow-template MCP server.  Distinct from the per-domain
     # primitive servers above — exposes DAG-shaped analyses
     # (event_study, regime_conditioned_relationship, ...) plus the
@@ -148,6 +155,9 @@ DOMAIN_MCP_SERVERS: dict = {
         "inflation_indexed_bonds": MCP_SERVERS[
             "inflation_indexed_bonds_agent"
         ],
+    },
+    Domain.INFLATION_SWAPS: {
+        "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
     },
 }
 

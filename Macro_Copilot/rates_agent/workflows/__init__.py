@@ -118,6 +118,12 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleOutput,
     calculate_cross_country_breakeven_spread_simple,
 )
+from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
+    CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
+    InflationSwapRateLevelInput,
+    InflationSwapRateLevelOutput,
+    calculate_inflation_swap_rate_level,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -359,6 +365,25 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # declarations.
             "time_series_spread": "bps",
             "time_series_zscore": "z_score",
+        },
+    ),
+
+    # ---- Inflation-swaps domain ----
+    "calculate_inflation_swap_rate_level_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_rate_level_tool",
+        callable=calculate_inflation_swap_rate_level,
+        input_class=InflationSwapRateLevelInput,
+        output_class=InflationSwapRateLevelOutput,
+        config_path=INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
+        output_field_units={
+            # ZCIS rates are quoted in percent — same unit as
+            # nominal sovereign yields, OIS rates, and linker real
+            # yields, but the underlying series is the par-rate the
+            # zero-coupon inflation swap pays for inflation
+            # compensation against the headline index.  Wire field
+            # name on the snapshot is ``zcis_rate_pct``;
+            # series_name carries the ``_zcis_rate`` suffix.
+            "time_series": "percent",
         },
     ),
 
