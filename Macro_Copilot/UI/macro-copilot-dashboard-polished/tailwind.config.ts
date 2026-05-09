@@ -10,13 +10,19 @@ export default {
         '4xl': '2240px',
       },
       colors: {
+        // Neutral dark grayscale.  Earlier values (#06080C, #0A0C12,
+        // …) had a slight blue-grey cast that summed to a perceptibly
+        // blue page background.  Equal-channel hexes keep the
+        // surfaces black/grey — no chromatic undertone.  Used as
+        // direct `bg-ink-{shade}` classes throughout the components
+        // (e.g. composer wrappers, modal backdrops, chat drawer).
         ink: {
-          900: '#06080C',
-          800: '#0A0C12',
-          700: '#0E1118',
-          600: '#131621',
-          500: '#181C28',
-          400: '#1E2230',
+          900: '#000000',
+          800: '#0A0A0A',
+          700: '#101010',
+          600: '#161616',
+          500: '#1C1C1C',
+          400: '#222222',
         },
         line: {
           subtle: 'rgba(148,163,184,0.07)',
