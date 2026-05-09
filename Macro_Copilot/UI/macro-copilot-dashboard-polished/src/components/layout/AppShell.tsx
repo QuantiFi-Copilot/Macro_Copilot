@@ -37,7 +37,7 @@ import {
   PmOrchestratorPlaceholder,
 } from '@/components/agents/AgentPlaceholderPage';
 import { WorkspacePage } from '@/components/workspace/WorkspacePage';
-import { ToolsCataloguePage } from '@/components/catalogue/ToolsCataloguePage';
+import { LibraryPage } from '@/components/library/LibraryPage';
 import { WorkflowsCataloguePage } from '@/components/catalogue/WorkflowsCataloguePage';
 import { AskPage } from '@/components/ask/AskPage';
 import { BriefcasePlaceholder } from '@/components/briefcase/BriefcasePlaceholder';
@@ -46,7 +46,10 @@ export function AppShell() {
   const { pathname } = useLocation();
 
   const isFullWidth =
-    pathname.startsWith('/ask') || pathname.startsWith('/briefcase');
+    pathname.startsWith('/ask') ||
+    pathname.startsWith('/briefcase') ||
+    pathname.startsWith('/library') ||
+    pathname.startsWith('/tools'); // legacy alias for Library
   const isWidgetSurface =
     pathname === '/' ||
     pathname.startsWith('/rates') ||
@@ -70,7 +73,12 @@ export function AppShell() {
       {/* Existing — kept until subsequent PRs redesign them */}
       <Route path="/workspace" element={<WorkspacePage />} />
       <Route path="/workflows" element={<WorkflowsCataloguePage />} />
-      <Route path="/tools" element={<ToolsCataloguePage />} />
+
+      {/* Library — new full-width catalogue surface.
+          /tools is the legacy alias from the old top-nav setup;
+          redirect to /library so any saved bookmarks keep working. */}
+      <Route path="/library" element={<LibraryPage />} />
+      <Route path="/tools" element={<Navigate to="/library" replace />} />
 
       {/* Ask + Briefcase (full-width surfaces) */}
       <Route path="/ask" element={<AskPage />} />

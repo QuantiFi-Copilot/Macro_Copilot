@@ -60,10 +60,12 @@ const SURFACES: SurfaceDef[] = [
   { label: 'Build', to: '/workspace' },
   {
     label: 'Library',
-    to: '/tools',
-    // Workflows page is conceptually "Library → Templates" — same
-    // surface even though the URL hasn't migrated yet.
-    alsoActiveOn: ['/workflows'],
+    to: '/library',
+    // /tools is a legacy redirect to /library; /workflows is
+    // conceptually "Library → Templates" and stays here as an
+    // active-on hint until the Workflows tab is built into the
+    // Library page (follow-up PR).
+    alsoActiveOn: ['/tools', '/workflows'],
   },
   { label: 'Briefcase', to: '/briefcase' },
 ];
