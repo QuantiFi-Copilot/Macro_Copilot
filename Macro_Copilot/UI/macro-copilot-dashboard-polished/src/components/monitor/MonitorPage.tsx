@@ -72,7 +72,14 @@ function MonitorPageInner({ defaultLayout }: InnerProps) {
   const handleHeadline = useMonitorHeadline();
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    // `h-full overflow-y-auto` rather than `flex-1` — AppShell's
+    // routed wrapper is not a flex container, so flex-1 here would
+    // not constrain the height and the page would expand past the
+    // viewport with the outer overflow-hidden clipping the bottom.
+    // h-full takes 100% of the parent (which IS a definite-height
+    // flex-1 child of `main`), giving overflow-y-auto something to
+    // scroll inside of.
+    <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-[1680px] px-6 py-7 lg:px-8 lg:py-8 3xl:max-w-[1880px] 3xl:px-10">
         <MonitorHeader
           kicker={handleHeadline.kicker}

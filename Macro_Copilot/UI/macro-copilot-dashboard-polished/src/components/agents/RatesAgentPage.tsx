@@ -65,7 +65,10 @@ function RatesAgentInner({ defaultLayout }: InnerProps) {
   const headline = useRatesHeadline();
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    // `h-full overflow-y-auto` — see MonitorPage for the same fix
+    // explanation (AppShell's routed wrapper is not a flex container,
+    // so flex-1 here would not constrain the height).
+    <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-[1680px] px-6 py-7 lg:px-8 lg:py-8 3xl:max-w-[1880px] 3xl:px-10">
         <MonitorHeader
           kicker={headline.kicker}
