@@ -23,39 +23,43 @@ import { cn } from '@/utils/cn';
 export function RoutingStrip({ message }: { message: CopilotMessage }) {
   const route = describeRoute(message);
   return (
-    <div className="flex items-center justify-between gap-3 px-5 pt-3.5 pb-3">
+    <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
       <div className="flex min-w-0 items-center gap-2.5">
         <span
           className={cn(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
+            'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] transition-all',
+            // Soft gradient + inset ring instead of a hard border —
+            // pairs visually with the gradient top-rule on the card.
             route.kind === 'template' &&
-              'border border-ice-400/30 bg-ice-500/10 text-ice-300',
+              'bg-[linear-gradient(180deg,rgba(122,162,255,0.18),rgba(122,162,255,0.06))] text-ice-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(122,162,255,0.28)]',
             route.kind === 'composed' &&
-              'border border-lineage-400/30 bg-lineage-500/10 text-lineage-300',
+              'bg-[linear-gradient(180deg,rgba(155,140,255,0.18),rgba(155,140,255,0.06))] text-lineage-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(155,140,255,0.28)]',
             route.kind === 'primitives' &&
-              'border border-line-soft bg-white/[0.02] text-fg-secondary',
+              'bg-[linear-gradient(180deg,rgba(155,140,255,0.10),rgba(155,140,255,0.03))] text-lineage-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_0_0_1px_rgba(155,140,255,0.16)]',
             route.kind === 'thinking' &&
-              'border border-line-soft bg-white/[0.015] text-fg-muted',
+              'bg-white/[0.02] text-fg-muted shadow-[inset_0_0_0_1px_rgba(148,163,184,0.10)]',
           )}
         >
           {route.kind === 'template' ? (
-            <Workflow size={11} />
+            <Workflow size={11} strokeWidth={2} />
           ) : route.kind === 'composed' ? (
-            <GitFork size={11} />
+            <GitFork size={11} strokeWidth={2} />
           ) : (
-            <Sparkles size={11} />
+            <Sparkles size={11} strokeWidth={2} />
           )}
         </span>
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="kicker text-fg-muted">{route.kicker}</span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-fg-muted">
+            {route.kicker}
+          </span>
           {route.detail && (
-            <span className="mono truncate text-[12px] font-medium text-fg-primary">
+            <span className="font-mono truncate text-[12.5px] font-medium tracking-[-0.005em] text-fg-primary">
               {route.detail}
             </span>
           )}
         </div>
       </div>
-      <span className="mono shrink-0 text-[10.5px] text-fg-faint">
+      <span className="font-mono shrink-0 text-[10.5px] tracking-[0.02em] text-fg-faint">
         {formatAsOf(message.timestamp)}
       </span>
     </div>

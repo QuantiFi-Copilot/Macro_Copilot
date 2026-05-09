@@ -134,19 +134,28 @@ function ThreadRow({
         type="button"
         onClick={onClick}
         className={cn(
-          'group relative flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors duration-150 ease-sleek',
+          'group relative flex w-full flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-all duration-200 ease-sleek',
           active
-            ? 'bg-white/[0.04]'
-            : 'hover:bg-white/[0.02]',
+            ? // Active state: gradient sweep from left + soft inner highlight
+              'bg-[linear-gradient(90deg,rgba(122,162,255,0.08)_0%,rgba(122,162,255,0.025)_55%,transparent_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_0_0_1px_rgba(122,162,255,0.16)]'
+            : 'hover:bg-white/[0.022]',
         )}
       >
         {active && (
-          <span className="absolute inset-y-1 left-0 w-[3px] rounded-r-full bg-ice-400" />
+          <span
+            aria-hidden
+            className="absolute inset-y-1.5 left-0 w-[2px] rounded-r-full bg-gradient-to-b from-transparent via-ice-400 to-transparent shadow-[0_0_10px_rgba(122,162,255,0.45)]"
+          />
         )}
-        <span className="line-clamp-1 text-[12.5px] leading-[1.4] text-fg-primary">
+        <span
+          className={cn(
+            'line-clamp-1 text-[12.5px] leading-[1.4] tracking-[-0.005em] transition-colors',
+            active ? 'text-fg-primary' : 'text-fg-secondary group-hover:text-fg-primary',
+          )}
+        >
           {thread.title}
         </span>
-        <span className="flex items-center gap-1.5 mono text-[10px] text-fg-muted">
+        <span className="flex items-center gap-1.5 font-mono text-[10px] text-fg-muted">
           {thread.lastWorkflowTemplateId ? (
             <>
               <span className="truncate">{thread.lastWorkflowTemplateId}</span>

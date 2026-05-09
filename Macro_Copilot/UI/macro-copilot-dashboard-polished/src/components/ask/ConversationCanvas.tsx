@@ -35,9 +35,26 @@ type Props = {
    *  don't render the composer here; it's a sibling pinned outside the
    *  scroll container by AskPage. */
   scrollRef?: RefObject<HTMLDivElement | null>;
+  // Edit-mode props.  AskPage owns the editing state so only one
+  // message can be edited at a time and the in-flight stream can
+  // disable the affordance globally.
+  editingMessageId: string | null;
+  isThinking: boolean;
+  onEditStart: (messageId: string) => void;
+  onEditCancel: () => void;
+  onEditSubmit: (messageId: string, newContent: string) => void;
 };
 
-export function ConversationCanvas({ messages, onSeedComposer, scrollRef }: Props) {
+export function ConversationCanvas({
+  messages,
+  onSeedComposer,
+  scrollRef,
+  editingMessageId,
+  isThinking,
+  onEditStart,
+  onEditCancel,
+  onEditSubmit,
+}: Props) {
   const internalRef = useRef<HTMLDivElement>(null);
   const ref = scrollRef ?? internalRef;
 
@@ -76,8 +93,21 @@ export function ConversationCanvas({ messages, onSeedComposer, scrollRef }: Prop
             <div key={i} className="space-y-4">
               {turn.user && (
                 <UserMessage
+                  messageId={turn.user.id}
                   content={turn.user.content}
                   timestamp={turn.user.timestamp}
+                  isEditing={editingMessageId === turn.user.id}
+                  // Disable the edit affordance while *any* edit is
+                  // open OR while a turn is mid-stream — both states
+                  // would make a click no-op.
+                  disabled={
+                    isThinking ||
+                    (editingMessageId !== null &&
+                      editingMessageId !== turn.user.id)
+                  }
+                  onEditStart={onEditStart}
+                  onEditCancel={onEditCancel}
+                  onEditSubmit={onEditSubmit}
                 />
               )}
               {turn.assistant && (

@@ -129,12 +129,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       <div className="mx-auto w-full max-w-[880px] px-6 pb-6 pt-4">
         <div
           className={cn(
-            'composer-shell relative flex items-end gap-2 px-4 py-3',
-            !isReady && 'border-coral-400/35 bg-coral-400/[0.03]',
+            'composer-shell relative flex items-end gap-2.5 px-5 py-3.5',
+            !isReady && '!shadow-[inset_0_1px_0_rgba(255,255,255,0.05),inset_0_0_0_1px_rgba(255,107,126,0.35)]',
           )}
         >
-          {/* Left edge hint */}
-          <span className="mono shrink-0 select-none pb-1 pl-px pr-1 text-[12px] text-fg-faint">
+          {/* Left edge hint — softer than V1, with subtle weight */}
+          <span className="font-mono shrink-0 select-none pb-1.5 pl-px pr-1 text-[13px] font-medium text-fg-faint">
             /
           </span>
 
@@ -147,7 +147,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             rows={1}
             disabled={!isReady}
             className={cn(
-              'flex-1 resize-none bg-transparent text-[14px] leading-[1.5] text-fg-primary placeholder:text-fg-faint',
+              'flex-1 resize-none bg-transparent text-[14.5px] leading-[1.55] tracking-[-0.005em] text-fg-primary placeholder:text-fg-faint',
               'focus:outline-none disabled:cursor-not-allowed disabled:opacity-70',
             )}
             style={{ maxHeight: '240px' }}
@@ -159,22 +159,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
             disabled={!canSend}
             aria-label="Send"
             className={cn(
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-all duration-150 ease-sleek',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition-all duration-200 ease-sleek',
               canSend
-                ? 'border border-ice-400/40 bg-ice-500/15 text-ice-100 hover:border-ice-400/60 hover:bg-ice-500/25'
+                ? 'composer-send-active'
                 : 'border border-line-soft bg-white/[0.02] text-fg-faint',
             )}
           >
             {isThinking ? (
-              <Loader2 size={13} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
             ) : (
-              <ArrowUp size={13} />
+              <ArrowUp size={14} strokeWidth={2.25} />
             )}
           </button>
         </div>
 
-        <p className="mt-2 text-center mono text-[10.5px] text-fg-faint">
-          / for primitives · @ for saved artifacts · ⌘K for library
+        <p className="mt-3 text-center font-mono text-[10.5px] tracking-[0.04em] text-fg-faint">
+          <span>/</span>
+          <span className="ml-1.5 mr-3 text-fg-faint/70">for primitives</span>
+          <span>@</span>
+          <span className="ml-1.5 mr-3 text-fg-faint/70">for saved artifacts</span>
+          <span>⌘K</span>
+          <span className="ml-1.5 text-fg-faint/70">for library</span>
         </p>
       </div>
     );

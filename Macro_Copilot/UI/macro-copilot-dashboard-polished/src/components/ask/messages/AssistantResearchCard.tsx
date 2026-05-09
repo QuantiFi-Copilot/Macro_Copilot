@@ -60,9 +60,25 @@ export function AssistantResearchCard({
   const showThinkingState =
     !hasContent && !hasTrace && !hasWorkflow && !isErrored;
 
+  // Route-keyed gradient top-rule — surfaces the route at peripheral
+  // glance without needing a full-width divider.  Ice for templates,
+  // violet for ad-hoc composed DAGs, neutral lineage tone otherwise,
+  // coral when errored.
+  const railColor = isErrored
+    ? 'rgba(255, 107, 126, 0.55)'
+    : message.workflow?.routeDecision.template_id
+      ? 'rgba(122, 162, 255, 0.55)'
+      : message.traceSteps.length > 0
+        ? 'rgba(155, 140, 255, 0.45)'
+        : 'rgba(155, 140, 255, 0.30)';
+
   return (
     <div className="space-y-3">
-      <article className="research-card overflow-hidden">
+      <article
+        className="research-card overflow-hidden"
+        style={{ ['--rail-color' as string]: railColor }}
+      >
+        <span aria-hidden className="research-card-rail" />
         <RoutingStrip message={message} />
 
         {showThinkingState && (
