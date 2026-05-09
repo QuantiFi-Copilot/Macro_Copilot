@@ -6,8 +6,13 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
-import type { SparklinePoint } from '@/types/dashboard';
 import { chartStrokeForTone, type ChartTone } from '@/lib/chart';
+
+/** Sparkline accepts any row whose `value` is numeric.  We deliberately
+ *  don't constrain the index field (date / label / offset) — Recharts
+ *  reads only `value` here, and being permissive lets every widget
+ *  hand its native rows in without an adapter. */
+type SparklinePoint = { value: number; [k: string]: unknown };
 
 type SparklineProps = {
   data: SparklinePoint[];
