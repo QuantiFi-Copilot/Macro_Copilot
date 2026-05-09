@@ -49,6 +49,20 @@ from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple.schemas 
     ForwardBreakevenSimpleTimeSeriesRow,
 )
 
+# Breakeven curve spread (same-country, two-tenor difference) — re-
+# exported from the per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/``).
+# Composes ``breakeven_inflation_simple`` twice (once per endpoint
+# tenor) into a per-trade-date difference (the inflation-
+# compensation term-structure object); inherits the spot primitive's
+# no-proxy guard and same-country invariant transitively.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread.schemas import (
+    BreakevenCurveSpreadCurrentMetrics,
+    BreakevenCurveSpreadInput,
+    BreakevenCurveSpreadOutput,
+    BreakevenCurveSpreadTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -65,4 +79,9 @@ __all__ = [
     "ForwardBreakevenSimpleCurrentMetrics",
     "ForwardBreakevenSimpleOutput",
     "ForwardBreakevenSimpleTimeSeriesRow",
+    # breakeven_curve_spread
+    "BreakevenCurveSpreadInput",
+    "BreakevenCurveSpreadCurrentMetrics",
+    "BreakevenCurveSpreadOutput",
+    "BreakevenCurveSpreadTimeSeriesRow",
 ]

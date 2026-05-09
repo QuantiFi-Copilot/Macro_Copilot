@@ -19,8 +19,14 @@ Tool surface
    (e.g. 5Y5Y, 5Y10Y, 2Y3Y) via the year-weighted linear formula on
    the two endpoint spot breakevens; forward inflation compensation,
    NOT a clean forward expected-inflation read.
+4. calculate_breakeven_curve_spread_tool — same-country breakeven
+   curve spread between two breakeven tenors of the same
+   nominal/linker pair (e.g. UST/USD_TIPS 2s10s breakeven,
+   UK_GILT/GBP_LINKER 5s30s breakeven); the inflation-compensation
+   term-structure object, NOT the term structure of pure expected
+   inflation.
 
-Subsequent linker primitives (real_yield_curve_spread,
+Subsequent linker primitives (cross_country_breakeven_spread_simple,
 scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
 Section 9 "Bucket 1A") will land here as separate primitive builds.
@@ -50,9 +56,14 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
+    BreakevenCurveSpreadInput,
     BreakevenInflationSimpleInput,
     ForwardBreakevenSimpleInput,
     RealYieldLevelInput,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (  # noqa: E402
+    CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+    calculate_breakeven_curve_spread,
 )
 from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (  # noqa: E402
     CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
@@ -98,11 +109,13 @@ mcp = FastMCP(
         "OATei / Canadian RRB) real-yield quotes.  Use these tools to "
         "answer questions about real-yield levels, bond-implied "
         "breakeven inflation (the nominal-minus-real yield "
-        "differential, a.k.a. inflation compensation), AND forward "
+        "differential, a.k.a. inflation compensation), forward "
         "bond-implied breakevens between two same-country curve "
-        "points (e.g. 5Y5Y, 5Y10Y).  Future releases will add "
-        "real-yield curve spreads and inflation-compensation "
-        "scanners.  Never "
+        "points (e.g. 5Y5Y, 5Y10Y), AND same-country breakeven "
+        "curve spreads (e.g. 2s10s breakeven, 5s30s breakeven — "
+        "the inflation-compensation term-structure object).  "
+        "Future releases will add cross-country breakeven spreads "
+        "and inflation-compensation scanners.  Never "
         "attempt the math yourself — always call a tool and relay its "
         "output.  Do not route nominal sovereign yield questions here "
         "— those belong to the sovereign-bond agent's "
@@ -623,6 +636,211 @@ def calculate_forward_breakeven_simple_tool(
         logger.info(
             "[calculate_forward_breakeven_simple_tool] withheld "
             "%d bespoke + %d canonical forward rows + %d zscore "
+            "rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4: calculate_breakeven_curve_spread
+# ===========================================================================
+@mcp.tool()
+def calculate_breakeven_curve_spread_tool(
+    nominal_curve_family: str,
+    linker_curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-country breakeven curve spread between
+    two breakeven tenors of the same nominal/linker pair (e.g.
+    UST/USD_TIPS 2s10s breakeven, UK_GILT/GBP_LINKER 5s30s
+    breakeven), plus period changes, 1-year z-score, and
+    deterministic historical context (high, low, percentile in bps).
+
+        spread_bps = long_breakeven_bps - short_breakeven_bps
+
+    where short_breakeven / long_breakeven are the spot bond-
+    implied breakevens at short_tenor / long_tenor (each computed
+    by the same desk-recognised spot-breakeven primitive).
+
+    The output is the term structure of INFLATION COMPENSATION,
+    NOT the term structure of pure expected inflation — each
+    endpoint breakeven carries an inflation risk premium and a
+    relative liquidity premium between the nominal sovereign and
+    the linker, and the curve spread inherits both at each
+    endpoint.  The tool's output includes an explicit
+    ``methodology_label`` field carrying that disclosure plus the
+    literal spread formula; preserve it when summarising the
+    result to the user.
+
+    Use this tool when the user asks about:
+    - Breakeven curve shape / steepness (e.g. "Where's the US
+      2s10s breakeven?", "Is the UK 5s30s breakeven flat?")
+    - Breakeven curve moves              (e.g. "How much has
+      the FR 2s10s breakeven steepened this week?")
+    - Breakeven curve extremes          (e.g. "Is the US
+      5s30s breakeven at a 1-year low?")
+    - Decomposing a curve-spread move    (this tool returns BOTH
+      the spread AND the two endpoint breakevens + year fractions
+      used to form it).
+
+    Do NOT use this tool for:
+    - Spot bond-implied breakevens — call
+      ``calculate_breakeven_inflation_simple_tool``.
+    - Forward bond-implied breakevens (5Y5Y / 5Y10Y / 2Y3Y) —
+      call ``calculate_forward_breakeven_simple_tool``.
+    - Pure expected-inflation term-structure reads — bond-implied
+      breakeven curves are the term structure of compensation,
+      not expectations.
+    - Cross-country breakeven comparisons — the tool refuses
+      cross-country pairs (e.g. DE_BUND vs EUR_FR_LINKER, or
+      UK_GILT vs USD_TIPS) at compute time with a controlled
+      error envelope.
+    - Sovereign nominal curve spreads — those belong to the
+      sovereign-bond agent's ``calculate_curve_spread_tool``.
+
+    Parameters
+    ----------
+    nominal_curve_family : str
+        Nominal sovereign curve identifier exactly as stored in
+        instrument_master.  Examples: 'UST', 'UK_GILT', 'FR_OAT',
+        'CANADA_GOVT'.  This leg is filtered honestly with
+        instrument_type='sovereign_benchmark' on the DB read at
+        BOTH endpoint tenors; passing a linker curve here returns
+        a controlled error envelope.
+    linker_curve_family : str
+        Sovereign linker curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_TIPS', 'GBP_LINKER',
+        'EUR_FR_LINKER', 'CAD_RRB'.  This leg is filtered
+        honestly with instrument_type='inflation_linker' on the
+        DB read at BOTH endpoint tenors.
+    short_tenor : str
+        Short tenor of the curve spread — e.g. '2Y' for 2s10s,
+        '5Y' for 5s30s.  Must be present on BOTH curves at the
+        requested country.
+    long_tenor : str
+        Long tenor of the curve spread — e.g. '10Y' for 2s10s,
+        '30Y' for 5s30s.  Must be strictly longer than
+        ``short_tenor``.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing
+        range window.
+    field_name : str, optional
+        Bloomberg field mnemonic for ALL FOUR underlying yield
+        series (nominal at short_tenor, linker at short_tenor,
+        nominal at long_tenor, linker at long_tenor).  Leave as
+        the default empty string ""  to use the bundled
+        ``default_field_name`` convention from
+        breakeven_curve_spread/config.yaml (currently
+        'YLD_YTM_MID').  Pass an explicit field name to override
+        per call.  Mirrors the empty-string sentinel pattern used
+        by the other rates tools so the YAML default actually
+        flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = BreakevenCurveSpreadInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_breakeven_curve_spread_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_curve_spread_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the breakeven_curve_spread tool's bundled config
+    # explicitly so the dependency is observable here.
+    # load_tool_config caches by path, so this is a free lookup
+    # after the first call within the MCP subprocess's lifetime.
+    # Mirrors the calculate_forward_breakeven_simple_tool wrapper
+    # exactly.
+    try:
+        bcs_config = load_tool_config(BREAKEVEN_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_breakeven_curve_spread(
+            engine=engine, params=params, config=bcs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_curve_spread_tool] unhandled "
+            "error for %s vs %s @ %s%s",
+            params.nominal_curve_family,
+            params.linker_curve_family,
+            params.short_tenor,
+            params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_breakeven_curve_spread_tool failed "
+                    f"for {params.nominal_curve_family} vs "
+                    f"{params.linker_curve_family} @ "
+                    f"{params.short_tenor}{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_breakeven_curve_spread_tool] tool call "
+        "complete: %s vs %s @ %s%s → %s",
+        params.nominal_curve_family,
+        params.linker_curve_family,
+        params.short_tenor,
+        params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to
+    # the LLM (frontend REST path returns the full payload).
+    # Same convention as the other rates tools — the LLM doesn't
+    # need every historical row to answer "where's US 2s10s
+    # breakeven?".
+    stripped_keys = {"time_series", "time_series_spread", "time_series_zscore"}
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_spread", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_breakeven_curve_spread_tool] withheld "
+            "%d bespoke + %d canonical spread rows + %d zscore "
             "rows from LLM context.",
             bespoke_rows,
             canonical_rows,

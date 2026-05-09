@@ -106,6 +106,12 @@ from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (
     ForwardBreakevenSimpleOutput,
     calculate_forward_breakeven_simple,
 )
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
+    CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+    BreakevenCurveSpreadInput,
+    BreakevenCurveSpreadOutput,
+    calculate_breakeven_curve_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -309,6 +315,24 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # BPS, rolling z-score in Z_SCORE units.  Operator-layer
             # unit-compat checks rely on these declarations.
             "time_series_forward": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_breakeven_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_curve_spread_tool",
+        callable=calculate_breakeven_curve_spread,
+        input_class=BreakevenCurveSpreadInput,
+        output_class=BreakevenCurveSpreadOutput,
+        config_path=BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven-curve-spread row list —
+            # frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven curve spread history
+            # in BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "bps",
             "time_series_zscore": "z_score",
         },
     ),
