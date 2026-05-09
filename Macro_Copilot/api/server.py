@@ -42,6 +42,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.dependencies import init_engine, settings
 from api.routes.rates import router as rates_router
 from api.routes.workflows import router as workflows_router
+from api.routes.library import router as library_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -112,6 +113,15 @@ app.include_router(
     workflows_router,
     prefix="/api/v1",
     tags=["Workflows"],
+)
+
+# Library catalogue surface — reads `manifesto/03_tool_manifest/<agent>/*.yml`
+# and serves the parsed catalogue as JSON.  The Library page is rendered
+# directly from this response (no hardcoded tool entries in the UI).
+app.include_router(
+    library_router,
+    prefix="/api/v1",
+    tags=["Library"],
 )
 
 app.include_router(

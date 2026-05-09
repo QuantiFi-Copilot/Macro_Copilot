@@ -28,6 +28,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: snapshots
     status: built
 
     implementation:
@@ -75,6 +76,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: curve_shape
     status: built
 
     implementation:
@@ -118,6 +120,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: cross_market_rv
     status: built
 
     implementation:
@@ -165,6 +168,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: forwards_classify
     status: built
 
     implementation:
@@ -213,6 +217,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: cross_market_rv
     status: built
 
     implementation:
@@ -263,6 +268,7 @@ tools:
     domain: rates
     sub_agent: ois
     bucket: 1A
+    category: screening
     status: built
 
     implementation:

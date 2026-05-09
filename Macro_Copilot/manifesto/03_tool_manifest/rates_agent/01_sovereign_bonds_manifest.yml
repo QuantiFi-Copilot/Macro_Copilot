@@ -28,6 +28,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: snapshots
     status: built
 
     implementation:
@@ -75,6 +76,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: curve_shape
     status: built
 
     implementation:
@@ -119,6 +121,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: cross_market_rv
     status: built
 
     implementation:
@@ -162,6 +165,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: curve_shape
     status: built
 
     implementation:
@@ -208,6 +212,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: forwards_classify
     status: built
 
     implementation:
@@ -259,6 +264,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: screening
     status: built
 
     implementation:
@@ -310,6 +316,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: rolling_analytics
     status: built
 
     implementation:
@@ -356,6 +363,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1B
+    category: rolling_analytics
     status: built
 
     implementation:
@@ -400,6 +408,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1B
+    category: rolling_analytics
     status: built
 
     implementation:
@@ -444,6 +453,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1B
+    category: model_fits
     status: built
 
     implementation:
@@ -492,6 +502,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1B
+    category: model_fits
     status: built
 
     implementation:
@@ -539,6 +550,7 @@ tools:
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1B
+    category: model_fits
     status: built
 
     implementation:
