@@ -70,13 +70,26 @@ type AgentItem = {
   subItems?: AgentSubItem[];
 };
 
+// Subtext budget: the row is ~136px wide for content after icon /
+// gap / status dot / chevron.  At 9.5px mono that's ≈ 22 chars max
+// before truncation kicks in.  Keep all scope strings under that
+// budget — earlier laundry-list copy ("G10 · EM · NDFs · vol
+// surfaces") was overflowing the column and making the whole sidebar
+// horizontally scrollable.
+//
+// Live agents render real-data subtext (count of curves / tenors)
+// derived in the Sidebar component below; the static `scope` here is
+// a fallback used only while data is loading.
+
 const AGENTS: AgentItem[] = [
   {
     label: 'Rates Agent',
     to: '/rates',
     icon: <Layers size={13} />,
     status: 'live',
-    scope: 'Sovereign · OIS · 9 curves',
+    // Replaced at render-time with "{N} curves · {M} tenors" once
+    // rates data resolves.  Until then this static fallback shows.
+    scope: 'Sovereign + OIS',
     subItems: [
       // V1: sub-items all link to the Rates Agent page.  V2 will read
       // a `?scope=...` query param to filter the widget catalog to
@@ -93,35 +106,35 @@ const AGENTS: AgentItem[] = [
     to: '/fx',
     icon: <LineChart size={13} />,
     status: 'dev',
-    scope: 'G10 · EM · NDFs · vol surfaces',
+    scope: 'G10 · EM',
   },
   {
     label: 'Credit Agent',
     to: '/credit',
     icon: <Activity size={13} />,
     status: 'dev',
-    scope: 'IG · HY · CDX · single-name',
+    scope: 'IG · HY',
   },
   {
     label: 'Macro Equity',
     to: '/macro-equity',
     icon: <Gauge size={13} />,
     status: 'dev',
-    scope: 'Indices · sectors · factors · vol',
+    scope: 'Indices · factors',
   },
   {
     label: 'Policy / Events',
     to: '/policy',
     icon: <ShieldCheck size={13} />,
     status: 'dev',
-    scope: 'WIRP · CB speeches · macro releases',
+    scope: 'WIRP · calendar',
   },
   {
     label: 'PM Orchestrator',
     to: '/pm-orchestrator',
     icon: <Bot size={13} />,
     status: 'dev',
-    scope: 'Cross-agent synthesis · saved playbooks',
+    scope: 'Cross-agent',
   },
 ];
 
@@ -138,10 +151,22 @@ export function Sidebar() {
   // stale collapsed state.
   const [manualExpand, setManualExpand] = useState<Record<string, boolean>>({});
 
+  // Live scope for the Rates Agent row, derived from the same rates
+  // context the Today panel reads.  Falls back to the static `scope`
+  // on the agent record while data loads.
+  const { data } = useRatesDataContext();
+  const ratesLiveScope = data
+    ? `${data.yieldSnapshot.curve_families.length} curves · ${data.yieldSnapshot.tenors.length} tenors`
+    : null;
+
   return (
     <aside className="relative flex h-full min-h-0 flex-col overflow-hidden border-r border-line-subtle">
-      {/* Scrollable nav area — sections stack here, footer pinned below. */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4 pt-5">
+      {/* Scrollable nav area — sections stack here, footer pinned below.
+          `overflow-x-hidden` is explicit: nav allows vertical scroll
+          but never horizontal.  Combined with `min-w-0` on each
+          AgentRow, this guarantees long subtexts truncate cleanly
+          rather than triggering a horizontal scrollbar. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-5">
         <Section label="WORKSPACE">
           <NavRow
             icon={<Home size={13} />}
@@ -158,10 +183,16 @@ export function Sidebar() {
               manualExpand[agent.to] ??
               // Default: live agents auto-expand on their own route.
               (agent.status === 'live' && isActive);
+            // Substitute live data for the Rates Agent's scope when
+            // available; other agents always use their static scope.
+            const resolvedAgent =
+              agent.to === '/rates' && ratesLiveScope
+                ? { ...agent, scope: ratesLiveScope }
+                : agent;
             return (
               <AgentRow
                 key={agent.to}
-                agent={agent}
+                agent={resolvedAgent}
                 active={isActive}
                 expanded={isExpanded}
                 pathname={pathname}
@@ -281,8 +312,14 @@ function AgentRow({
   return (
     <div className="space-y-px">
       <div
+        // `min-w-0` is critical here: the outer flex container will
+        // otherwise size to its content's intrinsic width and push
+        // the whole row past the sidebar column width — causing the
+        // page to gain a horizontal scrollbar.  With min-w-0 the
+        // flex container respects the parent's width and the inner
+        // truncate spans actually clip.
         className={cn(
-          'group relative flex w-full items-stretch rounded-lg transition-all duration-200 ease-sleek',
+          'group relative flex w-full min-w-0 items-stretch rounded-lg transition-all duration-200 ease-sleek',
           active
             ? 'bg-[linear-gradient(90deg,rgba(122,162,255,0.08)_0%,rgba(122,162,255,0.025)_55%,transparent_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_0_0_1px_rgba(122,162,255,0.16)]'
             : isLive
@@ -297,12 +334,14 @@ function AgentRow({
           />
         )}
 
-        {/* Main link — fills the row.  Sub-item chevron sits to the
+        {/* Main link — fills the row.  `min-w-0` again so the inner
+            label/scope spans truncate inside the link rather than
+            forcing the link wider.  Sub-item chevron sits to the
             right of the link as a separate button so clicks on the
             chevron don't navigate. */}
         <Link
           to={agent.to}
-          className="flex flex-1 items-center gap-2.5 px-3 py-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left"
         >
           <span
             className={cn(
