@@ -17,9 +17,13 @@
 // EmptyState starting points, and the ActionRow's "Rerun with…" all
 // drop prompts into the same input without going through window
 // custom events.
+//
+// AskPage also owns the in-line edit state for previous user messages.
+// Only one message can be in edit mode at a time, and the affordance
+// is suppressed while any turn is mid-stream.
 // ============================================================================
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import { useThreads } from '@/hooks/useThreads';
 import { ThreadsRail } from './ThreadsRail';
@@ -34,6 +38,7 @@ export function AskPage() {
     clearMessages,
     connectionStatus,
     isThinking,
+    editAndResubmit,
   } = useCopilotContext();
 
   const { groupedThreads, activeThreadId, selectThread, newThread } = useThreads({
@@ -42,6 +47,27 @@ export function AskPage() {
   });
 
   const composerRef = useRef<ComposerHandle>(null);
+
+  // Edit mode — only one user message can be edited at a time.  The
+  // edit affordance is suppressed inside ConversationCanvas while
+  // `isThinking` is true.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
+  const handleEditStart = useCallback((id: string) => {
+    setEditingMessageId(id);
+  }, []);
+
+  const handleEditCancel = useCallback(() => {
+    setEditingMessageId(null);
+  }, []);
+
+  const handleEditSubmit = useCallback(
+    (messageId: string, newContent: string) => {
+      editAndResubmit(messageId, newContent);
+      setEditingMessageId(null);
+    },
+    [editAndResubmit],
+  );
 
   // Single seed-composer entry point — used by EmptyState (starting
   // point clicked), FollowUps (chip clicked), and ActionRow's
@@ -81,9 +107,14 @@ export function AskPage() {
           <ConversationCanvas
             messages={messages}
             onSeedComposer={seedComposer}
+            editingMessageId={editingMessageId}
+            isThinking={isThinking}
+            onEditStart={handleEditStart}
+            onEditCancel={handleEditCancel}
+            onEditSubmit={handleEditSubmit}
           />
         </div>
-        <div className="shrink-0 border-t border-line-subtle bg-ink-900/60 backdrop-blur-sm">
+        <div className="shrink-0 border-t border-line-subtle bg-ink-900/50 backdrop-blur-md">
           <Composer
             ref={composerRef}
             connectionStatus={connectionStatus}

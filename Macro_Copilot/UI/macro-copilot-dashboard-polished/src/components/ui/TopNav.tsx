@@ -61,15 +61,16 @@ export function TopNav() {
 
   return (
     <header className="relative flex h-[52px] shrink-0 items-center gap-6 border-b border-line-subtle px-6">
-      {/* Brand */}
+      {/* Brand — soft inner glow on the glyph, refined typographic
+          tracking on the wordmark. */}
       <Link
         to="/"
-        className="flex shrink-0 items-center gap-2.5"
+        className="group flex shrink-0 items-center gap-2.5"
       >
-        <span className="relative flex h-6 w-6 items-center justify-center rounded-[5px] border border-line-soft bg-gradient-to-br from-ice-400/30 via-ice-700/30 to-ink-700">
-          <span className="h-2.5 w-2.5 rounded-[2px] bg-gradient-to-br from-white to-ice-200 shadow-[0_0_10px_rgba(122,162,255,0.35)]" />
+        <span className="relative flex h-6 w-6 items-center justify-center rounded-[6px] border border-line-soft bg-gradient-to-br from-ice-400/35 via-ice-700/30 to-ink-700 transition-all duration-300 group-hover:border-ice-400/60">
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-gradient-to-br from-white via-ice-100 to-ice-300 shadow-[0_0_14px_rgba(122,162,255,0.45)]" />
         </span>
-        <span className="text-[13.5px] font-medium tracking-[-0.01em] text-fg-primary">
+        <span className="text-[13.5px] font-medium tracking-[-0.012em] text-fg-primary">
           macro copilot
         </span>
       </Link>
@@ -130,7 +131,7 @@ function SurfaceTab({
       to={surface.to}
       end={surface.to === '/'}
       className={cn(
-        'relative flex h-[52px] items-center px-3 text-[13px] font-medium tracking-[-0.005em] transition-colors duration-150 ease-sleek',
+        'relative flex h-[52px] items-center px-3.5 text-[13px] font-medium tracking-[-0.008em] transition-colors duration-200 ease-sleek',
         isActive
           ? 'text-fg-primary'
           : 'text-fg-muted hover:text-fg-secondary',
@@ -138,7 +139,21 @@ function SurfaceTab({
     >
       <span>{surface.label}</span>
       {isActive && (
-        <span className="absolute inset-x-3 -bottom-px h-[2px] rounded-t-full bg-ice-400 shadow-[0_0_10px_rgba(122,162,255,0.4)]" />
+        <>
+          {/* Gradient underline sweep — fades in from both edges so
+              the indicator reads as illumination, not a hard rule. */}
+          <span
+            aria-hidden
+            className="absolute inset-x-3 -bottom-px h-[1.5px] rounded-full bg-gradient-to-r from-transparent via-ice-300 to-transparent shadow-[0_0_14px_rgba(122,162,255,0.55)]"
+          />
+          {/* Tiny anchor dot in the center — gives the active state a
+              focal point at small sizes when the underline is barely
+              visible. */}
+          <span
+            aria-hidden
+            className="absolute left-1/2 -bottom-[5px] h-1 w-1 -translate-x-1/2 rounded-full bg-ice-300 shadow-[0_0_8px_rgba(122,162,255,0.7)]"
+          />
+        </>
       )}
     </NavLink>
   );

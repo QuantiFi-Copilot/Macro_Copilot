@@ -69,6 +69,15 @@ type UseCopilotResult = {
   connectionStatus: ConnectionStatus;
   isThinking: boolean;
   clearMessages: () => void;
+  /** Edit a previous user message in-place: truncate the message
+   *  buffer to *before* the target message id, then submit a new turn
+   *  with the edited content.  Mirrors the conversational rewind that
+   *  the Ask UI exposes via the in-line "edit" affordance on user
+   *  messages.  V1: the backend has no thread persistence, so this
+   *  is effectively "fork from this point" — when V2 ships persistent
+   *  threads, the same primitive becomes "edit and replay against the
+   *  same thread_id". */
+  editAndResubmit: (messageId: string, newContent: string) => void;
 };
 
 export function useCopilot(): UseCopilotResult {
@@ -405,6 +414,65 @@ export function useCopilot(): UseCopilotResult {
   }, []);
 
   // ------------------------------------------------------------------
+  // Edit & resubmit
+  // ------------------------------------------------------------------
+  // Truncates the message buffer to *before* the target message id,
+  // then sends `newContent` as a new turn.  Both setMessages calls
+  // are issued in the same React batch, so the user sees a single
+  // smooth update: the old message and everything after disappear,
+  // the new edited message appears, and the assistant re-streams
+  // from there.
+  //
+  // Refusing to edit while a turn is mid-stream avoids the
+  // race where the WS would still be writing into the soon-to-be-
+  // truncated streaming message.
+
+  const editAndResubmit = useCallback(
+    (messageId: string, newContent: string) => {
+      const trimmed = newContent.trim();
+      if (!trimmed) return;
+      if (isThinking) return;
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+      // Step 1: truncate locally to the slice before the edited message.
+      let truncated = false;
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === messageId);
+        if (idx === -1) return prev;
+        truncated = true;
+        return prev.slice(0, idx);
+      });
+
+      // The local truncate above runs synchronously inside the React
+      // batch; if the message wasn't in the buffer (already truncated
+      // or stale id) we silently no-op rather than send a stray turn.
+      if (!truncated) return;
+
+      // Step 2: submit the edited content as a fresh turn.
+      // sendMessage() will append the new user message and dispatch
+      // to the WS.  React batches the two setState calls so the user
+      // sees a single transition.
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'user',
+          content: trimmed,
+          timestamp: new Date(),
+          traceSteps: [],
+          workspaceContext: null,
+          isStreaming: false,
+        },
+      ]);
+      setIsThinking(true);
+      wsRef.current.send(
+        JSON.stringify({ type: 'user_message', content: trimmed }),
+      );
+    },
+    [isThinking],
+  );
+
+  // ------------------------------------------------------------------
   // Lifecycle
   // ------------------------------------------------------------------
 
@@ -426,5 +494,6 @@ export function useCopilot(): UseCopilotResult {
     connectionStatus,
     isThinking,
     clearMessages,
+    editAndResubmit,
   };
 }

@@ -26,6 +26,11 @@ type CopilotContextValue = {
   connectionStatus: ConnectionStatus;
   isThinking: boolean;
   clearMessages: () => void;
+  /** Truncate the message buffer to before the given message id, then
+   *  resubmit `newContent` as a fresh turn.  Wired to the in-line edit
+   *  affordance on user messages — clicking edit, mutating the
+   *  textarea, and saving forks the conversation from that point. */
+  editAndResubmit: (messageId: string, newContent: string) => void;
 };
 
 const CopilotCtx = createContext<CopilotContextValue | null>(null);
