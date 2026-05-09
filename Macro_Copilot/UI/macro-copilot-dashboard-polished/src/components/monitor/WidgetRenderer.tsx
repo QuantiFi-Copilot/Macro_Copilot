@@ -17,9 +17,9 @@ import { widgetMeta, type WidgetInstance } from './registry';
 // Widget renderers
 import { YieldSnapshotWidget } from './widgets/YieldSnapshotWidget';
 import { ScannerWidget } from './widgets/ScannerWidget';
-import { CrossMarketWidget } from './widgets/CrossMarketWidget';
-import { CurveShapesWidget } from './widgets/CurveShapesWidget';
-import { RegimeMonitorWidget } from './widgets/RegimeMonitorWidget';
+import { CrossMarketSpreadsWidget } from './widgets/CrossMarketSpreadsWidget';
+import { CurveSpreadsWidget } from './widgets/CurveSpreadsWidget';
+import { CurveClassifierWidget } from './widgets/CurveClassifierWidget';
 import { YieldLevelWidget } from './widgets/YieldLevelWidget';
 import { SpreadChartWidget } from './widgets/SpreadChartWidget';
 import { CrossMarketSpreadWidget } from './widgets/CrossMarketSpreadWidget';
@@ -78,12 +78,12 @@ function Body({ instance }: { instance: WidgetInstance }) {
       return <YieldSnapshotWidget />;
     case 'scanner':
       return <ScannerWidget />;
-    case 'cross_market':
-      return <CrossMarketWidget />;
-    case 'curve_shapes':
-      return <CurveShapesWidget />;
-    case 'regime_monitor':
-      return <RegimeMonitorWidget />;
+    case 'cross_market_spreads':
+      return <CrossMarketSpreadsWidget />;
+    case 'curve_spreads':
+      return <CurveSpreadsWidget />;
+    case 'curve_classifier':
+      return <CurveClassifierWidget />;
     case 'yield_level':
       return <YieldLevelWidget params={instance.params} />;
     case 'spread_chart':

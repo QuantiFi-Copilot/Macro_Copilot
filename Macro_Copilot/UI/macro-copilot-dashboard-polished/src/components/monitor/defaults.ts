@@ -38,9 +38,9 @@ export function defaultMonitorLayout(): LayoutState {
   return buildLayout([
     ['yield_snapshot'],
     ['scanner'],
-    ['cross_market'],
-    ['curve_shapes'],
-    ['regime_monitor'],
+    ['cross_market_spreads'],
+    ['curve_spreads'],
+    ['curve_classifier'],
     [
       'yield_level',
       {
@@ -55,9 +55,9 @@ export function defaultRatesAgentLayout(): LayoutState {
   return buildLayout([
     ['yield_snapshot'],
     ['scanner'],
-    ['cross_market'],
-    ['curve_shapes'],
-    ['regime_monitor'],
+    ['cross_market_spreads'],
+    ['curve_spreads'],
+    ['curve_classifier'],
     [
       'spread_chart',
       {

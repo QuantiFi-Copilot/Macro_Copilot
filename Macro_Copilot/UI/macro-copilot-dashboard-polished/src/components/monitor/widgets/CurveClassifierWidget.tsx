@@ -1,12 +1,18 @@
 // ============================================================================
-// RegimeMonitorWidget — curve-move regime classification (1D vs 5D)
+// CurveClassifierWidget — daily / weekly curve-move classification
 // ----------------------------------------------------------------------------
-// Pre-aggregated.  For each curve, shows the regime tag for "today" (1D)
-// and "this week" (5D), with the front + back tenor bps changes
+// Pre-aggregated.  Surface for the substrate's `classify_curve_move_tool`.
+// For each curve, renders the classification tag for "today" (1D) and
+// "this week" (5D), with the front + back tenor bps changes
 // underneath.
 //
-// Regime chips are color-keyed: bull-steepener → mint, bear-flattener
-// → amber, bull-flattener → ice, bear-steepener → coral, twist →
+// Was named "RegimeMonitorWidget" in V0; renamed to mirror the
+// backing tool's name.  "Regime" implied a broader macro framework
+// the tool doesn't actually compute — it classifies a single curve
+// move shape (steepener / flattener / twist), not a macro regime.
+//
+// Class chips are color-keyed: bull-steepener → mint, bear-steepener
+// → coral, bull-flattener → ice, bear-flattener → amber, twist →
 // violet, parallel → neutral.
 // ============================================================================
 
@@ -72,11 +78,11 @@ const REGIME_LABEL: Record<string, string> = {
   PARALLEL_SHIFT: 'Parallel',
 };
 
-export function RegimeMonitorWidget() {
+export function CurveClassifierWidget() {
   const { data, isLoading, error } = useRatesDataContext();
 
   if (error && !data) return <WidgetError message={error.message} />;
-  if (!data || isLoading) return <WidgetLoading label="Loading regimes…" />;
+  if (!data || isLoading) return <WidgetLoading label="Classifying curves…" />;
 
   const regimes = data.regimes.regimes;
   const byKey = new Map<string, RegimeRow>();
@@ -91,8 +97,8 @@ export function RegimeMonitorWidget() {
   return (
     <>
       <WidgetHeader
-        kicker="CURVE DYNAMICS · CLASSIFICATION"
-        title="Regime Monitor"
+        kicker="CLASSIFY_CURVE_MOVE · 1D / 5D"
+        title="Curve Classifier"
       />
       <WidgetBody className="space-y-1.5 px-3.5 pb-3">
         {/* Column headers */}

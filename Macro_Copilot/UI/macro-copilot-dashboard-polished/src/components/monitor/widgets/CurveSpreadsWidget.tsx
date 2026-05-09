@@ -1,8 +1,12 @@
 // ============================================================================
-// CurveShapesWidget — 2s10s slope monitor across G4 curves
+// CurveSpreadsWidget — 2s10s spread monitor across G4 curves
 // ----------------------------------------------------------------------------
-// Pre-aggregated.  Renders G4 (UST, Bund, Gilt, JGB) 2s10s spreads as
-// rows: label · sparkline · current spread + Δ1d + z-score.
+// Pre-aggregated.  Surface for `calculate_curve_spread_tool` evaluated
+// across G4 (UST, Bund, Gilt, JGB) at 2s10s.  Renders one row per
+// curve: label · sparkline · current spread + Δ1d + z-score.
+//
+// Was named "CurveShapesWidget" with title "Slope Monitor" in V0.
+// Renamed to mirror the backing tool's name (`calculate_curve_spread_tool`).
 // ============================================================================
 
 import { useRatesDataContext } from '@/components/monitor/RatesDataProvider';
@@ -24,11 +28,12 @@ const CURVE_LABEL: Record<string, string> = {
   IT_BTP: 'BTP',
 };
 
-export function CurveShapesWidget() {
+export function CurveSpreadsWidget() {
   const { data, isLoading, error } = useRatesDataContext();
 
   if (error && !data) return <WidgetError message={error.message} />;
-  if (!data || isLoading) return <WidgetLoading label="Loading slopes…" />;
+  if (!data || isLoading)
+    return <WidgetLoading label="Loading curve spreads…" />;
 
   const curves = data.curveShapes.curves;
   const asOf = curves[0]?.as_of_date ?? null;
@@ -36,8 +41,8 @@ export function CurveShapesWidget() {
   return (
     <>
       <WidgetHeader
-        kicker="CURVE SHAPES · 2s10s"
-        title="Slope Monitor"
+        kicker="CALCULATE_CURVE_SPREAD · 2s10s"
+        title="Curve Spreads"
         meta={
           <span className="font-mono text-[10.5px] text-fg-muted">
             {curves.length} curves
