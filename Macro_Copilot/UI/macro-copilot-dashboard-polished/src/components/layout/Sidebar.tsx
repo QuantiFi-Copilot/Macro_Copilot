@@ -39,7 +39,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { useRatesDataContext } from '@/components/monitor/RatesDataProvider';
+import { useOptionalRatesDataContext } from '@/components/monitor/RatesDataProvider';
 
 // ----------------------------------------------------------------------------
 // Agent registry — single source of truth for sidebar agent rows.
@@ -152,9 +152,13 @@ export function Sidebar() {
   const [manualExpand, setManualExpand] = useState<Record<string, boolean>>({});
 
   // Live scope for the Rates Agent row, derived from the same rates
-  // context the Today panel reads.  Falls back to the static `scope`
-  // on the agent record while data loads.
-  const { data } = useRatesDataContext();
+  // context the Today panel reads.  `useOptionalRatesDataContext`
+  // returns null when no provider is mounted (e.g. on the legacy
+  // three-column layout if it skips the wrapper) so the sidebar
+  // degrades to its static scope strings instead of crashing the
+  // entire page.
+  const ratesCtx = useOptionalRatesDataContext();
+  const data = ratesCtx?.data ?? null;
   const ratesLiveScope = data
     ? `${data.yieldSnapshot.curve_families.length} curves · ${data.yieldSnapshot.tenors.length} tenors`
     : null;
@@ -469,7 +473,13 @@ function SubItemRow({
 // loading or errored.
 
 function TodayPanel() {
-  const { data, isLoading, error } = useRatesDataContext();
+  // Optional context — sidebar may be rendered on routes that don't
+  // mount RatesDataProvider (legacy 3-col layout).  Treat null ctx
+  // as "no rates data available" and render neutral states.
+  const ctx = useOptionalRatesDataContext();
+  const data = ctx?.data ?? null;
+  const isLoading = ctx?.isLoading ?? false;
+  const error = ctx?.error ?? null;
   const session = useNySession();
 
   // Scanner summary — match the Monitor headline's wording.
@@ -566,11 +576,22 @@ function TodayRow({
 // system summary, derived from the rates context.
 
 function StatusRibbon() {
-  const { data, isLoading, error } = useRatesDataContext();
+  // Optional context — sidebar may be rendered on routes without a
+  // mounted provider; degrade to neutral "context unavailable" copy
+  // rather than crashing.
+  const ctx = useOptionalRatesDataContext();
+  const data = ctx?.data ?? null;
+  const isLoading = ctx?.isLoading ?? false;
+  const error = ctx?.error ?? null;
 
-  let dot: 'mint' | 'amber' | 'coral';
+  let dot: 'mint' | 'amber' | 'coral' | 'neutral';
   let text: string;
-  if (error && !data) {
+  if (!ctx) {
+    // No provider on this route — Sidebar is rendered but the
+    // surface doesn't fetch rates data.  Show a neutral indicator.
+    dot = 'neutral';
+    text = 'Workspace · TimescaleDB';
+  } else if (error && !data) {
     dot = 'coral';
     text = 'Disconnected';
   } else if (!data || isLoading) {
@@ -587,7 +608,9 @@ function StatusRibbon() {
       ? 'bg-mint-400 shadow-[0_0_6px_rgba(63,214,154,0.55)]'
       : dot === 'amber'
         ? 'bg-amber-400 shadow-[0_0_6px_rgba(243,183,85,0.55)]'
-        : 'bg-coral-400 shadow-[0_0_6px_rgba(255,107,126,0.55)]';
+        : dot === 'coral'
+          ? 'bg-coral-400 shadow-[0_0_6px_rgba(255,107,126,0.55)]'
+          : 'bg-fg-faint';
 
   return (
     <div className="flex items-center gap-2 px-4 py-2">

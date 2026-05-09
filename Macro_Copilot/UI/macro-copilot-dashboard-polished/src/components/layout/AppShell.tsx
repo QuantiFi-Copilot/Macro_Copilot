@@ -118,17 +118,30 @@ export function AppShell() {
         ) : (
           // Legacy three-column shell — keeps Workspace / Tools /
           // Workflows working until each ships its redesign.
-          <div
-            className="grid h-full"
-            style={{
-              gridTemplateColumns:
-                'clamp(220px, 14vw, 264px) minmax(0, 1fr) clamp(340px, 22vw, 420px)',
-            }}
-          >
-            <Sidebar />
-            <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
-            <ChatDrawer />
-          </div>
+          //
+          // Wrapped in RatesDataProvider because the Sidebar (rendered
+          // here too) reads from the rates context for its scope
+          // subtexts + Today panel + status ribbon.  Without the
+          // wrapper the sidebar would run with `useOptionalRatesData
+          // Context` returning null and degrade to neutral state —
+          // which is correct, but mounting the provider here means
+          // the sidebar shows real data even on legacy routes.  The
+          // legacy pages themselves don't read from it; the cost is
+          // a single rates-data fetch per session, which is amortized
+          // across navigation.
+          <RatesDataProvider>
+            <div
+              className="grid h-full"
+              style={{
+                gridTemplateColumns:
+                  'clamp(220px, 14vw, 264px) minmax(0, 1fr) clamp(340px, 22vw, 420px)',
+              }}
+            >
+              <Sidebar />
+              <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
+              <ChatDrawer />
+            </div>
+          </RatesDataProvider>
         )}
       </div>
     </div>
