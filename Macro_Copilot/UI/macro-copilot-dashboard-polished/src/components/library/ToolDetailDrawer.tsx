@@ -5,15 +5,23 @@
 //   1. Header — kicker (cat · bucket), title, mono ref, sub-agent badge
 //   2. What it does — expanded one_liner from manifest
 //   3. Bucket rationale — why it's deterministic / statistical
-//   4. PM-overridable controls — the conventions a user can set at
-//      call time, with their default values (if surfaced in
-//      pm_overridable list).  V1 just shows the names; V2 will pull
-//      defaults from the runtime config.yaml.
-//   5. Implementation — collapsed list of file paths
-//   6. Related tools — clickable chips that swap the drawer's tool
-//   7. Where it's used — workflow/UI surfaces
-//   8. References — academic citations
-//   9. CTA row — Try in Ask · Open in Build
+//   4. Controls — always-visible section showing user-overridable
+//      controls + a placeholder for locked methodology conventions.
+//      Future-proofed: when V2 surfaces the full convention table
+//      from each tool's config.yaml inline, the rendering shape
+//      doesn't change — just the data.
+//   5. Related tools — clickable chips that swap the drawer's tool
+//   6. Where it's used — workflow/UI surfaces
+//   7. References — academic citations
+//   8. CTA row — Try in Ask · Open in Build
+//
+// What's intentionally NOT here:
+//   - Implementation file paths (mcp_server.py, schema.py,
+//     compute.py, config.yaml).  Those are developer-facing
+//     plumbing that leaked into V1 and was removed — a PM doesn't
+//     care about Python file locations.  The manifest still carries
+//     them in the backend response (canonical source of truth);
+//     the UI just doesn't render them.
 //
 // Slides from the right (~520px wide).  Closing on Esc + on backdrop
 // click is wired in the parent (LibraryPage) which owns the open
@@ -26,7 +34,8 @@ import {
   ArrowRight,
   ArrowUpRight,
   ChevronRight,
-  ExternalLink,
+  Lock,
+  Sliders,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -156,43 +165,53 @@ function DrawerBody({
         </p>
       </Section>
 
-      {/* PM-overridable conventions */}
-      <Section title={`CONTROLS · ${tool.pm_overridable.length} PM-OVERRIDABLE`}>
-        {tool.pm_overridable.length === 0 ? (
-          <p className="text-[12.5px] leading-[1.55] text-fg-muted">
-            All conventions are YAML-locked for this tool. The PM exposes
-            no override path in V1 — the methodology is fully
-            deterministic given the input parameters.
-          </p>
-        ) : (
-          <ul className="space-y-1.5">
-            {tool.pm_overridable.map((c) => (
-              <li
-                key={c}
-                className="flex items-center gap-2.5 rounded-md bg-white/[0.022] px-3 py-2 ring-1 ring-line-soft"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-mint-400 shadow-[0_0_4px_rgba(63,214,154,0.5)]" />
-                <span className="font-mono text-[12px] tracking-[-0.005em] text-fg-primary">
-                  {c}
-                </span>
-                <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-                  user-set
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      {/* Controls — always rendered.  Two structural sub-sections:
+          USER-OVERRIDABLE (the conventions a PM can set per call)
+          and LOCKED (the methodology conventions that ship inside
+          the tool's config.yaml and aren't user-mutable).  The
+          locked subsection is a placeholder in V1 — we know the
+          number of locked conventions exists, we just don't
+          surface them inline yet.  Future-proof: when V2 plumbs
+          the full convention table from config.yaml into the
+          manifest endpoint, the rendering shape doesn't change —
+          we just feed it more rows. */}
+      <Section title="CONTROLS">
+        <ControlsSubsection
+          label="User-overridable"
+          icon={<Sliders size={11} />}
+          count={tool.pm_overridable.length}
+          tone="active"
+          emptyHint="No user-overridable controls in V1 — every convention is locked. The methodology is fully deterministic given the input parameters."
+        >
+          {tool.pm_overridable.length > 0 && (
+            <ul className="space-y-1.5">
+              {tool.pm_overridable.map((c) => (
+                <li
+                  key={c}
+                  className="flex items-center gap-2.5 rounded-md bg-white/[0.025] px-3 py-2 ring-1 ring-line-soft"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-mint-400 shadow-[0_0_4px_rgba(63,214,154,0.5)]" />
+                  <span className="font-mono text-[12px] tracking-[-0.005em] text-fg-primary">
+                    {c}
+                  </span>
+                  <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+                    user-set
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ControlsSubsection>
 
-      {/* Implementation */}
-      <Section title="IMPLEMENTATION">
-        <ul className="space-y-1">
-          <ImplRow label="MCP server" value={tool.implementation.mcp_server} />
-          <ImplRow label="Tool fn" value={tool.implementation.tool_function} />
-          <ImplRow label="Schema" value={tool.implementation.schema_} />
-          <ImplRow label="Compute" value={tool.implementation.compute} />
-          <ImplRow label="Config" value={tool.implementation.config} />
-        </ul>
+        <div className="h-3" />
+
+        <ControlsSubsection
+          label="Locked methodology"
+          icon={<Lock size={11} />}
+          count={null}
+          tone="locked"
+          emptyHint="Window length, fill policy, ddof, source-tag distribution, and citations live in the tool's config.yaml. The full convention table — with values, source tags, and per-row rationale — will surface inline here in V2."
+        />
       </Section>
 
       {/* Related tools */}
@@ -316,17 +335,54 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ImplRow({ label, value }: { label: string; value: string }) {
+function ControlsSubsection({
+  label,
+  icon,
+  count,
+  tone,
+  emptyHint,
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  /** Pass null when count isn't known (e.g. locked conventions in V1
+   *  where the manifest doesn't surface the per-tool config.yaml). */
+  count: number | null;
+  tone: 'active' | 'locked';
+  /** Copy shown when count is 0 / null — frames the absence as
+   *  intentional (locked) or future-state (V2), never as "broken". */
+  emptyHint: string;
+  children?: React.ReactNode;
+}) {
+  const isEmpty = !children || count === 0;
+  const accent =
+    tone === 'active'
+      ? 'text-mint-300'
+      : 'text-fg-muted';
+
   return (
-    <li className="flex items-center gap-2 rounded-md bg-white/[0.014] px-2.5 py-1.5 ring-1 ring-line-subtle">
-      <span className="w-[80px] shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] tracking-[-0.005em] text-fg-secondary">
-        {value}
-      </span>
-      <ExternalLink size={10} className="shrink-0 text-fg-faint" />
-    </li>
+    <div className="rounded-md bg-white/[0.012] p-3 ring-1 ring-line-subtle">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className={`flex h-3.5 w-3.5 items-center justify-center ${accent}`}>
+            {icon}
+          </span>
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-secondary">
+            {label}
+          </span>
+        </div>
+        <span className="font-mono text-[10px] tracking-[0.02em] text-fg-faint">
+          {count === null ? '—' : count}
+        </span>
+      </div>
+      {isEmpty ? (
+        <p className="text-[11.5px] leading-[1.55] text-fg-muted">
+          {emptyHint}
+        </p>
+      ) : (
+        children
+      )}
+    </div>
   );
 }
 
