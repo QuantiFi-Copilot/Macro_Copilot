@@ -25,9 +25,14 @@ Tool surface
    UK_GILT/GBP_LINKER 5s30s breakeven); the inflation-compensation
    term-structure object, NOT the term structure of pure expected
    inflation.
+5. calculate_cross_country_breakeven_spread_simple_tool — same-tenor
+   cross-country breakeven inflation differential (e.g. US 10Y
+   breakeven minus EUR-FR 10Y breakeven); cross-country inflation-
+   compensation differential, NOT a pure cross-country expected-
+   inflation differential, AND subject to an INDEX-FAMILY MISMATCH
+   caveat (e.g. CPI-U vs HICP).
 
-Subsequent linker primitives (cross_country_breakeven_spread_simple,
-scanner_linkers, etc., per
+Subsequent linker primitives (scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
 Section 9 "Bucket 1A") will land here as separate primitive builds.
 
@@ -58,6 +63,7 @@ from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     BreakevenCurveSpreadInput,
     BreakevenInflationSimpleInput,
+    CrossCountryBreakevenSpreadSimpleInput,
     ForwardBreakevenSimpleInput,
     RealYieldLevelInput,
 )
@@ -68,6 +74,10 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (  
 from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (  # noqa: E402
     CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
     calculate_breakeven_inflation_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple import (  # noqa: E402
+    CONFIG_PATH as CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+    calculate_cross_country_breakeven_spread_simple,
 )
 from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (  # noqa: E402
     CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
@@ -111,19 +121,23 @@ mcp = FastMCP(
         "breakeven inflation (the nominal-minus-real yield "
         "differential, a.k.a. inflation compensation), forward "
         "bond-implied breakevens between two same-country curve "
-        "points (e.g. 5Y5Y, 5Y10Y), AND same-country breakeven "
-        "curve spreads (e.g. 2s10s breakeven, 5s30s breakeven — "
-        "the inflation-compensation term-structure object).  "
-        "Future releases will add cross-country breakeven spreads "
-        "and inflation-compensation scanners.  Never "
-        "attempt the math yourself — always call a tool and relay its "
-        "output.  Do not route nominal sovereign yield questions here "
-        "— those belong to the sovereign-bond agent's "
-        "get_yield_levels_tool.  When relaying breakeven output, "
-        "always preserve the methodology disclosure: bond-implied "
-        "breakeven is inflation compensation, not a clean expected-"
-        "inflation read (it carries an inflation risk premium and a "
-        "liquidity premium between the nominal and linker bond)."
+        "points (e.g. 5Y5Y, 5Y10Y), same-country breakeven curve "
+        "spreads (e.g. 2s10s breakeven, 5s30s breakeven — the "
+        "inflation-compensation term-structure object), AND "
+        "same-tenor cross-country breakeven differentials (e.g. "
+        "US 10Y breakeven vs EUR-FR 10Y breakeven — subject to an "
+        "INDEX-FAMILY MISMATCH caveat between CPI-U / HICP / RPI / "
+        "etc.).  Future releases will add inflation-compensation "
+        "scanners.  Never attempt the math yourself — always call a "
+        "tool and relay its output.  Do not route nominal sovereign "
+        "yield questions here — those belong to the sovereign-bond "
+        "agent's get_yield_levels_tool.  When relaying breakeven "
+        "output, always preserve the methodology disclosure: bond-"
+        "implied breakeven is inflation compensation, not a clean "
+        "expected-inflation read (it carries an inflation risk "
+        "premium and a liquidity premium between the nominal and "
+        "linker bond); cross-country breakeven differentials carry "
+        "the additional index-family mismatch caveat."
     ),
 )
 
@@ -842,6 +856,241 @@ def calculate_breakeven_curve_spread_tool(
             "[calculate_breakeven_curve_spread_tool] withheld "
             "%d bespoke + %d canonical spread rows + %d zscore "
             "rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 5: calculate_cross_country_breakeven_spread_simple
+# ===========================================================================
+@mcp.tool()
+def calculate_cross_country_breakeven_spread_simple_tool(
+    country_a_nominal_pair: str,
+    country_a_linker_pair: str,
+    country_b_nominal_pair: str,
+    country_b_linker_pair: str,
+    tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-tenor cross-country breakeven inflation
+    differential between two countries' generic bond-implied
+    breakevens (e.g. US 10Y breakeven minus EUR-FR 10Y breakeven,
+    US 5Y breakeven minus UK 5Y breakeven), plus period changes,
+    1-year z-score, and deterministic historical context (high,
+    low, percentile in bps).
+
+        spread_bps = breakeven_a_bps - breakeven_b_bps
+
+    where breakeven_a / breakeven_b are the spot bond-implied
+    breakevens at the same tenor for country_a / country_b
+    respectively (each computed by the same desk-recognised
+    spot-breakeven primitive constrained to that country's own
+    nominal/linker pair).  Sign convention is country_a minus
+    country_b — fixed.
+
+    The output is a CROSS-COUNTRY INFLATION-COMPENSATION
+    DIFFERENTIAL, NOT a pure cross-country expected-inflation
+    differential.  Two load-bearing caveats:
+
+      1. Each leg inherits the spot breakeven primitive's
+         'inflation compensation, NOT pure expected inflation'
+         caveat (each leg carries an inflation risk premium and a
+         relative liquidity premium between its nominal sovereign
+         and its linker).
+      2. INDEX-FAMILY MISMATCH: different countries' linkers
+         reference different inflation indices (USD CPI-U non-
+         seasonally adjusted vs euro-area HICP ex-tobacco vs UK
+         RPI/CPIH vs Canada CPI).  These are NOT identical
+         inflation references — interpret a US 10Y breakeven minus
+         EUR-FR 10Y breakeven as a CPI-U-vs-HICP differential, not
+         a pure expected-inflation differential.
+
+    The tool's output includes an explicit ``methodology_label``
+    field carrying both caveats; preserve it when summarising the
+    result to the user.
+
+    Use this tool when the user asks about:
+    - Cross-country breakeven differentials (e.g. "Where's US-EUR
+      10Y breakeven?", "Is UK-US 5Y breakeven wide?")
+    - Cross-country breakeven moves         (e.g. "How much has
+      the US-EUR 10Y breakeven moved this week?")
+    - Cross-country breakeven extremes      (e.g. "Is the US-UK
+      5Y breakeven at a 1-year high?")
+    - Decomposing a cross-country breakeven (this tool returns
+      BOTH the differential AND the two underlying country
+      breakevens used to form it).
+
+    Do NOT use this tool for:
+    - Same-country breakeven curve / spot work — call
+      ``calculate_breakeven_curve_spread_tool`` or
+      ``calculate_breakeven_inflation_simple_tool``.
+    - Forward bond-implied breakevens (5Y5Y, 5Y10Y, 2Y3Y) — call
+      ``calculate_forward_breakeven_simple_tool``.
+    - Currency-hedged or FX-adjusted variants — this primitive is
+      raw nominal differentials only.  A hedged variant ships as
+      a separate primitive when FX-forward / cross-currency basis
+      metadata lands.
+    - Inflation-swap-based cross-country differentials — those
+      ship as a separate primitive when the inflation-swap
+      instrument family is ingested.
+    - Sovereign nominal cross-market spreads — those belong to
+      the sovereign-bond agent's
+      ``calculate_cross_market_spread_tool``.
+
+    Parameters
+    ----------
+    country_a_nominal_pair : str
+        Country A's nominal sovereign curve identifier exactly as
+        stored in instrument_master.  Examples: 'UST', 'UK_GILT',
+        'FR_OAT', 'DE_BUND', 'CANADA_GOVT'.  Must pair with
+        ``country_a_linker_pair`` under the same-country invariant
+        enforced inside the spot breakeven primitive.
+    country_a_linker_pair : str
+        Country A's sovereign linker curve identifier exactly as
+        stored in instrument_master.  Examples: 'USD_TIPS',
+        'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB'.  Must share
+        country AND currency with ``country_a_nominal_pair``.
+    country_b_nominal_pair : str
+        Country B's nominal sovereign curve identifier — MUST be
+        a different sovereign issuer from
+        ``country_a_nominal_pair`` (this primitive is a cross-
+        country object by construction).
+    country_b_linker_pair : str
+        Country B's sovereign linker curve identifier — MUST be
+        different from ``country_a_linker_pair`` and must pair
+        with ``country_b_nominal_pair`` under the same-country
+        invariant.
+    tenor : str
+        Single tenor applied to BOTH country legs (e.g. '5Y',
+        '10Y', '30Y').  Must exist on BOTH country pairs at the
+        requested country/currency.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing
+        range window.
+    field_name : str, optional
+        Bloomberg field mnemonic for ALL FOUR underlying yield
+        series (country_a_nominal at tenor, country_a_linker at
+        tenor, country_b_nominal at tenor, country_b_linker at
+        tenor).  Leave as the default empty string ""  to use the
+        bundled ``default_field_name`` convention from
+        cross_country_breakeven_spread_simple/config.yaml
+        (currently 'YLD_YTM_MID').  Pass an explicit field name
+        to override per call.  Mirrors the empty-string sentinel
+        pattern used by the other rates tools so the YAML default
+        actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = CrossCountryBreakevenSpreadSimpleInput(
+            country_a_nominal_pair=country_a_nominal_pair,
+            country_a_linker_pair=country_a_linker_pair,
+            country_b_nominal_pair=country_b_nominal_pair,
+            country_b_linker_pair=country_b_linker_pair,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_cross_country_breakeven_spread_simple_tool] "
+            "input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_cross_country_breakeven_spread_simple_tool] "
+            "failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the cross_country_breakeven_spread_simple tool's bundled
+    # config explicitly so the dependency is observable here.
+    # load_tool_config caches by path, so this is a free lookup
+    # after the first call within the MCP subprocess's lifetime.
+    # Mirrors the calculate_breakeven_curve_spread_tool wrapper
+    # exactly.
+    try:
+        xcbs_config = load_tool_config(
+            CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_cross_country_breakeven_spread_simple(
+            engine=engine, params=params, config=xcbs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_cross_country_breakeven_spread_simple_tool] "
+            "unhandled error for %s/%s vs %s/%s @ %s",
+            params.country_a_nominal_pair,
+            params.country_a_linker_pair,
+            params.country_b_nominal_pair,
+            params.country_b_linker_pair,
+            params.tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_cross_country_breakeven_spread_simple_tool "
+                    f"failed for {params.country_a_nominal_pair}/"
+                    f"{params.country_a_linker_pair} vs "
+                    f"{params.country_b_nominal_pair}/"
+                    f"{params.country_b_linker_pair} @ "
+                    f"{params.tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_cross_country_breakeven_spread_simple_tool] "
+        "tool call complete: %s/%s vs %s/%s @ %s → %s",
+        params.country_a_nominal_pair,
+        params.country_a_linker_pair,
+        params.country_b_nominal_pair,
+        params.country_b_linker_pair,
+        params.tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the
+    # LLM (frontend REST path returns the full payload).  Same
+    # convention as the other rates tools — the LLM doesn't need
+    # every historical row to answer "where's US-EUR 10Y
+    # breakeven?".
+    stripped_keys = {"time_series", "time_series_spread", "time_series_zscore"}
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_spread", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_cross_country_breakeven_spread_simple_tool] "
+            "withheld %d bespoke + %d canonical spread rows + %d "
+            "zscore rows from LLM context.",
             bespoke_rows,
             canonical_rows,
             len(result.get("time_series_zscore", {}).get("rows", []) or []),

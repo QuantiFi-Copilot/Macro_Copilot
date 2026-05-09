@@ -63,6 +63,21 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread.schemas im
     BreakevenCurveSpreadTimeSeriesRow,
 )
 
+# Cross-country breakeven spread (same-tenor, two-country difference)
+# — re-exported from the per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/``).
+# Composes ``breakeven_inflation_simple`` twice (once per country),
+# each constrained to that country's own (nominal, linker) pair.
+# Cross-country guard lives in this primitive's input validators
+# (different countries required); the per-leg same-country invariant
+# continues to live inside ``breakeven_inflation_simple``.
+from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple.schemas import (
+    CrossCountryBreakevenSpreadSimpleCurrentMetrics,
+    CrossCountryBreakevenSpreadSimpleInput,
+    CrossCountryBreakevenSpreadSimpleOutput,
+    CrossCountryBreakevenSpreadSimpleTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -84,4 +99,9 @@ __all__ = [
     "BreakevenCurveSpreadCurrentMetrics",
     "BreakevenCurveSpreadOutput",
     "BreakevenCurveSpreadTimeSeriesRow",
+    # cross_country_breakeven_spread_simple
+    "CrossCountryBreakevenSpreadSimpleInput",
+    "CrossCountryBreakevenSpreadSimpleCurrentMetrics",
+    "CrossCountryBreakevenSpreadSimpleOutput",
+    "CrossCountryBreakevenSpreadSimpleTimeSeriesRow",
 ]

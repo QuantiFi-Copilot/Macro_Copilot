@@ -112,6 +112,12 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
     BreakevenCurveSpreadOutput,
     calculate_breakeven_curve_spread,
 )
+from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryBreakevenSpreadSimpleInput,
+    CrossCountryBreakevenSpreadSimpleOutput,
+    calculate_cross_country_breakeven_spread_simple,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -332,6 +338,25 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # Canonical TimeSeries: breakeven curve spread history
             # in BPS, rolling z-score in Z_SCORE units.  Operator-
             # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_country_breakeven_spread_simple_tool": PrimitiveSpec(
+        tool_name="calculate_cross_country_breakeven_spread_simple_tool",
+        callable=calculate_cross_country_breakeven_spread_simple,
+        input_class=CrossCountryBreakevenSpreadSimpleInput,
+        output_class=CrossCountryBreakevenSpreadSimpleOutput,
+        config_path=CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-country breakeven-spread row
+            # list — frontend consumes ``spread_bps`` per row, so
+            # the unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: cross-country breakeven spread
+            # history in BPS, rolling z-score in Z_SCORE units.
+            # Operator-layer unit-compat checks rely on these
+            # declarations.
             "time_series_spread": "bps",
             "time_series_zscore": "z_score",
         },
