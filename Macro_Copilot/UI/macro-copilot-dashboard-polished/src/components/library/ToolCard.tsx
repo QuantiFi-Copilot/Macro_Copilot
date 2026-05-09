@@ -24,6 +24,7 @@ import {
   type ManifestTool,
 } from '@/types/library';
 import { cn } from '@/utils/cn';
+import { prettyTitle } from './lib/prettyTitle';
 
 type Props = {
   tool: ManifestTool;
@@ -136,20 +137,6 @@ function railColorFor(tone: 'data' | 'analysis' | 'anomaly'): string {
     case 'analysis': return 'rgba(155, 140, 255, 0.45)';
     case 'anomaly':  return 'rgba(243, 183, 85, 0.55)';
   }
-}
-
-/** "calculate_curve_spread" → "Curve Spread"
- *  "get_yield_levels" → "Yield Levels"
- *  "scan_extremes" → "Scan Extremes"
- *  Strips common verb prefixes (calculate_, get_, scan_, classify_)
- *  and title-cases the rest.  Falls back to the raw name when no
- *  prefix matches. */
-function prettyTitle(name: string): string {
-  const stripped = name.replace(/^(calculate|get|scan|classify)_/, '');
-  return stripped
-    .split('_')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ');
 }
 
 function stableShortHash(seed: string): string {
