@@ -36,18 +36,17 @@ body,
 
 body {
   margin: 0;
-  background-color: #06080C;
-  /* Aurora — four soft, corner-anchored gradient orbs.  Cool palette
-   * top, warm cream-peach in the lower-right.  Opacity is intentionally
-   * low (3-7%) so the page reads as dark and quiet, with depth
-   * appearing only at the periphery.  Adding a 5th near-center
-   * gradient would push it into "decorative" territory; the 4-corner
-   * scheme keeps it a register, not a feature. */
+  /* Pure black background, no colored auroras.  Earlier versions had
+   * a near-black with a blue-grey cast (#06080C) plus four corner-
+   * anchored colored gradient orbs (ice / lavender / cream / teal).
+   * User asked for a neutral black register — auroras dropped, base
+   * is true #000.  Two ultra-subtle neutral-grey radials remain at
+   * the top corners to keep the page from feeling completely flat;
+   * they read as faint vignettes, not as colored atmosphere. */
+  background-color: #000000;
   background-image:
-    radial-gradient(ellipse 1100px 760px at 12% -8%,  rgba(122, 162, 255, 0.075), transparent 55%),
-    radial-gradient(ellipse  900px 700px at 92%  6%,  rgba(155, 140, 255, 0.055), transparent 58%),
-    radial-gradient(ellipse 1000px 700px at 95% 105%, rgba(232, 216, 184, 0.030), transparent 60%),
-    radial-gradient(ellipse  800px 600px at  4% 102%, rgba(91, 192, 222, 0.040), transparent 60%);
+    radial-gradient(ellipse 1200px 760px at 12% -8%, rgba(255, 255, 255, 0.022), transparent 60%),
+    radial-gradient(ellipse  900px 700px at 92%  6%, rgba(255, 255, 255, 0.014), transparent 60%);
   color: #E8EAF0;
   font-size: 13px;
   letter-spacing: -0.008em;
@@ -92,11 +91,13 @@ body {
 }
 
 @layer components {
-  /* Core panel — seamless flanking surfaces (sidebar, chat) */
+  /* Core panel — seamless flanking surfaces (sidebar, chat).
+   * Base color neutralized from rgba(10, 12, 18) (slight blue) to
+   * rgba(12, 12, 12) (pure neutral grey). */
   .panel {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0) 60%),
-      rgba(10, 12, 18, 0.4);
+      rgba(12, 12, 12, 0.4);
     backdrop-filter: blur(8px);
   }
 
@@ -110,13 +111,15 @@ body {
     );
   }
 
-  /* Card: the workhorse surface on the main stage */
+  /* Card: the workhorse surface on the main stage.
+   * Base color neutralized from #0C0E15 (slight blue) to #101010
+   * (pure neutral dark grey). */
   .card {
     position: relative;
     border-radius: 14px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.004) 55%),
-      #0C0E15;
+      #101010;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.045),
       inset 0 0 0 1px rgba(148, 163, 184, 0.075),
@@ -293,19 +296,23 @@ body {
    * is real but small (~1px translate, brighter highlight) — calm, not
    * eager.  Mount animation: a gentle slide-up + fade on first paint.
    */
+  /* Research card base + soft drop shadow.  Both the surface base
+   * color and the drop-shadow tint were previously blue-cast
+   * (rgba(14, 16, 22) base; rgba(122, 162, 255, 0.05) drop shadow).
+   * Neutralized to grey so the page reads as black, not blue. */
   .research-card {
     position: relative;
     border-radius: 14px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.006) 55%),
-      rgba(14, 16, 22, 0.55);
+      rgba(16, 16, 16, 0.55);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.04),
       inset 0 0 0 1px rgba(148, 163, 184, 0.07),
       0 18px 40px -22px rgba(0, 0, 0, 0.5),
-      0 2px 12px -4px rgba(122, 162, 255, 0.05);
+      0 2px 12px -4px rgba(255, 255, 255, 0.04);
     transition:
       box-shadow 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
       transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -317,7 +324,7 @@ body {
       inset 0 1px 0 rgba(255, 255, 255, 0.06),
       inset 0 0 0 1px rgba(148, 163, 184, 0.11),
       0 24px 48px -22px rgba(0, 0, 0, 0.55),
-      0 4px 18px -6px rgba(122, 162, 255, 0.10);
+      0 4px 18px -6px rgba(255, 255, 255, 0.06);
   }
 
   /* Subtle gradient top-rule on research cards — keyed to route type
@@ -531,9 +538,12 @@ body {
     );
   }
 
-  /* Soft aurora orb — a positioned single-ellipse glow used for the
-   * empty state "moment" behind the display headline.  Sized via
-   * `--orb-size` (default 720px); positioned via standard CSS. */
+  /* Soft halo orb — a positioned single-ellipse glow used for the
+   * empty state "moment" behind the display headline (Ask page) and
+   * the agent placeholder pages.  Sized via `--orb-size` (default
+   * 720px); positioned via standard CSS.  Was an ice-blue + violet
+   * gradient; neutralized to soft white so the page reads black, not
+   * blue.  The orb still adds editorial depth — just colorless. */
   .ambient-orb {
     position: absolute;
     width: var(--orb-size, 720px);
@@ -542,9 +552,9 @@ body {
     pointer-events: none;
     background: radial-gradient(
       circle at center,
-      rgba(122, 162, 255, 0.16) 0%,
-      rgba(155, 140, 255, 0.10) 30%,
-      rgba(122, 162, 255, 0.04) 55%,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.04) 30%,
+      rgba(255, 255, 255, 0.015) 55%,
       transparent 75%
     );
     filter: blur(8px);
@@ -556,11 +566,16 @@ body {
    * presence is intentionally larger than V1 because typing is the
    * primary interaction on the surface.
    */
+  /* Composer shell — same surface base neutralization as .research-card.
+   * Focus state KEEPS the ice glow because that's an interaction
+   * affordance (telling the user the input is active), not part of
+   * the page background.  User asked for black background, not for
+   * removing functional accents. */
   .composer-shell {
     border-radius: 16px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.030), rgba(255, 255, 255, 0.012) 65%),
-      rgba(14, 16, 22, 0.55);
+      rgba(16, 16, 16, 0.55);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow:
@@ -575,7 +590,7 @@ body {
   .composer-shell:focus-within {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.040), rgba(255, 255, 255, 0.016) 65%),
-      rgba(14, 16, 22, 0.6);
+      rgba(16, 16, 16, 0.6);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.07),
       inset 0 0 0 1px rgba(122, 162, 255, 0.40),
