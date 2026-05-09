@@ -486,20 +486,37 @@ body {
   .wire-default  { color: rgba(148, 163, 184, 0.4); }
 
   /* ──────────────────────────────────────────────────────────────────────
-   * Ambient grid — much subtler than V1.  Reduced to 1.5% opacity at
+   * Ambient grid — much subtler than V1.  Reduced to ~4.5% opacity at
    * 40px spacing, with a center radial mask that fades the grid out
    * toward the middle of the surface.  Reads as "the page has a
    * texture if you look closely" rather than "graph paper".
+   *
+   * IMPORTANT: the dot pattern + mask live on a `::before` pseudo-
+   * element so the mask ONLY affects the decorative grid layer, never
+   * the container's children.  An earlier version applied the mask
+   * directly to `.ambient-grid` itself, which because the container
+   * holds the entire page (rails + canvas + composer) made foreground
+   * text fade toward the center — basically invisible at the
+   * headline's vertical position.  Using the pseudo isolates the mask
+   * to the texture without touching content opacity.
    */
   .ambient-grid {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .ambient-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background-image: radial-gradient(
       rgba(148, 163, 184, 0.045) 1px,
       transparent 1px
     );
     background-size: 40px 40px;
     background-position: 0 0;
-    /* Center-fade mask so the grid is strongest at the edges and
-     * almost invisible in the middle (where content lives). */
     -webkit-mask-image: radial-gradient(
       ellipse 100% 100% at 50% 50%,
       transparent 0%,
