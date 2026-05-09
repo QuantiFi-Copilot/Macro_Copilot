@@ -52,3 +52,13 @@ export function useRatesDataContext(): RatesDataContextValue {
   }
   return ctx;
 }
+
+/** Same as `useRatesDataContext` but returns null instead of throwing
+ *  when no provider is mounted.  Use this in components that may be
+ *  rendered in contexts where rates data isn't available — e.g. the
+ *  Sidebar, which is mounted on the legacy three-column layout that
+ *  doesn't currently wrap in RatesDataProvider.  Consumers should
+ *  treat null as "data not available" and degrade gracefully. */
+export function useOptionalRatesDataContext(): RatesDataContextValue | null {
+  return useContext(RatesDataCtx);
+}
