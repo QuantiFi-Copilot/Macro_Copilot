@@ -793,6 +793,60 @@ class TestFetchSingleTenorContract:
         assert list(df.columns) == ["trade_date", "field_value"]
         assert len(df) == 2
 
+    def test_instrument_type_default_omits_filter(self):
+        """The optional ``instrument_type`` parameter must default to
+        ``None`` and the SQL bind parameters must NOT carry an
+        ``instrument_type`` key when the caller doesn't provide one.
+        Existing callers (yield_levels, OIS rate_level, the workflow
+        synthetic fetchers) rely on this — adding a new bind silently
+        would change the SQL plan."""
+        mock_engine = MagicMock(name="engine")
+        mock_conn = MagicMock(name="conn")
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        mock_result = MagicMock(name="result")
+        mock_result.fetchall.return_value = []
+        mock_result.keys.return_value = ["trade_date", "field_value"]
+        mock_conn.execute.return_value = mock_result
+
+        fetch_single_tenor(
+            engine=mock_engine,
+            curve_family="UST",
+            tenor="10Y",
+            field_name="YLD_YTM_MID",
+            start_date=date(2026, 1, 1),
+        )
+        bind_params = mock_conn.execute.call_args.args[1]
+        assert "instrument_type" not in bind_params, (
+            "default instrument_type=None must NOT inject the bind; "
+            f"got {sorted(bind_params.keys())}"
+        )
+
+    def test_instrument_type_filter_threads_to_sql_binds(self):
+        """When the caller passes ``instrument_type='inflation_linker'``,
+        the bind dictionary must include it so the WHERE clause filters
+        the row set.  This is the load-bearing seam for the linker
+        real_yield_level proxy-prevention guarantee."""
+        mock_engine = MagicMock(name="engine")
+        mock_conn = MagicMock(name="conn")
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        mock_result = MagicMock(name="result")
+        mock_result.fetchall.return_value = []
+        mock_result.keys.return_value = ["trade_date", "field_value"]
+        mock_conn.execute.return_value = mock_result
+
+        fetch_single_tenor(
+            engine=mock_engine,
+            curve_family="USD_TIPS",
+            tenor="10Y",
+            field_name="YLD_YTM_MID",
+            start_date=date(2026, 1, 1),
+            instrument_type="inflation_linker",
+        )
+        bind_params = mock_conn.execute.call_args.args[1]
+        assert bind_params.get("instrument_type") == "inflation_linker"
+
     def test_full_fetch_clean_adapt_align_chain_with_mocked_engine(self):
         """Full Q1 source path with the real fetch_single_tenor +
         clean_single_series (no DB; engine mocked to return a

@@ -129,6 +129,26 @@ _FETCH_SINGLE_TENOR_SQL = text("""
     ORDER BY trade_date
 """)
 
+# Same shape as ``_FETCH_SINGLE_TENOR_SQL`` plus an
+# ``instrument_type`` filter.  Kept separate so the unfiltered SQL
+# bind dictionary stays minimal and existing callers' DB query plans
+# don't change.  Linker domain uses this path with
+# ``instrument_type='inflation_linker'`` to guarantee the tool
+# cannot silently fall through to nominal sovereign rows under a
+# linker label.
+_FETCH_SINGLE_TENOR_TYPED_SQL = text("""
+    SELECT
+        trade_date,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family   = :curve_family
+      AND tenor          = :tenor
+      AND field_name     = :field_name
+      AND instrument_type = :instrument_type
+      AND trade_date    >= :start_date
+    ORDER BY trade_date
+""")
+
 
 def fetch_single_tenor(
     engine: Engine,
@@ -136,23 +156,41 @@ def fetch_single_tenor(
     tenor: str,
     field_name: str,
     start_date: date,
+    instrument_type: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch a single-tenor series on one curve.
 
     Returns a long-format DataFrame with columns
     ``['trade_date', 'field_value']``.  Used by yield_levels and any
     future OIS single-rate tool.
+
+    ``instrument_type`` is optional.  Default ``None`` preserves the
+    pre-existing behaviour (no instrument-type filter — every caller
+    that did not pass this argument continues to query exactly as
+    before).  Pass an explicit ``instrument_type`` (e.g.
+    ``'inflation_linker'``) to require the row's instrument type to
+    match — this is what the linker real_yield_level primitive uses to
+    guarantee it cannot return nominal rows under a real-yield label.
     """
+    if instrument_type is None:
+        sql = _FETCH_SINGLE_TENOR_SQL
+        bind_params = {
+            "curve_family": curve_family,
+            "tenor": tenor,
+            "field_name": field_name,
+            "start_date": start_date.isoformat(),
+        }
+    else:
+        sql = _FETCH_SINGLE_TENOR_TYPED_SQL
+        bind_params = {
+            "curve_family": curve_family,
+            "tenor": tenor,
+            "field_name": field_name,
+            "instrument_type": instrument_type,
+            "start_date": start_date.isoformat(),
+        }
     with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_SINGLE_TENOR_SQL,
-            {
-                "curve_family": curve_family,
-                "tenor": tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
+        result = conn.execute(sql, bind_params)
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)

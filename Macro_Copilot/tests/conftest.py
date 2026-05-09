@@ -59,4 +59,5 @@ collect_ignore = [
     "test_scanner_sql_validation.py",
     "test_swap_spread_sql_validation.py",
     "test_yield_levels_sql_validation.py",
+    "test_real_yield_level_sql_validation.py",
 ]

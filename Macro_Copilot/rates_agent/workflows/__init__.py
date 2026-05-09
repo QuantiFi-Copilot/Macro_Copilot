@@ -88,6 +88,12 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     YieldLevelOutput,
     get_yield_levels,
 )
+from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (
+    CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
+    RealYieldLevelInput,
+    RealYieldLevelOutput,
+    get_real_yield_level,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -239,6 +245,23 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_class=YieldLevelOutput,
         config_path=YIELD_LEVELS_CONFIG_PATH,
         output_field_units={
+            "time_series": "percent",
+        },
+    ),
+
+    # ---- Inflation-indexed-bonds (linker) domain ----
+    "get_real_yield_level_tool": PrimitiveSpec(
+        tool_name="get_real_yield_level_tool",
+        callable=get_real_yield_level,
+        input_class=RealYieldLevelInput,
+        output_class=RealYieldLevelOutput,
+        config_path=REAL_YIELD_LEVEL_CONFIG_PATH,
+        output_field_units={
+            # Linker real yields are quoted in percent — same unit as
+            # nominal sovereign yields, but the underlying series is
+            # the linker real-yield-to-maturity.  Wire field name on
+            # the snapshot is ``real_yield_pct``; series_name carries
+            # the ``_real_yield`` suffix (set in the per-tool config).
             "time_series": "percent",
         },
     ),

@@ -72,6 +72,40 @@ during the pilot, not by external validation.
 > deliberate effort, not aspirational. A future commit will add a
 > CI-visible counter to the consistency lint.
 
+### `trading_day_convention`
+
+**Use when**: a numeric default expresses the standard trading-day
+mapping for a calendar period — i.e. how many post-ffill rows of a
+daily series correspond to "1 day", "1 week", or "1 month" of
+calendar time on a typical exchange calendar. The value is fixed by
+calendar arithmetic plus the desk convention of stepping over the
+ffill row, NOT by an industry-standard window (`industry_standard_1y_window`)
+nor by a derivation from another convention in the same YAML
+(`derived_from_window`). **Examples**: `daily_change_offset_rows = 2`
+(iloc[-1] vs iloc[-2] = 1 trading day back, after ffill),
+`weekly_change_offset_rows = 6` (1 calendar week ≈ 5 trading days),
+`monthly_change_offset_rows = 22` (1 calendar month ≈ 22 trading
+days). Used identically across sovereign `yield_levels`, OIS
+`rate_level`, OIS `cross_market_spread`, OIS `forward_rate`, and the
+linker `real_yield_level` tool.
+
+### `legacy_default_pre_pilot`
+
+**Use when**: a numeric default reflects the literal value the
+codebase used before the tool-config pilot made it explicit, AND the
+default was carried forward unchanged into the YAML to preserve
+runtime behaviour. The tag exists to make the "this is the old hard-
+coded number, surfaced into YAML so it can be edited but not
+silently changed" pedigree auditable; it is distinct from
+`team_judgment_pending_review` (which signals an external-validation
+debt) because the value's provenance is the codebase's own pre-pilot
+state, not an open question. **Examples**:
+`yield_round_decimals = 4` / `z_score_round_decimals = 4` /
+`high_low_round_decimals = 4` (all match the legacy hardcoded default
+in `shared.analytics.levels.compute_level_metrics`); used identically
+across sovereign `yield_levels`, OIS `rate_level`, OIS `forward_rate`,
+and the linker `real_yield_level` tool.
+
 ---
 
 ## Future tags (planned)

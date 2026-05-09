@@ -45,6 +45,7 @@ class Domain(str, Enum):
 
     SOVEREIGN_BONDS = "sovereign_bonds"
     OIS = "ois"
+    INFLATION_INDEXED_BONDS = "inflation_indexed_bonds"
 
 
 # ============================================================================
