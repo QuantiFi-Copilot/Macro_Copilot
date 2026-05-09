@@ -27,6 +27,7 @@ import { CategoryChips } from './CategoryChips';
 import { LibrarySearch } from './LibrarySearch';
 import { ToolCardGrid } from './ToolCardGrid';
 import { ToolDetailDrawer } from './ToolDetailDrawer';
+import { prettyTitle } from './lib/prettyTitle';
 
 export function LibraryPage() {
   const { data, isLoading, error } = useLibraryManifest();
@@ -81,6 +82,10 @@ export function LibraryPage() {
       : categoryFiltered.filter((t) =>
           [
             t.name,
+            // Include the human-rendered title so "OIS" / "PCA" /
+            // "Z-Score" all match against tools whose machine name
+            // is `ois_*` / `pca_*` / `zscore_*`.
+            prettyTitle(t.name),
             t.implementation.tool_function,
             t.one_liner,
             ...t.related_tools,

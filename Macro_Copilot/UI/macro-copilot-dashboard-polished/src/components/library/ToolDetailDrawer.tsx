@@ -47,6 +47,7 @@ import {
   type ManifestTool,
 } from '@/types/library';
 import { cn } from '@/utils/cn';
+import { prettyTitle } from './lib/prettyTitle';
 
 type Props = {
   tool: ManifestTool | null;
@@ -409,10 +410,3 @@ function railColorFor(tone: 'data' | 'analysis' | 'anomaly'): string {
   }
 }
 
-function prettyTitle(name: string): string {
-  const stripped = name.replace(/^(calculate|get|scan|classify)_/, '');
-  return stripped
-    .split('_')
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ');
-}
