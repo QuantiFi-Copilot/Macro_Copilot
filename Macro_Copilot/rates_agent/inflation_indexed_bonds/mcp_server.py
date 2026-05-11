@@ -37,6 +37,15 @@ Tool surface
    GBP_LINKER 2s10s real-yield); the real-yield curve-shape
    object, distinct from a breakeven curve spread (inflation
    compensation) and from a nominal sovereign curve spread.
+7. calculate_cross_country_real_yield_spread_simple_tool — same-
+   tenor cross-country linker real-yield differential (e.g.
+   USD_TIPS 10Y real yield minus GBP_LINKER 10Y real yield);
+   cross-country real-rate divergence object, distinct from a
+   cross-country breakeven differential (inflation compensation)
+   and from a sovereign nominal cross-market spread.  Subject to
+   INDEX-FAMILY MISMATCH and MARKET-STRUCTURE MISMATCH caveats
+   (CPI-U vs HICP vs RPI vs CAN_CPI; cross-country linker-
+   liquidity / issuance-size differences).
 
 Subsequent linker primitives (scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
@@ -70,6 +79,7 @@ from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     BreakevenCurveSpreadInput,
     BreakevenInflationSimpleInput,
     CrossCountryBreakevenSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleInput,
     ForwardBreakevenSimpleInput,
     RealYieldCurveSpreadInput,
     RealYieldLevelInput,
@@ -85,6 +95,10 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import
 from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple import (  # noqa: E402
     CONFIG_PATH as CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
     calculate_cross_country_breakeven_spread_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple import (  # noqa: E402
+    CONFIG_PATH as CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+    calculate_cross_country_real_yield_spread_simple,
 )
 from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (  # noqa: E402
     CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
@@ -138,8 +152,15 @@ mcp = FastMCP(
         "same-tenor cross-country breakeven differentials (e.g. "
         "US 10Y breakeven vs EUR-FR 10Y breakeven — subject to an "
         "INDEX-FAMILY MISMATCH caveat between CPI-U / HICP / RPI / "
-        "etc.).  Future releases will add inflation-compensation "
-        "scanners.  Never attempt the math yourself — always call a "
+        "etc.), AND same-tenor cross-country linker real-yield "
+        "differentials (e.g. USD_TIPS 10Y real yield vs GBP_LINKER "
+        "10Y real yield — the cross-country real-rate divergence "
+        "object, distinct from cross-country breakeven and from "
+        "sovereign nominal cross-market spread; subject to the same "
+        "index-family caveat plus a market-structure mismatch "
+        "between linker markets).  Future releases will add "
+        "inflation-compensation scanners.  Never attempt the math "
+        "yourself — always call a "
         "tool and relay its output.  Do not route nominal sovereign "
         "yield questions here — those belong to the sovereign-bond "
         "agent's get_yield_levels_tool.  When relaying breakeven "
@@ -1296,6 +1317,240 @@ def calculate_real_yield_curve_spread_tool(
             "[calculate_real_yield_curve_spread_tool] withheld "
             "%d bespoke + %d canonical spread rows + %d zscore "
             "rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 7: calculate_cross_country_real_yield_spread_simple
+# ===========================================================================
+@mcp.tool()
+def calculate_cross_country_real_yield_spread_simple_tool(
+    first_curve_family: str,
+    second_curve_family: str,
+    tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-tenor cross-country linker real-yield
+    differential between two linker curves' real-yield levels at
+    the same tenor (e.g. USD_TIPS 10Y real yield minus GBP_LINKER
+    10Y real yield, USD_TIPS 5Y real yield minus EUR_FR_LINKER 5Y
+    real yield), plus period changes (in bps), 1-year z-score, and
+    deterministic historical context (high, low, percentile in
+    PERCENT).
+
+        spread_pct = first_curve_real_yield_pct - second_curve_real_yield_pct
+
+    where first_curve_real_yield / second_curve_real_yield are the
+    linker real-yield levels at the same tenor for
+    first_curve_family / second_curve_family respectively (each
+    computed by the same desk-recognised real-yield-level
+    primitive).  Sign convention is first_curve_family minus
+    second_curve_family — fixed.
+
+    The output is a CROSS-COUNTRY REAL-RATE DIFFERENTIAL, distinct
+    from a cross-country breakeven differential (inflation
+    compensation) and from a sovereign nominal cross-market spread.
+    Two load-bearing caveats:
+
+      1. INDEX-FAMILY MISMATCH: different countries' linkers
+         reference different inflation indices (USD CPI-U non-
+         seasonally adjusted vs euro-area HICP ex-tobacco vs UK
+         RPI/CPIH vs Canada CPI).  These are NOT identical
+         inflation references — a US 10Y real yield minus a UK 10Y
+         real yield is a CPI-U-vs-RPI real-rate differential, not
+         a "pure cross-country real-rate" object.
+      2. MARKET-STRUCTURE MISMATCH: linker markets differ
+         materially in benchmark availability at the same tenor
+         pillar, issuance size, liquidity premium, and deflation-
+         floor treatment.  USD TIPS, GBP linkers, EUR-area linkers
+         and Canadian RRBs are NOT fungible at the same tenor —
+         the displayed differential reflects real-rate divergence
+         AND relative linker-market structure differences.
+
+    The tool's output includes an explicit ``methodology_label``
+    field carrying both caveats; preserve it when summarising the
+    result to the user.
+
+    Use this tool when the user asks about:
+    - Cross-country real-yield differentials (e.g. "Where's
+      US-UK 10Y real yield?", "Is TIPS-Canada 10Y real-rate
+      differential wide?")
+    - Cross-country real-rate moves         (e.g. "How much has
+      the US-EUR 10Y real-rate differential moved this week?")
+    - Cross-country real-rate extremes      (e.g. "Is the US-UK
+      5Y real-yield differential at a 1-year high?")
+    - Decomposing a cross-country real-rate move (this tool
+      returns BOTH the differential AND the two underlying linker
+      real yields used to form it).
+
+    Do NOT use this tool for:
+    - Same-country linker real-yield curve spreads (2s10s real-
+      yield, 5s30s real-yield) — call
+      ``calculate_real_yield_curve_spread_tool``.
+    - Cross-country breakeven differentials — call
+      ``calculate_cross_country_breakeven_spread_simple_tool``.
+      Breakeven differentials are inflation-compensation
+      differentials, NOT real-rate differentials.
+    - Sovereign nominal cross-market spreads — those belong to
+      the sovereign-bond agent's
+      ``calculate_cross_market_spread_tool``.
+    - Real-yield level (single tenor, single curve) — call
+      ``get_real_yield_level_tool``.
+    - Currency-hedged or FX-adjusted variants — this primitive is
+      raw real-yield differentials only.  A hedged variant ships
+      as a separate primitive when FX-forward / cross-currency
+      basis metadata lands.
+
+    Parameters
+    ----------
+    first_curve_family : str
+        First linker curve identifier exactly as stored in
+        instrument_master.  Live linker curves: 'USD_TIPS' (US),
+        'GBP_LINKER' (UK), 'EUR_FR_LINKER' (France), 'CAD_RRB'
+        (Canada).  Must be DIFFERENT from ``second_curve_family``
+        (this primitive is a cross-country object by
+        construction).  Non-linker curve_families (e.g. nominal
+        sovereign 'UST', 'DE_BUND') are refused at compute time
+        with a controlled error envelope.
+    second_curve_family : str
+        Second linker curve identifier — MUST differ from
+        ``first_curve_family``.  Sign convention is first minus
+        second — fixed; the tool never silently flips the sign.
+        Available linker curve pairs (cross-country, both legs
+        ingested in the playbook): USD_TIPS vs GBP_LINKER,
+        USD_TIPS vs EUR_FR_LINKER, USD_TIPS vs CAD_RRB,
+        GBP_LINKER vs EUR_FR_LINKER, GBP_LINKER vs CAD_RRB,
+        EUR_FR_LINKER vs CAD_RRB (and the reverse-order variants
+        with flipped sign).
+    tenor : str
+        Single tenor applied to BOTH curves (e.g. '5Y', '10Y',
+        '30Y').  Must exist on BOTH curves; common cross-country
+        tenors per pair:
+          - USD_TIPS vs GBP_LINKER: 5Y / 10Y / 20Y / 30Y
+          - USD_TIPS vs EUR_FR_LINKER: 5Y / 10Y
+          - USD_TIPS vs CAD_RRB: 5Y / 10Y / 20Y / 30Y
+          - GBP_LINKER vs EUR_FR_LINKER: 2Y / 5Y / 10Y / 15Y
+          - GBP_LINKER vs CAD_RRB: 5Y / 10Y / 15Y / 20Y / 30Y
+          - EUR_FR_LINKER vs CAD_RRB: 5Y / 10Y / 15Y
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing
+        range window.
+    field_name : str, optional
+        Bloomberg field mnemonic for BOTH underlying linker real-
+        yield series (first_curve at tenor, second_curve at
+        tenor).  Leave as the default empty string ""  to use the
+        bundled ``default_field_name`` convention from
+        cross_country_real_yield_spread_simple/config.yaml
+        (currently 'YLD_YTM_MID').  Pass an explicit field name to
+        override per call.  Mirrors the empty-string sentinel
+        pattern used by the other rates tools so the YAML default
+        actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = CrossCountryRealYieldSpreadSimpleInput(
+            first_curve_family=first_curve_family,
+            second_curve_family=second_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_cross_country_real_yield_spread_simple_tool] "
+            "input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_cross_country_real_yield_spread_simple_tool] "
+            "failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the cross_country_real_yield_spread_simple tool's bundled
+    # config explicitly so the dependency is observable here.
+    # load_tool_config caches by path, so this is a free lookup
+    # after the first call within the MCP subprocess's lifetime.
+    # Mirrors the calculate_real_yield_curve_spread_tool wrapper
+    # exactly.
+    try:
+        xcry_config = load_tool_config(
+            CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_cross_country_real_yield_spread_simple(
+            engine=engine, params=params, config=xcry_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_cross_country_real_yield_spread_simple_tool] "
+            "unhandled error for %s vs %s @ %s",
+            params.first_curve_family,
+            params.second_curve_family,
+            params.tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_cross_country_real_yield_spread_simple_tool "
+                    f"failed for {params.first_curve_family} vs "
+                    f"{params.second_curve_family} @ "
+                    f"{params.tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_cross_country_real_yield_spread_simple_tool] "
+        "tool call complete: %s vs %s @ %s → %s",
+        params.first_curve_family,
+        params.second_curve_family,
+        params.tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the
+    # LLM (frontend REST path returns the full payload).  Same
+    # convention as the other rates tools — the LLM doesn't need
+    # every historical row to answer "where's the US-UK 10Y real-
+    # yield differential?".
+    stripped_keys = {"time_series", "time_series_spread", "time_series_zscore"}
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_spread", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_cross_country_real_yield_spread_simple_tool] "
+            "withheld %d bespoke + %d canonical spread rows + %d "
+            "zscore rows from LLM context.",
             bespoke_rows,
             canonical_rows,
             len(result.get("time_series_zscore", {}).get("rows", []) or []),

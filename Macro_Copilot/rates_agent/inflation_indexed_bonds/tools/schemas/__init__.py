@@ -95,6 +95,23 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread.schemas i
     RealYieldCurveSpreadTimeSeriesRow,
 )
 
+# Cross-country real-yield spread (same-tenor, two-curve difference
+# across two linker curves) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/``).
+# Composes ``real_yield_level`` twice (one per curve_family), each
+# at the same tenor.  Cross-country / cross-curve guard lives in
+# this primitive's input validator (different curves required);
+# the both-legs-must-be-linker invariant is enforced at compute
+# time by a post-fetch identity guard on
+# ``macro_data.instrument_master`` for BOTH curve_families.
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple.schemas import (
+    CrossCountryRealYieldSpreadSimpleCurrentMetrics,
+    CrossCountryRealYieldSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleOutput,
+    CrossCountryRealYieldSpreadSimpleTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -126,4 +143,9 @@ __all__ = [
     "RealYieldCurveSpreadCurrentMetrics",
     "RealYieldCurveSpreadOutput",
     "RealYieldCurveSpreadTimeSeriesRow",
+    # cross_country_real_yield_spread_simple
+    "CrossCountryRealYieldSpreadSimpleInput",
+    "CrossCountryRealYieldSpreadSimpleCurrentMetrics",
+    "CrossCountryRealYieldSpreadSimpleOutput",
+    "CrossCountryRealYieldSpreadSimpleTimeSeriesRow",
 ]

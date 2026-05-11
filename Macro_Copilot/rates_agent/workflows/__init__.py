@@ -124,6 +124,12 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
     RealYieldCurveSpreadOutput,
     calculate_real_yield_curve_spread,
 )
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryRealYieldSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleOutput,
+    calculate_cross_country_real_yield_spread_simple,
+)
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
     InflationSwapRateLevelInput,
@@ -415,6 +421,28 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # breakeven / inflation-swap curve spread uses),
             # rolling z-score in Z_SCORE units.  Operator-layer
             # unit-compat checks rely on these declarations.
+            "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_country_real_yield_spread_simple_tool": PrimitiveSpec(
+        tool_name="calculate_cross_country_real_yield_spread_simple_tool",
+        callable=calculate_cross_country_real_yield_spread_simple,
+        input_class=CrossCountryRealYieldSpreadSimpleInput,
+        output_class=CrossCountryRealYieldSpreadSimpleOutput,
+        config_path=CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-country real-yield-spread
+            # row list — frontend consumes ``spread_pct`` per row
+            # (the spread is in PERCENT, NOT bps, because real
+            # yields are in PERCENT and not multiplied by 100;
+            # mirrors the same-country real_yield_curve_spread
+            # PERCENT convention).
+            "time_series": "percent",
+            # Canonical TimeSeries: cross-country real-yield spread
+            # history in PERCENT (same units as the underlying real
+            # yields), rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
             "time_series_spread": "percent",
             "time_series_zscore": "z_score",
         },
