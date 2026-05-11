@@ -1,0 +1,397 @@
+"""tests/state/test_hash_stability.py — cross-version determinism gate.
+
+This file pins specific hash values for two canonical inputs:
+
+  1. The lineage step hash (``shared.artifacts.lineage._compute_step_hash``)
+     for two representative shapes — a ``FetchStep``-style params dict and
+     an ``OperatorStep``-style params dict.
+  2. The ingestion content hash (``ingestion.hashing.compute_normalized_data_hash``)
+     for a small canonical DataFrame.
+
+These tests run in CI on a matrix of Python 3.11 + 3.12.  If the recipe
+ever drifts between Python versions (e.g. via numpy / pandas / json
+representation changes), the pinned values stop matching on the affected
+version and CI fails on that job.
+
+Pinning the hash values is the *whole point*: any change to the
+canonicalization recipe is a breaking change to every persisted lineage
+hash in the system, so it must be a deliberate, reviewed update to these
+test vectors, not a silent drift.
+
+Closes ``docs/technical_debt.md`` item #20.
+"""
+
+from __future__ import annotations
+
+import datetime
+import json as _json
+import math
+import sys
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+
+# Make sibling packages importable.  ``conftest.py`` at
+# ``Macro_Copilot/tests/`` already inserts ``Macro_Copilot/`` into
+# ``sys.path``; this is a belt-and-braces add-on in case the test is
+# run via a different entry point.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+
+# ============================================================================
+# LINEAGE LAYER — _compute_step_hash + _canonical_json + _canonicalize_for_hash
+# ============================================================================
+
+from shared.artifacts.lineage import (  # noqa: E402
+    _canonical_json,
+    _canonicalize_for_hash,
+    _compute_step_hash,
+)
+
+
+class TestLineageHashStability:
+    """Pinned hash values for the lineage step hash.
+
+    If any of these pinned values changes, the lineage hash recipe has
+    drifted and every persisted lineage object in the system would
+    produce a different hash.  That is a breaking change requiring a
+    deliberate update to these vectors and a follow-up audit of any
+    cached lineage state.
+    """
+
+    # ----- Test vector 1: FetchStep-style params ------------------------
+    EXPECTED_FETCH_HASH = (
+        "9421006aa846374cb4cc0db796077e609459356c35605567ee52ec1e9945f821"
+    )
+
+    def test_fetch_step_hash_pinned(self) -> None:
+        """A representative ``FetchStep`` params dict hashes to a known value."""
+        h = _compute_step_hash(
+            kind="fetch",
+            name="fetch_single_tenor",
+            version="1.0.0",
+            params={
+                "curve_family": "UST",
+                "tenor": "10Y",
+                "field_name": "YLD_YTM_MID",
+                "start_date": datetime.date(2020, 1, 1),
+            },
+            input_hashes=(),
+        )
+        assert h == self.EXPECTED_FETCH_HASH, (
+            "Lineage hash recipe has drifted.  This is a breaking change "
+            "to every persisted lineage hash.  If intentional, update the "
+            "pinned value here AND audit any cached lineage state."
+        )
+
+    # ----- Test vector 2: OperatorStep-style params ---------------------
+    EXPECTED_OPERATOR_HASH = (
+        "f31ac6790facb58c6992a5898b306688d235fa3cd7fb1b05863c9aec7a4ee437"
+    )
+
+    def test_operator_step_hash_pinned(self) -> None:
+        """A representative ``OperatorStep`` params dict with two upstream
+        input hashes hashes to a known value."""
+        h = _compute_step_hash(
+            kind="operator",
+            name="align_series",
+            version="1.0.0",
+            params={"how": "inner", "min_overlap_days": 252},
+            input_hashes=("aaaa", "bbbb"),
+        )
+        assert h == self.EXPECTED_OPERATOR_HASH
+
+    # ----- Key-order invariance -----------------------------------------
+    def test_hash_invariant_to_param_key_order(self) -> None:
+        """Two dicts with the same keys in different insertion order
+        produce the same hash."""
+        h1 = _compute_step_hash(
+            kind="operator",
+            name="x",
+            version="1.0.0",
+            params={"a": 1, "b": 2, "c": 3},
+            input_hashes=(),
+        )
+        h2 = _compute_step_hash(
+            kind="operator",
+            name="x",
+            version="1.0.0",
+            params={"c": 3, "a": 1, "b": 2},
+            input_hashes=(),
+        )
+        assert h1 == h2
+
+    # ----- Input-hash order invariance ----------------------------------
+    def test_hash_invariant_to_input_hash_order(self) -> None:
+        """``input_hashes`` is sorted internally; caller ordering does not
+        affect the hash."""
+        h1 = _compute_step_hash(
+            kind="operator",
+            name="x",
+            version="1.0.0",
+            params={},
+            input_hashes=("ccc", "aaa", "bbb"),
+        )
+        h2 = _compute_step_hash(
+            kind="operator",
+            name="x",
+            version="1.0.0",
+            params={},
+            input_hashes=("aaa", "bbb", "ccc"),
+        )
+        assert h1 == h2
+
+    # ----- Param value sensitivity --------------------------------------
+    def test_hash_changes_when_value_changes(self) -> None:
+        """Changing a single param value flips the hash."""
+        h1 = _compute_step_hash(
+            kind="fetch", name="x", version="1.0.0",
+            params={"tenor": "10Y"}, input_hashes=(),
+        )
+        h2 = _compute_step_hash(
+            kind="fetch", name="x", version="1.0.0",
+            params={"tenor": "5Y"}, input_hashes=(),
+        )
+        assert h1 != h2
+
+
+class TestCanonicalJsonShape:
+    """The intermediate JSON form has the exact shape we promise."""
+
+    def test_nested_dict_canonical_form(self) -> None:
+        """Sorted keys at every level, compact separators, no whitespace."""
+        out = _canonical_json({"b": 2.5, "a": [1, 2, 3], "c": {"nested": True}})
+        assert out == '{"a":[1,2,3],"b":2.5,"c":{"nested":true}}'
+
+    def test_date_isoformat_serialization(self) -> None:
+        """``datetime.date`` round-trips via ``.isoformat()``."""
+        out = _canonical_json({"d": datetime.date(2024, 1, 15)})
+        assert out == '{"d":"2024-01-15"}'
+
+    def test_datetime_isoformat_serialization(self) -> None:
+        """``datetime.datetime`` round-trips via ``.isoformat()``."""
+        out = _canonical_json({"d": datetime.datetime(2024, 1, 15, 14, 30, 0)})
+        assert out == '{"d":"2024-01-15T14:30:00"}'
+
+    def test_unicode_passes_through_as_utf8(self) -> None:
+        """``ensure_ascii=False`` keeps non-ASCII characters as their
+        natural UTF-8 representation rather than ``\\uXXXX`` escapes."""
+        out = _canonical_json({"label": "BTP-Bund spread € → bps"})
+        assert "€" in out
+        assert "→" in out
+        # Round-trip stable: the JSON parses back to the same dict.
+        parsed = _json.loads(out)
+        assert parsed == {"label": "BTP-Bund spread € → bps"}
+
+
+class TestCanonicalizeRejection:
+    """Inputs that have no canonical form are rejected loudly."""
+
+    def test_nan_rejected(self) -> None:
+        with pytest.raises(ValueError, match="NaN"):
+            _canonical_json({"x": float("nan")})
+
+    def test_positive_infinity_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Infinity"):
+            _canonical_json({"x": float("inf")})
+
+    def test_negative_infinity_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Infinity"):
+            _canonical_json({"x": float("-inf")})
+
+    def test_non_string_dict_key_rejected(self) -> None:
+        with pytest.raises(TypeError, match="string"):
+            _canonical_json({1: "value"})
+
+    def test_set_rejected(self) -> None:
+        with pytest.raises(TypeError):
+            _canonical_json({"x": {1, 2, 3}})
+
+    def test_object_without_canonical_form_rejected(self) -> None:
+        class Opaque:
+            pass
+
+        with pytest.raises(TypeError, match="Cannot canonicalize"):
+            _canonical_json({"x": Opaque()})
+
+
+class TestNumpyAndPandasCanonicalization:
+    """NumPy scalars and Pandas timestamps unwrap to stable Python natives.
+
+    These are the values most likely to drift across NumPy / Pandas
+    versions if naively serialized via ``str()``.  Explicit unwrap via
+    ``.item()`` and ``.isoformat()`` pins them to the Python-native
+    representation which IS stable across 3.x.
+    """
+
+    def test_numpy_int_scalar_unwraps(self) -> None:
+        np = pytest.importorskip("numpy")
+        out = _canonical_json({"n": np.int64(42)})
+        assert out == '{"n":42}'
+
+    def test_numpy_float_scalar_unwraps(self) -> None:
+        np = pytest.importorskip("numpy")
+        out = _canonical_json({"x": np.float64(2.5)})
+        assert out == '{"x":2.5}'
+
+    def test_numpy_bool_scalar_unwraps(self) -> None:
+        np = pytest.importorskip("numpy")
+        out = _canonical_json({"flag": np.bool_(True)})
+        assert out == '{"flag":true}'
+
+    def test_pandas_timestamp_unwraps(self) -> None:
+        ts = pd.Timestamp("2024-01-15T14:30:00")
+        out = _canonical_json({"t": ts})
+        # pandas Timestamps use isoformat-compatible serialization; the
+        # exact suffix may include ``T`` and minute/second padding.
+        parsed = _json.loads(out)
+        assert parsed["t"].startswith("2024-01-15")
+
+
+# ============================================================================
+# INGESTION LAYER — compute_normalized_data_hash
+# ============================================================================
+
+from ingestion.hashing import compute_normalized_data_hash  # noqa: E402
+
+
+class TestIngestionHashStability:
+    """Pinned values for the ingestion-side content hash."""
+
+    EXPECTED_TWO_ROW_HASH = (
+        "43bb4be8c156011ac45e8374d94aa10fdb91b94466853396d6422dd33f4c852e"
+    )
+    EXPECTED_EMPTY_DF_HASH = (
+        "862fde8d130e81926af8336ab6556aa005a95e1ce9deb7f6c467de9a5600660f"
+    )
+
+    @staticmethod
+    def _canonical_df() -> pd.DataFrame:
+        """Two-row canonical DataFrame used by the pinned-hash test."""
+        return pd.DataFrame({
+            "ticker": ["USGG10Y Index", "GTBPS10Y Govt"],
+            "trade_date": [
+                pd.Timestamp("2024-01-15"),
+                pd.Timestamp("2024-01-16"),
+            ],
+            "field_name": ["YLD_YTM_MID", "YLD_YTM_MID"],
+            "field_value": [4.1234, 4.0567],
+            "extracted_at": [
+                pd.Timestamp("2024-01-17 12:00:00"),
+                pd.Timestamp("2024-01-17 12:00:00"),
+            ],
+        })
+
+    def test_canonical_two_row_hash_pinned(self) -> None:
+        """The canonical two-row DataFrame hashes to a known value."""
+        h = compute_normalized_data_hash(self._canonical_df())
+        assert h == self.EXPECTED_TWO_ROW_HASH, (
+            "Ingestion hash recipe has drifted.  Every dedup decision in "
+            "load_audit is now meaningless against historical hashes.  If "
+            "intentional, update the pinned value here AND audit "
+            "load_audit.source_file_hash continuity."
+        )
+
+    def test_empty_dataframe_hash_pinned(self) -> None:
+        """An empty DataFrame with the four core columns hashes to a
+        known value (i.e. the hash function does not raise on empty)."""
+        df = pd.DataFrame({
+            "ticker": [],
+            "trade_date": [],
+            "field_name": [],
+            "field_value": [],
+        })
+        h = compute_normalized_data_hash(df)
+        assert h == self.EXPECTED_EMPTY_DF_HASH
+
+    def test_lineage_columns_excluded(self) -> None:
+        """Run-variant lineage columns (``extracted_at``, ``git_commit_hash``,
+        ``playbook_hash``, ...) do NOT affect the hash."""
+        df1 = self._canonical_df()
+        df2 = df1.copy()
+        df2["extracted_at"] = pd.Timestamp("2024-12-31 23:59:59")
+        df2["git_commit_hash"] = "abc123"
+        df2["playbook_hash"] = "deadbeef"
+        df2["extractor_version"] = "v9.9.9"
+
+        h1 = compute_normalized_data_hash(df1)
+        h2 = compute_normalized_data_hash(df2)
+        assert h1 == h2
+
+    def test_row_order_invariance(self) -> None:
+        """Reordering rows in the input does not change the hash
+        (``_build_normalized_hash_dataframe`` sorts rows internally)."""
+        df = self._canonical_df()
+        reversed_df = df.iloc[::-1].reset_index(drop=True)
+        assert compute_normalized_data_hash(df) == compute_normalized_data_hash(
+            reversed_df
+        )
+
+    def test_column_order_invariance(self) -> None:
+        """Reordering columns in the input does not change the hash."""
+        df = self._canonical_df()
+        cols = list(df.columns)
+        reordered = df[list(reversed(cols))]
+        assert compute_normalized_data_hash(df) == compute_normalized_data_hash(
+            reordered
+        )
+
+    def test_value_sensitivity(self) -> None:
+        """Changing a single field_value flips the hash."""
+        df1 = self._canonical_df()
+        df2 = df1.copy()
+        df2.loc[0, "field_value"] = 4.1235  # 1-bp shift
+        assert compute_normalized_data_hash(df1) != compute_normalized_data_hash(
+            df2
+        )
+
+
+# ============================================================================
+# CROSS-CUTTING — both layers stable in the same process
+# ============================================================================
+
+
+class TestPythonVersionInvariance:
+    """A sanity check that both hashes are stable within the CURRENT
+    Python process.  Cross-version stability is enforced by running this
+    test on the Python 3.11 + 3.12 matrix in CI; the pinned values above
+    are what tie the two CI legs to identical output.
+    """
+
+    def test_lineage_hash_idempotent_in_process(self) -> None:
+        params = {"tenor": "10Y", "field_name": "YLD_YTM_MID", "lookback_days": 252}
+        h1 = _compute_step_hash(
+            kind="operator", name="zscore_custom", version="1.0.0",
+            params=params, input_hashes=("upstream-hash",),
+        )
+        h2 = _compute_step_hash(
+            kind="operator", name="zscore_custom", version="1.0.0",
+            params=params, input_hashes=("upstream-hash",),
+        )
+        assert h1 == h2
+
+    def test_ingestion_hash_idempotent_in_process(self) -> None:
+        df = TestIngestionHashStability._canonical_df()
+        h1 = compute_normalized_data_hash(df)
+        h2 = compute_normalized_data_hash(df.copy())
+        assert h1 == h2
+
+    def test_python_version_reported_for_diagnostics(self, capsys) -> None:
+        """Emit the running Python version so a failure log on one matrix
+        leg makes the version comparison obvious in CI output.  The test
+        does NOT assert a minimum version — that is the project's
+        responsibility (``pyproject.toml requires-python = ">=3.11"``);
+        this test runs under whatever Python invoked pytest."""
+        major, minor = sys.version_info[:2]
+        print(f"running on Python {major}.{minor}")
+        # Sanity: version_info is well-formed.
+        assert major >= 3
+
+
+# Defensive: ensure no test inadvertently calls the math module just to
+# verify the import landed.
+assert math is not None

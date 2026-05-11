@@ -1,6 +1,5 @@
 import os
 import sys
-import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +14,8 @@ project_root = current_dir.parent
 sys.path.append(str(project_root))
 
 from database.database import (  # noqa: E402
+    Connectable,
+    _txn,
     get_db_engine,
     upsert_instrument_master,
     insert_load_audit,
@@ -25,30 +26,19 @@ from database.database import (  # noqa: E402
     count_instruments_in_load,
 )
 
+# The dedup hash logic lives in its own module so it can be imported
+# (and tested for cross-version stability) without dragging in the
+# google.cloud / database imports above.  Re-export the public name
+# under its historical alias for any external callers.
+from ingestion.hashing import (  # noqa: E402
+    NORMALIZED_HASH_EXCLUDED_COLUMNS,
+    compute_normalized_data_hash as _compute_normalized_data_hash,
+)
+
 # --- CONFIGURATION ---
 BUCKET_NAME = "macro-storage-bucket"
 GCP_KEY_FILENAME = "library-extractor-key.json"
 DEFAULT_VENDOR = "BLOOMBERG"
-
-NORMALIZED_HASH_EXCLUDED_COLUMNS = {
-    "playbook_hash",
-    "git_commit_hash",
-    "extractor_version",
-    "extraction_mode",
-    "requested_start_date",
-    "requested_end_date",
-    "extracted_at",
-    "source_file",
-    "source_file_name",
-    "source_file_hash",
-    "normalized_data_hash",
-    "load_id",
-    "created_at",
-    "updated_at",
-    "ingested_at",
-    "notes",
-    "status",
-}
 
 
 # ==============================================================================================
@@ -150,71 +140,15 @@ def _build_instrument_attributes(row: pd.Series, filename: str) -> Dict[str, Any
     return attrs
 
 
-def _normalize_hash_value(value: Any) -> str:
-    """
-    Convert values to a deterministic string representation for stable hashing.
-    """
-    if pd.isna(value):
-        return ""
-
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-
-    if hasattr(value, "isoformat") and not isinstance(value, str):
-        try:
-            return value.isoformat()
-        except Exception:
-            pass
-
-    if isinstance(value, bool):
-        return "true" if value else "false"
-
-    if hasattr(value, "item"):
-        try:
-            value = value.item()
-        except Exception:
-            pass
-
-    return str(value)
-
-
-
-def _build_normalized_hash_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a normalized dataframe for semantic dedup hashing.
-
-    The goal is to hash the meaningful extracted dataset contents while excluding
-    run-variant lineage fields such as extracted_at and playbook/git metadata.
-    """
-    normalized = df.copy()
-
-    keep_columns = [c for c in normalized.columns if c not in NORMALIZED_HASH_EXCLUDED_COLUMNS]
-    normalized = normalized[keep_columns]
-
-    for col in normalized.columns:
-        normalized[col] = normalized[col].map(_normalize_hash_value)
-
-    normalized = normalized.reindex(sorted(normalized.columns), axis=1)
-    normalized = normalized.sort_values(by=list(normalized.columns), kind="mergesort").reset_index(drop=True)
-    return normalized
-
-
-
-def _compute_normalized_data_hash(df: pd.DataFrame) -> str:
-    """
-    Compute a stable SHA256 hash of the economically meaningful dataframe contents.
-
-    This intentionally excludes run-specific lineage columns so identical extracted
-    data across runs will deduplicate even if extracted_at or parquet metadata changes.
-    """
-    normalized = _build_normalized_hash_dataframe(df)
-    csv_payload = normalized.to_csv(index=False, lineterminator="\n")
-    return hashlib.sha256(csv_payload.encode("utf-8")).hexdigest()
-
+# Hash + normalization helpers have been moved to ``ingestion.hashing``.
+# This module imports them from there at the top of the file so the
+# downstream ingestion flow code below uses the same implementation that
+# ``tests/state/test_hash_stability.py`` validates for cross-version
+# determinism.
 
 
 def _delete_existing_playbook_scope(
-    engine,
+    connectable: Connectable,
     instrument_id_map: Dict[str, int],
     playbook_name: str,
     current_load_id: int,
@@ -225,6 +159,17 @@ def _delete_existing_playbook_scope(
     This keeps `market_data_daily` as the latest clean truth for the current playbook
     scope and removes stale rows for fields that may have been dropped from the playbook
     in newer versions.
+
+    Connection contract
+    -------------------
+    Accepts either an :class:`Engine` (self-managed transaction) or a
+    :class:`Connection` (caller-managed transaction).  The ingestion
+    pipeline passes a Connection so this DELETE composes atomically with
+    the subsequent upsert + audit-flip inside a single
+    ``with engine.begin() as conn:`` block.  See ``_txn`` for the
+    dispatch rule.
+
+    Closes ``docs/technical_debt.md`` item #1 for this function.
     """
     instrument_ids: List[int] = sorted({int(v) for v in instrument_id_map.values() if v is not None})
 
@@ -232,8 +177,8 @@ def _delete_existing_playbook_scope(
         return 0
 
     metadata = MetaData(schema="macro_data")
-    market_data_table = Table("market_data_daily", metadata, autoload_with=engine)
-    load_audit_table = Table("load_audit", metadata, autoload_with=engine)
+    market_data_table = Table("market_data_daily", metadata, autoload_with=connectable)
+    load_audit_table = Table("load_audit", metadata, autoload_with=connectable)
 
     prior_load_ids_stmt = (
         select(load_audit_table.c.load_id)
@@ -246,14 +191,14 @@ def _delete_existing_playbook_scope(
         market_data_table.c.load_id.in_(prior_load_ids_stmt),
     )
 
-    with engine.begin() as conn:
+    with _txn(connectable) as conn:
         result = conn.execute(stmt)
 
     return result.rowcount or 0
 
 
 def _delete_existing_playbook_window(
-    engine,
+    connectable: Connectable,
     instrument_id_map: Dict[str, int],
     playbook_name: str,
     current_load_id: int,
@@ -265,6 +210,16 @@ def _delete_existing_playbook_window(
 
     This is the correct behavior for incremental loads: replace the overlapping recent
     window while preserving older history outside the requested window.
+
+    Connection contract
+    -------------------
+    Accepts either an :class:`Engine` (self-managed transaction) or a
+    :class:`Connection` (caller-managed transaction).  The ingestion
+    pipeline passes a Connection so this DELETE composes atomically with
+    the subsequent upsert + audit-flip.  See ``_txn`` for the dispatch
+    rule.
+
+    Closes ``docs/technical_debt.md`` item #1 for this function.
     """
     instrument_ids: List[int] = sorted({int(v) for v in instrument_id_map.values() if v is not None})
 
@@ -280,8 +235,8 @@ def _delete_existing_playbook_window(
     end_date = pd.to_datetime(requested_end_date).strftime("%Y-%m-%d")
 
     metadata = MetaData(schema="macro_data")
-    market_data_table = Table("market_data_daily", metadata, autoload_with=engine)
-    load_audit_table = Table("load_audit", metadata, autoload_with=engine)
+    market_data_table = Table("market_data_daily", metadata, autoload_with=connectable)
+    load_audit_table = Table("load_audit", metadata, autoload_with=connectable)
 
     prior_load_ids_stmt = (
         select(load_audit_table.c.load_id)
@@ -296,7 +251,7 @@ def _delete_existing_playbook_window(
         market_data_table.c.trade_date <= end_date,
     )
 
-    with engine.begin() as conn:
+    with _txn(connectable) as conn:
         result = conn.execute(stmt)
 
     return result.rowcount or 0
@@ -490,58 +445,80 @@ def run_ingestion_pipeline():
                         f"{existing_instrument_count} instruments ({coverage:.0%})."
                     )
 
-            # 5. Upsert instrument master (only reached if sanity gate passes)
+            # 5. Upsert instrument master (only reached if sanity gate passes).
+            #    Lives OUTSIDE the critical transaction below because
+            #    instrument_master is idempotent on (vendor, vendor_ticker)
+            #    and a retry simply re-upserts the same rows.  Including it
+            #    in the critical txn would extend the lock window without
+            #    correctness benefit.
             instrument_id_map = upsert_instrument_master(engine, master_records)
 
-            # 6. Delete the appropriate overlap before reloading, depending on extraction mode.
-            if extraction_mode == "historical":
-                deleted_rows = _delete_existing_playbook_scope(
-                    engine=engine,
+            # 6. CRITICAL SECTION — single transaction wrapping
+            #    delete + upsert + audit-flip so a failure between any two
+            #    of them rolls back cleanly.
+            #
+            #    Before Phase 0 PR 3 this was three separate transactions:
+            #    if DELETE committed and UPSERT failed, prior data was
+            #    destroyed without the audit row recording the failure
+            #    (it would still be in RUNNING).  See
+            #    ``docs/technical_debt.md`` item #1 for the historical
+            #    failure mode.
+            #
+            #    The ``with engine.begin() as conn:`` block commits on
+            #    clean exit and rolls back on ANY exception, which propagates
+            #    to the outer ``except`` handler that flips the audit row
+            #    to FAILED on a SEPARATE transaction.
+            with engine.begin() as conn:
+                if extraction_mode == "historical":
+                    deleted_rows = _delete_existing_playbook_scope(
+                        connectable=conn,
+                        instrument_id_map=instrument_id_map,
+                        playbook_name=playbook_name,
+                        current_load_id=load_id,
+                    )
+                    print(
+                        f"  [DB] Deleted {deleted_rows} existing rows for playbook '{playbook_name}' "
+                        "before historical reload..."
+                    )
+                elif extraction_mode == "incremental":
+                    deleted_rows = _delete_existing_playbook_window(
+                        connectable=conn,
+                        instrument_id_map=instrument_id_map,
+                        playbook_name=playbook_name,
+                        current_load_id=load_id,
+                        requested_start_date=requested_start_date,
+                        requested_end_date=requested_end_date,
+                    )
+                    print(
+                        f"  [DB] Deleted {deleted_rows} existing rows for playbook '{playbook_name}' "
+                        f"inside requested incremental window {requested_start_date} -> {requested_end_date}..."
+                    )
+                else:
+                    raise ValueError(
+                        f"Unsupported extraction_mode '{extraction_mode}' in parquet {filename}. "
+                        "Expected 'historical' or 'incremental'."
+                    )
+
+                # 7. Upsert daily time-series data using instrument_id + load_id.
+                print(f"  [DB] Upserting {len(df)} daily market data rows...")
+                upsert_market_data_daily(
+                    connectable=conn,
+                    df=df,
                     instrument_id_map=instrument_id_map,
-                    playbook_name=playbook_name,
-                    current_load_id=load_id,
-                )
-                print(
-                    f"  [DB] Deleted {deleted_rows} existing rows for playbook '{playbook_name}' "
-                    "before historical reload..."
-                )
-            elif extraction_mode == "incremental":
-                deleted_rows = _delete_existing_playbook_window(
-                    engine=engine,
-                    instrument_id_map=instrument_id_map,
-                    playbook_name=playbook_name,
-                    current_load_id=load_id,
-                    requested_start_date=requested_start_date,
-                    requested_end_date=requested_end_date,
-                )
-                print(
-                    f"  [DB] Deleted {deleted_rows} existing rows for playbook '{playbook_name}' "
-                    f"inside requested incremental window {requested_start_date} -> {requested_end_date}..."
-                )
-            else:
-                raise ValueError(
-                    f"Unsupported extraction_mode '{extraction_mode}' in parquet {filename}. "
-                    "Expected 'historical' or 'incremental'."
+                    load_id=load_id,
                 )
 
-            # 6. Upsert daily time-series data using instrument_id + load_id
-            print(f"  [DB] Upserting {len(df)} daily market data rows...")
-            upsert_market_data_daily(
-                engine=engine,
-                df=df,
-                instrument_id_map=instrument_id_map,
-                load_id=load_id,
-            )
-
-            # 8. All DB mutations succeeded — mark the audit row as SUCCESS.
-            #    This happens BEFORE archival so a GCS failure cannot flip the
-            #    DB status back to FAILED.
-            update_load_audit_status(
-                engine, load_id, "SUCCESS",
-                f"Successfully loaded from GCS object {blob.name} | "
-                f"extraction_mode={extraction_mode} | "
-                f"instruments={len(instrument_id_map)} | rows={len(df)}",
-            )
+                # 8. All DB mutations succeeded — flip audit row to SUCCESS
+                #    INSIDE the critical transaction so the audit state and
+                #    the data state commit atomically.
+                update_load_audit_status(
+                    conn, load_id, "SUCCESS",
+                    f"Successfully loaded from GCS object {blob.name} | "
+                    f"extraction_mode={extraction_mode} | "
+                    f"instruments={len(instrument_id_map)} | rows={len(df)}",
+                )
+            # Critical transaction committed at this point.  Any subsequent
+            # failure (archival below) cannot affect the DB state.
 
             # 9. Archive processed file in GCP (best-effort — does not affect
             #    DB status).  If archival fails, the file stays in data/ and
