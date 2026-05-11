@@ -2,22 +2,40 @@
 dependencies.py — Shared API dependencies
 ==========================================
 
-Provides the SQLAlchemy engine singleton via FastAPI's dependency injection
-system.  The engine is created once during app lifespan and shared across
-all request handlers.
+Provides the singletons managed by FastAPI's app lifespan, exposed
+through dependency-injection getters:
 
-This module also centralises configuration so environment variables are
-read in exactly one place.
+  - ``get_engine()``               — SQLAlchemy engine (psycopg2;
+    market-data ingestion + REST routes).
+  - ``get_checkpointer_pool()``    — psycopg3 ``AsyncConnectionPool``
+    for the LangGraph ``AsyncPostgresSaver`` (Phase 0 PR 5).
+
+Both singletons are created once during app startup (see
+``api/server.py``'s lifespan) and disposed on shutdown.  Tests that
+need to spin up their own can call ``init_*`` / ``dispose_*``
+directly.
+
+This module also centralises configuration so environment variables
+are read in exactly one place.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional, TYPE_CHECKING
 
 from sqlalchemy.engine import Engine
+
+if TYPE_CHECKING:
+    # psycopg-pool only imported lazily (at init_checkpointer_pool
+    # time) so a CI job that doesn't need the checkpointer doesn't pay
+    # for the import.  TYPE_CHECKING guards the type hint.
+    from psycopg_pool import AsyncConnectionPool
+
+logger = logging.getLogger("api.dependencies")
 
 # ---------------------------------------------------------------------------
 # Path setup — ensure the project root is importable so we can reach
@@ -103,3 +121,138 @@ def get_engine() -> Engine:
             "Ensure init_engine() is called during app lifespan."
         )
     return _engine
+
+
+# ---------------------------------------------------------------------------
+# LangGraph checkpointer pool — Phase 0 PR 5
+# ---------------------------------------------------------------------------
+# The orchestrator's ``AsyncPostgresSaver`` reads / writes conversation
+# state through this pool.  Lifecycle:
+#
+#   - ``init_checkpointer_pool()`` is called once at app startup from
+#     ``api/server.py``'s lifespan.  It creates the
+#     ``AsyncConnectionPool``, opens it, and runs
+#     ``AsyncPostgresSaver(pool).setup()`` which creates the
+#     framework's checkpoint tables inside the ``langgraph_checkpoint``
+#     schema (the schema namespace itself is created by Alembic
+#     migration ``0003_langgraph_checkpoint_schema``).
+#
+#   - Every WebSocket session that wants durability calls
+#     ``get_checkpointer_pool()`` to obtain the shared pool.  Sessions
+#     that pass ``stateless=True`` (e.g. unit tests) ignore this and
+#     use an in-memory checkpointer instead.
+#
+#   - ``dispose_checkpointer_pool()`` is called on app shutdown to
+#     close the pool cleanly.
+#
+# The pool is configured with ``autocommit=True`` because
+# ``AsyncPostgresSaver.setup()`` uses ``CREATE INDEX CONCURRENTLY``
+# which cannot run inside a transaction.  Normal checkpoint reads /
+# writes work fine under autocommit because they are single
+# statements; LangGraph handles its own retry / consistency at the
+# application layer.
+_checkpointer_pool: Optional["AsyncConnectionPool"] = None
+
+
+async def init_checkpointer_pool(
+    min_size: int = 1,
+    max_size: int = 10,
+) -> "AsyncConnectionPool":
+    """Create + open the checkpointer pool, run AsyncPostgresSaver.setup().
+
+    Idempotent: a second call returns the existing pool without
+    re-running setup.
+
+    The pool's connection ``search_path`` is set to
+    ``langgraph_checkpoint,public`` so the framework's tables created
+    by ``setup()`` land in our dedicated schema rather than ``public``.
+
+    ``min_size=1`` / ``max_size=10`` are conservative defaults — most
+    Phase 0 deployments will have a handful of concurrent WebSocket
+    sessions.  Production deployments should tune these based on
+    observed connection-acquire latency.
+    """
+    global _checkpointer_pool
+    if _checkpointer_pool is not None:
+        return _checkpointer_pool
+
+    # Lazy import keeps the module load-light when the checkpointer
+    # isn't needed (e.g. CI jobs that only run substrate tests).
+    from psycopg_pool import AsyncConnectionPool
+
+    from orchestrator.config import (
+        LANGGRAPH_CHECKPOINT_SCHEMA,
+        build_checkpointer_dsn,
+    )
+
+    dsn = build_checkpointer_dsn()
+    logger.info(
+        "Initialising checkpointer pool against %s (search_path=%s)",
+        # Mask password in log; we only need host:port:db for diagnostics.
+        dsn.split("@", 1)[-1] if "@" in dsn else dsn,
+        LANGGRAPH_CHECKPOINT_SCHEMA,
+    )
+
+    pool = AsyncConnectionPool(
+        conninfo=dsn,
+        kwargs={
+            # autocommit is required for AsyncPostgresSaver.setup() —
+            # it uses CREATE INDEX CONCURRENTLY which forbids txn
+            # blocks.  Regular checkpoint writes work fine under
+            # autocommit.
+            "autocommit": True,
+            # search_path puts AsyncPostgresSaver's tables in our
+            # dedicated schema rather than polluting public.
+            "options": f"-c search_path={LANGGRAPH_CHECKPOINT_SCHEMA},public",
+        },
+        min_size=min_size,
+        max_size=max_size,
+        # Defer pool open() until we explicitly call it, so we can
+        # decide whether to swallow open errors at startup vs at
+        # first-use.  Open errors at startup mean "the API server
+        # crashes loudly"; first-use errors mean "the first
+        # WebSocket gets a clean error message".  We want the former.
+        open=False,
+    )
+    await pool.open()
+
+    # Run setup() once per process.  The framework's setup is
+    # idempotent (CREATE TABLE IF NOT EXISTS for everything that
+    # doesn't require CONCURRENTLY; CONCURRENTLY indexes use IF NOT
+    # EXISTS too in psycopg3), so this is safe to call on every
+    # startup including hot reloads.
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    saver = AsyncPostgresSaver(pool)
+    await saver.setup()
+    logger.info("AsyncPostgresSaver.setup() completed")
+
+    _checkpointer_pool = pool
+    return pool
+
+
+async def dispose_checkpointer_pool() -> None:
+    """Close the checkpointer pool.  Called from app shutdown."""
+    global _checkpointer_pool
+    if _checkpointer_pool is None:
+        return
+    logger.info("Disposing checkpointer pool")
+    try:
+        await _checkpointer_pool.close()
+    finally:
+        _checkpointer_pool = None
+
+
+def get_checkpointer_pool() -> Optional["AsyncConnectionPool"]:
+    """Return the shared checkpointer pool, or None if not initialised.
+
+    Returning None (rather than raising) is the intentional contract:
+    sessions that want durability check ``pool is not None`` and fall
+    back to an in-memory checkpointer if not.  This lets unit tests
+    construct a ``CopilotSession`` without spinning up Postgres.
+
+    Production WebSocket handlers should treat ``None`` as a startup
+    misconfiguration and surface an error to the client; see
+    ``api/routes/chat.py``.
+    """
+    return _checkpointer_pool

@@ -446,12 +446,142 @@ overridden in CI / staging / prod.
 and every push to main. The job:
 
 1. Brings up a Postgres 14 service container.
-2. Installs Alembic + psycopg2 + SQLAlchemy.
+2. Installs Alembic + psycopg2 + SQLAlchemy + psycopg3 +
+   langgraph + langgraph-checkpoint-postgres.
 3. Runs `alembic upgrade head` → `alembic downgrade base` →
    `alembic upgrade head` (the idempotence pass) against the service.
 4. Runs `pytest Macro_Copilot/tests/state/test_migrations.py`, which
    re-runs the round trip plus the schema-invariant spot checks (CHECK
    constraints present, `schema_version` default, alembic_version in
    the right schema, etc.).
+5. Runs `pytest Macro_Copilot/tests/state/test_postgres_checkpointer.py`
+   and `test_session_restart.py` (Phase 0 PR 5) which exercise the
+   `AsyncPostgresSaver` end-to-end against the same Postgres.
 
-A migration that fails any step does not merge.
+A migration or checkpointer test that fails any step does not merge.
+
+---
+
+## LangGraph checkpoint state (`langgraph_checkpoint` schema) — Phase 0 PR 5
+
+In addition to the `copilot_state` schema documented above, this
+project also uses a separate Postgres schema called
+`langgraph_checkpoint` for the LangGraph framework's internal
+conversation-state tables. This section documents why it's separate,
+what's in it, and how it's bootstrapped.
+
+### Why a separate schema (not in `copilot_state`)
+
+Two reasons:
+
+1. **Lifecycle separation.** The four tables in `langgraph_checkpoint`
+   are owned by the `langgraph-checkpoint-postgres` library, not by
+   this project. Their shape can change between library versions; if
+   they lived in `copilot_state` we would have to mirror the library's
+   DDL in our Alembic migrations and chase upstream changes whenever
+   the library schema evolves.
+2. **Test cleanliness.** The schema-isolation test
+   (`test_creates_all_expected_tables`) asserts that `copilot_state`
+   contains exactly 12 tables plus `alembic_version`. Polluting that
+   set with framework-managed tables would either break the test or
+   weaken it into a less-precise superset assertion.
+
+By giving LangGraph its own schema, both responsibilities stay clean:
+Alembic owns `copilot_state` (our application schema), and
+`AsyncPostgresSaver.setup()` owns `langgraph_checkpoint`'s tables.
+
+### What's in the schema
+
+After `AsyncPostgresSaver.setup()` runs (called once at API server
+startup; idempotent), the schema contains four tables:
+
+| Table | Purpose |
+|---|---|
+| `checkpoints` | One row per checkpoint write — thread state at a point in time. Indexed by `(thread_id, checkpoint_ns, checkpoint_id)`. |
+| `checkpoint_blobs` | Serialized large values referenced from `checkpoints` rows. Storing them out-of-line keeps the main checkpoint rows small. |
+| `checkpoint_writes` | Per-checkpoint write log, used by LangGraph for replay / resumption semantics. |
+| `checkpoint_migrations` | The framework's internal version tracker (analogous to `copilot_state.alembic_version` but managed by `langgraph-checkpoint-postgres`, not by Alembic). |
+
+The exact column layouts are intentionally not duplicated here — they
+are framework-internal and may change between
+`langgraph-checkpoint-postgres` versions. Treat them as opaque from
+our application's perspective.
+
+### Bootstrap pipeline
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  1. Alembic migration 0003_langgraph_checkpoint_schema.py   │
+│     CREATE SCHEMA IF NOT EXISTS langgraph_checkpoint        │
+│     (idempotent; empty namespace)                            │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│  2. API server startup (api/server.py lifespan)              │
+│     init_checkpointer_pool() opens an AsyncConnectionPool   │
+│     with options="-c search_path=langgraph_checkpoint,..."  │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│  3. AsyncPostgresSaver(pool).setup()                         │
+│     CREATE TABLE IF NOT EXISTS for the 4 framework tables   │
+│     inside langgraph_checkpoint (resolved via search_path)  │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│  4. WebSocket handler creates CopilotSession(                │
+│        checkpointer_pool=get_checkpointer_pool()             │
+│     )                                                        │
+│     Each DomainAgentSession gets an AsyncPostgresSaver       │
+│     bound to the shared pool — durable across restart.       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Two drivers, one Postgres
+
+Two Postgres client libraries coexist in the runtime:
+
+| Driver | Used by | Purpose |
+|---|---|---|
+| `psycopg2-binary` | SQLAlchemy engine in `database.database.get_db_engine` | Market-data ingestion + REST routes. Sync. |
+| `psycopg[binary,pool]` (psycopg3) | `AsyncConnectionPool` for `AsyncPostgresSaver` | LangGraph checkpointer. Async. Required by `langgraph-checkpoint-postgres`. |
+
+Both connect to the same Postgres instance; they just speak through
+different abstraction layers. The SQLAlchemy ingestion path was built
+against psycopg2 (PR 3's transactional refactor in particular relied on
+that), and there's no value in churning it now. A future PR can
+migrate the ingestion path to psycopg3 if there's an operational
+reason.
+
+### Thread-id convention
+
+The orchestrator's `CopilotSession._child_thread_id(turn_label, domain)`
+selects the LangGraph thread id per child, with two modes:
+
+| `stateless` | `checkpointer_pool` | Thread-id format | Saver | Survives restart? |
+|---|---|---|---|---|
+| `True` (opt-in) | any | `{session_id}-{turn_label}-{domain}` | `MemorySaver` | no |
+| `False` (default) | `None` | `{session_id}-{domain}` | `MemorySaver` | no (in-proc only) |
+| `False` (default) | provided | `{session_id}-{domain}` | `AsyncPostgresSaver(pool)` | **YES** |
+
+The stable thread-id format `{session_id}-{domain}` means a single
+session keeps accumulating per-domain conversation history across
+turns, which is what the deck describes as "the loop is the product."
+Reconnecting after a server restart with the same `session_id` resumes
+the conversation cleanly.
+
+### Operational: how to wipe the checkpoint state
+
+In dev, to start over with empty checkpoint state:
+
+```sql
+DROP SCHEMA langgraph_checkpoint CASCADE;
+CREATE SCHEMA langgraph_checkpoint;
+```
+
+`AsyncPostgresSaver.setup()` will recreate the four tables on the next
+API server startup. The Alembic migration is unaffected — it manages
+only the schema namespace, not the tables inside it.
+
+**Never** do this on a shared environment with real conversation
+history.

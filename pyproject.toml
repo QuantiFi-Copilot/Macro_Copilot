@@ -57,6 +57,15 @@ dev = [
     # production runtime path keeps the conda-managed binary install.
     "psycopg2-binary>=2.9",
     "sqlalchemy>=2.0",
+    # Phase 0 PR 5: durable LangGraph checkpointer.  AsyncPostgresSaver
+    # ships under `langgraph-checkpoint-postgres` and requires psycopg3
+    # (`psycopg[binary,pool]`).  psycopg3 coexists alongside the
+    # psycopg2-binary above; SQLAlchemy ingestion stays on psycopg2 (PR 3
+    # transactional refactor was built against that path), and the
+    # checkpointer's async connection pool runs on psycopg3.  Two drivers,
+    # two connection layers, one Postgres.
+    "langgraph-checkpoint-postgres>=2.0",
+    "psycopg[binary,pool]>=3.1",
 ]
 
 
