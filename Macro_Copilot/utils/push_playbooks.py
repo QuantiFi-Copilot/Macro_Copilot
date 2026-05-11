@@ -3,16 +3,16 @@ from pathlib import Path
 from google.cloud import storage
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket" 
+BUCKET_NAME = "macro-storage-bucket"
 
 def push_playbooks_to_gcp():
     """Syncs local YAML playbooks to the GCP bucket."""
-    
+
     # --- DYNAMIC PATH RESOLUTION ---
     # Script is in: .../Macro_Copilot/utils/push_playbooks.py
     current_dir = Path(__file__).parent
     project_root = current_dir.parent
-    
+
     # Dynamically find the key and playbooks relative to the project root
     gcp_key_path = project_root / "secure_keys" / "library-extractor-key.json"
     playbooks_dir = project_root / "rates_agent" / "playbooks"
@@ -37,10 +37,10 @@ def push_playbooks_to_gcp():
         return
 
     print(f"Scanning for playbooks in: {playbooks_dir}")
-    
+
     # Grab all .yml and .yaml files
     playbook_files = list(playbooks_dir.glob("*.yml")) + list(playbooks_dir.glob("*.yaml"))
-    
+
     if not playbook_files:
         print("No YAML playbooks found to upload.")
         return
@@ -53,7 +53,7 @@ def push_playbooks_to_gcp():
             # Create the 'playbooks/' folder structure inside the bucket
             blob_name = f"playbooks/{file_path.name}"
             blob = bucket.blob(blob_name)
-            
+
             # Execute the upload
             blob.upload_from_filename(str(file_path))
             print(f"  [SUCCESS] Uploaded {file_path.name} -> gs://{BUCKET_NAME}/{blob_name}")
