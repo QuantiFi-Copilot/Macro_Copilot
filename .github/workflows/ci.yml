@@ -144,3 +144,82 @@ jobs:
             Macro_Copilot/tests/test_adapter_from_time_series.py \
             Macro_Copilot/tests/state/test_hash_stability.py \
             Macro_Copilot/tests/state/test_transactional_ingestion.py
+
+  # ---------------------------------------------------------------------------
+  # Migrations — alembic round-trip against a real Postgres service.
+  #
+  # Phase 0 PR 4 introduced this job alongside the `copilot_state` schema
+  # and its initial Alembic revision.  The job verifies that:
+  #
+  #   1. `alembic upgrade head` creates all expected tables in
+  #      `copilot_state`.
+  #   2. `alembic downgrade base` undoes every migration.
+  #   3. A second `alembic upgrade head` is idempotent.
+  #   4. The round-trip + schema-invariant test suite passes
+  #      (`tests/state/test_migrations.py`).
+  #
+  # Postgres 14 is sufficient for the copilot_state schema (no
+  # TimescaleDB features used).  The macro_data schema in the project
+  # uses TimescaleDB but that schema is NOT Alembic-managed and lives
+  # outside this CI job's concern.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: alembic migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        # Health check ensures the service is accepting connections
+        # before the job's steps start.
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_USER: test_user
+      DB_PASSWORD: test_password
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: test_db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install migration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "alembic>=1.13" \
+            "sqlalchemy>=2.0" \
+            "psycopg2-binary>=2.9" \
+            "pytest>=8.0" \
+            "pytest-asyncio>=0.23"
+
+      - name: alembic upgrade head (forward)
+        run: alembic upgrade head
+
+      - name: alembic downgrade base (backward)
+        run: alembic downgrade base
+
+      - name: alembic upgrade head (idempotence)
+        run: alembic upgrade head
+
+      - name: pytest migration round-trip + schema invariants
+        run: pytest Macro_Copilot/tests/state/test_migrations.py -v

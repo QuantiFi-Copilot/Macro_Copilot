@@ -52,6 +52,11 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
     "alembic>=1.13",
+    # psycopg2-binary is also in environment.yml; mirroring it here lets
+    # pip-only dev setups (e.g. CI) install it without conda.  The
+    # production runtime path keeps the conda-managed binary install.
+    "psycopg2-binary>=2.9",
+    "sqlalchemy>=2.0",
 ]
 
 
