@@ -31,6 +31,12 @@ Tool surface
    compensation differential, NOT a pure cross-country expected-
    inflation differential, AND subject to an INDEX-FAMILY MISMATCH
    caveat (e.g. CPI-U vs HICP).
+6. calculate_real_yield_curve_spread_tool — same-country linker
+   real-yield curve spread between two real-yield tenors of the
+   same sovereign linker curve (e.g. USD_TIPS 5s10s real-yield,
+   GBP_LINKER 2s10s real-yield); the real-yield curve-shape
+   object, distinct from a breakeven curve spread (inflation
+   compensation) and from a nominal sovereign curve spread.
 
 Subsequent linker primitives (scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
@@ -65,6 +71,7 @@ from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     BreakevenInflationSimpleInput,
     CrossCountryBreakevenSpreadSimpleInput,
     ForwardBreakevenSimpleInput,
+    RealYieldCurveSpreadInput,
     RealYieldLevelInput,
 )
 from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (  # noqa: E402
@@ -82,6 +89,10 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
 from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (  # noqa: E402
     CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
     calculate_forward_breakeven_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (  # noqa: E402
+    CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+    calculate_real_yield_curve_spread,
 )
 from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (  # noqa: E402
     CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
@@ -1091,6 +1102,200 @@ def calculate_cross_country_breakeven_spread_simple_tool(
             "[calculate_cross_country_breakeven_spread_simple_tool] "
             "withheld %d bespoke + %d canonical spread rows + %d "
             "zscore rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 6: calculate_real_yield_curve_spread
+# ===========================================================================
+@mcp.tool()
+def calculate_real_yield_curve_spread_tool(
+    curve_family: str,
+    short_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-country linker real-yield curve spread
+    between two real-yield tenors of the same sovereign linker
+    curve (e.g. USD_TIPS 5s10s real-yield, GBP_LINKER 2s10s
+    real-yield, EUR_FR_LINKER 5s10s real-yield, CAD_RRB 5s30s
+    real-yield), plus period changes (in bps), 1-year z-score,
+    and deterministic historical context (high, low, percentile
+    in PERCENT).
+
+        spread_pct = long_real_yield_pct - short_real_yield_pct
+
+    where short_real_yield / long_real_yield are the linker real-
+    yield levels at short_tenor / long_tenor (each computed by
+    the same desk-recognised real-yield-level primitive).  Real
+    yields are quoted in PERCENT and the spread is reported in
+    PERCENT — same units as the underlying — NOT in BPS.
+
+    The output is the term structure of REAL YIELDS — distinct
+    from a breakeven curve spread (inflation compensation) and
+    from a nominal sovereign curve spread.  The tool's output
+    includes an explicit ``methodology_label`` field carrying that
+    framing plus the literal spread formula; preserve it when
+    summarising the result to the user.
+
+    Use this tool when the user asks about:
+    - Linker real-yield curve shape / steepness (e.g. "Where's
+      the TIPS 5s10s real-yield curve?", "Is the UK 5s30s
+      real-yield curve flat?")
+    - Real-yield curve moves              (e.g. "How much has
+      the FR 2s10s real-yield curve steepened this week?")
+    - Real-yield curve extremes          (e.g. "Is the US
+      5s30s real-yield curve at a 1-year low?")
+    - Decomposing a real-yield curve move (this tool returns
+      BOTH the spread AND the two endpoint real yields + year
+      fractions used to form it).
+
+    Do NOT use this tool for:
+    - Nominal sovereign curve spreads — those belong to the
+      sovereign-bond agent's ``calculate_curve_spread_tool``.
+    - Breakeven curve spreads (2s10s breakeven, 5s30s
+      breakeven) — call ``calculate_breakeven_curve_spread_tool``.
+    - Forward breakeven inflation (5Y5Y / 5Y10Y / 2Y3Y) — call
+      ``calculate_forward_breakeven_simple_tool``.
+    - Cross-country real-yield comparisons — this primitive
+      accepts a single linker ``curve_family`` and refuses any
+      non-linker curve_family with a controlled error envelope.
+    - Real-yield level (single tenor) — call
+      ``get_real_yield_level_tool``.
+
+    Parameters
+    ----------
+    curve_family : str
+        Linker curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_TIPS', 'GBP_LINKER',
+        'EUR_FR_LINKER', 'CAD_RRB' (see
+        rates_agent/playbooks/inflation_indexed_bonds.yml for the
+        ingested universe).  Non-linker curve_families (e.g.
+        nominal sovereign 'UST', 'DE_BUND') are refused at
+        compute time with a controlled error envelope.
+    short_tenor : str
+        Short tenor of the real-yield curve spread — e.g. '2Y'
+        for 2s10s, '5Y' for 5s30s.  Must be a supported pillar
+        on this linker curve_family.
+    long_tenor : str
+        Long tenor of the real-yield curve spread — e.g. '10Y'
+        for 2s10s, '30Y' for 5s30s.  Must be strictly longer
+        than ``short_tenor``.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing
+        range window.
+    field_name : str, optional
+        Bloomberg field mnemonic for BOTH underlying real-yield
+        series (short_tenor and long_tenor on this linker
+        curve_family).  Leave as the default empty string ""  to
+        use the bundled ``default_field_name`` convention from
+        real_yield_curve_spread/config.yaml (currently
+        'YLD_YTM_MID').  Pass an explicit field name to override
+        per call.  Mirrors the empty-string sentinel pattern used
+        by the other rates tools so the YAML default actually
+        flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = RealYieldCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_real_yield_curve_spread_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_real_yield_curve_spread_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the real_yield_curve_spread tool's bundled config
+    # explicitly so the dependency is observable here.
+    # load_tool_config caches by path, so this is a free lookup
+    # after the first call within the MCP subprocess's lifetime.
+    # Mirrors the calculate_breakeven_curve_spread_tool wrapper
+    # exactly.
+    try:
+        rycs_config = load_tool_config(REAL_YIELD_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_real_yield_curve_spread(
+            engine=engine, params=params, config=rycs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_real_yield_curve_spread_tool] unhandled "
+            "error for %s @ %s%s",
+            params.curve_family,
+            params.short_tenor,
+            params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_real_yield_curve_spread_tool failed "
+                    f"for {params.curve_family} @ "
+                    f"{params.short_tenor}{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_real_yield_curve_spread_tool] tool call "
+        "complete: %s @ %s%s → %s",
+        params.curve_family,
+        params.short_tenor,
+        params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the
+    # LLM (frontend REST path returns the full payload).  Same
+    # convention as the other rates tools — the LLM doesn't need
+    # every historical row to answer "where's the TIPS 5s10s
+    # real-yield curve?".
+    stripped_keys = {"time_series", "time_series_spread", "time_series_zscore"}
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_spread", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_real_yield_curve_spread_tool] withheld "
+            "%d bespoke + %d canonical spread rows + %d zscore "
+            "rows from LLM context.",
             bespoke_rows,
             canonical_rows,
             len(result.get("time_series_zscore", {}).get("rows", []) or []),

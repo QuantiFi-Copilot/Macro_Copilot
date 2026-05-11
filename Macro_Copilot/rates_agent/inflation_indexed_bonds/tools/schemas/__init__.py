@@ -78,6 +78,23 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleTimeSeriesRow,
 )
 
+# Real-yield curve spread (same-country, two-tenor difference on a
+# single linker curve) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/``).
+# Composes ``real_yield_level`` twice (one per endpoint tenor) into a
+# per-trade-date PERCENT-units difference — the real-yield curve-
+# shape object.  Inherits the level primitive's no-proxy guard
+# (instrument_type='inflation_linker') transitively; compute
+# additionally re-asserts the curve_family identity on
+# instrument_master before any market-data fetch fires.
+from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread.schemas import (
+    RealYieldCurveSpreadCurrentMetrics,
+    RealYieldCurveSpreadInput,
+    RealYieldCurveSpreadOutput,
+    RealYieldCurveSpreadTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -104,4 +121,9 @@ __all__ = [
     "CrossCountryBreakevenSpreadSimpleCurrentMetrics",
     "CrossCountryBreakevenSpreadSimpleOutput",
     "CrossCountryBreakevenSpreadSimpleTimeSeriesRow",
+    # real_yield_curve_spread
+    "RealYieldCurveSpreadInput",
+    "RealYieldCurveSpreadCurrentMetrics",
+    "RealYieldCurveSpreadOutput",
+    "RealYieldCurveSpreadTimeSeriesRow",
 ]

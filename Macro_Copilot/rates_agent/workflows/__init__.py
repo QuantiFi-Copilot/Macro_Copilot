@@ -118,6 +118,12 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleOutput,
     calculate_cross_country_breakeven_spread_simple,
 )
+from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
+    CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+    RealYieldCurveSpreadInput,
+    RealYieldCurveSpreadOutput,
+    calculate_real_yield_curve_spread,
+)
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
     InflationSwapRateLevelInput,
@@ -388,6 +394,28 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # Operator-layer unit-compat checks rely on these
             # declarations.
             "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_real_yield_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_real_yield_curve_spread_tool",
+        callable=calculate_real_yield_curve_spread,
+        input_class=RealYieldCurveSpreadInput,
+        output_class=RealYieldCurveSpreadOutput,
+        config_path=REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen real-yield-curve-spread row list —
+            # frontend consumes ``spread_pct`` per row (the spread
+            # is in PERCENT, NOT bps, because real yields are in
+            # PERCENT and not multiplied by 100); declare PERCENT.
+            "time_series": "percent",
+            # Canonical TimeSeries: real-yield curve spread history
+            # in PERCENT (mirrors real_yield_level's PERCENT
+            # convention; distinct from the BPS convention every
+            # breakeven / inflation-swap curve spread uses),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_spread": "percent",
             "time_series_zscore": "z_score",
         },
     ),
