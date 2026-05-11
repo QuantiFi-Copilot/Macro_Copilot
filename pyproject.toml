@@ -1,0 +1,166 @@
+# =============================================================================
+# Macro Copilot — project metadata + tool configuration
+# =============================================================================
+#
+# This file declares:
+#   1. Project metadata (name, version, Python version requirement).
+#   2. Optional dev-tool extras (pytest, ruff, alembic) — installable via
+#      `pip install -e ".[dev]"` into the existing conda env.
+#   3. Configuration for ruff (lint + format).
+#
+# Runtime dependencies are NOT declared here.  They live in
+# `Macro_Copilot/environment.yml` because the Bloomberg API (xbbg / blpapi)
+# is not PyPI-installable and the production stack is conda-managed.  This
+# file declares only what pip needs to install for tooling.
+#
+# Tool discovery: ruff and pytest walk upward from cwd looking for this
+# file (and pytest.ini, which lives alongside it).  Both work whether you
+# invoke from the worktree root or from inside `Macro_Copilot/`.
+# =============================================================================
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "macro-copilot"
+version = "0.1.0"
+description = "An LLM-orchestrated research platform for macro funds, built on a typed substrate of validated quantitative primitives."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [
+    { name = "Sreeram Andra" },
+    { name = "Sacha Mimoun" },
+]
+keywords = ["macro", "research", "llm", "quantitative", "rates", "fixed-income"]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Runtime deps intentionally empty — see header comment.
+dependencies = []
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "alembic>=1.13",
+]
+
+
+# -----------------------------------------------------------------------------
+# setuptools — minimal config so `pip install -e ".[dev]"` works for tooling
+# installs.  The actual project code lives under Macro_Copilot/ as flat
+# packages (api, orchestrator, rates_agent, shared, etc.); we don't ship
+# this as a real Python distribution today, so the package list is empty.
+# -----------------------------------------------------------------------------
+[tool.setuptools]
+packages = []
+
+
+# =============================================================================
+# Ruff — lint + format configuration
+# =============================================================================
+#
+# Active rule set in PR 1: a deliberately narrow baseline (`E` + `W`) so
+# CI can gate every PR from day one without forcing a multi-hundred-file
+# cleanup commit alongside the substrate work.
+#
+# Aspirational rule set (planned for follow-up PRs, each paired with the
+# auto-fix pass that makes it pass cleanly):
+#
+#   - `F`    (pyflakes — unused imports / variables; ~91 F401, ~10 F841)
+#   - `I`    (isort — import ordering; ~280 sites)
+#   - `B`    (flake8-bugbear — ~8 B905 zip-without-strict)
+#   - `UP`   (pyupgrade — ~1200 sites, mostly `List` → `list`, `Optional[X]`
+#            → `X | None`; one focused auto-fix PR)
+#   - `C4`   (comprehensions)
+#   - `SIM`  (simplify hints)
+#
+# Each follow-up PR enables one rule family, runs `ruff check --fix`, and
+# commits the result.  Keeps each diff reviewable and isolates blame.
+# =============================================================================
+[tool.ruff]
+target-version = "py311"   # Conservative target — works on 3.11 and 3.12.
+line-length = 100
+
+# Directories ruff should not walk.  Each entry is a path glob relative to
+# this file's location (worktree root).
+extend-exclude = [
+    # The other project in this monorepo.  Not part of Macro Copilot.
+    "QuantFinanceProject",
+
+    # TypeScript / React frontend.
+    "Macro_Copilot/UI",
+
+    # Docs, manifestos, fixtures — markdown / YAML / PDFs, no Python lint
+    # surface.  Note: tests/fixtures contains parquet captures, not source.
+    "Macro_Copilot/docs",
+    "Macro_Copilot/manifesto",
+    "Macro_Copilot/tests/fixtures",
+
+    # Tooling + build artifacts.
+    ".claude",
+    ".venv",
+    "build",
+    "dist",
+
+    # Notebook checkpoints.
+    ".ipynb_checkpoints",
+]
+
+
+[tool.ruff.lint]
+# Active rule set — see the section header for the aspirational set + the
+# follow-up PR sequence that expands toward it.
+select = [
+    "E",   # pycodestyle errors (style, syntax-adjacent)
+    "W",   # pycodestyle warnings (whitespace + line endings)
+]
+ignore = [
+    # The formatter handles line length; long URLs and docstring lines
+    # should not trigger lint failures.
+    "E501",
+
+    # Deferred module-level imports are a deliberate pattern in this
+    # codebase (e.g. circular-import avoidance in workflow validate.py,
+    # sys.path-then-import in test scaffolding).  Re-enable when each
+    # site is reviewed and either fixed or marked with explicit `# noqa`.
+    "E402",
+
+    # Single-letter `l` in math code is a documented butterfly-wing leg
+    # name (`l` / `b` / `r` for short / belly / long wings).  Rename is
+    # a methodology-touching change; keep `l` for V0.
+    "E741",
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+# When `F` is enabled in a follow-up PR these per-file ignores activate:
+# `__init__.py` re-exports are a legitimate pattern; don't flag F401.
+# Tests are allowed F401 because fixtures and pytest patterns often import
+# symbols that are referenced indirectly via test discovery.
+"**/__init__.py" = ["F401"]
+"Macro_Copilot/tests/**" = ["F401"]
+
+# Migrations (when they arrive in Phase 0 week 2) are autogenerated and
+# should not be linted on style.
+"migrations/**" = ["E", "F", "I"]
+
+
+[tool.ruff.format]
+# Note: PR 1 does NOT run `ruff format --check` in CI.  The codebase has
+# not been formatter-passed.  Tightening to a format-check gate is a
+# follow-up PR that runs `ruff format` over the tree in a single pass
+# and commits the result.
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = false
