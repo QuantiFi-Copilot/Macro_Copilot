@@ -106,6 +106,12 @@ from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (
     ForwardBreakevenSimpleOutput,
     calculate_forward_breakeven_simple,
 )
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
+    CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+    BreakevenButterflyInput,
+    BreakevenButterflyOutput,
+    calculate_breakeven_butterfly,
+)
 from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
     CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
     BreakevenCurveSpreadInput,
@@ -473,6 +479,29 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # rolling z-score in Z_SCORE units.  Operator-layer
             # unit-compat checks rely on these declarations.
             "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_breakeven_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_butterfly_tool",
+        callable=calculate_breakeven_butterfly,
+        input_class=BreakevenButterflyInput,
+        output_class=BreakevenButterflyOutput,
+        config_path=BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven-butterfly row list —
+            # frontend consumes ``butterfly_bps`` per row (the
+            # butterfly is in BPS, same units as the underlying
+            # breakeven series; mirrors the breakeven_curve_spread
+            # / breakeven_inflation_simple BPS convention and is
+            # distinct from the real_yield_butterfly's PERCENT
+            # convention because breakevens are reported in bps).
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven butterfly history in
+            # BPS (same units as the underlying breakeven series),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
             "time_series_zscore": "z_score",
         },
     ),

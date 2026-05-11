@@ -130,6 +130,24 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly.schemas impo
     RealYieldButterflyTimeSeriesRow,
 )
 
+# Breakeven butterfly (same-country, three-tenor curvature on a
+# single nominal/linker pair) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/``).
+# Composes ``breakeven_inflation_simple`` three times (one per
+# endpoint tenor) into a per-trade-date BPS-units fixed-simple-
+# butterfly (``belly - 0.5*(short + long)``) — the breakeven /
+# inflation-compensation curvature object.  Inherits the spot
+# primitive's no-proxy guard (instrument_type filter on each leg)
+# AND same-country invariant transitively.  Output is generic
+# breakeven / inflation compensation, NOT pure expected inflation.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly.schemas import (
+    BreakevenButterflyCurrentMetrics,
+    BreakevenButterflyInput,
+    BreakevenButterflyOutput,
+    BreakevenButterflyTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -171,4 +189,9 @@ __all__ = [
     "RealYieldButterflyCurrentMetrics",
     "RealYieldButterflyOutput",
     "RealYieldButterflyTimeSeriesRow",
+    # breakeven_butterfly
+    "BreakevenButterflyInput",
+    "BreakevenButterflyCurrentMetrics",
+    "BreakevenButterflyOutput",
+    "BreakevenButterflyTimeSeriesRow",
 ]

@@ -1,0 +1,501 @@
+# =============================================================================
+# calculate_breakeven_butterfly_tool — tool configuration
+# =============================================================================
+# Canonical record of the same-country bond-implied breakeven butterfly
+# (3-point breakeven-inflation-compensation curvature) tool's
+# conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Every shared
+# convention (z_score_window_days, z_score_min_periods, z_score_ddof,
+# z_score_buffer_multiplier, ffill_limit_days, default_field_name,
+# period offsets, trailing range window, bps/yield/z-score rounding,
+# window_years_round_decimals) carries the same numeric value as the
+# sibling spot / forward / curve-spread / cross-country breakeven
+# primitives — the cross-config lint enforces value-agreement across
+# every tool that declares the same convention name.  Drift on any of
+# those is caught.
+#
+# Concept honesty
+# ---------------
+# This tool returns the CURVATURE of the bond-implied breakeven curve
+# — i.e. the same-country 3-point butterfly between three breakeven
+# tenors of the same nominal/linker pair (e.g. UST/USD_TIPS 5s10s30s
+# breakeven butterfly, UK_GILT/GBP_LINKER 2s10s30s breakeven
+# butterfly).  It is structurally the fixed simple-butterfly
+# weighting of three inflation-compensation reads, NOT a curvature
+# of pure expected inflation: each endpoint breakeven carries an
+# inflation risk premium and a relative liquidity premium between
+# the nominal sovereign and the linker bond, and the butterfly
+# inherits all three at each endpoint.  The honesty disclosure
+# lives in ``methodology.what_it_does`` below and is threaded onto
+# the wire via ``current_metrics.methodology_label`` — sourced from
+# this YAML at runtime, NOT hardcoded in Python.
+#
+# Butterfly formula
+# -----------------
+# Per-trade-date, the displayed breakeven butterfly is the FIXED
+# simple-butterfly weighting:
+#
+#   butterfly_bps = belly_breakeven_bps
+#                 - 0.5 * (short_breakeven_bps + long_breakeven_bps)
+#
+# Equivalent to 0.5 * (2 * belly - short - long).  Sign convention:
+# POSITIVE = belly is CHEAP versus the simple half-weighted wings
+# average (i.e. belly breakeven is HIGH relative to the wings);
+# NEGATIVE = belly is RICH.  Same sign convention as the sovereign
+# sovereign_bonds/butterfly tool and the sibling
+# inflation_indexed_bonds/real_yield_butterfly tool.  The three
+# endpoint breakevens come from ``calculate_breakeven_inflation_simple``
+# (one per tenor) — each produced under the same instrument_type
+# discriminators (nominal=sovereign_benchmark, linker=inflation_linker)
+# and same-country invariant.  The butterfly is in BPS (same units as
+# the underlying breakeven series) — distinct from the PERCENT
+# convention the real_yield_butterfly uses, because breakevens are
+# reported in bps.  Daily / weekly / monthly changes of the butterfly
+# are also reported in BPS (already-bps subtraction).  The three
+# endpoint series are aligned per-trade-date via a strict pandas
+# inner-join AFTER each is computed independently — no synthetic
+# butterfly points are produced on dates where any endpoint has no
+# data.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_breakeven_butterfly_tool
+  domain: inflation_indexed_bonds
+  category: desk_invariant_primitive
+  description: |
+    Same-country bond-implied breakeven butterfly (3-point breakeven-
+    inflation-compensation curvature) between three breakeven tenors
+    of the same nominal/linker pair (e.g. UST/USD_TIPS 5s10s30s
+    breakeven butterfly, UK_GILT/GBP_LINKER 2s10s30s breakeven
+    butterfly, FR_OAT/EUR_FR_LINKER 2s5s10s breakeven butterfly,
+    CANADA_GOVT/CAD_RRB 5s10s30s breakeven butterfly).  Composes
+    three spot breakevens computed by
+    ``calculate_breakeven_inflation_simple`` (one at ``short_tenor``,
+    one at ``belly_tenor``, one at ``long_tenor``) into a per-trade-
+    date FIXED simple-butterfly weighting:
+
+      butterfly_bps = belly_breakeven_bps
+                    - 0.5 * (short_breakeven_bps + long_breakeven_bps)
+
+    Sign convention: POSITIVE = belly is CHEAP versus the simple
+    half-weighted wings average (i.e. belly breakeven is HIGH
+    relative to the wings); NEGATIVE = belly is RICH.  Matches the
+    sovereign_bonds/butterfly and inflation_indexed_bonds/
+    real_yield_butterfly sign convention.  Returns the current
+    breakeven butterfly (in BPS), daily/weekly/monthly BPS changes,
+    rolling 252-day z-score (on the bps butterfly), trailing 252-day
+    high/low/percentile (in BPS), the rolling-window length, plus
+    the two component wing spreads (belly - short, long - belly)
+    AND the three endpoint breakevens and year fractions used to
+    form the butterfly so the desk can sanity-check the
+    decomposition.  Also emits a bespoke wire-frozen ``time_series``
+    history of the butterfly (in BPS) over the displayed
+    ``lookback_days`` window AND the canonical
+    ``shared.schemas.time_series.TimeSeries`` payloads (BPS for the
+    butterfly, Z_SCORE for the rolling z-score) so the workflow /
+    operator layer can compose without per-tool custom shapes.
+
+    Same-country invariant
+    ----------------------
+    The two legs MUST come from the same issuer — i.e. share both
+    ``country`` and ``currency`` as stored in
+    ``macro_data.instrument_master``.  The invariant is enforced
+    in code by the spot breakeven primitive's
+    ``_enforce_same_country_invariant`` helper, which fires BEFORE
+    either market-data SELECT at each endpoint.  Cross-country
+    pairs (e.g. ``DE_BUND + EUR_FR_LINKER`` — same currency,
+    different country; or ``UK_GILT + USD_TIPS`` — different
+    currency) are refused with a controlled error envelope.  This
+    primitive inherits that guard transitively: when a cross-
+    country pair is passed, the underlying breakeven call returns
+    the controlled error envelope and the butterfly tool propagates
+    it (with a clear short/belly/long endpoint attribution)
+    WITHOUT issuing any market-data SELECT of its own.
+
+    Wire honesty: the output's ``methodology_label`` field is
+    sourced from ``methodology.what_it_does`` below — NOT a
+    hardcoded literal — so a YAML edit to the disclosure flows
+    through to runtime.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool (yield_levels, curve_spread, butterfly,
+      curve_move_classifier, cross_market_spread), the OIS
+      level/spread/forward tools, and the linker
+      real_yield_level / real_yield_curve_spread / real_yield_butterfly /
+      breakeven_inflation_simple / forward_breakeven_simple /
+      breakeven_curve_spread / cross_country_breakeven_spread_simple
+      tools — the cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches every sibling level / spread /
+      butterfly tool.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every other rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The breakeven
+      butterfly series is in BPS so changes go through
+      period_changes(already_bps=True), i.e. plain subtraction (no
+      *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as breakeven_inflation_simple / breakeven_curve_spread /
+  # real_yield_butterfly / sovereign butterfly.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies inside each
+      composed spot breakeven primitive's pivot/align step at each
+      endpoint; the butterfly layer itself uses a strict inner join
+      on trade_date to avoid synthesising butterfly points.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (butterfly, period changes, range,
+  # endpoint breakevens, wing spreads)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current breakeven butterfly, daily/weekly/
+      monthly changes, trailing high/low, endpoint breakevens, wing
+      spreads) to 0.01 bps.  Display precision; matches sovereign
+      curve_spread / cross_market_spread / OIS spread tools / linker
+      breakeven_inflation_simple / breakeven_curve_spread.
+      Threaded explicitly into period_changes(decimals=...) so the
+      delta_bps default of 2 cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4
+      is not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct
+  # ---------------------------------------------------------------------------
+  # Used by the composed spot breakeven primitive for its
+  # nominal_yield_pct / real_yield_pct / breakeven_pct display fields
+  # — kept aligned with the rest of the rates tools so the cross-
+  # config lint stays clean.
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / linker level tool.  Kept here for cross-tool
+      convention agreement; the breakeven butterfly itself is
+      reported in bps.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (short_years, belly_years,
+  # long_years)
+  # ---------------------------------------------------------------------------
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the short_years / belly_years /
+      long_years fields in current_metrics.  4 decimals matches the
+      sibling breakeven_curve_spread / real_yield_butterfly /
+      forward_breakeven_simple value the cross-config lint enforces;
+      this tool reuses the same convention name + value.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for both legs (all three
+  # endpoints)
+  # ---------------------------------------------------------------------------
+  # Linkers and nominal sovereigns publish their yield-to-maturity
+  # under the same Bloomberg ``YLD_YTM_MID`` mnemonic.  Reusing the
+  # convention name + value keeps the cross-config lint clean.
+  # LLM/HTTP wrappers MUST use the empty/None sentinel so this
+  # default flows through.  This default is passed unchanged to ALL
+  # THREE inner ``calculate_breakeven_inflation_simple`` calls (both
+  # legs of all three endpoints — six DB reads in total).
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical observation for both
+      nominal sovereigns AND inflation linkers — the difference is
+      the underlying instrument_type, not the field code.  The
+      instrument-type discriminator is enforced in code on the DB
+      read for both legs at all three endpoints (inherited from the
+      spot breakeven primitive's no-proxy guard); this default
+      applies to every leg of every endpoint unless the caller
+      explicitly overrides per query.
+
+methodology:
+  what_it_does: |
+    Same-country bond-implied breakeven butterfly (3-point breakeven-
+    inflation-compensation curvature) between three breakeven tenors
+    of the same nominal/linker pair (e.g. UST/USD_TIPS 5s10s30s
+    breakeven butterfly, UK_GILT/GBP_LINKER 2s10s30s breakeven
+    butterfly, FR_OAT/EUR_FR_LINKER 2s5s10s breakeven butterfly,
+    CANADA_GOVT/CAD_RRB 5s10s30s breakeven butterfly).  Computed
+    per-trade-date via the FIXED simple-butterfly weighting:
+
+      butterfly_bps = belly_breakeven_bps
+                    - 0.5 * (short_breakeven_bps + long_breakeven_bps)
+
+    where ``short_breakeven_bps`` / ``belly_breakeven_bps`` /
+    ``long_breakeven_bps`` are the spot bond-implied breakevens at
+    ``short_tenor`` / ``belly_tenor`` / ``long_tenor`` respectively
+    (each computed by ``calculate_breakeven_inflation_simple`` —
+    same instrument-type no-proxy guard, same same-country
+    invariant).  The three endpoint series are aligned per-trade-
+    date via a strict pandas inner-join on calendar trade_date
+    AFTER each is computed independently; the butterfly is computed
+    only on dates where ALL THREE endpoints exist (no synthetic
+    butterfly points are produced).
+
+    Fixed simple-butterfly weighting: weight tuple
+    ``(-0.5, +1.0, -0.5)`` applied to ``(short, belly, long)``
+    respectively.  Equivalent to
+    ``0.5 * (2 * belly - short - long)``.  Sign convention:
+    POSITIVE = belly is CHEAP versus the half-weighted wings (i.e.
+    belly breakeven is HIGH relative to the wings); NEGATIVE =
+    belly is RICH.  Matches sovereign_bonds/butterfly's and
+    inflation_indexed_bonds/real_yield_butterfly's sign convention.
+
+    Same-country construction only: the nominal sovereign and
+    linker legs must share country and currency (e.g. UST +
+    USD_TIPS, UK_GILT + GBP_LINKER, FR_OAT + EUR_FR_LINKER,
+    CANADA_GOVT + CAD_RRB).  Cross-country pairs (e.g. DE_BUND vs
+    EUR_FR_LINKER, or UK_GILT vs USD_TIPS) are refused at compute
+    time with a controlled error envelope; this invariant is
+    enforced in code (not via a YAML allow-list) per
+    DESIGN_PRINCIPLES.md §5 and is inherited from the spot
+    breakeven primitive's ``_enforce_same_country_invariant``
+    helper which fires BEFORE any market-data SELECT.
+
+    The output is the CURVATURE of the bond-implied breakeven
+    curve — i.e. generic breakeven / inflation compensation —
+    distinct from a breakeven curve spread (2-point difference)
+    and from a nominal sovereign butterfly (3-point curvature of
+    nominal yields).  Each endpoint breakeven carries an
+    inflation risk premium and a relative liquidity premium
+    between the nominal sovereign and the linker, and the
+    butterfly inherits all three at each endpoint.  This is NOT a
+    curvature of pure expected inflation — use as a proxy for the
+    curvature of inflation expectations only with that caveat in
+    mind.
+
+  assumptions:
+    - "Same-country invariant: all three endpoints share
+       ``(country, currency)`` from the underlying breakeven
+       primitive's invariant guard — the butterfly primitive
+       inherits the guard transitively and does NOT relax it.
+       When a cross-country pair is passed (e.g. DE_BUND vs
+       EUR_FR_LINKER, or UK_GILT vs USD_TIPS), the inner breakeven
+       call returns the controlled error envelope and the
+       butterfly tool propagates it (with a clear short/belly/long
+       endpoint attribution) WITHOUT issuing any market-data
+       SELECT.  Valid pairs include UST + USD_TIPS, UK_GILT +
+       GBP_LINKER, FR_OAT + EUR_FR_LINKER, CANADA_GOVT + CAD_RRB."
+    - "Each endpoint breakeven is computed by composing
+       ``calculate_breakeven_inflation_simple`` once per endpoint
+       tenor, passing the same ``ToolConfig`` so methodology stays
+       consistent.  This inherits the spot primitive's no-proxy
+       guard (instrument_type filter on each leg) and same-country
+       invariant for free."
+    - "If any endpoint breakeven returns its own controlled error
+       envelope, this tool surfaces a controlled error envelope of
+       its own that names which endpoint(s) failed (short_tenor /
+       belly_tenor / long_tenor) and propagates the inner error
+       context."
+    - "Three-tenor ordering is structural: short_tenor must map to
+       a strictly smaller year fraction than belly_tenor, and
+       belly_tenor strictly smaller than long_tenor, computed via
+       ``shared.analytics.curve_bootstrap.tenor_to_years``.  A
+       caller passing inverted or duplicate tenors is rejected at
+       the schema layer; the tool does NOT silently swap them."
+    - "Per-trade-date alignment: the three endpoint breakeven
+       series are aligned via a strict pandas inner-join on
+       trade_date AFTER each is computed independently from the
+       spot primitive.  No ffill across the join — dates where ANY
+       endpoint has no data are dropped from the butterfly series."
+    - "The breakeven butterfly series is in BPS throughout — all
+       three endpoints arrive in bps from the spot primitive
+       (which already returns ``breakeven_bps`` per row) and the
+       arithmetic is performed in bps.  ``daily/weekly/monthly``
+       changes use period_changes with already_bps=True (plain
+       subtraction); ``bps_round_decimals`` is threaded through
+       explicitly so the YAML is authoritative."
+    - "The snapshot's ``current_butterfly_bps`` equals
+       ``time_series[-1].butterfly_bps`` and
+       ``time_series_butterfly.rows[-1].value`` bit-for-bit at the
+       YAML's ``bps_round_decimals``; same boundary-rounding
+       discipline as breakeven_curve_spread / real_yield_butterfly /
+       breakeven_inflation_simple."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       breakeven_inflation_simple / breakeven_curve_spread /
+       real_yield_butterfly / OIS rate_level)."
+    - "The output is INFLATION COMPENSATION curvature, NOT a
+       curvature of pure expected inflation.  Each endpoint
+       breakeven carries an inflation risk premium and a relative
+       liquidity premium between the nominal sovereign and the
+       linker, and the butterfly inherits all three at each
+       endpoint.  Use as a proxy for the curvature of inflation
+       expectations only with that caveat in mind.  The honesty
+       disclosure is threaded onto the wire via
+       ``current_metrics.methodology_label`` and surfaced again
+       inside each canonical TimeSeries description so downstream
+       readers cannot misread the output."
+    - "Breakeven butterflies can be negative across parts of
+       2008-2020 history (when the belly outperformed the wings —
+       i.e. belly breakeven was RICH relative to a half-weighted
+       wings average).  The math is unchanged; the wire types
+       tolerate negative values."
+
+  citations:
+    - "bond_implied_breakeven_inflation_v1 (composed primitive — see
+       breakeven_inflation_simple/config.yaml for the spot
+       methodology this tool inherits)."
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_1y_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_sample_std (registered in
+       docs/architecture/methodology_sources.md)."
+    - "bloomberg_field_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "derived_from_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "team_judgment_pending_review (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked
+       at 252 because the output fields high_252d_bps / low_252d_bps
+       / percentile_252d embed the number.  Path to configurability:
+       rename schema fields to high_window_bps / low_window_bps /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute().  Same
+       wire-freeze as breakeven_inflation_simple /
+       breakeven_curve_spread / real_yield_butterfly /
+       cross_market_spread / yield_levels / real_yield_level."
+    - "Duration-neutral / DV01-weighted butterfly weights.  Today:
+       fixed simple-butterfly weighting (-0.5/+1.0/-0.5 on
+       short/belly/long via the half-wings form).  Some desks
+       prefer 50-50 weights or duration-neutral weights for
+       hedging analysis.  Subjective methodology choice;
+       documented here so future readers know it was considered
+       and deferred — would ship as a separate primitive when the
+       DV01 metadata is wired."
+    - "Cross-country breakeven butterfly (e.g. comparing US
+       2s5s10s breakeven curvature to UK 2s5s10s breakeven
+       curvature) — a separate primitive when the catalog gets to
+       it.  Different concept than this primitive (which is a
+       same-country curvature object on a single nominal/linker
+       pair)."
+    - "Inflation-risk-premium- and liquidity-premium-adjusted
+       breakeven butterfly.  Like its spot / forward / curve-spread
+       counterparts, a desk-grade pure-expected-inflation
+       curvature read needs IRP / liquidity adjustments that
+       depend on metadata the repo does not yet ingest.  When that
+       lands, the adjusted variant ships as a separate primitive
+       (different concept), NOT as a config knob on this one."

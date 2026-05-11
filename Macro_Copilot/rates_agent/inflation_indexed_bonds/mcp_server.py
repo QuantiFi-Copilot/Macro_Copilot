@@ -56,6 +56,20 @@ Tool surface
    butterfly weighting (belly - 0.5*(short+long)) — sign
    convention matches sovereign butterfly: POSITIVE = belly
    cheap, NEGATIVE = belly rich.
+9. calculate_breakeven_butterfly_tool — same-country bond-implied
+   breakeven butterfly (3-point breakeven-inflation-compensation
+   curvature) between three breakeven tenors of the same nominal/
+   linker pair (e.g. UST/USD_TIPS 5s10s30s breakeven butterfly,
+   UK_GILT/GBP_LINKER 2s10s30s breakeven butterfly); the
+   breakeven curvature object, distinct from a breakeven curve
+   spread (2-point difference) and from a real-yield butterfly
+   (3-point curvature of REAL yields in PERCENT, not breakevens
+   in BPS).  Fixed simple-butterfly weighting
+   (belly - 0.5*(short+long)) — sign convention matches sovereign
+   butterfly: POSITIVE = belly cheap (belly breakeven HIGH
+   relative to wings), NEGATIVE = belly rich.  Generic breakeven
+   / inflation compensation, NOT a curvature of pure expected
+   inflation.
 
 Subsequent linker primitives (scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
@@ -86,6 +100,7 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
+    BreakevenButterflyInput,
     BreakevenCurveSpreadInput,
     BreakevenInflationSimpleInput,
     CrossCountryBreakevenSpreadSimpleInput,
@@ -94,6 +109,10 @@ from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     RealYieldButterflyInput,
     RealYieldCurveSpreadInput,
     RealYieldLevelInput,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (  # noqa: E402
+    CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+    calculate_breakeven_butterfly,
 )
 from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (  # noqa: E402
     CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
@@ -1776,6 +1795,237 @@ def calculate_real_yield_butterfly_tool(
     if bespoke_rows or canonical_rows:
         logger.info(
             "[calculate_real_yield_butterfly_tool] withheld "
+            "%d bespoke + %d canonical butterfly rows + %d "
+            "zscore rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 9: calculate_breakeven_butterfly
+# ===========================================================================
+@mcp.tool()
+def calculate_breakeven_butterfly_tool(
+    nominal_curve_family: str,
+    linker_curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-country bond-implied breakeven butterfly
+    (3-point breakeven-inflation-compensation curvature) between
+    three breakeven tenors of the same nominal/linker pair (e.g.
+    UST/USD_TIPS 5s10s30s breakeven butterfly, UK_GILT/GBP_LINKER
+    2s10s30s breakeven butterfly, FR_OAT/EUR_FR_LINKER 2s5s10s
+    breakeven butterfly, CANADA_GOVT/CAD_RRB 5s10s30s breakeven
+    butterfly), plus period changes (in bps), 1-year z-score, and
+    deterministic historical context (high, low, percentile in
+    BPS).
+
+        butterfly_bps = belly_breakeven_bps
+                      - 0.5 * (short_breakeven_bps
+                               + long_breakeven_bps)
+
+    Equivalent to ``0.5 * (2*belly - short - long)``.  Sign
+    convention: POSITIVE = belly is CHEAP versus the half-weighted
+    wings (i.e. belly breakeven is HIGH relative to the wings);
+    NEGATIVE = belly is RICH.  Matches the sovereign sovereign_bonds/
+    calculate_butterfly_tool and inflation_indexed_bonds/
+    calculate_real_yield_butterfly_tool sign convention.  Each
+    endpoint breakeven (short_breakeven / belly_breakeven /
+    long_breakeven) is computed by the same desk-recognised spot-
+    breakeven primitive.
+
+    The output is the CURVATURE of the bond-implied BREAKEVEN curve
+    — i.e. generic breakeven / inflation compensation, NOT a
+    curvature of pure expected inflation.  Each endpoint breakeven
+    carries an inflation risk premium and a relative liquidity
+    premium between the nominal sovereign and the linker, and the
+    butterfly inherits all three at each endpoint.  The tool's
+    output includes an explicit ``methodology_label`` field carrying
+    the explicit fixed-simple-butterfly weighting AND the
+    compensation-vs-expectations caveat AND the sign convention;
+    preserve it when summarising the result to the user so the LLM
+    cannot misread the output.
+
+    Use this tool when the user asks about:
+    - Breakeven curve curvature (e.g. "Where's the US 5s10s30s
+      breakeven butterfly?", "Is the UK 2s10s30s breakeven
+      butterfly rich?")
+    - Breakeven butterfly moves (e.g. "How much has the US 5s10s30s
+      breakeven butterfly moved this week?")
+    - Breakeven butterfly extremes (e.g. "Is the FR 2s5s10s
+      breakeven butterfly at a 1-year low?")
+    - Decomposing a breakeven butterfly move (this tool returns the
+      butterfly AND the three endpoint breakevens + the two wing
+      spreads used to form it).
+
+    Do NOT use this tool for:
+    - Nominal sovereign butterflies — those belong to the
+      sovereign-bond agent's ``calculate_butterfly_tool``.
+    - Real-yield butterflies — call
+      ``calculate_real_yield_butterfly_tool``.
+    - Breakeven curve SPREADS (2-point, 2s10s breakeven) — call
+      ``calculate_breakeven_curve_spread_tool``.
+    - Pure expected-inflation curvature reads — bond-implied
+      breakeven butterflies are compensation curvature, not
+      expectations curvature.
+    - Cross-country breakeven comparisons — the tool refuses
+      cross-country pairs (e.g. DE_BUND vs EUR_FR_LINKER, or
+      UK_GILT vs USD_TIPS) at compute time with a controlled
+      error envelope.
+
+    Parameters
+    ----------
+    nominal_curve_family : str
+        Nominal sovereign curve identifier exactly as stored in
+        instrument_master.  Examples: 'UST', 'UK_GILT', 'FR_OAT',
+        'CANADA_GOVT'.  This leg is filtered honestly with
+        instrument_type='sovereign_benchmark' on the DB read at
+        ALL THREE endpoint tenors; passing a linker curve here
+        returns a controlled error envelope.
+    linker_curve_family : str
+        Sovereign linker curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_TIPS', 'GBP_LINKER',
+        'EUR_FR_LINKER', 'CAD_RRB'.  This leg is filtered honestly
+        with instrument_type='inflation_linker' on the DB read at
+        ALL THREE endpoint tenors.
+    short_tenor : str
+        Short wing tenor of the breakeven butterfly — e.g. '2Y' for
+        2s5s10s, '5Y' for 5s10s30s.  Must be present on BOTH curves
+        at this country.
+    belly_tenor : str
+        Belly (body) tenor of the breakeven butterfly — e.g. '5Y'
+        for 2s5s10s, '10Y' for 5s10s30s.  Must be strictly between
+        ``short_tenor`` and ``long_tenor`` in year-fraction terms.
+    long_tenor : str
+        Long wing tenor of the breakeven butterfly — e.g. '10Y' for
+        2s5s10s, '30Y' for 5s10s30s.  Must be strictly longer than
+        ``belly_tenor``.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing
+        range window.
+    field_name : str, optional
+        Bloomberg field mnemonic for ALL SIX underlying yield series
+        (nominal + linker at each of short_tenor, belly_tenor,
+        long_tenor).  Leave as the default empty string ""  to use
+        the bundled ``default_field_name`` convention from
+        breakeven_butterfly/config.yaml (currently 'YLD_YTM_MID').
+        Pass an explicit field name to override per call.  Mirrors
+        the empty-string sentinel pattern used by the other rates
+        tools so the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = BreakevenButterflyInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_breakeven_butterfly_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_butterfly_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the breakeven_butterfly tool's bundled config explicitly
+    # so the dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors the
+    # calculate_real_yield_butterfly_tool and
+    # calculate_breakeven_curve_spread_tool wrappers exactly.
+    try:
+        bb_config = load_tool_config(BREAKEVEN_BUTTERFLY_CONFIG_PATH)
+        result = calculate_breakeven_butterfly(
+            engine=engine, params=params, config=bb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_breakeven_butterfly_tool] unhandled "
+            "error for %s vs %s @ %s%s%s",
+            params.nominal_curve_family,
+            params.linker_curve_family,
+            params.short_tenor,
+            params.belly_tenor,
+            params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_breakeven_butterfly_tool failed "
+                    f"for {params.nominal_curve_family} vs "
+                    f"{params.linker_curve_family} @ "
+                    f"{params.short_tenor}{params.belly_tenor}"
+                    f"{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_breakeven_butterfly_tool] tool call "
+        "complete: %s vs %s @ %s%s%s → %s",
+        params.nominal_curve_family,
+        params.linker_curve_family,
+        params.short_tenor,
+        params.belly_tenor,
+        params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the
+    # LLM (frontend REST path returns the full payload).  Same
+    # convention as the other rates tools — the LLM doesn't need
+    # every historical row to answer "where's the US 5s10s30s
+    # breakeven butterfly?".
+    stripped_keys = {
+        "time_series",
+        "time_series_butterfly",
+        "time_series_zscore",
+    }
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_butterfly", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_breakeven_butterfly_tool] withheld "
             "%d bespoke + %d canonical butterfly rows + %d "
             "zscore rows from LLM context.",
             bespoke_rows,
