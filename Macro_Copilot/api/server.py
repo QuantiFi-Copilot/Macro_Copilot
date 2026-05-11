@@ -39,7 +39,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.dependencies import init_engine, settings
+from api.dependencies import (
+    dispose_checkpointer_pool,
+    init_checkpointer_pool,
+    init_engine,
+    settings,
+)
 from api.routes.rates import router as rates_router
 from api.routes.workflows import router as workflows_router
 from api.routes.library import router as library_router
@@ -62,13 +67,50 @@ logger = logging.getLogger("api.server")
 async def lifespan(app: FastAPI):
     """Manage application lifecycle.
 
-    - **Startup**: create the SQLAlchemy engine pool.
-    - **Shutdown**: dispose the engine pool (close all DB connections).
+    - **Startup**: create the SQLAlchemy engine pool AND the LangGraph
+      checkpointer's psycopg3 connection pool.  ``AsyncPostgresSaver.setup()``
+      runs during pool init to ensure the framework's tables exist in
+      the ``langgraph_checkpoint`` schema (created by Alembic migration
+      ``0003_langgraph_checkpoint_schema``).
+    - **Shutdown**: dispose both pools.
+
+    Two pools, two Postgres drivers (psycopg2 for SQLAlchemy / ingestion,
+    psycopg3 for the async checkpointer), one Postgres.  This split is
+    documented in ``docs/architecture/state_schema.md``.
+
+    Checkpointer pool init failure logic
+    ------------------------------------
+    If ``init_checkpointer_pool()`` raises (e.g. Postgres is down or
+    the ``langgraph_checkpoint`` schema does not exist because alembic
+    has not been run), the API starts WITHOUT a checkpointer pool.
+    WebSocket sessions will fall back to in-memory state (no durability
+    across restart) and emit a clear warning at handshake time.  This
+    is the right operational contract: an API that can serve REST
+    traffic but has no chat-state durability is more useful than an
+    API that refuses to start.
     """
     logger.info("Initialising database engine...")
     engine = init_engine()
     logger.info("Database engine ready.  Pool size=%s", engine.pool.size())
+
+    try:
+        await init_checkpointer_pool()
+        logger.info("LangGraph checkpointer pool ready")
+    except Exception as exc:
+        # See docstring — degraded operation rather than refuse to start.
+        logger.error(
+            "Failed to initialise checkpointer pool; WebSocket sessions "
+            "will run with in-memory state (lost on restart): %s",
+            exc,
+        )
+
     yield
+
+    logger.info("Shutting down — disposing checkpointer pool.")
+    try:
+        await dispose_checkpointer_pool()
+    except Exception:
+        logger.exception("Error disposing checkpointer pool (non-fatal)")
     logger.info("Shutting down — disposing database engine.")
     engine.dispose()
 

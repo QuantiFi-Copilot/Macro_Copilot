@@ -56,7 +56,10 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import AsyncIterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Optional
+
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 
 from orchestrator.config import (
     DOMAIN_MCP_SERVERS,
@@ -64,6 +67,9 @@ from orchestrator.config import (
     LLM_MODEL,
     LLM_TEMPERATURE,
 )
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
 from orchestrator.contracts import (
     ChildResponse,
     ChildStatus,
@@ -115,15 +121,50 @@ class CopilotSession:
     ----------
     thread_id : Optional[str]
         Session id.  Auto-generated if omitted.
-    stateless : bool, default True
+    stateless : bool, default False
         When True, each user turn gets a unique checkpointer thread_id
-        per child so prior history doesn't accumulate in context.  Set
-        False only for future "intelligence mode" multi-turn work.
+        per child (legacy behavior preserved for tests + CLI) AND the
+        session uses an in-memory ``MemorySaver`` regardless of
+        ``checkpointer_pool``.  When False (the new default after
+        Phase 0 PR 5), conversation state persists across turns within
+        a session — and if a ``checkpointer_pool`` is provided, it
+        persists across server restarts as well.
+    checkpointer_pool : Optional[AsyncConnectionPool]
+        psycopg3 async connection pool to back the LangGraph
+        checkpointer.  When provided AND ``stateless=False``, the
+        session uses ``AsyncPostgresSaver(pool)`` so conversation
+        state lives in the ``langgraph_checkpoint`` Postgres schema
+        and survives Python process restarts.  When ``None``, the
+        session uses ``MemorySaver`` (in-process; lost on restart).
+        Tests that don't need durability omit this; the production
+        WebSocket path injects it from
+        ``api.dependencies.get_checkpointer_pool()``.
+
+    Checkpointer matrix
+    -------------------
+    +-----------+--------------+--------------+------------------+----------------+
+    | stateless | pool         | thread_id    | checkpointer     | survives       |
+    |           |              |              |                  | restart?       |
+    +===========+==============+==============+==================+================+
+    | True      | any          | per-turn     | MemorySaver      | no             |
+    +-----------+--------------+--------------+------------------+----------------+
+    | False     | None         | per-session  | MemorySaver      | no (in-proc    |
+    |           |              | stable       |                  | only)          |
+    +-----------+--------------+--------------+------------------+----------------+
+    | False     | provided     | per-session  | AsyncPostgres-   | YES            |
+    |           |              | stable       | Saver(pool)      |                |
+    +-----------+--------------+--------------+------------------+----------------+
     """
 
-    def __init__(self, thread_id: Optional[str] = None, stateless: bool = True):
+    def __init__(
+        self,
+        thread_id: Optional[str] = None,
+        stateless: bool = False,
+        checkpointer_pool: Optional["AsyncConnectionPool"] = None,
+    ):
         self.thread_id = thread_id or f"ws-{uuid.uuid4().hex[:12]}"
         self.stateless = stateless
+        self._checkpointer_pool = checkpointer_pool
         self._turn_counter = 0
 
         self._supervisor: Supervisor | None = None
@@ -238,6 +279,12 @@ class CopilotSession:
                 model_name=LLM_MODEL,
                 temperature=LLM_TEMPERATURE,
                 max_tokens=LLM_MAX_TOKENS,
+                # Phase 0 PR 5: every domain child shares the same
+                # checkpointer.  Per-domain thread isolation is achieved
+                # by ``_child_thread_id`` returning a domain-suffixed
+                # thread id, NOT by giving each child its own
+                # checkpointer object.
+                checkpointer=self._make_checkpointer(),
             )
             self._child_open_locks[domain] = asyncio.Lock()
 
@@ -1252,12 +1299,49 @@ class CopilotSession:
     # ------------------------------------------------------------------
 
     def _child_thread_id(self, turn_label: str, domain: Domain) -> str:
-        """Generate a per-(turn, domain) thread id for the child's
-        LangGraph checkpointer.  In stateless mode this is unique per
-        turn; otherwise it's shared per domain across turns."""
+        """Generate the child's LangGraph checkpointer thread id.
+
+        In stateless mode the id includes ``turn_label`` so each turn
+        writes to a fresh thread; the legacy V0 behavior used by tests
+        and the CLI REPL that explicitly opt out of durability.
+
+        In stateful mode (the new Phase 0 PR 5 default) the id is
+        stable per-(session, domain), so multiple turns of the same
+        session share the same thread and the checkpointer accumulates
+        conversation state.  When ``self._checkpointer_pool`` is
+        provided, that state lives in Postgres and survives Python
+        process restart — opening a fresh CopilotSession against the
+        same ``thread_id`` resumes the conversation.
+        """
         if self.stateless:
             return f"{self.thread_id}-{turn_label}-{domain.value}"
         return f"{self.thread_id}-{domain.value}"
+
+    def _make_checkpointer(self) -> BaseCheckpointSaver:
+        """Build the checkpointer this session's domain children share.
+
+        Selection matrix (see class docstring):
+
+          - stateless=True            → MemorySaver (in-memory; per-turn
+                                        fresh thread defeats persistence)
+          - stateless=False, pool=None → MemorySaver (in-memory;
+                                        in-process persistence only;
+                                        suitable for unit tests that
+                                        don't spin up Postgres)
+          - stateless=False, pool=set  → AsyncPostgresSaver(pool); durable
+                                        across process restart; this is
+                                        the production WebSocket path.
+
+        Called once per child at session ``open()`` time, NOT per turn.
+        """
+        if self.stateless:
+            return MemorySaver()
+        if self._checkpointer_pool is None:
+            return MemorySaver()
+        # Lazy import keeps the load-time cost off the no-pool path.
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        return AsyncPostgresSaver(self._checkpointer_pool)
 
 
 # ============================================================================

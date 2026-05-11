@@ -41,6 +41,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from api.dependencies import get_checkpointer_pool
 from orchestrator.config import validate as validate_config
 from orchestrator.session import CopilotSession
 
@@ -79,9 +80,21 @@ async def copilot_chat(ws: WebSocket):
     # ------------------------------------------------------------------
     # Start the copilot session (MCP subprocesses + graph)
     # ------------------------------------------------------------------
+    # Phase 0 PR 5: pull the LangGraph checkpointer pool from app state
+    # if available.  If it's None (init failed at startup; see
+    # api/server.py lifespan), the session falls back to in-memory
+    # state — degraded operation rather than refused connection.
+    checkpointer_pool = get_checkpointer_pool()
+    if checkpointer_pool is None:
+        logger.warning(
+            "Checkpointer pool unavailable; this session will use "
+            "in-memory state (conversation will not survive server "
+            "restart).  Check api startup logs for the underlying error."
+        )
+
     session: CopilotSession | None = None
     try:
-        session = CopilotSession()
+        session = CopilotSession(checkpointer_pool=checkpointer_pool)
         await session.open()
 
         await _send_event(ws, "ready", {

@@ -48,6 +48,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -124,6 +125,7 @@ class DomainAgentSession:
         model_name: str,
         temperature: float = 0.0,
         max_tokens: int = 4096,
+        checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
         self.domain = domain
         self._system_prompt = system_prompt
@@ -131,6 +133,14 @@ class DomainAgentSession:
         self._model_name = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
+        # Phase 0 PR 5: checkpointer is supplied by the parent
+        # CopilotSession.  ``None`` means "use a per-domain MemorySaver"
+        # — preserved as the backward-compat default for tests and
+        # one-shot CLI use that don't want durability.  In the
+        # production WebSocket path, the parent passes an
+        # ``AsyncPostgresSaver`` so conversation state survives server
+        # restarts.
+        self._checkpointer: BaseCheckpointSaver = checkpointer or MemorySaver()
 
         self._mcp_client: MultiServerMCPClient | None = None
         self._graph = None
@@ -200,11 +210,19 @@ class DomainAgentSession:
         builder.add_conditional_edges("agent", tools_condition)
         builder.add_edge("tools", "agent")
 
-        memory = MemorySaver()
-        self._graph = builder.compile(checkpointer=memory)
+        # The checkpointer was selected by the parent CopilotSession
+        # (see CopilotSession._make_checkpointer).  In stateless / no-pool
+        # paths this is ``MemorySaver``; in the durable path it's an
+        # ``AsyncPostgresSaver`` sharing a pool with all sibling
+        # DomainAgentSessions of this CopilotSession.
+        self._graph = builder.compile(checkpointer=self._checkpointer)
 
         self._is_open = True
-        logger.info("[%s] session ready", self.domain.value)
+        logger.info(
+            "[%s] session ready (checkpointer=%s)",
+            self.domain.value,
+            type(self._checkpointer).__name__,
+        )
 
     async def close(self) -> None:
         """Shut down the MCP subprocess."""

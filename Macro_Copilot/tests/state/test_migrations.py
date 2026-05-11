@@ -259,12 +259,13 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the no-op sentinel (0002), which chains onto
-        # 0001_initial_copilot_state.
-        assert version == "0002_noop_sentinel", (
-            f"Expected alembic_version to point at 0002_noop_sentinel, "
-            f"got {version!r}.  Either a new migration landed without "
-            "updating this test, or the head chain is broken."
+        # Latest head is the langgraph_checkpoint schema creation
+        # (0003, added in Phase 0 PR 5).  Chains: 0001 -> 0002 -> 0003.
+        assert version == "0003_langgraph_checkpoint_schema", (
+            f"Expected alembic_version to point at "
+            f"0003_langgraph_checkpoint_schema, got {version!r}.  "
+            "Either a new migration landed without updating this test, "
+            "or the head chain is broken."
         )
 
     def test_macro_data_schema_untouched(
@@ -284,7 +285,44 @@ class TestUpgradeHead:
             f"  before: {sorted(before)}\n"
             f"  after:  {sorted(after)}\n"
             "Migrations under this project's Alembic config MUST only "
-            "affect the copilot_state schema."
+            "affect copilot_state + langgraph_checkpoint (as namespace)."
+        )
+
+    def test_langgraph_checkpoint_schema_namespace_exists(
+        self, alembic_config, clean_schema
+    ) -> None:
+        """After ``alembic upgrade head``, the ``langgraph_checkpoint``
+        Postgres schema exists (created by migration
+        ``0003_langgraph_checkpoint_schema``) — empty, ready for
+        ``AsyncPostgresSaver.setup()`` to create its tables inside it
+        at API server startup.
+
+        Phase 0 PR 5 introduced this namespace.  The actual checkpoint
+        tables are NOT Alembic-managed; they're created by the
+        LangGraph framework's ``setup()`` and tested separately in
+        ``tests/state/test_postgres_checkpointer.py``."""
+        from alembic import command
+        from sqlalchemy import create_engine, text
+
+        command.upgrade(alembic_config, "head")
+
+        engine = create_engine(_DB_URL)
+        try:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT schema_name FROM information_schema.schemata "
+                        "WHERE schema_name = 'langgraph_checkpoint'"
+                    )
+                ).fetchone()
+        finally:
+            engine.dispose()
+        assert row is not None, (
+            "The langgraph_checkpoint schema namespace was not created "
+            "by alembic upgrade head.  Migration "
+            "0003_langgraph_checkpoint_schema is required for "
+            "AsyncPostgresSaver.setup() to land its tables in the right "
+            "schema."
         )
 
 
