@@ -93,12 +93,20 @@ async def _wipe_langgraph_schema(dsn: str) -> None:
 
 
 async def _make_pool(*, dsn: str = _DSN):
+    """Build a fresh AsyncConnectionPool matching the production
+    config in ``api/dependencies.init_checkpointer_pool``.  See that
+    function's docstring for the rationale on each kwarg
+    (``autocommit``, ``prepare_threshold``, ``row_factory``,
+    ``options``)."""
+    from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool
 
     pool = AsyncConnectionPool(
         conninfo=dsn,
         kwargs={
             "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
             "options": "-c search_path=langgraph_checkpoint,public",
         },
         min_size=1,

@@ -117,13 +117,24 @@ async def _wipe_langgraph_schema(dsn: str) -> None:
 
 async def _make_pool(*, dsn: str = _DSN, min_size: int = 1, max_size: int = 4):
     """Build a fresh AsyncConnectionPool matching the production config
-    in ``api/dependencies.init_checkpointer_pool``."""
+    in ``api/dependencies.init_checkpointer_pool``.
+
+    The four kwargs below mirror exactly what the production helper
+    uses so tests exercise the same connection-config surface — if a
+    bug ever surfaces under a specific kwarg combination in prod, the
+    same combination is in play here.  See
+    ``api/dependencies.init_checkpointer_pool`` for the rationale on
+    each kwarg.
+    """
+    from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool
 
     pool = AsyncConnectionPool(
         conninfo=dsn,
         kwargs={
             "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
             "options": "-c search_path=langgraph_checkpoint,public",
         },
         min_size=min_size,
@@ -193,7 +204,9 @@ class TestPoolSetup:
                     "AND table_name LIKE 'checkpoint%' "
                     "ORDER BY table_name"
                 )
-                tables = [row[0] for row in await cur.fetchall()]
+                # row_factory=dict_row on the pool means rows come
+                # back as dicts; access by column name.
+                tables = [row["table_name"] for row in await cur.fetchall()]
 
         for expected in CHECKPOINT_TABLES:
             assert expected in tables, (
