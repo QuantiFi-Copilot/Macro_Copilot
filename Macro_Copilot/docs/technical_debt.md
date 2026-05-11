@@ -213,14 +213,35 @@ FIX: Add columns like `extraction_coverage_ratio` and
      `extraction_expected_ticker_count` to the parquet output.
 EFFORT: Low.
 
-### 20. Normalized data hash stability
-WHERE: ingest_parquet.py (_compute_normalized_data_hash)
-WHAT: The dedup hash is computed from CSV serialization of the DataFrame.
-      Float formatting can vary across Python/Pandas versions, potentially
-      causing false hash mismatches.
-FIX: Pin the float format in the CSV serialization, or hash on a
-     deterministic binary representation.
-EFFORT: Low.
+### 20. Normalized data hash stability — [RESOLVED, Phase 0 PR 2]
+WHERE (was): ingest_parquet.py (_compute_normalized_data_hash)
+              shared/artifacts/lineage.py (_canonical_json + _compute_step_hash)
+WHAT (was):  The dedup hash was computed from CSV serialization of the
+             DataFrame; float formatting could vary across Python/Pandas
+             versions.  The lineage step hash used json.dumps(default=str),
+             which silently called str() on NumPy scalars / Pandas
+             Timestamps with version-dependent output.
+RESOLUTION:  Both hash sites now use an explicit canonicalization pass
+             that converts inputs to a strict allowlist (None / bool /
+             int / float / str / list / tuple / dict / date / datetime /
+             numpy scalar via .item() / .isoformat()-capable) and
+             rejects everything else with a clear TypeError.  NaN /
+             Infinity are rejected explicitly.
+
+             Ingestion: `ingestion/hashing.py` (extracted from
+             `ingest_parquet.py`) hashes a pure-Python `{columns, rows}`
+             JSON of the normalized DataFrame; no CSV, no NumPy in the
+             serialization path.
+
+             Lineage: `shared/artifacts/lineage._canonical_json` uses
+             `_canonicalize_for_hash` upfront and `allow_nan=False` on
+             the JSON encoder.
+
+             Pinned cross-version test vectors live in
+             `tests/state/test_hash_stability.py`, gated by a Python
+             3.11 + 3.12 CI matrix.  Any drift between Python versions
+             flips the pinned-hash assertions on the affected matrix
+             leg.
 
 Now let me address each concern that's still being raised:
 "Per-ticker failures don't set any_failures" (ChatGPT + Codex)

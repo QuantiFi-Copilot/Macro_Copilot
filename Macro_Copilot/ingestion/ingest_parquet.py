@@ -1,6 +1,5 @@
 import os
 import sys
-import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,30 +24,19 @@ from database.database import (  # noqa: E402
     count_instruments_in_load,
 )
 
+# The dedup hash logic lives in its own module so it can be imported
+# (and tested for cross-version stability) without dragging in the
+# google.cloud / database imports above.  Re-export the public name
+# under its historical alias for any external callers.
+from ingestion.hashing import (  # noqa: E402
+    NORMALIZED_HASH_EXCLUDED_COLUMNS,
+    compute_normalized_data_hash as _compute_normalized_data_hash,
+)
+
 # --- CONFIGURATION ---
 BUCKET_NAME = "macro-storage-bucket"
 GCP_KEY_FILENAME = "library-extractor-key.json"
 DEFAULT_VENDOR = "BLOOMBERG"
-
-NORMALIZED_HASH_EXCLUDED_COLUMNS = {
-    "playbook_hash",
-    "git_commit_hash",
-    "extractor_version",
-    "extraction_mode",
-    "requested_start_date",
-    "requested_end_date",
-    "extracted_at",
-    "source_file",
-    "source_file_name",
-    "source_file_hash",
-    "normalized_data_hash",
-    "load_id",
-    "created_at",
-    "updated_at",
-    "ingested_at",
-    "notes",
-    "status",
-}
 
 
 # ==============================================================================================
@@ -150,67 +138,11 @@ def _build_instrument_attributes(row: pd.Series, filename: str) -> Dict[str, Any
     return attrs
 
 
-def _normalize_hash_value(value: Any) -> str:
-    """
-    Convert values to a deterministic string representation for stable hashing.
-    """
-    if pd.isna(value):
-        return ""
-
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-
-    if hasattr(value, "isoformat") and not isinstance(value, str):
-        try:
-            return value.isoformat()
-        except Exception:
-            pass
-
-    if isinstance(value, bool):
-        return "true" if value else "false"
-
-    if hasattr(value, "item"):
-        try:
-            value = value.item()
-        except Exception:
-            pass
-
-    return str(value)
-
-
-
-def _build_normalized_hash_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a normalized dataframe for semantic dedup hashing.
-
-    The goal is to hash the meaningful extracted dataset contents while excluding
-    run-variant lineage fields such as extracted_at and playbook/git metadata.
-    """
-    normalized = df.copy()
-
-    keep_columns = [c for c in normalized.columns if c not in NORMALIZED_HASH_EXCLUDED_COLUMNS]
-    normalized = normalized[keep_columns]
-
-    for col in normalized.columns:
-        normalized[col] = normalized[col].map(_normalize_hash_value)
-
-    normalized = normalized.reindex(sorted(normalized.columns), axis=1)
-    normalized = normalized.sort_values(by=list(normalized.columns), kind="mergesort").reset_index(drop=True)
-    return normalized
-
-
-
-def _compute_normalized_data_hash(df: pd.DataFrame) -> str:
-    """
-    Compute a stable SHA256 hash of the economically meaningful dataframe contents.
-
-    This intentionally excludes run-specific lineage columns so identical extracted
-    data across runs will deduplicate even if extracted_at or parquet metadata changes.
-    """
-    normalized = _build_normalized_hash_dataframe(df)
-    csv_payload = normalized.to_csv(index=False, lineterminator="\n")
-    return hashlib.sha256(csv_payload.encode("utf-8")).hexdigest()
-
+# Hash + normalization helpers have been moved to ``ingestion.hashing``.
+# This module imports them from there at the top of the file so the
+# downstream ingestion flow code below uses the same implementation that
+# ``tests/state/test_hash_stability.py`` validates for cross-version
+# determinism.
 
 
 def _delete_existing_playbook_scope(

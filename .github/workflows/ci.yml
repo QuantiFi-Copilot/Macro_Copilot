@@ -23,9 +23,13 @@
 #   - It does not run the multi-agent prompt gauntlet.  That calls the
 #     real Anthropic API and is gauntlet-marked; it runs by hand.
 #
-# Hash-stability cross-version testing on Python 3.11 + 3.12 lands in
-# PR 2 alongside the hash-determinism fix.  PR 1's test-substrate job
-# runs on a single Python (3.12, matching environment.yml).
+# Cross-version hash-stability testing on Python 3.11 + 3.12 lives in
+# the test-substrate matrix below.  The new
+# `tests/state/test_hash_stability.py` file pins specific hash values
+# for both the lineage layer (`shared.artifacts.lineage._compute_step_hash`)
+# and the ingestion layer (`ingestion.hashing.compute_normalized_data_hash`).
+# If either recipe drifts between Python versions, the pinned values
+# stop matching on the affected matrix leg and CI fails.
 # =============================================================================
 
 name: CI
@@ -73,21 +77,28 @@ jobs:
         run: ruff check .
 
   # ---------------------------------------------------------------------------
-  # Test — pytest over the substrate-level subset (no external deps)
+  # Test — pytest over the substrate-level subset (no external deps),
+  # matrixed on Python 3.11 and 3.12 to enforce cross-version determinism
+  # for the new tests/state/test_hash_stability.py pinned hashes.
   # ---------------------------------------------------------------------------
   test-substrate:
-    name: pytest (substrate)
+    name: pytest (substrate, py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install test dependencies
@@ -95,7 +106,7 @@ jobs:
         # runtime stack (langchain, fastapi, mcp, prefect, google-cloud,
         # xbbg/blpapi) is not needed here because these tests exercise
         # pure-Python data structures (typed artifacts, lineage steps,
-        # YAML config, the bridge adapter).
+        # YAML config, the bridge adapter, the ingestion hash module).
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
@@ -117,11 +128,12 @@ jobs:
 
       - name: pytest (substrate subset)
         # The subset below is pure-substrate: typed artifacts, lineage
-        # steps, tool / operator config validators, and the primitive
-        # -> operator bridge adapter.  None of these reach the DB, the
-        # MCP layer, or the LLM.  As we mark tests with the
-        # `@pytest.mark.integration` marker in subsequent PRs, this
-        # list expands toward `-m "not integration"` over the full
+        # steps, tool / operator config validators, the primitive ->
+        # operator bridge adapter, and the cross-version hash-stability
+        # gate (PR 2: pinned hashes for both lineage and ingestion).
+        # None of these reach the DB, the MCP layer, or the LLM.  As we
+        # mark tests with @pytest.mark.integration in subsequent PRs,
+        # this list expands toward `-m "not integration"` over the full
         # suite.
         run: |
           pytest \
@@ -129,4 +141,5 @@ jobs:
             Macro_Copilot/tests/test_tool_config.py \
             Macro_Copilot/tests/test_tool_config_lint.py \
             Macro_Copilot/tests/test_operator_config.py \
-            Macro_Copilot/tests/test_adapter_from_time_series.py
+            Macro_Copilot/tests/test_adapter_from_time_series.py \
+            Macro_Copilot/tests/state/test_hash_stability.py
