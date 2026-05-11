@@ -178,6 +178,7 @@ async def init_checkpointer_pool(
 
     # Lazy import keeps the module load-light when the checkpointer
     # isn't needed (e.g. CI jobs that only run substrate tests).
+    from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool
 
     from orchestrator.config import (
@@ -195,14 +196,43 @@ async def init_checkpointer_pool(
 
     pool = AsyncConnectionPool(
         conninfo=dsn,
+        # The four kwargs below are required by AsyncPostgresSaver
+        # when manually constructed against a pool (as opposed to
+        # using ``AsyncPostgresSaver.from_conn_string``).  Each maps
+        # directly to what the upstream library sets on connections
+        # it manages itself:
+        #
+        #   autocommit=True
+        #       Required by ``setup()`` because it issues
+        #       ``CREATE INDEX CONCURRENTLY`` which forbids
+        #       transaction blocks.  Regular checkpoint reads /
+        #       writes also work fine under autocommit (LangGraph
+        #       handles its own retry / consistency semantics at
+        #       the application layer).
+        #
+        #   prepare_threshold=0
+        #       Disables psycopg3's automatic statement-preparation
+        #       caching.  With the default (5) and a connection pool,
+        #       you can hit the canonical
+        #       ``cannot send pipeline when not in pipeline mode``
+        #       error when prepared-statement state on a pooled
+        #       connection drifts across handoffs.  LangGraph's
+        #       upstream ``from_conn_string`` sets this; we mirror
+        #       it.  See langchain-ai/langgraph#3193.
+        #
+        #   row_factory=dict_row
+        #       The checkpointer's queries access rows by name
+        #       (``row["thread_id"]``).  Without ``dict_row``,
+        #       psycopg3's default ``tuple_row`` would break those
+        #       lookups silently or noisily depending on the path.
+        #
+        #   options=-c search_path=...
+        #       Puts AsyncPostgresSaver's tables in our dedicated
+        #       schema rather than polluting ``public``.
         kwargs={
-            # autocommit is required for AsyncPostgresSaver.setup() —
-            # it uses CREATE INDEX CONCURRENTLY which forbids txn
-            # blocks.  Regular checkpoint writes work fine under
-            # autocommit.
             "autocommit": True,
-            # search_path puts AsyncPostgresSaver's tables in our
-            # dedicated schema rather than polluting public.
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
             "options": f"-c search_path={LANGGRAPH_CHECKPOINT_SCHEMA},public",
         },
         min_size=min_size,
