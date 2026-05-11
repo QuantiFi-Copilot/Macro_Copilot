@@ -142,4 +142,5 @@ jobs:
             Macro_Copilot/tests/test_tool_config_lint.py \
             Macro_Copilot/tests/test_operator_config.py \
             Macro_Copilot/tests/test_adapter_from_time_series.py \
-            Macro_Copilot/tests/state/test_hash_stability.py
+            Macro_Copilot/tests/state/test_hash_stability.py \
+            Macro_Copilot/tests/state/test_transactional_ingestion.py

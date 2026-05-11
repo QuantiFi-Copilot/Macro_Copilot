@@ -1,9 +1,62 @@
 import os
-import pandas as pd
-from typing import List, Dict, Any, Optional
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
-from sqlalchemy import create_engine, MetaData, Table, func, select
+from typing import Any, Dict, Iterator, List, Optional, Union
+
+import pandas as pd
+from sqlalchemy import MetaData, Table, create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.engine import Connection, Engine
+
+
+# A "connectable" — either an Engine or a Connection.  Functions that
+# touch the DB accept either:
+#
+#   - An Engine, in which case the function manages its own transaction
+#     internally (the legacy behavior).  Suitable for one-shot mutations
+#     that do not need to compose with sibling mutations under one txn.
+#
+#   - A Connection, in which case the function assumes the caller has
+#     already opened a transaction and DOES NOT begin/commit one itself.
+#     This is what makes it safe to call multiple mutating helpers under
+#     one ``with engine.begin() as conn:`` block and get a single
+#     atomic transaction.
+#
+# See ``docs/technical_debt.md`` item #1 (closed by Phase 0 PR 3) and the
+# call site in ``ingestion/ingest_parquet.py`` for the canonical example.
+Connectable = Union[Engine, Connection]
+
+
+@contextmanager
+def _txn(connectable: Connectable) -> Iterator[Connection]:
+    """Yield a Connection inside a transaction, regardless of which type
+    of connectable the caller passed.
+
+    Semantics:
+
+      - If ``connectable`` is an ``Engine``: opens ``engine.begin()`` and
+        yields the connection.  Exiting the ``with`` block commits on
+        success, rolls back on exception (standard SQLAlchemy 2.0
+        ``engine.begin()`` behavior).
+
+      - If ``connectable`` is a ``Connection``: yields it as-is via
+        ``nullcontext``.  No begin / commit is attempted because the
+        caller already owns the transaction; their outer ``engine.begin()``
+        block will commit or roll back the whole thing.
+
+    This lets every function in this module accept either an Engine
+    (one-shot, self-managed) or a Connection (composed under a caller-
+    owned transaction) with one shared idiom.
+    """
+    if isinstance(connectable, Engine):
+        with connectable.begin() as conn:
+            yield conn
+    else:
+        # Connection branch: do NOT start a transaction.  The caller's
+        # outer ``engine.begin()`` (or equivalent) owns the transaction
+        # boundary; our job is to USE their connection, not to fork one.
+        with nullcontext(connectable) as conn:
+            yield conn
 
 
 # ==============================================================================
@@ -252,7 +305,7 @@ def mark_load_audit_skipped_duplicate(
 
 
 def update_load_audit_status(
-    engine,
+    connectable: Connectable,
     load_id: int,
     status: str,
     notes: Optional[str] = None,
@@ -262,9 +315,19 @@ def update_load_audit_status(
 
     Used to transition a row from RUNNING → SUCCESS or RUNNING → FAILED
     after the destructive mutation phase completes or fails.
+
+    Connection contract
+    -------------------
+    Accepts either an :class:`Engine` (legacy callers; function manages
+    its own transaction) or a :class:`Connection` (composed under a
+    caller-owned transaction — typical for the critical
+    delete + upsert + audit-flip section in
+    ``ingestion/ingest_parquet.py``).  See ``_txn`` for the dispatch rule.
+
+    Closes ``docs/technical_debt.md`` item #1 for this function.
     """
     metadata = MetaData(schema="macro_data")
-    table = Table("load_audit", metadata, autoload_with=engine)
+    table = Table("load_audit", metadata, autoload_with=connectable)
 
     update_values: Dict[str, Any] = {"status": status}
     if notes is not None:
@@ -272,7 +335,7 @@ def update_load_audit_status(
 
     stmt = table.update().where(table.c.load_id == load_id).values(**update_values)
 
-    with engine.begin() as conn:
+    with _txn(connectable) as conn:
         conn.execute(stmt)
 
     print(f"[DB] Updated load_audit row load_id={load_id} → status={status}.")
@@ -304,7 +367,7 @@ def count_instruments_in_load(engine, load_id: int) -> int:
 # DYNAMIC DAILY MARKET DATA (THE 'WHAT')
 # ==============================================================================
 def upsert_market_data_daily(
-    engine,
+    connectable: Connectable,
     df: pd.DataFrame,
     instrument_id_map: Optional[Dict[str, int]] = None,
     load_id: Optional[int] = None,
@@ -319,6 +382,16 @@ def upsert_market_data_daily(
     If a record for (trade_date, instrument_id, field_name) exists, it updates:
     - field_value
     - load_id
+
+    Connection contract
+    -------------------
+    Accepts either an :class:`Engine` (legacy callers; function manages
+    its own transaction) or a :class:`Connection` (composed under a
+    caller-owned transaction — typical for the critical
+    delete + upsert + audit-flip section in
+    ``ingestion/ingest_parquet.py``).  See ``_txn`` for the dispatch rule.
+
+    Closes ``docs/technical_debt.md`` item #1 for this function.
     """
     if df.empty:
         print("[DB] DataFrame is empty. Skipping market_data_daily upsert.")
@@ -363,7 +436,7 @@ def upsert_market_data_daily(
     records = df_clean[target_columns].to_dict(orient="records")
 
     metadata = MetaData(schema="macro_data")
-    table = Table("market_data_daily", metadata, autoload_with=engine)
+    table = Table("market_data_daily", metadata, autoload_with=connectable)
 
     stmt = insert(table).values(records)
     update_set = {"field_value": stmt.excluded.field_value}
@@ -375,7 +448,7 @@ def upsert_market_data_daily(
         set_=update_set,
     )
 
-    with engine.begin() as conn:
+    with _txn(connectable) as conn:
         conn.execute(stmt)
 
     print(f"[DB] Successfully upserted {len(records)} rows into market_data_daily.")
@@ -385,7 +458,7 @@ def upsert_market_data_daily(
 # BACKWARD-COMPATIBILITY WRAPPER
 # ==============================================================================
 def upsert_market_data_timeseries(
-    engine,
+    connectable: Connectable,
     df: pd.DataFrame,
     instrument_id_map: Optional[Dict[str, int]] = None,
     load_id: Optional[int] = None,
@@ -393,9 +466,12 @@ def upsert_market_data_timeseries(
     """
     Backward-compatible wrapper so older ingestion code can still call the old
     function name while writing into the new `market_data_daily` table.
+
+    Accepts either an Engine or a Connection — same contract as
+    :func:`upsert_market_data_daily`.
     """
     return upsert_market_data_daily(
-        engine=engine,
+        connectable=connectable,
         df=df,
         instrument_id_map=instrument_id_map,
         load_id=load_id,

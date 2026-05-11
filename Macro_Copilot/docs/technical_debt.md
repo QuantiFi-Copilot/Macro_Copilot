@@ -6,19 +6,46 @@
 
 ## CRITICAL — Fix before production traffic
 
-### 1. Non-atomic delete + upsert in ingestion
-WHERE: ingest_parquet.py (lines 493, 529), database.py (all helper functions)
-WHAT: The overlap delete and market_data_daily upsert run in separate
-      transactions. If the insert fails after the delete commits, the DB
-      is left partially refreshed until a retry repairs it.
-MITIGATED BY: RUNNING/FAILED audit trail makes the state visible; the
-      parquet stays in GCS for retry.
-FIX: Refactor database.py functions (upsert_market_data_daily,
-     _delete_existing_playbook_scope, _delete_existing_playbook_window)
-     to accept a connection object instead of an engine, so the caller
-     can wrap delete + upsert + audit update in a single transaction.
-EFFORT: Medium — touches every function signature in database.py and
-        every call site in ingest_parquet.py.
+### 1. Non-atomic delete + upsert in ingestion — [RESOLVED, Phase 0 PR 3]
+WHERE (was): ingest_parquet.py (lines 493, 529), database.py (helpers)
+WHAT (was):  The overlap delete and market_data_daily upsert ran in
+             separate transactions.  If the insert failed after the
+             delete committed, the DB was left partially refreshed
+             until a retry repaired it.
+RESOLUTION:  Four database helpers now accept a ``Connectable`` (either
+             an ``Engine`` for self-managed transactions or a
+             ``Connection`` for caller-managed transactions):
+
+               - ``database.upsert_market_data_daily``
+               - ``database.update_load_audit_status``
+               - ``ingest_parquet._delete_existing_playbook_scope``
+               - ``ingest_parquet._delete_existing_playbook_window``
+
+             ``database._txn`` is the shared dispatch context manager:
+             if handed an Engine it opens ``engine.begin()`` (legacy
+             behavior); if handed a Connection it yields it as-is
+             (caller owns the txn boundary).
+
+             ``ingest_parquet.run_ingestion_pipeline`` now wraps the
+             critical DELETE → UPSERT → audit-flip section in a single
+             ``with engine.begin() as conn:`` block, passing ``conn`` to
+             every helper.  A failure between any two operations rolls
+             back the whole transaction; the outer ``except`` handler
+             then flips the audit row to FAILED on a SEPARATE
+             transaction.
+
+             ``instrument_master`` upsert remains OUTSIDE the critical
+             section because it is idempotent on (vendor, vendor_ticker)
+             and including it would extend the lock window without
+             correctness benefit.
+
+             Test coverage: ``tests/state/test_transactional_ingestion.py``
+             pins the dispatch contract (Engine vs Connection paths),
+             the composition contract (helpers do NOT open
+             sub-transactions when given a Connection), and the
+             rollback contract (an exception in the critical block
+             causes ``__exit__`` to receive the exception, which in
+             production SQLAlchemy issues ROLLBACK).
 
 ### 2. Rolling contract metadata (instrument_master SCD2)
 WHERE: schema.sql (instrument_master), database.py (upsert_instrument_master)
