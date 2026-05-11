@@ -118,6 +118,12 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_si
     CrossCountryBreakevenSpreadSimpleOutput,
     calculate_cross_country_breakeven_spread_simple,
 )
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
+    CONFIG_PATH as REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+    RealYieldButterflyInput,
+    RealYieldButterflyOutput,
+    calculate_real_yield_butterfly,
+)
 from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
     CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
     RealYieldCurveSpreadInput,
@@ -444,6 +450,29 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # yields), rolling z-score in Z_SCORE units.  Operator-
             # layer unit-compat checks rely on these declarations.
             "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_real_yield_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_real_yield_butterfly_tool",
+        callable=calculate_real_yield_butterfly,
+        input_class=RealYieldButterflyInput,
+        output_class=RealYieldButterflyOutput,
+        config_path=REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen real-yield-butterfly row list —
+            # frontend consumes ``butterfly_pct`` per row (the
+            # butterfly is in PERCENT, NOT bps, because real yields
+            # are in PERCENT and not multiplied by 100; mirrors the
+            # same-curve real_yield_curve_spread PERCENT convention
+            # and is distinct from the sovereign butterfly's BPS
+            # convention).
+            "time_series": "percent",
+            # Canonical TimeSeries: real-yield butterfly history in
+            # PERCENT (same units as the underlying real yields),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "percent",
             "time_series_zscore": "z_score",
         },
     ),

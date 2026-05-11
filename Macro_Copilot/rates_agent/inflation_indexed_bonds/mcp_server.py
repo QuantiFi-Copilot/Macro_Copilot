@@ -46,6 +46,16 @@ Tool surface
    INDEX-FAMILY MISMATCH and MARKET-STRUCTURE MISMATCH caveats
    (CPI-U vs HICP vs RPI vs CAN_CPI; cross-country linker-
    liquidity / issuance-size differences).
+8. calculate_real_yield_butterfly_tool — same-country linker
+   real-yield butterfly (curvature) on a single sovereign linker
+   curve (e.g. USD_TIPS 5s10s30s real-yield butterfly,
+   GBP_LINKER 2s10s30s real-yield butterfly); the real-yield
+   curvature object, distinct from a real-yield curve spread
+   (2-point difference) and from a nominal sovereign butterfly
+   (3-point curvature of nominal yields, in BPS).  Fixed simple-
+   butterfly weighting (belly - 0.5*(short+long)) — sign
+   convention matches sovereign butterfly: POSITIVE = belly
+   cheap, NEGATIVE = belly rich.
 
 Subsequent linker primitives (scanner_linkers, etc., per
 ``manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md``
@@ -81,6 +91,7 @@ from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     CrossCountryBreakevenSpreadSimpleInput,
     CrossCountryRealYieldSpreadSimpleInput,
     ForwardBreakevenSimpleInput,
+    RealYieldButterflyInput,
     RealYieldCurveSpreadInput,
     RealYieldLevelInput,
 )
@@ -103,6 +114,10 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_s
 from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (  # noqa: E402
     CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
     calculate_forward_breakeven_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (  # noqa: E402
+    CONFIG_PATH as REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+    calculate_real_yield_butterfly,
 )
 from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (  # noqa: E402
     CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
@@ -1550,6 +1565,218 @@ def calculate_cross_country_real_yield_spread_simple_tool(
         logger.info(
             "[calculate_cross_country_real_yield_spread_simple_tool] "
             "withheld %d bespoke + %d canonical spread rows + %d "
+            "zscore rows from LLM context.",
+            bespoke_rows,
+            canonical_rows,
+            len(result.get("time_series_zscore", {}).get("rows", []) or []),
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 8: calculate_real_yield_butterfly
+# ===========================================================================
+@mcp.tool()
+def calculate_real_yield_butterfly_tool(
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current same-country linker real-yield butterfly
+    (curvature) on a single sovereign linker curve (e.g. USD_TIPS
+    5s10s30s real-yield butterfly, GBP_LINKER 2s10s30s real-yield
+    butterfly, EUR_FR_LINKER 2s10s15s real-yield butterfly, CAD_RRB
+    5s10s30s real-yield butterfly), plus period changes (in bps),
+    1-year z-score, and deterministic historical context (high, low,
+    percentile in PERCENT).
+
+        butterfly_pct = belly_real_yield_pct
+                      - 0.5 * (short_real_yield_pct
+                               + long_real_yield_pct)
+
+    Equivalent to ``0.5 * (2*belly - short - long)``.  Sign convention:
+    POSITIVE = belly is CHEAP versus the half-weighted wings;
+    NEGATIVE = belly is RICH.  Matches the sovereign sovereign_bonds/
+    calculate_butterfly_tool sign convention.  Each endpoint real
+    yield (short_real_yield / belly_real_yield / long_real_yield) is
+    computed by the same desk-recognised real-yield-level primitive.
+    Real yields are quoted in PERCENT and the butterfly is reported in
+    PERCENT — same units as the underlying — NOT in BPS.
+
+    The output is the CURVATURE of the REAL-YIELD curve — distinct
+    from a real-yield curve spread (2-point difference) and from a
+    nominal sovereign butterfly (3-point curvature of nominal yields,
+    in BPS).  The tool's output includes an explicit
+    ``methodology_label`` field carrying the explicit fixed-simple-
+    butterfly weighting AND the sign convention; preserve it when
+    summarising the result to the user so the LLM cannot misread the
+    sign.
+
+    Use this tool when the user asks about:
+    - Linker real-yield curve curvature (e.g. "Where's the TIPS
+      5s10s30s real-yield butterfly?", "Is the UK 2s10s30s real-
+      yield butterfly rich?")
+    - Real-yield butterfly moves          (e.g. "How much has the
+      TIPS 5s10s30s real-yield butterfly moved this week?")
+    - Real-yield butterfly extremes      (e.g. "Is the FR 2s10s15s
+      real-yield butterfly at a 1-year low?")
+    - Decomposing a real-yield butterfly move (this tool returns the
+      butterfly AND the three endpoint real yields + the two wing
+      spreads used to form it).
+
+    Do NOT use this tool for:
+    - Nominal sovereign butterflies — those belong to the sovereign-
+      bond agent's ``calculate_butterfly_tool``.
+    - Real-yield curve SPREADS (2-point, 2s10s real-yield) — call
+      ``calculate_real_yield_curve_spread_tool``.
+    - Breakeven butterflies (3-point breakeven inflation curvature)
+      — not yet a primitive; would ship separately if requested.
+    - Cross-country real-yield comparisons — this primitive accepts
+      a single linker ``curve_family`` and refuses any non-linker
+      curve_family with a controlled error envelope.
+    - Real-yield level (single tenor) — call
+      ``get_real_yield_level_tool``.
+
+    Parameters
+    ----------
+    curve_family : str
+        Linker curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_TIPS', 'GBP_LINKER',
+        'EUR_FR_LINKER', 'CAD_RRB' (see
+        rates_agent/playbooks/inflation_indexed_bonds.yml for the
+        ingested universe).  Non-linker curve_families (e.g. nominal
+        sovereign 'UST', 'DE_BUND') are refused at compute time with
+        a controlled error envelope.
+    short_tenor : str
+        Short wing tenor of the real-yield butterfly — e.g. '2Y' for
+        2s5s10s, '5Y' for 5s10s30s.  Must be a supported pillar on
+        this linker curve_family.
+    belly_tenor : str
+        Belly (body) tenor of the real-yield butterfly — e.g. '5Y'
+        for 2s5s10s, '10Y' for 5s10s30s.  Must be strictly between
+        ``short_tenor`` and ``long_tenor`` in year-fraction terms.
+    long_tenor : str
+        Long wing tenor of the real-yield butterfly — e.g. '10Y' for
+        2s5s10s, '30Y' for 5s10s30s.  Must be strictly longer than
+        ``belly_tenor``.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does
+        NOT control the rolling z-score window or the trailing range
+        window.
+    field_name : str, optional
+        Bloomberg field mnemonic for ALL THREE underlying real-yield
+        series (short_tenor, belly_tenor, long_tenor on this linker
+        curve_family).  Leave as the default empty string ""  to use
+        the bundled ``default_field_name`` convention from
+        real_yield_butterfly/config.yaml (currently 'YLD_YTM_MID').
+        Pass an explicit field name to override per call.  Mirrors
+        the empty-string sentinel pattern used by the other rates
+        tools so the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_field_name``.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = RealYieldButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_real_yield_butterfly_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_real_yield_butterfly_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the real_yield_butterfly tool's bundled config explicitly
+    # so the dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors the
+    # calculate_real_yield_curve_spread_tool wrapper exactly.
+    try:
+        ryb_config = load_tool_config(REAL_YIELD_BUTTERFLY_CONFIG_PATH)
+        result = calculate_real_yield_butterfly(
+            engine=engine, params=params, config=ryb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_real_yield_butterfly_tool] unhandled "
+            "error for %s @ %s%s%s",
+            params.curve_family,
+            params.short_tenor,
+            params.belly_tenor,
+            params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_real_yield_butterfly_tool failed "
+                    f"for {params.curve_family} @ "
+                    f"{params.short_tenor}{params.belly_tenor}"
+                    f"{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_real_yield_butterfly_tool] tool call "
+        "complete: %s @ %s%s%s → %s",
+        params.curve_family,
+        params.short_tenor,
+        params.belly_tenor,
+        params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the per-row time series fields before returning to the
+    # LLM (frontend REST path returns the full payload).  Same
+    # convention as the other rates tools — the LLM doesn't need
+    # every historical row to answer "where's the TIPS 5s10s30s
+    # real-yield butterfly?".
+    stripped_keys = {
+        "time_series",
+        "time_series_butterfly",
+        "time_series_zscore",
+    }
+    llm_response: dict = {
+        k: v for k, v in result.items() if k not in stripped_keys
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    canonical_rows = len(
+        result.get("time_series_butterfly", {}).get("rows", []) or []
+    )
+    if bespoke_rows or canonical_rows:
+        logger.info(
+            "[calculate_real_yield_butterfly_tool] withheld "
+            "%d bespoke + %d canonical butterfly rows + %d "
             "zscore rows from LLM context.",
             bespoke_rows,
             canonical_rows,

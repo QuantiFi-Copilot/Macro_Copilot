@@ -112,6 +112,24 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_s
     CrossCountryRealYieldSpreadSimpleTimeSeriesRow,
 )
 
+# Real-yield butterfly (same-country, three-tenor curvature on a
+# single linker curve) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/``).
+# Composes ``real_yield_level`` three times (one per endpoint tenor)
+# into a per-trade-date PERCENT-units fixed-simple-butterfly
+# (``belly - 0.5*(short + long)``) — the real-yield curvature
+# object.  Inherits the level primitive's no-proxy guard
+# (instrument_type='inflation_linker') transitively; compute
+# additionally re-asserts the curve_family identity on
+# instrument_master before any market-data fetch fires.
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly.schemas import (
+    RealYieldButterflyCurrentMetrics,
+    RealYieldButterflyInput,
+    RealYieldButterflyOutput,
+    RealYieldButterflyTimeSeriesRow,
+)
+
 
 __all__ = [
     # real_yield_level
@@ -148,4 +166,9 @@ __all__ = [
     "CrossCountryRealYieldSpreadSimpleCurrentMetrics",
     "CrossCountryRealYieldSpreadSimpleOutput",
     "CrossCountryRealYieldSpreadSimpleTimeSeriesRow",
+    # real_yield_butterfly
+    "RealYieldButterflyInput",
+    "RealYieldButterflyCurrentMetrics",
+    "RealYieldButterflyOutput",
+    "RealYieldButterflyTimeSeriesRow",
 ]
