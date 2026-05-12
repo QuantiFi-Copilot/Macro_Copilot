@@ -80,7 +80,13 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    # Lazy via TYPE_CHECKING so the cache module is not imported on
+    # the no-cache path.  Runtime imports lazily inside helpers that
+    # actually need the type.
+    from state.cache import ArtifactBytesCache
 
 import numpy as np
 import pandas as pd
@@ -263,12 +269,27 @@ def get_artifact(
     *,
     conn: Connection,
     object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"] = None,
 ) -> Artifact:
     """Rehydrate a typed artifact from its hash.
 
     Phase 0 PR 7.  Fast path for inline-stored artifacts (no
     object-storage fetch); blob-stored artifacts pull payload bytes
     from object storage.
+
+    Phase 0 PR 11.  When a ``cache`` is supplied, blob-stored
+    artifacts consult the cache BEFORE the object-storage fetch.
+    Inline-stored artifacts skip the cache entirely (their bytes are
+    already inline in Postgres — the cache adds no value).
+
+    Cache semantics are read-through, not write-through.  ``put_artifact``
+    does NOT populate the cache; the first ``get`` after a put pays
+    the warmup.  See ``state.cache`` for the rationale.
+
+    A cache failure (Redis outage, parse error) NEVER affects
+    correctness: the helper logs + falls through to the object-
+    storage path.  Tests assert that disabling the cache mid-flight
+    produces byte-identical results to enabling it.
 
     Raises:
         KeyError: no artifact_metadata row for ``hash``.
@@ -299,11 +320,44 @@ def get_artifact(
                 "ck_artifact_metadata_payload_exactly_one — data "
                 "corruption?"
             )
-        payload_bytes = object_storage.get_bytes(row["payload_uri"])
+        payload_bytes = _fetch_payload_bytes_with_cache(
+            hash=hash,
+            payload_uri=row["payload_uri"],
+            object_storage=object_storage,
+            cache=cache,
+        )
         stored_dict = _bytes_to_stored_dict(payload_bytes)
 
     stored = StoredArtifact.model_validate(stored_dict)
     return _stored_to_artifact(stored)
+
+
+def _fetch_payload_bytes_with_cache(
+    *,
+    hash: str,
+    payload_uri: str,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"],
+) -> bytes:
+    """Cache lookup + object-storage fallthrough.
+
+    Separated so the cache-hit fast path is unit-testable without
+    spinning up the whole ``get_artifact`` machinery, and so a
+    future cache-miss-metrics hook has one obvious place to land.
+    """
+    if cache is not None:
+        cached = cache.get(hash)
+        if cached is not None:
+            logger.debug("cache hit for %s (%d bytes)", hash[:12], len(cached))
+            return cached
+
+    payload_bytes = object_storage.get_bytes(payload_uri)
+
+    if cache is not None:
+        # Populate on miss so the next read hits warm.  Errors are
+        # swallowed by the cache impl itself.
+        cache.put(hash, payload_bytes)
+    return payload_bytes
 
 
 def get_artifact_summary(

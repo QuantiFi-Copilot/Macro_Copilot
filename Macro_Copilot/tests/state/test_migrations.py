@@ -259,12 +259,12 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the workspaces.slug column add
-        # (0005, Phase 0 PR 10).
-        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005.
-        assert version == "0005_workspace_slug", (
+        # Latest head is the workspaces.last_accessed_at column
+        # (0006, Phase 0 PR 11).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006.
+        assert version == "0006_workspaces_last_accessed", (
             f"Expected alembic_version to point at "
-            f"0005_workspace_slug, got {version!r}.  "
+            f"0006_workspaces_last_accessed, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )

@@ -40,8 +40,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import (
+    dispose_artifact_cache,
     dispose_checkpointer_pool,
     dispose_object_storage,
+    init_artifact_cache,
     init_checkpointer_pool,
     init_engine,
     init_object_storage,
@@ -123,8 +125,28 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
+    # Phase 0 PR 11: artifact bytes cache (optional Redis).  Unset
+    # ``MACRO_COPILOT_REDIS_URL`` -> NullCache; the no-op cache is
+    # the default.  A Redis init failure also degrades to NullCache
+    # — the cache is performance scaffolding, never load-bearing
+    # for correctness.
+    try:
+        init_artifact_cache()
+        logger.info("Artifact bytes cache ready")
+    except Exception as exc:  # pragma: no cover — defensive only
+        logger.error(
+            "Failed to initialise artifact bytes cache; serving "
+            "with NullCache fallback: %s",
+            exc,
+        )
+
     yield
 
+    logger.info("Shutting down — disposing artifact bytes cache.")
+    try:
+        dispose_artifact_cache()
+    except Exception:
+        logger.exception("Error disposing artifact cache (non-fatal)")
     logger.info("Shutting down — disposing object-storage backend.")
     try:
         dispose_object_storage()

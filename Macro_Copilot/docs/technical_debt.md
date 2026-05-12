@@ -1,7 +1,16 @@
 # MACRO COPILOT — TECHNICAL DEBT REGISTER
-# Last updated: April 2026
+# Last updated: May 2026 (Phase 0 close)
 # Status: All patch-level defects resolved. Items below are architectural
 #         improvements, not bugs in the current code.
+#
+# Phase 0 close (PR 11) — three CRITICAL items resolved:
+#   #1  Non-atomic delete+upsert in ingestion (Phase 0 PR 3)
+#   #6  Persistent LangGraph checkpointer        (Phase 0 PR 5)
+#   #20 Normalized data hash stability           (Phase 0 PR 2)
+# The substrate (artifact store, lineage, methodology pinning,
+# workspace persistence, working set, turn lifecycle) that PR 11
+# ships closes Phase 0.  Remaining items are non-blocking for the
+# Phase 1 backtest archetype.
 
 
 ## CRITICAL — Fix before production traffic
@@ -102,14 +111,37 @@ FIX: Implement three tiers:
 EFFORT: Low — mostly scheduling config, the extractors already support
         configurable windows.
 
-### 6. Persistent LangGraph checkpointer
-WHERE: orchestrator/graph.py (MemorySaver)
-WHAT: Conversation state is in-memory only. Lost on restart. Single
-      hardcoded thread_id.
-FIX: Replace MemorySaver with PostgresSaver or RedisSaver. Add per-user
-     thread IDs. Add message trimming/summarization for long conversations.
-EFFORT: Low-Medium for PostgresSaver swap, Medium for trimming logic.
-WHEN: Before any frontend, multi-user traffic, or supervisor node.
+### 6. Persistent LangGraph checkpointer — [RESOLVED, Phase 0 PR 5]
+WHERE (was): orchestrator/graph.py (MemorySaver)
+WHAT (was):  Conversation state was in-memory only.  Lost on restart.
+             Single hardcoded thread_id.
+RESOLUTION:  Replaced ``MemorySaver`` with ``AsyncPostgresSaver``
+             backed by a dedicated psycopg3 ``AsyncConnectionPool``.
+             The pool's kwargs match LangGraph upstream defaults
+             (``autocommit=True``, ``prepare_threshold=0``,
+             ``row_factory=dict_row``, ``options=-c search_path=
+             langgraph_checkpoint,public``) — pinned in
+             ``api.dependencies.init_checkpointer_pool``.
+
+             Thread ids are now stable per-(session, domain) when
+             ``stateless=False`` (the new default after PR 5):
+             ``{session_id}-{domain.value}`` (vs the legacy per-turn
+             ``{session_id}-{turn_label}-{domain.value}`` retained
+             for tests via ``stateless=True``).  Phase 0 PR 8
+             added the explicit session-level ``copilot_state.sessions``
+             row + ``copilot_state.turns`` lifecycle on top.
+
+             Degraded operation: pool init failure logs an error
+             and the API serves without durability rather than
+             refusing to start; the WebSocket handler surfaces a
+             warning to the client at handshake time.
+
+             Test coverage: ``tests/state/test_postgres_checkpointer.py``
+             (pool setup idempotence, thread isolation, multi-checkpoint
+             history, state survives pool close+reopen),
+             ``tests/state/test_session_restart.py`` (a real LangGraph
+             counter resumes byte-identically after a simulated
+             process restart).
 
 ### 7. Data freshness check in tools
 WHERE: rates_agent/tools/yield_levels.py, curve_spread.py
