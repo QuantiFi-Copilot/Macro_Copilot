@@ -38,12 +38,14 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from api.dependencies import get_checkpointer_pool
+from api.dependencies import get_checkpointer_pool, get_engine
 from orchestrator.config import validate as validate_config
 from orchestrator.session import CopilotSession
+from orchestrator.state import create_session_if_needed
 
 logger = logging.getLogger("api.routes.chat")
 
@@ -92,9 +94,42 @@ async def copilot_chat(ws: WebSocket):
             "restart).  Check api startup logs for the underlying error."
         )
 
+    # ------------------------------------------------------------------
+    # Phase 0 PR 8: create the copilot_state.sessions row for this WS
+    # connection and pass its UUID into CopilotSession.  When the
+    # engine is unavailable (lifespan failed or tests), we degrade to
+    # the pre-PR-8 behaviour — no persistent turn lifecycle.
+    # ------------------------------------------------------------------
+    db_session_id: uuid.UUID | None = None
+    db_engine = None
+    try:
+        db_engine = get_engine()
+    except RuntimeError:
+        logger.warning(
+            "Database engine unavailable; this session will run "
+            "without persistent turn lifecycle (no rows written to "
+            "copilot_state.turns)."
+        )
+
+    if db_engine is not None:
+        db_session_id = uuid.uuid4()
+        try:
+            with db_engine.begin() as conn:
+                create_session_if_needed(db_session_id, conn=conn)
+        except Exception:
+            logger.exception(
+                "Failed to create copilot_state.sessions row; "
+                "continuing without persistent turn lifecycle."
+            )
+            db_session_id = None
+
     session: CopilotSession | None = None
     try:
-        session = CopilotSession(checkpointer_pool=checkpointer_pool)
+        session = CopilotSession(
+            checkpointer_pool=checkpointer_pool,
+            session_id=db_session_id,
+            engine=db_engine if db_session_id is not None else None,
+        )
         await session.open()
 
         await _send_event(ws, "ready", {

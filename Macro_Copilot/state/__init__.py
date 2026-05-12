@@ -10,9 +10,15 @@ Phase 0 PR 7 introduces:
     to any scheduler — Phase 4 enables): ``find_unreferenced_artifacts``,
     ``purge_artifact``
 
-Future phases (week 5+) will add:
-  - ``working_set`` writes (week 5)
-  - workspace persistence helpers (week 7)
+Phase 0 PR 8 adds the working-set substrate:
+
+  - ``state.working_set.{add, retire, resolve, list_visible}`` —
+    per-session map of {name -> artifact_hash}; append-mostly with
+    retired_at_turn for historical resolution.
+  - ``NamedArtifact`` dataclass — the public record type.
+
+Future phases (week 7+) will add:
+  - workspace persistence helpers
 
 This module re-exports the stable public API.  Internal helpers
 (serialization shims for the typed artifact family, Postgres row
@@ -43,6 +49,13 @@ from state.schemas import (
     ObjectStorageConfig,
     StoredArtifact,
 )
+from state.working_set import (
+    InvalidNameError,
+    NamedArtifact,
+    UnknownNameError,
+    WorkingSetError,
+)
+from state import working_set  # noqa: F401  re-export the module itself
 
 __all__ = [
     # artifact store
@@ -66,4 +79,9 @@ __all__ = [
     "ArtifactTypeLiteral",
     "ObjectStorageConfig",
     "StoredArtifact",
+    # working set (PR 8)
+    "NamedArtifact",
+    "WorkingSetError",
+    "InvalidNameError",
+    "UnknownNameError",
 ]
