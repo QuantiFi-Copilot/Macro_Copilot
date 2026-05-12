@@ -285,12 +285,28 @@ def validate_workflow(
             else slot_type
         )
 
-        # Source type — primitives ALWAYS produce a ``Series`` via
-        # the bridge (the bridge's ``tool_output_to_artifact_series``
-        # always returns a ``Series``).  Operators produce whatever
-        # ``OperatorSpec.output_type`` declares.
+        # Source type — primitives produce whichever artifact type the
+        # PrimitiveSpec's ``output_artifact_type`` declares (``Series``
+        # is the historical default; PR 20 adds ``Panel`` for
+        # Panel-emitting primitives like ``build_sovereign_yield_panel_tool``
+        # and ``compute_financing_rate_tool``).  When the resolver is
+        # unavailable, fall back to ``Series`` (pre-PR-20 behaviour) so
+        # validation without a resolver stays permissive.
+        # Operators produce whatever ``OperatorSpec.output_type`` declares.
         if isinstance(source_node, PrimitiveNode):
             source_type = "Series"
+            if primitive_resolver is not None:
+                try:
+                    source_spec = primitive_resolver(source_node.tool_name)
+                    source_type = getattr(
+                        source_spec, "output_artifact_type", "Series",
+                    )
+                except Exception:
+                    # Resolver miss already raised in the explicit
+                    # primitive-resolution pass at the end of validate;
+                    # fall back to the conservative default here so
+                    # type-compat doesn't double-report.
+                    pass
         elif isinstance(source_node, OperatorNode):
             source_spec = OPERATOR_REGISTRY[source_node.operator_name]
             source_type = source_spec.output_type

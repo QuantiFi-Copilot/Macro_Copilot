@@ -17,6 +17,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from shared.artifacts.types import Panel
+
 
 FinancingMethod = Literal[
     "constant_rate",
@@ -144,9 +146,18 @@ class FinancingRateInput(BaseModel):
 
 
 class FinancingRateOutput(BaseModel):
-    """Top-level response."""
+    """Top-level response.
 
-    model_config = ConfigDict(extra="forbid")
+    PR 20 declares ``panel: Panel`` as a first-class field on the
+    output schema so the workflow executor's
+    ``tool_output_to_artifact_panel`` bridge can extract the typed
+    artifact via standard Pydantic attribute traversal.  The MCP
+    layer drops ``panel`` before serialising to JSON for the LLM
+    (it carries the per-day rate data, which would blow the LLM's
+    token budget).
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     method: FinancingMethod
     as_of_start: str
@@ -163,6 +174,15 @@ class FinancingRateOutput(BaseModel):
             "Includes method-specific notes (e.g. 'OIS overnight proxy "
             "uses 1W tenor as the shortest-available approximation; "
             "true O/N OIS quotes are not yet ingested')."
+        ),
+    )
+    panel: Optional[Panel] = Field(
+        default=None,
+        description=(
+            "Single-column Panel carrying the daily financing-rate "
+            "series in PERCENT.  Present when compute succeeded; "
+            "the MCP layer drops this field before serialising "
+            "for the LLM."
         ),
     )
 

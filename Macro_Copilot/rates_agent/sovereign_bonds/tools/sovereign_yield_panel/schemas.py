@@ -17,6 +17,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from shared.artifacts.types import Panel
+
 
 # Closed-enum sovereign family set.  Matches the universe declared in
 # the manifesto's sovereign_bonds playbook + the supervisor's domain
@@ -131,14 +133,19 @@ class SovereignYieldPanelInput(BaseModel):
 class SovereignYieldPanelOutput(BaseModel):
     """Top-level response.
 
-    The MCP-facing wire shape carries the panel's metadata (column
-    list, date range, observation count) so the LLM gets a summary
-    without paying the full per-row token cost.  The full ``Panel``
-    artifact is persisted via the closed-family artifact store; the
-    workflow executor consumes it from there.
+    PR 20 declares ``panel: Panel`` as a first-class field on the
+    output schema so the workflow executor's ``tool_output_to_artifact_panel``
+    bridge can extract the typed artifact via standard Pydantic
+    attribute traversal (no underscore-key smuggling).
+
+    The MCP-facing wire shape still carries the panel's metadata
+    (column list, date range, observation count) so the LLM gets a
+    summary without paying the full per-row token cost; the MCP
+    layer strips ``panel`` (the typed artifact) before serialising
+    to JSON for the LLM.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     as_of_start: str
     as_of_end: str
@@ -163,6 +170,14 @@ class SovereignYieldPanelOutput(BaseModel):
             "Inline disclosure block surfaced on the workspace "
             "methodology card.  Mirrors the V1 closed-family "
             "discipline (declare known V1 limitations explicitly)."
+        ),
+    )
+    panel: Optional[Panel] = Field(
+        default=None,
+        description=(
+            "The typed Panel artifact (rows=dates, columns=instrument "
+            "keys).  Present when compute succeeded; the MCP layer "
+            "drops this field before serialising for the LLM."
         ),
     )
 

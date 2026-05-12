@@ -228,8 +228,17 @@ class TestFinancingRateCompute:
         assert result["n_observations"] > 0
         # Mean of a constant should equal the constant.
         assert abs(result["mean_rate_pct"] - 5.30) < 1e-9
-        # Typed Panel artifact is smuggled in under _panel.
-        panel = result["_panel"]
+        # PR 20: typed Panel artifact lives on the declared ``panel``
+        # field of the output schema.  ``model_dump(mode="python")``
+        # serialises it as a nested dict; reconstructing the Panel
+        # via ``model_validate`` (what the workflow executor's bridge
+        # does internally) round-trips it back to a typed Panel.
+        from rates_agent.ois.tools.financing_rate.schemas import (
+            FinancingRateOutput,
+        )
+        validated = FinancingRateOutput.model_validate(result)
+        panel = validated.panel
+        assert panel is not None
         assert panel.payload.shape[1] == 1
         assert (panel.payload.iloc[:, 0] == 5.30).all()
 

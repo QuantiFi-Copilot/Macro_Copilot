@@ -1453,10 +1453,14 @@ def build_sovereign_yield_panel_tool(
         "error" if "error" in result else "OK",
     )
 
-    # Strip the typed artifact + any non-LLM-friendly internals before
-    # returning to the orchestrator.
+    # Strip the typed Panel artifact (full per-row data; not LLM-
+    # friendly) and any underscore-prefixed internals before
+    # returning to the orchestrator.  Keeps summary metadata
+    # (columns, n_observations, units_by_column, disclosures).
+    _LLM_DROPPED_KEYS = {"panel"}
     llm_response = {
-        k: v for k, v in result.items() if not k.startswith("_")
+        k: v for k, v in result.items()
+        if not k.startswith("_") and k not in _LLM_DROPPED_KEYS
     }
     return json.dumps(llm_response, default=str)
 

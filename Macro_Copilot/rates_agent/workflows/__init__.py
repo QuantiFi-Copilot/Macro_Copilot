@@ -124,6 +124,36 @@ from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
     BetaAdjustedSpreadOutput,
     calculate_beta_adjusted_spread,
 )
+from rates_agent.sovereign_bonds.tools.zscore_custom import (
+    CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
+    ZscoreCustomInput,
+    ZscoreCustomOutput,
+    calculate_zscore_custom,
+)
+
+# PR 19 / PR 20 — Panel-emitting primitives + the TIPS-Nominal
+# breakeven spread primitive.  Registered here so the workflow
+# executor's primitive resolver can dispatch to them; the
+# Panel-shaped primitives also declare ``output_artifact_type="Panel"``
+# so the executor picks the Panel bridge over the default Series bridge.
+from rates_agent.sovereign_bonds.tools.sovereign_yield_panel import (
+    CONFIG_PATH as SOV_YIELD_PANEL_CONFIG_PATH,
+    SovereignYieldPanelInput,
+    SovereignYieldPanelOutput,
+    build_sovereign_yield_panel,
+)
+from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
+    CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
+    BreakevenInflationInput,
+    BreakevenInflationOutput,
+    calculate_breakeven_inflation,
+)
+from rates_agent.ois.tools.financing_rate import (
+    CONFIG_PATH as FINANCING_RATE_CONFIG_PATH,
+    FinancingRateInput,
+    FinancingRateOutput,
+    compute_financing_rate,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -306,6 +336,70 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_beta": "ratio",
             "time_series_residual": "bps",
             "time_series_residual_z_score": "z_score",
+        },
+    ),
+
+    # ---- PR 19 / PR 20: Panel-emitting + breakeven primitives ----
+    #
+    # ``build_sovereign_yield_panel_tool`` and
+    # ``compute_financing_rate_tool`` BOTH emit Panel artifacts (rows
+    # = dates, columns = instrument keys / single rate column).  They
+    # declare ``output_artifact_type="Panel"`` so the executor picks
+    # ``tool_output_to_artifact_panel`` over the default Series
+    # bridge.  ``calculate_breakeven_inflation_tool`` emits canonical
+    # TimeSeries fields (matching the existing swap_spread pattern)
+    # so its output_artifact_type defaults to "Series".
+    "build_sovereign_yield_panel_tool": PrimitiveSpec(
+        tool_name="build_sovereign_yield_panel_tool",
+        callable=build_sovereign_yield_panel,
+        input_class=SovereignYieldPanelInput,
+        output_class=SovereignYieldPanelOutput,
+        config_path=SOV_YIELD_PANEL_CONFIG_PATH,
+        output_field_units={
+            # All columns in the panel are yields (PERCENT); the
+            # per-column units_by_column dict on the Panel itself
+            # carries the authoritative per-leg unit tags.
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "compute_financing_rate_tool": PrimitiveSpec(
+        tool_name="compute_financing_rate_tool",
+        callable=compute_financing_rate,
+        input_class=FinancingRateInput,
+        output_class=FinancingRateOutput,
+        config_path=FINANCING_RATE_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "calculate_breakeven_inflation_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_inflation_tool",
+        callable=calculate_breakeven_inflation,
+        input_class=BreakevenInflationInput,
+        output_class=BreakevenInflationOutput,
+        config_path=BREAKEVEN_INFLATION_CONFIG_PATH,
+        output_field_units={
+            "time_series_breakeven": "bps",
+            "time_series_zscore": "z_score",
+        },
+        # Defaults to "Series"; explicit for clarity.
+        output_artifact_type="Series",
+    ),
+    # ---- Signal-shaped primitives needed by the backtest template ----
+    # ``calculate_zscore_custom_tool`` emits a TimeSeries with Z_SCORE
+    # units — the canonical signal source for the backtest archetype
+    # (threshold on |z| > N).  PR 20 adds it to the resolver because
+    # the backtest template references it by tool_name.
+    "calculate_zscore_custom_tool": PrimitiveSpec(
+        tool_name="calculate_zscore_custom_tool",
+        callable=calculate_zscore_custom,
+        input_class=ZscoreCustomInput,
+        output_class=ZscoreCustomOutput,
+        config_path=ZSCORE_CUSTOM_CONFIG_PATH,
+        output_field_units={
+            "time_series": "z_score",
         },
     ),
 }

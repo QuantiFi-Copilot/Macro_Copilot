@@ -37,6 +37,7 @@ from typing import Any, Dict, List
 from sqlalchemy.engine import Engine
 
 from shared.artifacts.adapters.from_time_series import (
+    tool_output_to_artifact_panel,
     tool_output_to_artifact_series,
 )
 from shared.config import load_tool_config
@@ -254,14 +255,40 @@ def _execute_primitive_node(
     # from config.yaml + builds the PrimitiveStep with all four
     # identity bits + validates the output dict against the
     # primitive's *Output schema.
-    return tool_output_to_artifact_series(
-        tool_output,
-        output_class=spec.output_class,
-        output_field=node.output_field,
-        tool_name=node.tool_name,
-        tool_config=config,
-        params=params,
-        tool_config_path=str(spec.config_path),
+    #
+    # PR 20: dispatch on ``spec.output_artifact_type`` so a primitive
+    # that emits a Panel (e.g. ``build_sovereign_yield_panel_tool``,
+    # ``compute_financing_rate_tool``) gets the Panel bridge instead
+    # of the Series bridge.  Default is "Series" so every existing
+    # primitive registration keeps the historical TimeSeries path.
+    output_artifact_type = getattr(
+        spec, "output_artifact_type", "Series",
+    )
+    if output_artifact_type == "Series":
+        return tool_output_to_artifact_series(
+            tool_output,
+            output_class=spec.output_class,
+            output_field=node.output_field,
+            tool_name=node.tool_name,
+            tool_config=config,
+            params=params,
+            tool_config_path=str(spec.config_path),
+        )
+    if output_artifact_type == "Panel":
+        return tool_output_to_artifact_panel(
+            tool_output,
+            output_class=spec.output_class,
+            output_field=node.output_field,
+            tool_name=node.tool_name,
+            tool_config=config,
+            params=params,
+            tool_config_path=str(spec.config_path),
+        )
+    raise WorkflowExecutionError(
+        f"executor: primitive {node.tool_name!r} declared "
+        f"output_artifact_type={output_artifact_type!r}; only "
+        "'Series' and 'Panel' are supported in v1.  Extend the "
+        "executor dispatch + add a bridge function for a new type."
     )
 
 

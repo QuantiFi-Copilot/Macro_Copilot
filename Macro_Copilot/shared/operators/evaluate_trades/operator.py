@@ -75,6 +75,8 @@ def evaluate_trades(
     price_panel: Panel,
     params: Optional[EvaluateTradesParams] = None,
     config: Optional[OperatorConfig] = None,
+    *,
+    financing_rate_panel: Optional[Panel] = None,
 ) -> Panel:
     """Compute per-trade P&L over each trade's holding window.
 
@@ -164,10 +166,20 @@ def evaluate_trades(
             "and pass the output Panel through ``financing_rate_panel`` "
             "with financing_assumption='external_series'."
         )
+    # PR 20: ``financing_rate_panel`` is the executor's edge-bound
+    # input kwarg.  ``params.financing_rate_panel`` is the legacy
+    # path (synthetic tests + direct callers that construct
+    # ``EvaluateTradesParams(financing_rate_panel=...)``).  The kwarg
+    # wins when both are supplied — the workflow executor's edge
+    # binding is the authoritative source.
+    effective_financing_panel = financing_rate_panel
+    if effective_financing_panel is None:
+        effective_financing_panel = params.financing_rate_panel
+
     financing_rate_series: Optional[pd.Series] = None
     if financing == "external_series":
         financing_rate_series = _validate_and_extract_financing_series(
-            params.financing_rate_panel,
+            effective_financing_panel,
             price_panel,
         )
 
@@ -207,7 +219,7 @@ def evaluate_trades(
             frictionless=frictionless,
             financing=financing,
             financing_basis=financing_basis,
-            financing_rate_panel=params.financing_rate_panel,
+            financing_rate_panel=effective_financing_panel,
         )
 
     panel_index: pd.DatetimeIndex = price_panel.payload.index
@@ -238,7 +250,7 @@ def evaluate_trades(
             frictionless=frictionless,
             financing=financing,
             financing_basis=financing_basis,
-            financing_rate_panel=params.financing_rate_panel,
+            financing_rate_panel=effective_financing_panel,
         )
 
     output_index = pd.DatetimeIndex(union_dates)
@@ -267,7 +279,7 @@ def evaluate_trades(
         frictionless=frictionless,
         financing=financing,
         financing_basis=financing_basis,
-        financing_rate_panel=params.financing_rate_panel,
+        financing_rate_panel=effective_financing_panel,
     )
 
 

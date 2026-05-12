@@ -212,11 +212,12 @@ def compute_financing_rate(
             method_disclosure,
             f"day_count_basis={day_count_basis} (per-day fraction = rate/100/basis_days).",
         ],
+        # PR 20: typed Panel on the declared output field.  Workflow
+        # executor's bridge extracts it via standard attribute
+        # traversal; MCP layer drops it before serialising for the LLM.
+        panel=panel_artifact,
     )
-
-    result = output.model_dump()
-    result["_panel"] = panel_artifact
-    return result
+    return output.model_dump(mode="python")
 
 
 # ============================================================================
