@@ -96,6 +96,7 @@ from sqlalchemy.engine import Connection
 
 from shared.artifacts.lineage import Lineage
 from shared.artifacts.missingness import MissingnessPolicy
+from shared.artifacts.trades import LegSpec, Trade, TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
@@ -137,6 +138,8 @@ _ARTIFACT_CLASSES: Tuple[Tuple[str, type], ...] = (
     ("EventSet", EventSet),
     ("Panel", Panel),
     ("WindowedPanel", WindowedPanel),
+    # Phase 1 PR 12 — backtest archetype substrate.
+    ("TradeSet", TradeSet),
 )
 _NAME_TO_CLASS: Dict[str, type] = {name: cls for name, cls in _ARTIFACT_CLASSES}
 _CLASS_TO_NAME: Dict[type, str] = {cls: name for name, cls in _ARTIFACT_CLASSES}
@@ -156,8 +159,10 @@ _PREVIEW_POINTS = 16
 
 
 # A typed-artifact union — what put_artifact accepts and what
-# get_artifact returns.
-Artifact = Union[Series, SeriesSet, EventSet, Panel, WindowedPanel]
+# get_artifact returns.  Phase 1 PR 12 adds TradeSet.
+Artifact = Union[
+    Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet,
+]
 
 
 # ============================================================================
@@ -660,6 +665,8 @@ def _artifact_to_stored(artifact: Artifact) -> StoredArtifact:
         meta, payload = _panel_to_stored(artifact)
     elif isinstance(artifact, WindowedPanel):
         meta, payload = _windowed_panel_to_stored(artifact)
+    elif isinstance(artifact, TradeSet):
+        meta, payload = _trade_set_to_stored(artifact)
     else:
         raise TypeError(f"Unsupported artifact type {type(artifact).__name__}")
     return StoredArtifact(
@@ -682,6 +689,8 @@ def _stored_to_artifact(stored: StoredArtifact) -> Artifact:
         return _panel_from_stored(stored)
     if cls is WindowedPanel:
         return _windowed_panel_from_stored(stored)
+    if cls is TradeSet:
+        return _trade_set_from_stored(stored)
     raise TypeError(f"Unsupported artifact type {type_name!r}")
 
 
@@ -863,6 +872,37 @@ def _windowed_panel_from_stored(stored: StoredArtifact) -> WindowedPanel:
     )
 
 
+# ----- TradeSet (Phase 1 PR 12) ---------------------------------------------
+# A TradeSet's payload is the flattened trade-record list (via
+# ``TradeSet.to_records``).  Metadata carries the non-payload Pydantic
+# fields (source_event_key, methodology_policy, lineage).
+
+
+def _trade_set_to_stored(art: TradeSet) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "source_event_key": art.source_event_key,
+        "methodology_policy": art.methodology_policy,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        # ``to_records`` produces ISO timestamps + JSON-safe scalars
+        # in a stable order; the round-trip is byte-identical
+        # because ``TradeSet`` enforces entry-date ordering as an
+        # invariant on construction.
+        "trades": art.to_records(),
+    }
+    return meta, payload
+
+
+def _trade_set_from_stored(stored: StoredArtifact) -> TradeSet:
+    return TradeSet.from_records(
+        stored.payload["trades"],
+        source_event_key=stored.metadata.get("source_event_key"),
+        methodology_policy=stored.metadata["methodology_policy"],
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
 # ============================================================================
 # pandas / numpy helpers
 # ============================================================================
@@ -918,6 +958,11 @@ def _artifact_row_count(artifact: Artifact) -> int:
         return len(artifact.payload)
     if isinstance(artifact, WindowedPanel):
         return artifact.payload.shape[0]
+    if isinstance(artifact, TradeSet):
+        # Row count semantics: one row per trade.  Used by the
+        # inline-vs-blob gate the same way as Series — a TradeSet
+        # with >100 trades goes to blob storage.
+        return artifact.n_trades
     raise TypeError(f"Unsupported artifact type {type(artifact).__name__}")
 
 

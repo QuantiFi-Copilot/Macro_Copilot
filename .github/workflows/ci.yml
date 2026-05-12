@@ -143,7 +143,11 @@ jobs:
             Macro_Copilot/tests/test_operator_config.py \
             Macro_Copilot/tests/test_adapter_from_time_series.py \
             Macro_Copilot/tests/state/test_hash_stability.py \
-            Macro_Copilot/tests/state/test_transactional_ingestion.py
+            Macro_Copilot/tests/state/test_transactional_ingestion.py \
+            Macro_Copilot/tests/test_trades.py \
+            Macro_Copilot/tests/test_operator_construct_trades.py \
+            Macro_Copilot/tests/test_operator_evaluate_trades.py \
+            Macro_Copilot/tests/test_operator_summarize_trades.py
 
   # ---------------------------------------------------------------------------
   # State-layer — alembic migrations + LangGraph checkpointer durability

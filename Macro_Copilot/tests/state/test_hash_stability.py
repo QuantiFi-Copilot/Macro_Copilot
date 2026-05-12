@@ -159,6 +159,110 @@ class TestLineageHashStability:
         assert h1 != h2
 
 
+class TestPhase1ClosedFamilyHashStability:
+    """Phase 1 PR 12 — pinned vectors for the new TradeSet closed-
+    family member and the ``construct_trades`` operator step.
+
+    Adding a new artifact type to the closed family does NOT change
+    any existing hash recipe — these pinned vectors run alongside
+    the original PR 2 vectors and the CI matrix exercises both on
+    Python 3.11 + 3.12.  If either set of vectors drifts, the
+    affected PR landed an unintended canonicalization change.
+    """
+
+    # ----- construct_trades operator step pinned hash -----
+    # Recorded against the canonical step shape the operator emits:
+    # fixed-horizon V1 with a two-leg long-short composition and
+    # five trades.  If this value moves, the construct_trades step
+    # params recipe has drifted — investigate before bumping.
+    EXPECTED_CONSTRUCT_TRADES_HASH = (
+        "a2b5c59ae93893afac701e5ffecc463cdb348dc040d22ede1f8614b8a424b460"
+    )
+
+    def test_construct_trades_step_hash_pinned(self) -> None:
+        h = _compute_step_hash(
+            kind="operator",
+            name="construct_trades",
+            version="1.0.0",
+            params={
+                "holding_rule": "fixed_horizon",
+                "holding_window_days": 20,
+                "leg_construction_rule": "equal_weight_signed",
+                "methodology_policy": "fixed_horizon_v1",
+                "n_trades": 5,
+                "legs": [
+                    {
+                        "instrument_key": "UST.10Y.yield_mid",
+                        "weight": 1.0,
+                        "side": "long",
+                        "units": "bps",
+                    },
+                    {
+                        "instrument_key": "UST.2Y.yield_mid",
+                        "weight": -1.0,
+                        "side": "short",
+                        "units": "bps",
+                    },
+                ],
+                "source_event_key": "UST.10Y.zscore",
+            },
+            input_hashes=("a" * 64,),
+        )
+        assert h == self.EXPECTED_CONSTRUCT_TRADES_HASH, (
+            "construct_trades operator step hash has drifted.  This "
+            "is a closed-family-extension contract break: every "
+            "TradeSet artifact produced by V1 would re-hash to a "
+            "different value.  Investigate the step-param recipe "
+            "before bumping the pinned vector."
+        )
+
+    def test_tradeset_round_trip_preserves_lineage_head(self) -> None:
+        """A TradeSet built from records and back round-trips with
+        an unchanged lineage head hash.  The records form is
+        load-bearing for storage; if it ever stops round-tripping
+        cleanly, the artifact-store would silently corrupt
+        persisted TradeSets."""
+        import pandas as pd
+
+        from shared.artifacts.lineage import FetchStep, Lineage
+        from shared.artifacts.trades import LegSpec, Trade, TradeSet
+
+        step = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={
+                "curve_family": "UST", "tenor": "10Y",
+                "test": "pinned_hash_tradeset",
+            },
+        )
+        leg_a = LegSpec(
+            instrument_key="UST.10Y.yield_mid", weight=1.0,
+            side="long", units="bps",
+        )
+        leg_b = LegSpec(
+            instrument_key="UST.2Y.yield_mid", weight=-1.0,
+            side="short", units="bps",
+        )
+        trade = Trade(
+            entry_date=pd.Timestamp("2024-01-08"),
+            exit_date=pd.Timestamp("2024-01-29"),
+            leg_specs=(leg_a, leg_b),
+        )
+        original = TradeSet(
+            trades=(trade,),
+            source_event_key="UST.10Y.zscore",
+            methodology_policy="fixed_horizon_v1",
+            lineage=Lineage.from_steps([step]),
+        )
+        records = original.to_records()
+        recovered = TradeSet.from_records(
+            records,
+            source_event_key=original.source_event_key,
+            methodology_policy=original.methodology_policy,
+            lineage=original.lineage,
+        )
+        assert recovered.lineage.head_hash == original.lineage.head_hash
+
+
 class TestCanonicalJsonShape:
     """The intermediate JSON form has the exact shape we promise."""
 
