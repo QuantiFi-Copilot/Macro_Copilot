@@ -259,12 +259,12 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the TradeSet closed-family-extension
-        # sentinel (0007, Phase 1 PR 12).
-        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007.
-        assert version == "0007_tradeset_artifact_type", (
+        # Latest head is the backtest-archetype closed-family-
+        # extension sentinel (0008, Phase 1 PR 19).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008.
+        assert version == "0008_backtest_archetype", (
             f"Expected alembic_version to point at "
-            f"0007_tradeset_artifact_type, got {version!r}.  "
+            f"0008_backtest_archetype, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )

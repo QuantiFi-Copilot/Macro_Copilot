@@ -81,6 +81,7 @@ from database.database import get_db_engine  # noqa: E402
 # template registry.  Required so ``list_workflows()`` sees them.
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
+import rates_agent.workflows.backtest  # noqa: F401, E402
 
 from rates_agent.workflows._runner import (  # noqa: E402
     describe_workflow_card,
@@ -437,6 +438,128 @@ def regime_conditioned_relationship_workflow(
         "regression_min_periods": regression_min_periods,
         "high_threshold": high_threshold,
         "low_threshold": low_threshold,
+    }
+    envelope = run_template(template_id, slot_values, engine=engine)
+    return json.dumps(envelope, default=str)
+
+
+@mcp.tool()
+def backtest_workflow(
+    signal_tool_name: str,
+    signal_params: dict,
+    signal_output_field: str,
+    signal_threshold: float,
+    long_leg_curve_family: str,
+    long_leg_tenor: str,
+    short_leg_curve_family: str,
+    short_leg_tenor: str,
+    start_date: str,
+    end_date: str,
+    long_leg_weight: float = -1.0,
+    short_leg_weight: float = 1.0,
+    holding_window_days: int = 20,
+    financing_method: str = "overnight_index_proxy",
+    financing_proxy_curve: str = None,
+    financing_constant_rate_pct: float = None,
+    financing_basis: str = "act_360",
+) -> str:
+    """Execute the canonical backtest workflow: threshold a signal,
+    extract events, build long-short trades, fetch a price panel,
+    compute a financing-rate series, evaluate per-trade P&L
+    (including financing carry), and summarise into hit-rate /
+    Sharpe / drawdown / percentiles.
+
+    Use this tool when the user asks:
+      - "Backtest buying X when signal Y exceeds threshold Z, holding
+        for N days, financing at <method>."
+      - "Long-short trade triggered by a signal threshold."
+      - "What if I bought TIPS every time UST 2Y yields spiked above
+        their 1-year mean?"
+
+    Canonical V1 binding (TIPS-vs-Nominal):
+      signal_tool_name = "calculate_zscore_custom_tool"
+      signal_params = {
+          "curve_family": "UST", "tenor": "2Y",
+          "window_days": 252, "lookback_days": 1825,
+      }
+      signal_output_field = "time_series_zscore"
+      signal_threshold = 1.0
+      long_leg_curve_family = "USD_TIPS"
+      long_leg_tenor = "10Y"
+      long_leg_weight = -1.0           # negative = profit when yield falls
+      short_leg_curve_family = "UST"
+      short_leg_tenor = "2Y"
+      short_leg_weight = 1.0           # positive = profit when yield rises
+      holding_window_days = 125         # ~6 months
+      start_date = "2019-01-01"
+      end_date = "2024-12-31"
+      financing_method = "overnight_index_proxy"
+      financing_proxy_curve = "USD_SOFR_OIS"
+      financing_basis = "act_360"
+
+    Methodology disclosures (rendered on the workspace card):
+      - Frictionless: mid-price; no bid/ask, no slippage.
+      - Financing via OIS overnight proxy (when method=overnight_index_proxy);
+        defensible but not actual repo.  V1 uses 1W tenor as the
+        shortest-available proxy for the overnight rate.
+      - Fixed-tenor generic benchmarks; OTR-history is Phase 2.
+      - No TIPS CPI seasonal carry — the long-leg TIPS P&L
+        understates true carry by the seasonal accrual; CPI
+        ingestion is Phase 2.
+      - PR 12 sign convention: positive leg.weight in the yield-
+        change P&L formula means betting yield UP (= short bond in
+        conventional language).  Pick weight signs deliberately.
+
+    Parameters
+    ----------
+    signal_tool_name : str
+        MCP tool emitting the signal series.
+    signal_params : dict
+        Complete *Input dict for the signal primitive.
+    signal_output_field : str
+        Which time_series* field to lift as the trigger.
+    signal_threshold : float
+        |signal| > threshold triggers an event.
+    long_leg_curve_family, long_leg_tenor : str
+        Long leg.  Default weight=-1 (profit when yield falls).
+    short_leg_curve_family, short_leg_tenor : str
+        Short leg.  Default weight=+1 (profit when yield rises).
+    holding_window_days : int, optional
+        Business days held per trade (default 20).
+    start_date, end_date : str
+        Price + financing fetch window (YYYY-MM-DD).
+    financing_method : str, optional
+        ``overnight_index_proxy`` (default), ``constant_rate``,
+        ``term_repo_curve`` (V1 raises), ``gc_special_blend`` (V1 raises).
+    financing_proxy_curve : str, optional
+        Required when financing_method=overnight_index_proxy.
+    financing_constant_rate_pct : float, optional
+        Required when financing_method=constant_rate.
+    financing_basis : str, optional
+        ``act_360`` (default) | ``act_365`` | ``act_act_isda``.
+    """
+    template_id = "backtest"
+    engine, err = _engine_or_error_envelope(template_id)
+    if err is not None:
+        return err
+    slot_values = {
+        "signal_tool_name": signal_tool_name,
+        "signal_params": signal_params,
+        "signal_output_field": signal_output_field,
+        "signal_threshold": signal_threshold,
+        "long_leg_curve_family": long_leg_curve_family,
+        "long_leg_tenor": long_leg_tenor,
+        "long_leg_weight": long_leg_weight,
+        "short_leg_curve_family": short_leg_curve_family,
+        "short_leg_tenor": short_leg_tenor,
+        "short_leg_weight": short_leg_weight,
+        "holding_window_days": holding_window_days,
+        "start_date": start_date,
+        "end_date": end_date,
+        "financing_method": financing_method,
+        "financing_proxy_curve": financing_proxy_curve,
+        "financing_constant_rate_pct": financing_constant_rate_pct,
+        "financing_basis": financing_basis,
     }
     envelope = run_template(template_id, slot_values, engine=engine)
     return json.dumps(envelope, default=str)

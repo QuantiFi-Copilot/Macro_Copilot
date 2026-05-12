@@ -1,0 +1,112 @@
+# =============================================================================
+# calculate_breakeven_inflation_tool — tool configuration
+# =============================================================================
+# TIPS-vs-Nominal breakeven inflation analog to calculate_swap_spread_tool.
+# Both legs are sovereign-family instruments.  V1 implements
+# ``nominal_breakeven`` (nominal_yield - real_yield) only; the
+# ``inflation_swap_breakeven`` convention is declared in the closed
+# enum but raises NotImplementedError until we ingest inflation-swap
+# data + seasonal CPI adjustments.
+# =============================================================================
+
+tool:
+  name: calculate_breakeven_inflation_tool
+  domain: sovereign_bonds
+  description: |
+    Basis-point breakeven inflation spread (nominal yield − real
+    yield) at a matched tenor between a sovereign nominal curve and
+    its paired inflation-linker curve, plus rolling z-score and
+    underlying time series.  V1 ships USD pair (UST + USD_TIPS); the
+    closed schema enumerates UK/DE/JP pairs ahead of inflation-
+    linker ingestion in those currencies.
+
+conventions:
+
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches
+      curve_spread / cross_market_spread default; consistent with
+      desk convention for sovereign-curve metrics.
+    valid_range: [60, 1260]
+
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling stat is deemed
+      trustworthy.  Matches curve_spread default.
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected).
+
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer multiplier for the warm-up fetch (1.5 ×
+      z_score_window_days).  Matches curve_spread.
+    valid_range: [1.2, 2.0]
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Up to one trading week of forward-fill across holiday gaps.
+      Matches curve_spread / cross_market_spread.
+    valid_range: [1, 10]
+
+  breakeven_bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round output bps to 0.01 bps.  Display precision matching
+      curve_spread / cross_market_spread.
+    valid_range: [0, 6]
+
+  z_score_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Matches curve_spread.
+    valid_range: [0, 8]
+
+  default_convention:
+    value: nominal_breakeven
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``nominal_breakeven`` (V1 default) — breakeven = nominal_yield
+          − real_yield (in BPS).  Reads ingested UST + USD_TIPS data
+          directly.  Does NOT include seasonal CPI adjustments.
+        - ``inflation_swap_breakeven`` — V1 raises NotImplementedError.
+          Requires inflation-swap data + seasonal-CPI adjustments not
+          yet ingested.
+
+methodology:
+
+  what_it_does: |
+    For each (trade_date) in the requested lookback, fetches the
+    nominal yield (e.g. UST 10Y YLD_YTM_MID) and the matched-tenor
+    real yield (e.g. USD_TIPS 10Y YLD_YTM_MID), aligns them on the
+    intersection of trading days (with ffill across holiday gaps),
+    computes (nominal − real) × 100 as the breakeven inflation in
+    bps, and emits the time series plus a rolling z-score.
+
+  assumptions:
+    - "Yields stored as percent in DB (e.g. 4.25 = 4.25%)."
+    - "Same tenor used on both legs (matched-tenor breakeven)."
+    - "V1 = nominal − real; inflation-swap breakeven with CPI seasonal adjustments requires data not yet ingested."
+    - "Same-date matching after up-to-5d ffill."
+
+  citations: []
+
+  planned_extensions:
+    - "inflation_swap_breakeven convention (requires inflation-swap data ingestion)."
+    - "Seasonal CPI carry adjustment to the nominal breakeven."
+    - "Cross-currency pairs (UK_GILT + UK_LINKER, DE_BUND + DE_BUND_LINKER, JGB + JPY_LINKER) when linker data is ingested for each."

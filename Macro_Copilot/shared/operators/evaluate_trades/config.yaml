@@ -33,12 +33,25 @@ defaults:
     value: none
     source: operator_v1_default
     rationale: >-
-      V1 does NOT carry a financing assumption.  P&L is computed
-      from price changes only; carry from financing (repo rates,
-      currency costs) is deferred to Phase 1 PR 13 where the
-      ``financing_rate`` primitive lands.  ``none`` surfaces on
-      the methodology card so a reader knows what V1 omits.
-    valid_values: [none, constant_rate, overnight_repo_curve]
+      PR 12 default ``none``.  PR 19 (financing_rate primitive)
+      adds ``external_series`` — caller passes a financing-rate
+      Panel produced by ``compute_financing_rate_tool`` and the
+      per-trade P&L includes the per-day financing accrual.
+      ``constant_rate`` + ``overnight_repo_curve`` were declared
+      placeholders in PR 12 and still raise NotImplementedError
+      (the proper path is to build the rate Series upstream via
+      the primitive and pass it through ``external_series``).
+    valid_values: [none, constant_rate, overnight_repo_curve, external_series]
+
+  financing_basis:
+    value: act_360
+    source: industry_standard_sovereign_repo_usd_money_market
+    rationale: >-
+      Day-count basis for the per-day accrual fraction.  Allowed:
+      act_360 (sovereign repo + USD money-market default), act_365
+      (Gilt repo), act_act_isda (ISDA accrual; V1 approximates as
+      365.0 and discloses).  Used only when financing_assumption
+      = ``external_series``; ignored otherwise.
 
 methodology:
   what_it_does: >-
