@@ -259,11 +259,12 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the langgraph_checkpoint schema creation
-        # (0003, added in Phase 0 PR 5).  Chains: 0001 -> 0002 -> 0003.
-        assert version == "0003_langgraph_checkpoint_schema", (
+        # Latest head is the artifact_metadata <-> application_version
+        # link (0004, added in Phase 0 PR 9).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004.
+        assert version == "0004_artifact_app_version", (
             f"Expected alembic_version to point at "
-            f"0003_langgraph_checkpoint_schema, got {version!r}.  "
+            f"0004_artifact_app_version, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )

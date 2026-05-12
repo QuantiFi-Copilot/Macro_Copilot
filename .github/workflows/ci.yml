@@ -215,6 +215,11 @@ jobs:
         # pandas + numpy + pydantic for the artifact-store path
         # (Phase 0 PR 7) — the state/ package imports them via
         # artifact_store.py for the typed-artifact serializers.
+        # pyyaml is required by the methodology-versions registry
+        # (Phase 0 PR 9) — register_yaml parses the YAML before
+        # canonicalising.
+        # fastapi + httpx are required by the workspace replay route
+        # tests (Phase 0 PR 9) — TestClient runs the route in-process.
         # psycopg2 (sync) and psycopg3 (async) coexist; the SQLAlchemy
         # ingestion path uses psycopg2 and the LangGraph checkpointer
         # uses psycopg3.
@@ -231,7 +236,10 @@ jobs:
             "pytest-asyncio>=0.23" \
             "pandas>=2.0" \
             "numpy>=1.26" \
-            "pydantic>=2.5"
+            "pydantic>=2.5" \
+            "pyyaml>=6.0" \
+            "fastapi>=0.100" \
+            "httpx>=0.25"
 
       - name: alembic upgrade head (forward)
         run: alembic upgrade head
@@ -288,4 +296,24 @@ jobs:
             Macro_Copilot/tests/state/test_turn_state_machine.py \
             Macro_Copilot/tests/state/test_reference_resolver.py \
             Macro_Copilot/tests/state/test_multi_turn_reference.py \
+            -v
+
+      - name: pytest methodology version pinning (Phase 0 PR 9)
+        # ``test_methodology_versions.py``      — YAML registry +
+        #   application_version idempotency, content canonicalisation
+        #   (whitespace / key-order invariance), SHA validation.
+        # ``test_tool_config_round_trip.py``    — parameterised across
+        #   every tool YAML in rates_agent/.  Asserts ToolConfig
+        #   round-trips through both Pydantic AND the registry's JSONB
+        #   storage without losing the identity hash.
+        # ``test_methodology_pinning.py``       — end-to-end spec test:
+        #   build artifact under YAML v1, mutate YAML to v2, assert
+        #   hash divergence under "current" and byte-identical hash
+        #   reconstruction under "original".  Plus TestClient
+        #   coverage of the /api/v1/workspace/{hash} replay route.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_methodology_versions.py \
+            Macro_Copilot/tests/state/test_tool_config_round_trip.py \
+            Macro_Copilot/tests/state/test_methodology_pinning.py \
             -v
