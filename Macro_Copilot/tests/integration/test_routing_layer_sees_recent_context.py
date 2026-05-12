@@ -51,6 +51,21 @@ if _PROJECT_ROOT not in sys.path:
 
 
 def _install_langchain_stubs() -> None:
+    # ``orchestrator/config.py`` imports ``dotenv`` unconditionally
+    # at module load (existing convention, predates this PR).  The
+    # state-layer CI job doesn't install ``python-dotenv`` because
+    # nothing in the state-layer test surface needs it AT RUNTIME.
+    # We stub the module so the import chain succeeds — load_dotenv
+    # is a no-op in tests anyway.
+    if "dotenv" not in sys.modules:
+        fake_dotenv = types.ModuleType("dotenv")
+
+        def _no_op_load_dotenv(*args, **kwargs):
+            return False
+
+        fake_dotenv.load_dotenv = _no_op_load_dotenv
+        sys.modules["dotenv"] = fake_dotenv
+
     if "langchain_anthropic" not in sys.modules:
         fake_la = types.ModuleType("langchain_anthropic")
 
