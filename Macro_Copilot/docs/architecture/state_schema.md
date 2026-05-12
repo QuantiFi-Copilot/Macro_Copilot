@@ -585,3 +585,158 @@ only the schema namespace, not the tables inside it.
 
 **Never** do this on a shared environment with real conversation
 history.
+
+---
+
+## Artifact store (`state/` package) — Phase 0 PR 7
+
+Phase 0 PR 7 ships the runtime surface for persisting and retrieving
+typed `Artifact`s (`Series`, `SeriesSet`, `EventSet`, `Panel`,
+`WindowedPanel`) via the `copilot_state.artifact_metadata` table from
+PR 4. The code lives in `Macro_Copilot/state/`:
+
+```
+state/
+├── __init__.py            # public API re-exports
+├── schemas.py             # ArtifactSummary, ObjectStorageConfig, StoredArtifact
+├── object_storage.py      # ObjectStorageBackend Protocol + LocalFS / GCS impls
+├── artifact_store.py      # put / get / get_summary + serializers
+└── gc.py                  # find_unreferenced + purge (implemented, not wired)
+```
+
+### Public API
+
+```python
+from state import (
+    put_artifact, get_artifact, get_artifact_summary,
+    LocalFSBackend, GCSBackend, build_backend,
+    find_unreferenced_artifacts, purge_artifact,
+)
+```
+
+- **`put_artifact(artifact, *, conn, object_storage) -> hash`** —
+  Idempotent persistence.  Re-puts of the same hash short-circuit
+  before any object-storage write.  Returns
+  `artifact.lineage.head_hash` (the content-addressed identity from
+  PR 2).
+
+- **`get_artifact(hash, *, conn, object_storage) -> Artifact`** —
+  Rehydrate the typed artifact.  Fast inline path for small
+  artifacts; blob-fetch for large ones.
+
+- **`get_artifact_summary(hash, *, conn) -> ArtifactSummary`** —
+  Lightweight metadata-only view (units, frequency, row_count,
+  byte_size, payload_uri, plus a bounded 16-point sparkline preview
+  for inline artifacts).  Does NOT touch object storage — used by
+  the Workspace renderer to populate per-node cards quickly.
+
+### Inline-vs-blob decision
+
+Small artifacts (default ≤ 100 rows AND ≤ 8KB serialized JSON) live
+inline in `copilot_state.artifact_metadata.inline_payload` (JSONB).
+Larger artifacts get written to the configured `ObjectStorageBackend`
+and the `payload_uri` column points at the blob.  The PR 4 CHECK
+constraint enforces "exactly one of `inline_payload` / `payload_uri`
+is non-null"; PR 7's serializer respects it by design.
+
+Both thresholds are configurable via env vars at runtime:
+
+```
+ARTIFACT_INLINE_ROW_LIMIT          (default: 100)
+ARTIFACT_INLINE_SIZE_LIMIT_BYTES   (default: 8192)
+```
+
+The disjunction (blob if EITHER cap exceeded) biases toward smaller
+Postgres rows.
+
+### Serialization format
+
+All artifacts serialize to the **same JSON shape** in both inline and
+blob mode.  No Pickle, no Parquet — just JSON via Pydantic.  Reasons:
+
+- **Cross-version durability.**  JSON is forward-compatible; the
+  same bytes round-trip cleanly across Python / NumPy / Pandas
+  versions in a way Pickle does not.
+- **Inspectable.**  `jq` can read both inline payloads (via Postgres
+  `SELECT inline_payload FROM ...`) and blob payloads (via `cat
+  blob.bin | jq .`) without special tooling.
+- **Inline / blob symmetry.**  The same serializer feeds both paths;
+  `get_artifact` doesn't need branch-specific deserialization
+  logic.
+
+Pandas / NumPy types are converted to JSON-safe forms during
+serialization (`DatetimeIndex` → ISO strings, `pd.Series` →
+`{index, values}` dict, `NaN` → `None`, `np.ndarray` → nested lists).
+
+### Object-storage backend selection
+
+Configured via env vars at app startup; consumed by
+`api/dependencies.init_object_storage`:
+
+```
+ARTIFACT_STORAGE_BACKEND      = 'localfs' (default) | 'gcs'
+ARTIFACT_STORAGE_LOCAL_ROOT   = filesystem path (localfs only)
+ARTIFACT_STORAGE_GCS_BUCKET   = bucket name (gcs only; required)
+ARTIFACT_STORAGE_GCS_PREFIX   = key prefix (gcs only; default 'artifacts')
+```
+
+URI format is content-addressed and consistent across backends:
+
+- LocalFS: `file://{root_abs}/{hash[:2]}/{hash[2:]}.bin`
+- GCS:     `gs://{bucket}/{prefix}/{hash[:2]}/{hash[2:]}.bin`
+
+The two-char fan-out gives reasonable per-directory entry counts at
+100K+ artifacts.
+
+### Garbage-collection sweep (implemented, NOT yet wired)
+
+`state.gc` provides two functions:
+
+- **`find_unreferenced_artifacts(conn, older_than_days=30, limit=1000)`**
+  — returns hashes that no `dag_nodes.artifact_hash` or
+  `working_set.artifact_hash` row references AND are older than the
+  age gate.  The age gate is the safety belt against deleting an
+  artifact that was just put but hasn't yet been wired into a
+  working_set entry.
+- **`purge_artifact(hash, *, conn, object_storage)`** — deletes the
+  blob (if any) THEN the metadata row.  The FK RESTRICT constraints
+  on `dag_nodes.artifact_hash` and `working_set.artifact_hash`
+  provide the final safety check: if a concurrent transaction added
+  a reference between the find and the purge, the metadata-row
+  delete fails and the artifact survives (the blob is now orphaned
+  but a future re-put produces the same URI by content-addressing).
+
+**Not yet enabled in Phase 0.**  The Prefect worker service in
+`docker-compose.yml` is the natural future host; Phase 4 (production
+deployment) wires the sweep to a scheduled job.  The code is shipped
++ tested now because the reference-graph logic has non-trivial
+correctness conditions that are cheaper to pin in tests today than
+after a production incident.
+
+### Orphan blobs
+
+If `put_artifact`'s metadata-insert step fails after the
+object-storage write succeeded, the blob is orphaned in storage.
+These orphans are benign:
+
+- Content-addressed — a future re-put of the same artifact yields
+  the same URI and is a no-op at the metadata layer.
+- The GC sweep's orphan-blob extension (future PR) will list blobs
+  without matching metadata rows and remove them.  Not in Phase 0
+  scope; orphans don't grow unboundedly because typical retry
+  patterns re-put the same content.
+
+### Two drivers, two pools, one Postgres
+
+For completeness — Phase 0 now has three distinct Postgres access
+layers, each with its own purpose:
+
+| Driver | Pool | Purpose |
+|---|---|---|
+| `psycopg2-binary` | SQLAlchemy `Engine` | Market-data ingestion (PR 3 transactional refactor) + **artifact store metadata reads / writes (PR 7)** |
+| `psycopg[binary,pool]` (psycopg3) | `AsyncConnectionPool` | LangGraph `AsyncPostgresSaver` (PR 5 + PR 5 follow-up) |
+
+The artifact store deliberately uses the SQLAlchemy engine path
+(psycopg2) rather than the checkpointer pool: the connection-injection
+pattern from PR 3 is the right interface for transactional state
+writes, and the artifact-metadata workload is sync.

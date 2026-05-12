@@ -248,3 +248,17 @@ jobs:
             Macro_Copilot/tests/state/test_postgres_checkpointer.py \
             Macro_Copilot/tests/state/test_session_restart.py \
             -v
+
+      - name: pytest artifact store (Phase 0 PR 7)
+        # ``test_object_storage.py``  — unit tests for LocalFSBackend
+        #   + stubbed GCSBackend; no Postgres needed but runs here for
+        #   colocation with the other state-layer tests.
+        # ``test_artifact_store.py``  — round-trip persistence for all
+        #   5 artifact types, inline-vs-blob path, idempotency,
+        #   summary endpoint, GC sweep.  Uses the same Postgres
+        #   service container as the migration / checkpointer tests.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_object_storage.py \
+            Macro_Copilot/tests/state/test_artifact_store.py \
+            -v

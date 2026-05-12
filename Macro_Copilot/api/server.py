@@ -41,8 +41,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import (
     dispose_checkpointer_pool,
+    dispose_object_storage,
     init_checkpointer_pool,
     init_engine,
+    init_object_storage,
     settings,
 )
 from api.routes.rates import router as rates_router
@@ -104,8 +106,28 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
+    # Phase 0 PR 7: artifact-store object-storage backend.  Same
+    # degraded-operation contract as the checkpointer pool —
+    # initialisation failure logs an error and the API keeps
+    # serving; routes that need the artifact store will fail loudly
+    # at request time rather than at startup.
+    try:
+        init_object_storage()
+        logger.info("Artifact-store object-storage backend ready")
+    except Exception as exc:
+        logger.error(
+            "Failed to initialise object-storage backend; "
+            "artifact-store routes will not function: %s",
+            exc,
+        )
+
     yield
 
+    logger.info("Shutting down — disposing object-storage backend.")
+    try:
+        dispose_object_storage()
+    except Exception:
+        logger.exception("Error disposing object-storage backend (non-fatal)")
     logger.info("Shutting down — disposing checkpointer pool.")
     try:
         await dispose_checkpointer_pool()
