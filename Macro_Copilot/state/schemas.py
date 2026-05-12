@@ -37,6 +37,12 @@ ArtifactTypeLiteral = Literal[
     "EventSet",
     "Panel",
     "WindowedPanel",
+    # Phase 1 PR 12 — backtest archetype substrate.  TradeSet joins
+    # the closed family; PositionPath is deferred to V2 (the brief's
+    # "if needed" — V1's evaluate_trades derives positions internally
+    # from entry/exit + leg weights without surfacing them as an
+    # artifact).
+    "TradeSet",
 ]
 
 

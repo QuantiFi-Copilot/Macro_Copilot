@@ -259,12 +259,12 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the workspaces.last_accessed_at column
-        # (0006, Phase 0 PR 11).
-        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006.
-        assert version == "0006_workspaces_last_accessed", (
+        # Latest head is the TradeSet closed-family-extension
+        # sentinel (0007, Phase 1 PR 12).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007.
+        assert version == "0007_tradeset_artifact_type", (
             f"Expected alembic_version to point at "
-            f"0006_workspaces_last_accessed, got {version!r}.  "
+            f"0007_tradeset_artifact_type, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )

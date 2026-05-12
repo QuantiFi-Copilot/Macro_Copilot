@@ -1,0 +1,60 @@
+operator:
+  name: evaluate_trades
+  method_family: trade_evaluation
+  version: "1.0.0"
+  description: >-
+    Compute per-trade P&L over each trade's holding window from a
+    TradeSet plus a price/yield Panel.  Frictionless V1: mid prices
+    only, no transaction costs, no financing.
+
+defaults:
+  pricing_convention:
+    value: mid
+    source: operator_v1_default
+    rationale: >-
+      Phase 1 V1 prices every leg at mid.  bid/ask spreads and
+      slippage are deferred — raising ``NotImplementedError`` if
+      the caller tries to override.  The mid-price disclosure
+      surfaces on the workspace methodology card so a reader
+      knows V1's P&L is upper-bound vs a real-world execution.
+    valid_values: [mid, bid, ask]
+
+  frictionless:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      No transaction costs, no bid/ask, no borrow availability.
+      Hard-coded ``true`` in V1; the operator raises if a caller
+      tries ``frictionless=false`` because the friction model is
+      not yet built.  The disclosure surfaces on the workspace
+      methodology card.
+
+  financing_assumption:
+    value: none
+    source: operator_v1_default
+    rationale: >-
+      V1 does NOT carry a financing assumption.  P&L is computed
+      from price changes only; carry from financing (repo rates,
+      currency costs) is deferred to Phase 1 PR 13 where the
+      ``financing_rate`` primitive lands.  ``none`` surfaces on
+      the methodology card so a reader knows what V1 omits.
+    valid_values: [none, constant_rate, overnight_repo_curve]
+
+methodology:
+  what_it_does: >-
+    For each Trade in the input TradeSet, the operator looks up
+    each leg's instrument_key in the price/yield Panel, computes
+    per-date P&L contributions as ``leg.weight * (price[t] -
+    price[entry])``, and aggregates leg contributions into a
+    per-trade total.  The output Panel has one row per date in
+    the union of trade-holding windows (intersected with the
+    price Panel's calendar) and one column per trade named
+    ``trade_<i>_pnl``.  P&L is denominated in the asset's native
+    units (e.g. yield-change bps for a yield series; price-
+    change for a price series).
+  planned_extensions:
+    - "Multi-component P&L decomposition (carry vs price vs financing) with columns ``trade_<i>__carry``, ``trade_<i>__price``, ``trade_<i>__financing``"
+    - "bid/ask pricing (requires per-instrument bid/ask data in the price Panel)"
+    - "Transaction costs (basis points per leg, asymmetric by side)"
+    - "Borrow-availability constraints for short legs"
+    - "Financing-rate integration (consumes the financing_rate primitive landing in Phase 1 PR 13)"

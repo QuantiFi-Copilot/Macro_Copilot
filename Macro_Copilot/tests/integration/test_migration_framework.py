@@ -173,27 +173,40 @@ class TestForwardMigrationFramework:
     ):
         """The brief's exact verification.
 
-        1. After upgrade head, the new column exists.
+        1. After upgrade head, the ``last_accessed_at`` column from
+           migration 0006 exists.
         2. INSERT a workspace row.
-        3. Downgrade one revision.  Assert the new column is GONE
-           but the workspace's other columns still resolve via id.
+        3. Downgrade BY TWO revisions (skip the 0007 no-op
+           sentinel, then drop 0006's column).  Assert the new
+           column is GONE but the workspace's other columns still
+           resolve via id.
         4. Re-upgrade head.  Assert the new column is BACK and
            the workspace row is still there with all its old
            columns intact.
+
+        Note on the "-2" step: PR 12 added 0007 as a no-op
+        closed-family-extension sentinel.  Downgrade -1 lands at
+        0006 (column still present); we want to exercise 0006's
+        column drop, so we downgrade -2 → lands at 0005 → the
+        column is gone.  Phase 0 PR 11's framework test used a
+        single -1 step because 0006 was the head at the time; now
+        that 0007 is head, the same data-round-trip exercise
+        requires -2.
         """
         from sqlalchemy import create_engine, text
         from alembic import command
 
         engine = create_engine(_DB_URL)
         try:
-            # ---- 1. Confirm we're at head (0006) and the column exists.
+            # ---- 1. Confirm we're at head (0007 — the new closed-
+            # family-extension sentinel) and 0006's column exists.
             with engine.connect() as conn:
                 version = conn.execute(
                     text(
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version == "0006_workspaces_last_accessed"
+            assert version == "0007_tradeset_artifact_type"
 
             col_exists = _column_exists(
                 engine, "workspaces", "last_accessed_at",
@@ -216,8 +229,9 @@ class TestForwardMigrationFramework:
                 ).scalar_one()
             assert count_pre == 1
 
-            # ---- 3. Downgrade by one revision (back to 0005).
-            command.downgrade(alembic_config, "-1")
+            # ---- 3. Downgrade by TWO revisions (skip 0007's no-op
+            # sentinel, then drop 0006's column).  Lands at 0005.
+            command.downgrade(alembic_config, "-2")
 
             with engine.connect() as conn:
                 version_after = conn.execute(
@@ -247,7 +261,7 @@ class TestForwardMigrationFramework:
             assert row["dag_hash"] == ids["dag_hash"]
             assert row["created_by"] == "migration-test"
 
-            # ---- 4. Re-upgrade head.
+            # ---- 4. Re-upgrade head (re-applies 0006 + 0007).
             command.upgrade(alembic_config, "head")
             with engine.connect() as conn:
                 version_back = conn.execute(
@@ -255,7 +269,7 @@ class TestForwardMigrationFramework:
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version_back == "0006_workspaces_last_accessed"
+            assert version_back == "0007_tradeset_artifact_type"
             assert _column_exists(
                 engine, "workspaces", "last_accessed_at",
             )
@@ -291,7 +305,11 @@ class TestForwardMigrationFramework:
         self, alembic_config, clean_and_upgraded,
     ):
         """After the cycle, the new column accepts WRITES.  A
-        regression that left the column as a stub would trip here."""
+        regression that left the column as a stub would trip here.
+
+        Downgrade -2 to skip PR 12's no-op sentinel (0007) and
+        actually drop the 0006 column; then re-upgrade to head.
+        """
         from sqlalchemy import create_engine, text
         from alembic import command
         from datetime import datetime, timezone
@@ -300,7 +318,7 @@ class TestForwardMigrationFramework:
         try:
             with engine.begin() as conn:
                 ids = _insert_dag_and_workspace(conn)
-            command.downgrade(alembic_config, "-1")
+            command.downgrade(alembic_config, "-2")
             command.upgrade(alembic_config, "head")
 
             now = datetime.now(timezone.utc)
