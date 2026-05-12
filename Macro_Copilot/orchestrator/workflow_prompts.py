@@ -86,6 +86,16 @@ the codebase uses fully-qualified names like ``DE_BUND``, ``UK_GILT``, \
 
 ROUTING RULES
 
+0. DEFAULT BIAS — OUT_OF_SCOPE.  Most user prompts are PRIMITIVE-LEVEL \
+questions ("what is the UST 2s10s spread", "where is SOFR 2Y", \
+"compare X to Y") that the SUPERVISOR routes to a domain specialist; \
+they are NOT workflow-template requests.  A workflow template is a \
+PRE-DEFINED MULTI-STEP DAG with a specific archetype shape (event \
+study, regime-conditioned relationship).  Only return ``route`` or \
+``clarify`` when the user's prompt CLEARLY MATCHES one of the \
+template archetype signatures below.  When in doubt → \
+``out_of_scope``.
+
 1. Match the user's question to the BEST template by reading each \
 template's ``description`` and ``archetype_signature`` cues.  Pick \
 exactly ONE template_id from the catalogue.  Multiple cues = OR (any \
@@ -122,7 +132,26 @@ slot values — guessing produces silently-wrong workflow results.
 5. If NO template in the catalogue fits the user's question, return \
 action=``out_of_scope``.  ``out_of_scope`` is for questions a \
 workflow template cannot answer (free-form chat, primitive-only \
-questions like "what's SOFR 2Y trading at?", out-of-domain prompts).
+questions like "what's SOFR 2Y trading at?", curve-spread / yield- \
+level / regime-snapshot lookups, out-of-domain prompts).
+
+5a. FOLLOW-UP DISCIPLINE.  When the prompt is a SHORT FOLLOW-UP \
+referencing a prior turn (e.g. "what about X", "now for Y", \
+"compare with Z", "the same for W") AND the RECENT CONVERSATION \
+block above shows the prior turn was a PRIMITIVE-LEVEL response \
+(curve spread, yield level, single-number answer with units), then \
+the current follow-up is ALSO a primitive-level call.  Return \
+``out_of_scope`` — the supervisor will route the follow-up to the \
+appropriate domain specialist, which has full conversation context \
+via the same RECENT CONVERSATION block.  DO NOT escalate the \
+follow-up into a workflow template just because it references a \
+prior turn.
+
+5b. RECENT CONVERSATION USAGE.  The HUMAN message you receive may \
+begin with a RECENT CONVERSATION block (prior turns of this \
+session).  Use it only to disambiguate the current request — it \
+does NOT change which actions are available.  A prior primitive \
+turn does not "promote" a follow-up to a workflow request.
 
 6. NEVER invent a template_id that is not in the catalogue.  NEVER \
 invent slot names that are not in the chosen template's slot_schema.  \

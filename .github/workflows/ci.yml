@@ -347,6 +347,18 @@ jobs:
             Macro_Copilot/tests/integration/test_workspace_replay.py \
             -v
 
+      - name: pytest routing-layer recent-context diagnostic (PR 14)
+        # ``test_routing_layer_sees_recent_context.py`` — drives two
+        # turns through CopilotSession._run_turn with stubbed
+        # supervisor + workflow router; captures the exact message
+        # each router receives on turn 2 and asserts the RECENT
+        # CONVERSATION block is present.  Pins the live-path
+        # invariant that PR 13 + PR 14 together restored.
+        run: |
+          pytest \
+            Macro_Copilot/tests/integration/test_routing_layer_sees_recent_context.py \
+            -v
+
       - name: pytest acceptance, cache, migration-framework (Phase 0 PR 11)
         # ``test_cache.py``                  — NullCache + RedisBytesCache
         #   round-trip via fakeredis + failure-mode resilience +
