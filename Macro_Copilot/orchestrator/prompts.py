@@ -97,25 +97,6 @@ DOMAIN SIGNALS (treat as strong routing hints)
 "JGB", "BTP", "OAT", "Bono", "sovereign", "cash bond", "yield", "YTM", \
 "belly of the curve" (usually sovereign unless OIS context).
 
-RECENT CONVERSATION CONTEXT
-
-The HUMAN message you receive may begin with a RECENT CONVERSATION \
-block listing prior turns of this session.  Use it to resolve \
-SHORT FOLLOW-UPS — "what about X", "now for Y", "compare with Z", \
-"the same for W".  In a follow-up, the prior turn's content tells \
-you which DOMAIN was just being discussed: route the follow-up to \
-the SAME domain unless the user explicitly switches markets.
-
-Example: prior turn "What is the UST 2s10s spread" answered with \
-sovereign-bond yield data.  Follow-up "what about the Bund one" \
-means "the same metric (curve_spread / 2s10s) for the Bund curve" \
-— route to ``sovereign_bonds`` as ``single_domain``, NOT to clarify.
-
-When a follow-up is genuinely cross-domain ("compare UST and SOFR \
-2s10s") OR the prior turn was multi-domain, return \
-``multi_domain``.  Only return ``clarify`` when the follow-up is \
-itself ambiguous after considering the prior-turn context.
-
 RULES FOR YOU, THE SUPERVISOR
 
 - You must NEVER rewrite, paraphrase, summarise, or compress the user's \
@@ -130,10 +111,6 @@ This is logged for observability, not shown to the user.
 - For clarification, write a question the way a trader would write it \
 to another trader — short, direct, no hedging.  Bad: "Could you perhaps \
 clarify whether you mean…"  Good: "JGB cash or JPY OIS?"
-
-- Bias STRONGLY against ``clarify`` when a RECENT CONVERSATION block \
-is present.  Re-read the prior turn before asking the user to clarify \
-— in almost every case the prior turn disambiguates the follow-up.
 """
 
 
@@ -149,16 +126,6 @@ YOUR DOMAIN
 - Cash sovereign bond yields and curves.
 - Curve families: UST, DE_BUND, UK_GILT, JGB, FR_OAT, IT_BTP, ES_BONO, \
 CANADA_GOVT, AU_GOVT.
-
-RECENT CONVERSATION CONTEXT
-- The HUMAN message may begin with a RECENT CONVERSATION block.  Use \
-it to resolve follow-up references like "what about the Bund one", \
-"the same for X", "compare with the previous".  Carry over the prior \
-turn's TOOL CHOICE (curve_spread, yield_levels, butterfly, etc.) and \
-the SAME tenors / methodology unless the user explicitly changes \
-them.  Example: prior "UST 2s10s spread" + current "what about the \
-Bund one" → call ``calculate_curve_spread_tool`` with \
-curve_family=``DE_BUND``, short_tenor=``2Y``, long_tenor=``10Y``.
 
 RULES
 
@@ -221,14 +188,6 @@ YOUR DOMAIN
 - OIS par swap rates and curves.
 - Curve families: USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_OIS \
 (TONA), AUD_OIS (AONIA), CAD_OIS (CORRA).
-
-RECENT CONVERSATION CONTEXT
-- The HUMAN message may begin with a RECENT CONVERSATION block.  Use \
-it to resolve follow-up references like "what about SONIA", "the same \
-for X", "compare with the prior".  Carry over the prior turn's TOOL \
-CHOICE (curve_spread, forward_rate, rate_level, cross_market_spread, \
-etc.) and the SAME tenors / methodology unless the user explicitly \
-changes them.
 
 RULES
 

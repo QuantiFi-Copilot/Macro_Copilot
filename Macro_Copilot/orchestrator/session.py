@@ -512,6 +512,20 @@ class CopilotSession:
                 await emit(
                     SessionEvent(type="error", data={"message": str(exc)})
                 )
+                # Safety net: error events alone don't render as
+                # assistant text in the UI, so the chat would go
+                # silent.  Always emit a user-visible token too.
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "Something went wrong processing your "
+                                f"request: {exc}"
+                            ),
+                        },
+                    )
+                )
             finally:
                 total_ms = round((time.monotonic() - total_start) * 1000)
                 logger.info(
@@ -1112,6 +1126,21 @@ class CopilotSession:
                         data={"message": f"Routing failed: {exc}"},
                     )
                 )
+                # Safety net: surface a user-visible token so the
+                # chat doesn't go silent on supervisor failures
+                # (e.g. structured-output schema validation errors).
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I couldn't route this request to a "
+                                f"specialist (routing layer error: {exc}). "
+                                "Please try rephrasing or ask again."
+                            ),
+                        },
+                    )
+                )
                 await emit(
                     SessionEvent(
                         type="done",
@@ -1182,6 +1211,19 @@ class CopilotSession:
                 )
                 await emit(
                     SessionEvent(type="error", data={"message": msg})
+                )
+                # Safety net: user-visible token so the chat doesn't
+                # go silent on this internal misroute.
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I tried to route this to a specialist that "
+                                "isn't currently available.  Please try again."
+                            ),
+                        },
+                    )
                 )
                 await emit(
                     SessionEvent(
@@ -1276,6 +1318,19 @@ class CopilotSession:
                         "message": (
                             f"Could not start the {domain.value} "
                             f"specialist: {exc}"
+                        ),
+                    },
+                )
+            )
+            # Safety net: user-visible token so the chat doesn't
+            # go silent on child-spawn failures.
+            await emit(
+                SessionEvent(
+                    type="token",
+                    data={
+                        "content": (
+                            f"I couldn't start the {domain.value} specialist "
+                            f"to answer this ({exc}).  Please try again."
                         ),
                     },
                 )
@@ -1617,12 +1672,14 @@ class CopilotSession:
         await emit(SessionEvent(type="synthesis_started", data={}))
         await emit(SessionEvent(type="status", data={"status": "synthesising"}))
 
+        synthesis_tokens_emitted = False
         try:
             async for piece in self._supervisor.synthesize_stream(
                 user_message=user_message,
                 child_responses=child_responses,
             ):
                 if piece:
+                    synthesis_tokens_emitted = True
                     await emit(
                         SessionEvent(type="token", data={"content": piece})
                     )
@@ -1636,6 +1693,21 @@ class CopilotSession:
                     data={"message": f"Synthesis failed: {exc}"},
                 )
             )
+            # Safety net: if synthesis crashed before streaming
+            # any token, the chat would go silent.  Emit a
+            # user-visible fallback summarizing what we have.
+            if not synthesis_tokens_emitted:
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I had trouble combining the specialists' "
+                                f"answers ({exc}).  Please try asking again."
+                            ),
+                        },
+                    )
+                )
 
         # Done
         workspace_context = _merge_workspace_contexts(workspace_parts)
