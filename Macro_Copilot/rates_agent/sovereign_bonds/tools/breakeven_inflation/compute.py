@@ -152,6 +152,11 @@ def calculate_breakeven_inflation(
     real_df = real_df.rename(columns={"tenor": "leg"})
     real_df["leg"] = "real"
     combined = pd.concat([nominal_df, real_df], axis=0, ignore_index=True)
+    # Cast field_value Decimal → float at the merge layer.  Postgres
+    # NUMERIC fields land as ``decimal.Decimal`` instances which the
+    # downstream spread math + rolling z-score cannot consume.  Same
+    # defensive cast curve_spread / cross_market_spread apply.
+    combined["field_value"] = combined["field_value"].astype(float)
 
     wide = (
         combined.pivot_table(

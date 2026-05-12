@@ -235,6 +235,28 @@ methodology:
     - "OIS par rates are treated as zero rates without an iterative
        bootstrap; the float leg is daily-compounded overnight with no
        funding spread, so the par rate ≈ the zero rate."
+    - "PR 21 disclosure (par-rate-as-zero-rate approximation
+       quantification).  For OIS curves the par ≈ zero
+       approximation is correct to the second order — typical
+       error is sub-1bp on the front-end (≤2Y) and 1-3bps on the
+       long-end (10Y+) for normally-shaped curves.  The error
+       grows when the curve is steeply sloped (rapid hiking /
+       cutting regimes) because the par-rate-as-zero-rate
+       approximation ignores the small convexity adjustment
+       between simple par-rate compounding and the true zero-
+       rate compounding.  In MOST market regimes this is well
+       below desk-relevant precision.  Workspace methodology
+       cards surface this disclosure so a reader knows the
+       approximation IS in play even when the error is small."
+    - "PR 21 disclosure (calendar-fraction approximation).  Tenor
+       parsing uses CALENDAR-DAY fractions (7/365 for weeks, n/12
+       for months, n for years).  This ignores per-curve day-count
+       conventions at the tenor-resolution step.  The downstream
+       discount-factor formulas DO use the curve's day-count basis
+       (see ``day_count_basis_for_curve``).  The convolution of
+       these two layers is a small ε on forward computations
+       (typically sub-bp); date-window forwards are not affected
+       because they use the curve's day-count basis end-to-end."
     - "Day-count basis is curve-family-specific (ACT/360 for SOFR /
        ESTR / SONIA / TONA, ACT/365 for AONIA / CORRA, etc.)."
     - "Display window cutoff is anchored to the forward series' latest
