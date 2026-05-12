@@ -60,7 +60,12 @@ type AgentItem = {
   label: string;
   to: string;
   icon: ReactNode;
-  status: 'live' | 'dev';
+  /** Agent rollout status.  Three-tier per the Phase 0 deck:
+   *    'live'    — shipped, navigable, real data.
+   *    'next'    — under active development; the next agent to ship.
+   *    'scoping' — design phase; placeholder pages render today.
+   *  Only ``live`` agents are clickable + expandable in the sidebar. */
+  status: 'live' | 'next' | 'scoping';
   /** One-line scope subtext — drives row height and signals what the
    *  agent covers.  For live agents we keep it factual; for dimmed
    *  ones we name the planned scope (matches the placeholder pages). */
@@ -105,35 +110,36 @@ const AGENTS: AgentItem[] = [
     label: 'FX Agent',
     to: '/fx',
     icon: <LineChart size={13} />,
-    status: 'dev',
+    // PR 11: per the Phase 0 deck, FX is the NEXT agent to ship.
+    status: 'next',
     scope: 'G10 · EM',
   },
   {
     label: 'Credit Agent',
     to: '/credit',
     icon: <Activity size={13} />,
-    status: 'dev',
+    status: 'scoping',
     scope: 'IG · HY',
   },
   {
     label: 'Macro Equity',
     to: '/macro-equity',
     icon: <Gauge size={13} />,
-    status: 'dev',
+    status: 'scoping',
     scope: 'Indices · factors',
   },
   {
     label: 'Policy / Events',
     to: '/policy',
     icon: <ShieldCheck size={13} />,
-    status: 'dev',
+    status: 'scoping',
     scope: 'WIRP · calendar',
   },
   {
     label: 'PM Orchestrator',
     to: '/pm-orchestrator',
     icon: <Bot size={13} />,
-    status: 'dev',
+    status: 'scoping',
     scope: 'Cross-agent',
   },
 ];
@@ -306,12 +312,20 @@ function AgentRow({
   onToggleExpand: () => void;
 }) {
   const isLive = agent.status === 'live';
+  const isNext = agent.status === 'next';
   const hasSubItems = !!agent.subItems && agent.subItems.length > 0;
   const showSubItems = isLive && hasSubItems && expanded;
 
+  // PR 11: three-tier status surface per the Phase 0 deck.
+  //   live    -> green dot + LIVE badge
+  //   next    -> amber dot + NEXT badge (under active development)
+  //   scoping -> dim dot + SCOPING badge (design phase)
   const statusDot = isLive
     ? 'bg-mint-400 shadow-[0_0_8px_rgba(63,214,154,0.5)]'
-    : 'bg-fg-faint';
+    : isNext
+      ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.45)]'
+      : 'bg-fg-faint';
+  const statusLabel = isLive ? 'LIVE' : isNext ? 'NEXT' : 'SCOPING';
 
   return (
     <div className="space-y-px">
@@ -382,11 +396,18 @@ function AgentRow({
             </span>
           </span>
           <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', statusDot)} />
-          {!isLive && (
-            <span className="hidden font-mono text-[8.5px] uppercase tracking-[0.14em] text-fg-faint xl:inline">
-              soon
-            </span>
-          )}
+          <span
+            className={cn(
+              'hidden font-mono text-[8.5px] uppercase tracking-[0.14em] xl:inline',
+              isLive
+                ? 'text-mint-400'
+                : isNext
+                  ? 'text-amber-400'
+                  : 'text-fg-faint',
+            )}
+          >
+            {statusLabel}
+          </span>
         </Link>
 
         {/* Chevron toggle — only on live, expandable agents.  Sized

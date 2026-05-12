@@ -368,3 +368,72 @@ def get_object_storage():
     """Return the shared object-storage backend, or None if not
     initialised.  Same contract as ``get_checkpointer_pool``."""
     return _object_storage
+
+
+# ---------------------------------------------------------------------------
+# Artifact bytes cache — Phase 0 PR 11
+# ---------------------------------------------------------------------------
+# Optional Redis read-through cache for blob-stored artifact payloads.
+# Lifecycle is symmetric to the object-storage backend:
+#
+#   - ``init_artifact_cache()`` runs at app startup; reads env vars
+#     via ``state.cache.build_cache_from_env``.  When
+#     ``MACRO_COPILOT_REDIS_URL`` is unset, builds a ``NullCache``
+#     and the cache surface is a no-op.
+#   - ``get_artifact_cache()`` returns the singleton.  Always
+#     non-None — even when no Redis is configured, the NullCache
+#     instance is real (a no-op implementation of the Protocol).
+#   - ``dispose_artifact_cache()`` closes the client at shutdown.
+#
+# A Redis init failure does NOT crash the API: the build helper
+# logs the error and returns NullCache.  See ``state/cache.py``.
+_artifact_cache = None  # Optional["ArtifactBytesCache"]
+
+
+def init_artifact_cache():
+    """Build + cache the artifact-bytes cache.  Idempotent.
+
+    Called from ``api/server.py``'s lifespan.  Returns the
+    cache instance (``NullCache`` when Redis is not configured).
+    """
+    global _artifact_cache
+    if _artifact_cache is not None:
+        return _artifact_cache
+    from state.cache import build_cache_from_env
+
+    _artifact_cache = build_cache_from_env()
+    logger.info(
+        "Initialising artifact bytes cache: backend=%s",
+        type(_artifact_cache).__name__,
+    )
+    return _artifact_cache
+
+
+def dispose_artifact_cache() -> None:
+    """Close the cache backend.  Called from app shutdown."""
+    global _artifact_cache
+    if _artifact_cache is None:
+        return
+    try:
+        _artifact_cache.close()
+    except Exception:
+        logger.exception(
+            "Error closing artifact cache (non-fatal)"
+        )
+    _artifact_cache = None
+
+
+def get_artifact_cache():
+    """Return the shared artifact bytes cache.
+
+    Always returns an ``ArtifactBytesCache`` instance — never None —
+    so callers can write ``cache.get(...)`` without a null check.
+    When init has not yet run, returns a fresh ``NullCache`` so
+    the no-op contract still holds.  Production callers that go
+    through the FastAPI lifespan always see the env-built instance.
+    """
+    from state.cache import NullCache
+
+    if _artifact_cache is None:
+        return NullCache()
+    return _artifact_cache

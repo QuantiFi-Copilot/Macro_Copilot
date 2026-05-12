@@ -239,7 +239,9 @@ jobs:
             "pydantic>=2.5" \
             "pyyaml>=6.0" \
             "fastapi>=0.100" \
-            "httpx>=0.25"
+            "httpx>=0.25" \
+            "redis>=5" \
+            "fakeredis>=2"
 
       - name: alembic upgrade head (forward)
         run: alembic upgrade head
@@ -336,3 +338,35 @@ jobs:
             Macro_Copilot/tests/state/test_workspace_repo.py \
             Macro_Copilot/tests/integration/test_workspace_replay.py \
             -v
+
+      - name: pytest acceptance, cache, migration-framework (Phase 0 PR 11)
+        # ``test_cache.py``                  — NullCache + RedisBytesCache
+        #   round-trip via fakeredis + failure-mode resilience +
+        #   correctness invariant (cache vs no-cache produces
+        #   byte-identical artifacts).
+        # ``test_migration_framework.py``    — forward migration 0006
+        #   round-trip: upgrade -> INSERT -> downgrade -> re-upgrade,
+        #   workspace data intact across the cycle.
+        # ``test_phase0_demo.py``            — the Phase 0 acceptance
+        #   narrative end-to-end: 3-turn conversation with working-set
+        #   reference, simulated restart, URL stability, 30-day
+        #   simulated replay, YAML override diff.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_cache.py \
+            Macro_Copilot/tests/integration/test_migration_framework.py \
+            Macro_Copilot/tests/integration/test_phase0_demo.py \
+            -v
+
+      - name: pytest performance baseline (slow guardrails, Phase 0 PR 11)
+        # ``test_performance_baseline.py`` is marked ``@pytest.mark.slow``
+        # so the default test run skips it.  The targets (working-set <
+        # 50 ms, inline fetch < 10 ms, blob cold < 300 ms, workspace
+        # open < 500 ms p95) are documented in
+        # ``docs/architecture/state.md``; the CI alarm bounds are
+        # generous (4-8x the target) so flaky-runner variance doesn't
+        # false-positive but a 5x+ regression trips loudly.
+        run: |
+          pytest \
+            Macro_Copilot/tests/integration/test_performance_baseline.py \
+            -m slow -v -s
