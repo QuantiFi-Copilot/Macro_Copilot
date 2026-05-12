@@ -50,6 +50,7 @@ from api.dependencies import (
 from api.routes.rates import router as rates_router
 from api.routes.workflows import router as workflows_router
 from api.routes.library import router as library_router
+from api.routes.workspace import router as workspace_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -186,6 +187,15 @@ app.include_router(
     library_router,
     prefix="/api/v1",
     tags=["Library"],
+)
+
+# PR 9: workspace replay route — surfaces methodology + application-
+# version provenance for an artifact, with ``?mode=original|current``
+# controlling reconstruction vs. on-disk divergence reporting.
+app.include_router(
+    workspace_router,
+    prefix="/api/v1/workspace",
+    tags=["Workspace"],
 )
 
 app.include_router(

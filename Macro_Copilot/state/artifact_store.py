@@ -230,6 +230,13 @@ def put_artifact(
     frequency = _artifact_frequency(artifact)
     lineage_json: Dict[str, Any] = artifact.lineage.model_dump(mode="json")
 
+    # Phase 0 PR 9.  Collect every methodology_version_id that
+    # contributed to this artifact (walk PrimitiveSteps), and pin
+    # the current process's application_version (idempotent +
+    # cached so this is cheap).
+    methodology_version_ids = _collect_methodology_version_ids(artifact)
+    application_version_id = _resolve_application_version_id(conn)
+
     _insert_metadata_row(
         conn,
         hash=artifact_hash,
@@ -241,6 +248,8 @@ def put_artifact(
         payload_uri=payload_uri,
         inline_payload=inline_payload,
         lineage=lineage_json,
+        methodology_version_ids=methodology_version_ids,
+        application_version_id=application_version_id,
     )
     logger.debug(
         "put_artifact: stored %s (type=%s, %d rows, %d bytes, inline=%s)",
@@ -381,22 +390,32 @@ def _insert_metadata_row(
     payload_uri: Optional[str],
     inline_payload: Optional[Dict[str, Any]],
     lineage: Dict[str, Any],
+    methodology_version_ids: Optional[List[int]] = None,
+    application_version_id: Optional[int] = None,
 ) -> None:
     """Insert one ``artifact_metadata`` row.  Caller has already
-    confirmed the hash does not exist."""
+    confirmed the hash does not exist.
+
+    Phase 0 PR 9 added ``methodology_version_ids`` (BIGINT[]) and
+    ``application_version_id`` (BIGINT FK).  Both are nullable —
+    legacy callers that don't supply them continue to work and write
+    NULLs.  Production callers via ``put_artifact`` always supply
+    them.
+    """
     stmt = text(
         f"""
         INSERT INTO {_COPILOT_STATE_SCHEMA}.artifact_metadata (
             hash, artifact_type, units, frequency, row_count,
             byte_size, payload_uri, inline_payload, lineage,
-            methodology_version_ids
+            methodology_version_ids, application_version_id
         )
         VALUES (
             :hash, :artifact_type, :units, :frequency, :row_count,
             :byte_size, :payload_uri,
             CAST(:inline_payload AS JSONB),
             CAST(:lineage AS JSONB),
-            NULL
+            :methodology_version_ids,
+            :application_version_id
         )
         """
     )
@@ -414,6 +433,12 @@ def _insert_metadata_row(
                 json.dumps(inline_payload) if inline_payload is not None else None
             ),
             "lineage": json.dumps(lineage),
+            "methodology_version_ids": (
+                methodology_version_ids
+                if methodology_version_ids
+                else None
+            ),
+            "application_version_id": application_version_id,
         },
     )
 
@@ -425,7 +450,8 @@ def _fetch_full_row(conn: Connection, hash: str) -> Optional[Dict[str, Any]]:
             SELECT
                 hash, artifact_type, units, frequency, row_count,
                 byte_size, payload_uri, inline_payload, lineage,
-                methodology_version_ids, created_at
+                methodology_version_ids, application_version_id,
+                created_at
             FROM {_COPILOT_STATE_SCHEMA}.artifact_metadata
             WHERE hash = :hash
             """
@@ -433,6 +459,112 @@ def _fetch_full_row(conn: Connection, hash: str) -> Optional[Dict[str, Any]]:
         {"hash": hash},
     ).mappings().first()
     return dict(row) if row is not None else None
+
+
+# ============================================================================
+# Phase 0 PR 9 — methodology / application version collection helpers
+# ============================================================================
+
+
+def _collect_methodology_version_ids(artifact: Artifact) -> List[int]:
+    """Walk ``artifact.lineage`` and return the sorted-deduped list of
+    ``PrimitiveStep.methodology_version_id`` values that contributed
+    to it.
+
+    Sorting is for byte-stability of the persisted JSONB array: two
+    artifacts whose lineages contain the same primitive ids in
+    different orders produce the same array (and therefore the same
+    audit query result downstream).
+
+    Only ``PrimitiveStep`` carries a ``methodology_version_id`` —
+    Fetch / Clean / Adapter / Operator steps do not load YAMLs.  We
+    walk only the primary chain; auxiliary lineages on
+    ``OperatorStep`` are NOT recursed here because Phase 0 PR 9's
+    main use case (replay-under-original-methodology) tracks the
+    primitive that produced the head artifact, not the operator
+    branches.  Phase 4 may extend this to recurse if a replay needs
+    the auxiliary YAMLs too.
+    """
+    # Local import to avoid the ``state`` package importing ``shared``
+    # at module load (we have an established lazy-import boundary).
+    from shared.artifacts.lineage import PrimitiveStep
+
+    seen: set = set()
+    for step in artifact.lineage.steps:
+        if isinstance(step, PrimitiveStep) and step.methodology_version_id is not None:
+            seen.add(int(step.methodology_version_id))
+    return sorted(seen)
+
+
+def _resolve_application_version_id(conn: Connection) -> Optional[int]:
+    """Register the current process's git commit (idempotent +
+    cached) and return the ``application_version.id``.
+
+    Cache-staleness self-healing: ``current_application_version_id``
+    has an in-process cache.  If the cached id points at a row
+    that was deleted out-of-band (e.g. a test fixture wiped the
+    table after the cache populated), the SELECT in this helper
+    returns None and we force a re-registration.  Steady-state
+    cost stays zero round-trips; the re-resolution path runs at
+    most once per per-process delete.
+
+    On unrecoverable failure (registry module can't import,
+    Postgres unreachable) returns None — the column is nullable,
+    so an artifact still persists; the workspace replay route
+    surfaces "application version unknown".
+    """
+    try:
+        from state.methodology_versions import (
+            clear_caches,
+            current_application_version_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "could not import state.methodology_versions; leaving NULL "
+            "application_version_id on this artifact: %s",
+            exc,
+        )
+        return None
+
+    for attempt in range(2):
+        try:
+            vid = current_application_version_id(conn=conn)
+        except Exception as exc:
+            logger.warning(
+                "current_application_version_id raised; leaving NULL "
+                "on this artifact: %s",
+                exc,
+            )
+            return None
+
+        # Verify the cached id still resolves to a real row.  If
+        # someone wiped application_version out-of-band, the cache
+        # is stale; clear it and retry once.
+        exists = conn.execute(
+            text(
+                f"SELECT 1 FROM {_COPILOT_STATE_SCHEMA}.application_version "
+                "WHERE id = :id"
+            ),
+            {"id": vid},
+        ).first()
+        if exists is not None:
+            return vid
+        if attempt == 0:
+            logger.info(
+                "application_version cache stale (id=%d not in DB); "
+                "clearing + retrying",
+                vid,
+            )
+            clear_caches()
+            continue
+        # Second miss after refresh — give up and leave NULL.
+        logger.warning(
+            "application_version_id %d still missing after cache "
+            "refresh; leaving NULL on this artifact",
+            vid,
+        )
+        return None
+    return None
 
 
 def _fetch_summary_row(conn: Connection, hash: str) -> Optional[Dict[str, Any]]:

@@ -357,11 +357,23 @@ class PrimitiveStep(BaseModel):
           that ever accept an artifact input.
 
       Bookkeeping-only (NOT in the hash):
-        - ``tool_config_path``   — the path the YAML was loaded
+        - ``tool_config_path``        — the path the YAML was loaded
           from.  Two callers loading the same YAML from different
           paths (test fixture vs prod) MUST produce the same hash
           if the content is identical.  So path is metadata for
           human debugging, not identity.
+        - ``methodology_version_id``  — Phase 0 PR 9.  Pointer into
+          ``copilot_state.methodology_versions`` letting the metadata
+          layer answer "which stored YAML version produced this
+          step" without re-hashing.  NOT in the hash because the
+          YAML CONTENT is already folded in via
+          ``tool_config_hash``: two YAMLs whose content is byte-
+          identical have the same ``methodology_version_id`` AND
+          the same ``tool_config_hash``, so adding the registry
+          id to the hash would be redundant.  Pinning it as
+          hash-excluded keeps PR 2's pinned-hash invariant intact
+          AND lets a future YAML rename (path change, content
+          unchanged) NOT invalidate any cached lineage.
 
     Why the four identity bits ride inside the hash via a derived
     dict instead of through an extended ``_compute_step_hash``
@@ -381,6 +393,10 @@ class PrimitiveStep(BaseModel):
     params: Dict[str, Any]  # primitive's *Input.model_dump()
     tool_config_hash: str
     tool_config_path: Optional[str] = None  # NOT in hash
+    # Phase 0 PR 9.  NOT in hash — pointer into the
+    # ``methodology_versions`` registry.  See class docstring under
+    # "Bookkeeping-only (NOT in the hash)" for the invariant.
+    methodology_version_id: Optional[int] = None
     output_field: str  # e.g., "time_series_spread"
     as_of_date: str  # ISO YYYY-MM-DD from the primitive snapshot
     input_hashes: Tuple[LineageHash, ...] = ()  # always () in v1
@@ -397,12 +413,22 @@ class PrimitiveStep(BaseModel):
         output_field: str,
         as_of_date: str,
         tool_config_path: Optional[str] = None,
+        methodology_version_id: Optional[int] = None,
         input_hashes: Tuple[LineageHash, ...] = (),
     ) -> "PrimitiveStep":
         # Fold the primitive identity bits into a derived dict so
         # the existing _compute_step_hash recipe applies unchanged.
         # Keys are alphabetized by _canonical_json (sort_keys=True),
         # so the order they're added here is irrelevant.
+        #
+        # IMPORTANT: ``methodology_version_id`` is NOT folded into
+        # this dict.  The YAML content it points at is already
+        # captured in ``tool_config_hash``; adding the registry id
+        # would couple the hash to per-DB auto-increment values
+        # (which are NOT stable across deploys / restores) and
+        # break PR 2's pinned-hash invariant.  This omission is
+        # the invariant the test
+        # ``tests/state/test_hash_stability.py`` enforces.
         hashed_params: Dict[str, Any] = {
             "input_params": params,
             "tool_config_hash": tool_config_hash,
@@ -422,6 +448,7 @@ class PrimitiveStep(BaseModel):
             params=params,
             tool_config_hash=tool_config_hash,
             tool_config_path=tool_config_path,
+            methodology_version_id=methodology_version_id,
             output_field=output_field,
             as_of_date=as_of_date,
             input_hashes=input_hashes,

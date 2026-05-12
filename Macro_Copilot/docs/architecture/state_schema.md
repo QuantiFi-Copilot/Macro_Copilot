@@ -904,3 +904,159 @@ Real-Postgres integration tests live under `tests/state/`:
 
 All four run in CI's `state-layer` job against the postgres:14
 service container.
+
+---
+
+## Methodology version pinning — Phase 0 PR 9
+
+PR 9 lights up the two registries PR 4 created but no code wrote to:
+`methodology_versions` (one row per distinct YAML content snapshot)
+and `application_version` (one row per distinct git commit).  Every
+`put_artifact` now records BOTH, and a new
+`/api/v1/workspace/{artifact_hash}` route surfaces the captured
+provenance.
+
+### Migration 0004
+
+Adds `artifact_metadata.application_version_id BIGINT NULL` FK to
+`application_version.id` (ON DELETE RESTRICT) with a partial index
+on the NOT-NULL rows.  Nullable because PR 7 / PR 8 wrote rows
+before PR 9 — the column is best-effort backwards-compatible, not
+mass-backfilled.
+
+### Public API
+
+```python
+# state.methodology_versions — both registries + canonicalisation
+register_yaml(yaml_text, *, yaml_path, conn) -> int
+get_yaml(version_id, *, conn) -> MethodologyVersionRecord
+get_yaml_by_hash(content_hash, *, conn) -> Optional[MethodologyVersionRecord]
+register_application_version(git_commit, *, conn, notes=None) -> int
+current_application_version_id(*, conn) -> int
+get_application_version(version_id, *, conn) -> ApplicationVersionRecord
+canonicalize_yaml_content(parsed_dict) -> Dict[str, Any]
+clear_caches()  # tests only
+
+# shared.config.tool_config — version-stamp on load
+load_tool_config(path, *, conn=None) -> ToolConfig
+# ToolConfig now carries Optional[int] methodology_version_id
+
+# shared.artifacts.lineage — pointer in the lineage chain
+class PrimitiveStep:
+    methodology_version_id: Optional[int] = None  # NOT in hash
+```
+
+### Hash-stability invariant
+
+`PrimitiveStep.methodology_version_id` is metadata-only and **NOT**
+folded into the canonical hash recipe.  The YAML content it points
+at is already captured in `tool_config_hash`; adding the registry
+id would couple the hash to per-DB auto-increment values (which
+are not stable across deploys / restores) and break PR 2's pinned-
+hash test.
+
+Concretely:
+- Building two `PrimitiveStep`s that differ ONLY in
+  `methodology_version_id` produces the SAME hash.
+- Building two `PrimitiveStep`s with different `tool_config_hash`
+  produces DIFFERENT hashes — the YAML content drives identity.
+
+The test `tests/state/test_hash_stability.py` is the CI gate; it
+must continue to pass for the canonical hash recipe to be stable.
+
+### YAML content canonicalisation
+
+`register_yaml` does NOT hash the raw YAML text.  Whitespace, key
+order, and comment formatting are NOT semantically meaningful, so:
+
+1. `yaml.safe_load(text)` → parsed dict.
+2. `shared.artifacts.lineage._canonicalize_for_hash(parsed)` —
+   same canonicaliser the lineage layer uses for step hashes
+   (recipe lives in ONE place).
+3. SHA-256 the canonical JSON → `yaml_content_hash`.
+
+Consequences:
+- Two YAMLs that differ only in cosmetic ways register as the SAME
+  row.
+- A real semantic edit (e.g. `z_score_window_days: 252 -> 200`)
+  registers as a NEW row.
+- Stored `yaml_content` is the canonicalised dict — round-trips
+  losslessly into `ToolConfig` via `ToolConfig.model_validate(...)`
+  (verified per-YAML in `test_tool_config_round_trip.py`).
+
+### Application-version resolution
+
+`current_application_version_id` resolves the current process's git
+SHA in this order:
+
+1. `MACRO_COPILOT_GIT_COMMIT` env var (container / CI bake-in).
+2. `git rev-parse HEAD` (local dev + CI checkouts).
+3. `_UNKNOWN_COMMIT_SENTINEL` (40 'u' chars) — falls back when
+   the process is running outside a git checkout.  Satisfies the
+   `length(git_commit) = 40` CHECK so the registry still records
+   _something_.
+
+Resolution is process-cached: a long-running server does one
+`git rev-parse` ever.
+
+### Cache-staleness self-healing
+
+`state.artifact_store._resolve_application_version_id` SELECTs the
+cached id from `application_version` before stamping it on a new
+artifact.  If the row was deleted out-of-band (a test fixture
+wiped the table after the cache populated), the helper clears
+caches and re-resolves once.  Steady-state cost stays zero
+round-trips; rare-event cost is one round-trip + a retry.
+
+### Workspace replay route
+
+`GET /api/v1/workspace/{artifact_hash}?mode={original|current}`
+returns a `WorkspaceReplayResponse`:
+
+```json
+{
+  "artifact_hash": "...",
+  "mode": "original" | "current",
+  "produced_under_commit": "abc1234..." | null,
+  "current_commit": "def5678...",
+  "commit_differs": false,
+  "methodology_version_ids": [1, 4],
+  "methodology_diffs": [...],     // only in mode=current
+  "reconstructed": [...],         // only in mode=original
+  "notes": [...]
+}
+```
+
+- `mode=original` (default): for each pinned methodology version,
+  load the registry-stored YAML, validate it round-trips through
+  `ToolConfig`, return the reconstructed config's identity hash.
+  Replay-faithful: subsequent on-disk YAML edits cannot taint the
+  response.
+- `mode=current`: for each pinned methodology version, compare its
+  stored content against what the same on-disk path holds NOW.
+  Returns `methodology_diffs` listing every changed
+  `conventions.<key>` (best-effort top-level diff).
+
+Out of scope for PR 9: actual re-execution of primitives.  The
+route surfaces the divergence signal; the executor that closes the
+loop ("replay would produce this artifact under current YAML")
+belongs to the workspace-persistence PR (Phase 0 PR 11).
+
+### Tests
+
+Real-Postgres integration tests under `tests/state/`:
+
+- `test_methodology_versions.py`     — registry idempotency,
+  canonicalisation invariance, SHA validation, current-commit
+  resolution.
+- `test_tool_config_round_trip.py`   — parameterised across all 16
+  current tool YAMLs.  Asserts `ToolConfig` round-trips through
+  both Pydantic AND the registry's JSONB storage without losing
+  `conventions_hash`.
+- `test_methodology_pinning.py`      — the brief's spec test:
+  build artifact under YAML v1, mutate to v2, assert hash
+  divergence + faithful original-mode reconstruction.  Plus
+  TestClient coverage of the replay route.
+
+All three run in CI's `state-layer` job alongside the PR 4 / 5 /
+7 / 8 tests, against the same postgres:14 service container.
