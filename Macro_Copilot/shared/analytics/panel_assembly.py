@@ -136,6 +136,13 @@ def fetch_instrument_panel(
     if raw_df.empty:
         return pd.DataFrame()
 
+    # Postgres NUMERIC fields land as ``decimal.Decimal`` instances.
+    # Cast to float64 at the fetcher boundary so all downstream
+    # arithmetic (forward-fill, comparisons, pivot operations) works
+    # uniformly.  Same defensive cast curve_spread / cross_market_spread
+    # apply at their pivot layer.
+    raw_df["field_value"] = raw_df["field_value"].astype(float)
+
     # Pivot into wide format keyed by ``<curve_family>_<tenor>``.
     # Each leg's column carries its own field_value series.
     raw_df["leg_key"] = raw_df["curve_family"] + "_" + raw_df["tenor"]

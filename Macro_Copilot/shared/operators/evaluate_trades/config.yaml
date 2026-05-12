@@ -54,7 +54,7 @@ defaults:
       = ``external_series``; ignored otherwise.
 
 methodology:
-  what_it_does: >-
+  what_it_does: |
     For each Trade in the input TradeSet, the operator looks up
     each leg's instrument_key in the price/yield Panel, computes
     per-date P&L contributions as ``leg.weight * (price[t] -
@@ -65,9 +65,36 @@ methodology:
     ``trade_<i>_pnl``.  P&L is denominated in the asset's native
     units (e.g. yield-change bps for a yield series; price-
     change for a price series).
+
+    PR 21 DISCLOSURE — YIELD-CHANGE vs DOLLAR P&L.  When the
+    input ``price_panel`` contains YIELDS (e.g. UST/TIPS
+    benchmarks fetched via ``build_sovereign_yield_panel_tool``),
+    the output P&L is in YIELD-CHANGE space (basis points), NOT
+    DOLLAR space.  A 1bp move on a 10Y bond and a 1bp move on a
+    2Y bond contribute equally to the output P&L — even though
+    in DOLLAR terms the 10Y move is ~4x more impactful (because
+    modified duration scales linearly with tenor).  Cross-tenor
+    long-short P&L summaries are therefore NOT DV01-weighted
+    dollar P&L.  Dollar-P&L conversion requires modified
+    duration and price (PX_LAST / PX_DIRTY) data not yet ingested
+    for sovereign benchmarks (planned-extension list below).
+
+    Yield-change-P&L is a defined accounting convention used by
+    desks for relative-value comparisons where the absolute
+    notional is not the focus (spread trades, basis trades,
+    relative-yield screens).  It is NOT appropriate for
+    trade-sizing decisions or capital-at-risk calculations.
+
+    The financing-carry extension (financing_assumption =
+    ``external_series``) operates in the same yield-PCT space:
+    per-leg daily accrual = ``-leg.weight × rate_pct /
+    basis_days``, accumulated through the holding window.  Sign
+    convention: positive leg.weight = "long bond" position that
+    PAYS financing (negative accrual); negative weight = "short
+    bond" that RECEIVES financing (positive accrual).
   planned_extensions:
+    - "DV01-weighted dollar P&L mode.  Requires ingestion of modified duration (Bloomberg MOD_DUR_MID) + dirty price (PX_DIRTY) per instrument.  Adds ``pnl_units: [yield_change_bps, dollar_pnl]`` knob with the dollar path raising NotImplementedError until the data lands."
     - "Multi-component P&L decomposition (carry vs price vs financing) with columns ``trade_<i>__carry``, ``trade_<i>__price``, ``trade_<i>__financing``"
     - "bid/ask pricing (requires per-instrument bid/ask data in the price Panel)"
     - "Transaction costs (basis points per leg, asymmetric by side)"
     - "Borrow-availability constraints for short legs"
-    - "Financing-rate integration (consumes the financing_rate primitive landing in Phase 1 PR 13)"

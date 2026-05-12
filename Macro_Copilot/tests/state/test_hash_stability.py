@@ -263,6 +263,186 @@ class TestPhase1ClosedFamilyHashStability:
         assert recovered.lineage.head_hash == original.lineage.head_hash
 
 
+class TestPhase1PR19PinnedHashes:
+    """Phase 1 PR 19/20 — pinned lineage-step hashes for the 3 new
+    primitives + the backtest archetype's terminal operator step.
+
+    These vectors guard against silent drift in:
+      (a) the bridge's ``PrimitiveStep`` shape for Panel-emitting
+          primitives (PR 20's parallel-bridge addition),
+      (b) the bridge's ``PrimitiveStep`` shape for TimeSeries-emitting
+          primitives that came via the standard
+          ``tool_output_to_artifact_series`` path (breakeven_inflation),
+      (c) the operator-step shape for the BacktestReport terminal
+          (summarize_trades) — anchors the backtest workflow's
+          replay-determinism contract.
+
+    Closed-family-extension discipline: every new primitive +
+    operator gets a pinned vector here.  If any value drifts, the
+    PR that caused it touched a hash recipe — fix the recipe drift
+    OR deliberately update the pinned value with rationale.
+
+    Hash anchoring
+    --------------
+    Each vector uses a canonical, hand-picked parameter shape that
+    matches what the production code path emits.  The
+    ``tool_config_hash`` value is a fixed placeholder (NOT the live
+    YAML's conventions_hash) because:
+
+      - The point of this test is to detect ``_compute_step_hash``
+        recipe drift, not to couple the test to specific YAML
+        content.  If YAML defaults change, the test still passes
+        as long as the canonicalization recipe is stable.
+      - The live YAML's conventions_hash is itself an output of
+        ``ToolConfig.conventions_hash()`` — pinning that here
+        would create a brittle two-layer coupling.
+    """
+
+    # ----- PR 19 primitive: build_sovereign_yield_panel_tool -----
+    # Bridge's PrimitiveStep for a canonical two-leg sovereign Panel
+    # call (UST 2Y + USD_TIPS 10Y over a 6-month window).
+    EXPECTED_SOVEREIGN_YIELD_PANEL_HASH = (
+        "f5af6837fc8c4080680b779a9dd0460dd67e814d2234c75d6ef83f22e221c26a"
+    )
+
+    def test_sovereign_yield_panel_bridge_step_hash_pinned(self) -> None:
+        h = _compute_step_hash(
+            kind="primitive",
+            name="build_sovereign_yield_panel_tool",
+            version="1.0.0",
+            params={
+                "input_params": {
+                    "legs": [
+                        {
+                            "curve_family": "UST",
+                            "tenor": "2Y",
+                            "field_name": None,
+                        },
+                        {
+                            "curve_family": "USD_TIPS",
+                            "tenor": "10Y",
+                            "field_name": None,
+                        },
+                    ],
+                    "start_date": "2024-01-01",
+                    "end_date": "2024-06-30",
+                    "missing_data_policy": None,
+                },
+                "tool_config_hash": "PINNED_PLACEHOLDER_HASH_PR20",
+                "output_field": "panel",
+                "as_of_date": "2024-06-28",
+            },
+            input_hashes=(),
+        )
+        assert h == self.EXPECTED_SOVEREIGN_YIELD_PANEL_HASH, (
+            "build_sovereign_yield_panel_tool primitive-step hash has "
+            "drifted.  This is a closed-family-extension contract "
+            "break: every Panel produced by this primitive would re-"
+            "hash to a different value.  Investigate the bridge's "
+            "PrimitiveStep recipe before bumping the pinned vector."
+        )
+
+    # ----- PR 19 primitive: compute_financing_rate_tool -----
+    # Bridge's PrimitiveStep for a canonical overnight_index_proxy call.
+    EXPECTED_FINANCING_RATE_HASH = (
+        "a1b3b5751af549070ef8a132092ca1ebe0d49b15b8cd87d303bdc401e8539e00"
+    )
+
+    def test_financing_rate_bridge_step_hash_pinned(self) -> None:
+        h = _compute_step_hash(
+            kind="primitive",
+            name="compute_financing_rate_tool",
+            version="1.0.0",
+            params={
+                "input_params": {
+                    "method": "overnight_index_proxy",
+                    "start_date": "2024-01-01",
+                    "end_date": "2024-06-30",
+                    "constant_rate_pct": None,
+                    "proxy_curve": "USD_SOFR_OIS",
+                    "day_count_basis": None,
+                    "calendar": None,
+                },
+                "tool_config_hash": "PINNED_PLACEHOLDER_HASH_PR20",
+                "output_field": "panel",
+                "as_of_date": "2024-06-28",
+            },
+            input_hashes=(),
+        )
+        assert h == self.EXPECTED_FINANCING_RATE_HASH, (
+            "compute_financing_rate_tool primitive-step hash has "
+            "drifted.  Investigate before bumping."
+        )
+
+    # ----- PR 19 primitive: calculate_breakeven_inflation_tool -----
+    # Bridge's PrimitiveStep for a canonical UST nominal / USD_TIPS
+    # breakeven call at the 10Y matched tenor.
+    EXPECTED_BREAKEVEN_INFLATION_HASH = (
+        "8bfc81cbf1e81f79bab9b777aebab30f1218925cb2ccea75110c6c218aefd7a8"
+    )
+
+    def test_breakeven_inflation_bridge_step_hash_pinned(self) -> None:
+        h = _compute_step_hash(
+            kind="primitive",
+            name="calculate_breakeven_inflation_tool",
+            version="1.0.0",
+            params={
+                "input_params": {
+                    "nominal_curve_family": "UST",
+                    "real_curve_family": "USD_TIPS",
+                    "tenor": "10Y",
+                    "convention": None,
+                    "lookback_days": 365,
+                    "nominal_field_name": "YLD_YTM_MID",
+                    "real_field_name": "YLD_YTM_MID",
+                },
+                "tool_config_hash": "PINNED_PLACEHOLDER_HASH_PR20",
+                "output_field": "time_series_breakeven",
+                "as_of_date": "2024-06-28",
+            },
+            input_hashes=(),
+        )
+        assert h == self.EXPECTED_BREAKEVEN_INFLATION_HASH, (
+            "calculate_breakeven_inflation_tool primitive-step hash "
+            "has drifted.  Investigate before bumping."
+        )
+
+    # ----- Backtest archetype terminal: summarize_trades -----
+    # OperatorStep for the terminal node of the backtest workflow.
+    # The summary Panel (hit_rate, mean_pnl, Sharpe, drawdown, p10/50/90)
+    # is what evaluate_trades' P&L panel reduces to via summarize_trades.
+    # The pinned vector uses a synthetic upstream input_hash (the
+    # canonical convention from PR 12's construct_trades vector).
+    EXPECTED_SUMMARIZE_TRADES_TERMINAL_HASH = (
+        "9dd7ed2f6c58455039387859d05cff908939395cfd4448105dbfaba101325948"
+    )
+
+    def test_summarize_trades_terminal_step_hash_pinned(self) -> None:
+        h = _compute_step_hash(
+            kind="operator",
+            name="summarize_trades",
+            version="1.0.0",
+            params={
+                "aggregation": "final_pnl",
+                "trading_days_per_year": 252,
+                "holding_window_days": 20,
+                "n_trades": 5,
+                "metric_columns": [
+                    "hit_rate", "mean_pnl", "sharpe_annualized",
+                    "max_drawdown", "p10_pnl", "p50_pnl", "p90_pnl",
+                ],
+                "notes": [],
+            },
+            input_hashes=("b" * 64,),
+        )
+        assert h == self.EXPECTED_SUMMARIZE_TRADES_TERMINAL_HASH, (
+            "summarize_trades terminal-step hash has drifted.  This "
+            "is the BacktestReport terminal's anchor — every backtest "
+            "workspace's replay-determinism guarantee depends on "
+            "this hash being stable.  Investigate before bumping."
+        )
+
+
 class TestCanonicalJsonShape:
     """The intermediate JSON form has the exact shape we promise."""
 

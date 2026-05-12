@@ -329,3 +329,87 @@ this should maybe not live under the OIS domain namespace, because it is cross-d
 ### 23. Operator (summarize_series)
 Might not be standard!! 
 Probably just a temporary workaround: It is basically a temporary bridge because the artifact layer is still missing the right scalar output type.
+
+
+### 24. Phase 1 deferred 1B desk-critical tools (data-infrastructure-gated)
+
+The original Phase 1 Week 7-8 plan called for four "desk-critical 1B
+tools" alongside the backtest archetype.  PR 21's stress-test against
+the "no metadata proxies" design principle blocked three of them on
+data infrastructure we do not currently have.  None are hard
+architectural blockers — they're all enabled by specific data
+ingestion work.  Logged here so future PRs can see the exact
+prerequisites.
+
+**`per_meeting_pricing` (OIS)** — DEFERRED to Phase 2
+
+  - **What it would do**: given a central-bank meeting date, decompose
+    the OIS curve to extract the cuts/hikes priced for that specific
+    meeting.
+  - **Why deferred**: per-meeting decomposition requires WIRP-style
+    data (the market's actual implied path step-function), not
+    smooth-curve interpolation.  An earlier implementation that
+    linearly interpolated par OIS rates to derive per-meeting moves
+    drifted visibly from Bloomberg WIRP and was REMOVED (see
+    ``rates_agent/ois/mcp_server.py`` docstring lines 18-23).
+    Rebuilding without WIRP data would commit the same sin.
+  - **Data prerequisite**: Bloomberg WIRP feed (or equivalent
+    market-implied-path data) ingested as a daily snapshot.
+  - **Effort**: medium — adapter to WIRP, output schema, 3-test pattern.
+
+**`policy_path_since_event` (OIS)** — DEFERRED to Phase 2
+
+  - **What it would do**: "How has the implied policy path moved
+    since the SVB event?" — show the change in cumulative implied
+    cuts/hikes between two dates.
+  - **Why deferred**: two viable framings.
+    (a) Meeting-decomposition framing — same WIRP blocker as above.
+    (b) Generic-OIS-metric-change framing — ``(OIS_rate_today −
+        OIS_rate_at_event_date)`` at some tenor.  But this is a thin
+        wrapper over ``get_ois_rate_level`` + arithmetic that the LLM
+        can compose; fails the "defensibly unique" stress test.
+  - **Data prerequisite**: same as ``per_meeting_pricing`` for (a).
+  - **Effort**: dependent on framing — (a) is medium; (b) shouldn't be
+    a separate primitive.
+
+**`carry_and_roll` (sovereign)** — DEFERRED to Phase 2
+
+  - **What it would do**: compute per-bond carry + roll-down P&L over
+    a holding horizon, for RV screens.
+  - **Why deferred**: the carry+roll formula requires per-bond
+    modified duration, coupon, day-count, and accrued interest.  Our
+    sovereign-bonds playbook ingests ONLY yield (``YLD_YTM_MID``) +
+    ``maturity_date`` + ``security_name``.  Computing carry+roll
+    without the rest would force proxies — duration ≈ tenor (20-50%
+    error for non-zero-coupon bonds), coupon ≈ current yield (par-bond
+    assumption, off by 50-200bp for seasoned bonds), etc.  Each proxy
+    violates the "no opinionated proxies for missing metadata"
+    principle the same way the dropped per_meeting_pricing did.
+  - **Data prerequisite**: Bloomberg ``MOD_DUR_MID`` + ``CUR_CPN`` +
+    ``DAY_CNT_DES`` + ``PX_DIRTY`` per instrument added to the
+    sovereign benchmarks playbook + ingestion run.
+  - **Effort**: medium for the analytics; medium for the ingestion
+    extension (adds ~5 fields × ~90 instruments × ~5000 days = ~2M new
+    rows in market_data_daily, plus a small instrument-master
+    extension for the static fields).
+
+**`asset_swap_spread` (sovereign side)** — ALREADY EXISTS in OIS folder
+The cross-domain ``swap_spread`` primitive at
+``rates_agent/ois/tools/swap_spread/`` already computes the sovereign-
+vs-OIS ASW using ``fetch_cross_domain_pair``.  Lives in OIS folder
+per the "owner of the cross-domain concept" convention.  PR 21 adds
+an explicit par-par-approximation disclosure to its config.yaml so
+the workspace methodology card surfaces the true-ASW gap.
+
+## Phase 1 closure punch list (for reference)
+
+Per the original Phase 1 Week 7-8 plan:
+- ✅ TIPS-vs-2Y thesis runs end-to-end via natural language (PR 19/20)
+- ✅ Workspace persists, URL replays byte-identical (Phase 0 PR 11 pattern)
+- ✅ Methodology card on every node shows assumptions (per-primitive YAML; PR 21 adds the par-par + yield-change + financing-proxy disclosures)
+- ⚠️  4 desk-critical 1B tools — REVISED: 3 of 4 deferred above with explicit data prerequisites; ``asset_swap_spread`` already exists
+- ⏳ External practitioner sign-off — process gate, not engineering
+
+Phase 1 is engineering-complete after PR 21 lands.  External
+practitioner sign-off + UI work (workspace renderer for the
+methodology disclosures) are Phase 3 concerns.
