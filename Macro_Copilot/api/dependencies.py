@@ -9,8 +9,11 @@ through dependency-injection getters:
     market-data ingestion + REST routes).
   - ``get_checkpointer_pool()``    — psycopg3 ``AsyncConnectionPool``
     for the LangGraph ``AsyncPostgresSaver`` (Phase 0 PR 5).
+  - ``get_object_storage()``       — pluggable object-storage backend
+    for the artifact store (Phase 0 PR 7).  ``LocalFSBackend`` by
+    default; ``GCSBackend`` selectable via env var.
 
-Both singletons are created once during app startup (see
+All singletons are created once during app startup (see
 ``api/server.py``'s lifespan) and disposed on shutdown.  Tests that
 need to spin up their own can call ``init_*`` / ``dispose_*``
 directly.
@@ -286,3 +289,82 @@ def get_checkpointer_pool() -> Optional["AsyncConnectionPool"]:
     ``api/routes/chat.py``.
     """
     return _checkpointer_pool
+
+
+# ---------------------------------------------------------------------------
+# Artifact-store object-storage backend — Phase 0 PR 7
+# ---------------------------------------------------------------------------
+# Large artifact payloads live outside Postgres in an object-storage
+# backend.  ``LocalFSBackend`` is the dev default; ``GCSBackend`` is
+# the production option (same GCS auth pattern as
+# ``utils.historical_extractor``).  Lifecycle is symmetric to the
+# checkpointer pool — initialised once at startup, disposed (no-op for
+# both backends today) on shutdown.
+_object_storage = None  # Optional[ObjectStorageBackend]
+
+
+def _resolve_object_storage_config():
+    """Build an ``ObjectStorageConfig`` from env vars.
+
+    Inputs:
+      ARTIFACT_STORAGE_BACKEND   = 'localfs' (default) | 'gcs'
+      ARTIFACT_STORAGE_LOCAL_ROOT = filesystem path (for localfs).
+                                    Default: /tmp/macro_copilot_artifacts
+      ARTIFACT_STORAGE_GCS_BUCKET = bucket name (required for gcs)
+      ARTIFACT_STORAGE_GCS_PREFIX = key prefix (default: 'artifacts')
+    """
+    from state.schemas import ObjectStorageConfig
+
+    backend = os.getenv("ARTIFACT_STORAGE_BACKEND", "localfs").lower()
+    if backend not in ("localfs", "gcs"):
+        raise ValueError(
+            f"ARTIFACT_STORAGE_BACKEND must be 'localfs' or 'gcs'; "
+            f"got {backend!r}"
+        )
+    return ObjectStorageConfig(
+        backend=backend,
+        local_root=os.getenv(
+            "ARTIFACT_STORAGE_LOCAL_ROOT", "/tmp/macro_copilot_artifacts"
+        ),
+        gcs_bucket=os.getenv("ARTIFACT_STORAGE_GCS_BUCKET"),
+        gcs_prefix=os.getenv("ARTIFACT_STORAGE_GCS_PREFIX", "artifacts"),
+    )
+
+
+def init_object_storage():
+    """Build + cache the object-storage backend.  Idempotent.
+
+    Called from ``api/server.py``'s lifespan.  Failure here does NOT
+    crash the API — REST routes that don't touch the artifact store
+    keep working; routes that DO touch it will hit ``None`` via
+    ``get_object_storage`` and surface a clean error to the caller.
+    Same operational shape as ``init_checkpointer_pool``.
+    """
+    global _object_storage
+    if _object_storage is not None:
+        return _object_storage
+    from state.object_storage import build_backend
+
+    config = _resolve_object_storage_config()
+    backend = build_backend(config)
+    logger.info(
+        "Initialising object-storage backend: %s (local_root=%s, "
+        "gcs_bucket=%s, gcs_prefix=%s)",
+        config.backend, config.local_root, config.gcs_bucket, config.gcs_prefix,
+    )
+    _object_storage = backend
+    return _object_storage
+
+
+def dispose_object_storage() -> None:
+    """Dispose the object-storage backend.  Currently a no-op for
+    both backends but symmetric with ``dispose_checkpointer_pool``
+    so lifespan code stays uniform."""
+    global _object_storage
+    _object_storage = None
+
+
+def get_object_storage():
+    """Return the shared object-storage backend, or None if not
+    initialised.  Same contract as ``get_checkpointer_pool``."""
+    return _object_storage

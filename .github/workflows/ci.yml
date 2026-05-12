@@ -212,6 +212,9 @@ jobs:
         # alembic + sqlalchemy + psycopg2-binary for the migrations
         # path; langgraph + langgraph-checkpoint-postgres + psycopg3
         # (with binary + pool extras) for the AsyncPostgresSaver path.
+        # pandas + numpy + pydantic for the artifact-store path
+        # (Phase 0 PR 7) — the state/ package imports them via
+        # artifact_store.py for the typed-artifact serializers.
         # psycopg2 (sync) and psycopg3 (async) coexist; the SQLAlchemy
         # ingestion path uses psycopg2 and the LangGraph checkpointer
         # uses psycopg3.
@@ -225,7 +228,10 @@ jobs:
             "langgraph>=0.2" \
             "langgraph-checkpoint-postgres>=2.0" \
             "pytest>=8.0" \
-            "pytest-asyncio>=0.23"
+            "pytest-asyncio>=0.23" \
+            "pandas>=2.0" \
+            "numpy>=1.26" \
+            "pydantic>=2.5"
 
       - name: alembic upgrade head (forward)
         run: alembic upgrade head
@@ -247,4 +253,18 @@ jobs:
           pytest \
             Macro_Copilot/tests/state/test_postgres_checkpointer.py \
             Macro_Copilot/tests/state/test_session_restart.py \
+            -v
+
+      - name: pytest artifact store (Phase 0 PR 7)
+        # ``test_object_storage.py``  — unit tests for LocalFSBackend
+        #   + stubbed GCSBackend; no Postgres needed but runs here for
+        #   colocation with the other state-layer tests.
+        # ``test_artifact_store.py``  — round-trip persistence for all
+        #   5 artifact types, inline-vs-blob path, idempotency,
+        #   summary endpoint, GC sweep.  Uses the same Postgres
+        #   service container as the migration / checkpointer tests.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_object_storage.py \
+            Macro_Copilot/tests/state/test_artifact_store.py \
             -v
