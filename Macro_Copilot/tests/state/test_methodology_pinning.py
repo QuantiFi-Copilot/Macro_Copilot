@@ -414,13 +414,20 @@ class TestWorkspaceReplayRoute:
     """
 
     def _client(self):
+        """Build a TestClient that mounts the artifact replay route.
+
+        PR 10 relocated PR 9's single-artifact replay endpoint from
+        ``/api/v1/workspace/{hash}`` to ``/api/v1/artifacts/{hash}/replay``
+        (the singular ``/workspace`` path is now slug-routed).  The
+        tests below hit the new URL.
+        """
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from api.routes.workspace import router
+        from api.routes.artifacts import router
 
         app = FastAPI()
-        app.include_router(router, prefix="/api/v1/workspace")
+        app.include_router(router, prefix="/api/v1/artifacts")
         return TestClient(app)
 
     def _bind_engine(self):
@@ -435,13 +442,13 @@ class TestWorkspaceReplayRoute:
     def test_404_for_unknown_artifact(self, engine):
         self._bind_engine()
         client = self._client()
-        resp = client.get("/api/v1/workspace/" + "0" * 64)
+        resp = client.get("/api/v1/artifacts/" + "0" * 64 + "/replay")
         assert resp.status_code == 404
 
     def test_400_for_malformed_hash(self, engine):
         self._bind_engine()
         client = self._client()
-        resp = client.get("/api/v1/workspace/not-a-hash")
+        resp = client.get("/api/v1/artifacts/not-a-hash/replay")
         assert resp.status_code == 400
 
     def test_original_mode_reconstructs_yaml(
@@ -466,7 +473,7 @@ class TestWorkspaceReplayRoute:
 
         self._bind_engine()
         client = self._client()
-        resp = client.get(f"/api/v1/workspace/{h}?mode=original")
+        resp = client.get(f"/api/v1/artifacts/{h}/replay?mode=original")
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["mode"] == "original"
@@ -502,7 +509,7 @@ class TestWorkspaceReplayRoute:
 
         self._bind_engine()
         client = self._client()
-        resp = client.get(f"/api/v1/workspace/{h}?mode=current")
+        resp = client.get(f"/api/v1/artifacts/{h}/replay?mode=current")
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["mode"] == "current"
@@ -532,7 +539,7 @@ class TestWorkspaceReplayRoute:
 
         self._bind_engine()
         client = self._client()
-        resp = client.get(f"/api/v1/workspace/{h}?mode=current")
+        resp = client.get(f"/api/v1/artifacts/{h}/replay?mode=current")
         assert resp.status_code == 200
         body = resp.json()
         assert body["methodology_diffs"] == []
@@ -556,7 +563,7 @@ class TestWorkspaceReplayRoute:
 
         self._bind_engine()
         client = self._client()
-        resp = client.get(f"/api/v1/workspace/{h}?mode=current")
+        resp = client.get(f"/api/v1/artifacts/{h}/replay?mode=current")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["methodology_diffs"]) == 1
@@ -582,7 +589,7 @@ class TestWorkspaceReplayRoute:
 
         self._bind_engine()
         client = self._client()
-        resp = client.get(f"/api/v1/workspace/{h}")
+        resp = client.get(f"/api/v1/artifacts/{h}/replay")
         body = resp.json()
         assert body["produced_under_commit"] is not None
         assert len(body["produced_under_commit"]) == 40

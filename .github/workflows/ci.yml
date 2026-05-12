@@ -310,10 +310,29 @@ jobs:
         #   build artifact under YAML v1, mutate YAML to v2, assert
         #   hash divergence under "current" and byte-identical hash
         #   reconstruction under "original".  Plus TestClient
-        #   coverage of the /api/v1/workspace/{hash} replay route.
+        #   coverage of the /api/v1/artifacts/{hash}/replay route
+        #   (relocated from PR 9's /api/v1/workspace/{hash} URL in
+        #   Phase 0 PR 10 — the workspace path is now slug-routed).
         run: |
           pytest \
             Macro_Copilot/tests/state/test_methodology_versions.py \
             Macro_Copilot/tests/state/test_tool_config_round_trip.py \
             Macro_Copilot/tests/state/test_methodology_pinning.py \
+            -v
+
+      - name: pytest workspace persistence + URL routing (Phase 0 PR 10)
+        # ``test_dag_repo.py``               — DAG persistence round-
+        #   trip, idempotency, content-addressing, FK enforcement.
+        # ``test_workspace_repo.py``         — slugify resilience to
+        #   adversarial input, partial-unique index enforcement,
+        #   rename-preserves-slug invariant, fork lineage.
+        # ``test_workspace_replay.py``       — end-to-end acceptance:
+        #   build artifact + DAG + workspace, simulate restart,
+        #   assert node-artifact hashes byte-identical.  Plus the
+        #   full HTTP round-trip through POST/GET/replay routes.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_dag_repo.py \
+            Macro_Copilot/tests/state/test_workspace_repo.py \
+            Macro_Copilot/tests/integration/test_workspace_replay.py \
             -v

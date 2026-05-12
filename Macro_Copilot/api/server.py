@@ -51,6 +51,7 @@ from api.routes.rates import router as rates_router
 from api.routes.workflows import router as workflows_router
 from api.routes.library import router as library_router
 from api.routes.workspace import router as workspace_router
+from api.routes.artifacts import router as artifacts_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -189,13 +190,24 @@ app.include_router(
     tags=["Library"],
 )
 
-# PR 9: workspace replay route — surfaces methodology + application-
-# version provenance for an artifact, with ``?mode=original|current``
-# controlling reconstruction vs. on-disk divergence reporting.
+# PR 10: workspace persistence surface — POST /, GET /{slug},
+# GET /{slug}/replay.  Slug is the stable URL handle; rename
+# updates name only.  See ``api/routes/workspace.py``.
 app.include_router(
     workspace_router,
     prefix="/api/v1/workspace",
     tags=["Workspace"],
+)
+
+# PR 10: artifact-keyed replay surface (relocated from PR 9's
+# ``/api/v1/workspace/{hash}`` — the artifact-keyed lookup is
+# semantically an artifact view, not a workspace view, and the
+# singular ``/workspace`` path is now slug-routed).  Endpoint:
+# ``GET /api/v1/artifacts/{hash}/replay``.
+app.include_router(
+    artifacts_router,
+    prefix="/api/v1/artifacts",
+    tags=["Artifacts"],
 )
 
 app.include_router(

@@ -259,12 +259,12 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the artifact_metadata <-> application_version
-        # link (0004, added in Phase 0 PR 9).
-        # Chains: 0001 -> 0002 -> 0003 -> 0004.
-        assert version == "0004_artifact_app_version", (
+        # Latest head is the workspaces.slug column add
+        # (0005, Phase 0 PR 10).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005.
+        assert version == "0005_workspace_slug", (
             f"Expected alembic_version to point at "
-            f"0004_artifact_app_version, got {version!r}.  "
+            f"0005_workspace_slug, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )
