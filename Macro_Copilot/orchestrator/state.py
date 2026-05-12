@@ -333,6 +333,161 @@ def fail_turn(
     )
 
 
+# ============================================================================
+# Recent-conversation context (PR 13)
+# ============================================================================
+# Phase 0 built the per-turn persistence layer (sessions / turns /
+# message_events / working_set + AsyncPostgresSaver for domain
+# children).  But the *routing* layer — Supervisor.route() and the
+# WorkflowRouter pre-gate — only ever saw the current user message,
+# with no prior context.  A user asking "what about the Bund one?"
+# after a "UST 2s10s" turn fell through to a CLARIFY response
+# because the supervisor had no idea what "the one" referred to.
+#
+# This module-level helper closes that gap: ``load_recent_turns``
+# reads the most recent N completed (and failed, see contract) turns
+# from ``copilot_state.turns`` and returns them in chronological
+# order for prompt injection.  ``orchestrator/session.py`` calls
+# it once at the top of every ``_run_turn`` and prepends a
+# ``RECENT CONVERSATION`` block to the augmented user message — the
+# supervisor + workflow router + every domain child all see the
+# prior-turn context naturally, without bespoke history-passing
+# code at each call site.
+
+
+@dataclass(frozen=True)
+class RecentTurn:
+    """One past turn surfaced to the next turn's routing layer.
+
+    Only the user-visible fields land here — internal tool traces
+    and event streams stay in ``copilot_state.message_events``
+    (queryable for audit) but do not feed the next turn's prompt.
+
+    ``assistant_response`` may be None for turns that never reached
+    a commit_turn (in-flight turns).  ``load_recent_turns`` filters
+    those out by default; callers that want them can opt in via
+    ``include_in_flight``.
+    """
+
+    sequence_no: int
+    user_message: str
+    assistant_response: Optional[str]
+    status: str
+
+
+# Caps on what we surface back as "recent conversation" — keeps
+# token cost predictable and avoids leaking arbitrarily long
+# assistant transcripts into every subsequent turn's system
+# prompt.  The contract is: this is human-readable signal to help
+# routing, not a faithful conversation replay (that lives in
+# ``message_events`` for audit).
+_DEFAULT_TURN_LIMIT = 5
+_MAX_ASSISTANT_RESPONSE_CHARS = 600
+
+
+def load_recent_turns(
+    session_id: uuid.UUID,
+    *,
+    conn: Connection,
+    exclude_turn_id: Optional[uuid.UUID] = None,
+    limit: int = _DEFAULT_TURN_LIMIT,
+    include_in_flight: bool = False,
+) -> list[RecentTurn]:
+    """Load the most recent N turns for ``session_id``.
+
+    Returns turns in chronological order (oldest first) so the
+    prompt block reads top-to-bottom like a conversation transcript.
+
+    Parameters
+    ----------
+    session_id :
+        The session whose turns to fetch.
+    conn :
+        SQLAlchemy connection (PR 3 convention).  Caller owns
+        transaction boundary; this is a SELECT-only operation.
+    exclude_turn_id :
+        Typical: the CURRENT turn's id (just opened by
+        ``begin_turn``).  Excluding it prevents the in-flight
+        user message from appearing in its own "recent" context.
+    limit :
+        Cap on the number of turns to return.  Default 5 — enough
+        to carry one or two follow-up references without blowing
+        out token budget.  The caller can request more for an
+        operator-facing replay surface that needs deeper history.
+    include_in_flight :
+        When False (default), turns with ``status='running'`` are
+        excluded.  Routing should not see partially-formed
+        assistant responses.  When True, all rows are returned
+        including ``running`` turns — used by tests verifying the
+        filter behaviour.
+
+    Returns
+    -------
+    list[RecentTurn]
+        Ordered oldest → newest.  Empty when the session has no
+        qualifying prior turns.
+    """
+    if limit < 1:
+        return []
+
+    # SQL pulls the LATEST ``limit`` rows by sequence_no descending,
+    # then we reverse to chronological order at the Python layer.
+    # An in-place SQL ``ORDER BY sequence_no ASC LIMIT N OFFSET ...``
+    # would require knowing the total count first; the
+    # DESC-LIMIT-then-reverse pattern is one round-trip.
+    status_clause = "" if include_in_flight else (
+        "AND status IN ('completed', 'failed', 'cancelled')"
+    )
+    exclude_clause = (
+        "AND id <> :exclude_turn_id" if exclude_turn_id is not None else ""
+    )
+    params: dict = {"session_id": session_id, "limit": int(limit)}
+    if exclude_turn_id is not None:
+        params["exclude_turn_id"] = exclude_turn_id
+
+    rows = conn.execute(
+        text(
+            f"""
+            SELECT sequence_no, user_message, assistant_response, status
+            FROM {_COPILOT_STATE_SCHEMA}.turns
+            WHERE session_id = :session_id
+              {status_clause}
+              {exclude_clause}
+            ORDER BY sequence_no DESC
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    out = [
+        RecentTurn(
+            sequence_no=int(r["sequence_no"]),
+            user_message=r["user_message"],
+            assistant_response=_truncate_response(r["assistant_response"]),
+            status=r["status"],
+        )
+        for r in rows
+    ]
+    # Reverse to chronological order.
+    out.reverse()
+    return out
+
+
+def _truncate_response(value: Optional[str]) -> Optional[str]:
+    """Cap an assistant_response at ``_MAX_ASSISTANT_RESPONSE_CHARS``.
+
+    Long assistant responses get an ellipsis suffix so the next
+    turn's routing prompt stays bounded.  Reading the full
+    response is an audit-time concern; routing only needs the gist.
+    """
+    if value is None:
+        return None
+    if len(value) <= _MAX_ASSISTANT_RESPONSE_CHARS:
+        return value
+    return value[: _MAX_ASSISTANT_RESPONSE_CHARS - 1] + "…"
+
+
 __all__ = [
     "TurnContext",
     "TurnStatus",
@@ -340,4 +495,7 @@ __all__ = [
     "begin_turn",
     "commit_turn",
     "fail_turn",
+    # PR 13 — recent-conversation context for routing layer.
+    "RecentTurn",
+    "load_recent_turns",
 ]

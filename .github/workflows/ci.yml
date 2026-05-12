@@ -292,6 +292,9 @@ jobs:
         #   resolver behaviour (no real model call).
         # ``test_multi_turn_reference.py``  — 3-turn end-to-end exercise
         #   of working set + turns + resolver with a scripted resolver.
+        # ``test_recent_conversation_context.py`` — PR 13 routing-
+        #   memory fix: load_recent_turns SQL contract + prompt
+        #   rendering + the screenshot regression case.
         # The reference-resolver tests stub langchain via sys.modules
         # so we don't strictly need langchain-anthropic installed for
         # the resolver tests; the multi-turn test imports the resolver
@@ -302,6 +305,7 @@ jobs:
             Macro_Copilot/tests/state/test_turn_state_machine.py \
             Macro_Copilot/tests/state/test_reference_resolver.py \
             Macro_Copilot/tests/state/test_multi_turn_reference.py \
+            Macro_Copilot/tests/state/test_recent_conversation_context.py \
             -v
 
       - name: pytest methodology version pinning (Phase 0 PR 9)

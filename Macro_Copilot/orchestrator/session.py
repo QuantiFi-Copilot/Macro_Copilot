@@ -89,7 +89,7 @@ from orchestrator.events import SessionEvent, extract_workspace_context
 from orchestrator.prompts import (
     OIS_SYSTEM_PROMPT,
     SOVEREIGN_BONDS_SYSTEM_PROMPT,
-    render_working_set_block,
+    render_routing_prefix,
 )
 from orchestrator.supervisor import Supervisor
 from orchestrator.workflow_contracts import (
@@ -894,22 +894,69 @@ class CopilotSession:
             )
             return None
 
+    def _load_recent_turns_if_possible(
+        self,
+        exclude_turn_id,
+        limit: int = 5,
+    ) -> list:
+        """Read the last N completed turns for this session.  Returns
+        an empty list when persistent lifecycle is disabled or the
+        SELECT fails — routing then proceeds without prior-turn
+        context (same degraded-operation contract as the rest of
+        the persistence layer).
+
+        ``exclude_turn_id`` is typically the CURRENT turn's id so
+        the in-flight user message does not appear in its own
+        "recent" context.
+        """
+        if not self._persistent_turn_enabled():
+            return []
+        try:
+            from orchestrator.state import load_recent_turns
+
+            with self._engine.connect() as conn:
+                return load_recent_turns(
+                    self._session_id,
+                    conn=conn,
+                    exclude_turn_id=exclude_turn_id,
+                    limit=limit,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[%s] could not load recent turns; routing layer will "
+                "see no prior context: %s",
+                self.thread_id, exc,
+            )
+            return []
+
     def _augment_user_message(
         self,
         user_message: str,
         visible_names: list[str],
+        recent_turns: list,
     ) -> str:
-        """Prepend the working-set block to the user message.
+        """Prepend the routing prefix (recent conversation + working
+        set) to the user message.
 
-        The supervisor + each domain child see the augmented text;
-        the raw user_message lands unchanged in
+        The supervisor + workflow router + each domain child see the
+        augmented text; the raw user_message lands unchanged in
         ``copilot_state.turns.user_message`` because that's stored
         BEFORE this augmentation runs (in ``begin_turn``).
+
+        Empty session + empty working set → prefix collapses to the
+        empty string and ``user_message`` is returned verbatim.  No
+        "USER MESSAGE:" boilerplate when there's nothing to prefix
+        — keeps the cold-session prompt clean.
+
+        PR 13: ``recent_turns`` is the new piece.  Phase 0 PR 8 only
+        included the working-set block; the supervisor + workflow
+        router could not resolve "the Bund one" follow-ups because
+        they had no prior-turn context.
         """
-        if not visible_names:
+        prefix = render_routing_prefix(recent_turns, visible_names)
+        if not prefix:
             return user_message
-        block = render_working_set_block(visible_names)
-        return f"{block}\n\nUSER MESSAGE:\n{user_message}"
+        return f"{prefix}\n\nUSER MESSAGE:\n{user_message}"
 
     async def _run_turn(
         self,
@@ -981,15 +1028,17 @@ class CopilotSession:
 
         emit = teeing_emit
 
-        # Inject the working-set block into the user message.  Names
-        # come from the resolver's visible-name set (the same list it
-        # saw); empty list → no augmentation.
-        augmented_message = user_message
-        if resolution is not None:
-            # The resolver received the visible names already; we
-            # re-load them here from working_set so the augmentation
-            # is in sync with what the LLM saw.  Cheap (single index
-            # scan).
+        # ------------------------------------------------------------------
+        # Build the routing prefix injected before user_message:
+        #   - recent conversation transcript (PR 13) for follow-up
+        #     reference resolution
+        #   - working-set names (PR 8) for explicit named-handle refs
+        # Both blocks render to empty when their inputs are empty,
+        # and the composed prefix collapses to the empty string when
+        # both are — keeping a cold-session prompt clean.
+        # ------------------------------------------------------------------
+        visible: list[str] = []
+        if self._persistent_turn_enabled():
             try:
                 from state.working_set import list_visible
 
@@ -1000,23 +1049,42 @@ class CopilotSession:
                             session_id=self._session_id, conn=conn,
                         )
                     ]
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "[%s] could not load working-set names for routing "
+                    "prefix; continuing without them: %s",
+                    self.thread_id, exc,
+                )
                 visible = []
-            augmented_message = self._augment_user_message(
-                user_message, visible
-            )
+
+        recent_turns = self._load_recent_turns_if_possible(
+            exclude_turn_id=(turn_ctx.turn_id if turn_ctx is not None else None),
+        )
+        augmented_message = self._augment_user_message(
+            user_message, visible, recent_turns,
+        )
 
         turn_status: str = "completed"
         try:
             # --------------------------------------------------------------
-            # 0. WORKFLOW ROUTER PRE-GATE (PR 10)
+            # 0. WORKFLOW ROUTER PRE-GATE (PR 10 + PR 13)
             # --------------------------------------------------------------
-            # The workflow router runs on the RAW user_message: it
-            # routes on prompt shape, not conversational context, so
-            # the working-set block would just be noise.
+            # PR 10 fed the workflow router the RAW user_message,
+            # arguing that "it routes on prompt shape, not
+            # conversational context".  In practice that broke the
+            # follow-up case: a user asking "what about the Bund
+            # one?" after a UST 2s10s turn hit the workflow router
+            # with no context and got a CLARIFY response.
+            #
+            # PR 13: pass the augmented message so the workflow
+            # router can resolve follow-up references the same way
+            # the supervisor + children do.  The routing-prefix
+            # composer renders to empty string on a cold session,
+            # so this is additive — sessions with no prior context
+            # behave exactly as PR 10 did.
             if self._workflow_router is not None:
                 workflow_handled = await self._maybe_run_workflow(
-                    user_message, turn_label, emit, turn_start,
+                    augmented_message, turn_label, emit, turn_start,
                 )
                 if workflow_handled:
                     return
