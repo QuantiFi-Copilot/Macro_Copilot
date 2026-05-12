@@ -29,5 +29,17 @@ dependencies:
     - starlette>=0.46.2
     - sse-starlette>=3.3.4
     - websockets
+    # Phase 0 PR 5 runtime deps for the durable LangGraph checkpointer.
+    # ``api/dependencies.py`` imports ``psycopg_pool.AsyncConnectionPool``
+    # (PyPI package: ``psycopg-pool``) and
+    # ``langgraph.checkpoint.postgres.aio.AsyncPostgresSaver`` (PyPI
+    # package: ``langgraph-checkpoint-postgres``).  Both are declared in
+    # ``pyproject.toml`` ``[dev]`` extras, but the docker image installs
+    # from THIS environment.yml — so without these lines the container
+    # boots OK then fails checkpointer init with ``No module named
+    # 'psycopg_pool'`` and falls back to InMemorySaver (silently
+    # disabling PR 13's persistent recent-conversation context).
+    - psycopg-pool>=3.2
+    - langgraph-checkpoint-postgres>=2.0
     
   
