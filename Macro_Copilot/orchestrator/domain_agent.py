@@ -26,7 +26,11 @@ Design choices
 - **Verbatim passthrough.**  The child receives the user's exact words as
   a ``HumanMessage``.  The supervisor never paraphrases.
 - **Optional domain boundary.**  In the multi-domain path, the parent
-  appends a "scope" SystemMessage telling the child to stay in its lane.
+  passes a ``domain_boundary`` string that becomes a short prefix on
+  the ``HumanMessage`` ("[scope for this query] ...\n\n<user_message>")
+  telling the child to stay in its lane.  Embedded in the HumanMessage
+  rather than a separate SystemMessage — see PR 16 commentary in
+  ``run()`` for why.
 - **Structured output.**  The LangGraph ReAct loop still produces
   prose + tool_calls.  We parse the tool-call trajectory into structured
   ``FactRow`` entries so the supervisor's synthesis step consumes numbers,
@@ -193,10 +197,29 @@ class DomainAgentSession:
         model_with_tools = model.bind_tools(tools)
 
         async def agent_node(state: MessagesState) -> dict:
-            # Always prepend the cached system message.  If the caller
-            # added a scope hint (multi-domain path), it's already in
-            # state["messages"] before the HumanMessage.
-            messages_for_model = [self._cached_system_message] + state["messages"]
+            # Always prepend the cached SystemMessage.  Anthropic's API
+            # requires SystemMessages to be CONSECUTIVE at the start of
+            # the message list — any SystemMessage that surfaces later
+            # in the list (separated by Human/AI/Tool messages) trips
+            # ``ValueError: Received multiple non-consecutive system
+            # messages`` inside ``langchain_anthropic``.
+            #
+            # In stateful mode (PR 5), ``state["messages"]`` is restored
+            # from the checkpointer across turns.  If a prior turn added
+            # any SystemMessage to state (the multi-domain ``scope``
+            # SystemMessage was the historical culprit — PR 16 removed
+            # that injection at the input layer, but checkpointers
+            # opened BEFORE this fix still contain old SystemMessages),
+            # we MUST filter them out here.  Filtering is defensive
+            # belt-and-braces: even if the input layer never adds a
+            # SystemMessage, this guarantees correctness against any
+            # historical / future state shape.
+            sanitized_history = [
+                m for m in state["messages"] if not isinstance(m, SystemMessage)
+            ]
+            messages_for_model = (
+                [self._cached_system_message] + sanitized_history
+            )
             response = await model_with_tools.ainvoke(messages_for_model)
             _log_usage(f"{self.domain.value}.agent", response)
             return {"messages": [response]}
@@ -291,12 +314,30 @@ class DomainAgentSession:
         # LangGraph MessagesState applies reducers; we send the initial
         # messages for this turn (excluding the system, which the agent
         # node prepends).
-        initial_messages: list = []
+        #
+        # PR 16: the scope hint used to be a separate ``SystemMessage``
+        # prepended here.  That worked single-turn but broke
+        # cross-turn in stateful mode (PR 5): the SystemMessage flowed
+        # through the ``add_messages`` reducer into ``state["messages"]``,
+        # then on the NEXT turn ``agent_node`` prepended a fresh cached
+        # SystemMessage in front of state — producing two SystemMessages
+        # separated by Human/AI/Tool messages, which Anthropic's API
+        # rejects as "non-consecutive".  Once tripped, EVERY subsequent
+        # turn for that domain in the same session failed.
+        #
+        # Fix: embed the scope hint as a prefix on the ``HumanMessage``
+        # content.  Functionally equivalent for the LLM (a sentence at
+        # the top of the user message telling it to stay in its lane),
+        # but ``state["messages"]`` never accumulates SystemMessages.
+        # Combined with ``agent_node``'s defensive filter, prior
+        # poisoned state is also recoverable.
         if domain_boundary:
-            initial_messages.append(
-                SystemMessage(content=f"[scope for this query] {domain_boundary}")
+            message_content = (
+                f"[scope for this query] {domain_boundary}\n\n{user_message}"
             )
-        initial_messages.append(HumanMessage(content=user_message))
+        else:
+            message_content = user_message
+        initial_messages: list = [HumanMessage(content=message_content)]
 
         turn_config = {"configurable": {"thread_id": turn_thread_id}}
 

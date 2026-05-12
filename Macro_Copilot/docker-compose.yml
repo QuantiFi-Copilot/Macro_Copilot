@@ -166,15 +166,30 @@ services:
       /usr/bin/run-server.sh" 
   api-server:
     build: .
-    command: micromamba run -n macro-env uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
+    # PR 16: run ``alembic upgrade head`` BEFORE starting uvicorn so
+    # the ``copilot_state`` schema (sessions / turns / message_events /
+    # working_set / artifact_metadata / dags / workspaces / ...) AND
+    # the ``langgraph_checkpoint`` schema namespace both exist on
+    # every fresh ``docker compose up``.  Without this, the api comes
+    # up but every WebSocket session falls back to InMemorySaver +
+    # logs ``copilot_state.sessions does not exist``, which silently
+    # disables PR 13's recent-conversation context (load_recent_turns
+    # reads from ``copilot_state.turns``).  Migrations are idempotent:
+    # a no-op when already at head, fast (<1s).
+    command: >
+      bash -c "
+        micromamba run -n macro-env alembic upgrade head &&
+        micromamba run -n macro-env uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
+      "
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     env_file:
       - .env
-    environment: 
+    environment:
       - DB_HOST=tsdb
       - DB_PORT=5432
     depends_on:
-      - tsdb
+      tsdb:
+        condition: service_healthy
