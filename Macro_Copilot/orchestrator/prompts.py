@@ -364,6 +364,120 @@ def render_working_set_block(names: list[str]) -> str:
 
 
 # ===========================================================================
+# RECENT CONVERSATION BLOCK (PR 13) — prefix injected into routing prompts
+# ===========================================================================
+# Phase 0 wired the AsyncPostgresSaver durable checkpointer for each
+# domain CHILD (per-domain thread_id keyed on session_id + domain),
+# but the SUPERVISOR + WORKFLOW ROUTER calls only ever saw the
+# CURRENT user message — no prior turn context.  A user asking
+# "what about the Bund one?" after a turn about UST 2s10s fell
+# through to a CLARIFY response because the routing layer had no
+# way to resolve "the one".
+#
+# This block closes the gap: ``orchestrator/state.load_recent_turns``
+# reads the last N completed turns from ``copilot_state.turns`` and
+# ``orchestrator/session._run_turn`` prepends the rendered block
+# to the supervisor + workflow-router + child user_message.  The
+# block goes in the HUMAN message (not the system prompt) so the
+# supervisor's cached system prefix stays cache-stable.
+#
+# Token discipline:
+#   - capped at last N turns (default 5 in ``load_recent_turns``);
+#   - assistant responses truncated at ~600 chars in
+#     ``load_recent_turns`` so very long responses don't blow out
+#     the next turn's token budget;
+#   - empty session → empty render → no block injected.
+
+RECENT_CONVERSATION_BLOCK_TEMPLATE = """\
+RECENT CONVERSATION (this session, oldest → newest):
+{turns_block}
+
+Use this context to resolve follow-up references the user makes \
+("the one we just did", "compare with the previous", "now do it \
+for X"). If the current user message is self-contained and does \
+not reference earlier turns, ignore this block.\
+"""
+
+
+def render_recent_conversation_block(turns) -> str:
+    """Render the recent-conversation block for the current turn.
+
+    ``turns`` is an iterable of objects with ``sequence_no``,
+    ``user_message``, ``assistant_response``, and ``status`` —
+    typically the return value of
+    ``orchestrator.state.load_recent_turns``.
+
+    Returns an empty string when ``turns`` is empty so callers
+    can naturally compose this with other blocks (no special-
+    casing needed at the call site).
+
+    Status annotation
+    -----------------
+    Failed / cancelled turns are surfaced with a brief tag in the
+    transcript so the routing layer knows the assistant's response
+    may be unreliable.  Completed turns render without a tag.
+    """
+    items = list(turns)
+    if not items:
+        return ""
+
+    lines: list[str] = []
+    for t in items:
+        status = getattr(t, "status", "completed")
+        status_tag = "" if status == "completed" else f" [{status}]"
+        user_line = (
+            f"[turn {t.sequence_no}] User: {t.user_message}"
+        )
+        lines.append(user_line)
+        response = getattr(t, "assistant_response", None)
+        if response:
+            assistant_line = (
+                f"[turn {t.sequence_no}] Assistant{status_tag}: "
+                f"{response}"
+            )
+            lines.append(assistant_line)
+        elif status != "completed":
+            # In-flight / failed / cancelled turn with no response —
+            # still surface the user message so context survives.
+            lines.append(
+                f"[turn {t.sequence_no}] Assistant{status_tag}: "
+                "(no response captured)"
+            )
+    return RECENT_CONVERSATION_BLOCK_TEMPLATE.format(
+        turns_block="\n".join(lines),
+    )
+
+
+def render_routing_prefix(
+    recent_turns,
+    visible_names: list[str],
+) -> str:
+    """Compose the full routing-prefix injected before the user
+    message.  Two blocks, in this fixed order:
+
+      1. RECENT CONVERSATION (PR 13) — prior-turn transcript.
+      2. CURRENT WORKING SET (PR 8) — named-handle map.
+
+    Each block renders to empty string when its input is empty;
+    the composed prefix collapses to the empty string when both
+    are empty (so the user_message lands verbatim with no
+    boilerplate when the session has no prior context).
+
+    The order is deliberate: recent conversation is the broader
+    signal (what was just asked); working set is the narrower
+    one (specific named handles).  Putting recent first matches
+    the way a human reader would prefer to scan the prompt.
+    """
+    parts: list[str] = []
+    recent_block = render_recent_conversation_block(recent_turns)
+    if recent_block:
+        parts.append(recent_block)
+    if visible_names:
+        parts.append(render_working_set_block(visible_names))
+    return "\n\n".join(parts)
+
+
+# ===========================================================================
 # LEGACY — retained for backwards compatibility with any older imports.
 # Will be removed once no module references it.
 # ===========================================================================
