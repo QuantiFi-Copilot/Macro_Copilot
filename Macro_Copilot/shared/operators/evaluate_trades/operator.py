@@ -119,6 +119,7 @@ def evaluate_trades(
     pricing = _resolve_pricing_convention(params, config)
     frictionless = _resolve_frictionless(params, config)
     financing = _resolve_financing(params, config)
+    financing_basis = _resolve_financing_basis(params, config)
 
     # ------------------------------------------------------------------
     # V1 scope guards — these surface the structural disclosures.
@@ -136,11 +137,38 @@ def evaluate_trades(
             "borrow-availability models land.  See config.yaml "
             "planned_extensions."
         )
-    if financing != "none":
+    # PR 19: financing_assumption now accepts:
+    #   - "none"             — PR 12 behaviour (no financing).
+    #   - "external_series"  — caller supplied a financing_rate_panel
+    #                          built by compute_financing_rate_tool.
+    # The legacy enum values ``constant_rate`` / ``overnight_repo_curve``
+    # were declared placeholders in PR 12 and still raise — the proper
+    # path is to compute the rate Series upstream via the primitive
+    # and pass it through ``external_series``.
+    if financing == "constant_rate":
         raise NotImplementedError(
-            f"evaluate_trades V1 supports only "
-            f"financing_assumption='none'; got {financing!r}.  The "
-            "financing_rate primitive lands in Phase 1 PR 13."
+            "evaluate_trades: financing_assumption='constant_rate' is "
+            "a deprecated placeholder.  Compute the rate Series upstream "
+            "via ``compute_financing_rate_tool`` with method='constant_rate' "
+            "+ a caller-supplied ``constant_rate_pct``, wrap it as a "
+            "single-column Panel, and pass it through "
+            "``financing_rate_panel`` with financing_assumption="
+            "'external_series'."
+        )
+    if financing == "overnight_repo_curve":
+        raise NotImplementedError(
+            "evaluate_trades: financing_assumption='overnight_repo_curve' "
+            "is a deprecated placeholder.  Use "
+            "``compute_financing_rate_tool`` with method='overnight_index_"
+            "proxy' (or future 'term_repo_curve' / 'gc_special_blend') "
+            "and pass the output Panel through ``financing_rate_panel`` "
+            "with financing_assumption='external_series'."
+        )
+    financing_rate_series: Optional[pd.Series] = None
+    if financing == "external_series":
+        financing_rate_series = _validate_and_extract_financing_series(
+            params.financing_rate_panel,
+            price_panel,
         )
 
     # ------------------------------------------------------------------
@@ -178,6 +206,8 @@ def evaluate_trades(
             pricing=pricing,
             frictionless=frictionless,
             financing=financing,
+            financing_basis=financing_basis,
+            financing_rate_panel=params.financing_rate_panel,
         )
 
     panel_index: pd.DatetimeIndex = price_panel.payload.index
@@ -207,6 +237,8 @@ def evaluate_trades(
             pricing=pricing,
             frictionless=frictionless,
             financing=financing,
+            financing_basis=financing_basis,
+            financing_rate_panel=params.financing_rate_panel,
         )
 
     output_index = pd.DatetimeIndex(union_dates)
@@ -215,12 +247,15 @@ def evaluate_trades(
         np.nan, index=output_index, columns=columns, dtype=float,
     )
 
+    financing_basis_days = _financing_basis_days(financing_basis)
     for i, trade in enumerate(trades.trades):
         col = columns[i]
         df[col] = _compute_trade_pnl(
             trade=trade,
             price_panel=price_panel,
             output_index=output_index,
+            financing_rate_series=financing_rate_series,
+            financing_basis_days=financing_basis_days,
         )
 
     return _build_panel(
@@ -231,6 +266,8 @@ def evaluate_trades(
         pricing=pricing,
         frictionless=frictionless,
         financing=financing,
+        financing_basis=financing_basis,
+        financing_rate_panel=params.financing_rate_panel,
     )
 
 
@@ -244,22 +281,37 @@ def _compute_trade_pnl(
     trade: Trade,
     price_panel: Panel,
     output_index: pd.DatetimeIndex,
+    financing_rate_series: Optional[pd.Series] = None,
+    financing_basis_days: Optional[float] = None,
 ) -> pd.Series:
     """Per-date P&L for a single trade.  NaN outside the holding
     window.
 
     Logic:
-      - For each leg, P&L[t] = leg.weight * (price[t] - price[entry])
-      - Total trade P&L[t] = sum over legs
+      - Per-leg price P&L[t] = leg.weight * (price[t] - price[entry])
+      - Per-leg financing accrual (when financing_rate_series is set):
+            daily_accrual[t] = -leg.weight * rate_pct[t] / basis_days
+        Cumulative financing at date t = sum of daily_accrual over
+        dates {entry+1, ..., t}.  Entry day itself: no accrual.
+      - Total per-leg P&L = price_P&L + cumulative_financing
+      - Total trade P&L = sum over legs
+
+    Sign convention for financing:
+      Positive leg.weight = "long" position → pays financing (-rate).
+      Negative leg.weight = "short" position → receives financing (+rate).
+      Documented on the workspace methodology card.  Note that PR 12's
+      price-P&L formula uses ``leg.weight × yield_change``, which
+      treats positive weight as betting on yield UP (semantically the
+      opposite of "long bond").  The template builder is responsible
+      for choosing leg.weight signs that reconcile their intent with
+      both formulas; the methodology card surfaces both.
 
     Edge cases:
       - Entry date not in the panel → trade contributes NaN
-        everywhere (a hard error would be too strict — a bad entry
-        date should surface as a NaN column the caller can detect).
-      - Price at entry is NaN → trade contributes NaN everywhere
-        for the same reason.
-      - Exit date past the panel's end → P&L is computed up to the
-        panel's last date and NaN afterwards.
+        everywhere.
+      - Price at entry is NaN → trade contributes NaN everywhere.
+      - Financing rate missing for a window date → zero accrual on
+        that date (NO silent fabrication; documented).
     """
     panel = price_panel.payload
     panel_dates = panel.index
@@ -278,6 +330,15 @@ def _compute_trade_pnl(
     )
     window_dates = panel_dates[in_window]
 
+    # Pre-align the financing-rate series to the window once per
+    # trade (rather than per leg) for efficiency.
+    if financing_rate_series is not None and len(window_dates) > 0:
+        window_rates = financing_rate_series.reindex(
+            window_dates,
+        ).astype(float)
+    else:
+        window_rates = None
+
     trade_pnl = pd.Series(0.0, index=window_dates, dtype=float)
     any_nan_entry = False
     for leg in trade.leg_specs:
@@ -290,11 +351,26 @@ def _compute_trade_pnl(
         )
         # Replace any NaN observation inside the window with 0 for
         # this leg's contribution so a missing day on one leg
-        # doesn't wipe the entire trade's P&L; the methodology
-        # card mentions this fill-on-window-NaN choice.  An
-        # entry-time NaN is a different beast (no baseline) — we
-        # NaN the whole trade in that case (any_nan_entry above).
-        trade_pnl = trade_pnl + leg_pnl.fillna(0.0)
+        # doesn't wipe the entire trade's P&L.
+        leg_pnl_filled = leg_pnl.fillna(0.0)
+
+        # Add per-leg cumulative financing accrual.
+        if window_rates is not None and financing_basis_days:
+            # Daily accrual (PCT, same units as price): negative for
+            # long (weight>0 pays financing) per the docstring's
+            # sign convention.
+            daily_accrual = (
+                -float(leg.weight) * window_rates.fillna(0.0)
+                / float(financing_basis_days)
+            )
+            # Entry day contributes zero accrual; accrual begins on
+            # the day AFTER entry.  Cumulative sum from entry+1 to t.
+            if len(daily_accrual) > 0:
+                daily_accrual.iloc[0] = 0.0
+            cumulative_financing = daily_accrual.cumsum()
+            trade_pnl = trade_pnl + leg_pnl_filled + cumulative_financing
+        else:
+            trade_pnl = trade_pnl + leg_pnl_filled
 
     if any_nan_entry:
         return pd.Series(np.nan, index=output_index, dtype=float)
@@ -345,14 +421,15 @@ def _build_panel(
     pricing: str,
     frictionless: bool,
     financing: str,
+    financing_basis: Optional[str] = None,
+    financing_rate_panel: Optional[Panel] = None,
 ) -> Panel:
     """Wrap the computed DataFrame in a Panel with full lineage.
 
-    The lineage step records both the TradeSet's head hash and the
-    price Panel's head hash as input_hashes so the resulting Panel
-    is content-addressed by both upstream inputs.  Two calls with
-    the same trades + same price panel + same resolved knobs
-    produce the same Panel head hash.
+    The lineage step records the TradeSet's head hash, the price
+    Panel's head hash, AND (when financing is external_series) the
+    financing-rate Panel's head hash — so the output Panel is
+    content-addressed by every upstream input that affected it.
     """
     units_by_column = {col: TimeSeriesUnits(units_tag) for col in df.columns}
 
@@ -365,13 +442,28 @@ def _build_panel(
         "methodology_policy": trades.methodology_policy,
         "panel_columns": list(df.columns),
     }
+    if financing == "external_series":
+        step_params["financing_basis"] = financing_basis
+        # The financing_rate_panel's head hash is folded into
+        # input_hashes below (not step_params) so two runs with
+        # different rate panels produce distinct output hashes
+        # automatically.
+    elif financing_basis is not None and financing == "none":
+        # No financing applied; keep step_params terse for the
+        # ``none`` path so PR 12-era pinned hashes don't drift.
+        pass
 
+    input_hashes = [trades.lineage.head_hash, price_panel.lineage.head_hash]
+    auxiliary_lineages = [price_panel.lineage]
+    if financing == "external_series" and financing_rate_panel is not None:
+        input_hashes.append(financing_rate_panel.lineage.head_hash)
+        auxiliary_lineages.append(financing_rate_panel.lineage)
     op_step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
         params=step_params,
-        input_hashes=(trades.lineage.head_hash, price_panel.lineage.head_hash),
-        auxiliary_lineages=(price_panel.lineage,),
+        input_hashes=tuple(input_hashes),
+        auxiliary_lineages=tuple(auxiliary_lineages),
     )
     lineage = trades.lineage.append(op_step)
 
@@ -419,6 +511,84 @@ def _resolve_financing(
     if params.financing_assumption is not None:
         return params.financing_assumption
     return config.default_value("financing_assumption")  # type: ignore[return-value]
+
+
+def _resolve_financing_basis(
+    params: EvaluateTradesParams, config: OperatorConfig,
+) -> str:
+    """Resolve the day-count basis for financing accrual.  Reads from
+    config.yaml when not supplied on the params."""
+    if params.financing_basis is not None:
+        return params.financing_basis
+    return str(config.default_value("financing_basis"))
+
+
+# Day-count basis days.  ACT/ACT-ISDA is calendar-year-aware in true
+# implementations; PR 19 approximates as 365.0 and discloses on the
+# methodology card (the planned-extensions block lists exact ACT/ACT
+# as a future PR).
+_BASIS_DAYS = {
+    "act_360": 360.0,
+    "act_365": 365.0,
+    "act_act_isda": 365.0,
+}
+
+
+def _financing_basis_days(basis: str) -> float:
+    if basis not in _BASIS_DAYS:
+        raise EvaluateTradesError(
+            f"Unknown financing_basis {basis!r}; expected one of "
+            f"{sorted(_BASIS_DAYS)}."
+        )
+    return _BASIS_DAYS[basis]
+
+
+def _validate_and_extract_financing_series(
+    financing_rate_panel: Optional[Panel],
+    price_panel: Panel,
+) -> pd.Series:
+    """Validate that a financing_rate_panel was supplied (required
+    when financing_assumption=external_series) and extract its
+    single-column Series.
+
+    Index overlap with the price panel is REQUIRED — the operator
+    cannot fabricate financing rates for unobserved dates.  Non-
+    overlapping window dates in a trade contribute zero financing
+    accrual (documented), but the panel itself must cover at least
+    some price-panel dates or the caller has supplied a useless
+    artifact.
+    """
+    if financing_rate_panel is None:
+        raise EvaluateTradesError(
+            "financing_assumption='external_series' requires a "
+            "financing_rate_panel.  Pass the output Panel from the "
+            "compute_financing_rate_tool primitive via "
+            "EvaluateTradesParams.financing_rate_panel."
+        )
+    payload = financing_rate_panel.payload
+    if payload.shape[1] != 1:
+        raise EvaluateTradesError(
+            f"financing_rate_panel must have exactly 1 column (the "
+            f"daily rate series); got shape={payload.shape}.  Compose "
+            "rate variants via separate evaluate_trades runs and "
+            "compare the outputs, rather than packing multiple rates "
+            "into one Panel."
+        )
+    rate_series = payload.iloc[:, 0]
+    if not isinstance(rate_series.index, pd.DatetimeIndex):
+        # Panel model_validator already enforces this; defensive only.
+        raise EvaluateTradesError(
+            "financing_rate_panel must have a DatetimeIndex."
+        )
+    overlap = rate_series.index.intersection(price_panel.payload.index)
+    if len(overlap) == 0:
+        raise EvaluateTradesError(
+            "financing_rate_panel has NO overlap with the price "
+            "panel's index.  The financing carry cannot be computed "
+            "for any trade.  Widen the financing-rate fetch window "
+            "or align the price panel's calendar."
+        )
+    return rate_series
 
 
 __all__ = ["evaluate_trades", "EvaluateTradesError"]

@@ -1104,11 +1104,31 @@ class TestResolverCompleteness:
         assert spec.output_field_units["time_series_zscore"] == "z_score"
 
     def test_known_primitives_includes_all_seven(self):
-        # 4 OIS primitives (curve_spread, cross_market_spread,
-        # rate_level, swap_spread, forward_rate) + 3 sovereign
-        # primitives (curve_spread, cross_market_spread, yield_levels)
-        # = 8.
-        assert len(known_rates_primitives()) == 8
+        # Registry has grown across Phase 0 + Phase 1 PRs.  We assert
+        # the MINIMUM canonical set is present rather than an exact
+        # count, so adding a new primitive doesn't trip this test
+        # (the test exists to catch ACCIDENTAL deregistration of an
+        # existing primitive, not to gate growth).
+        registered = set(known_rates_primitives())
+        canonical_minimum = {
+            # OIS family
+            "calculate_ois_curve_spread_tool",
+            "calculate_ois_cross_market_spread_tool",
+            "get_ois_rate_level_tool",
+            "calculate_swap_spread_tool",
+            "calculate_ois_forward_rate_tool",
+            # Sovereign family
+            "calculate_curve_spread_tool",
+            "calculate_cross_market_spread_tool",
+            "get_yield_levels_tool",
+        }
+        missing = canonical_minimum - registered
+        assert not missing, (
+            f"Canonical primitives missing from registry: {sorted(missing)}.  "
+            f"Registered today: {sorted(registered)}."
+        )
+        # Sanity: we never expect FEWER than the canonical minimum.
+        assert len(registered) >= len(canonical_minimum)
 
     def test_swap_spread_change_zscore_registered(self):
         """The canonical Q1 binding lifts

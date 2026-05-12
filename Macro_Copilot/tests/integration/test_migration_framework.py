@@ -206,7 +206,7 @@ class TestForwardMigrationFramework:
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version == "0007_tradeset_artifact_type"
+            assert version == "0008_backtest_archetype"
 
             col_exists = _column_exists(
                 engine, "workspaces", "last_accessed_at",
@@ -229,9 +229,13 @@ class TestForwardMigrationFramework:
                 ).scalar_one()
             assert count_pre == 1
 
-            # ---- 3. Downgrade by TWO revisions (skip 0007's no-op
-            # sentinel, then drop 0006's column).  Lands at 0005.
-            command.downgrade(alembic_config, "-2")
+            # ---- 3. Downgrade by THREE revisions: 0008's no-op
+            # backtest-archetype sentinel + 0007's no-op TradeSet
+            # sentinel + 0006's drop of last_accessed_at.  Lands at
+            # 0005.  (Pre-PR-19 head was 0007 → -2; PR 19 adds 0008
+            # → -3.  Adjust here whenever a new sentinel lands so the
+            # test continues to target 0005.)
+            command.downgrade(alembic_config, "-3")
 
             with engine.connect() as conn:
                 version_after = conn.execute(
@@ -269,7 +273,7 @@ class TestForwardMigrationFramework:
                         "SELECT version_num FROM copilot_state.alembic_version"
                     )
                 ).scalar_one()
-            assert version_back == "0007_tradeset_artifact_type"
+            assert version_back == "0008_backtest_archetype"
             assert _column_exists(
                 engine, "workspaces", "last_accessed_at",
             )

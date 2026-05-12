@@ -79,6 +79,11 @@ from rates_agent.ois.tools.swap_spread import (  # noqa: E402
     CONFIG_PATH as SWAP_SPREAD_CONFIG_PATH,
     calculate_swap_spread,
 )
+from rates_agent.ois.tools.financing_rate import (  # noqa: E402
+    CONFIG_PATH as FINANCING_RATE_CONFIG_PATH,
+    FinancingRateInput,
+    compute_financing_rate,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -932,6 +937,105 @@ def scan_ois_extremes_tool(
         ),
         strip_time_series=False,  # scanner returns a ranked list, no ts
     )
+
+
+# ===========================================================================
+# TOOL: compute_financing_rate  (Phase 1 PR 19)
+# ===========================================================================
+from typing import Optional  # noqa: E402
+
+
+@mcp.tool()
+def compute_financing_rate_tool(
+    start_date: str,
+    end_date: str,
+    method: Optional[str] = None,
+    constant_rate_pct: Optional[float] = None,
+    proxy_curve: Optional[str] = None,
+    day_count_basis: Optional[str] = None,
+    calendar: Optional[str] = None,
+) -> str:
+    """Compute a daily financing-rate Series over a date range.
+
+    Use this tool to build the financing-rate input for a backtest
+    workflow's ``evaluate_trades`` operator so the per-trade P&L can
+    include the carry-of-financing component.
+
+    Method enum (closed):
+      - ``constant_rate``           — caller supplies ``constant_rate_pct``
+      - ``overnight_index_proxy``   — read SOFR/ESTR/SONIA/... overnight
+                                      tenor; caller supplies ``proxy_curve``
+      - ``term_repo_curve``         — V1 raises NotImplementedError
+      - ``gc_special_blend``        — V1 raises NotImplementedError
+
+    Caller MUST supply per-method params (constant_rate_pct for
+    constant_rate; proxy_curve for overnight_index_proxy).  There are
+    NO opinionated defaults for these.
+
+    Parameters
+    ----------
+    start_date, end_date : str
+        Inclusive date bounds (YYYY-MM-DD).
+    method : str, optional
+        Financing method.  None → resolved from config
+        (overnight_index_proxy).
+    constant_rate_pct : float, optional
+        REQUIRED when method=constant_rate.  Rate in PERCENT (e.g.
+        5.30 for 5.30%).  No Python-side default.
+    proxy_curve : str, optional
+        REQUIRED when method=overnight_index_proxy.  One of
+        USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_TONA_OIS,
+        AUD_AONIA_OIS, CAD_CORRA_OIS.
+    day_count_basis : str, optional
+        ``act_360`` (default) | ``act_365`` | ``act_act_isda``.
+    calendar : str, optional
+        ``business_days`` (default) | ``calendar_days``.  Used only
+        by the constant_rate method.
+    """
+    from datetime import date as _date
+
+    try:
+        params = FinancingRateInput(
+            method=method,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date),
+            constant_rate_pct=constant_rate_pct,
+            proxy_curve=proxy_curve,
+            day_count_basis=day_count_basis,
+            calendar=calendar,
+        )
+    except (ValidationError, ValueError) as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    try:
+        cfg = load_tool_config(FINANCING_RATE_CONFIG_PATH)
+        result = compute_financing_rate(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in compute_financing_rate")
+        return json.dumps({"error": f"Compute failed: {exc}"}, default=str)
+
+    method_resolved = result.get("method", "?")
+    logger.info(
+        "Tool call complete: financing_rate method=%s start=%s end=%s → %s",
+        method_resolved,
+        params.start_date.isoformat(),
+        params.end_date.isoformat(),
+        "error" if "error" in result else "OK",
+    )
+
+    # Strip the typed artifact + any underscore-prefixed internals.
+    llm_response = {
+        k: v for k, v in result.items() if not k.startswith("_")
+    }
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

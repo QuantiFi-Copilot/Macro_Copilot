@@ -1,0 +1,114 @@
+# =============================================================================
+# build_sovereign_yield_panel_tool — tool configuration
+# =============================================================================
+# Multi-instrument Panel of sovereign yields.  Used by the backtest
+# workflow's evaluate_trades operator (PR 19) and any downstream
+# analysis that needs a wide multi-instrument yield panel.
+#
+# Conventions are loaded by `shared.config.load_tool_config` at compute()
+# time.  Bumping any value here is a deliberate methodology change with
+# downstream impact on the backtest workflow's parity fixture.
+# =============================================================================
+
+tool:
+  name: build_sovereign_yield_panel_tool
+  domain: sovereign_bonds
+  description: |
+    Assemble a wide multi-instrument Panel of sovereign yields keyed
+    by <curve_family>_<tenor> (e.g. UST_2Y, USD_TIPS_10Y).  Pivots
+    raw market_data_daily rows into a date-indexed DataFrame ready
+    for consumption by the evaluate_trades operator.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field for sovereign legs
+  # ---------------------------------------------------------------------------
+  default_field_name:
+    value: YLD_YTM_MID
+    source: industry_standard_mid_yield
+    rationale: >-
+      Mid yield-to-maturity is the canonical pricing field for
+      sovereign benchmarks.  Matches every other sovereign tool's
+      default (curve_spread, cross_market_spread, yield_levels).
+      Per-leg override via SovereignYieldPanelLegSpec.field_name when
+      a caller needs bid/ask explicitly.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holidays
+      so the panel has comparable observations across all legs.  Same
+      convention used by curve_spread / cross_market_spread.  Set to
+      0 to disable forward-fill entirely (strict-coverage panels).
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Missing-data policy (after ffill)
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint is enforced at runtime in compute.py +
+  # input-validation in schemas.py; ToolConfig's Convention schema
+  # only supports ``valid_range`` (numeric), so the allowed-values
+  # set is declared in the rationale text instead of a dedicated
+  # field — same convention every other ``rates_agent/*/tools/*/
+  # config.yaml`` follows for enum-shaped knobs.
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``forward_fill_only`` (V1 default) — return the panel as-is
+          after the ffill_limit-day forward-fill.  Holes remaining
+          outside that bound are left as NaN; downstream code handles
+          them.
+        - ``raise`` — strictest; any NaN cell after ffill halts the
+          workflow.
+        - ``drop_rows_any_missing`` — shrinks to fully-observed dates
+          only.  Useful for correlation / regression panels that
+          can't tolerate per-leg gaps.
+      Per-call override via SovereignYieldPanelInput.missing_data_policy.
+
+  # ---------------------------------------------------------------------------
+  # Calendar policy
+  # ---------------------------------------------------------------------------
+  calendar_policy:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``business_days`` (V1 default) — restrict the output index
+          to Mon-Fri observations.  Holiday-aware calendars (per-
+          instrument trading sessions) require a holiday-table
+          ingestion step not yet built.
+        - ``instrument_native`` — pass through every observed date
+          verbatim from the DB.  Use when the panel will be merged
+          with a cross-calendar partner downstream.
+      Documented on the workspace methodology card.
+
+methodology:
+
+  what_it_does: |
+    For each (curve_family, tenor) leg in the request, fetches the
+    field_name observations from macro_data.v_market_data_daily_enriched
+    over [start_date, end_date], pivots into a wide DataFrame keyed by
+    <curve_family>_<tenor>, forward-fills holiday gaps up to
+    ``ffill_limit_days``, applies the missing-data policy, and emits
+    a Panel artifact with per-column units inferred from each leg's
+    field_name (PERCENT for every yield/rate field today).
+
+  assumptions:
+    - "Sovereign yields stored as percent in DB (e.g. 4.25 = 4.25%)."
+    - "Every leg in one panel uses the same calendar policy."
+    - "Column order in the output Panel matches the input legs list."
+    - "Closed-enum sovereign family set — OIS curves rejected at input validation."
+
+  citations: []
+
+  planned_extensions:
+    - "Per-leg unit override (e.g. mixing PERCENT yields with REAL_YIELD_PERCENT TIPS reals)."
+    - "Holiday-aware calendar policy (requires holiday-table ingestion)."
+    - "Frequency resampling (weekly/monthly closes)."
