@@ -1056,7 +1056,141 @@ Real-Postgres integration tests under `tests/state/`:
 - `test_methodology_pinning.py`      — the brief's spec test:
   build artifact under YAML v1, mutate to v2, assert hash
   divergence + faithful original-mode reconstruction.  Plus
-  TestClient coverage of the replay route.
+  TestClient coverage of the replay route (relocated to
+  `/api/v1/artifacts/{hash}/replay` in Phase 0 PR 10).
 
 All three run in CI's `state-layer` job alongside the PR 4 / 5 /
 7 / 8 tests, against the same postgres:14 service container.
+
+---
+
+## Workspace persistence + URL routing — Phase 0 PR 10
+
+PR 10 lights up three more PR 4 tables that no code wrote to —
+`dags`, `dag_nodes`, `dag_edges` for content-addressed DAG
+storage, and `workspaces` for URL-addressable handles — plus a
+slug column added by migration 0005.  Every artifact's `Lineage`
+now also persists as a DAG row, every workspace has a stable
+human-readable URL, and the replay surface walks the DAG to
+surface per-node provenance.
+
+### Migration 0005
+
+Adds `workspaces.slug TEXT NULL` plus a partial unique index
+`ix_workspaces_slug_active` on `(slug) WHERE slug IS NOT NULL`.
+Nullable for backwards-compat with any pre-PR-10 rows; production
+inserts via `state.workspace_repo.create_workspace` always set it.
+
+### Public API
+
+```python
+# state.dag_repo — content-addressed DAG persistence
+persist_dag_from_lineage(lineage, *, conn,
+                         head_artifact_hash=None) -> str
+get_dag(dag_hash, *, conn) -> StoredDag
+list_node_artifact_hashes(dag_hash, *, conn) -> list[str]
+
+# state.workspace_repo — workspace CRUD + slug derivation
+slugify(name) -> str
+derive_slug(name, uuid) -> str
+create_workspace(dag_hash, *, conn, name=None, ...) -> WorkspaceRecord
+get_workspace(workspace_id, *, conn) -> WorkspaceRecord
+get_workspace_by_slug(slug, *, conn) -> WorkspaceRecord
+rename_workspace(workspace_id, new_name, *, conn) -> WorkspaceRecord
+fork_workspace(parent_id, *, conn, variant_dag_hash,
+               override_summary, ...) -> WorkspaceRecord
+```
+
+### URL stability invariant
+
+The slug is derived ONCE at create time:
+
+    slug = slugify(name) + "-" + uuid.hex[:8]
+
+And NEVER re-derived.  Renames mutate `name` only.  This is the
+load-bearing URL-stability guarantee — `rename_workspace` writes
+the new name and stamps `updated_at`, but the slug column is
+untouched.  Two workspaces sharing a display name produce
+distinct slugs because the 8-char hex suffix is rooted in the
+workspace's UUID; the partial unique index is the DB-level
+backstop.
+
+`slugify` is adversarial-input safe: NFKD-normalises, drops
+non-ASCII, lowercases, collapses non-alphanumerics to `-`,
+strips leading / trailing `-`, caps to 88 chars before the
+UUID suffix.  The only surviving character class is
+`[a-z0-9-]`.  Test coverage:
+
+  - SQL injection vector `; DROP TABLE workspaces` →
+    `drop-table-workspaces`.
+  - Path traversal `../../../etc/passwd` → `etc-passwd`.
+  - Unicode `über cafe` → `uber-cafe`.
+  - All-non-ASCII `日本語` → fallback prefix `ws`.
+
+### REST surface
+
+```
+POST /api/v1/workspace                       — create
+GET  /api/v1/workspace/{slug}                — fetch detail + DAG + per-node summaries
+GET  /api/v1/workspace/{slug}/replay         — methodology divergence aggregated across nodes
+GET  /api/v1/artifacts/{hash}/replay         — single-artifact replay (relocated from PR 9)
+```
+
+`GET /workspace/{slug}` returns the workspace state + DAG topology
++ one `ArtifactSummary` per executed node — summaries-only, no
+payload deserialisation.  Target: ≤500ms p95 for moderate DAGs.
+
+`GET /workspace/{slug}/replay?mode=original|current` walks every
+`PrimitiveStep`'s `methodology_version_id` across the DAG,
+deduplicates the version-id set, and reconstructs / diffs each
+unique YAML version once per request.  Reuses the per-artifact
+helpers from `api/routes/_replay_helpers.py`.
+
+PR 9's artifact-keyed replay endpoint MOVED.  It used to be
+`GET /api/v1/workspace/{hash}`; the singular `/workspace/` path
+is now slug-routed, so the artifact-keyed view lives at
+`GET /api/v1/artifacts/{hash}/replay`.  Response shape unchanged.
+
+### DAG persistence shape
+
+`persist_dag_from_lineage` writes a 1-row `dags` table entry +
+N `dag_nodes` rows (one per step) + N-1 `dag_edges` rows
+(linear chain in v1; future schema upgrade extends `slot_name`).
+The `dag_hash` is the SHA-256 of the canonical-JSON topology —
+content-addressed via the same `_canonical_json` recipe the
+lineage layer uses, keeping the canonicalisation in ONE place.
+Idempotent: persisting the same `Lineage` twice produces one
+`dags` row + one set of node + edge rows.
+
+`tool_config_path` and `methodology_version_id` are EXCLUDED from
+the canonical topology — they're hash-irrelevant bookkeeping
+(matches PR 9's lineage-side exclusion).  A YAML rename or
+registry id change does NOT invalidate a workspace's `dag_hash`.
+
+### Restart resilience
+
+The integration test `tests/integration/test_workspace_replay.py`
+simulates a server restart by disposing the SQLAlchemy engine
+and clearing every in-process cache (`state.methodology_versions
+.clear_caches`, `shared.config.tool_config.clear_tool_config_cache`).
+A fresh engine is then opened against the SAME database, the
+workspace is re-fetched by SLUG, and every node-artifact hash is
+re-hashed and asserted byte-identical.  This is the
+load-bearing Phase 0 replay invariant: no in-process state is
+silently load-bearing for replay; the URL + the DB is sufficient.
+
+### Tests
+
+Real-Postgres integration tests:
+
+- `test_dag_repo.py`              (11) — persistence round-trip,
+  idempotency, content-addressing, FK enforcement.
+- `test_workspace_repo.py`        (41) — slug derivation under
+  adversarial input, partial-unique index, rename-preserves-slug,
+  fork lineage, name validation.
+- `tests/integration/test_workspace_replay.py` (12) — end-to-end
+  acceptance test including the simulated restart and the full
+  HTTP route round-trip.
+
+All run in CI's `state-layer` job against the same `postgres:14`
+service container.

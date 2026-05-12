@@ -37,6 +37,7 @@ import {
   PmOrchestratorPlaceholder,
 } from '@/components/agents/AgentPlaceholderPage';
 import { WorkspacePage } from '@/components/workspace/WorkspacePage';
+import { WorkspaceBySlugPage } from '@/components/workspace/WorkspaceBySlugPage';
 import { LibraryPage } from '@/components/library/LibraryPage';
 import { WorkflowsCataloguePage } from '@/components/catalogue/WorkflowsCataloguePage';
 import { AskPage } from '@/components/ask/AskPage';
@@ -72,6 +73,10 @@ export function AppShell() {
 
       {/* Existing — kept until subsequent PRs redesign them */}
       <Route path="/workspace" element={<WorkspacePage />} />
+      {/* PR 10 — slug-driven persistent workspace view.  Stable
+          URL handle (slug = ``[a-z0-9-]+``) routed to the new
+          minimal renderer at WorkspaceBySlugPage.tsx. */}
+      <Route path="/workspace/:slug" element={<WorkspaceBySlugPage />} />
       <Route path="/workflows" element={<WorkflowsCataloguePage />} />
 
       {/* Library — new full-width catalogue surface.

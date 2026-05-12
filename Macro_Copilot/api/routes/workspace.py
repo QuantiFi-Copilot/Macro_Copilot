@@ -1,80 +1,60 @@
-"""api/routes/workspace.py — methodology-pinned replay surface.
+"""api/routes/workspace.py — workspace persistence + replay REST surface.
 
-Phase 0 PR 9.
+Phase 0 PR 10.
 
-Endpoint: ``GET /api/v1/workspace/{artifact_hash}?mode={original|current}``
+Three endpoints under ``/api/v1/workspace``:
 
-What this does
+  - ``POST /``
+        Create a workspace from an existing ``dag_hash``.  Returns
+        the workspace's slug + UUID + a self-describing URL.
+        Body: ``{ dag_hash, name?, created_by?, focus_node? }``.
+
+  - ``GET /{slug}``
+        Fetch the workspace state + DAG topology + per-node
+        artifact summaries.  Summaries-only by default: full
+        payloads come from the artifact-store endpoints on
+        per-card fetch.  Target ≤500ms p95 for moderate DAGs.
+
+  - ``GET /{slug}/replay?mode=original|current``
+        Walk every PrimitiveStep across every node in the DAG and
+        aggregate the per-artifact replay surface (the same shape
+        PR 9 returned for a single artifact, deduped across nodes
+        so each unique methodology_version_id is reconstructed /
+        diffed exactly once).
+
+URL discipline
 --------------
-Given an artifact hash, surface the methodology + application-version
-provenance that PR 9 captures, and either:
+The slug is the URL handle.  Derived ONCE at create time by
+``state.workspace_repo.derive_slug``; never re-derived.  Renames
+update only the display ``name``.  The slug is therefore stable
+across renames — the load-bearing six-month-replay guarantee.
 
-  - ``mode=original``  — reconstruct each YAML version pinned at
-    artifact-production time from
-    ``copilot_state.methodology_versions.yaml_content``.  This is
-    the replay-faithful view: the YAML content is loaded from the
-    registry, NOT the filesystem, so a subsequent on-disk edit
-    cannot taint the reconstructed config.  Validates each
-    reconstructed dict round-trips into ``ToolConfig`` (proves the
-    Pydantic round-trip is loss-less for the stored data).
-
-  - ``mode=current``   — for each pinned methodology_version_id,
-    compare its YAML content against what the same on-disk path
-    holds NOW.  Reports ``methodology_diffs`` listing every
-    version whose stored hash differs from the current
-    on-disk hash.  The frontend / test can use the diff array to
-    flag "this analysis would produce a different artifact under
-    the current YAML".
-
-Why this is NOT a re-executor
------------------------------
-PR 9 wires the substrate (registry + per-artifact pinning) but
-deliberately does NOT plug the primitive executor into the route.
-Re-execution requires the per-tool ``calculate_*`` functions plus a
-live DB connection to fetch the underlying market-data slice — a
-heavier integration that belongs to the workspace-persistence PR
-(Phase 0 PR 11) once the workspace lifecycle is fully lit.
-
-What the route DOES guarantee
------------------------------
-1. ``application_version_id`` of the artifact is surfaced as a
-   ``produced_under_commit`` string, alongside the
-   ``current_commit`` (the running process's git rev-parse HEAD,
-   cached via ``state.methodology_versions``).  A boolean
-   ``commit_differs`` makes the divergence cheap to detect.
-
-2. Every ``methodology_version_id`` in the artifact's array is
-   loaded.  In ``original`` mode the stored YAML content is
-   round-tripped through ``ToolConfig.model_validate`` so a
-   reader-side failure surfaces here, not later in a primitive
-   re-execution that doesn't yet exist.
-
-3. In ``current`` mode, on-disk YAML drift is detected at the
-   ``yaml_content_hash`` level (cheapest sound comparison).
-
-Mode-default
-------------
-``mode`` defaults to ``original`` — the replay-faithful view.  An
-operator who wants the divergence report opts in explicitly with
-``?mode=current``.
-
-Mounting
---------
-Mounted under ``/api/v1/workspace`` in ``api/server.py`` alongside
-the rates + workflows routers.
+The PR 9 single-artifact replay endpoint MOVED.  It now lives at
+``GET /api/v1/artifacts/{hash}/replay`` (see
+``api/routes/artifacts.py``).  Both routes share their replay
+helpers via ``api/routes/_replay_helpers.py`` so divergence-
+detection logic is canonical in one place.
 """
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from api.dependencies import get_engine
+from api.routes._replay_helpers import (
+    MethodologyDiff,
+    ReconstructedMethodology,
+    load_methodology_record,
+    reconstruct_one,
+    diff_one,
+    is_hex,
+)
 
 logger = logging.getLogger("api.routes.workspace")
 
@@ -83,60 +63,145 @@ router = APIRouter()
 
 
 # ============================================================================
-# Response models
+# Request / response models
 # ============================================================================
 
 
-class MethodologyDiff(BaseModel):
-    """One per stored methodology version that differs from the
-    current on-disk YAML.
-
-    ``original_version_id`` is the id pinned on the artifact.
-    ``current_version_id`` is the id the same on-disk YAML would
-    register as TODAY (None when the file no longer exists).
-    ``fields_changed`` is a best-effort top-level diff of the
-    parsed dicts — empty when the file is missing.
-    """
+class CreateWorkspaceRequest(BaseModel):
+    """Body for ``POST /workspace``."""
 
     model_config = ConfigDict(extra="forbid")
 
-    yaml_path: str
-    original_version_id: int
-    original_content_hash: str
-    current_version_id: Optional[int]
-    current_content_hash: Optional[str]
-    file_exists_on_disk: bool
-    fields_changed: List[str]
+    dag_hash: str = Field(
+        ...,
+        min_length=64,
+        max_length=64,
+        description="64-char hex SHA-256 of the DAG to bind.",
+    )
+    name: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "Human-readable display name.  None for auto-named "
+            "system workspaces.  The URL slug is derived from this "
+            "name PLUS an 8-char hex UUID suffix; renames preserve "
+            "the slug."
+        ),
+    )
+    created_by: Optional[str] = Field(
+        default=None, max_length=128,
+        description="Application-defined user identifier.",
+    )
+    focus_node: Optional[str] = Field(
+        default=None, max_length=256,
+        description="UI focus pointer; not load-bearing for replay.",
+    )
 
 
-class ReconstructedMethodology(BaseModel):
-    """One per pinned methodology version in ``original`` mode.
-
-    Carries the reconstructed parsed dict plus a flag confirming the
-    Pydantic round-trip via ``ToolConfig`` succeeded.  Tests assert
-    ``tool_config_round_trip_ok`` is True for every YAML in the
-    catalogue.
-    """
+class CreateWorkspaceResponse(BaseModel):
+    """Response from ``POST /workspace``."""
 
     model_config = ConfigDict(extra="forbid")
 
-    yaml_path: str
-    version_id: int
-    yaml_content_hash: str
-    tool_config_round_trip_ok: bool
-    tool_config_hash: Optional[str]
+    workspace_id: uuid.UUID
+    slug: str
+    name: Optional[str]
+    dag_hash: str
+    url: str = Field(
+        ...,
+        description=(
+            "Server-relative URL the frontend can route to "
+            "(``/workspace/{slug}``).  Frontends free to prefix "
+            "with their host."
+        ),
+    )
+
+
+class NodeSummary(BaseModel):
+    """One per ``dag_nodes`` row, surfaced with artifact metadata
+    (when the node has been executed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str
+    kind: str
+    name: str
+    params: Dict[str, Any]
+    artifact_hash: Optional[str]
+    artifact: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "ArtifactSummary dict when ``artifact_hash`` resolves; "
+            "None for unexecuted nodes or nodes whose artifact has "
+            "been GC'd.  Same shape as ``state.ArtifactSummary`` "
+            "model_dump."
+        ),
+    )
+
+
+class EdgeSummary(BaseModel):
+    """One per ``dag_edges`` row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_node: str
+    to_node: str
+    slot_name: str
+
+
+class WorkspaceDetailResponse(BaseModel):
+    """Response from ``GET /workspace/{slug}``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: uuid.UUID
+    slug: str
+    name: Optional[str]
+    dag_hash: str
+    focus_node: Optional[str]
+    parent_workspace_id: Optional[uuid.UUID]
+    schema_version: int
+    created_by: Optional[str]
+    created_at: str
+    updated_at: str
+    nodes: List[NodeSummary]
+    edges: List[EdgeSummary]
 
 
 class WorkspaceReplayResponse(BaseModel):
-    """The route's top-level response."""
+    """Response from ``GET /workspace/{slug}/replay``.
+
+    Aggregates per-artifact replay results across every node in the
+    DAG, with the methodology surface DEDUPLICATED across nodes
+    (each unique methodology_version_id is reconstructed / diffed
+    once per request, not once per node that references it).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    artifact_hash: str
+    workspace_id: uuid.UUID
+    slug: str
+    dag_hash: str
     mode: Literal["original", "current"]
-    produced_under_commit: Optional[str]
+    produced_under_commits: List[str] = Field(
+        ...,
+        description=(
+            "Sorted-deduplicated list of distinct ``git_commit`` "
+            "values pinned across the DAG's artifacts.  Length > 1 "
+            "means the DAG mixes artifacts from multiple code "
+            "revisions — a yellow flag for replay-faithfulness."
+        ),
+    )
     current_commit: Optional[str]
     commit_differs: bool
+    node_artifact_hashes: List[str] = Field(
+        ...,
+        description=(
+            "All node ``artifact_hash`` values in node_id order — "
+            "the load-bearing identity set the integration test "
+            "asserts is byte-identical across server restarts."
+        ),
+    )
     methodology_version_ids: List[int]
     methodology_diffs: List[MethodologyDiff]
     reconstructed: List[ReconstructedMethodology]
@@ -144,292 +209,326 @@ class WorkspaceReplayResponse(BaseModel):
 
 
 # ============================================================================
-# Route
+# POST /workspace
+# ============================================================================
+
+
+@router.post(
+    "",
+    response_model=CreateWorkspaceResponse,
+    status_code=201,
+)
+def create_workspace_endpoint(
+    body: CreateWorkspaceRequest,
+) -> CreateWorkspaceResponse:
+    """Create a workspace pointing at an existing DAG.
+
+    The DAG must already exist in ``copilot_state.dags`` (typically
+    persisted via ``state.dag_repo.persist_dag_from_lineage`` after
+    the head artifact has been put).  A request referencing an
+    unknown ``dag_hash`` 404s.
+    """
+    from state.workspace_repo import (
+        InvalidNameError,
+        create_workspace,
+    )
+
+    if len(body.dag_hash) != 64 or not is_hex(body.dag_hash):
+        raise HTTPException(
+            status_code=400,
+            detail="dag_hash must be a 64-char hex SHA-256 digest",
+        )
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Confirm the dag exists — FK on workspaces.dag_hash will
+        # catch a missing row but the 4xx is friendlier than a 500.
+        row = conn.execute(
+            text(
+                "SELECT 1 FROM copilot_state.dags WHERE hash = :h"
+            ),
+            {"h": body.dag_hash},
+        ).first()
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No DAG with hash {body.dag_hash}",
+            )
+
+        try:
+            rec = create_workspace(
+                body.dag_hash,
+                conn=conn,
+                name=body.name,
+                created_by=body.created_by,
+                focus_node=body.focus_node,
+            )
+        except InvalidNameError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    return CreateWorkspaceResponse(
+        workspace_id=rec.id,
+        slug=rec.slug,
+        name=rec.name,
+        dag_hash=rec.dag_hash,
+        url=f"/workspace/{rec.slug}",
+    )
+
+
+# ============================================================================
+# GET /workspace/{slug}
 # ============================================================================
 
 
 @router.get(
-    "/{artifact_hash}",
-    response_model=WorkspaceReplayResponse,
+    "/{slug}",
+    response_model=WorkspaceDetailResponse,
 )
-def workspace_replay(
-    artifact_hash: str,
-    mode: Literal["original", "current"] = Query("original"),
-) -> WorkspaceReplayResponse:
-    """Surface the methodology + application-version provenance of
-    an artifact under the requested replay mode.
+def get_workspace_endpoint(slug: str) -> WorkspaceDetailResponse:
+    """Return workspace state + DAG topology + per-node artifact
+    summaries.
 
-    See module docstring for the contract.
+    The artifact metadata lookup is summaries-only: one read per
+    node from ``state.artifact_store.get_artifact_summary``.  No
+    payload deserialization, no object-storage fetch.  Heavy
+    payload loads are per-card opt-in via the existing artifact
+    endpoint surface.
     """
-    if len(artifact_hash) != 64 or not _is_hex(artifact_hash):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "artifact_hash must be a 64-char hex SHA-256 digest"
-            ),
-        )
+    from state.artifact_store import get_artifact_summary
+    from state.dag_repo import get_dag
+    from state.workspace_repo import (
+        UnknownWorkspaceError,
+        get_workspace_by_slug,
+    )
 
     engine = get_engine()
-    notes: List[str] = []
-
     with engine.connect() as conn:
-        artifact_row = conn.execute(
-            text(
-                """
-                SELECT methodology_version_ids, application_version_id
-                FROM copilot_state.artifact_metadata
-                WHERE hash = :h
-                """
-            ),
-            {"h": artifact_hash},
-        ).mappings().first()
-
-        if artifact_row is None:
+        try:
+            ws = get_workspace_by_slug(slug, conn=conn)
+        except UnknownWorkspaceError:
             raise HTTPException(
-                status_code=404,
-                detail=f"No artifact with hash {artifact_hash}",
+                status_code=404, detail=f"No workspace with slug {slug!r}"
             )
 
-        methodology_version_ids: List[int] = list(
-            artifact_row["methodology_version_ids"] or []
-        )
-        application_version_id: Optional[int] = artifact_row[
-            "application_version_id"
+        try:
+            stored_dag = get_dag(ws.dag_hash, conn=conn)
+        except KeyError:
+            # Workspace.dag_hash FK is RESTRICT, so this shouldn't
+            # happen, but a clean 500 is better than an opaque crash.
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Workspace {slug} references missing DAG "
+                    f"{ws.dag_hash}"
+                ),
+            )
+
+        nodes: List[NodeSummary] = []
+        for node in stored_dag.nodes:
+            summary_dict: Optional[Dict[str, Any]] = None
+            if node.artifact_hash is not None:
+                try:
+                    summary = get_artifact_summary(
+                        node.artifact_hash, conn=conn,
+                    )
+                    summary_dict = summary.model_dump(mode="json")
+                except KeyError:
+                    logger.warning(
+                        "Workspace %s node %s references missing "
+                        "artifact %s — surfacing None summary",
+                        slug, node.node_id, node.artifact_hash,
+                    )
+            nodes.append(
+                NodeSummary(
+                    node_id=node.node_id,
+                    kind=node.kind,
+                    name=node.name,
+                    params=node.params,
+                    artifact_hash=node.artifact_hash,
+                    artifact=summary_dict,
+                )
+            )
+        edges = [
+            EdgeSummary(
+                from_node=e.from_node,
+                to_node=e.to_node,
+                slot_name=e.slot_name,
+            )
+            for e in stored_dag.edges
         ]
 
-        # ------------------------------------------------------------------
-        # Application-version surface
-        # ------------------------------------------------------------------
-        produced_under_commit = _load_git_commit(
-            conn, application_version_id,
-        )
+    return WorkspaceDetailResponse(
+        workspace_id=ws.id,
+        slug=ws.slug,
+        name=ws.name,
+        dag_hash=ws.dag_hash,
+        focus_node=ws.focus_node,
+        parent_workspace_id=ws.parent_workspace_id,
+        schema_version=ws.schema_version,
+        created_by=ws.created_by,
+        created_at=ws.created_at.isoformat(),
+        updated_at=ws.updated_at.isoformat(),
+        nodes=nodes,
+        edges=edges,
+    )
+
+
+# ============================================================================
+# GET /workspace/{slug}/replay
+# ============================================================================
+
+
+@router.get(
+    "/{slug}/replay",
+    response_model=WorkspaceReplayResponse,
+)
+def replay_workspace_endpoint(
+    slug: str,
+    mode: Literal["original", "current"] = Query("original"),
+) -> WorkspaceReplayResponse:
+    """Walk every node of the workspace's DAG and aggregate the
+    replay surface.
+
+    Per-artifact computation reuses ``api.routes._replay_helpers``;
+    the aggregation step deduplicates ``methodology_version_id``s
+    across nodes so each unique YAML version is reconstructed /
+    diffed at most once per request.
+    """
+    from state.dag_repo import get_dag
+    from state.workspace_repo import (
+        UnknownWorkspaceError,
+        get_workspace_by_slug,
+    )
+    from state.methodology_versions import current_application_version_id
+
+    engine = get_engine()
+    with engine.connect() as conn:
         try:
-            from state.methodology_versions import (
-                current_application_version_id,
+            ws = get_workspace_by_slug(slug, conn=conn)
+        except UnknownWorkspaceError:
+            raise HTTPException(
+                status_code=404, detail=f"No workspace with slug {slug!r}"
             )
+        try:
+            stored_dag = get_dag(ws.dag_hash, conn=conn)
+        except KeyError:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Workspace {slug} references missing DAG "
+                    f"{ws.dag_hash}"
+                ),
+            )
+
+        notes: List[str] = []
+
+        # Collect every artifact hash referenced by the DAG, dedup
+        # the methodology version ids across them, and reconstruct
+        # / diff each unique version once.
+        node_artifact_hashes: List[str] = [
+            n.artifact_hash for n in stored_dag.nodes
+            if n.artifact_hash is not None
+        ]
+        if not node_artifact_hashes:
+            notes.append(
+                "DAG has no executed nodes — nothing to replay"
+            )
+
+        # Fetch each artifact's pinned ids + application_version_id
+        # in one batched query so the route stays cheap even for
+        # 20-node DAGs.
+        version_ids_set: set = set()
+        application_version_ids: set = set()
+        if node_artifact_hashes:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT hash, methodology_version_ids,
+                           application_version_id
+                    FROM copilot_state.artifact_metadata
+                    WHERE hash = ANY(:hashes)
+                    """
+                ),
+                {"hashes": node_artifact_hashes},
+            ).mappings().all()
+            for r in rows:
+                for vid in (r["methodology_version_ids"] or []):
+                    version_ids_set.add(int(vid))
+                if r["application_version_id"] is not None:
+                    application_version_ids.add(
+                        int(r["application_version_id"])
+                    )
+
+        sorted_version_ids = sorted(version_ids_set)
+
+        # Application-version surface.
+        produced_under_commits_set: set = set()
+        for av_id in application_version_ids:
+            commit_row = conn.execute(
+                text(
+                    "SELECT git_commit FROM "
+                    "copilot_state.application_version WHERE id = :id"
+                ),
+                {"id": av_id},
+            ).first()
+            if commit_row is not None:
+                produced_under_commits_set.add(commit_row[0])
+        produced_under_commits = sorted(produced_under_commits_set)
+
+        try:
             current_id = current_application_version_id(conn=conn)
-            current_commit = _load_git_commit(conn, current_id)
+            current_row = conn.execute(
+                text(
+                    "SELECT git_commit FROM "
+                    "copilot_state.application_version WHERE id = :id"
+                ),
+                {"id": current_id},
+            ).first()
+            current_commit = current_row[0] if current_row else None
         except Exception as exc:
             current_commit = None
             notes.append(
                 f"could not resolve current application_version: {exc}"
             )
-        commit_differs = (
-            produced_under_commit is not None
-            and current_commit is not None
-            and produced_under_commit != current_commit
+
+        commit_differs = bool(
+            current_commit is not None
+            and produced_under_commits
+            and any(c != current_commit for c in produced_under_commits)
         )
 
-        if produced_under_commit is None:
-            notes.append(
-                "artifact predates Phase 0 PR 9 (no application_version_id "
-                "recorded); application-version divergence cannot be "
-                "checked"
-            )
-
-        # ------------------------------------------------------------------
-        # Methodology surface (mode-dependent)
-        # ------------------------------------------------------------------
-        if not methodology_version_ids:
-            notes.append(
-                "artifact has no methodology_version_ids recorded "
-                "(PR 7 / PR 8 era row, or a Lineage with no PrimitiveStep)"
-            )
-
+        # Per-unique-version reconstruction / diff.
         reconstructed: List[ReconstructedMethodology] = []
         diffs: List[MethodologyDiff] = []
-
-        for vid in methodology_version_ids:
+        for vid in sorted_version_ids:
             try:
-                rec = _load_methodology_record(conn, vid)
+                rec = load_methodology_record(conn, vid)
             except KeyError:
                 notes.append(
                     f"methodology_version_id {vid} no longer exists "
                     "in the registry — skipping"
                 )
                 continue
-
             if mode == "original":
-                reconstructed.append(
-                    _reconstruct_one(rec)
-                )
-            else:  # mode == "current"
-                diff = _diff_one(rec)
+                reconstructed.append(reconstruct_one(rec))
+            else:
+                diff = diff_one(rec)
                 if diff is not None:
                     diffs.append(diff)
 
     return WorkspaceReplayResponse(
-        artifact_hash=artifact_hash,
+        workspace_id=ws.id,
+        slug=ws.slug,
+        dag_hash=ws.dag_hash,
         mode=mode,
-        produced_under_commit=produced_under_commit,
+        produced_under_commits=produced_under_commits,
         current_commit=current_commit,
         commit_differs=commit_differs,
-        methodology_version_ids=methodology_version_ids,
+        node_artifact_hashes=node_artifact_hashes,
+        methodology_version_ids=sorted_version_ids,
         methodology_diffs=diffs,
         reconstructed=reconstructed,
         notes=notes,
     )
 
 
-# ============================================================================
-# Helpers
-# ============================================================================
-
-
-def _is_hex(s: str) -> bool:
-    try:
-        int(s, 16)
-    except ValueError:
-        return False
-    return True
-
-
-def _load_git_commit(conn, application_version_id: Optional[int]) -> Optional[str]:
-    if application_version_id is None:
-        return None
-    row = conn.execute(
-        text(
-            "SELECT git_commit FROM copilot_state.application_version "
-            "WHERE id = :id"
-        ),
-        {"id": application_version_id},
-    ).first()
-    return row[0] if row is not None else None
-
-
-def _load_methodology_record(conn, version_id: int):
-    from state.methodology_versions import get_yaml
-
-    return get_yaml(version_id, conn=conn)
-
-
-def _reconstruct_one(rec) -> ReconstructedMethodology:
-    """Round-trip the stored yaml_content through ``ToolConfig`` and
-    return the result.  Failure does NOT raise — we capture the
-    round-trip outcome on the response so the test can assert it
-    rather than getting a 500."""
-    from shared.config.tool_config import ToolConfig
-
-    round_trip_ok = False
-    tool_config_hash: Optional[str] = None
-    try:
-        cfg = ToolConfig.model_validate(rec.yaml_content)
-        round_trip_ok = True
-        tool_config_hash = cfg.conventions_hash()
-    except Exception as exc:
-        logger.warning(
-            "ToolConfig round-trip failed for methodology_version_id %d "
-            "(path=%s): %s",
-            rec.id, rec.yaml_path, exc,
-        )
-
-    return ReconstructedMethodology(
-        yaml_path=rec.yaml_path,
-        version_id=rec.id,
-        yaml_content_hash=rec.yaml_content_hash,
-        tool_config_round_trip_ok=round_trip_ok,
-        tool_config_hash=tool_config_hash,
-    )
-
-
-def _diff_one(rec) -> Optional[MethodologyDiff]:
-    """Compare the registry-stored YAML against the current on-disk
-    file at ``rec.yaml_path``.  Returns None when the contents match
-    (no diff to report); returns a populated ``MethodologyDiff`` when
-    the file is missing OR differs.
-    """
-    from state.methodology_versions import (
-        _hash_yaml_content,
-        canonicalize_yaml_content,
-    )
-
-    path = Path(rec.yaml_path)
-    if not path.is_file():
-        return MethodologyDiff(
-            yaml_path=rec.yaml_path,
-            original_version_id=rec.id,
-            original_content_hash=rec.yaml_content_hash,
-            current_version_id=None,
-            current_content_hash=None,
-            file_exists_on_disk=False,
-            fields_changed=[],
-        )
-
-    import yaml as _yaml
-
-    try:
-        with path.open("r") as f:
-            current_parsed = _yaml.safe_load(f.read())
-    except Exception as exc:
-        logger.warning(
-            "could not load current YAML at %s: %s", path, exc,
-        )
-        return MethodologyDiff(
-            yaml_path=rec.yaml_path,
-            original_version_id=rec.id,
-            original_content_hash=rec.yaml_content_hash,
-            current_version_id=None,
-            current_content_hash=None,
-            file_exists_on_disk=True,
-            fields_changed=[],
-        )
-
-    if not isinstance(current_parsed, dict):
-        return None
-
-    current_canonical = canonicalize_yaml_content(current_parsed)
-    current_hash = _hash_yaml_content(current_canonical)
-
-    if current_hash == rec.yaml_content_hash:
-        return None  # No diff — file matches the pinned snapshot.
-
-    # Compute a best-effort top-level diff so the response carries
-    # operator-readable signal instead of just "they differ".  We diff
-    # the leaf-value paths in the conventions block; anything else
-    # at the top level lands under the "other" bucket.
-    fields_changed = _top_level_diff(rec.yaml_content, current_canonical)
-
-    return MethodologyDiff(
-        yaml_path=rec.yaml_path,
-        original_version_id=rec.id,
-        original_content_hash=rec.yaml_content_hash,
-        current_version_id=None,  # Not registered here; caller can re-register
-        current_content_hash=current_hash,
-        file_exists_on_disk=True,
-        fields_changed=fields_changed,
-    )
-
-
-def _top_level_diff(orig: Dict[str, Any], curr: Dict[str, Any]) -> List[str]:
-    """Return a list of ``conventions.<key>`` paths whose values
-    differ, plus a bucket for any top-level structural change.
-
-    Best-effort: handles the common case of "someone bumped one
-    convention value" cleanly; falls back to a top-level
-    "<root>" entry when the dict shape diverges more broadly.
-    """
-    changed: List[str] = []
-
-    orig_conv = orig.get("conventions") if isinstance(orig, dict) else None
-    curr_conv = curr.get("conventions") if isinstance(curr, dict) else None
-    if isinstance(orig_conv, dict) and isinstance(curr_conv, dict):
-        keys = set(orig_conv) | set(curr_conv)
-        for k in sorted(keys):
-            o = orig_conv.get(k)
-            c = curr_conv.get(k)
-            # We care about the ``.value`` field — the source /
-            # rationale / valid_range are documentation, not identity
-            # (matches ``ToolConfig.conventions_hash`` semantics).
-            o_val = o.get("value") if isinstance(o, dict) else o
-            c_val = c.get("value") if isinstance(c, dict) else c
-            if o_val != c_val:
-                changed.append(f"conventions.{k}")
-
-    # Surface any other top-level mismatch as a coarse path.
-    for key in sorted(set(orig.keys()) | set(curr.keys())):
-        if key == "conventions":
-            continue
-        if orig.get(key) != curr.get(key):
-            changed.append(key)
-
-    return changed
