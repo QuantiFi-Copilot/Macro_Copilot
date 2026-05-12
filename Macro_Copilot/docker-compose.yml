@@ -176,15 +176,28 @@ services:
     # disables PR 13's recent-conversation context (load_recent_turns
     # reads from ``copilot_state.turns``).  Migrations are idempotent:
     # a no-op when already at head, fast (<1s).
+    #
+    # PR 17: ``alembic.ini`` and ``migrations/`` live at the REPO
+    # ROOT (one level ABOVE this docker-compose.yml), not inside
+    # ``Macro_Copilot/``.  The default ``.:/app`` mount only exposes
+    # ``Macro_Copilot/`` to the container, so alembic could not find
+    # its config — ``FAILED: No 'script_location' key found in
+    # configuration``.  Mount the repo root at ``/repo-root`` so
+    # alembic can read its config + version scripts, run migrations
+    # from there, then run uvicorn from the regular ``/app`` working
+    # dir.  Two volumes, two working dirs, one container.
     command: >
       bash -c "
+        cd /repo-root &&
         micromamba run -n macro-env alembic upgrade head &&
+        cd /app &&
         micromamba run -n macro-env uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
       "
     ports:
       - "8000:8000"
     volumes:
       - .:/app
+      - ..:/repo-root
     env_file:
       - .env
     environment:
