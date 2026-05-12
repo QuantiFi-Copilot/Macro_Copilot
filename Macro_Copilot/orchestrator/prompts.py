@@ -281,6 +281,89 @@ prep, not a student who wants a full explanation.
 
 
 # ===========================================================================
+# REFERENCE RESOLVER (PR 8) — NL → structured working-set ops
+# ===========================================================================
+# Small structured-output call that runs BEFORE the supervisor on every
+# turn.  Returns ``ReferenceResolution(save_as, referenced_names)``.
+# The system prompt is static across turns and cache-anchored at the
+# resolver layer (see orchestrator/reference_resolver.py).
+
+REFERENCE_RESOLVER_SYSTEM_PROMPT = """\
+You are the reference resolver for a macro hedge-fund rates copilot.
+
+YOUR ONLY JOB is to extract structured intent from the user's message:
+
+1. ``save_as`` — when the user explicitly asks to bind the result of this \
+turn to a named handle (e.g. "save as tips_2y_v3", "call this foo", \
+"name it bund_30y_zscore"), return that name.  Otherwise return null.
+
+2. ``referenced_names`` — when the user refers to a previously bound \
+working-set name (e.g. "compare that with tips_2y_v1", "rerun foo \
+with a shorter window"), return the list of names being referenced.  \
+You will be shown the list of names currently visible in this \
+session; you MUST only return names from that list.  Empty list when \
+the user is asking a fresh question.
+
+RULES
+
+- NEVER fabricate a name.  Only return names you see in the \
+VISIBLE WORKING-SET NAMES block.
+
+- A bare pronoun ("that", "it", "the result") is NOT a reference to a \
+named binding; leave ``referenced_names`` empty in that case.  The \
+supervisor will handle anaphoric resolution from conversation context.
+
+- Names must match ``[A-Za-z_][A-Za-z0-9_]{0,63}``.  If the user said \
+"save as 2y zscore" (space in the name), return ``save_as`` as null — \
+the supervisor will ask for a valid identifier.
+
+- You DO NOT answer the user's question.  You only extract these two \
+structured fields.  No prose, no explanation.
+
+- If unsure, prefer empty / null over guessing.  The downstream \
+supervisor will route on the raw message and any ambiguity surfaces \
+as a clarification request.
+"""
+
+
+# ===========================================================================
+# WORKING SET BLOCK (PR 8) — prefix injected into prompts at turn time
+# ===========================================================================
+# Rendered by orchestrator.session and prepended (as a separate human
+# message OR a system-message extension) to the supervisor / child
+# prompts.  Lets the LLM resolve "that series" / "tips_2y_v1" without
+# having to invent it.
+#
+# Format chosen for cache-friendliness: the static template is the
+# wrapper text; only the dynamic ``names`` block changes per turn.
+# Callers render `WORKING_SET_BLOCK_TEMPLATE.format(names_block=...)`.
+
+WORKING_SET_BLOCK_TEMPLATE = """\
+CURRENT WORKING SET (this session's named handles):
+{names_block}
+
+When the user refers to one of the names above, treat it as a \
+reference to the previously-computed artifact bound under that name. \
+If the user did not reference any of these names explicitly, ignore \
+this block — answer their question from scratch.\
+"""
+
+
+def render_working_set_block(names: list[str]) -> str:
+    """Render the working-set block for the current turn.
+
+    ``names`` is the list of currently-ACTIVE working-set names for
+    this session.  Empty list renders as ``(none)`` so the LLM
+    sees an explicit empty state rather than an ambiguous absence.
+    """
+    if not names:
+        names_block = "(none)"
+    else:
+        names_block = "\n".join(f"- {n}" for n in names)
+    return WORKING_SET_BLOCK_TEMPLATE.format(names_block=names_block)
+
+
+# ===========================================================================
 # LEGACY — retained for backwards compatibility with any older imports.
 # Will be removed once no module references it.
 # ===========================================================================

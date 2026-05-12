@@ -740,3 +740,167 @@ The artifact store deliberately uses the SQLAlchemy engine path
 (psycopg2) rather than the checkpointer pool: the connection-injection
 pattern from PR 3 is the right interface for transactional state
 writes, and the artifact-metadata workload is sync.
+
+---
+
+## Working set + orchestrator state machine — Phase 0 PR 8
+
+PR 8 lights up the conversation-state half of the schema. Three Phase 0
+tables that PR 4 created but no code wrote to — `sessions`, `turns`,
+`working_set` — become live, and a new substrate ties them to the
+orchestrator's turn loop.
+
+### Public API
+
+Located in `state/working_set.py` and `orchestrator/state.py`:
+
+```python
+# state.working_set — per-session name <-> artifact_hash map
+state.working_set.add(name, artifact_hash, introduced_at_turn,
+                      *, session_id, conn) -> NamedArtifact
+state.working_set.retire(name, retired_at_turn, *, session_id, conn) -> NamedArtifact
+state.working_set.resolve(name, *, session_id, conn,
+                          as_of_turn=None) -> NamedArtifact
+state.working_set.list_visible(*, session_id, conn) -> list[NamedArtifact]
+
+# orchestrator.state — turn lifecycle
+orchestrator.state.create_session_if_needed(session_id, *, conn,
+                                            user_id=None, label=None)
+orchestrator.state.begin_turn(user_message, *, session_id, conn) -> TurnContext
+orchestrator.state.commit_turn(turn_ctx, *, conn, status="completed",
+                               assistant_response=None,
+                               terminal_artifact_hash=None,
+                               save_as=None) -> Optional[str]
+orchestrator.state.fail_turn(turn_ctx, *, conn, error_message=None)
+```
+
+All ops take `conn` keyword-only (the PR 3 connection-injection
+convention).  The caller owns the transaction.
+
+### Turn lifecycle
+
+```
+WebSocket /api/chat connects
+   │
+   ▼
+create_session_if_needed(new_uuid)        # copilot_state.sessions row
+   │
+   ▼  (per user message)
+begin_turn(user_message)  ──▶  copilot_state.turns row (status='running')
+   │                          sequence_no = max(...) + 1
+   │
+   ▼
+reference resolver (LLM)  ──▶  ReferenceResolution(save_as, referenced_names)
+   │                          — see orchestrator/reference_resolver.py
+   │                          — visible names come from list_visible
+   │
+   ▼
+supervisor route + domain children (existing flow, augmented with the
+working-set block in the user message so the LLM sees current names)
+   │
+   ▼
+commit_turn(status, assistant_response, save_as, terminal_artifact_hash)
+   │                          ──▶  copilot_state.turns row updated to
+   │                               status='completed' / 'failed' / 'cancelled'
+   │                               + assistant_response stamped
+   │
+   ▼ (when terminal_artifact_hash is provided)
+working_set.add("turn_<seq>_result", hash, turn_id)   # auto-named binding
+working_set.add(save_as, hash, turn_id) if save_as    # user alias
+```
+
+### Append-mostly semantics of `working_set`
+
+The `working_set` table is **append-mostly**: a rebind of an existing
+name does NOT update the row in place.  It RETIRES the old row
+(sets `retired_at_turn`) and inserts a new active row.  Two reasons:
+
+1. **Historical resolution.**  `resolve(name, as_of_turn=earlier_turn)`
+   recovers the binding that was active when an older turn ran.  The
+   replay path uses this when reconstructing a workspace from DAG
+   history.
+
+2. **Foreign-key safety.**  `working_set.artifact_hash` is
+   `ON DELETE RESTRICT` against `artifact_metadata.hash`.  Deleting
+   a working-set row that holds the only reference to an artifact
+   would let GC reclaim it; retiring keeps the reference intact.
+
+The integrity invariant is the partial unique index
+`uq_working_set_session_name_active` on `(session_id, name) WHERE
+retired_at_turn IS NULL`: at most one ACTIVE binding per
+(session, name).  The retirement transition in `add` is atomic
+inside the caller's transaction — the old row's retire and the new
+row's insert happen under the same `engine.begin()` block.
+
+### Reference resolver
+
+`orchestrator/reference_resolver.py` is a small structured-output
+LLM call that runs ONCE per turn, BEFORE the supervisor.  Output:
+
+```python
+class ReferenceResolution(BaseModel):
+    save_as: Optional[str]              # user explicitly said "save as X"
+    referenced_names: List[str]         # names from the visible set
+```
+
+The resolver is deliberately separate from the supervisor:
+
+- **Bounded scope.**  Two-field structured record; never prose,
+  never numbers.  Tiny max_tokens; trivially testable.
+- **Cache discipline.**  The supervisor's prompt should not grow
+  knowledge of every session's working-set names.  Putting the
+  per-session visible-names list in the resolver's user message
+  keeps the supervisor's static prefix cache-stable.
+- **Hallucination defence.**  The resolver is told "only return
+  names from the VISIBLE WORKING-SET NAMES block" and the
+  `_sanitize` step at the resolver layer drops anything the LLM
+  fabricates anyway.
+
+Failure modes (timeout / network / parsing error) return an empty
+`ReferenceResolution()` — the turn proceeds as if the user made a
+fresh query.  No turn ever fails because the resolver failed.
+
+### Sequence-no monotonicity
+
+`begin_turn` takes an explicit `FOR UPDATE` lock on the
+`sessions` row before computing `sequence_no = max(...) + 1`.  This
+serialises concurrent `begin_turn` calls for the same session; the
+unique constraint `uq_turns_session_sequence` is the backstop, the
+explicit lock is the happy path.  In production, each WebSocket
+connection serialises turns at the application layer too, so this
+is belt-and-suspenders.
+
+### Degraded operation
+
+The PR 8 wiring is **opt-in at the session level**:
+
+- `CopilotSession(engine=None, session_id=None, ...)` — the test /
+  CLI path; no DB writes, no resolver call.  Existing tests keep
+  working unchanged.
+- `CopilotSession(engine=eng, session_id=sid, ...)` — the
+  WebSocket / production path; every turn writes a `turns` row,
+  every save-as / reference goes through the resolver and the
+  working set.
+
+If the DB engine is unavailable at WebSocket-connect time, the
+chat handler logs a warning and constructs a `CopilotSession`
+WITHOUT the engine — degraded operation, same contract as
+PR 5's checkpointer pool and PR 7's object-storage backend.  A
+DB outage does not break the chat; it just means the turn doesn't
+get persisted.
+
+### Tests
+
+Real-Postgres integration tests live under `tests/state/`:
+
+- `test_working_set.py`           — add / retire / resolve / list_visible,
+  including historical resolution and the partial-unique invariant.
+- `test_turn_state_machine.py`    — begin_turn / commit_turn / fail_turn
+  lifecycle and FK enforcement.
+- `test_reference_resolver.py`    — sanitisation + LLM-stub resolver
+  behaviour (no real model call; langchain stubbed via `sys.modules`).
+- `test_multi_turn_reference.py`  — 3-turn end-to-end exercise of the
+  working set + turns + resolver with a scripted resolver.
+
+All four run in CI's `state-layer` job against the postgres:14
+service container.

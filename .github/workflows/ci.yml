@@ -268,3 +268,24 @@ jobs:
             Macro_Copilot/tests/state/test_object_storage.py \
             Macro_Copilot/tests/state/test_artifact_store.py \
             -v
+
+      - name: pytest working set + turn state machine + resolver (Phase 0 PR 8)
+        # ``test_working_set.py``           — name binding / retirement /
+        #   historical resolution against the real ``working_set`` table.
+        # ``test_turn_state_machine.py``    — begin_turn / commit_turn /
+        #   fail_turn lifecycle and FK enforcement.
+        # ``test_reference_resolver.py``    — sanitisation + LLM-stub
+        #   resolver behaviour (no real model call).
+        # ``test_multi_turn_reference.py``  — 3-turn end-to-end exercise
+        #   of working set + turns + resolver with a scripted resolver.
+        # The reference-resolver tests stub langchain via sys.modules
+        # so we don't strictly need langchain-anthropic installed for
+        # the resolver tests; the multi-turn test imports the resolver
+        # but only the ReferenceResolution Pydantic class.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_working_set.py \
+            Macro_Copilot/tests/state/test_turn_state_machine.py \
+            Macro_Copilot/tests/state/test_reference_resolver.py \
+            Macro_Copilot/tests/state/test_multi_turn_reference.py \
+            -v
