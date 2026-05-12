@@ -455,6 +455,8 @@ def backtest_workflow(
     short_leg_tenor: str,
     start_date: str,
     end_date: str,
+    long_leg_instrument_key: str = None,
+    short_leg_instrument_key: str = None,
     long_leg_weight: float = -1.0,
     short_leg_weight: float = 1.0,
     holding_window_days: int = 20,
@@ -542,6 +544,16 @@ def backtest_workflow(
     engine, err = _engine_or_error_envelope(template_id)
     if err is not None:
         return err
+
+    # Auto-compose instrument_key strings from curve_family + tenor
+    # when the caller didn't pre-compute them.  This keeps the
+    # LLM-facing surface ergonomic while preserving the substrate's
+    # strict-slot-ref contract (no nested format-string substitution).
+    if long_leg_instrument_key is None:
+        long_leg_instrument_key = f"{long_leg_curve_family}_{long_leg_tenor}"
+    if short_leg_instrument_key is None:
+        short_leg_instrument_key = f"{short_leg_curve_family}_{short_leg_tenor}"
+
     slot_values = {
         "signal_tool_name": signal_tool_name,
         "signal_params": signal_params,
@@ -549,9 +561,11 @@ def backtest_workflow(
         "signal_threshold": signal_threshold,
         "long_leg_curve_family": long_leg_curve_family,
         "long_leg_tenor": long_leg_tenor,
+        "long_leg_instrument_key": long_leg_instrument_key,
         "long_leg_weight": long_leg_weight,
         "short_leg_curve_family": short_leg_curve_family,
         "short_leg_tenor": short_leg_tenor,
+        "short_leg_instrument_key": short_leg_instrument_key,
         "short_leg_weight": short_leg_weight,
         "holding_window_days": holding_window_days,
         "start_date": start_date,

@@ -190,14 +190,18 @@ def infer_units_for_field(field_name: str) -> str:
     fast guard so the caller cannot silently produce a Panel with the
     wrong units tag.
     """
+    # NB: values use the LOWERCASE enum-VALUE form (matches
+    # ``TimeSeriesUnits.PERCENT.value == "percent"``).  Callers
+    # wrap with ``TimeSeriesUnits(value)`` — Pydantic's Enum
+    # construction is value-based, not name-based.
     _FIELD_UNIT_MAP: Dict[str, str] = {
-        "YLD_YTM_MID": "PERCENT",
-        "YLD_YTM_BID": "PERCENT",
-        "YLD_YTM_ASK": "PERCENT",
-        "PX_LAST": "PERCENT",  # OIS rates quoted as percent
-        "PX_MID": "PERCENT",
-        "PX_BID": "PERCENT",
-        "PX_ASK": "PERCENT",
+        "YLD_YTM_MID": "percent",
+        "YLD_YTM_BID": "percent",
+        "YLD_YTM_ASK": "percent",
+        "PX_LAST": "percent",  # OIS rates quoted as percent
+        "PX_MID": "percent",
+        "PX_BID": "percent",
+        "PX_ASK": "percent",
     }
     if field_name not in _FIELD_UNIT_MAP:
         raise ValueError(

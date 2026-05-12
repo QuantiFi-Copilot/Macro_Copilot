@@ -99,13 +99,15 @@ from shared.artifacts.lineage import Lineage, PrimitiveStep
 from shared.artifacts.missingness import (
     CleanSingleSeriesV1,
     MissingnessPolicy,
+    RawNoCleaning,
 )
-from shared.artifacts.types import Series
+from shared.artifacts.types import Panel, Series
 from shared.config import ToolConfig
 from shared.schemas import TimeSeries, TimeSeriesRow
 
 
 _BRIDGE_NAME = "time_series_to_artifact_series"
+_PANEL_BRIDGE_NAME = "tool_output_to_artifact_panel"
 
 
 # ============================================================================
@@ -465,6 +467,204 @@ def tool_output_to_artifact_series(
 
 
 # ============================================================================
+# HIGH-LEVEL: tool output dict -> Panel  (Phase 1 PR 20)
+# ============================================================================
+
+
+def tool_output_to_artifact_panel(
+    tool_output: Dict[str, Any],
+    *,
+    output_class: Type[BaseModel],
+    output_field: str,
+    tool_name: str,
+    tool_config: ToolConfig,
+    params: BaseModel,
+    tool_config_path: Optional[str] = None,
+    missingness_policy: Optional[MissingnessPolicy] = None,
+    primitive_version: str = "1.0.0",
+) -> Panel:
+    """Convenience wrapper: primitive output dict → ``Panel`` artifact.
+
+    Parallel to :func:`tool_output_to_artifact_series` but for
+    Panel-emitting primitives (e.g.
+    ``build_sovereign_yield_panel_tool``, ``compute_financing_rate_tool``).
+
+    Why a separate bridge
+    ---------------------
+    The Series bridge is TimeSeries-shape-specific: it expects a
+    canonical ``TimeSeries`` Pydantic object (rows + units +
+    series_name) and converts it into a one-column ``pd.Series``
+    with the bridge supplying the lineage step.
+
+    A Panel-emitting primitive is structurally different:
+      - The output schema's Panel field IS the already-built typed
+        Panel artifact (validated by ``Panel``'s own model
+        validator at primitive construction time).
+      - The columns + units + missingness policy are owned by the
+        primitive itself (not by the bridge's missingness inference).
+      - The bridge's job is only: (a) validate the output dict
+        against the primitive's *Output schema; (b) extract the
+        Panel field; (c) rebuild the Panel with the bridge-built
+        ``PrimitiveStep`` as lineage head so two callers running the
+        same params produce the same head hash.
+
+    Mirrors the discipline of the Series path: same identity-bits
+    folded into the PrimitiveStep (params + tool_config_hash +
+    output_field + as_of_date), same validate-first order, same
+    raise-loudly-on-shape-error policy.
+
+    Parameters
+    ----------
+    tool_output :
+        The primitive's raw ``.model_dump()``'d output dict.
+    output_class :
+        The primitive's Pydantic ``*Output`` class.  Must declare a
+        ``Panel`` (or ``Optional[Panel]``) field at ``output_field``.
+    output_field :
+        Which Panel-typed field of the output to lift (e.g.
+        ``"panel"``).
+    tool_name :
+        MCP tool name; folded into the lineage step.
+    tool_config :
+        Loaded ``ToolConfig`` for the primitive (used to fold the
+        conventions hash into the lineage step).
+    params :
+        The primitive's *Input instance (already validated).
+    tool_config_path :
+        Optional bookkeeping path; not in hash.
+    missingness_policy :
+        Optional explicit missingness policy.  When omitted, defaults
+        to ``RawNoCleaning()`` because Panel columns can have
+        independent NaN regimes — there is no unified per-column
+        cleaning convention the bridge can auto-derive.  Caller can
+        pass an explicit policy if the upstream primitive owns one.
+    primitive_version :
+        Folded into the lineage step's version field.
+
+    Returns
+    -------
+    Panel
+        Frozen artifact with lineage = a single ``PrimitiveStep``.
+
+    Raises
+    ------
+    ValueError
+        - Output dict does NOT validate against ``output_class``.
+        - ``output_field`` is not declared on ``output_class``.
+        - The extracted field is not a ``Panel`` instance.
+    """
+    # ------------------------------------------------------------------
+    # 1. Validate the output dict against the primitive's *Output.
+    # ------------------------------------------------------------------
+    validated = output_class.model_validate(tool_output)
+
+    # ------------------------------------------------------------------
+    # 2. Confirm output_field exists + is Panel-typed.  Friendly
+    #    error names the Panel-typed fields actually available.
+    # ------------------------------------------------------------------
+    fields = output_class.model_fields
+    if output_field not in fields:
+        panel_fields = [
+            name for name, field in fields.items()
+            if _is_panel_type(field.annotation)
+        ]
+        raise ValueError(
+            f"{_PANEL_BRIDGE_NAME}: output_field={output_field!r} is "
+            f"not declared on {output_class.__name__}.  Panel-typed "
+            f"fields available: {sorted(panel_fields) if panel_fields else 'none'}."
+        )
+    if not _is_panel_type(fields[output_field].annotation):
+        raise ValueError(
+            f"{_PANEL_BRIDGE_NAME}: output_field={output_field!r} on "
+            f"{output_class.__name__} is not a Panel (or Optional[Panel]) "
+            f"field.  Use ``tool_output_to_artifact_series`` for "
+            "TimeSeries-typed fields instead."
+        )
+    panel_obj = getattr(validated, output_field)
+    if panel_obj is None:
+        raise ValueError(
+            f"{_PANEL_BRIDGE_NAME}: {output_class.__name__}."
+            f"{output_field} is None — the primitive returned a None "
+            "in the Panel field where a Panel artifact was expected."
+        )
+    if not isinstance(panel_obj, Panel):
+        raise ValueError(
+            f"{_PANEL_BRIDGE_NAME}: {output_class.__name__}."
+            f"{output_field} is not a Panel instance — got "
+            f"{type(panel_obj).__name__}."
+        )
+
+    # ------------------------------------------------------------------
+    # 3. Resolve missingness policy.  Panel columns can have
+    #    independent NaN regimes; the bridge does NOT auto-derive a
+    #    unified policy (no per-column ``ffill_limit_days`` convention
+    #    exists today).  Default to RawNoCleaning() so the Panel
+    #    carries an honest "no unified regime" tag — the primitive's
+    #    own ``missing_data_policy`` knob (if it has one) documents
+    #    what cleaning happened upstream.
+    # ------------------------------------------------------------------
+    resolved_policy: MissingnessPolicy = (
+        missingness_policy if missingness_policy is not None else RawNoCleaning()
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Pull the as_of_date.  Panel-emitting primitives may NOT carry
+    #    a ``current_metrics.as_of_date`` block (e.g. a multi-leg
+    #    Panel is a multi-instrument snapshot, not a single-point
+    #    one).  Fall back to the last date in the Panel's index when
+    #    ``current_metrics`` is absent.
+    # ------------------------------------------------------------------
+    if hasattr(validated, "current_metrics") and hasattr(
+        validated.current_metrics, "as_of_date",
+    ):
+        as_of_date = str(validated.current_metrics.as_of_date)
+    elif hasattr(validated, "as_of_end"):
+        # Panel-shaped outputs typically carry as_of_end / as_of_start
+        # bounding the Panel's calendar — use as_of_end as the snapshot
+        # anchor for replay determinism.
+        as_of_date = str(validated.as_of_end)
+    else:
+        # Last resort: last date in the Panel's index.
+        if len(panel_obj.payload.index) == 0:
+            raise ValueError(
+                f"{_PANEL_BRIDGE_NAME}: cannot determine as_of_date — "
+                f"{output_class.__name__} has neither ``current_metrics."
+                "as_of_date`` nor ``as_of_end``, AND the Panel's index "
+                "is empty.  The primitive must declare one of these to "
+                "anchor replay determinism."
+            )
+        as_of_date = panel_obj.payload.index[-1].strftime("%Y-%m-%d")
+
+    # ------------------------------------------------------------------
+    # 5. Build the PrimitiveStep with all four identity bits.
+    # ------------------------------------------------------------------
+    primitive_step = PrimitiveStep.build(
+        name=tool_name,
+        version=primitive_version,
+        params=params.model_dump(mode="json"),
+        tool_config_hash=tool_config.conventions_hash(),
+        output_field=output_field,
+        as_of_date=as_of_date,
+        tool_config_path=tool_config_path,
+    )
+
+    # ------------------------------------------------------------------
+    # 6. Construct the frozen Panel with the bridge's lineage.
+    #    The primitive's own ``panel_obj`` has lineage = the primitive's
+    #    internal step chain; we replace it with the bridge-anchored
+    #    step so two callers running the same params (across the
+    #    workflow executor) produce the same head hash.  The Panel
+    #    validator re-runs on payload + units_by_column.
+    # ------------------------------------------------------------------
+    return Panel(
+        payload=panel_obj.payload,
+        units_by_column=panel_obj.units_by_column,
+        missingness_policy=resolved_policy,
+        lineage=Lineage.from_steps([primitive_step]),
+    )
+
+
+# ============================================================================
 # INTERNAL HELPERS
 # ============================================================================
 
@@ -483,6 +683,23 @@ def _is_time_series_type(annotation: Any) -> bool:
     args = getattr(annotation, "__args__", None)
     if args:
         return any(arg is TimeSeries for arg in args)
+    return False
+
+
+def _is_panel_type(annotation: Any) -> bool:
+    """Best-effort check: does this Pydantic field annotation declare
+    a ``Panel`` (or ``Optional[Panel]``) shape?
+
+    Parallel to ``_is_time_series_type``.  Used by
+    ``tool_output_to_artifact_panel`` to surface a clear error when a
+    caller picks a non-Panel output_field for a Panel-producing
+    primitive.
+    """
+    if annotation is Panel:
+        return True
+    args = getattr(annotation, "__args__", None)
+    if args:
+        return any(arg is Panel for arg in args)
     return False
 
 
@@ -658,5 +875,6 @@ def _format_lineage_summary(lineage: Lineage) -> str:
 __all__ = [
     "time_series_to_artifact_series",
     "tool_output_to_artifact_series",
+    "tool_output_to_artifact_panel",
     "artifact_series_to_time_series",
 ]

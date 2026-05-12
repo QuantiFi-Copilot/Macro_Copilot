@@ -222,14 +222,20 @@ def build_sovereign_yield_panel(
             col: units.value for col, units in units_by_column.items()
         },
         methodology_disclosures=disclosures,
+        # PR 20: typed Panel artifact lives on the declared schema
+        # field so the workflow executor's bridge extracts it via
+        # standard Pydantic attribute traversal.  MCP layer drops
+        # this field before serialising to JSON for the LLM.
+        panel=panel_artifact,
     )
 
-    result = output.model_dump()
-    # Smuggle the typed artifact under a leading-underscore key so the
-    # workflow executor can extract it; MCP layer drops underscore keys
-    # before serialising for the LLM.
-    result["_panel"] = panel_artifact
-    return result
+    # ``model_dump(mode="python")`` preserves the typed Panel object
+    # (vs ``mode="json"`` which would lose the typed identity).  The
+    # bridge re-validates via ``output_class.model_validate(...)`` so
+    # round-tripping through dict + revalidation must preserve the
+    # Panel instance — Pydantic does this correctly because Panel
+    # is a Pydantic BaseModel with ``arbitrary_types_allowed=True``.
+    return output.model_dump(mode="python")
 
 
 __all__ = [

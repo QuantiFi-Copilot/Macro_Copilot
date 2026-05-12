@@ -108,26 +108,45 @@ slot_schema:
   # Trade construction.
   # -------------------------------------------------------------------------
 
+  # Two slots per leg in PR 20: the curve family + tenor are needed
+  # to drive the ``build_sovereign_yield_panel_tool`` primitive's
+  # ``legs`` param; the resolved instrument-key string is needed by
+  # ``construct_trades``' LegSpecInput.  The slot binder only
+  # supports DIRECT slot refs (``{$slot: name}``), not nested
+  # format-string substitution, so the caller pre-computes the
+  # instrument-key string (e.g. ``"USD_TIPS_10Y"``) and passes both.
+
   - name: long_leg_curve_family
     type: str
     required: true
     description: >-
       Curve family for the long leg (e.g. USD_TIPS, UST, DE_BUND).
+      Used to drive the price-panel primitive's ``legs`` param.
 
   - name: long_leg_tenor
     type: str
     required: true
     description: "Tenor for the long leg (e.g. '2Y', '10Y')."
 
+  - name: long_leg_instrument_key
+    type: str
+    required: true
+    description: >-
+      Pre-computed instrument-key string for the long leg.  Must
+      equal ``<long_leg_curve_family>_<long_leg_tenor>`` (e.g.
+      ``"USD_TIPS_10Y"``) so it matches the price panel's column
+      naming convention.  Caller computes this — the slot binder
+      doesn't do string interpolation.
+
   - name: long_leg_weight
     type: float
     required: false
     default: -1.0
     description: >-
-      Per-leg weight in PR 12's yield-change sign convention.  Negative
-      weight = profit when yield falls (bond price rises) = "long bond"
-      in conventional finance language.  See methodology card for the
-      sign convention's full disclosure.
+      Per-leg weight in PR 12's yield-change sign convention.
+      Negative weight = profit when yield falls (bond price rises) =
+      "long bond" in conventional finance language.  See methodology
+      card for the sign convention's full disclosure.
 
   - name: short_leg_curve_family
     type: str
@@ -138,6 +157,13 @@ slot_schema:
     type: str
     required: true
     description: "Tenor for the short leg."
+
+  - name: short_leg_instrument_key
+    type: str
+    required: true
+    description: >-
+      Pre-computed instrument-key string for the short leg.  Must
+      equal ``<short_leg_curve_family>_<short_leg_tenor>``.
 
   - name: short_leg_weight
     type: float
@@ -224,6 +250,9 @@ nodes:
       threshold_basis: raw_value
 
   # Build the TradeSet from events + leg specs + holding rule.
+  # ``instrument_key`` is pre-computed by the caller (slot binder
+  # doesn't string-interpolate); it must equal
+  # ``<curve_family>_<tenor>`` to match the price-panel columns.
   - kind: operator
     node_id: trades
     operator_name: construct_trades
@@ -232,12 +261,15 @@ nodes:
       holding_window_days: {$slot: holding_window_days}
       leg_construction_rule: equal_weight_signed
       legs:
-        - instrument_key_template: "{long_leg_curve_family}_{long_leg_tenor}"
+        - instrument_key: {$slot: long_leg_instrument_key}
           weight: {$slot: long_leg_weight}
-        - instrument_key_template: "{short_leg_curve_family}_{short_leg_tenor}"
+        - instrument_key: {$slot: short_leg_instrument_key}
           weight: {$slot: short_leg_weight}
 
-  # Assemble the price panel for both legs.
+  # Assemble the price panel for both legs.  Panel columns are named
+  # ``<curve_family>_<tenor>`` per the sovereign_yield_panel
+  # primitive's contract — must match the instrument_key strings
+  # passed to ``trades`` above.
   - kind: primitive
     node_id: price_panel
     tool_name: build_sovereign_yield_panel_tool
@@ -283,26 +315,29 @@ nodes:
       empty_tradeset_policy: nan_metrics
 
 # Edges — locked.  Two upstream branches (signal→events→trades;
-# price+financing in parallel) joined at evaluate.
+# price+financing in parallel) joined at evaluate.  Each
+# ``target_input_slot`` MUST exactly match the consuming operator's
+# input_slots declaration in shared/workflow/registry.py — the
+# pre-flight validator rejects unknown slot names loudly.
 edges:
   - source_node_id: signal
     target_node_id: events
-    target_input_slot: signal
+    target_input_slot: series             # threshold_events.input_slots["series"]
   - source_node_id: events
     target_node_id: trades
-    target_input_slot: events
+    target_input_slot: events             # construct_trades.input_slots["events"]
   - source_node_id: trades
     target_node_id: evaluate
-    target_input_slot: trades
+    target_input_slot: trades             # evaluate_trades.input_slots["trades"]
   - source_node_id: price_panel
     target_node_id: evaluate
-    target_input_slot: price_panel
+    target_input_slot: price_panel        # evaluate_trades.input_slots["price_panel"]
   - source_node_id: financing
     target_node_id: evaluate
-    target_input_slot: financing_rate_panel
+    target_input_slot: financing_rate_panel  # evaluate_trades.input_slots["financing_rate_panel"]
   - source_node_id: evaluate
     target_node_id: summarize
-    target_input_slot: pnl_panel
+    target_input_slot: pnl_panel          # summarize_trades.input_slots["pnl_panel"]
 
 literal_bindings: []
 
