@@ -128,6 +128,13 @@ interface RendererRegistry {
   fallback: NodeRenderer;
 }
 
+/** Sentinel "no-op" fallback installed at module init.  Replaced by
+ *  ``registerFallbackRenderer`` when ``FallbackWidget`` self-
+ *  registers.  We keep a stable reference to it (rather than
+ *  creating a new arrow each module load) so the registry-snapshot
+ *  helper can tell whether the real fallback has been installed. */
+const DEFAULT_FALLBACK_SENTINEL: NodeRenderer = () => null;
+
 const REGISTRY: RendererRegistry = {
   byArtifactType: new Map(),
   byTool: new Map(),
@@ -135,7 +142,7 @@ const REGISTRY: RendererRegistry = {
   // module-init of the widgets package.  Throwing here would block
   // the entire app from booting if a renderer file is missing;
   // emitting a tiny "no renderer" stub is safer for forward-compat.
-  fallback: () => null,
+  fallback: DEFAULT_FALLBACK_SENTINEL,
 };
 
 // ----------------------------------------------------------------------------
@@ -246,6 +253,10 @@ export function registrySnapshot(): {
   return {
     artifactTypes: [...REGISTRY.byArtifactType.keys()].sort(),
     tools: [...REGISTRY.byTool.keys()].sort(),
-    hasFallback: REGISTRY.fallback !== (() => null),
+    // PR8 polish: compare against the module-scoped sentinel rather
+    // than a freshly-created arrow.  The pre-PR8 code created a new
+    // ``() => null`` per call, which by reference identity ALWAYS
+    // produced ``true`` — esbuild correctly flagged this as a tautology.
+    hasFallback: REGISTRY.fallback !== DEFAULT_FALLBACK_SENTINEL,
   };
 }
