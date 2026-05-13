@@ -1,10 +1,14 @@
 // ============================================================================
 // StageParamsList — inline parameter summary inside a DAG stage card.
 // ----------------------------------------------------------------------------
-// Tight label / value rows pulled via ``stageParamRows``.  Stage cards
-// are narrow, so each row is single-line with truncation; the full
-// param dict is available on the Parameters tab (PR B) when the
-// summary isn't enough.
+// PR C — refits to the mockup density: parameters render as inline
+// dot-separated chips ("Instrument UST · Tenors 2Y,10Y · Field Mid
+// Yield · Source Bloomberg") rather than a two-column grid.  The
+// inline layout matches what Mockups B/C show on every stage card and
+// reads as "this is the bound config" at a glance.  Rows wrap to a
+// second line on overflow, but the chip count caps at ``maxRows``
+// (default 4) to keep cards from ballooning vertically on wide-param
+// primitives.
 // ============================================================================
 
 import { stageParamRows } from '@/components/build/lib/stageDisplay';
@@ -15,7 +19,7 @@ type Props = {
   maxRows?: number;
 };
 
-export function StageParamsList({ node, maxRows = 5 }: Props) {
+export function StageParamsList({ node, maxRows = 4 }: Props) {
   const rows = stageParamRows(node, { maxRows });
   if (rows.length === 0) {
     return (
@@ -25,17 +29,25 @@ export function StageParamsList({ node, maxRows = 5 }: Props) {
     );
   }
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-4 pb-3 pt-2 text-[10.5px]">
-      {rows.map((row) => (
-        <div key={row.label} className="contents">
-          <dt className="font-medium uppercase tracking-[0.12em] text-fg-faint">
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 pb-3 pt-2 text-[10.5px]">
+      {rows.map((row, i) => (
+        <span
+          key={row.label}
+          className="flex min-w-0 items-baseline gap-1.5"
+        >
+          <span className="font-medium uppercase tracking-[0.14em] text-fg-faint">
             {row.label}
-          </dt>
-          <dd className="min-w-0 truncate font-mono text-fg-secondary">
+          </span>
+          <span className="min-w-0 truncate font-mono text-fg-secondary">
             {row.value}
-          </dd>
-        </div>
+          </span>
+          {i < rows.length - 1 && (
+            <span aria-hidden className="ml-1 text-fg-faint/55">
+              ·
+            </span>
+          )}
+        </span>
       ))}
-    </dl>
+    </div>
   );
 }

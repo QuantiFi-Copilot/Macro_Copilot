@@ -32,6 +32,7 @@ import { CopilotStarterChips } from './CopilotStarterChips';
 import { CopilotReadOnlyComposer } from './CopilotReadOnlyComposer';
 import { WorkspaceCopilotComposer } from './WorkspaceCopilotComposer';
 import { WorkspaceCopilotMessages } from './WorkspaceCopilotMessages';
+import { VariantComparisonTable } from './VariantComparisonTable';
 import { composeScopedMessage } from './lib/workspaceScopedContext';
 
 type Props = {
@@ -87,6 +88,12 @@ export function WorkspaceCopilotRail({
             disabled={false}
           />
         </div>
+
+        {mode === 'completed' && workspace && (
+          <div className="mt-5">
+            <VariantComparisonTable workspace={workspace} />
+          </div>
+        )}
 
         {mode === 'completed' && (
           <div className="mt-5">

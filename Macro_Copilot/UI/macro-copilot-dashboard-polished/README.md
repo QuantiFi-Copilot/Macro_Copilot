@@ -18,6 +18,16 @@ npm install
 npm run dev
 ```
 
+The Build (Workspace) surface ships in two modes — the redesigned
+shell (default) and the legacy `WorkspacePage`.  To opt back into the
+legacy page, copy `.env.example` to `.env` and set:
+
+```bash
+VITE_BUILD_V2=0
+```
+
+Leave the var unset (or anything else) to get the new shell.
+
 ## Build
 
 ```bash

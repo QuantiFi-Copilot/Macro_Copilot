@@ -20,11 +20,15 @@ const CHIPS_EMPTY: string[] = [
   'Compare 10Y UST → 2Y SOFR β across steepening vs flattening 2s10s regimes.',
 ];
 
+// PR C — chips re-curated to match Mockup C's "Quick prompts" panel:
+// each chip is a single in-place mutation the user is likely to want
+// once the DAG has rendered.  All four target the fork-with-overrides
+// surface that PR B wired up.
 const CHIPS_COMPLETED: string[] = [
   'Change the z-score window to 126d.',
-  'Show me a regime overlay on the chart above.',
-  'Explain why this node uses ACT/365 day-count.',
-  'Compare this to a 5s30s instead.',
+  'Extend the holding period to 12 months.',
+  'Add a transaction costs sensitivity (1bp, 2bp, 5bp).',
+  'Try the same setup with HY OAS as the signal.',
 ];
 
 type Props = {

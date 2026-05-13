@@ -52,11 +52,21 @@ export function ActionRow({ message, onSeedComposer }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-1 border-t border-line-subtle px-3 py-2">
+      {/* "Show in Build" is the primary CTA on every assistant card
+          when a workflow / workspace context is available — PR C
+          promotes it from a ghost button to an outlined primary so the
+          handoff from Ask → Build is unmistakable. */}
       <ActionButton
         icon={<ArrowUpRight size={12} />}
-        label="Open in Build"
+        label="Show in Build"
         disabled={!buildHref}
+        primary={!!buildHref}
         onClick={() => buildHref && navigate(buildHref)}
+        title={
+          buildHref
+            ? 'Open this analysis in the Build workspace'
+            : 'No workspace context for this turn'
+        }
       />
       <ActionButton
         icon={<PlusSquare size={12} />}
@@ -90,12 +100,17 @@ function ActionButton({
   onClick,
   disabled,
   title,
+  primary,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick?: () => void;
   disabled?: boolean;
   title?: string;
+  /** Render with a visible outline + accent fill so the action reads
+   *  as the primary CTA in the row.  Used for "Show in Build" when a
+   *  workspace context is available. */
+  primary?: boolean;
 }) {
   return (
     <button
@@ -107,7 +122,9 @@ function ActionButton({
         'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] font-medium transition-colors duration-150 ease-sleek',
         disabled
           ? 'cursor-not-allowed text-fg-faint'
-          : 'text-fg-secondary hover:bg-white/[0.025] hover:text-ice-200',
+          : primary
+            ? 'border border-ice-400/35 bg-ice-500/[0.06] text-ice-100 shadow-[0_0_0_1px_rgba(146,178,232,0.04)] hover:border-ice-400/55 hover:bg-ice-500/[0.10] hover:text-ice-50'
+            : 'text-fg-secondary hover:bg-white/[0.025] hover:text-ice-200',
       )}
     >
       {icon}
