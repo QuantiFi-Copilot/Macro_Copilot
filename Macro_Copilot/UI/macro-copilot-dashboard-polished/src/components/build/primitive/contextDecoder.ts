@@ -112,8 +112,10 @@ const BUILDER_PRIORITY = 100;
  *
  *  When the context carries multiple tools, the highest-priority one
  *  wins (builder > chart primitives > scanner > regime > forward).
- *  The lower-priority entries are dropped; multi-card composition on
- *  the canvas is the follow-up (R6.3). */
+ *  R6.3 — for multi-tool cases the caller should ALSO call
+ *  ``decodePrimitiveList`` to render an N-card comparison grid; this
+ *  function stays single-best for the legacy single-card path.
+ */
 export function decodePrimitiveContext(
   raw: string,
 ): DecodedPrimitive | null {
@@ -151,6 +153,45 @@ export function decodePrimitiveContext(
     }
   }
   return best;
+}
+
+
+/** R6.3 — multi-card decoder.  Returns the FULL list of recognised
+ *  entries in the order they appear in the source context, so the
+ *  multi-card canvas can render N comparison cards side-by-side
+ *  (e.g. "show me UST/Bund/Gilt 10Y" → three yield cards).
+ *
+ *  Excludes builder-class entries (rich-model tools).  When the context
+ *  contains both a builder and one or more primitives the caller's
+ *  policy is "builder wins" — they should call ``decodePrimitiveContext``
+ *  first and short-circuit to the ``?builder=`` redirect; this list is
+ *  only consulted on the no-builder fall-through.
+ *
+ *  Returns an empty array for unparseable / empty / unrecognised
+ *  payloads — caller renders the empty-state shell. */
+export function decodePrimitiveList(raw: string): DecodedPrimitive[] {
+  let parsed: WorkspaceContext;
+  try {
+    parsed = JSON.parse(decodeURIComponent(raw)) as WorkspaceContext;
+  } catch {
+    return [];
+  }
+  if (!parsed?.tools?.length) return [];
+
+  const out: DecodedPrimitive[] = [];
+  for (const t of parsed.tools) {
+    const canonical = normalizeToolName(t.tool);
+    const params = stringifyParams(t.params);
+
+    // Skip rich-model entries — they take the ``?builder=`` redirect
+    // path and don't belong in a primitive comparison grid.
+    if (hasModelMetadata(canonical)) continue;
+
+    const kind = TOOL_TO_VIEW[canonical];
+    if (!kind) continue;
+    out.push({ kind, toolName: canonical, params });
+  }
+  return out;
 }
 
 /** Coerce an MCP params dict into a flat string-only dict.  Drops nulls

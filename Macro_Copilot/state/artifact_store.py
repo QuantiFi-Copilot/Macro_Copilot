@@ -80,7 +80,16 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     # Lazy via TYPE_CHECKING so the cache module is not imported on
@@ -1159,6 +1168,7 @@ def _extract_preview(
         return [], []
     artifact_type = inline_payload.get("artifact_type")
     payload = inline_payload.get("payload", {})
+    metadata = inline_payload.get("metadata", {}) or {}
 
     if artifact_type == "Series":
         vals = payload.get("values", [])
@@ -1166,8 +1176,11 @@ def _extract_preview(
         # ``conditional_aggregate``) carries an ``index_encoding`` blob
         # declaring its index as event-relative offsets.  Render the
         # preview index as "Day -5" / "Day +5" / "Day 0" labels instead
-        # of the synthetic 1970 anchor dates.  Falls back to the normal
-        # ISO date index for every other Series.
+        # of the synthetic 1970 anchor dates.  Path A: explicit encoding
+        # written by newer writes; path B (R6.4): read-time lineage
+        # inspection so older artifacts (persisted before R5.1) benefit
+        # too without a backfill migration.  Both paths converge on the
+        # same label list.
         encoding = payload.get("index_encoding")
         if (
             isinstance(encoding, dict)
@@ -1177,6 +1190,17 @@ def _extract_preview(
             offsets = encoding["offsets"]
             labels = [_format_event_offset(int(o)) for o in offsets]
             return labels[:max_points], vals[:max_points]
+
+        # R6.4 — fall through to lineage-driven detection for older
+        # artifacts that don't carry ``index_encoding`` in the payload.
+        # The detector reads ``metadata.lineage.steps[-1]`` and matches
+        # against the synthetic-index operator registry.
+        synth_labels = _synthetic_index_labels_from_lineage(
+            metadata, payload, max_points,
+        )
+        if synth_labels is not None:
+            return synth_labels, vals[:max_points]
+
         idx = payload.get("index", [])
         return idx[:max_points], vals[:max_points]
 
@@ -1191,3 +1215,105 @@ def _extract_preview(
     # the preview.  Callers can request the full artifact and pick a
     # column to render.
     return [], []
+
+
+# ----------------------------------------------------------------------------
+# R6.4 — synthetic-index detector registry
+# ----------------------------------------------------------------------------
+#
+# Some operators emit Series whose pd.DatetimeIndex doesn't carry real
+# calendar dates — instead they use a synthetic anchor + offset
+# (``conditional_aggregate``: 1970-01-01 + Timedelta(days=offset)) or
+# a single sentinel (``summarize_series``: 1900-01-01).  When the
+# preview path serialises the index as ISO dates the UI surfaces those
+# synthetic dates verbatim — "1970-01-01..06" / "1900-01-01" — which
+# reads as garbage data to the user.
+#
+# Each registered detector inspects the LAST step of the lineage and
+# returns a list of labels to substitute for the raw ISO dates.
+# Returns ``None`` when the operator name doesn't match — the preview
+# falls through to the normal ISO-date path.
+
+_SyntheticIndexDetector = Callable[
+    [Dict[str, Any], Dict[str, Any], int],
+    Optional[List[str]],
+]
+
+
+def _detect_conditional_aggregate_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """conditional_aggregate's index encodes event-relative offsets via
+    ``1970-01-01 + Timedelta(days=offset)``.  Step params carry the
+    integer offset list directly."""
+    del payload  # not needed; step_params has the offsets verbatim
+    offsets = step_params.get("event_relative_offsets")
+    if not isinstance(offsets, list):
+        return None
+    return [_format_event_offset(int(o)) for o in offsets[:max_points]]
+
+
+def _detect_summarize_series_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """summarize_series emits a 1-row Series with a ``1900-01-01``
+    sentinel.  Substitute a meaningful label that names the statistic
+    rather than the synthetic date."""
+    del max_points  # always at most one row
+    stat = step_params.get("statistic")
+    n = len(payload.get("values", []) or [])
+    if n == 0:
+        return []
+    label = f"Summary · {stat}" if isinstance(stat, str) and stat else "Summary"
+    # The operator's output is a 1-row series; defensive against
+    # future versions that might add rows.
+    return [label] * max(1, min(n, 1))
+
+
+_SYNTHETIC_INDEX_DETECTORS: Dict[str, _SyntheticIndexDetector] = {
+    "conditional_aggregate": _detect_conditional_aggregate_labels,
+    "summarize_series": _detect_summarize_series_labels,
+}
+
+
+def _synthetic_index_labels_from_lineage(
+    metadata: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """Walk ``metadata.lineage.steps`` to the last step + dispatch via
+    the synthetic-index registry.  Returns a list of preview-index
+    labels OR ``None`` when no detector matches.
+
+    Defensive: any malformed lineage shape (missing keys, wrong types)
+    returns ``None`` so the preview falls back to the raw ISO-date
+    path.  This is fast-path code on every artifact-summary read; we
+    don't raise. """
+    lineage = metadata.get("lineage")
+    if not isinstance(lineage, dict):
+        return None
+    steps = lineage.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return None
+    last = steps[-1]
+    if not isinstance(last, dict):
+        return None
+    name = last.get("name")
+    if not isinstance(name, str):
+        return None
+    detector = _SYNTHETIC_INDEX_DETECTORS.get(name)
+    if detector is None:
+        return None
+    step_params = last.get("params") or {}
+    if not isinstance(step_params, dict):
+        return None
+    try:
+        return detector(step_params, payload, max_points)
+    except Exception:
+        # Detectors are best-effort; never let an internal error
+        # prevent preview rendering.
+        return None

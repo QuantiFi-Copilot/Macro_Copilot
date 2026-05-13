@@ -38,6 +38,11 @@ import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
 import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
 import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
+import { MultiPrimitiveCanvas } from './primitive/MultiPrimitiveCanvas';
+import {
+  decodePrimitiveContext,
+  decodePrimitiveList,
+} from './primitive/contextDecoder';
 import { BuilderCanvas } from './model/BuilderCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
@@ -138,11 +143,19 @@ function SlugFreeShell({
   const composerDisabled =
     connectionStatus !== 'ready' || isThinking;
 
-  // Pick the centre-column canvas: builder (explicit tile / Library
-  // click) > virtual primitive (Ask handoff) > building (prompt in
-  // flight) > empty state.  Builder wins over context because if the
-  // user explicitly asked for a tool builder the URL says so directly;
-  // the context handoff is the implicit path.
+  // Pick the centre-column canvas:
+  //   builder (explicit tile / Library click)
+  //     > virtual primitive single-card (one Ask tool)
+  //     > virtual primitive multi-card (N Ask tools, R6.3)
+  //     > building (prompt in flight)
+  //     > empty state
+  //
+  // Builder wins over context because if the user explicitly asked
+  // for a tool builder the URL says so directly; the context handoff
+  // is the implicit path.  Multi-card is chosen when ``?context=``
+  // contains more than one TYPED primitive (rich-model tools are
+  // filtered out — they take the builder redirect via the single-
+  // card canvas).
   let canvas: React.ReactNode;
   if (builderParam !== null) {
     canvas = (
@@ -152,7 +165,7 @@ function SlugFreeShell({
       />
     );
   } else if (contextParam) {
-    canvas = <VirtualPrimitiveCanvas contextParam={contextParam} />;
+    canvas = <ContextCanvasRouter contextParam={contextParam} />;
   } else if (isBuilding) {
     canvas = <BuildBuilding prompt={pendingPrompt!} />;
   } else {
@@ -170,6 +183,33 @@ function SlugFreeShell({
       copilotRail={<WorkspaceCopilotRail mode="empty" />}
     />
   );
+}
+
+// ----------------------------------------------------------------------------
+// R6.3 — single vs multi canvas selector
+// ----------------------------------------------------------------------------
+//
+// One place to make the single vs multi decision so it stays consistent
+// regardless of how the user landed on the route (Library deep-link,
+// Ask handoff, manual URL paste).  The priority chain is:
+//
+//   1. Builder match wins — short-circuit through the single canvas
+//      which has the ``useEffect`` redirect to ``?builder=``.
+//   2. Multiple typed primitives → MultiPrimitiveCanvas (N-card grid).
+//   3. Otherwise → VirtualPrimitiveCanvas (single-card with editable
+//      dropdowns + the decode-error path for unrecognised tools).
+
+function ContextCanvasRouter({ contextParam }: { contextParam: string }) {
+  const builderHit = decodePrimitiveContext(contextParam);
+  if (builderHit?.kind === 'builder') {
+    // Single canvas handles the builder redirect via useEffect.
+    return <VirtualPrimitiveCanvas contextParam={contextParam} />;
+  }
+  const list = decodePrimitiveList(contextParam);
+  if (list.length > 1) {
+    return <MultiPrimitiveCanvas contextParam={contextParam} />;
+  }
+  return <VirtualPrimitiveCanvas contextParam={contextParam} />;
 }
 
 // ----------------------------------------------------------------------------
