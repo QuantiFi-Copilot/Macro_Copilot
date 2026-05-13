@@ -26,15 +26,17 @@
 // the shared ``CopilotContext`` for routing (same WebSocket as Ask).
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import { useWorkspaceDetail } from '@/hooks/useWorkspaceDetail';
+import type { CopilotMessage } from '@/types/copilot';
 import { WorkspacesSidebar } from './sidebar/WorkspacesSidebar';
 import { WorkspaceCopilotRail } from './copilot-rail/WorkspaceCopilotRail';
 import { BuildEmptyState } from './empty/BuildEmptyState';
 import { BuildBuilding } from './building/BuildBuilding';
+import { BuildResultStalled } from './building/BuildResultStalled';
 import { BuildCompleted } from './completed/BuildCompleted';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
@@ -66,50 +68,122 @@ function SlugFreeShell({
     useCopilotContext();
 
   // ``pendingPrompt`` carries the user's last empty-state submission
-  // so the building view can echo it back.  Cleared once we navigate
-  // away to the slug-bound view (component unmounts) — no manual
-  // teardown needed.
+  // so the building view can echo it back.  We also stash the ID of
+  // the streaming assistant message that came back so the navigation
+  // effect can latch onto the right turn (and not be confused by
+  // older messages still in the buffer).
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-
-  // Watch the message buffer for the workflow_result that carries a
-  // persisted workspace.slug.  When we see one — AND it belongs to
-  // the turn we kicked off via ``pendingPrompt`` — we navigate to
-  // the slug-bound view.
-  //
-  // We key on "the most recent assistant message with a non-null
-  // workflow.workspace.slug".  Browser refresh between submit and
-  // result loses ``pendingPrompt`` (component unmounts) but that's
-  // benign — the workspace is persisted; the user can re-open it
-  // from the sidebar.
-  useEffect(() => {
-    if (!pendingPrompt) return;
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((m) => m.role === 'assistant');
-    const slugFromResult = lastAssistant?.workflow?.workspace?.slug ?? null;
-    if (slugFromResult) {
-      navigate(`/workspace/${slugFromResult}`, { replace: false });
-    }
-  }, [messages, pendingPrompt, navigate]);
+  // "Refine and retry" parks the previous prompt here so the empty
+  // state mounts with it pre-filled in the composer.  Cleared on the
+  // next send.
+  const [composerSeed, setComposerSeed] = useState<string | undefined>(
+    undefined,
+  );
+  // ID of the assistant turn we're currently tracking.  Set on the
+  // first re-render after sendMessage; consumed by the navigation
+  // effect + the stall renderer.  Stays sticky across re-renders so
+  // the user doesn't see flicker when the message buffer rebroadcasts.
+  const trackedMessageIdRef = useRef<string | null>(null);
+  // ID of a turn we've already handled (navigated OR stalled).  Once
+  // set, the navigation effect skips it so re-renders don't loop.
+  const [resolvedMessageId, setResolvedMessageId] = useState<string | null>(
+    null,
+  );
 
   const handleSend = useCallback(
     (content: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
       setPendingPrompt(trimmed);
+      setComposerSeed(undefined);
+      trackedMessageIdRef.current = null;
+      setResolvedMessageId(null);
       sendMessage(trimmed);
     },
     [sendMessage],
   );
 
-  // Building mode is gated on EITHER a pending prompt with no result
-  // yet OR ``isThinking`` from the global session.  Once a workflow
-  // result lands AND it carries a workspace.slug, the effect above
-  // navigates away and this component unmounts.  When the result
-  // lands WITHOUT a slug (persistence failed), we fall back to the
-  // empty state with a soft error caption — the user can still
-  // re-send.
-  const isBuilding = pendingPrompt != null && isThinking;
+  const handleDismiss = useCallback(() => {
+    setPendingPrompt(null);
+    setComposerSeed(undefined);
+    trackedMessageIdRef.current = null;
+    setResolvedMessageId(null);
+  }, []);
+
+  const handleRefine = useCallback(() => {
+    // Re-seed the empty-state composer with the original prompt so
+    // the user can edit it and try again without retyping.
+    setComposerSeed(pendingPrompt ?? undefined);
+    setPendingPrompt(null);
+    trackedMessageIdRef.current = null;
+    setResolvedMessageId(null);
+  }, [pendingPrompt]);
+
+  // Find the most recent NON-STREAMING assistant message.  Streaming
+  // messages are still being assembled (workflow.workspace may not
+  // yet be populated), so we wait for the turn to settle before
+  // making a navigation / stall decision.
+  const lastSettledAssistant: CopilotMessage | null = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'assistant' && !m.isStreaming) return m;
+    }
+    return null;
+  }, [messages]);
+
+  // Find the streaming assistant message — used by BuildBuilding to
+  // show live per-tool trace chips + the workflow route decision.
+  const streamingAssistant: CopilotMessage | null = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'assistant' && m.isStreaming) return m;
+    }
+    return null;
+  }, [messages]);
+
+  // Latch onto the FIRST settled assistant message that arrives
+  // after sendMessage.  Without latching, the find() above would
+  // also match an OLDER assistant message in the buffer (e.g. one
+  // left over from a previous Ask turn) and short-circuit the stall
+  // detection.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    if (!lastSettledAssistant) return;
+    if (trackedMessageIdRef.current == null) {
+      trackedMessageIdRef.current = lastSettledAssistant.id;
+    }
+  }, [pendingPrompt, lastSettledAssistant]);
+
+  // Navigation + stall decision.  Fires once per settled tracked turn.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    if (!lastSettledAssistant) return;
+    if (lastSettledAssistant.id !== trackedMessageIdRef.current) return;
+    if (resolvedMessageId === lastSettledAssistant.id) return;
+
+    const slug = lastSettledAssistant.workflow?.workspace?.slug ?? null;
+    if (slug) {
+      // Happy path: navigate to the slug-routed view.
+      navigate(`/workspace/${encodeURIComponent(slug)}`, { replace: false });
+      return;
+    }
+    // No slug — mark as resolved so the stall canvas renders below.
+    setResolvedMessageId(lastSettledAssistant.id);
+  }, [pendingPrompt, lastSettledAssistant, resolvedMessageId, navigate]);
+
+  // Canvas selection:
+  //   - mid-run (pendingPrompt set + isThinking)                 → BuildBuilding
+  //   - settled with slug                                         → already navigated; render building view briefly
+  //   - settled without slug (resolvedMessageId matches)         → BuildResultStalled
+  //   - default                                                  → BuildEmptyState
+  const stalledMessage =
+    pendingPrompt &&
+    lastSettledAssistant &&
+    resolvedMessageId === lastSettledAssistant.id
+      ? lastSettledAssistant
+      : null;
+  const isBuilding =
+    pendingPrompt != null && isThinking && stalledMessage == null;
   const composerDisabled =
     connectionStatus !== 'ready' || isThinking;
 
@@ -117,11 +191,22 @@ function SlugFreeShell({
     <BuildShellLayout
       canvas={
         isBuilding ? (
-          <BuildBuilding prompt={pendingPrompt!} />
+          <BuildBuilding
+            prompt={pendingPrompt!}
+            message={streamingAssistant}
+          />
+        ) : stalledMessage ? (
+          <BuildResultStalled
+            prompt={pendingPrompt!}
+            message={stalledMessage}
+            onRefine={handleRefine}
+            onDismiss={handleDismiss}
+          />
         ) : (
           <BuildEmptyState
             onSend={handleSend}
             composerDisabled={composerDisabled}
+            composerSeed={composerSeed}
           />
         )
       }

@@ -25,9 +25,17 @@ import type { BuildEmptyCategory } from '../lib/buildTypes';
 type Props = {
   onSend: (content: string) => void;
   composerDisabled?: boolean;
+  /** Pre-fill the composer on mount.  Used by ``BuildShell`` when the
+   *  user clicks "Refine and retry" on the stall canvas — the
+   *  original prompt comes back into the composer ready to edit. */
+  composerSeed?: string;
 };
 
-export function BuildEmptyState({ onSend, composerDisabled }: Props) {
+export function BuildEmptyState({
+  onSend,
+  composerDisabled,
+  composerSeed,
+}: Props) {
   const composerRef = useRef<EmptyStateComposerHandle | null>(null);
 
   const handleTile = (category: BuildEmptyCategory) => {
@@ -65,6 +73,7 @@ export function BuildEmptyState({ onSend, composerDisabled }: Props) {
             ref={composerRef}
             onSend={onSend}
             disabled={composerDisabled}
+            initialValue={composerSeed}
           />
         </section>
       </div>

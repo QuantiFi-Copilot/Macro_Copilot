@@ -134,15 +134,21 @@ function ActionButton({
 }
 
 function resolveBuildHref(message: CopilotMessage): string | null {
-  // Workflow turns: route to the workspace's workflow context with the
-  // template_id and the bound slot_values so Build opens with the same
-  // graph the user just saw.  For V1 we degrade to /workspace because
-  // the workflow-aware workspace surface ships in a later PR.
-  if (message.workflow?.routeDecision.template_id) {
-    return '/workspace';
+  // Workflow turns where the runner persisted the workspace: route
+  // STRAIGHT to the slug page.  This is the path that actually opens
+  // the saved DAG + results — earlier versions of this helper
+  // routed to bare ``/workspace`` (empty state) whenever a workflow
+  // was detected, which made the button look broken because clicking
+  // it always landed the user on the "What would you like to build?"
+  // canvas.  PR D fixes that: the button is only enabled when a
+  // navigable slug exists, and it deep-links to it.
+  if (message.workflow?.workspace?.slug) {
+    return `/workspace/${encodeURIComponent(message.workflow.workspace.slug)}`;
   }
-  // Supervisor turns: same path the legacy WorkspaceButton uses —
-  // ?context=<encoded JSON>.
+  // Supervisor turns: legacy ?context=<encoded JSON> path.  Build's
+  // SlugFreeShell consumes this so the canvas can pre-fill itself with
+  // the tool call set.  When persistence lands for supervisor turns
+  // we'll route to a slug here too.
   if (message.workspaceContext) {
     const encoded = encodeURIComponent(JSON.stringify(message.workspaceContext));
     return `/workspace?context=${encoded}`;

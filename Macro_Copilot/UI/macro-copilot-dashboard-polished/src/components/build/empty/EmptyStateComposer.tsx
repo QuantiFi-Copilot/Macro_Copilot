@@ -42,6 +42,10 @@ type Props = {
    *  CLOSED).  We don't auto-open the WS here — the shared
    *  ``CopilotContext`` does that — so this is just the UX hint. */
   disabled?: boolean;
+  /** Pre-fill the composer on first mount.  Used by the "Refine and
+   *  retry" affordance on ``BuildResultStalled`` so the user returns
+   *  to the empty state with their previous prompt ready to edit. */
+  initialValue?: string;
 };
 
 const PLACEHOLDER =
@@ -51,8 +55,8 @@ const HINT_LINE = '/ for primitives  ·  @ for saved artifacts  ·  ⌘K for lib
 export const EmptyStateComposer = forwardRef<
   EmptyStateComposerHandle,
   Props
->(function EmptyStateComposer({ onSend, disabled }, ref) {
-  const [value, setValue] = useState('');
+>(function EmptyStateComposer({ onSend, disabled, initialValue }, ref) {
+  const [value, setValue] = useState(initialValue ?? '');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useImperativeHandle(
