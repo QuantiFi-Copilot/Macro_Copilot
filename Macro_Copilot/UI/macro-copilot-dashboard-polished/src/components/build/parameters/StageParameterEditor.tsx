@@ -1,18 +1,27 @@
 // ============================================================================
-// StageParameterEditor — right pane: per-stage parameter form.
+// StageParameterEditor — right pane: per-stage parameter inspection.
 // ----------------------------------------------------------------------------
-// Renders every editable parameter for the active stage using the
-// derived descriptors + the registered control components.  All
-// edits flow through the parent's override dispatcher; this
-// component holds no state of its own.
+// PR5 — the per-stage panel is now READ-ONLY by discipline.  Node
+// params are execution detail (substrate-bound values + bridge-
+// resolved fields) and CANNOT be patched through the fork endpoint;
+// the canonical mutation surface is ``WorkspaceSlotsPanel``, which
+// edits ``workspace.bound_slot_values`` against the template's
+// ``slot_schema``.  Editable controls live there.
+//
+// This view stays useful: it surfaces what the substrate actually
+// bound for a given stage so the user can verify the slot edits
+// produced sensible per-node values.  The "Read-only" banner up top
+// explains the discipline so a user doesn't expect an inline editor
+// to take.
 //
 // Header reuses the same column vocabulary as the DAG / Results
 // surfaces (Primitive / Operator / Output) plus a category-rail
-// gradient on top so the editor pane carries the same visual
+// gradient on top so the inspector pane carries the same visual
 // identity as the stage card in the DAG strip.
 // ============================================================================
 
 import { useMemo } from 'react';
+import { Lock } from 'lucide-react';
 import type { NodeSummary, WorkspaceDetail } from '@/services/workspaceApi';
 import { prettyStageTitle } from '@/components/build/lib/stageDisplay';
 import {
@@ -42,16 +51,19 @@ export function StageParameterEditor({
   overrides,
   dispatch,
 }: Props) {
-  const descriptors = useMemo(() => deriveControlsForStage(node), [node]);
+  // PR5 — derive descriptors as before, but force EVERY descriptor to
+  // be ``readOnly: true``.  Node-param keys aren't slot names, so
+  // letting the user edit them would produce slot-override patches
+  // the backend can't apply (silent no-op fork).  The
+  // ``WorkspaceSlotsPanel`` is the canonical mutation surface.
+  const descriptors = useMemo<ParamControlDescriptor[]>(
+    () =>
+      deriveControlsForStage(node).map((d) => ({ ...d, readOnly: true })),
+    [node],
+  );
   const category = stageCategoryForNode(node, workspace);
   const railColor = railColorForStage(category);
   const columnLabel = columnLabelForCategory(category);
-
-  // Split descriptors into "editable" and "read-only / topology"
-  // groups so the form puts the user's editing surface up top + the
-  // read-only metadata at the bottom.
-  const editable = descriptors.filter((d) => !d.readOnly);
-  const readOnly = descriptors.filter((d) => d.readOnly);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -70,29 +82,15 @@ export function StageParameterEditor({
         </h3>
       </header>
 
+      <ReadOnlyBanner />
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-6 px-5 py-5">
-          {editable.length === 0 ? (
+          {descriptors.length === 0 ? (
             <EmptyEditor />
           ) : (
-            <Section
-              title="Editable parameters"
-              meta={`${editable.length}`}
-            >
-              {editable.map((d) => (
-                <ControlRow
-                  key={overrideKey(d.path)}
-                  descriptor={d}
-                  overrides={overrides}
-                  dispatch={dispatch}
-                />
-              ))}
-            </Section>
-          )}
-
-          {readOnly.length > 0 && (
-            <Section title="Stage identity" meta={`${readOnly.length}`}>
-              {readOnly.map((d) => (
+            <Section title="Stage details" meta={`${descriptors.length}`}>
+              {descriptors.map((d) => (
                 <ControlRow
                   key={overrideKey(d.path)}
                   descriptor={d}
@@ -104,6 +102,25 @@ export function StageParameterEditor({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ReadOnlyBanner() {
+  return (
+    <div className="flex shrink-0 items-start gap-2 border-b border-line-subtle bg-white/[0.012] px-5 py-2.5">
+      <Lock
+        size={11}
+        strokeWidth={1.75}
+        aria-hidden
+        className="mt-0.5 shrink-0 text-fg-faint"
+      />
+      <p className="text-[10.5px] leading-[1.45] text-fg-secondary">
+        Stage details are read-only — they reflect execution detail
+        (substrate-bound values).  To produce a variant workspace, edit
+        the workspace slots above and click{' '}
+        <span className="font-mono text-fg-muted">Apply &amp; fork</span>.
+      </p>
     </div>
   );
 }
