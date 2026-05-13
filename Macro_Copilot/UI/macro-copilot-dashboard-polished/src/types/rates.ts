@@ -264,19 +264,3 @@ export type RegimeOutput = {
   current_metrics: RegimeCurrentMetrics;
 };
 
-// ============================================================================
-// WORKSPACE VIEW MODEL
-// Discriminated union the views render against.  WorkspacePage parses the
-// URL into one of these and passes it down.
-// ============================================================================
-
-export type WorkspaceViewType =
-  | 'spread'
-  | 'cross_market'
-  | 'butterfly'
-  | 'yield'
-  | 'forward'      // OIS forward — backend endpoint TBD; UI ready for it
-  | 'regime'
-  | 'scanner';
-
-export type WorkspaceParams = Record<string, string>;
