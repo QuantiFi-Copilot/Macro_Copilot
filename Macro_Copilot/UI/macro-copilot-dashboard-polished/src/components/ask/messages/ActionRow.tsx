@@ -27,7 +27,8 @@ import {
   PlusSquare,
   RotateCcw,
 } from 'lucide-react';
-import type { CopilotMessage } from '@/types/copilot';
+import type { CopilotMessage, WorkspaceContext } from '@/types/copilot';
+import { classifyWorkflow, normalizeToolName } from '@/lib/toolNames';
 import { cn } from '@/utils/cn';
 
 type Props = {
@@ -117,32 +118,52 @@ function ActionButton({
 }
 
 function resolveBuildHref(message: CopilotMessage): string | null {
-  // Workflow turns: route directly to the persisted workspace's slug
-  // when the workflow_result carried one.  Build's slug-bound shell
-  // (``BuildShell`` → ``SlugBoundShell``) materialises the saved DAG
-  // + per-node artifacts so the user sees the full graph and result
-  // set they just generated.
-  //
-  // Older builds of this code shipped a placeholder that always sent
-  // workflow turns to ``/workspace`` (empty shell).  The slug-aware
-  // surface (Phases R1-R2) makes the persisted handoff real; falling
-  // back to ``/workspace`` only if the workflow finished but didn't
-  // persist (e.g. ``persist=False`` runner).
+  // 1. Workflow turns with a persisted workspace slug — direct route
+  //    to Build's slug-bound shell, which materialises the saved DAG +
+  //    per-node artifacts.  This wins over every other path because
+  //    the persisted workspace IS the authoritative result.
   const workflowSlug = message.workflow?.workspace?.slug;
   if (workflowSlug) {
     return `/workspace/${workflowSlug}`;
   }
-  if (message.workflow?.routeDecision.template_id) {
-    return '/workspace';
+
+  // 2. Workflow turns WITHOUT a slug — the workflow router fired but
+  //    persistence didn't happen (paused template, runner failure,
+  //    persist=False).  PR1 — route to an explicit "workflow
+  //    unavailable" state so the user gets an honest card instead of
+  //    the empty Build shell.  ``BuildShell`` reads the
+  //    ``?workflow=<template_id>`` URL param and surfaces the right
+  //    state (paused / unavailable / unknown) via the
+  //    ``classifyWorkflow`` registry.
+  const templateId = message.workflow?.routeDecision.template_id;
+  if (templateId) {
+    const status = classifyWorkflow(templateId);
+    return `/workspace?workflow=${encodeURIComponent(templateId)}&workflow_status=${status.kind}`;
   }
-  // Supervisor turns: encode the tool calls into ``?context=...`` so
-  // Build's empty shell decodes them into a virtual primitive canvas
-  // (``VirtualPrimitiveCanvas``) that fetches the typed-detail
-  // endpoint and renders the analysis without requiring backend
-  // workspace persistence.
+
+  // 3. Supervisor turns: encode the tool calls into ``?context=...``
+  //    so Build decodes them into either a single primitive canvas, a
+  //    multi-card grid, or (PR1) an unsupported-known card.  Tool
+  //    names are normalised here too so manifest shorthand doesn't
+  //    confuse downstream lookups.
   if (message.workspaceContext) {
-    const encoded = encodeURIComponent(JSON.stringify(message.workspaceContext));
+    const normalised = normaliseWorkspaceContext(message.workspaceContext);
+    const encoded = encodeURIComponent(JSON.stringify(normalised));
     return `/workspace?context=${encoded}`;
   }
   return null;
+}
+
+/** Normalise every ``tool`` name in a workspace context so manifest
+ *  shorthand (``half_life_tool``) reaches the decoder in canonical
+ *  form (``calculate_half_life_tool``).  Preserves multi-tool order
+ *  + params verbatim. */
+function normaliseWorkspaceContext(ctx: WorkspaceContext): WorkspaceContext {
+  return {
+    ...ctx,
+    tools: ctx.tools.map((t) => ({
+      ...t,
+      tool: normalizeToolName(t.tool),
+    })),
+  };
 }

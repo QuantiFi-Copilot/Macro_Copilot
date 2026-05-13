@@ -40,16 +40,24 @@ export type Payload =
   | { kind: 'scanner'; data: ScannerResponse }
   | { kind: 'forward'; data: null };
 
-/** ``DecodedPrimitive`` minus the builder variant — the dispatcher
- *  only handles typed primitives; builder routing happens upstream
- *  via a useEffect redirect.  Exposed for callers that need to gate
- *  before calling ``dispatchFetch``. */
-export type DecodedTypedPrimitive = Exclude<DecodedPrimitive, { kind: 'builder' }>;
+/** ``DecodedPrimitive`` narrowed to ONLY the variants that ``dispatchFetch``
+ *  can run a typed-detail fetch against.  Excludes:
+ *
+ *    - ``builder`` — handled upstream by a useEffect redirect to
+ *      ``?builder=<toolName>``.
+ *    - ``unsupported_known`` (PR1) — handled upstream by mounting the
+ *      ``UnsupportedKnownToolCanvas`` card; no backend fetch happens.
+ *
+ *  Exported so callers can gate before calling ``dispatchFetch``. */
+export type DecodedTypedPrimitive = Exclude<
+  DecodedPrimitive,
+  { kind: 'builder' } | { kind: 'unsupported_known' }
+>;
 
 export function isTypedPrimitive(
   decoded: DecodedPrimitive,
 ): decoded is DecodedTypedPrimitive {
-  return decoded.kind !== 'builder';
+  return decoded.kind !== 'builder' && decoded.kind !== 'unsupported_known';
 }
 
 /** Coerce a lookback-days URL param into the number the typed-detail

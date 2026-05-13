@@ -44,6 +44,7 @@ import {
   decodePrimitiveList,
 } from './primitive/contextDecoder';
 import { BuilderCanvas } from './model/BuilderCanvas';
+import { WorkflowStatusCanvas } from './workflow/WorkflowStatusCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
 // ``resolveNodeRenderer`` returns real renderers, not the fallback.
@@ -88,9 +89,23 @@ function SlugFreeShell({
   const [searchParams] = useSearchParams();
   const contextParam = searchParams.get('context');
   const builderParam = searchParams.get('builder');
+  // PR1 — explicit workflow-status handoff.  When a workflow turn from
+  // Ask has a recognised ``template_id`` but no persisted workspace
+  // slug (paused template / persistence failed / etc.),
+  // ``ActionRow.resolveBuildHref`` routes here with ``?workflow=<id>``
+  // so we can surface an honest "workflow paused / unavailable" card
+  // instead of the empty Build shell.
+  const workflowParam = searchParams.get('workflow');
+  const workflowStatusParam = searchParams.get('workflow_status');
   const initialBuilderParams: Record<string, string> = {};
+  const RESERVED_URL_KEYS = new Set([
+    'builder',
+    'context',
+    'workflow',
+    'workflow_status',
+  ]);
   searchParams.forEach((value, key) => {
-    if (key !== 'builder' && key !== 'context') {
+    if (!RESERVED_URL_KEYS.has(key)) {
       initialBuilderParams[key] = value;
     }
   });
@@ -145,23 +160,33 @@ function SlugFreeShell({
 
   // Pick the centre-column canvas:
   //   builder (explicit tile / Library click)
+  //     > workflow-status card (PR1, paused / unavailable workflow
+  //       without persisted slug)
   //     > virtual primitive single-card (one Ask tool)
   //     > virtual primitive multi-card (N Ask tools, R6.3)
   //     > building (prompt in flight)
   //     > empty state
   //
   // Builder wins over context because if the user explicitly asked
-  // for a tool builder the URL says so directly; the context handoff
-  // is the implicit path.  Multi-card is chosen when ``?context=``
-  // contains more than one TYPED primitive (rich-model tools are
-  // filtered out — they take the builder redirect via the single-
-  // card canvas).
+  // for a tool builder the URL says so directly.  Workflow-status
+  // wins over context because the workflow handoff happens when a
+  // template_id is recognised but the slug didn't materialise — we
+  // want the honest paused / unavailable card, not the per-tool
+  // primitive canvas (which would only render the supervisor's
+  // workspace_context, hiding the workflow's status).
   let canvas: React.ReactNode;
   if (builderParam !== null) {
     canvas = (
       <BuilderCanvas
         toolName={builderParam || null}
         initialParams={initialBuilderParams}
+      />
+    );
+  } else if (workflowParam !== null) {
+    canvas = (
+      <WorkflowStatusCanvas
+        templateId={workflowParam}
+        status={workflowStatusParam}
       />
     );
   } else if (contextParam) {

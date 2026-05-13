@@ -1,6 +1,19 @@
+// ============================================================================
+// WorkspaceButton — the "See more in workspace" CTA on legacy chat-drawer
+// research cards.
+// ----------------------------------------------------------------------------
+// PR1 — every known tool name is normalised before the context blob is
+// emitted, so manifest shorthand (``half_life_tool`` etc.) reaches
+// Build's ``contextDecoder`` in canonical form (``calculate_half_life_
+// tool``).  Multi-tool contexts are preserved; the destination canvas
+// (``MultiPrimitiveCanvas``) splits typed primitives from
+// unsupported-known cells per PR1.
+// ============================================================================
+
 import { ArrowUpRight, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkspaceContext } from '@/types/copilot';
+import { normalizeToolName } from '@/lib/toolNames';
 
 type WorkspaceButtonProps = {
   context: WorkspaceContext;
@@ -8,7 +21,8 @@ type WorkspaceButtonProps = {
 
 // Human-readable tool labels for the workspace button subtitle.
 // Existing chartable tools route to typed views; the analytical models
-// route to the rich ModelWorkspacePage (see lib/workspaceContext.ts).
+// route to the rich ModelWorkspacePage.  Keys are BACKEND-CANONICAL —
+// names from the manifest are normalised before lookup.
 const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   calculate_curve_spread_tool: 'Spread chart & history',
   calculate_cross_market_spread_tool: 'Cross-market chart',
@@ -17,22 +31,36 @@ const TOOL_WORKSPACE_LABELS: Record<string, string> = {
   // Analytical models — open in the model playground.
   calculate_rolling_regression_tool: 'Rolling regression playground',
   calculate_pca_yield_curve_tool: 'PCA loadings, variance, factor scores',
-  calculate_yield_change_attribution_pca_tool: 'PCA-based attribution decomposition',
+  calculate_yield_change_attribution_pca_tool:
+    'PCA-based attribution decomposition',
   calculate_half_life_tool: 'Mean-reversion half-life diagnostics',
   calculate_beta_adjusted_spread_tool: 'Beta-adjusted spread playground',
 };
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {
   const navigate = useNavigate();
-  const toolNames = context.tools.map((t) => t.tool);
-  const subtitle = toolNames
-    .map((t) => TOOL_WORKSPACE_LABELS[t] ?? t)
+
+  // PR1 — normalise every tool name so multi-tool contexts that mix
+  // manifest shorthand + canonical names all reach the decoder in the
+  // expected form.  Preserves the original tool order so multi-card
+  // grids render the user's intended comparison left-to-right.
+  const normalisedContext: WorkspaceContext = {
+    ...context,
+    tools: context.tools.map((t) => ({
+      ...t,
+      tool: normalizeToolName(t.tool),
+    })),
+  };
+
+  const subtitle = normalisedContext.tools
+    .map((t) => TOOL_WORKSPACE_LABELS[t.tool] ?? t.tool)
     .join(' · ');
 
   const handleClick = () => {
-    // SPA navigation — preserves the chat drawer state and lets the
-    // WorkspacePage rewrite ?context=... into ?tool=... URL params.
-    const encoded = encodeURIComponent(JSON.stringify(context));
+    // SPA navigation — Build's ``BuildShell`` reads the ``?context=``
+    // param and decodes it into the right surface (single canvas,
+    // multi-card grid, builder redirect, or unsupported-known card).
+    const encoded = encodeURIComponent(JSON.stringify(normalisedContext));
     navigate(`/workspace?context=${encoded}`);
   };
 

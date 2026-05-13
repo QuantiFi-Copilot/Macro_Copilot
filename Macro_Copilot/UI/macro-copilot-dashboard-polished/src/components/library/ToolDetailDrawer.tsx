@@ -47,7 +47,11 @@ import {
   type ManifestTool,
 } from '@/types/library';
 import { hasModelMetadata } from '@/lib/modelRegistry';
-import { normalizeToolName } from '@/lib/toolNames';
+import {
+  isKnownBackendTool,
+  isUnsupportedKnownTool,
+  normalizeToolName,
+} from '@/lib/toolNames';
 import { cn } from '@/utils/cn';
 import { prettyTitle } from './lib/prettyTitle';
 
@@ -340,17 +344,33 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   // historical shorthand (``half_life_tool`` etc.), but every internal
   // registry keys on the backend-canonical prefixed form (``calculate_
   // half_life_tool``).  Normalise before lookup so both forms resolve.
-  // Without this the CTA dropped every rich-model click into the
-  // ``?context=`` path, where the decoder couldn't find an entry and
-  // surfaced the orange "Could not decode workspace context" card.
   const canonicalName = normalizeToolName(tool.implementation.tool_function);
   const isModel = hasModelMetadata(canonicalName);
+  // PR1 — every known tool gets a deterministic Build destination.
+  // The decoder maps:
+  //   - ``hasModelMetadata`` ⇒ rich-model builder (``?builder=``)
+  //   - typed-view tool ⇒ chart canvas (``?context=``)
+  //   - ``isUnsupportedKnownTool`` ⇒ explicit unsupported-known card
+  //     (still ``?context=``, decoded by ``contextDecoder`` into the
+  //     ``unsupported_known`` variant)
+  //   - everything else ⇒ ``?context=`` as a best-effort handoff;
+  //     ``VirtualPrimitiveCanvas`` shows the decode-error card only
+  //     when the tool name is truly unknown.
+  const isUnsupported =
+    !isModel && isUnsupportedKnownTool(canonicalName);
+  const isKnown = isModel || isKnownBackendTool(canonicalName);
 
   const handleClick = () => {
     if (isModel) {
       navigate(`/workspace?builder=${encodeURIComponent(canonicalName)}`);
       return;
     }
+    // Typed primitive OR unsupported-known: same ``?context=`` URL;
+    // ``contextDecoder`` picks the right variant downstream so the
+    // canvas mounts the chart view or the unsupported-known card.
+    // For unsupported / truly-unknown tools, the canvas surfaces the
+    // honest "tool is paused" / "decode error" card — never silently
+    // routes to the empty shell.
     const context = encodeURIComponent(
       JSON.stringify({
         tools: [{ tool: canonicalName, params: {} }],
@@ -360,19 +380,40 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
     navigate(`/workspace?context=${context}`);
   };
 
+  // R6.5 + PR1 — button copy + tooltip differentiate the three
+  // destinations so users know what they're about to land on:
+  //   - builder → "Open in builder"
+  //   - typed primitive → "Open in Build"
+  //   - unsupported-known → "Open Build (unsupported)" — the click
+  //     still works (it surfaces the unsupported card) but the label
+  //     promises only what's available.
+  let buttonLabel = 'Open in Build';
+  let title = 'Opens the chart canvas with editable parameter dropdowns';
+  if (isModel) {
+    buttonLabel = 'Open in builder';
+    title =
+      'Opens the standalone model builder with editable controls + methodology';
+  } else if (isUnsupported) {
+    buttonLabel = 'Open Build (unsupported)';
+    title =
+      'Build does not have a renderer for this tool yet — the card explains the gap and links to Ask';
+  } else if (!isKnown) {
+    // Truly-unknown manifest entry — should be rare.  Still navigate
+    // so the user sees the decode-error card rather than a silent
+    // no-op.
+    buttonLabel = 'Open in Build';
+    title = 'Tool is not recognised by Build; the canvas will explain.';
+  }
+
   return (
     <button
       type="button"
       onClick={handleClick}
-      title={
-        isModel
-          ? 'Opens the standalone model builder with editable controls + methodology'
-          : 'Opens the chart canvas with editable parameter dropdowns'
-      }
+      title={title}
       className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
     >
       <ArrowRight size={12} />
-      <span>{isModel ? 'Open in builder' : 'Open in Build'}</span>
+      <span>{buttonLabel}</span>
     </button>
   );
 }
