@@ -44,6 +44,11 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'PieChart',
     promptSeed:
       'Attribute the recent UST 10Y yield move to PCA level / slope / curvature factors.',
+    // Phase R4 — tile launches the PCA model builder directly so the
+    // user lands on the rich loadings / variance / factor-scores view
+    // with the form pre-mounted, instead of round-tripping through the
+    // composer.
+    builderTool: 'calculate_pca_yield_curve_tool',
   },
   {
     id: 'screen_a_universe',
@@ -62,6 +67,10 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'GitCompare',
     promptSeed:
       'Compare the rolling beta of UST 10Y to 2Y SOFR across steepening vs flattening 2s10s regimes.',
+    // Phase R4 — tile launches the rolling-regression builder where the
+    // user can pick target + regressor specs and the window, then run
+    // to see β / α / R² histories.
+    builderTool: 'calculate_rolling_regression_tool',
   },
   {
     id: 'build_custom_dag',

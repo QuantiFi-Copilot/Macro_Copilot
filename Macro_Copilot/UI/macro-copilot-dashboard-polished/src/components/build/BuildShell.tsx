@@ -38,6 +38,7 @@ import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
 import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
 import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
+import { BuilderCanvas } from './model/BuilderCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
 // ``resolveNodeRenderer`` returns real renderers, not the fallback.
@@ -74,8 +75,20 @@ function SlugFreeShell({
   // renders the result (Spread / CrossMarket / Butterfly / Yield /
   // Regime / Scanner / Forward).  No workspace is persisted — this is
   // the supervisor-turn handoff path.
+  //
+  // Phase R4 — ``/workspace?builder=<tool_name>`` opens the standalone
+  // model builder (ModelWorkspacePage) for the given tool.  Extra URL
+  // params other than ``builder`` are forwarded as initial form values
+  // so deep-links can pre-fill the controls.
   const [searchParams] = useSearchParams();
   const contextParam = searchParams.get('context');
+  const builderParam = searchParams.get('builder');
+  const initialBuilderParams: Record<string, string> = {};
+  searchParams.forEach((value, key) => {
+    if (key !== 'builder' && key !== 'context') {
+      initialBuilderParams[key] = value;
+    }
+  });
 
   // ``pendingPrompt`` carries the user's last empty-state submission
   // so the building view can echo it back.  Cleared once we navigate
@@ -125,12 +138,20 @@ function SlugFreeShell({
   const composerDisabled =
     connectionStatus !== 'ready' || isThinking;
 
-  // Pick the centre-column canvas: virtual primitive (Ask handoff) >
-  // building (prompt in flight) > empty state.  The order matters —
-  // when the user clicks "Open in Build" mid-thinking, the context
-  // param wins so the handoff target is rendered immediately.
+  // Pick the centre-column canvas: builder (explicit tile / Library
+  // click) > virtual primitive (Ask handoff) > building (prompt in
+  // flight) > empty state.  Builder wins over context because if the
+  // user explicitly asked for a tool builder the URL says so directly;
+  // the context handoff is the implicit path.
   let canvas: React.ReactNode;
-  if (contextParam) {
+  if (builderParam !== null) {
+    canvas = (
+      <BuilderCanvas
+        toolName={builderParam || null}
+        initialParams={initialBuilderParams}
+      />
+    );
+  } else if (contextParam) {
     canvas = <VirtualPrimitiveCanvas contextParam={contextParam} />;
   } else if (isBuilding) {
     canvas = <BuildBuilding prompt={pendingPrompt!} />;

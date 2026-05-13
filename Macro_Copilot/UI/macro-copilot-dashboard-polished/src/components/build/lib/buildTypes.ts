@@ -63,4 +63,12 @@ export interface BuildEmptyCategory {
   /** Pre-filled composer prompt when the tile is clicked.  The
    *  composer drops it in and the user can edit before sending. */
   promptSeed: string;
+  /** Optional: the MCP tool name to launch directly in the standalone
+   *  model builder when the tile is clicked.  When set, clicking the
+   *  tile navigates to ``/workspace?builder=<tool_name>`` (the R4
+   *  builder canvas path) instead of seeding the composer.  Reserved
+   *  for tiles that map to a single primitive (e.g. "Decompose a move"
+   *  → PCA); category-level tiles that span multiple tools should
+   *  leave this unset and seed the composer instead. */
+  builderTool?: string;
 }

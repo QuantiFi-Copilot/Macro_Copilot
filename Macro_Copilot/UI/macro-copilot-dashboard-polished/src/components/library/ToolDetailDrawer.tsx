@@ -46,6 +46,7 @@ import {
   SUB_AGENT_LABELS,
   type ManifestTool,
 } from '@/types/library';
+import { hasModelMetadata } from '@/lib/modelRegistry';
 import { cn } from '@/utils/cn';
 import { prettyTitle } from './lib/prettyTitle';
 
@@ -307,11 +308,28 @@ function DrawerBody({
         <button
           type="button"
           onClick={() => {
-            // Build/Workspace integration is V2 — for now route the
-            // user to the existing /workspace surface.  When Build
-            // ships proper deep-linking, swap this for an URL with
-            // pre-filled tool params.
-            navigate('/workspace');
+            // Phase R4 — Library "Open in Build" now deep-links into
+            // the right Build surface for the tool:
+            //   - rich-model tools (PCA, rolling regression, attribution,
+            //     half-life, beta-adjusted spread, …) → ``?builder=``
+            //     opens the standalone model builder canvas
+            //   - typed primitives (spread, cross-market, butterfly,
+            //     yield, regime, scanner) → ``?context=`` opens the
+            //     virtual primitive canvas
+            // Falls back to the bare ``/workspace`` shell when the tool
+            // is recognised by neither path.
+            const toolFn = tool.implementation.tool_function;
+            if (hasModelMetadata(toolFn)) {
+              navigate(`/workspace?builder=${encodeURIComponent(toolFn)}`);
+              return;
+            }
+            const context = encodeURIComponent(
+              JSON.stringify({
+                tools: [{ tool: toolFn, params: {} }],
+                tool_count: 1,
+              }),
+            );
+            navigate(`/workspace?context=${context}`);
           }}
           className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
         >
