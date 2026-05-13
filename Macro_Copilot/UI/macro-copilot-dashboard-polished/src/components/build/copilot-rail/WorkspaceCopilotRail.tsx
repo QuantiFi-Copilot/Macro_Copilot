@@ -25,31 +25,49 @@
 // ============================================================================
 
 import { useCallback } from 'react';
+import { useCopilotContext } from '@/context/CopilotContext';
+import type { WorkspaceDetail } from '@/services/workspaceApi';
 import { CopilotIntroCard } from './CopilotIntroCard';
 import { CopilotStarterChips } from './CopilotStarterChips';
 import { CopilotReadOnlyComposer } from './CopilotReadOnlyComposer';
+import { WorkspaceCopilotComposer } from './WorkspaceCopilotComposer';
+import { WorkspaceCopilotMessages } from './WorkspaceCopilotMessages';
+import { composeScopedMessage } from './lib/workspaceScopedContext';
 
 type Props = {
   mode: 'empty' | 'completed';
   /** Title shown on the intro card.  Only used in ``completed``
    *  mode; ignored otherwise. */
   workspaceTitle?: string;
-  /** Called when a starter chip is clicked.  PR A wires this only
-   *  for ``empty`` mode (chips in completed mode are disabled). */
+  /** Active workspace — required in completed mode for the scoped
+   *  composer to prepend its preamble.  Null in empty mode. */
+  workspace?: WorkspaceDetail | null;
+  /** Called when a starter chip is clicked.  In empty mode this
+   *  seeds the canvas composer; in completed mode it sends a
+   *  scoped message to the chat directly. */
   onChipSeed?: (text: string) => void;
 };
 
 export function WorkspaceCopilotRail({
   mode,
   workspaceTitle,
+  workspace = null,
   onChipSeed,
 }: Props) {
+  const { sendMessage } = useCopilotContext();
+
   const handleChip = useCallback(
     (text: string) => {
-      if (mode !== 'empty') return;
-      onChipSeed?.(text);
+      if (mode === 'empty') {
+        onChipSeed?.(text);
+        return;
+      }
+      // Completed mode — fire the chip prompt directly through the
+      // scoped composer's path.  Same preamble + sendMessage as the
+      // composer below, so chip-clicks are first-class messages.
+      sendMessage(composeScopedMessage(workspace, text));
     },
-    [mode, onChipSeed],
+    [mode, onChipSeed, sendMessage, workspace],
   );
 
   return (
@@ -59,17 +77,36 @@ export function WorkspaceCopilotRail({
 
         <div className="mt-4">
           <p className="px-1 pb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-fg-faint">
-            {mode === 'empty' ? 'Try one of these' : 'Coming in PR B'}
+            {mode === 'empty' ? 'Try one of these' : 'Quick prompts'}
           </p>
           <CopilotStarterChips
             mode={mode}
             onChip={handleChip}
-            disabled={mode !== 'empty'}
+            // PR B enables chips in completed mode — clicking a chip
+            // fires a scoped chat message.
+            disabled={false}
           />
         </div>
+
+        {mode === 'completed' && (
+          <div className="mt-5">
+            <p className="px-1 pb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.18em] text-fg-faint">
+              Conversation
+            </p>
+            <WorkspaceCopilotMessages />
+          </div>
+        )}
       </div>
 
-      <CopilotReadOnlyComposer />
+      {/* PR B — empty mode keeps the read-only composer (the canvas-
+          top composer is the primary surface there).  Completed mode
+          gets the workspace-scoped composer with the preamble
+          machinery wired in. */}
+      {mode === 'empty' ? (
+        <CopilotReadOnlyComposer />
+      ) : (
+        <WorkspaceCopilotComposer workspace={workspace} />
+      )}
     </aside>
   );
 }

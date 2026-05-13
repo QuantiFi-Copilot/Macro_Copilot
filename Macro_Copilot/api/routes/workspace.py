@@ -150,7 +150,12 @@ class EdgeSummary(BaseModel):
 
 
 class WorkspaceDetailResponse(BaseModel):
-    """Response from ``GET /workspace/{slug}``."""
+    """Response from ``GET /workspace/{slug}``.
+
+    PR B extension: ``template_id`` + ``bound_slot_values`` are
+    surfaced so the Build UI knows whether the fork affordance is
+    available (both non-null = forkable; either null = locked).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -166,6 +171,93 @@ class WorkspaceDetailResponse(BaseModel):
     updated_at: str
     nodes: List[NodeSummary]
     edges: List[EdgeSummary]
+    template_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "WorkflowTemplate.template_id this workspace was produced "
+            "by.  None on legacy (pre-PR-B) rows; in that case the "
+            "fork-with-overrides affordance stays disabled."
+        ),
+    )
+    bound_slot_values: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Original slot_values dict the user / LLM passed when "
+            "binding this workspace's template.  Required by the "
+            "fork endpoint to apply a patch; None on legacy rows."
+        ),
+    )
+
+
+class ForkWorkspaceRequest(BaseModel):
+    """Body for ``POST /workspace/{slug}/fork``.
+
+    The request describes a PATCH on the parent workspace's bound
+    slot values.  Top-level scalar slots can be overridden in-place
+    via ``slot_overrides``; nested dict slots (e.g. ``signal_params``)
+    use ``slot_dict_overrides`` to surgically merge keys without
+    forcing the client to resend the whole nested dict.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slot_overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Direct replacements for top-level slots on the parent's "
+            "``bound_slot_values``.  Empty when only nested-dict "
+            "overrides are needed."
+        ),
+    )
+    slot_dict_overrides: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-slot dict merges.  ``{signal_params: {window_days: "
+            "126}}`` merges ``window_days`` into the parent's "
+            "``signal_params`` dict; other keys on that dict are "
+            "preserved.  Use this for the common case of editing one "
+            "field inside a nested-params slot."
+        ),
+    )
+    name: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "Display name for the variant workspace.  None lets the "
+            "substrate auto-name it (slug-only)."
+        ),
+    )
+    created_by: Optional[str] = Field(
+        default=None, max_length=128,
+        description="Application-defined user identifier.",
+    )
+
+
+class ForkWorkspaceResponse(BaseModel):
+    """Response from ``POST /workspace/{slug}/fork``.
+
+    Mirrors ``CreateWorkspaceResponse`` plus carries the
+    diff-summary so the Build UI's VariantStrip can render the
+    before/after deltas without a second round-trip.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: uuid.UUID
+    slug: str
+    name: Optional[str]
+    dag_hash: str
+    parent_workspace_id: uuid.UUID
+    url: str
+    override_summary: Dict[str, Any] = Field(
+        ...,
+        description=(
+            "Echo of what was applied: ``{changed: [...], "
+            "new_slot_values: {...}, parent_slot_values: {...}}``.  "
+            "Persisted in ``workspace_variants.override_summary`` "
+            "for replay-side rendering."
+        ),
+    )
 
 
 class WorkspaceListItem(BaseModel):
@@ -290,6 +382,14 @@ def list_workspaces_endpoint(
             "through to recent ordering."
         ),
     ),
+    parent_workspace_id: Optional[uuid.UUID] = Query(
+        None,
+        description=(
+            "Optional parent filter — when set, returns only "
+            "workspaces whose ``parent_workspace_id`` equals this "
+            "value.  Powers the VariantStrip's siblings list."
+        ),
+    ),
 ) -> WorkspaceListResponse:
     """List workspaces for the Build sidebar.
 
@@ -307,6 +407,7 @@ def list_workspaces_endpoint(
             limit=limit,
             offset=offset,
             filter=filter,
+            parent_workspace_id=parent_workspace_id,
         )
 
     items = [
@@ -509,6 +610,8 @@ def get_workspace_endpoint(slug: str) -> WorkspaceDetailResponse:
         updated_at=ws.updated_at.isoformat(),
         nodes=nodes,
         edges=edges,
+        template_id=ws.template_id,
+        bound_slot_values=ws.bound_slot_values,
     )
 
 
@@ -669,5 +772,228 @@ def replay_workspace_endpoint(
         reconstructed=reconstructed,
         notes=notes,
     )
+
+
+# ============================================================================
+# POST /workspace/{slug}/fork — fork-with-overrides (PR B)
+# ============================================================================
+
+
+@router.post(
+    "/{slug}/fork",
+    response_model=ForkWorkspaceResponse,
+    status_code=201,
+)
+def fork_workspace_endpoint(
+    slug: str,
+    body: ForkWorkspaceRequest,
+) -> ForkWorkspaceResponse:
+    """Create a variant workspace by patching the parent's bound
+    slot values and re-running the same template.
+
+    Failure modes
+    -------------
+    - 404 — parent slug doesn't exist.
+    - 409 — parent has NULL ``template_id`` or ``bound_slot_values``
+      (legacy workspace; cannot fork).
+    - 422 — applying the patch fails (slot binding refusal: bad
+      enum, type mismatch, constraint violation).
+    - 500 — execution failed inside the substrate.
+
+    On success
+    ----------
+    Persists a new workspace whose ``parent_workspace_id`` points at
+    the source, populates a ``workspace_variants`` row, and returns
+    the new slug + an override summary suitable for the
+    VariantStrip's before/after rendering.
+    """
+    from api.dependencies import (
+        get_engine,
+        get_object_storage,
+        init_object_storage,
+    )
+    from rates_agent.workflows._runner import run_template
+    from state.workspace_repo import (
+        UnknownWorkspaceError,
+        get_workspace_by_slug,
+    )
+
+    engine = get_engine()
+    try:
+        object_storage = get_object_storage()
+    except RuntimeError:
+        object_storage = init_object_storage()
+
+    # 1. Resolve the parent workspace.
+    with engine.connect() as conn:
+        try:
+            parent = get_workspace_by_slug(slug, conn=conn)
+        except UnknownWorkspaceError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No workspace with slug {slug!r}",
+            )
+
+    # 2. Confirm the parent is forkable.
+    if not parent.template_id or parent.bound_slot_values is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Workspace {slug!r} is not forkable: it predates the "
+                "PR-B persistence schema and has NULL template_id / "
+                "bound_slot_values.  Re-run the original prompt to "
+                "produce a forkable workspace."
+            ),
+        )
+
+    # 3. Apply the patch to the parent's slot values.
+    new_slot_values, changed_keys = _apply_slot_overrides(
+        dict(parent.bound_slot_values or {}),
+        body.slot_overrides,
+        body.slot_dict_overrides,
+    )
+
+    if not changed_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Fork request has no effective overrides.  Pass at "
+                "least one slot in ``slot_overrides`` or "
+                "``slot_dict_overrides`` to produce a meaningful "
+                "variant."
+            ),
+        )
+
+    # 4. Re-run the template with the patched values, persisting the
+    #    result as a child workspace.  ``run_template`` handles
+    #    template resolution + slot binding refusals + execution
+    #    failures — we surface those as 422 / 500 respectively.
+    envelope = run_template(
+        parent.template_id,
+        new_slot_values,
+        engine=engine,
+        persist=True,
+        object_storage=object_storage,
+        workspace_name=body.name,
+        workspace_created_by=body.created_by,
+        parent_workspace_id=parent.id,
+    )
+
+    if not envelope.get("ok"):
+        err = envelope.get("error") or "(no detail)"
+        # Slot-binding refusals carry the substrate's clear message —
+        # surface as 422 so the client can render it inline.
+        status = 422 if "Slot binding" in err or "validation" in err else 500
+        raise HTTPException(status_code=status, detail=err)
+
+    persistence = envelope.get("persistence") or {}
+    if not persistence.get("ok"):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Workflow executed but persistence failed: "
+                f"{persistence.get('error') or '(no detail)'}"
+            ),
+        )
+
+    workspace = envelope["workspace"]
+
+    # 5. Record an override-summary row in workspace_variants so the
+    #    VariantStrip can render the diff without re-deriving it.
+    #    The fork helper handles the workspaces.parent_workspace_id
+    #    column; we extend that with the variant-side row here.
+    override_summary = {
+        "template_id": parent.template_id,
+        "changed": sorted(changed_keys),
+        "new_slot_values": new_slot_values,
+        "parent_slot_values": dict(parent.bound_slot_values or {}),
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO copilot_state.workspace_variants (
+                    workspace_id, variant_dag_hash, override_summary
+                )
+                VALUES (
+                    :workspace_id, :variant_dag_hash,
+                    CAST(:override_summary AS JSONB)
+                )
+                ON CONFLICT DO NOTHING
+                """
+            ),
+            {
+                "workspace_id": workspace["id"],
+                "variant_dag_hash": workspace["dag_hash"],
+                "override_summary": _json_dumps(override_summary),
+            },
+        )
+
+    return ForkWorkspaceResponse(
+        workspace_id=uuid.UUID(workspace["id"]),
+        slug=workspace["slug"],
+        name=workspace["name"],
+        dag_hash=workspace["dag_hash"],
+        parent_workspace_id=parent.id,
+        url=workspace["url"],
+        override_summary=override_summary,
+    )
+
+
+def _apply_slot_overrides(
+    base: Dict[str, Any],
+    scalar_overrides: Dict[str, Any],
+    dict_overrides: Dict[str, Dict[str, Any]],
+) -> tuple:
+    """Apply both override flavors to a copy of ``base`` and return
+    ``(new_slot_values, changed_keys)``.
+
+    Discipline:
+      - ``scalar_overrides`` replaces top-level slots wholesale.
+        Setting a value identical to the existing one is a no-op
+        (won't be reported as changed).
+      - ``dict_overrides`` merges per-key into nested dict slots.
+        Non-dict existing values are replaced wholesale; the merge
+        is shallow (no recursive merging — keep the semantics
+        predictable).
+      - Both flavors are applied left-to-right; the dict-merge
+        happens AFTER scalars so a slot can be cleared then
+        re-keyed in one request without ordering bugs.
+    """
+    out = dict(base)
+    changed: set = set()
+
+    for key, val in scalar_overrides.items():
+        if out.get(key) == val:
+            continue
+        out[key] = val
+        changed.add(key)
+
+    for key, patch in dict_overrides.items():
+        existing = out.get(key)
+        if not isinstance(existing, dict):
+            # Replace wholesale — keeps semantics predictable when
+            # the parent's slot was a scalar / list and the client
+            # sends a dict patch.
+            out[key] = dict(patch)
+            changed.add(key)
+            continue
+        merged = dict(existing)
+        actually_changed = False
+        for k, v in patch.items():
+            if merged.get(k) != v:
+                merged[k] = v
+                actually_changed = True
+        if actually_changed:
+            out[key] = merged
+            changed.add(key)
+
+    return out, changed
+
+
+def _json_dumps(value: Any) -> str:
+    import json
+
+    return json.dumps(value, default=str)
 
 

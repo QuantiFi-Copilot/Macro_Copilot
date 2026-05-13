@@ -18,8 +18,9 @@ import { BuildHeader } from './BuildHeader';
 import { BuildTabs, type BuildTabId } from './BuildTabs';
 import { DagView } from '../dag/DagView';
 import { ResultsView } from '../results/ResultsView';
-import { ParametersPlaceholder } from '../parameters/ParametersPlaceholder';
-import { NotesPlaceholder } from '../notes/NotesPlaceholder';
+import { ParametersView } from '../parameters/ParametersView';
+import { NotesView } from '../notes/NotesView';
+import { VariantStrip } from '../variants/VariantStrip';
 
 type Props = {
   detail: WorkspaceDetail;
@@ -48,13 +49,22 @@ export function BuildCompleted({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <BuildHeader detail={detail} status={status} />
+      <VariantStrip detail={detail} />
       <BuildTabs active={active} onSelect={setActive} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {active === 'dag' && <DagView detail={detail} />}
-        {active === 'results' && <ResultsView detail={detail} />}
-        {active === 'parameters' && <ParametersPlaceholder />}
-        {active === 'notes' && <NotesPlaceholder />}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {active === 'dag' && (
+          <div className="h-full overflow-y-auto">
+            <DagView detail={detail} />
+          </div>
+        )}
+        {active === 'results' && (
+          <div className="h-full overflow-y-auto">
+            <ResultsView detail={detail} />
+          </div>
+        )}
+        {active === 'parameters' && <ParametersView detail={detail} />}
+        {active === 'notes' && <NotesView detail={detail} />}
       </div>
     </div>
   );

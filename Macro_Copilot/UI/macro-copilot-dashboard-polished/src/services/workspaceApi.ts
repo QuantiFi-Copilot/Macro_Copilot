@@ -73,6 +73,11 @@ export interface WorkspaceDetail {
   updated_at: string;
   nodes: NodeSummary[];
   edges: EdgeSummary[];
+  // PR B — surfaced so the Build UI knows whether the fork
+  // affordance is available.  Both non-null = forkable; either
+  // null = locked (legacy workspace).
+  template_id: string | null;
+  bound_slot_values: Record<string, unknown> | null;
 }
 
 export interface CreateWorkspaceResponse {
@@ -192,19 +197,79 @@ export async function getWorkspace(slug: string): Promise<WorkspaceDetail> {
  *
  *  All parameters are optional.  ``limit`` is clamped to ``[1, 200]``
  *  server-side; oversized client requests are silently capped rather
- *  than rejected so the sidebar never bombs on a bad config. */
+ *  than rejected so the sidebar never bombs on a bad config.
+ *
+ *  PR B adds ``parent_workspace_id`` — when provided, returns only
+ *  workspaces forked from that parent (powers VariantStrip). */
 export async function listWorkspaces(args?: {
   limit?: number;
   offset?: number;
   filter?: WorkspaceListFilter;
+  parent_workspace_id?: string;
 }): Promise<WorkspaceListResponse> {
   const params = new URLSearchParams();
   if (args?.limit != null) params.set('limit', String(args.limit));
   if (args?.offset != null) params.set('offset', String(args.offset));
   if (args?.filter) params.set('filter', args.filter);
+  if (args?.parent_workspace_id)
+    params.set('parent_workspace_id', args.parent_workspace_id);
   const qs = params.toString();
   return fetchJSON<WorkspaceListResponse>(
     `${PREFIX}/workspace${qs ? `?${qs}` : ''}`,
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Fork-with-overrides surface (PR B)
+// ----------------------------------------------------------------------------
+
+export interface ForkWorkspaceRequest {
+  /** Top-level scalar replacements on the parent's
+   *  ``bound_slot_values``.  Most common case: changing a single
+   *  scalar slot like ``signal_threshold``. */
+  slot_overrides?: Record<string, unknown>;
+  /** Per-key merges into nested dict slots.  The dict is shallow-
+   *  merged into the parent's slot value, preserving other keys.
+   *  Use this when the user changes one field inside a nested-
+   *  params dict (e.g. ``signal_params.window_days``). */
+  slot_dict_overrides?: Record<string, Record<string, unknown>>;
+  name?: string | null;
+  created_by?: string | null;
+}
+
+export interface ForkWorkspaceResponse {
+  workspace_id: string;
+  slug: string;
+  name: string | null;
+  dag_hash: string;
+  parent_workspace_id: string;
+  url: string;
+  override_summary: {
+    template_id: string;
+    changed: string[];
+    new_slot_values: Record<string, unknown>;
+    parent_slot_values: Record<string, unknown>;
+  };
+}
+
+/** Fork a workspace by patching its bound_slot_values and re-running
+ *  the same template.  The new workspace links back to the parent
+ *  via ``parent_workspace_id``; both stay independently URL-
+ *  addressable.
+ *
+ *  Throws on any 4xx / 5xx with the server's diagnostic message —
+ *  the BuildShell catches and surfaces to the UI. */
+export async function forkWorkspace(
+  slug: string,
+  body: ForkWorkspaceRequest,
+): Promise<ForkWorkspaceResponse> {
+  return fetchJSON<ForkWorkspaceResponse>(
+    `${PREFIX}/workspace/${encodeURIComponent(slug)}/fork`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
   );
 }
 

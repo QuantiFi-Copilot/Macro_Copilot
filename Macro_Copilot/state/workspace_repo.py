@@ -104,7 +104,14 @@ _UNNAMED_PREFIX = "ws"
 
 @dataclass(frozen=True)
 class WorkspaceRecord:
-    """One row from ``copilot_state.workspaces``."""
+    """One row from ``copilot_state.workspaces``.
+
+    PR B extension: ``template_id`` + ``bound_slot_values`` carry the
+    identifying surface needed to fork this workspace with parameter
+    overrides.  Both are nullable to keep legacy (pre-PR-B) rows valid;
+    when either is None the fork endpoint refuses with a clear
+    diagnostic rather than guessing.
+    """
 
     id: uuid.UUID
     slug: str
@@ -116,6 +123,8 @@ class WorkspaceRecord:
     created_by: Optional[str]
     created_at: datetime
     updated_at: datetime
+    template_id: Optional[str] = None
+    bound_slot_values: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -247,6 +256,9 @@ def create_workspace(
     created_by: Optional[str] = None,
     focus_node: Optional[str] = None,
     workspace_uuid: Optional[uuid.UUID] = None,
+    template_id: Optional[str] = None,
+    bound_slot_values: Optional[Dict[str, Any]] = None,
+    parent_workspace_id: Optional[uuid.UUID] = None,
 ) -> WorkspaceRecord:
     """Create a workspace pointing at ``dag_hash``.
 
@@ -259,7 +271,18 @@ def create_workspace(
     ``workspaces.dag_hash`` is ``ON DELETE RESTRICT`` against
     ``dags.hash``.  Supplying a hash that does not exist in
     ``dags`` aborts the txn with an ``IntegrityError``.  Order
-    the call chain so ``persist_dag_from_lineage`` runs first.
+    the call chain so the DAG is persisted first.
+
+    PR B kwargs
+    -----------
+    ``template_id`` + ``bound_slot_values`` are the load-bearing
+    inputs to the fork-with-overrides path.  Both default to None
+    so existing callers (legacy + tests that don't care about
+    forking) keep working.
+
+    ``parent_workspace_id`` lets a fork stamp the parent linkage
+    at create time without a second UPDATE — used by the new
+    ``POST /workspace/{slug}/fork`` endpoint.
     """
     _validate_name(name)
     if workspace_uuid is None:
@@ -270,14 +293,19 @@ def create_workspace(
         text(
             f"""
             INSERT INTO {_COPILOT_STATE_SCHEMA}.workspaces (
-                id, slug, name, dag_hash, focus_node, created_by
+                id, slug, name, dag_hash, focus_node, created_by,
+                template_id, bound_slot_values, parent_workspace_id
             )
             VALUES (
-                :id, :slug, :name, :dag_hash, :focus_node, :created_by
+                :id, :slug, :name, :dag_hash, :focus_node, :created_by,
+                :template_id,
+                CAST(:bound_slot_values AS JSONB),
+                :parent_workspace_id
             )
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
-                      created_at, updated_at
+                      created_at, updated_at, template_id,
+                      bound_slot_values
             """
         ),
         {
@@ -287,13 +315,21 @@ def create_workspace(
             "dag_hash": dag_hash,
             "focus_node": focus_node,
             "created_by": created_by,
+            "template_id": template_id,
+            "bound_slot_values": (
+                json.dumps(bound_slot_values)
+                if bound_slot_values is not None
+                else None
+            ),
+            "parent_workspace_id": parent_workspace_id,
         },
     ).mappings().one()
 
     rec = _row_to_record(row)
     logger.info(
-        "create_workspace: id=%s slug=%s dag=%s name=%r",
+        "create_workspace: id=%s slug=%s dag=%s name=%r template=%s",
         rec.id, rec.slug, rec.dag_hash[:12], rec.name,
+        rec.template_id,
     )
     return rec
 
@@ -308,7 +344,8 @@ def get_workspace(
             f"""
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
-                   created_at, updated_at
+                   created_at, updated_at, template_id,
+                   bound_slot_values
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
             WHERE id = :id
             """
@@ -341,7 +378,8 @@ def get_workspace_by_slug(
             f"""
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
-                   created_at, updated_at
+                   created_at, updated_at, template_id,
+                   bound_slot_values
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
             WHERE slug = :slug
             """
@@ -377,7 +415,8 @@ def rename_workspace(
             WHERE id = :id
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
-                      created_at, updated_at
+                      created_at, updated_at, template_id,
+                      bound_slot_values
             """
         ),
         {"id": workspace_id, "name": new_name},
@@ -428,14 +467,17 @@ def fork_workspace(
             f"""
             INSERT INTO {_COPILOT_STATE_SCHEMA}.workspaces (
                 id, slug, name, dag_hash, parent_workspace_id,
-                created_by
+                created_by, template_id, bound_slot_values
             )
             VALUES (
-                :id, :slug, :name, :dag_hash, :parent_id, :created_by
+                :id, :slug, :name, :dag_hash, :parent_id,
+                :created_by, :template_id,
+                CAST(:bound_slot_values AS JSONB)
             )
             RETURNING id, slug, name, dag_hash, focus_node,
                       parent_workspace_id, schema_version, created_by,
-                      created_at, updated_at
+                      created_at, updated_at, template_id,
+                      bound_slot_values
             """
         ),
         {
@@ -445,6 +487,23 @@ def fork_workspace(
             "dag_hash": variant_dag_hash,
             "parent_id": parent.id,
             "created_by": created_by,
+            # PR B — children inherit the parent's template_id +
+            # carry the patched bound_slot_values that produced the
+            # variant DAG.  The caller (the fork endpoint) computes
+            # those values and passes them via the override_summary's
+            # ``new_slot_values`` key (kept in lockstep with the
+            # endpoint to avoid silently dropping the metadata).
+            "template_id": (
+                override_summary.get("template_id")
+                if isinstance(override_summary, dict)
+                else None
+            ) or parent.template_id,
+            "bound_slot_values": (
+                json.dumps(override_summary["new_slot_values"])
+                if isinstance(override_summary, dict)
+                and "new_slot_values" in override_summary
+                else None
+            ),
         },
     ).mappings().one()
     rec = _row_to_record(row)
@@ -497,6 +556,7 @@ def list_workspaces(
     limit: int = 25,
     offset: int = 0,
     filter: str = "recent",  # noqa: A002 - matches GET ?filter=...
+    parent_workspace_id: Optional[uuid.UUID] = None,
 ) -> List[WorkspaceRecord]:
     """List workspaces for the sidebar / browse surface.
 
@@ -546,18 +606,32 @@ def list_workspaces(
     else:
         order_clause = "COALESCE(last_accessed_at, updated_at) DESC"
 
+    # PR B — optional parent filter powers the Build sidebar's
+    # "Variants of this workspace" surface.  When None, all
+    # workspaces are visible regardless of parent linkage.
+    where_clause = ""
+    params: Dict[str, Any] = {
+        "limit": safe_limit,
+        "offset": safe_offset,
+    }
+    if parent_workspace_id is not None:
+        where_clause = "WHERE parent_workspace_id = :parent_workspace_id"
+        params["parent_workspace_id"] = parent_workspace_id
+
     rows = conn.execute(
         text(
             f"""
             SELECT id, slug, name, dag_hash, focus_node,
                    parent_workspace_id, schema_version, created_by,
-                   created_at, updated_at
+                   created_at, updated_at, template_id,
+                   bound_slot_values
             FROM {_COPILOT_STATE_SCHEMA}.workspaces
+            {where_clause}
             ORDER BY {order_clause}, id DESC
             LIMIT :limit OFFSET :offset
             """
         ),
-        {"limit": safe_limit, "offset": safe_offset},
+        params,
     ).mappings().all()
 
     return [_row_to_record(r) for r in rows]
@@ -599,6 +673,10 @@ def touch_workspace_access(
 
 
 def _row_to_record(row) -> WorkspaceRecord:
+    # PR B — ``template_id`` + ``bound_slot_values`` are nullable
+    # (added in migration 0009).  Older rows + tests that hand-craft
+    # rows may not provide them; ``.get`` keeps the conversion
+    # tolerant.
     return WorkspaceRecord(
         id=row["id"],
         slug=row["slug"],
@@ -610,6 +688,16 @@ def _row_to_record(row) -> WorkspaceRecord:
         created_by=row["created_by"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        template_id=row.get("template_id") if hasattr(row, "get") else (
+            row["template_id"] if "template_id" in row else None
+        ),
+        bound_slot_values=(
+            row.get("bound_slot_values") if hasattr(row, "get") else (
+                row["bound_slot_values"]
+                if "bound_slot_values" in row
+                else None
+            )
+        ),
     )
 
 
