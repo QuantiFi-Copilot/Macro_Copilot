@@ -1,156 +1,383 @@
 // ============================================================================
-// DagView — horizontal flow of stage cards for a completed workspace.
+// DagView — branch-aware workflow anatomy view.
 // ----------------------------------------------------------------------------
-// Renders the workspace's nodes as a left-to-right strip of stage
-// cards with hairline edge connectors between adjacent stages.  The
-// substrate's persisted edges drive the topo-sort; the visual layout
-// approximates branching topologies as a single linear flow in V1
-// (see ``EdgeConnector`` for the rationale + the PR B note on
-// upgrading to a layered renderer).
+// PR6 — replaces the pre-PR6 linear strip with a faithful branch-aware
+// rendering driven by ``buildDagModel(detail)``.  Rendering shape:
 //
-// Layout (matches mocks B/C):
+//   ┌── controls bar (density · labels · fit) ─────────────────────┐
+//   │ ┌── warning banner(s) (cycle / missing edges / orphans) ──┐  │
+//   │ ┌── DAG canvas ─────────────────────────────────────────┐ │  │
+//   │ │  SVG edge layer (Bezier curves, slot labels)            │ │
+//   │ │  CSS grid: rows = lanes, cols = ranks                   │ │
+//   │ │  Stage cards positioned via gridRow/gridColumn          │ │
+//   │ └─────────────────────────────────────────────────────────┘ │
+//   │ ┌── selected-node inspector (collapsible) ────────────────┐  │
+//   │ │  node identity · params · inputs · outputs · artifact   │  │
+//   │ └─────────────────────────────────────────────────────────┘  │
+//   └──────────────────────────────────────────────────────────────┘
 //
-//   PRIMITIVE       OPERATOR        OPERATOR        OUTPUT      + Add step
-//   ┌────────┐  ►   ┌────────┐  ►   ┌────────┐  ►   ┌────────┐  ┌╴╴╴╴╴╴╴╴┐
-//   │ stage  │      │ stage  │      │ stage  │      │ stage  │  ╵ ghost  ╵
-//   └────────┘      └────────┘      └────────┘      └────────┘  └╴╴╴╴╴╴╴╴┘
+// Why a hand-rolled layout (no react-flow / dagre / elkjs)
+// --------------------------------------------------------
+// The workflow templates this surface targets (event_study,
+// regime_conditioned_relationship, multi-primitive Ask handoffs)
+// max out at ~10 nodes / 3 lanes / 6 ranks.  A full graph library
+// would add ~150 KB to the bundle for a use case we can solve in
+// ~300 lines of deterministic layout.  See ``buildDagModel.ts`` for
+// the algorithm.
 //
-// Each stage carries its own column-kicker on top so the user can
-// scan the pipeline type at a glance.  An "Add step" ghost tile
-// closes the strip — non-interactive in PR A, opens the operator
-// picker in PR B.
-//
-// Scrolls horizontally on narrow viewports; stage cards have a fixed
-// max-width so cards never collapse to unreadable widths on a long
-// DAG.
+// Density
+// -------
+// Two density modes — ``comfortable`` (default, wider cards) and
+// ``compact`` (denser, narrower cards) — toggle via the controls
+// bar.  The grid's cell size is the only thing that changes; node
+// cards reflow automatically.
 // ============================================================================
 
-import { useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Maximize2, Tag, TagsIcon } from 'lucide-react';
 import type { WorkspaceDetail } from '@/services/workspaceApi';
+import { cn } from '@/utils/cn';
 import { StageCard } from './StageCard';
-import { EdgeConnector } from './EdgeConnector';
-import { topologicalOrder } from '../lib/topologicalOrder';
-import { stageCategoryForNode } from '../lib/stageCategory';
-import { columnLabelForCategory } from '../lib/stageColumn';
-import type { StageCategory } from '../lib/buildTypes';
+import { DagEdgesLayer } from './DagEdgesLayer';
+import { DagInspector } from './DagInspector';
+import { DagWarningsBanner } from './DagWarningsBanner';
+import { buildDagModel, type DagModel } from './lib/buildDagModel';
+
+type Density = 'compact' | 'comfortable';
+
+const CARD_WIDTH: Record<Density, number> = {
+  compact: 200,
+  comfortable: 240,
+};
+const LANE_HEIGHT: Record<Density, number> = {
+  compact: 156,
+  comfortable: 184,
+};
+const COLUMN_GAP: Record<Density, number> = {
+  compact: 80,
+  comfortable: 112,
+};
+const LANE_GAP: Record<Density, number> = {
+  compact: 32,
+  comfortable: 40,
+};
+/** Horizontal padding inside the canvas — leaves room for the
+ *  source-side edge dot + the terminal arrowhead. */
+const CANVAS_PADDING_X = 28;
+const CANVAS_PADDING_Y = 24;
 
 type Props = {
   detail: WorkspaceDetail;
 };
 
 export function DagView({ detail }: Props) {
-  const ordered = useMemo(
-    () => topologicalOrder(detail.nodes, detail.edges),
-    [detail.nodes, detail.edges],
+  const [density, setDensity] = useState<Density>('comfortable');
+  const [showLabels, setShowLabels] = useState<boolean>(true);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    detail.focus_node ?? null,
   );
 
-  // Build a quick lookup from (from_node, to_node) → slot_name so
-  // each edge connector's hover-tooltip can name the slot.
-  const slotByEdge = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const e of detail.edges) {
-      m.set(`${e.from_node}→${e.to_node}`, e.slot_name);
-    }
-    return m;
-  }, [detail.edges]);
+  const model = useMemo(() => buildDagModel(detail), [detail]);
 
-  if (ordered.length === 0) {
+  // Compute pixel positions for each node.  The grid below is
+  // styled with fixed track sizes, so the SVG edge layer can read
+  // these positions to draw Bezier curves between matching centres.
+  const { canvasWidth, canvasHeight, nodeCoords } = useMemo(
+    () =>
+      computeCanvasLayout({
+        model,
+        cardWidth: CARD_WIDTH[density],
+        laneHeight: LANE_HEIGHT[density],
+        columnGap: COLUMN_GAP[density],
+        laneGap: LANE_GAP[density],
+        paddingX: CANVAS_PADDING_X,
+        paddingY: CANVAS_PADDING_Y,
+      }),
+    [model, density],
+  );
+
+  // Scroll the canvas to the selected node when the user picks one.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const handleFit = useCallback(() => {
+    if (canvasRef.current) {
+      canvasRef.current.scrollTo({
+        left: 0,
+        top: 0,
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
+  const selectedModelNode = useMemo(() => {
+    if (selectedNodeId === null) return null;
+    return (
+      model.nodes.find((n) => n.node.node_id === selectedNodeId) ?? null
+    );
+  }, [model, selectedNodeId]);
+
+  if (model.nodes.length === 0) {
     return <EmptyDag />;
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 px-6 py-6">
-      <SectionHeader nodeCount={ordered.length} />
-      <div
-        // Horizontal scroll on overflow; pb-1 reserves space for the
-        // research-card hover lift so it doesn't get clipped.
-        className="-mx-1 flex min-w-0 items-stretch gap-1 overflow-x-auto px-1 pb-2"
-      >
-        {ordered.map((node, i) => {
-          const next = ordered[i + 1];
-          const slotHint = next
-            ? slotByEdge.get(`${node.node_id}→${next.node_id}`)
-            : undefined;
-          const isTerminal = node.node_id === detail.focus_node;
-          const category = stageCategoryForNode(node, detail);
-          return (
-            <div key={node.node_id} className="flex items-stretch">
-              <StageColumn category={category}>
-                <StageCard
-                  node={node}
-                  workspace={detail}
-                  index={i + 1}
-                  isTerminal={isTerminal}
-                />
-              </StageColumn>
-              {next && (
-                <EdgeConnector
-                  hint={slotHint ? `slot: ${slotHint}` : undefined}
-                />
-              )}
-            </div>
-          );
-        })}
-        <AddStepPlaceholder />
+    <div className="flex h-full min-h-0 flex-col">
+      <DagControls
+        density={density}
+        onDensityChange={setDensity}
+        showLabels={showLabels}
+        onLabelsChange={setShowLabels}
+        onFit={handleFit}
+        rankCount={model.ranks}
+        laneCount={model.lanes}
+        nodeCount={model.nodes.length}
+      />
+
+      <DagWarningsBanner warnings={model.warnings} />
+
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/* Scroll container for the canvas. */}
+        <div
+          ref={canvasRef}
+          className="relative h-full w-full overflow-auto"
+          style={{
+            // The viewBox-style backdrop is enough; we don't need a
+            // separate grid behind the SVG.
+          }}
+        >
+          <div
+            className="relative"
+            style={{
+              width: canvasWidth,
+              height: canvasHeight,
+            }}
+          >
+            <DagEdgesLayer
+              model={model}
+              nodeCoords={nodeCoords}
+              cardWidth={CARD_WIDTH[density]}
+              laneHeight={LANE_HEIGHT[density]}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              showLabels={showLabels}
+              selectedNodeId={selectedNodeId}
+            />
+
+            {/* Node layer — absolutely-positioned cards over the SVG. */}
+            {model.nodes.map((modelNode) => {
+              const coord = nodeCoords.get(modelNode.node.node_id);
+              if (!coord) return null;
+              const isSelected =
+                selectedNodeId === modelNode.node.node_id;
+              return (
+                <div
+                  key={modelNode.node.node_id}
+                  className={cn(
+                    'absolute z-[1] transition-shadow duration-150 ease-sleek',
+                    isSelected &&
+                      'ring-2 ring-ice-400/50 ring-offset-2 ring-offset-transparent rounded-[14px]',
+                  )}
+                  style={{
+                    left: coord.x,
+                    top: coord.y,
+                    width: CARD_WIDTH[density],
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedNodeId((curr) =>
+                        curr === modelNode.node.node_id
+                          ? null
+                          : modelNode.node.node_id,
+                      )
+                    }
+                    aria-pressed={isSelected}
+                    className="block w-full text-left"
+                  >
+                    <StageCard
+                      node={modelNode.node}
+                      workspace={detail}
+                      index={
+                        // Display the topological index for context — same
+                        // 1-based numbering the pre-PR6 strip used.
+                        model.nodes
+                          .slice()
+                          .sort(rankLaneOrder)
+                          .findIndex(
+                            (n) =>
+                              n.node.node_id === modelNode.node.node_id,
+                          ) + 1
+                      }
+                      isTerminal={modelNode.isTerminal}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
+
+      <DagInspector
+        modelNode={selectedModelNode}
+        model={model}
+        onClose={() => setSelectedNodeId(null)}
+      />
     </div>
   );
 }
 
-/** Column wrapper around each stage card.  Renders the column kicker
- *  on top so the strip reads "PRIMITIVE  OPERATOR  OPERATOR  OUTPUT"
- *  at a glance, matching Mockup B/C. */
-function StageColumn({
-  category,
-  children,
+// ----------------------------------------------------------------------------
+// Pixel-layout calculator
+// ----------------------------------------------------------------------------
+
+interface CanvasLayout {
+  canvasWidth: number;
+  canvasHeight: number;
+  nodeCoords: Map<string, { x: number; y: number }>;
+}
+
+function computeCanvasLayout(args: {
+  model: DagModel;
+  cardWidth: number;
+  laneHeight: number;
+  columnGap: number;
+  laneGap: number;
+  paddingX: number;
+  paddingY: number;
+}): CanvasLayout {
+  const {
+    model,
+    cardWidth,
+    laneHeight,
+    columnGap,
+    laneGap,
+    paddingX,
+    paddingY,
+  } = args;
+  const nodeCoords = new Map<string, { x: number; y: number }>();
+
+  const columnPitch = cardWidth + columnGap;
+  const lanePitch = laneHeight + laneGap;
+
+  for (const modelNode of model.nodes) {
+    const x = paddingX + modelNode.rank * columnPitch;
+    const y = paddingY + modelNode.lane * lanePitch;
+    nodeCoords.set(modelNode.node.node_id, { x, y });
+  }
+
+  const canvasWidth =
+    paddingX * 2 +
+    Math.max(1, model.ranks) * cardWidth +
+    Math.max(0, model.ranks - 1) * columnGap;
+  const canvasHeight =
+    paddingY * 2 +
+    Math.max(1, model.lanes) * laneHeight +
+    Math.max(0, model.lanes - 1) * laneGap;
+
+  return { canvasWidth, canvasHeight, nodeCoords };
+}
+
+function rankLaneOrder(
+  a: { rank: number; lane: number },
+  b: { rank: number; lane: number },
+): number {
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  return a.lane - b.lane;
+}
+
+// ----------------------------------------------------------------------------
+// Controls bar
+// ----------------------------------------------------------------------------
+
+function DagControls({
+  density,
+  onDensityChange,
+  showLabels,
+  onLabelsChange,
+  onFit,
+  rankCount,
+  laneCount,
+  nodeCount,
 }: {
-  category: StageCategory;
-  children: React.ReactNode;
+  density: Density;
+  onDensityChange: (d: Density) => void;
+  showLabels: boolean;
+  onLabelsChange: (v: boolean) => void;
+  onFit: () => void;
+  rankCount: number;
+  laneCount: number;
+  nodeCount: number;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="kicker px-1 text-fg-muted">
-        {columnLabelForCategory(category)}
-      </span>
-      {children}
-    </div>
-  );
-}
-
-/** Dashed-border tile at the end of the strip — non-interactive in
- *  PR A.  Tells the user the DAG is extensible without committing to
- *  the operator-picker UX. */
-function AddStepPlaceholder() {
-  return (
-    <div className="flex flex-col gap-1.5 self-stretch">
-      <span className="kicker px-1 text-fg-faint">&nbsp;</span>
-      <div
-        className="flex min-w-[150px] flex-1 flex-col items-center justify-center gap-1 rounded-[14px] border border-dashed border-line-soft px-4 py-6 text-center text-fg-faint"
-        aria-hidden
-      >
-        <Plus size={14} strokeWidth={1.5} className="text-fg-faint" />
-        <span className="text-[11px] font-medium text-fg-muted">Add step</span>
-        <span className="text-[10px] leading-[1.4] text-fg-faint">
-          Drop an operator
-          <br /> or primitive here
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({ nodeCount }: { nodeCount: number }) {
-  return (
-    <div className="flex items-center justify-between">
+    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line-subtle px-6 py-3">
       <div>
-        <h2 className="kicker text-fg-muted">DAG · execution order</h2>
+        <h2 className="kicker text-fg-muted">DAG · workflow anatomy</h2>
         <p className="mt-0.5 text-[11px] text-fg-faint">
-          {nodeCount} {nodeCount === 1 ? 'stage' : 'stages'}, left-to-right in
-          topological order.
+          {nodeCount} {nodeCount === 1 ? 'stage' : 'stages'} ·{' '}
+          {rankCount} {rankCount === 1 ? 'rank' : 'ranks'} ·{' '}
+          {laneCount} {laneCount === 1 ? 'lane' : 'lanes'}
         </p>
       </div>
+      <div className="flex items-center gap-1.5">
+        <ControlToggle
+          active={showLabels}
+          onClick={() => onLabelsChange(!showLabels)}
+          icon={showLabels ? <Tag size={11} /> : <TagsIcon size={11} />}
+          label={showLabels ? 'Labels on' : 'Labels off'}
+          title="Show / hide edge slot names"
+        />
+        <ControlToggle
+          active={density === 'compact'}
+          onClick={() =>
+            onDensityChange(density === 'compact' ? 'comfortable' : 'compact')
+          }
+          icon={null}
+          label={density === 'compact' ? 'Compact' : 'Comfortable'}
+          title="Toggle density"
+        />
+        <button
+          type="button"
+          onClick={onFit}
+          title="Scroll back to the start of the DAG"
+          className="flex items-center gap-1 rounded-md border border-line-soft bg-white/[0.025] px-2 py-1 text-[10.5px] font-medium text-fg-secondary transition-colors hover:border-ice-400/35 hover:text-ice-200"
+        >
+          <Maximize2 size={11} strokeWidth={1.75} aria-hidden />
+          <span>Fit</span>
+        </button>
+      </div>
     </div>
+  );
+}
+
+function ControlToggle({
+  active,
+  onClick,
+  icon,
+  label,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode | null;
+  label: string;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={cn(
+        'flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-medium transition-colors',
+        active
+          ? 'border-ice-400/35 bg-ice-500/10 text-ice-200'
+          : 'border-line-soft bg-white/[0.025] text-fg-secondary hover:border-ice-400/30 hover:text-ice-200',
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
 
