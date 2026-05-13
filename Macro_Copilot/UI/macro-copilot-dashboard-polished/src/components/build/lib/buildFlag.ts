@@ -1,30 +1,21 @@
 // ============================================================================
-// buildFlag.ts — feature flag gate for the redesigned Build surface
+// buildFlag.ts — feature flag gate for the Build surface.
 // ----------------------------------------------------------------------------
-// PR A ships the new Build (Workspace) experience behind a Vite-time
-// boolean.  The legacy ``WorkspacePage`` + ``WorkspaceBySlugPage`` stay
-// mounted as fallbacks so any existing query-param URL (``/workspace
-// ?tool=spread&...``) keeps working while the new shell is in review.
+// As of the Build revamp (Phase 0), the new shell is the only Build
+// surface — there is no legacy fallback at runtime.  This module is
+// kept ONLY as a no-op shim so that any in-flight branch still
+// importing ``BUILD_V2_ENABLED`` keeps compiling.  A follow-up cleanup
+// pass deletes this file once those branches merge.
 //
-// Flip ``VITE_BUILD_V2`` to ``"1"`` in your local ``.env`` (or the
-// docker-compose env block) to opt into the new shell.  Once review
-// passes, the default flips here.
-//
-// Reading the flag at module-load time (rather than per-render) means
-// every component sees the same value for the lifetime of the page,
-// even if the env var changes between rebuilds — there is no implicit
-// hot-flip behaviour.
+// Do NOT add new readers of this constant.  The flag is permanently
+// on; conditional code should be removed, not gated.
 // ============================================================================
 
 /**
- * True when the new Build shell should render at ``/workspace``.
+ * Permanently ``true``.  Kept exported for source-compatibility with
+ * branches that still reference the old gate.  Slated for removal in
+ * the Build revamp cleanup phase.
  *
- * Vite exposes ``import.meta.env`` at build time; values that aren't
- * declared in ``.env`` default to ``undefined``.  We treat any of
- * ``"1"`` / ``"true"`` / ``"yes"`` as truthy so the flag is easy to
- * flip from a shell variable without quoting gymnastics.
+ * @deprecated
  */
-export const BUILD_V2_ENABLED: boolean = (() => {
-  const raw = (import.meta.env.VITE_BUILD_V2 as string | undefined) ?? '';
-  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
-})();
+export const BUILD_V2_ENABLED = true as const;
