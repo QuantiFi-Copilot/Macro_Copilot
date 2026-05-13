@@ -291,12 +291,22 @@ function DrawerBody({
         <button
           type="button"
           onClick={() => {
-            // Drop a templated prompt into Ask's composer via the
-            // existing custom-event channel.  Same channel the legacy
-            // ChatDrawer uses; AskPage's Composer listens for it.
+            // R6.5 — normalise the tool name before seeding the Ask
+            // composer.  The manifest emits the un-prefixed shorthand
+            // (e.g. ``half_life_tool``) but the supervisor's MCP-call
+            // layer expects the backend-canonical form (``calculate_
+            // half_life_tool``).  Without normalisation, the LLM gets
+            // a shorthand the resolver doesn't recognise and the call
+            // fails at runtime.  Drop a templated prompt into Ask's
+            // composer via the existing custom-event channel — same
+            // channel the legacy ChatDrawer uses; AskPage's Composer
+            // listens for it.
+            const canonicalName = normalizeToolName(
+              tool.implementation.tool_function,
+            );
             window.dispatchEvent(
               new CustomEvent('copilot:set-input', {
-                detail: `Run ${tool.implementation.tool_function} with default params and explain the output.`,
+                detail: `Run ${canonicalName} with default params and explain the output.`,
               }),
             );
             navigate('/ask');
@@ -306,47 +316,64 @@ function DrawerBody({
           <ArrowUpRight size={12} />
           <span>Try in Ask</span>
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            // Phase R4 + R6.1 — Library "Open in Build" deep-links into
-            // the right Build surface for the tool:
-            //   - rich-model tools (PCA, rolling regression, attribution,
-            //     half-life, beta-adjusted spread, …) → ``?builder=``
-            //     opens the standalone model builder canvas.
-            //   - typed primitives (spread, cross-market, butterfly,
-            //     yield, regime, scanner) → ``?context=`` opens the
-            //     virtual primitive canvas.
-            //
-            // R6.1 — the manifest emits ``tool_function`` in its un-
-            // prefixed historical shorthand (``half_life_tool`` etc.),
-            // but every internal registry keys on the backend-canonical
-            // prefixed form (``calculate_half_life_tool``).  Run the
-            // value through ``normalizeToolName`` before the lookup so
-            // both forms resolve.  Without this the CTA dropped every
-            // rich-model click into the ``?context=`` path, where the
-            // decoder couldn't find an entry and surfaced the orange
-            // "Could not decode workspace context" card.
-            const toolFn = normalizeToolName(tool.implementation.tool_function);
-            if (hasModelMetadata(toolFn)) {
-              navigate(`/workspace?builder=${encodeURIComponent(toolFn)}`);
-              return;
-            }
-            const context = encodeURIComponent(
-              JSON.stringify({
-                tools: [{ tool: toolFn, params: {} }],
-                tool_count: 1,
-              }),
-            );
-            navigate(`/workspace?context=${context}`);
-          }}
-          className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
-        >
-          <ArrowRight size={12} />
-          <span>Open in Build</span>
-        </button>
+        <OpenInBuildCta tool={tool} />
       </div>
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// R6.5 — clearer CTA wording for model tools
+// ----------------------------------------------------------------------------
+//
+// When the tool has model-registry metadata, the click opens the
+// standalone playground (controls / output / methodology / lineage).
+// When it's a typed primitive, the click opens the chart canvas.  The
+// underlying destination has been different since R4; R6.5 makes that
+// difference visible on the button so the user knows what they're
+// about to land on instead of relying on the generic "Open in Build"
+// label.
+
+function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
+  const navigate = useNavigate();
+  // R6.1 — the manifest emits ``tool_function`` in its un-prefixed
+  // historical shorthand (``half_life_tool`` etc.), but every internal
+  // registry keys on the backend-canonical prefixed form (``calculate_
+  // half_life_tool``).  Normalise before lookup so both forms resolve.
+  // Without this the CTA dropped every rich-model click into the
+  // ``?context=`` path, where the decoder couldn't find an entry and
+  // surfaced the orange "Could not decode workspace context" card.
+  const canonicalName = normalizeToolName(tool.implementation.tool_function);
+  const isModel = hasModelMetadata(canonicalName);
+
+  const handleClick = () => {
+    if (isModel) {
+      navigate(`/workspace?builder=${encodeURIComponent(canonicalName)}`);
+      return;
+    }
+    const context = encodeURIComponent(
+      JSON.stringify({
+        tools: [{ tool: canonicalName, params: {} }],
+        tool_count: 1,
+      }),
+    );
+    navigate(`/workspace?context=${context}`);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={
+        isModel
+          ? 'Opens the standalone model builder with editable controls + methodology'
+          : 'Opens the chart canvas with editable parameter dropdowns'
+      }
+      className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
+    >
+      <ArrowRight size={12} />
+      <span>{isModel ? 'Open in builder' : 'Open in Build'}</span>
+    </button>
   );
 }
 
