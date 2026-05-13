@@ -1,0 +1,266 @@
+// ============================================================================
+// paramSpecs.ts — per-primitive-view parameter spec declarations.
+// ----------------------------------------------------------------------------
+// R6.2.  Single source of truth for the dropdown controls each typed
+// primitive view (Spread / CrossMarket / Butterfly / Yield / Regime /
+// Scanner / Forward) surfaces in its header.
+//
+// Each spec declares:
+//   - the URL param key it binds to (matches the typed-detail endpoint's
+//     query parameter — e.g. ``curve_family``, ``short_tenor``)
+//   - the human label rendered above the dropdown
+//   - the available options + default
+//   - whether changing it should fire a refetch (vs decorative)
+//
+// The legacy ``lib/workspaceParams.ts`` had a similar pattern; we don't
+// import it because the legacy file was deleted in Phase 6 and the
+// post-cleanup tree shouldn't bring it back without the surrounding
+// helpers it depended on.  This module is narrower and lives next to
+// the views it serves.
+// ============================================================================
+
+import type { PrimitiveViewKind } from './contextDecoder';
+
+/** One dropdown control on a primitive view's header. */
+export interface ParamSpec {
+  /** URL-param key (e.g. ``curve_family``).  Matches the typed-detail
+   *  endpoint's query-parameter name.  Becomes part of the encoded
+   *  ``?context=`` blob's params dict. */
+  key: string;
+  /** Label rendered above the dropdown. */
+  label: string;
+  /** Closed list of selectable options. */
+  options: Array<{ value: string; label: string }>;
+  /** Default applied when the URL doesn't carry the key. */
+  defaultValue: string;
+}
+
+// ----------------------------------------------------------------------------
+// Common option sets (the user audit's "give me dropdowns for curve /
+// tenor / lookback" ask).  Shared across views so the labels are
+// identical wherever a parameter appears.
+// ----------------------------------------------------------------------------
+
+const CURVE_FAMILIES: ParamSpec['options'] = [
+  { value: 'UST', label: 'UST · US Treasury' },
+  { value: 'DE_BUND', label: 'BUND · Germany' },
+  { value: 'IT_BTP', label: 'BTP · Italy' },
+  { value: 'FR_OAT', label: 'OAT · France' },
+  { value: 'ES_BONO', label: 'BONO · Spain' },
+  { value: 'UK_GILT', label: 'GILT · UK' },
+  { value: 'JP_JGB', label: 'JGB · Japan' },
+];
+
+const TENORS: ParamSpec['options'] = [
+  { value: '2Y', label: '2Y' },
+  { value: '3Y', label: '3Y' },
+  { value: '5Y', label: '5Y' },
+  { value: '7Y', label: '7Y' },
+  { value: '10Y', label: '10Y' },
+  { value: '20Y', label: '20Y' },
+  { value: '30Y', label: '30Y' },
+];
+
+/** Trading-day lookback presets for the typed-detail endpoints that
+ *  accept ``lookback_days``.  Bare numbers (no "y" / "d" suffix) so
+ *  they pass straight through ``coerceLookbackDays`` on the fetch
+ *  side without re-parsing. */
+const LOOKBACK_DAYS: ParamSpec['options'] = [
+  { value: '63', label: '3M (63d)' },
+  { value: '126', label: '6M (126d)' },
+  { value: '252', label: '1Y (252d)' },
+  { value: '504', label: '2Y (504d)' },
+  { value: '1260', label: '5Y (1260d)' },
+  { value: '2520', label: '10Y (2520d)' },
+];
+
+/** Regime classifier's named lookback window — different vocabulary
+ *  from the numeric lookback_days; named periods that map to the
+ *  classifier's hard-coded window set. */
+const REGIME_LOOKBACK_PERIODS: ParamSpec['options'] = [
+  { value: '1d', label: '1d (daily)' },
+  { value: '5d', label: '5d (weekly)' },
+  { value: '22d', label: '22d (monthly)' },
+  { value: '63d', label: '63d (quarterly)' },
+];
+
+// ----------------------------------------------------------------------------
+// Per-view spec lists.  Order is the visible order in the header strip.
+// ----------------------------------------------------------------------------
+
+/** Returns the dropdown spec list for a primitive-view kind.  Returns
+ *  an empty array for views that don't take params (scanner has no
+ *  per-curve narrowing today; forward is a placeholder). */
+export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
+  switch (kind) {
+    case 'spread':
+      return [
+        {
+          key: 'curve_family',
+          label: 'Curve',
+          options: CURVE_FAMILIES,
+          defaultValue: 'UST',
+        },
+        {
+          key: 'short_tenor',
+          label: 'Short tenor',
+          options: TENORS,
+          defaultValue: '2Y',
+        },
+        {
+          key: 'long_tenor',
+          label: 'Long tenor',
+          options: TENORS,
+          defaultValue: '10Y',
+        },
+        {
+          key: 'lookback_days',
+          label: 'Lookback',
+          options: LOOKBACK_DAYS,
+          defaultValue: '252',
+        },
+      ];
+    case 'cross_market':
+      return [
+        {
+          key: 'curve_family_1',
+          label: 'Curve A',
+          options: CURVE_FAMILIES,
+          defaultValue: 'IT_BTP',
+        },
+        {
+          key: 'curve_family_2',
+          label: 'Curve B',
+          options: CURVE_FAMILIES,
+          defaultValue: 'DE_BUND',
+        },
+        {
+          key: 'tenor',
+          label: 'Tenor',
+          options: TENORS,
+          defaultValue: '10Y',
+        },
+        {
+          key: 'lookback_days',
+          label: 'Lookback',
+          options: LOOKBACK_DAYS,
+          defaultValue: '252',
+        },
+      ];
+    case 'butterfly':
+      return [
+        {
+          key: 'curve_family',
+          label: 'Curve',
+          options: CURVE_FAMILIES,
+          defaultValue: 'UST',
+        },
+        {
+          key: 'short_tenor',
+          label: 'Short',
+          options: TENORS,
+          defaultValue: '2Y',
+        },
+        {
+          key: 'belly_tenor',
+          label: 'Belly',
+          options: TENORS,
+          defaultValue: '5Y',
+        },
+        {
+          key: 'long_tenor',
+          label: 'Long',
+          options: TENORS,
+          defaultValue: '10Y',
+        },
+        {
+          key: 'lookback_days',
+          label: 'Lookback',
+          options: LOOKBACK_DAYS,
+          defaultValue: '252',
+        },
+      ];
+    case 'yield':
+      return [
+        {
+          key: 'curve_family',
+          label: 'Curve',
+          options: CURVE_FAMILIES,
+          defaultValue: 'UST',
+        },
+        {
+          key: 'tenor',
+          label: 'Tenor',
+          options: TENORS,
+          defaultValue: '10Y',
+        },
+      ];
+    case 'regime':
+      return [
+        {
+          key: 'curve_family',
+          label: 'Curve',
+          options: CURVE_FAMILIES,
+          defaultValue: 'UST',
+        },
+        {
+          key: 'front_tenor',
+          label: 'Front',
+          options: TENORS,
+          defaultValue: '2Y',
+        },
+        {
+          key: 'back_tenor',
+          label: 'Back',
+          options: TENORS,
+          defaultValue: '10Y',
+        },
+        {
+          key: 'lookback_period',
+          label: 'Window',
+          options: REGIME_LOOKBACK_PERIODS,
+          defaultValue: '22d',
+        },
+      ];
+    case 'scanner':
+      return [
+        {
+          key: 'top_n',
+          label: 'Top N',
+          options: [
+            { value: '4', label: '4' },
+            { value: '8', label: '8' },
+            { value: '12', label: '12' },
+            { value: '20', label: '20' },
+          ],
+          defaultValue: '8',
+        },
+        {
+          key: 'min_abs_z_score',
+          label: 'Min |z|',
+          options: [
+            { value: '0.5', label: '0.5' },
+            { value: '1', label: '1.0' },
+            { value: '1.5', label: '1.5' },
+            { value: '2', label: '2.0' },
+          ],
+          defaultValue: '1.5',
+        },
+      ];
+    case 'forward':
+      // No controls — the view is a placeholder until /detail/forward
+      // ships.  When it does, fold the new spec in here.
+      return [];
+  }
+}
+
+/** Resolve the current value for a param: URL value (if present) wins
+ *  over the default declared in the spec. */
+export function resolveParamValue(
+  spec: ParamSpec,
+  current: Record<string, string> | undefined,
+): string {
+  const url = current?.[spec.key];
+  if (url != null && url !== '') return url;
+  return spec.defaultValue;
+}

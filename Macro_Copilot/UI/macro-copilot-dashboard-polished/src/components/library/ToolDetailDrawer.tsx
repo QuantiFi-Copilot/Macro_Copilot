@@ -47,6 +47,7 @@ import {
   type ManifestTool,
 } from '@/types/library';
 import { hasModelMetadata } from '@/lib/modelRegistry';
+import { normalizeToolName } from '@/lib/toolNames';
 import { cn } from '@/utils/cn';
 import { prettyTitle } from './lib/prettyTitle';
 
@@ -308,17 +309,25 @@ function DrawerBody({
         <button
           type="button"
           onClick={() => {
-            // Phase R4 — Library "Open in Build" now deep-links into
+            // Phase R4 + R6.1 — Library "Open in Build" deep-links into
             // the right Build surface for the tool:
             //   - rich-model tools (PCA, rolling regression, attribution,
             //     half-life, beta-adjusted spread, …) → ``?builder=``
-            //     opens the standalone model builder canvas
+            //     opens the standalone model builder canvas.
             //   - typed primitives (spread, cross-market, butterfly,
             //     yield, regime, scanner) → ``?context=`` opens the
-            //     virtual primitive canvas
-            // Falls back to the bare ``/workspace`` shell when the tool
-            // is recognised by neither path.
-            const toolFn = tool.implementation.tool_function;
+            //     virtual primitive canvas.
+            //
+            // R6.1 — the manifest emits ``tool_function`` in its un-
+            // prefixed historical shorthand (``half_life_tool`` etc.),
+            // but every internal registry keys on the backend-canonical
+            // prefixed form (``calculate_half_life_tool``).  Run the
+            // value through ``normalizeToolName`` before the lookup so
+            // both forms resolve.  Without this the CTA dropped every
+            // rich-model click into the ``?context=`` path, where the
+            // decoder couldn't find an entry and surfaced the orange
+            // "Could not decode workspace context" card.
+            const toolFn = normalizeToolName(tool.implementation.tool_function);
             if (hasModelMetadata(toolFn)) {
               navigate(`/workspace?builder=${encodeURIComponent(toolFn)}`);
               return;

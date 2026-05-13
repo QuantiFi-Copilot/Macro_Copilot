@@ -1,29 +1,39 @@
 // ============================================================================
 // contextDecoder — translate Ask's ``?context=`` URL param into a Build view.
 // ----------------------------------------------------------------------------
-// Phase R1.2 reintroduces the bridge that the deleted ``WorkspacePage`` used
+// Phase R1.2 reintroduced the bridge that the deleted ``WorkspacePage`` used
 // to provide.  When the user clicks "Open in Build" on an Ask answer, the
 // chat encodes the supervisor turn's ``workspaceContext`` (a list of
 // {tool, params} from MCP tool calls) into ``/workspace?context=<encoded
 // JSON>``.  BuildShell hands the raw string to this decoder which:
 //
 //   1. JSON-parses it (URI-decoded) into a ``WorkspaceContext``.
-//   2. Picks the most informative tool call from the context — chart-bearing
-//      primitives beat scanners which beat regimes which beat forwards.
-//   3. Stringifies the chosen tool's params dict.
-//   4. Returns a ``DecodedPrimitive`` discriminated union the canvas can
-//      dispatch on.
+//   2. Normalises every tool name through ``normalizeToolName`` so
+//      manifest shorthand (e.g. ``half_life_tool``) resolves to the
+//      backend-canonical form (``calculate_half_life_tool``).  R6.1.
+//   3. Routes to one of two surfaces based on the chosen tool:
+//        - rich-model tool (has model-registry metadata) → emits
+//          ``{kind: 'builder', toolName}`` so the caller navigates to
+//          ``?builder=<toolName>`` (the standalone PCA / RollingRegression
+//          / Attribution / HalfLife / BetaAdjustedSpread builder).
+//        - typed primitive tool (spread / cross_market / butterfly /
+//          yield / regime / scanner / forward) → emits a
+//          ``{kind: <view>, toolName, params}`` so the caller mounts
+//          the virtual primitive canvas with the typed-detail fetch.
+//   4. Picks the most informative tool when context carries multiple
+//      — chart-bearing primitives beat scanner-tabular beats regime-
+//      classification beats forward-placeholder, with the rich-model
+//      surface always winning when present (the user explicitly
+//      invoked an analytical tool, so the playground is the right
+//      landing).
 //
 // Returns ``null`` for malformed payloads (bad JSON / empty tools list /
 // unknown tool) — caller falls back to the Build empty shell.
-//
-// IMPORTANT: this decoder ONLY knows how to route to the typed primitive
-// surface.  Model-class primitives (PCA / rolling regression / attribution)
-// will be reintroduced in phase R3 — until then they fall through to ``null``
-// and Build shows the empty shell.
 // ============================================================================
 
 import type { WorkspaceContext } from '@/types/copilot';
+import { hasModelMetadata } from '@/lib/modelRegistry';
+import { normalizeToolName } from '@/lib/toolNames';
 
 /** Closed family of typed primitive views supported on Build today. */
 export type PrimitiveViewKind =
@@ -35,20 +45,36 @@ export type PrimitiveViewKind =
   | 'scanner'
   | 'forward';
 
-/** Result of decoding a ``?context=`` URL param. */
-export interface DecodedPrimitive {
-  kind: PrimitiveViewKind;
-  /** Original MCP tool name; surfaced as the kicker chip in the view. */
-  toolName: string;
-  /** Flat string-only params dict — keys/values pulled off the original
-   *  MCP call.  Matches the shape the typed-detail endpoints expect. */
-  params: Record<string, string>;
-}
+/** Result of decoding a ``?context=`` URL param.  Two discriminated
+ *  variants:
+ *    - ``primitive`` kinds (spread / cross_market / …) — caller mounts
+ *      the ``VirtualPrimitiveCanvas`` with the typed-detail fetch.
+ *    - ``builder`` — caller navigates to ``/workspace?builder=<toolName>``
+ *      and the standalone model playground (R4) materialises.
+ */
+export type DecodedPrimitive =
+  | {
+      kind: PrimitiveViewKind;
+      /** Backend-canonical tool name; surfaced as the kicker chip. */
+      toolName: string;
+      /** Flat string-only params dict.  Matches the typed-detail endpoint
+       *  query-param shape. */
+      params: Record<string, string>;
+    }
+  | {
+      kind: 'builder';
+      /** Backend-canonical tool name (e.g. ``calculate_pca_yield_curve_tool``).
+       *  Caller appends ``?builder=<toolName>`` to the URL. */
+      toolName: string;
+      /** Flat string-only params dict forwarded to the builder as deep-
+       *  link initial form values (e.g. ``?builder=...&curve_family=UST``). */
+      params: Record<string, string>;
+    };
 
-/** Map MCP tool names → typed primitive view kinds.  Order maps directly
- *  onto the dispatcher in ``VirtualPrimitiveCanvas`` — adding a new entry
+/** Map MCP tool names → typed primitive view kinds.  Adding a new entry
  *  is a single-line change here + a new view component + one branch in
- *  the dispatcher. */
+ *  the dispatcher.  Names are the BACKEND-CANONICAL prefixed form;
+ *  manifest shorthand is resolved by ``normalizeToolName`` before lookup. */
 const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = {
   calculate_curve_spread_tool: 'spread',
   calculate_cross_market_spread_tool: 'cross_market',
@@ -57,14 +83,15 @@ const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = {
   classify_curve_move_tool: 'regime',
   scan_extremes_tool: 'scanner',
   // OIS forward-rate primitive — view ships an explicit "not wired"
-  // placeholder until ``/detail/forward`` lands.  Listed here so the
-  // dispatcher reads consistently.
+  // placeholder until ``/detail/forward`` lands.
   calculate_ois_forward_rate_tool: 'forward',
 };
 
 /** Priority when context carries multiple tools.  Chart-bearing
  *  primitives win over scanner-tabular over regime-classification over
- *  forward-placeholder. */
+ *  forward-placeholder.  Rich-model (builder) routing wins over all
+ *  primitive priorities — the user explicitly invoked an analytical
+ *  tool, so the standalone playground is the right destination. */
 const VIEW_PRIORITY: Record<PrimitiveViewKind, number> = {
   spread: 5,
   cross_market: 5,
@@ -75,9 +102,18 @@ const VIEW_PRIORITY: Record<PrimitiveViewKind, number> = {
   forward: 1,
 };
 
-/** Public entry point.  Returns the chosen primitive view + its params
- *  dict, or ``null`` when the context is unparseable / empty / contains
- *  only unrecognised tools. */
+/** Builder routing always beats every primitive priority.  See the
+ *  module docstring for rationale. */
+const BUILDER_PRIORITY = 100;
+
+/** Public entry point.  Returns the chosen view (primitive or builder)
+ *  + its params dict, or ``null`` when the context is unparseable / empty
+ *  / contains only unrecognised tools.
+ *
+ *  When the context carries multiple tools, the highest-priority one
+ *  wins (builder > chart primitives > scanner > regime > forward).
+ *  The lower-priority entries are dropped; multi-card composition on
+ *  the canvas is the follow-up (R6.3). */
 export function decodePrimitiveContext(
   raw: string,
 ): DecodedPrimitive | null {
@@ -93,16 +129,25 @@ export function decodePrimitiveContext(
   let bestScore = -1;
 
   for (const t of parsed.tools) {
-    const kind = TOOL_TO_VIEW[t.tool];
+    const canonical = normalizeToolName(t.tool);
+    const params = stringifyParams(t.params);
+
+    // Rich-model tools always win.
+    if (hasModelMetadata(canonical)) {
+      if (BUILDER_PRIORITY >= bestScore) {
+        bestScore = BUILDER_PRIORITY;
+        best = { kind: 'builder', toolName: canonical, params };
+      }
+      continue;
+    }
+
+    // Typed primitive views.
+    const kind = TOOL_TO_VIEW[canonical];
     if (!kind) continue;
     const score = VIEW_PRIORITY[kind];
     if (score >= bestScore) {
       bestScore = score;
-      best = {
-        kind,
-        toolName: t.tool,
-        params: stringifyParams(t.params),
-      };
+      best = { kind, toolName: canonical, params };
     }
   }
   return best;
