@@ -357,6 +357,32 @@ def validate_workflow(
                 except Exception:
                     produced_units[nid] = None
                     continue
+                # Strict output_field check: when the resolver has
+                # declared a non-empty ``output_field_units`` map, the
+                # node's output_field MUST be one of the declared keys.
+                # Catching this at validate-time turns a runtime
+                # bridge-lift ValueError ("output_field='X' is not
+                # declared on <SchemaClass>") into a clean validation
+                # refusal — the router's normaliser can then demote
+                # the bind to CLARIFY rather than crash mid-execute.
+                # Resolvers that explicitly declare ``output_field_units={}``
+                # (e.g. snapshot-only primitives) are exempt: empty
+                # means "unknown set, defer to runtime".
+                if (
+                    spec.output_field_units
+                    and node.output_field not in spec.output_field_units
+                ):
+                    raise WorkflowValidationError(
+                        f"Workflow {workflow.workflow_id!r}: primitive "
+                        f"node {node.node_id!r} (tool "
+                        f"{node.tool_name!r}) declares "
+                        f"output_field={node.output_field!r}, but the "
+                        f"resolver only knows: "
+                        f"{sorted(spec.output_field_units.keys())}.  "
+                        "Pick one of the declared fields; this would "
+                        "otherwise fail at execute-time inside the "
+                        "primitive→artifact bridge."
+                    )
                 produced_units[nid] = spec.output_field_units.get(
                     node.output_field
                 )

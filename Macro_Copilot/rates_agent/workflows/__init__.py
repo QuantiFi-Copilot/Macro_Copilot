@@ -387,11 +387,15 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         # Defaults to "Series"; explicit for clarity.
         output_artifact_type="Series",
     ),
-    # ---- Signal-shaped primitives needed by the backtest template ----
+    # ---- Custom-window z-score signal primitive ----
     # ``calculate_zscore_custom_tool`` emits a TimeSeries with Z_SCORE
-    # units — the canonical signal source for the backtest archetype
-    # (threshold on |z| > N).  PR 20 adds it to the resolver because
-    # the backtest template references it by tool_name.
+    # units (rolling z-score on a single yield series).  Both field
+    # names are declared:
+    #   - ``time_series`` (legacy V1 name)
+    #   - ``time_series_zscore`` (canonical convention used by every
+    #     other z-score-emitting primitive in the codebase)
+    # The two fields carry identical payloads — see
+    # ZscoreCustomOutput's docstring for the naming reconciliation.
     "calculate_zscore_custom_tool": PrimitiveSpec(
         tool_name="calculate_zscore_custom_tool",
         callable=calculate_zscore_custom,
@@ -400,6 +404,7 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=ZSCORE_CUSTOM_CONFIG_PATH,
         output_field_units={
             "time_series": "z_score",
+            "time_series_zscore": "z_score",
         },
     ),
 }

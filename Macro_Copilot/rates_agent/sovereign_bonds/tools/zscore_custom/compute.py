@@ -281,5 +281,13 @@ def calculate_zscore_custom(
         ],
     )
 
-    output = ZscoreCustomOutput(current_metrics=metrics, time_series=ts)
+    # Populate both ``time_series`` (legacy) and
+    # ``time_series_zscore`` (canonical) with the same TimeSeries
+    # instance.  See ZscoreCustomOutput docstring for the naming-
+    # convention reconciliation rationale.
+    output = ZscoreCustomOutput(
+        current_metrics=metrics,
+        time_series=ts,
+        time_series_zscore=ts,
+    )
     return output.model_dump()
