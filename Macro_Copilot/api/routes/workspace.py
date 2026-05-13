@@ -168,6 +168,53 @@ class WorkspaceDetailResponse(BaseModel):
     edges: List[EdgeSummary]
 
 
+class WorkspaceListItem(BaseModel):
+    """One row in the sidebar list response.
+
+    Lightweight by design — no DAG topology, no per-node artifact
+    summaries.  Those are fetched lazily via ``GET /{slug}`` when the
+    user opens a specific workspace.  Carries just enough for the
+    sidebar to render a row + decide ordering.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: uuid.UUID
+    slug: str
+    name: Optional[str]
+    dag_hash: str
+    focus_node: Optional[str]
+    parent_workspace_id: Optional[uuid.UUID]
+    created_by: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+class WorkspaceListResponse(BaseModel):
+    """Response from ``GET /workspace?limit=N&filter=...``.
+
+    Wrapper envelope rather than a bare list so future fields
+    (``has_more``, ``total_count``, cursor tokens) can be added
+    without bumping the response shape.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: List[WorkspaceListItem]
+    limit: int
+    offset: int
+    filter: str = Field(
+        ...,
+        description=(
+            "Echoes the requested filter for client cache keying — "
+            "matches one of the accepted values (``recent``, "
+            "``all``, ``pinned``, ``shared``).  Forward-compat keys "
+            "(pinned / shared) fall through to recent ordering "
+            "until the substrate tracks those flags."
+        ),
+    )
+
+
 class WorkspaceReplayResponse(BaseModel):
     """Response from ``GET /workspace/{slug}/replay``.
 
@@ -206,6 +253,82 @@ class WorkspaceReplayResponse(BaseModel):
     methodology_diffs: List[MethodologyDiff]
     reconstructed: List[ReconstructedMethodology]
     notes: List[str]
+
+
+# ============================================================================
+# GET /workspace — sidebar list surface
+# ============================================================================
+
+
+@router.get(
+    "",
+    response_model=WorkspaceListResponse,
+)
+def list_workspaces_endpoint(
+    limit: int = Query(
+        25,
+        ge=1,
+        le=200,
+        description=(
+            "Maximum number of workspaces to return.  Clamped to "
+            "[1, 200] server-side regardless of client value."
+        ),
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Pagination offset; defaults to 0.",
+    ),
+    filter: str = Query(  # noqa: A002 - matches client ?filter=...
+        "recent",
+        description=(
+            "Sidebar section semantics.  ``recent`` (default) orders "
+            "by last_accessed_at NULL-coalesced to updated_at.  "
+            "``all`` orders by updated_at only.  ``pinned`` / "
+            "``shared`` are accepted for forward-compat with the "
+            "sidebar UI's section taxonomy and currently fall "
+            "through to recent ordering."
+        ),
+    ),
+) -> WorkspaceListResponse:
+    """List workspaces for the Build sidebar.
+
+    Read-only, summaries-only.  The per-row response carries just
+    the identifying fields + ordering timestamps; opening a
+    workspace via ``GET /{slug}`` fetches the full DAG topology +
+    per-node artifact summaries.
+    """
+    from state.workspace_repo import list_workspaces
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        records = list_workspaces(
+            conn=conn,
+            limit=limit,
+            offset=offset,
+            filter=filter,
+        )
+
+    items = [
+        WorkspaceListItem(
+            workspace_id=r.id,
+            slug=r.slug,
+            name=r.name,
+            dag_hash=r.dag_hash,
+            focus_node=r.focus_node,
+            parent_workspace_id=r.parent_workspace_id,
+            created_by=r.created_by,
+            created_at=r.created_at.isoformat(),
+            updated_at=r.updated_at.isoformat(),
+        )
+        for r in records
+    ]
+    return WorkspaceListResponse(
+        items=items,
+        limit=limit,
+        offset=offset,
+        filter=filter,
+    )
 
 
 # ============================================================================
@@ -299,15 +422,31 @@ def get_workspace_endpoint(slug: str) -> WorkspaceDetailResponse:
     from state.workspace_repo import (
         UnknownWorkspaceError,
         get_workspace_by_slug,
+        touch_workspace_access,
     )
 
     engine = get_engine()
+    # ``connect()`` returns an autocommit-style read connection; the
+    # ``touch_workspace_access`` write is a tiny one-row UPDATE that
+    # we wrap in an explicit transaction to keep the contract clean
+    # (one statement, committed before the read returns).  Failures
+    # are logged but never block the read — stamping last_accessed_at
+    # is a best-effort observability signal, not a correctness gate.
     with engine.connect() as conn:
         try:
             ws = get_workspace_by_slug(slug, conn=conn)
         except UnknownWorkspaceError:
             raise HTTPException(
                 status_code=404, detail=f"No workspace with slug {slug!r}"
+            )
+
+        try:
+            with conn.begin():
+                touch_workspace_access(slug, conn=conn)
+        except Exception as exc:  # defensive: never block the read
+            logger.warning(
+                "touch_workspace_access failed for slug=%s: %s",
+                slug, exc,
             )
 
         try:

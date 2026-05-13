@@ -83,6 +83,38 @@ export interface CreateWorkspaceResponse {
   url: string;
 }
 
+// ----------------------------------------------------------------------------
+// List surface — powers the Build sidebar's "Recent / All workspaces" lists.
+// PR A.
+// ----------------------------------------------------------------------------
+
+/** Filter keys the server accepts on ``GET /workspace?filter=...``.
+ *  ``recent`` (default) orders by last_accessed_at, COALESCED to
+ *  updated_at so never-opened workspaces still surface.  ``all``
+ *  orders by updated_at only.  ``pinned`` / ``shared`` are forward-
+ *  compat with the sidebar's section taxonomy and currently fall
+ *  through to ``recent`` ordering server-side. */
+export type WorkspaceListFilter = 'recent' | 'all' | 'pinned' | 'shared';
+
+export interface WorkspaceListItem {
+  workspace_id: string;
+  slug: string;
+  name: string | null;
+  dag_hash: string;
+  focus_node: string | null;
+  parent_workspace_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceListResponse {
+  items: WorkspaceListItem[];
+  limit: number;
+  offset: number;
+  filter: WorkspaceListFilter;
+}
+
 export interface MethodologyDiff {
   yaml_path: string;
   original_version_id: number;
@@ -153,6 +185,26 @@ export async function createWorkspace(args: {
 export async function getWorkspace(slug: string): Promise<WorkspaceDetail> {
   return fetchJSON<WorkspaceDetail>(
     `${PREFIX}/workspace/${encodeURIComponent(slug)}`,
+  );
+}
+
+/** List workspaces for the Build sidebar.
+ *
+ *  All parameters are optional.  ``limit`` is clamped to ``[1, 200]``
+ *  server-side; oversized client requests are silently capped rather
+ *  than rejected so the sidebar never bombs on a bad config. */
+export async function listWorkspaces(args?: {
+  limit?: number;
+  offset?: number;
+  filter?: WorkspaceListFilter;
+}): Promise<WorkspaceListResponse> {
+  const params = new URLSearchParams();
+  if (args?.limit != null) params.set('limit', String(args.limit));
+  if (args?.offset != null) params.set('offset', String(args.offset));
+  if (args?.filter) params.set('filter', args.filter);
+  const qs = params.toString();
+  return fetchJSON<WorkspaceListResponse>(
+    `${PREFIX}/workspace${qs ? `?${qs}` : ''}`,
   );
 }
 

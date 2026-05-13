@@ -140,6 +140,21 @@ class StoredDag:
     edges: List[StoredDagEdge]
 
 
+@dataclass(frozen=True)
+class PersistedWorkflowDag:
+    """Hashes produced while persisting an executed workflow DAG.
+
+    Returned by ``persist_dag_from_workflow_result`` so the caller
+    can immediately mint a workspace pointing at the new
+    ``dag_hash`` plus surface the terminal artifact hash to the
+    UI without a follow-up read.
+    """
+
+    dag_hash: str
+    terminal_artifact_hash: str
+    node_artifact_hashes: Dict[str, str]
+
+
 # ============================================================================
 # Public API
 # ============================================================================
@@ -275,6 +290,183 @@ def persist_dag_from_lineage(
         head_artifact_hash[:12] if head_artifact_hash else None,
     )
     return dag_hash
+
+
+def persist_dag_from_workflow_result(
+    workflow,
+    result,
+    *,
+    conn: Connection,
+    object_storage,
+) -> PersistedWorkflowDag:
+    """Persist an executed workflow's true DAG shape.
+
+    ``persist_dag_from_lineage`` (above) is intentionally linear
+    because it normalises a single artifact's lineage chain.
+    Workflow execution has richer topology: branches, joins,
+    literal bindings, and one artifact per executed node.  This
+    helper stores that shape without changing the existing
+    tables:
+
+      - every ``result.node_artifacts`` value is put into
+        ``artifact_metadata`` via ``state.artifact_store.put_artifact``;
+      - ``dags.topology`` carries workflow nodes / edges / literal
+        bindings plus per-node artifact hashes;
+      - ``dag_nodes.artifact_hash`` is populated for EVERY executed
+        node, not only the terminal node.
+
+    The DAG hash includes per-node artifact hashes, so the same
+    logical template re-run against a revised data snapshot gets a
+    distinct ``dag_hash`` instead of silently pointing at older
+    artifacts.
+
+    Imports of ``shared.workflow`` are deferred to call-time to
+    avoid a circular-import path (``state`` → ``shared.workflow`` →
+    ``shared.artifacts``).  The module-level imports above stay
+    finance-blind.
+
+    Parameters
+    ----------
+    workflow :
+        ``shared.workflow.types.Workflow`` instance — the bound
+        DAG that was executed.
+    result :
+        ``shared.workflow.result.WorkflowResult`` — the executor's
+        return value carrying per-node artifacts.
+    conn :
+        Caller-owned transaction.  The helper does NOT open a
+        sub-transaction; it inherits the caller's atomicity.
+    object_storage :
+        Object-storage backend instance passed through to
+        ``put_artifact``.
+
+    Returns
+    -------
+    PersistedWorkflowDag
+        Identity bits for the persisted DAG: the ``dag_hash``
+        suitable for ``POST /workspace``, the terminal artifact's
+        hash, and the full per-node hash map.
+
+    Raises
+    ------
+    ValueError
+        When ``result.node_artifacts`` does not match
+        ``workflow.nodes`` 1:1.  Surfaces the mismatch loudly so a
+        partial-execute that didn't bubble up an error doesn't
+        silently persist an inconsistent DAG.
+    """
+    # Lazy imports — see docstring.
+    from shared.workflow.types import OperatorNode, PrimitiveNode  # noqa: F401
+    from state.artifact_store import put_artifact
+
+    workflow_node_ids = {node.node_id for node in workflow.nodes}
+    result_node_ids = set(result.node_artifacts.keys())
+    missing = workflow_node_ids - result_node_ids
+    extra = result_node_ids - workflow_node_ids
+    if missing or extra:
+        raise ValueError(
+            "WorkflowResult node_artifacts must match workflow nodes "
+            "1:1 — persistence cannot proceed.  "
+            f"Missing from result: {sorted(missing)}; "
+            f"unexpected in result: {sorted(extra)}.  "
+            "This is usually a workflow-executor bug where a node "
+            "raised mid-execute without bubbling up."
+        )
+
+    # 1. Put every node's artifact, capturing each hash by node_id.
+    node_artifact_hashes: Dict[str, str] = {}
+    for node_id in sorted(result.node_artifacts.keys()):
+        node_artifact_hashes[node_id] = put_artifact(
+            result.node_artifacts[node_id],
+            conn=conn,
+            object_storage=object_storage,
+        )
+
+    terminal_artifact_hash = node_artifact_hashes[workflow.terminal_node_id]
+
+    # 2. Build the canonical topology JSON + content-hash it.
+    topology = _workflow_result_to_topology(workflow, node_artifact_hashes)
+    dag_hash = _hash_topology(topology)
+
+    # 3. Persist the DAG row.  ON CONFLICT DO NOTHING because the
+    #    same logical DAG re-run with identical params + identical
+    #    upstream data will hash identically — idempotent.
+    conn.execute(
+        text(
+            f"""
+            INSERT INTO {_COPILOT_STATE_SCHEMA}.dags (hash, topology)
+            VALUES (:hash, CAST(:topology AS JSONB))
+            ON CONFLICT (hash) DO NOTHING
+            """
+        ),
+        {"hash": dag_hash, "topology": _canonical_json(topology)},
+    )
+
+    # 4. Per-node row with the executed artifact_hash filled in.
+    for node in workflow.nodes:
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {_COPILOT_STATE_SCHEMA}.dag_nodes (
+                    dag_hash, node_id, kind, name, params, artifact_hash
+                )
+                VALUES (
+                    :dag_hash, :node_id, :kind, :name,
+                    CAST(:params AS JSONB), :artifact_hash
+                )
+                ON CONFLICT (dag_hash, node_id) DO NOTHING
+                """
+            ),
+            {
+                "dag_hash": dag_hash,
+                "node_id": node.node_id,
+                "kind": node.kind,
+                "name": _workflow_node_name(node),
+                "params": _canonical_json(
+                    _workflow_node_params_for_storage(node)
+                ),
+                "artifact_hash": node_artifact_hashes[node.node_id],
+            },
+        )
+
+    # 5. Per-edge row with the substrate's actual input-slot names
+    #    (not a fixed sentinel as ``persist_dag_from_lineage`` uses).
+    for edge in workflow.edges:
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {_COPILOT_STATE_SCHEMA}.dag_edges (
+                    dag_hash, from_node, to_node, slot_name
+                )
+                VALUES (
+                    :dag_hash, :from_node, :to_node, :slot_name
+                )
+                ON CONFLICT
+                    (dag_hash, from_node, to_node, slot_name)
+                    DO NOTHING
+                """
+            ),
+            {
+                "dag_hash": dag_hash,
+                "from_node": edge.source_node_id,
+                "to_node": edge.target_node_id,
+                "slot_name": edge.target_input_slot,
+            },
+        )
+
+    logger.info(
+        "persist_dag_from_workflow_result: stored %s "
+        "(workflow=%s nodes=%d terminal=%s)",
+        dag_hash[:12],
+        workflow.workflow_id,
+        len(workflow.nodes),
+        terminal_artifact_hash[:12],
+    )
+    return PersistedWorkflowDag(
+        dag_hash=dag_hash,
+        terminal_artifact_hash=terminal_artifact_hash,
+        node_artifact_hashes=node_artifact_hashes,
+    )
 
 
 def get_dag(dag_hash: str, *, conn: Connection) -> StoredDag:
@@ -436,6 +628,126 @@ def _lineage_to_topology(lineage: Lineage) -> Dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def _workflow_result_to_topology(
+    workflow,
+    node_artifact_hashes: Dict[str, str],
+) -> Dict[str, Any]:
+    """Canonical topology JSON for an executed workflow DAG.
+
+    Sort order on nodes / edges / literal_bindings is the load-
+    bearing determinism guarantee — the topology hash is computed
+    from the canonical-JSON representation, so two byte-identical
+    workflows must produce byte-identical topology JSON.
+
+    Differences from ``_lineage_to_topology``:
+      - Carries the substrate's real edge ``slot`` names (not the
+        single ``_DEFAULT_SLOT_NAME`` sentinel).
+      - Captures the workflow's ``literal_bindings`` so a workspace
+        replay can reconstruct the exact bound shape.
+      - Records per-node ``artifact_hash`` inside each node entry
+        rather than only at the terminal — gives multi-node DAGs
+        a complete content-addressing surface.
+    """
+    nodes: List[Dict[str, Any]] = []
+    for node in sorted(workflow.nodes, key=lambda n: n.node_id):
+        nodes.append(
+            {
+                "node_id": node.node_id,
+                "kind": node.kind,
+                "name": _workflow_node_name(node),
+                "params": _workflow_node_params_for_storage(node),
+                "artifact_hash": node_artifact_hashes[node.node_id],
+            }
+        )
+
+    edges: List[Dict[str, Any]] = [
+        {
+            "from": edge.source_node_id,
+            "to": edge.target_node_id,
+            "slot": edge.target_input_slot,
+        }
+        for edge in sorted(
+            workflow.edges,
+            key=lambda e: (
+                e.source_node_id,
+                e.target_node_id,
+                e.target_input_slot,
+            ),
+        )
+    ]
+
+    literals: List[Dict[str, Any]] = [
+        {
+            "to": literal.target_node_id,
+            "slot": literal.target_input_slot,
+            "value": literal.value,
+        }
+        for literal in sorted(
+            workflow.literal_bindings,
+            key=lambda lit: (
+                lit.target_node_id,
+                lit.target_input_slot,
+                str(lit.value),
+            ),
+        )
+    ]
+
+    return {
+        "workflow_id": workflow.workflow_id,
+        "terminal_node_id": workflow.terminal_node_id,
+        "nodes": nodes,
+        "edges": edges,
+        "literal_bindings": literals,
+    }
+
+
+def _workflow_node_name(node) -> str:
+    """Display name for a workflow node row.
+
+    ``PrimitiveNode`` carries ``tool_name`` (e.g.
+    ``calculate_curve_spread_tool``); ``OperatorNode`` carries
+    ``operator_name`` (e.g. ``threshold_events``).  Falls back to
+    ``node_id`` for any forward-compat node kind so the column
+    is never NULL.
+    """
+    tool_name = getattr(node, "tool_name", None)
+    if isinstance(tool_name, str) and tool_name:
+        return tool_name
+    operator_name = getattr(node, "operator_name", None)
+    if isinstance(operator_name, str) and operator_name:
+        return operator_name
+    return getattr(node, "node_id", "unknown")
+
+
+def _workflow_node_params_for_storage(node) -> Dict[str, Any]:
+    """Return the ``params`` payload to persist in ``dag_nodes.params``
+    for a workflow node.
+
+    The JSON shape is keyed by node kind so a downstream reader
+    can decode it without consulting another table:
+
+      - PrimitiveNode → ``{tool_name, output_field, params}``
+      - OperatorNode → ``{operator_name, params}``
+
+    Falls back to an empty dict for forward-compat kinds so the
+    column is always a valid JSONB object.
+    """
+    tool_name = getattr(node, "tool_name", None)
+    if isinstance(tool_name, str) and tool_name:
+        return {
+            "tool_name": tool_name,
+            "output_field": getattr(node, "output_field", None),
+            "params": dict(getattr(node, "params", {}) or {}),
+        }
+    operator_name = getattr(node, "operator_name", None)
+    if isinstance(operator_name, str) and operator_name:
+        return {
+            "operator_name": operator_name,
+            "params": dict(getattr(node, "params", {}) or {}),
+        }
+    return {}
+
+
 def _hash_topology(topology: Dict[str, Any]) -> str:
     """Content-hash the topology via the same canonical-JSON
     pipeline lineage uses.  Re-using ``_canonical_json`` keeps the
@@ -485,7 +797,9 @@ __all__ = [
     "StoredDag",
     "StoredDagNode",
     "StoredDagEdge",
+    "PersistedWorkflowDag",
     "persist_dag_from_lineage",
+    "persist_dag_from_workflow_result",
     "get_dag",
     "list_node_artifact_hashes",
 ]

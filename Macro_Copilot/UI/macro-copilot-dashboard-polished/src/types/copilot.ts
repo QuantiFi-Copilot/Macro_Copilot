@@ -110,6 +110,18 @@ export type WorkflowTurnPayload = {
     workflow_lineage_summary?: string;
     error?: string;
   };
+  // PR A — persisted workspace handles.  Optional; only populated
+  // when the runner opted into ``persist=True`` (the chat path) AND
+  // the persist call succeeded.  Drives Build's "Open in Build"
+  // affordance + BuildShell's slug-routed handoff.  Ask leaves
+  // these undefined and renders the workflow inline as before.
+  workspace?: {
+    id: string;
+    slug: string;
+    name: string | null;
+    dag_hash: string;
+    url: string;
+  } | null;
 };
 
 // --- Connection state ---

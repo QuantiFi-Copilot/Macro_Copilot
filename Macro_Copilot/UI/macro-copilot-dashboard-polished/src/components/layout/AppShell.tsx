@@ -42,15 +42,32 @@ import { LibraryPage } from '@/components/library/LibraryPage';
 import { WorkflowsCataloguePage } from '@/components/catalogue/WorkflowsCataloguePage';
 import { AskPage } from '@/components/ask/AskPage';
 import { BriefcasePlaceholder } from '@/components/briefcase/BriefcasePlaceholder';
+// PR A — feature-flagged redesigned Build surface.  The new shell
+// replaces the legacy WorkspacePage + WorkspaceBySlugPage when
+// VITE_BUILD_V2=1 is set at build time.  The legacy components stay
+// imported so flipping the flag off (or any future surface that
+// deep-links into ?tool=... URLs) keeps working unchanged.
+import { BUILD_V2_ENABLED } from '@/components/build/lib/buildFlag';
+import { BuildShell } from '@/components/build/BuildShell';
 
 export function AppShell() {
   const { pathname } = useLocation();
+
+  // PR A — when the new Build surface is flagged on, ``/workspace*``
+  // moves out of the legacy three-column shell (which mounts the
+  // ChatDrawer on the right) and into a full-width layout.  The new
+  // ``BuildShell`` owns its own 3-column grid (sidebar + canvas +
+  // workspace-copilot rail) so the AppShell-level chrome stays out
+  // of its way.
+  const isBuildV2Route =
+    BUILD_V2_ENABLED && pathname.startsWith('/workspace');
 
   const isFullWidth =
     pathname.startsWith('/ask') ||
     pathname.startsWith('/briefcase') ||
     pathname.startsWith('/library') ||
-    pathname.startsWith('/tools'); // legacy alias for Library
+    pathname.startsWith('/tools') || // legacy alias for Library
+    isBuildV2Route;
   const isWidgetSurface =
     pathname === '/' ||
     pathname.startsWith('/rates') ||
@@ -71,12 +88,29 @@ export function AppShell() {
       <Route path="/policy" element={<PolicyEventsPlaceholder />} />
       <Route path="/pm-orchestrator" element={<PmOrchestratorPlaceholder />} />
 
-      {/* Existing — kept until subsequent PRs redesign them */}
-      <Route path="/workspace" element={<WorkspacePage />} />
-      {/* PR 10 — slug-driven persistent workspace view.  Stable
-          URL handle (slug = ``[a-z0-9-]+``) routed to the new
-          minimal renderer at WorkspaceBySlugPage.tsx. */}
-      <Route path="/workspace/:slug" element={<WorkspaceBySlugPage />} />
+      {/* Build / Workspace — feature-flagged.
+           - With VITE_BUILD_V2=1: BuildShell owns both ``/workspace``
+             (empty / building) and ``/workspace/:slug`` (completed).
+             ``isBuildV2Route`` above routes the shell into full-
+             width chrome since BuildShell carries its own 3-column
+             grid.
+           - Without the flag: the legacy WorkspacePage + the Phase-0
+             WorkspaceBySlugPage stub render as before; nothing
+             about Ask / Monitor / Library changes. */}
+      {BUILD_V2_ENABLED ? (
+        <>
+          <Route path="/workspace" element={<BuildShell />} />
+          <Route path="/workspace/:slug" element={<BuildShell />} />
+        </>
+      ) : (
+        <>
+          <Route path="/workspace" element={<WorkspacePage />} />
+          {/* PR 10 — slug-driven persistent workspace view.  Stable
+              URL handle (slug = ``[a-z0-9-]+``) routed to the
+              Phase-0 minimal renderer. */}
+          <Route path="/workspace/:slug" element={<WorkspaceBySlugPage />} />
+        </>
+      )}
       <Route path="/workflows" element={<WorkflowsCataloguePage />} />
 
       {/* Library — new full-width catalogue surface.
