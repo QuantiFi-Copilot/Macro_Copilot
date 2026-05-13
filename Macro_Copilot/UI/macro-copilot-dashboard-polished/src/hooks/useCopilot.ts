@@ -361,6 +361,14 @@ export function useCopilot(): UseCopilotResult {
                 workflow_lineage_summary: event.workflow_lineage_summary,
                 error: event.error,
               },
+              // PR A — surface the persisted workspace handle so
+              // BuildShell can navigate to ``/workspace/:slug``
+              // when the user originated the prompt from Build's
+              // empty state.  Optional everywhere: if the runner
+              // didn't persist (no engine / no object_storage /
+              // persist=False), this stays null and the chat
+              // renders the result inline as before.
+              workspace: event.workspace ?? null,
             },
           };
         });

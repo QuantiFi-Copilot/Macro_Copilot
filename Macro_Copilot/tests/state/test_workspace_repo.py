@@ -52,8 +52,10 @@ from state.workspace_repo import (  # noqa: E402
     fork_workspace,
     get_workspace,
     get_workspace_by_slug,
+    list_workspaces,
     rename_workspace,
     slugify,
+    touch_workspace_access,
 )
 
 
@@ -451,3 +453,182 @@ class TestFork:
                     variant_dag_hash=dag_hash,
                     override_summary={},
                 )
+
+
+# ============================================================================
+# list_workspaces + touch_workspace_access — sidebar list surface (PR A)
+# ============================================================================
+
+
+class TestListWorkspaces:
+    def test_empty_returns_empty_list(self, engine):
+        """No workspaces in the table → list returns []."""
+        with engine.connect() as conn:
+            out = list_workspaces(conn=conn)
+        assert out == []
+
+    def test_recent_orders_by_last_accessed_then_updated(
+        self, engine, dag_hash,
+    ):
+        """``recent`` filter uses COALESCE(last_accessed, updated)
+        DESC, so a freshly-touched older workspace beats a younger
+        never-opened one."""
+        from sqlalchemy import text
+
+        # Create three workspaces in temporal order: A → B → C.
+        with engine.begin() as conn:
+            a = create_workspace(dag_hash, conn=conn, name="A workspace")
+        with engine.begin() as conn:
+            b = create_workspace(dag_hash, conn=conn, name="B workspace")
+        with engine.begin() as conn:
+            c = create_workspace(dag_hash, conn=conn, name="C workspace")
+
+        # Touch ``A`` last — its last_accessed_at jumps to ``now()``,
+        # so the recent ordering should be ``A, C, B`` (A by
+        # last_accessed, C and B by updated_at descending).
+        with engine.begin() as conn:
+            touch_workspace_access(a.slug, conn=conn)
+
+        with engine.connect() as conn:
+            recent = list_workspaces(conn=conn, filter="recent")
+        ids = [w.id for w in recent]
+        assert ids[0] == a.id, "Touched workspace must lead the recent list"
+        assert b.id in ids and c.id in ids
+
+    def test_all_orders_by_updated_at(self, engine, dag_hash):
+        """``all`` ignores last_accessed_at; pure updated_at DESC."""
+        with engine.begin() as conn:
+            a = create_workspace(dag_hash, conn=conn, name="alpha")
+        with engine.begin() as conn:
+            b = create_workspace(dag_hash, conn=conn, name="bravo")
+        with engine.begin() as conn:
+            # Touch alpha — would float it to top under ``recent`` but
+            # NOT under ``all``.
+            touch_workspace_access(a.slug, conn=conn)
+
+        with engine.connect() as conn:
+            ordered = list_workspaces(conn=conn, filter="all")
+        # bravo created after alpha, so under updated_at-only it
+        # remains in front despite alpha being touched.
+        assert ordered[0].id == b.id
+        assert ordered[1].id == a.id
+
+    def test_limit_clamped(self, engine, dag_hash):
+        """``limit`` is clamped to [1, 200] server-side."""
+        with engine.begin() as conn:
+            for i in range(5):
+                create_workspace(dag_hash, conn=conn, name=f"ws-{i}")
+
+        with engine.connect() as conn:
+            # Way too large: clamped to 200, so all 5 still come back.
+            out_big = list_workspaces(conn=conn, limit=10_000)
+            # Way too small: clamped up to 1.
+            out_zero = list_workspaces(conn=conn, limit=0)
+            # Negative: clamped to 1.
+            out_neg = list_workspaces(conn=conn, limit=-3)
+
+        assert len(out_big) == 5
+        assert len(out_zero) == 1
+        assert len(out_neg) == 1
+
+    def test_offset_paginates(self, engine, dag_hash):
+        """``offset`` skips that many rows; cursor pagination works."""
+        with engine.begin() as conn:
+            for i in range(6):
+                create_workspace(dag_hash, conn=conn, name=f"ws-{i:02d}")
+
+        with engine.connect() as conn:
+            page_a = list_workspaces(conn=conn, limit=3, offset=0)
+            page_b = list_workspaces(conn=conn, limit=3, offset=3)
+
+        page_a_ids = {w.id for w in page_a}
+        page_b_ids = {w.id for w in page_b}
+        assert len(page_a) == 3 and len(page_b) == 3
+        assert page_a_ids.isdisjoint(page_b_ids), (
+            "Pagination pages overlap — limit/offset is broken"
+        )
+
+    def test_unknown_filter_falls_through_to_recent(
+        self, engine, dag_hash,
+    ):
+        """Forward-compat keys (``pinned`` / ``shared``) and unknown
+        strings degrade gracefully to recent ordering rather than
+        raising — the sidebar's section taxonomy is allowed to be
+        ahead of the substrate."""
+        with engine.begin() as conn:
+            create_workspace(dag_hash, conn=conn, name="ws-1")
+
+        with engine.connect() as conn:
+            out_pinned = list_workspaces(conn=conn, filter="pinned")
+            out_unknown = list_workspaces(conn=conn, filter="weird-future-key")
+            out_recent = list_workspaces(conn=conn, filter="recent")
+
+        # All three return the same set (one row in the table).
+        assert {w.id for w in out_pinned} == {w.id for w in out_recent}
+        assert {w.id for w in out_unknown} == {w.id for w in out_recent}
+
+
+class TestTouchWorkspaceAccess:
+    def test_touch_known_slug_updates_last_accessed(
+        self, engine, dag_hash,
+    ):
+        from sqlalchemy import text
+
+        with engine.begin() as conn:
+            ws = create_workspace(dag_hash, conn=conn, name="touchable")
+
+        with engine.connect() as conn:
+            before = conn.execute(
+                text(
+                    """
+                    SELECT last_accessed_at FROM copilot_state.workspaces
+                    WHERE id = :id
+                    """
+                ),
+                {"id": ws.id},
+            ).scalar()
+        assert before is None  # never opened
+
+        with engine.begin() as conn:
+            touch_workspace_access(ws.slug, conn=conn)
+
+        with engine.connect() as conn:
+            after = conn.execute(
+                text(
+                    """
+                    SELECT last_accessed_at FROM copilot_state.workspaces
+                    WHERE id = :id
+                    """
+                ),
+                {"id": ws.id},
+            ).scalar()
+        assert after is not None
+        assert after > _now_minus(minutes=1)
+
+    def test_touch_unknown_slug_is_noop(self, engine, dag_hash):
+        """Touching a slug that doesn't exist must NOT raise — the
+        route handler relies on this so a stale URL is observable
+        as a 404 from the read path, not a 500 from the write."""
+        with engine.begin() as conn:
+            # Should not raise.
+            touch_workspace_access("nonexistent-deadbeef", conn=conn)
+
+    def test_touch_malformed_slug_is_noop(self, engine, dag_hash):
+        """Slug shape validation rejects malformed input without
+        touching the DB — keeps SQLi vectors out of the UPDATE
+        regardless of param binding."""
+        with engine.begin() as conn:
+            touch_workspace_access("SELECT * FROM workspaces", conn=conn)
+            touch_workspace_access("", conn=conn)
+            touch_workspace_access(None, conn=conn)  # type: ignore[arg-type]
+
+
+# ----------------------------------------------------------------------------
+# Test helpers (only used by the touch tests above)
+# ----------------------------------------------------------------------------
+
+
+def _now_minus(*, minutes: int):
+    from datetime import datetime, timedelta, timezone
+
+    return datetime.now(timezone.utc) - timedelta(minutes=minutes)

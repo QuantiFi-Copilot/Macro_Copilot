@@ -197,6 +197,26 @@ export type WorkflowResultEvent = {
     slot_values: Record<string, unknown>;
     rationale: string;
   };
+  // PR A persistence handles — emitted when the chat path opted into
+  // ``persist=True`` and the runner successfully wrote the executed
+  // workflow as a slug-routed workspace.  All fields are optional so
+  // older backends (or persistence failures) degrade gracefully:
+  // the chat still renders the result inline; Build's "Open in
+  // Build" affordance only appears when ``workspace.slug`` is set.
+  terminal_artifact_hash?: string | null;
+  node_artifact_hashes?: Record<string, string> | null;
+  dag_hash?: string | null;
+  workspace?: {
+    id: string;
+    slug: string;
+    name: string | null;
+    dag_hash: string;
+    url: string;
+  } | null;
+  persistence?: {
+    ok: boolean;
+    error?: string;
+  } | null;
 };
 
 // Discriminated union extension — any of these may arrive on the chat WS.

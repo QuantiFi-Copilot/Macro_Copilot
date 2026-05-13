@@ -63,7 +63,7 @@ import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -476,6 +476,124 @@ def fork_workspace(
 
 
 # ============================================================================
+# List / sidebar surface
+# ============================================================================
+
+
+# Filter keys accepted by ``list_workspaces``.  ``recent`` is the
+# default catalogue order (NULL-safe).  ``all`` returns every
+# workspace ordered by ``updated_at``.  The remaining keys are
+# accepted for forward-compat with sidebar UI sections (pinned,
+# shared) but currently fall through to ``recent`` because the
+# substrate doesn't yet track those flags — declared here so the
+# caller can pre-bind the section semantics ahead of the
+# columns landing.
+_LIST_WORKSPACES_FILTERS = ("recent", "all", "pinned", "shared")
+
+
+def list_workspaces(
+    *,
+    conn: Connection,
+    limit: int = 25,
+    offset: int = 0,
+    filter: str = "recent",  # noqa: A002 - matches GET ?filter=...
+) -> List[WorkspaceRecord]:
+    """List workspaces for the sidebar / browse surface.
+
+    Returns a window of ``WorkspaceRecord`` rows ordered by
+    most-recent-activity.  Ordering is NULL-safe over
+    ``last_accessed_at``: workspaces that have never been opened
+    fall back to ``updated_at`` so a newly-persisted workflow
+    surfaces immediately in the sidebar.
+
+    Parameters
+    ----------
+    conn :
+        Caller-owned transaction.  This is a read-only query but
+        we keep the ``conn=`` convention for consistency with the
+        rest of the module.
+    limit :
+        Page size.  Clamped to ``[1, 200]`` so a misconfigured
+        client cannot fetch the whole table.
+    offset :
+        Page offset.  Negative values are clamped to zero.
+    filter :
+        Which list semantics to apply.  Today only ``recent`` and
+        ``all`` differ in behaviour; the other keys are reserved
+        for the sidebar's section taxonomy and fall through to
+        ``recent`` ordering until the underlying columns land.
+
+    Notes
+    -----
+    No JOIN against ``dag_nodes`` or ``artifact_metadata`` here —
+    the sidebar reads a thin per-row summary only.  Per-node
+    fetches happen via the existing ``GET /workspace/{slug}``
+    endpoint when a user opens a workspace.
+    """
+    safe_limit = max(1, min(int(limit), 200))
+    safe_offset = max(0, int(offset))
+    if filter not in _LIST_WORKSPACES_FILTERS:
+        # Defensive: an unknown filter is treated as ``recent``
+        # rather than raising, so a future client sending a new
+        # section name degrades gracefully on older servers.
+        filter = "recent"
+
+    # ``all`` orders purely by updated_at; ``recent`` and the
+    # forward-compat keys use COALESCE so never-opened
+    # workspaces still appear in chronological order.
+    if filter == "all":
+        order_clause = "updated_at DESC"
+    else:
+        order_clause = "COALESCE(last_accessed_at, updated_at) DESC"
+
+    rows = conn.execute(
+        text(
+            f"""
+            SELECT id, slug, name, dag_hash, focus_node,
+                   parent_workspace_id, schema_version, created_by,
+                   created_at, updated_at
+            FROM {_COPILOT_STATE_SCHEMA}.workspaces
+            ORDER BY {order_clause}, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"limit": safe_limit, "offset": safe_offset},
+    ).mappings().all()
+
+    return [_row_to_record(r) for r in rows]
+
+
+def touch_workspace_access(
+    slug: str, *, conn: Connection,
+) -> None:
+    """Stamp ``last_accessed_at = now()`` on the named workspace.
+
+    Called by the ``GET /workspace/{slug}`` route handler so the
+    sidebar's ``recent`` ordering reflects actual user activity
+    rather than just creation time.  No-op if the slug does not
+    exist (the route handler will surface that failure mode
+    separately).
+
+    The partial index ``ix_workspaces_last_accessed_active``
+    (migration 0006) only indexes non-null rows, so writing this
+    column hot-paths the sidebar's ORDER BY without scanning the
+    table.
+    """
+    if not isinstance(slug, str) or not _SLUG_ALLOWED.fullmatch(slug):
+        return
+    conn.execute(
+        text(
+            f"""
+            UPDATE {_COPILOT_STATE_SCHEMA}.workspaces
+            SET last_accessed_at = now()
+            WHERE slug = :slug
+            """
+        ),
+        {"slug": slug},
+    )
+
+
+# ============================================================================
 # Internals
 # ============================================================================
 
@@ -508,4 +626,6 @@ __all__ = [
     "get_workspace_by_slug",
     "rename_workspace",
     "fork_workspace",
+    "list_workspaces",
+    "touch_workspace_access",
 ]

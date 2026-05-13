@@ -682,9 +682,22 @@ class CopilotSession:
         # 'connect'`` deep inside the first primitive, which is the bug
         # the chat path showed.  We swallow init errors and degrade
         # gracefully so a missing DB doesn't take down the chat.
+        #
+        # PR A also resolves the object-storage backend here so the
+        # runner can persist each executed workflow as a workspace
+        # (the Build UI's read surface).  Object-storage init failure
+        # is non-fatal: the runner sees ``object_storage=None`` and
+        # short-circuits persistence with ``persistence.ok=False``;
+        # the chat response itself is unaffected.
         engine = None
+        object_storage = None
         try:
-            from api.dependencies import get_engine, init_engine
+            from api.dependencies import (
+                get_engine,
+                get_object_storage,
+                init_engine,
+                init_object_storage,
+            )
             try:
                 engine = get_engine()
             except RuntimeError:
@@ -692,20 +705,36 @@ class CopilotSession:
                 # outside FastAPI) — initialise the singleton on first
                 # use.
                 engine = init_engine()
+            try:
+                object_storage = get_object_storage()
+            except RuntimeError:
+                object_storage = init_object_storage()
         except Exception as exc:
             logger.warning(
-                "[%s] %s could not acquire DB engine for workflow run: %s",
+                "[%s] %s could not acquire persistence dependencies "
+                "for workflow run: %s",
                 self.thread_id, turn_label, exc,
             )
 
         # The substrate's executor is synchronous; offload to a thread
-        # so the WebSocket event loop isn't blocked.
+        # so the WebSocket event loop isn't blocked.  ``persist=True``
+        # opts the chat path into materialising every workflow result
+        # as a slug-routed workspace.  When persistence init failed
+        # above (engine / object_storage is None), the runner's
+        # internal guard short-circuits with a benign error envelope
+        # under ``persistence`` — chat keeps streaming.
         try:
             envelope = await asyncio.to_thread(
                 run_template,
                 decision.template_id,
                 dict(decision.slot_values or {}),
                 engine=engine,
+                persist=True,
+                object_storage=object_storage,
+                workspace_name=_workspace_name_for(decision),
+                workspace_created_by=(
+                    str(self._session_id) if self._session_id else None
+                ),
             )
         except Exception as exc:
             logger.exception(
@@ -745,6 +774,22 @@ class CopilotSession:
                         "workflow_lineage_summary"
                     ),
                     "error": envelope.get("error"),
+                    # PR A: persistence handles so the chat's "Open
+                    # in Build" affordance can deep-link to the
+                    # slug-routed workspace.  ``None``-friendly when
+                    # persistence is disabled or failed; the
+                    # frontend renders the result inline either way
+                    # and only surfaces the handoff when
+                    # ``workspace.slug`` is present.
+                    "terminal_artifact_hash": envelope.get(
+                        "terminal_artifact_hash"
+                    ),
+                    "node_artifact_hashes": envelope.get(
+                        "node_artifact_hashes"
+                    ),
+                    "dag_hash": envelope.get("dag_hash"),
+                    "workspace": envelope.get("workspace"),
+                    "persistence": envelope.get("persistence"),
                     "route": {
                         "template_id": decision.template_id,
                         "slot_values": dict(decision.slot_values or {}),
@@ -1878,6 +1923,29 @@ def _format_scalar(value) -> str:
 # ===========================================================================
 # PR 10 — workflow-result prose formatter
 # ===========================================================================
+
+
+def _workspace_name_for(decision) -> str:
+    """Build a human-readable workspace name from a routing decision.
+
+    The name surfaces in the Build sidebar's "Recent workspaces"
+    list.  We compose it from the template_id (lower-snake →
+    Title Case) plus a short time-of-day stamp so multiple runs
+    of the same template stay distinguishable in the sidebar
+    without having to deep-read the slot values.
+
+    Workspace names accept up to 256 chars; we stay well under
+    that.  ``state.workspace_repo.create_workspace`` validates +
+    falls back gracefully if the name is rejected.
+    """
+    from datetime import datetime, timezone
+
+    template_id = getattr(decision, "template_id", None) or "workflow"
+    pretty = " ".join(
+        word.capitalize() for word in template_id.replace("_", " ").split()
+    )
+    stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    return f"{pretty} · {stamp}"
 
 
 def _format_workflow_prose(envelope: dict) -> str:
