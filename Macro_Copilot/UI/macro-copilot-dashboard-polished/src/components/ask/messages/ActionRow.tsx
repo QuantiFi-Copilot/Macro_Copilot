@@ -117,15 +117,29 @@ function ActionButton({
 }
 
 function resolveBuildHref(message: CopilotMessage): string | null {
-  // Workflow turns: route to the workspace's workflow context with the
-  // template_id and the bound slot_values so Build opens with the same
-  // graph the user just saw.  For V1 we degrade to /workspace because
-  // the workflow-aware workspace surface ships in a later PR.
+  // Workflow turns: route directly to the persisted workspace's slug
+  // when the workflow_result carried one.  Build's slug-bound shell
+  // (``BuildShell`` → ``SlugBoundShell``) materialises the saved DAG
+  // + per-node artifacts so the user sees the full graph and result
+  // set they just generated.
+  //
+  // Older builds of this code shipped a placeholder that always sent
+  // workflow turns to ``/workspace`` (empty shell).  The slug-aware
+  // surface (Phases R1-R2) makes the persisted handoff real; falling
+  // back to ``/workspace`` only if the workflow finished but didn't
+  // persist (e.g. ``persist=False`` runner).
+  const workflowSlug = message.workflow?.workspace?.slug;
+  if (workflowSlug) {
+    return `/workspace/${workflowSlug}`;
+  }
   if (message.workflow?.routeDecision.template_id) {
     return '/workspace';
   }
-  // Supervisor turns: same path the legacy WorkspaceButton uses —
-  // ?context=<encoded JSON>.
+  // Supervisor turns: encode the tool calls into ``?context=...`` so
+  // Build's empty shell decodes them into a virtual primitive canvas
+  // (``VirtualPrimitiveCanvas``) that fetches the typed-detail
+  // endpoint and renders the analysis without requiring backend
+  // workspace persistence.
   if (message.workspaceContext) {
     const encoded = encodeURIComponent(JSON.stringify(message.workspaceContext));
     return `/workspace?context=${encoded}`;
