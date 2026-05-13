@@ -78,6 +78,12 @@ export type WorkspaceContext = {
 export type ClientMessage = {
   type: 'user_message';
   content: string;
+  // R5.4 — optional Build workspace slug.  When set, the backend
+  // stamps each emitted ServerEvent with the same slug so the
+  // frontend can filter per-workspace conversation rails.  Sent by
+  // the Build copilot rail composer; omitted by the global Ask
+  // surface (where no workspace is in scope).
+  workspace_slug?: string;
 };
 
 // --- Chat message model (React state) ---
@@ -124,6 +130,13 @@ export type CopilotMessage = {
   // overrides queue.  Detection is best-effort: the field is null on
   // every message until the backend ships the emitter.
   proposedOverrides?: ProposedOverride[] | null;
+  // R5.4 — when the user message originated from a workspace-scoped
+  // composer, the backend stamps this slug onto every event of the
+  // turn.  The Build copilot rail filters its per-workspace message
+  // view by this slug so messages from other workspaces don't bleed
+  // in.  Null on the global Ask surface where no workspace is in
+  // scope.
+  workspaceSlug?: string | null;
 };
 
 /** A single parameter override the assistant suggests.  Mirrors the
