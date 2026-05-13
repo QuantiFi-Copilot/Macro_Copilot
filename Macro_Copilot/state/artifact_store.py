@@ -269,6 +269,64 @@ def put_artifact(
     return artifact_hash
 
 
+def get_artifact_payload_dict(
+    hash: str,
+    *,
+    conn: Connection,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"] = None,
+) -> Dict[str, Any]:
+    """Return the raw ``StoredArtifact`` dict for ``hash`` (no Pydantic
+    class hydration).  R5.2 — used by ``GET /api/v1/artifacts/{hash}/
+    payload`` to surface the full payload to UI consumers (e.g.
+    RichModelWidget for PCA / RollingRegression / Attribution
+    renderers) without paying the cost of rehydrating into a typed
+    Artifact instance.
+
+    The returned dict matches the ``StoredArtifact`` wire shape:
+
+      {"artifact_type": "...", "metadata": {...}, "payload": {...}}
+
+    Inline-stored artifacts read from Postgres JSONB; blob-stored ones
+    fetch from object storage (through the same cache as
+    ``get_artifact``).
+
+    Raises:
+        KeyError: no artifact_metadata row for ``hash``.
+        FileNotFoundError: orphaned metadata pointing at a missing
+            object-storage URI.
+    """
+    _validate_hash(hash)
+    row = _fetch_full_row(conn, hash)
+    if row is None:
+        raise KeyError(f"No artifact with hash {hash!r}")
+
+    if row["inline_payload"] is not None:
+        stored_dict = row["inline_payload"]
+    else:
+        if row["payload_uri"] is None:
+            raise RuntimeError(
+                f"Artifact {hash} has neither inline_payload nor "
+                "payload_uri set.  This violates the CHECK constraint "
+                "ck_artifact_metadata_payload_exactly_one — data "
+                "corruption?"
+            )
+        payload_bytes = _fetch_payload_bytes_with_cache(
+            hash=hash,
+            payload_uri=row["payload_uri"],
+            object_storage=object_storage,
+            cache=cache,
+        )
+        stored_dict = _bytes_to_stored_dict(payload_bytes)
+
+    # Validate the shape so callers always see a well-formed
+    # StoredArtifact dict.  We don't return the validated Pydantic
+    # object — callers want the raw dict — but the validation catches
+    # corrupted rows here rather than at the wire boundary.
+    StoredArtifact.model_validate(stored_dict)
+    return stored_dict
+
+
 def get_artifact(
     hash: str,
     *,
@@ -707,7 +765,53 @@ def _series_to_stored(art: Series) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         "lineage": art.lineage.model_dump(mode="json"),
     }
     payload = _pd_series_to_jsonable(art.payload)
+    # R5.1 — when the Series was emitted by ``conditional_aggregate``,
+    # the index uses ``1970-01-01 + Timedelta(days=offset)`` as a
+    # synthetic anchor for event-relative offsets (see
+    # ``shared/operators/conditional_aggregate/operator.py``).  The
+    # raw ISO dates are useless to UI consumers — they read as
+    # "1970-01-01 .. 1970-01-06", which the user audit flagged as
+    # garbage data.  Promote the encoding declared in the operator's
+    # step params onto the stored payload so preview extraction +
+    # widget rendering can label the index as event offsets instead.
+    encoding = _detect_event_offset_encoding(art)
+    if encoding is not None:
+        payload["index_encoding"] = encoding
     return meta, payload
+
+
+def _detect_event_offset_encoding(
+    art: Series,
+) -> Optional[Dict[str, Any]]:
+    """If the Series was produced by ``conditional_aggregate``, return
+    a JSON-safe ``index_encoding`` blob declaring the index as
+    event-relative offsets.  Returns ``None`` for any other Series so
+    the normal date-index preview keeps working.
+
+    The encoding is read off the final lineage step's params (the
+    operator records ``offset_anchor`` + ``event_relative_offsets``
+    there).  Defensive: returns ``None`` if the lineage shape doesn't
+    match what we expect.
+    """
+    try:
+        steps = list(art.lineage.steps)
+    except AttributeError:
+        return None
+    if not steps:
+        return None
+    last = steps[-1]
+    if getattr(last, "name", None) != "conditional_aggregate":
+        return None
+    params = getattr(last, "params", None) or {}
+    offsets = params.get("event_relative_offsets")
+    anchor = params.get("offset_anchor")
+    if not isinstance(offsets, list) or not isinstance(anchor, str):
+        return None
+    return {
+        "kind": "event_offset",
+        "anchor": anchor,
+        "offsets": [int(o) for o in offsets],
+    }
 
 
 def _series_from_stored(stored: StoredArtifact) -> Series:
@@ -912,6 +1016,19 @@ def _iso(ts: pd.Timestamp) -> str:
     return pd.Timestamp(ts).isoformat()
 
 
+def _format_event_offset(offset: int) -> str:
+    """Render an event-relative offset as a human label.  ``0`` → "Day 0",
+    positive offsets get a leading ``+`` ("Day +3"), negatives keep their
+    natural sign ("Day -5").  Used by the preview path so widgets show
+    event-offset Series with clear labels instead of synthetic 1970 dates.
+    """
+    if offset == 0:
+        return "Day 0"
+    if offset > 0:
+        return f"Day +{offset}"
+    return f"Day {offset}"
+
+
 def _datetime_index_to_iso(idx: pd.DatetimeIndex) -> List[str]:
     return [_iso(ts) for ts in idx]
 
@@ -1044,8 +1161,23 @@ def _extract_preview(
     payload = inline_payload.get("payload", {})
 
     if artifact_type == "Series":
-        idx = payload.get("index", [])
         vals = payload.get("values", [])
+        # R5.1 — event-offset-encoded Series (output of
+        # ``conditional_aggregate``) carries an ``index_encoding`` blob
+        # declaring its index as event-relative offsets.  Render the
+        # preview index as "Day -5" / "Day +5" / "Day 0" labels instead
+        # of the synthetic 1970 anchor dates.  Falls back to the normal
+        # ISO date index for every other Series.
+        encoding = payload.get("index_encoding")
+        if (
+            isinstance(encoding, dict)
+            and encoding.get("kind") == "event_offset"
+            and isinstance(encoding.get("offsets"), list)
+        ):
+            offsets = encoding["offsets"]
+            labels = [_format_event_offset(int(o)) for o in offsets]
+            return labels[:max_points], vals[:max_points]
+        idx = payload.get("index", [])
         return idx[:max_points], vals[:max_points]
 
     if artifact_type == "EventSet":

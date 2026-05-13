@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import type { CopilotMessage } from '@/types/copilot';
+import { useOptionalWorkspaceOverrides } from '@/components/build/lib/workspaceOverridesContext';
 import { cn } from '@/utils/cn';
 import { ProposedOverridesChips } from './ProposedOverridesChips';
 
@@ -28,7 +29,20 @@ const TAIL = 6;
 
 export function WorkspaceCopilotMessages() {
   const { messages, isThinking } = useCopilotContext();
-  const tail = useMemo(() => messages.slice(-TAIL), [messages]);
+  // R5.4 — filter the global message buffer to the active workspace's
+  // slug so messages from other workspaces don't bleed into this rail.
+  // Falls back to the un-filtered tail when no workspace is in scope
+  // (e.g. the empty-state shell) so existing behaviour is preserved
+  // outside slug-bound mode.
+  const overrides = useOptionalWorkspaceOverrides();
+  const activeSlug = overrides?.workspace.slug ?? null;
+  const scoped = useMemo(() => {
+    if (!activeSlug) return messages;
+    return messages.filter(
+      (m) => !m.workspaceSlug || m.workspaceSlug === activeSlug,
+    );
+  }, [messages, activeSlug]);
+  const tail = useMemo(() => scoped.slice(-TAIL), [scoped]);
 
   if (tail.length === 0) {
     return (

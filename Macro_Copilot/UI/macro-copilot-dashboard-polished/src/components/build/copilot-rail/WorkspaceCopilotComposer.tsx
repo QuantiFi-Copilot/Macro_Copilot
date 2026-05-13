@@ -34,7 +34,13 @@ export function WorkspaceCopilotComposer({ workspace }: Props) {
   const send = useCallback(() => {
     const content = value.trim();
     if (!content || disabled) return;
-    sendMessage(composeScopedMessage(workspace, content));
+    // R5.4 — pass the active workspace slug so the resulting turn's
+    // messages are filterable in the per-workspace rail.  Falls back
+    // to an un-scoped send when no workspace is bound (e.g. the
+    // composer hasn't seen a workspace yet — defensive).
+    sendMessage(composeScopedMessage(workspace, content), {
+      workspaceSlug: workspace?.slug ?? null,
+    });
     setValue('');
     if (taRef.current) taRef.current.style.height = 'auto';
   }, [value, disabled, workspace, sendMessage]);

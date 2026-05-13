@@ -22,7 +22,15 @@ import type { CopilotMessage, ConnectionStatus } from '@/types/copilot';
 
 type CopilotContextValue = {
   messages: CopilotMessage[];
-  sendMessage: (content: string) => void;
+  /** Send a user turn through the singleton WebSocket.  R5.4 — when
+   *  ``options.workspaceSlug`` is supplied (e.g. the Build copilot rail
+   *  composer passing the active workspace's slug), the hook stamps
+   *  every message of the resulting turn with that slug so per-
+   *  workspace rails can filter the global message buffer. */
+  sendMessage: (
+    content: string,
+    options?: { workspaceSlug?: string | null },
+  ) => void;
   connectionStatus: ConnectionStatus;
   isThinking: boolean;
   clearMessages: () => void;

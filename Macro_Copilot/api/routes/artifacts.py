@@ -30,18 +30,24 @@ share one canonical implementation.
 from __future__ import annotations
 
 import logging
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict
 
-from api.dependencies import get_engine
+from api.dependencies import (
+    get_artifact_cache,
+    get_engine,
+    get_object_storage,
+)
 from api.routes._replay_helpers import (
     MethodologyDiff,
     ReconstructedMethodology,
     is_hex,
     replay_summary_for_artifact,
 )
+from state.artifact_store import get_artifact_payload_dict
+from state.schemas import ArtifactTypeLiteral
 
 logger = logging.getLogger("api.routes.artifacts")
 
@@ -109,3 +115,110 @@ def artifact_replay(
             )
 
     return ArtifactReplayResponse(**summary)
+
+
+# ============================================================================
+# R5.2 — Payload endpoint
+# ============================================================================
+#
+# ``GET /api/v1/artifacts/{artifact_hash}/payload`` returns the full
+# deserialised artifact contents (the ``StoredArtifact`` dict — the same
+# shape that's stored in Postgres JSONB or object storage).  Used by
+# Build's rich-model widgets (PCA / RollingRegression / Attribution)
+# to render the full output without re-running the underlying tool.
+#
+# Response shape mirrors ``StoredArtifact``:
+#
+#   {"artifact_type": "...", "metadata": {...}, "payload": {...}}
+#
+# The same shape ``state.artifact_store.get_artifact_payload_dict``
+# returns, validated via Pydantic at the storage boundary so a corrupt
+# row surfaces as a clear server error rather than malformed JSON.
+
+
+class ArtifactPayloadResponse(BaseModel):
+    """Response shape for ``GET /artifacts/{hash}/payload``.
+
+    Mirrors the ``StoredArtifact`` wire shape so a UI consumer can
+    write ``response.payload.current_metrics.loadings`` (etc.) with
+    no extra unwrapping.  ``metadata`` and ``payload`` are open
+    dicts — every artifact type encodes its own schema inside them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_type: ArtifactTypeLiteral
+    metadata: Dict[str, Any]
+    payload: Dict[str, Any]
+
+
+@router.get(
+    "/{artifact_hash}/payload",
+    response_model=ArtifactPayloadResponse,
+)
+def artifact_payload(
+    artifact_hash: str,
+    response: Response,
+) -> ArtifactPayloadResponse:
+    """Surface the deserialised contents of the artifact identified by
+    ``artifact_hash``.
+
+    400 if the hash isn't a 64-char hex SHA-256.  404 if no artifact
+    metadata row exists, OR if the metadata row points at a missing
+    object-storage URI (orphaned metadata).  500 if the row is
+    malformed (CHECK constraint violation in storage).
+    """
+    if len(artifact_hash) != 64 or not is_hex(artifact_hash):
+        raise HTTPException(
+            status_code=400,
+            detail="artifact_hash must be a 64-char hex SHA-256 digest",
+        )
+
+    engine = get_engine()
+    object_storage = get_object_storage()
+    if object_storage is None:
+        # Mirrors the runtime guard the workspace replay route uses
+        # when object storage isn't initialised — degrades to a clear
+        # 503 rather than a None-deref later.
+        raise HTTPException(
+            status_code=503,
+            detail="Object storage backend is not initialised.",
+        )
+    cache = get_artifact_cache()
+
+    with engine.connect() as conn:
+        try:
+            stored_dict = get_artifact_payload_dict(
+                artifact_hash,
+                conn=conn,
+                object_storage=object_storage,
+                cache=cache,
+            )
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No artifact with hash {artifact_hash}",
+            )
+        except FileNotFoundError:
+            # Orphaned metadata — row exists, but the blob URI it
+            # points at doesn't.  Treat as not-found from the caller's
+            # perspective; the underlying issue is operational.
+            logger.warning(
+                "Artifact %s has metadata but the payload blob is missing",
+                artifact_hash,
+            )
+            raise HTTPException(
+                status_code=404,
+                detail=f"Artifact payload for {artifact_hash} is missing",
+            )
+
+    # Surface the artifact byte_size as a header so the UI can warn on
+    # large downloads without parsing the body.  The actual byte count
+    # for inline-stored artifacts is the JSONB column size; for blob-
+    # stored ones it's the blob bytes.  Approximate via the JSON
+    # serialization length — accurate enough for size warnings.
+    import json as _json
+    body_size = len(_json.dumps(stored_dict).encode("utf-8"))
+    response.headers["X-Artifact-Size"] = str(body_size)
+
+    return ArtifactPayloadResponse(**stored_dict)

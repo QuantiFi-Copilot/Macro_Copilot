@@ -163,12 +163,28 @@ async def copilot_chat(ws: WebSocket):
 
             msg_type = msg.get("type")
             content = msg.get("content", "").strip()
+            # R5.4 — optional workspace_slug scopes the turn to a
+            # specific Build workspace.  Today it's stamped onto each
+            # emitted event so the frontend can filter the per-workspace
+            # message rail (fixes the visible bleed where one workspace
+            # showed another workspace's chat history).  Backend thread-
+            # id scoping (so LangGraph keeps separate conversation
+            # history per workspace) is the next-step follow-up; the
+            # protocol carries the field today so wiring doesn't need
+            # another contract change.
+            workspace_slug_raw = msg.get("workspace_slug")
+            workspace_slug = (
+                workspace_slug_raw.strip()
+                if isinstance(workspace_slug_raw, str) and workspace_slug_raw.strip()
+                else None
+            )
 
             if msg_type != "user_message" or not content:
                 await _send_event(ws, "error", {
                     "message": (
                         "Expected { \"type\": \"user_message\", "
-                        "\"content\": \"...\" }"
+                        "\"content\": \"...\", "
+                        "\"workspace_slug\"?: \"...\" }"
                     ),
                 })
                 continue
@@ -180,6 +196,21 @@ async def copilot_chat(ws: WebSocket):
 
             try:
                 async for event in session.stream(content):
+                    # R5.4 — stamp the workspace_slug onto each event so
+                    # the frontend can filter its per-workspace message
+                    # rail.  Done at the wire boundary (here, not inside
+                    # ``SessionEvent.to_json``) so the orchestrator
+                    # stays workspace-agnostic.
+                    if workspace_slug:
+                        try:
+                            payload = json.loads(event.to_json())
+                            payload["workspace_slug"] = workspace_slug
+                            await ws.send_text(json.dumps(payload))
+                            continue
+                        except Exception:
+                            # Stamping is best-effort; fall through to
+                            # the unstamped emission if anything trips.
+                            pass
                     await ws.send_text(event.to_json())
 
             except WebSocketDisconnect:
