@@ -4,43 +4,55 @@
 // PR1 (Build Routing Coverage): the decoder is the single source of
 // truth for "what Build surface should we land on for tool X?".  It
 // returns a deterministic ``DecodedPrimitive`` for every recognised
-// tool — typed primitive view, model-builder redirect, or
-// unsupported-known card — and ``null`` only for malformed payloads /
-// truly-unknown tools.
+// tool — typed primitive view, model-builder redirect, generic
+// schema-driven builder, or unsupported-known card — and ``null``
+// only for malformed payloads / truly-unknown tools.
 //
 // History
 // -------
 // Phase R1.2 reintroduced the bridge that the deleted ``WorkspacePage``
 // used to provide.  R6.1 added name normalisation + the rich-model
 // (``kind: 'builder'``) variant.  R6.3 added ``decodePrimitiveList``
-// for multi-tool comparison grids.  PR1 adds the
+// for multi-tool comparison grids.  PR1 added the
 // ``kind: 'unsupported_known'`` variant + the ``KNOWN_BACKEND_TOOLS``
 // gate so the orange decode-error card only fires for genuinely-
-// unparseable payloads.
+// unparseable payloads.  PR2 splits that variant: tools with a backend
+// run endpoint and no typed view route to ``kind: 'generic_builder'``
+// (configurable schema-driven surface), while manifest-only tools
+// (no ``PrimitiveSpec`` entry) still surface ``kind: 'unsupported_known'``
+// because trying to ``POST /tools/{name}/run`` against them would 500.
 //
 // Decoder flow per tool entry
 // ---------------------------
 //   1. Normalise the tool name via ``normalizeToolName``.
 //   2. If model-registry metadata exists → ``kind: 'builder'`` (highest
-//      priority).
+//      priority — explicit analytical playground).
 //   3. Else if the tool maps to a typed view → ``kind: <view>``.
-//   4. Else if the tool is in ``KNOWN_BACKEND_TOOLS`` → ``kind:
-//      'unsupported_known'`` (the user invoked a real backend tool, but
-//      Build has no renderer yet — we surface an honest card).
-//   5. Else → drop the entry (truly-unknown name).
+//   4. Else if the tool has a backend run endpoint
+//      (``isRunnablePrimitive``) → ``kind: 'generic_builder'`` (PR2 —
+//      schema-driven editable surface that calls
+//      ``POST /tools/{name}/run``).
+//   5. Else if the tool is in ``KNOWN_BACKEND_TOOLS`` → ``kind:
+//      'unsupported_known'`` (known but not runnable; honest paused
+//      card).
+//   6. Else → drop the entry (truly-unknown name).
 //
 // Builder always wins when context carries mixed tools (the user
 // explicitly invoked an analytical primitive, so the standalone
 // playground is the right landing).  Among typed primitives, chart-
 // bearing views beat scanner-tabular beats regime-classification beats
-// forward-placeholder.  Among unsupported-known entries we surface
-// the FIRST in original order.
+// forward-placeholder.  Generic-builder sits BELOW every typed-view
+// priority (a typed chart is more informative than a configure-and-run
+// form) but ABOVE unsupported-known (a runnable surface beats a paused
+// card).  Among unsupported-known entries we surface the FIRST in
+// original order.
 // ============================================================================
 
 import type { WorkspaceContext } from '@/types/copilot';
 import { hasModelMetadata } from '@/lib/modelRegistry';
 import {
   isKnownBackendTool,
+  isRunnablePrimitive,
   normalizeToolName,
 } from '@/lib/toolNames';
 
@@ -54,17 +66,25 @@ export type PrimitiveViewKind =
   | 'scanner'
   | 'forward';
 
-/** Result of decoding a ``?context=`` URL param.  Three discriminated
+/** Result of decoding a ``?context=`` URL param.  Four discriminated
  *  variants:
  *    - typed primitive (chart-bearing / scanner / regime / forward
  *      placeholder) — caller mounts ``VirtualPrimitiveCanvas`` with
  *      the typed-detail fetch.
  *    - ``builder`` — caller navigates to ``/workspace?builder=<toolName>``
  *      and the standalone model playground (R4) materialises.
+ *    - ``generic_builder`` (PR2) — caller renders the schema-driven
+ *      ``GenericPrimitiveBuilder`` (left rail: form generated from the
+ *      tool's ``ToolCard.input_fields``; centre: run output via the
+ *      auto-renderer).  Used for runnable primitives without a bespoke
+ *      typed view (OIS curve / cross-market / forward, swap spread,
+ *      breakeven, sovereign yield panel, financing rate, zscore_custom,
+ *      OIS rate level).
  *    - ``unsupported_known`` (PR1) — caller renders the
  *      ``UnsupportedKnownToolCanvas`` card so the user sees an honest
- *      "tool is real but Build has no renderer yet" affordance instead
- *      of the orange decode-error card.
+ *      "tool is real but Build has no run path yet" affordance instead
+ *      of the orange decode-error card.  Reserved for known tools that
+ *      AREN'T runnable through ``/tools/{name}/run`` (manifest-only).
  */
 export type DecodedPrimitive =
   | {
@@ -85,6 +105,18 @@ export type DecodedPrimitive =
       params: Record<string, string>;
     }
   | {
+      kind: 'generic_builder';
+      /** Backend-canonical tool name.  The builder fetches its
+       *  ``ToolCard`` via ``useTool`` to render schema-driven controls
+       *  and posts to ``/tools/{toolName}/run``. */
+      toolName: string;
+      /** Original params dict — pre-fills the builder's form so an Ask
+       *  hand-off ("compare X with Y") lands with the user's intended
+       *  args already populated.  When empty, the builder seeds from
+       *  the schema defaults. */
+      params: Record<string, string>;
+    }
+  | {
       kind: 'unsupported_known';
       /** Backend-canonical tool name.  The card surfaces this and the
        *  per-tool ``UnsupportedKnownReason`` from ``toolNames.ts``. */
@@ -98,7 +130,16 @@ export type DecodedPrimitive =
 /** Map MCP tool names → typed primitive view kinds.  Adding a new entry
  *  is a single-line change here + a new view component + one branch in
  *  the dispatcher.  Names are the BACKEND-CANONICAL prefixed form;
- *  manifest shorthand is resolved by ``normalizeToolName`` before lookup. */
+ *  manifest shorthand is resolved by ``normalizeToolName`` before lookup.
+ *
+ *  PR2 — ``calculate_ois_forward_rate_tool`` used to map here to a
+ *  no-op ``forward`` placeholder view.  Now that the generic schema-
+ *  driven builder can configure + execute any runnable primitive,
+ *  the forward rate routes through it directly (real curve / tenor /
+ *  date controls + a working run path).  The ``forward`` typed view
+ *  is kept around for the placeholder kind but no tool maps to it
+ *  today; PR3+ can revive the entry when a bespoke
+ *  ``/detail/forward`` endpoint ships. */
 const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = {
   calculate_curve_spread_tool: 'spread',
   calculate_cross_market_spread_tool: 'cross_market',
@@ -106,9 +147,6 @@ const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = {
   get_yield_levels_tool: 'yield',
   classify_curve_move_tool: 'regime',
   scan_extremes_tool: 'scanner',
-  // OIS forward-rate primitive — view ships an explicit "not wired"
-  // placeholder until ``/detail/forward`` lands.
-  calculate_ois_forward_rate_tool: 'forward',
 };
 
 /** Priority when context carries multiple tools.  Chart-bearing
@@ -130,10 +168,19 @@ const VIEW_PRIORITY: Record<PrimitiveViewKind, number> = {
  *  module docstring for rationale. */
 const BUILDER_PRIORITY = 100;
 
-/** Unsupported-known routing sits BELOW every typed-view priority but
- *  ABOVE "drop entirely".  When a single context carries one chart
- *  primitive + one unsupported-known tool, the chart wins; when ALL
- *  tools are unsupported-known, we surface the card. */
+/** PR2 — generic-builder routing sits BELOW every typed-view priority
+ *  (a typed chart is more informative than a configure-and-run form)
+ *  but ABOVE ``unsupported_known`` (a runnable surface beats a paused
+ *  card).  When a single context carries one chart primitive + one
+ *  generic-builder tool, the chart wins; when ALL tools are generic-
+ *  builder, we surface the form. */
+const GENERIC_BUILDER_PRIORITY = 0.5;
+
+/** Unsupported-known routing sits BELOW every typed-view priority and
+ *  the generic builder, but ABOVE "drop entirely".  When a single
+ *  context carries one chart primitive + one unsupported-known tool,
+ *  the chart wins; when ALL tools are unsupported-known, we surface
+ *  the paused card. */
 const UNSUPPORTED_KNOWN_PRIORITY = 0;
 
 /** Decode one tool entry into a ``DecodedPrimitive`` variant, or null
@@ -147,24 +194,34 @@ function decodeOne(
   const canonical = normalizeToolName(rawToolName);
   const params = stringifyParams(rawParams);
 
-  // 1. Rich-model tools (highest priority).
+  // 1. Rich-model tools (highest priority — explicit analytical
+  //    playground beats every other primitive surface).
   if (hasModelMetadata(canonical)) {
     return { kind: 'builder', toolName: canonical, params };
   }
 
-  // 2. Typed primitive views.
+  // 2. Typed primitive views — bespoke chart / scanner / regime cards.
   const view = TOOL_TO_VIEW[canonical];
   if (view) {
     return { kind: view, toolName: canonical, params };
   }
 
-  // 3. Known-but-unsupported — preserve the user's intent rather than
-  //    drop into the decode-error card.
+  // 3. PR2 — backend-runnable primitives without a typed view get the
+  //    schema-driven generic builder.  These tools have a working
+  //    ``POST /api/v1/tools/{name}/run`` endpoint so the form can
+  //    actually execute against the backend.
+  if (isRunnablePrimitive(canonical)) {
+    return { kind: 'generic_builder', toolName: canonical, params };
+  }
+
+  // 4. Known but not runnable (manifest-only, paused, or otherwise
+  //    not in ``_PRIMITIVE_SPECS``) — surface the honest paused card
+  //    rather than drop into the decode-error path.
   if (isKnownBackendTool(canonical)) {
     return { kind: 'unsupported_known', toolName: canonical, params };
   }
 
-  // 4. Truly unknown — caller falls through to ``null`` handling
+  // 5. Truly unknown — caller falls through to ``null`` handling
   //    (decode-error card for single-best, drop from list for multi).
   return null;
 }
@@ -244,6 +301,7 @@ export function decodePrimitiveList(raw: string): DecodedPrimitive[] {
 
 function priorityOf(decoded: DecodedPrimitive): number {
   if (decoded.kind === 'builder') return BUILDER_PRIORITY;
+  if (decoded.kind === 'generic_builder') return GENERIC_BUILDER_PRIORITY;
   if (decoded.kind === 'unsupported_known') return UNSUPPORTED_KNOWN_PRIORITY;
   return VIEW_PRIORITY[decoded.kind];
 }

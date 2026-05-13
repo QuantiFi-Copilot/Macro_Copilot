@@ -1,9 +1,9 @@
 // ============================================================================
 // paramSpecs.ts — per-primitive-view parameter spec declarations.
 // ----------------------------------------------------------------------------
-// R6.2.  Single source of truth for the dropdown controls each typed
-// primitive view (Spread / CrossMarket / Butterfly / Yield / Regime /
-// Scanner / Forward) surfaces in its header.
+// R6.2 / PR2.  Single source of truth for the dropdown controls each
+// typed primitive view (Spread / CrossMarket / Butterfly / Yield /
+// Regime / Scanner / Forward) surfaces in its header.
 //
 // Each spec declares:
 //   - the URL param key it binds to (matches the typed-detail endpoint's
@@ -11,6 +11,12 @@
 //   - the human label rendered above the dropdown
 //   - the available options + default
 //   - whether changing it should fire a refetch (vs decorative)
+//
+// PR2 widens the typed views' control sets so the user can change the
+// observation field (``field_name``) and the displayed lookback
+// (``lookback_days``) inline — the backend endpoints already accept
+// these but the R6.2 specs hadn't exposed them.  See
+// ``api/routes/rates/detail.py`` for the per-endpoint param signature.
 //
 // The legacy ``lib/workspaceParams.ts`` had a similar pattern; we don't
 // import it because the legacy file was deleted in Phase 6 and the
@@ -84,6 +90,20 @@ const REGIME_LOOKBACK_PERIODS: ParamSpec['options'] = [
   { value: '63d', label: '63d (quarterly)' },
 ];
 
+/** Bloomberg observation field options accepted by the rates typed-
+ *  detail endpoints.  ``YLD_YTM_MID`` is the universal default
+ *  matching ``default_field_name`` in every primitive's config.yaml;
+ *  the alternates are the most-frequently-requested overrides
+ *  (bid / ask / discount / par yield).  Closed list because the
+ *  underlying database column carries the exact Bloomberg mnemonic
+ *  and free-text would produce empty result sets on typos. */
+const FIELD_NAMES: ParamSpec['options'] = [
+  { value: 'YLD_YTM_MID', label: 'YLD_YTM_MID · mid yield-to-maturity' },
+  { value: 'YLD_YTM_BID', label: 'YLD_YTM_BID · bid yield' },
+  { value: 'YLD_YTM_ASK', label: 'YLD_YTM_ASK · ask yield' },
+  { value: 'YLD_CNV_MID', label: 'YLD_CNV_MID · conventional yield' },
+];
+
 // ----------------------------------------------------------------------------
 // Per-view spec lists.  Order is the visible order in the header strip.
 // ----------------------------------------------------------------------------
@@ -119,6 +139,15 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
           options: LOOKBACK_DAYS,
           defaultValue: '252',
         },
+        // PR2 — expose the observation field; ``/detail/spread`` accepts
+        // it and the backend defaults to ``YLD_YTM_MID`` but bid/ask
+        // and conventional yield are valid overrides.
+        {
+          key: 'field_name',
+          label: 'Field',
+          options: FIELD_NAMES,
+          defaultValue: 'YLD_YTM_MID',
+        },
       ];
     case 'cross_market':
       return [
@@ -145,6 +174,15 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
           label: 'Lookback',
           options: LOOKBACK_DAYS,
           defaultValue: '252',
+        },
+        // PR2 — field_name override (Optional[str] on the endpoint, so
+        // the empty value here is also valid; the option list always
+        // ships the canonical default for cleanliness).
+        {
+          key: 'field_name',
+          label: 'Field',
+          options: FIELD_NAMES,
+          defaultValue: 'YLD_YTM_MID',
         },
       ];
     case 'butterfly':
@@ -179,6 +217,13 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
           options: LOOKBACK_DAYS,
           defaultValue: '252',
         },
+        // PR2 — butterfly endpoint accepts Optional[str] field_name.
+        {
+          key: 'field_name',
+          label: 'Field',
+          options: FIELD_NAMES,
+          defaultValue: 'YLD_YTM_MID',
+        },
       ];
     case 'yield':
       return [
@@ -193,6 +238,21 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
           label: 'Tenor',
           options: TENORS,
           defaultValue: '10Y',
+        },
+        // PR2 — yield endpoint accepts lookback_days + field_name; the
+        // previous spec only exposed curve+tenor which left the user
+        // unable to widen the history window or switch off mid yield.
+        {
+          key: 'lookback_days',
+          label: 'Lookback',
+          options: LOOKBACK_DAYS,
+          defaultValue: '252',
+        },
+        {
+          key: 'field_name',
+          label: 'Field',
+          options: FIELD_NAMES,
+          defaultValue: 'YLD_YTM_MID',
         },
       ];
     case 'regime':
@@ -220,6 +280,14 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
           label: 'Window',
           options: REGIME_LOOKBACK_PERIODS,
           defaultValue: '22d',
+        },
+        // PR2 — regime classifier endpoint accepts Optional[str]
+        // field_name; same FIELD_NAMES vocabulary.
+        {
+          key: 'field_name',
+          label: 'Field',
+          options: FIELD_NAMES,
+          defaultValue: 'YLD_YTM_MID',
         },
       ];
     case 'scanner':

@@ -150,32 +150,81 @@ export function isKnownBackendTool(name: string): boolean {
 }
 
 // ----------------------------------------------------------------------------
+// RUNNABLE_PRIMITIVE_TOOLS — PR2
+// ----------------------------------------------------------------------------
+//
+// Closed set of tools that have a working ``POST /api/v1/tools/{name}/run``
+// endpoint — i.e. they're registered in
+// ``rates_agent.workflows._PRIMITIVE_SPECS`` and can execute with the
+// schema-driven ``runPrimitive`` call.  PR2's generic primitive
+// builder gates on this set: a runnable primitive without a typed
+// view gets the configurable schema-driven surface; a known-but-
+// not-runnable tool (manifest-only / no ``PrimitiveSpec`` entry)
+// still surfaces the honest ``unsupported_known`` card.
+//
+// Source of truth: ``grep -E '^        tool_name=' rates_agent/workflows/__init__.py``
+// + the ``_PRIMITIVE_SPECS`` dict keys.  Verified at PR review time;
+// adding a primitive to the backend = add it here too (the
+// routingCoverage test asserts the count + names).
+
+export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
+  // Sovereign-bond primitives in the workflow registry.
+  'build_sovereign_yield_panel_tool',
+  'calculate_beta_adjusted_spread_tool',
+  'calculate_breakeven_inflation_tool',
+  'calculate_cross_market_spread_tool',
+  'calculate_curve_spread_tool',
+  'calculate_half_life_tool',
+  'calculate_pca_yield_curve_tool',
+  'calculate_rolling_regression_tool',
+  'calculate_swap_spread_tool',
+  'calculate_yield_change_attribution_pca_tool',
+  'calculate_zscore_custom_tool',
+  'get_yield_levels_tool',
+  // OIS primitives in the workflow registry.
+  'calculate_ois_cross_market_spread_tool',
+  'calculate_ois_curve_spread_tool',
+  'calculate_ois_forward_rate_tool',
+  'compute_financing_rate_tool',
+  'get_ois_rate_level_tool',
+]);
+
+/** True when the tool has a backend run endpoint (the FastAPI
+ *  ``POST /api/v1/tools/{name}/run`` surface, backed by
+ *  ``rates_primitive_resolver``).  PR2 uses this to decide between
+ *  the generic schema-driven builder and the paused / unsupported
+ *  card.  ``classify_curve_move_tool``, ``calculate_butterfly_tool``,
+ *  ``scan_extremes_tool``, ``scan_ois_extremes_tool`` are manifest-
+ *  only and return ``false`` here. */
+export function isRunnablePrimitive(name: string): boolean {
+  return RUNNABLE_PRIMITIVE_TOOLS.has(normalizeToolName(name));
+}
+
+// ----------------------------------------------------------------------------
 // Unsupported-but-known registry
 // ----------------------------------------------------------------------------
 //
-// Tools that ARE in ``KNOWN_BACKEND_TOOLS`` but have NO Build-side
-// renderer today (no entry in ``TOOL_TO_VIEW``, no entry in the model
-// registry).  Maintained explicitly so the unsupported-known card can
-// surface a tool-specific "what works now" hint without the decoder
-// having to encode the negation of every other registry.
+// PR1 introduced this set as "every known tool without a Build
+// renderer."  PR2 narrows the scope: a tool only lands here if Build
+// CAN'T run it at all — i.e. no typed view, no model builder, and no
+// backend ``POST /tools/{name}/run`` entry either.  Everything that
+// USED to be on this list AND has a working ``_PRIMITIVE_SPECS`` entry
+// (8 tools) now routes to PR2's schema-driven generic builder instead.
+//
+// Today the only entry is ``scan_ois_extremes_tool`` — declared in the
+// rates manifest but with no compute implementation yet (no
+// ``PrimitiveSpec``, no typed detail endpoint).  Surface it explicitly
+// so the user gets an honest paused card with a "what works today"
+// hint pointing at the sovereign-bond scanner.
 //
 // Membership here ⇒ Build renders the unsupported-known card with
 // the per-tool reason in ``UNSUPPORTED_KNOWN_REASONS`` below.
 
 export const UNSUPPORTED_KNOWN_TOOLS: ReadonlySet<string> = new Set<string>([
-  // Sovereign-bond primitives without a typed-view OR model-builder
-  // surface in Build today.
-  'build_sovereign_yield_panel_tool',
-  'calculate_breakeven_inflation_tool',
-  'calculate_swap_spread_tool',
-  'calculate_zscore_custom_tool',
-  // OIS primitives — no Build views shipped yet.
-  'calculate_ois_cross_market_spread_tool',
-  'calculate_ois_curve_spread_tool',
-  'compute_financing_rate_tool',
-  'get_ois_rate_level_tool',
   // Manifest-declared but no backend implementation; clicking opens
-  // an unsupported card explaining the gap.
+  // an unsupported card explaining the gap.  No ``PrimitiveSpec`` ⇒
+  // no ``POST /tools/{name}/run`` path ⇒ no generic builder ⇒ this
+  // is the right surface.
   'scan_ois_extremes_tool',
 ]);
 
@@ -191,58 +240,15 @@ export interface UnsupportedKnownReason {
 /** Per-tool copy for the unsupported-known card.  Falls back to a
  *  generic message when the tool isn't listed here — but every entry
  *  in ``UNSUPPORTED_KNOWN_TOOLS`` should have a hint so the user
- *  doesn't see a bland "this tool is known" caption. */
+ *  doesn't see a bland "this tool is known" caption.
+ *
+ *  PR2 — the per-tool entries for tools that now have a working
+ *  ``POST /tools/{name}/run`` endpoint (swap spread, OIS spreads,
+ *  breakeven, sovereign yield panel, financing rate, zscore_custom,
+ *  OIS rate level) were retired because those tools route through the
+ *  generic schema-driven builder now.  Only the genuinely-paused
+ *  ``scan_ois_extremes_tool`` survives. */
 export const UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> = {
-  build_sovereign_yield_panel_tool: {
-    label: 'Sovereign yield panel',
-    reason:
-      'Panel-shaped multi-curve / multi-tenor data; Build does not yet ship a Panel renderer.',
-    whatWorksNow:
-      'Ask can run it and summarise; persisted workflows that use it (event_study) render the panel as a thin summary card.',
-  },
-  calculate_breakeven_inflation_tool: {
-    label: 'Breakeven inflation',
-    reason:
-      'Breakeven-inflation primitive needs a paired nominal / real curve picker; no Build view yet.',
-    whatWorksNow: 'Ask can run it on demand.',
-  },
-  calculate_swap_spread_tool: {
-    label: 'Swap spread',
-    reason:
-      'Swap-spread primitive (used inside event_study) has no standalone Build view.',
-    whatWorksNow:
-      'Ask can run it; event_study workflows that consume it persist as a workspace.',
-  },
-  calculate_zscore_custom_tool: {
-    label: 'Custom z-score',
-    reason:
-      'Per-series z-score with custom window — used inside backtest; no standalone Build view.',
-    whatWorksNow: 'Ask can run it.',
-  },
-  calculate_ois_cross_market_spread_tool: {
-    label: 'OIS cross-market spread',
-    reason: 'OIS cross-market view not implemented in Build yet.',
-    whatWorksNow: 'Ask can run it; the sovereign-bond cross-market view is the closest equivalent.',
-  },
-  calculate_ois_curve_spread_tool: {
-    label: 'OIS curve spread',
-    reason: 'OIS curve-spread view not implemented in Build yet.',
-    whatWorksNow:
-      'Ask can run it; the sovereign-bond curve-spread view is the closest equivalent.',
-  },
-  compute_financing_rate_tool: {
-    label: 'Financing rate panel',
-    reason:
-      'Panel-shaped financing-rate output; Build does not yet ship a Panel renderer.',
-    whatWorksNow:
-      'Ask can run it; persisted backtest workflows (paused) consume it.',
-  },
-  get_ois_rate_level_tool: {
-    label: 'OIS rate level',
-    reason:
-      'Single-point OIS rate snapshot; no Build view yet (the sovereign-bond yield-level view is the closest equivalent).',
-    whatWorksNow: 'Ask can run it.',
-  },
   scan_ois_extremes_tool: {
     label: 'OIS extremes scanner',
     reason:
