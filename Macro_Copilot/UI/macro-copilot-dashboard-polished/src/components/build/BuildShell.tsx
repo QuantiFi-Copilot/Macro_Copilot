@@ -27,7 +27,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import { useWorkspaceDetail } from '@/hooks/useWorkspaceDetail';
@@ -37,6 +37,7 @@ import { BuildEmptyState } from './empty/BuildEmptyState';
 import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
 import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
+import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
 // ``resolveNodeRenderer`` returns real renderers, not the fallback.
@@ -65,6 +66,16 @@ function SlugFreeShell({
 }) {
   const { messages, sendMessage, connectionStatus, isThinking } =
     useCopilotContext();
+
+  // Phase R1.3 — when Ask hands off a single-primitive analysis via
+  // ``/workspace?context=<encoded>``, BuildShell short-circuits the
+  // empty-state / building-state machine and mounts a virtual primitive
+  // canvas.  The canvas fetches the matching typed-detail endpoint and
+  // renders the result (Spread / CrossMarket / Butterfly / Yield /
+  // Regime / Scanner / Forward).  No workspace is persisted — this is
+  // the supervisor-turn handoff path.
+  const [searchParams] = useSearchParams();
+  const contextParam = searchParams.get('context');
 
   // ``pendingPrompt`` carries the user's last empty-state submission
   // so the building view can echo it back.  Cleared once we navigate
@@ -114,18 +125,27 @@ function SlugFreeShell({
   const composerDisabled =
     connectionStatus !== 'ready' || isThinking;
 
+  // Pick the centre-column canvas: virtual primitive (Ask handoff) >
+  // building (prompt in flight) > empty state.  The order matters —
+  // when the user clicks "Open in Build" mid-thinking, the context
+  // param wins so the handoff target is rendered immediately.
+  let canvas: React.ReactNode;
+  if (contextParam) {
+    canvas = <VirtualPrimitiveCanvas contextParam={contextParam} />;
+  } else if (isBuilding) {
+    canvas = <BuildBuilding prompt={pendingPrompt!} />;
+  } else {
+    canvas = (
+      <BuildEmptyState
+        onSend={handleSend}
+        composerDisabled={composerDisabled}
+      />
+    );
+  }
+
   return (
     <BuildShellLayout
-      canvas={
-        isBuilding ? (
-          <BuildBuilding prompt={pendingPrompt!} />
-        ) : (
-          <BuildEmptyState
-            onSend={handleSend}
-            composerDisabled={composerDisabled}
-          />
-        )
-      }
+      canvas={canvas}
       copilotRail={<WorkspaceCopilotRail mode="empty" />}
     />
   );
