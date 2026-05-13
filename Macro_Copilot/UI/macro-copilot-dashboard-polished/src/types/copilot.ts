@@ -26,13 +26,38 @@ export type ServerEvent =
       error?: string | null;
     }
   | { type: 'token'; content: string }
-  | { type: 'done'; workspace_context: WorkspaceContext | null; tool_calls: ToolCallSummary[]; total_duration_ms: number }
+  | {
+      type: 'done';
+      workspace_context: WorkspaceContext | null;
+      tool_calls: ToolCallSummary[];
+      total_duration_ms: number;
+      // Phase 4 — chat-driven parameter overrides.  Optional;
+      // populated only when the assistant identifies that the user's
+      // prose implies a parameter change on the active workspace.
+      // The wire shape uses snake_case to match the rest of the
+      // SessionEvent protocol.  Frontend rebrands to
+      // ``proposedOverrides`` on the React message object.
+      proposed_overrides?: ServerProposedOverride[] | null;
+    }
   | { type: 'error'; message: string }
   // PR 10 — workflow events.  Forward-compatible: existing handler
   // ignores unknown types, so older clients work unchanged.
   | WorkflowRouteDecisionEvent
   | WorkflowStatusEvent
   | WorkflowResultEvent;
+
+/** Wire shape of a single ``proposed_overrides`` entry on the
+ *  ``done`` event.  Snake-case mirrors the rest of the SessionEvent
+ *  protocol; the React message rebrands to ``ProposedOverride``. */
+export type ServerProposedOverride = {
+  id?: string;
+  path: [string] | [string, string];
+  value: unknown;
+  value_label?: string;
+  node_id?: string;
+  previous_value?: unknown;
+  rationale?: string;
+};
 
 export type ToolCallSummary = {
   tool: string;
@@ -91,6 +116,47 @@ export type CopilotMessage = {
   // chat bubble renders a structured workflow result card next to the
   // streamed prose.
   workflow?: WorkflowTurnPayload | null;
+  // Phase 4 — chat-driven parameter overrides.  When the assistant
+  // identifies that the user's prose implies a parameter change on
+  // the active workspace (e.g. "use ACT/365 instead"), the backend
+  // emits a structured payload here.  The Build copilot rail renders
+  // these as approve/reject chips that dispatch into the workspace
+  // overrides queue.  Detection is best-effort: the field is null on
+  // every message until the backend ships the emitter.
+  proposedOverrides?: ProposedOverride[] | null;
+};
+
+/** A single parameter override the assistant suggests.  Mirrors the
+ *  shape ``WorkspaceOverridesProvider.setOverride`` consumes so the
+ *  rail can dispatch it without a translation step.
+ *
+ *  ``path`` follows the same convention as ``ParamOverride.path`` —
+ *  ``[slot]`` for scalars, ``[slot, field]`` for nested dict-merge
+ *  entries.  ``valueLabel`` is an optional pre-rendered string for
+ *  the chip (e.g. "ACT/365") when the raw ``value`` would print
+ *  awkwardly (a long JSON object). */
+export type ProposedOverride = {
+  /** Stable id within the message so chips can be approved /
+   *  rejected individually.  Server-assigned; falls back to a
+   *  hash of (path, value) when absent. */
+  id?: string;
+  path: [string] | [string, string];
+  value: unknown;
+  /** Optional human-readable label for the value.  Defaults to the
+   *  string form of ``value`` when missing. */
+  valueLabel?: string;
+  /** The stage's node_id this override targets.  Optional — the
+   *  override map is path-keyed and doesn't need it, but carrying it
+   *  through lets the rail render "for stage X" context next to the
+   *  chip. */
+  nodeId?: string;
+  /** The substrate's previous value at this path, when known.  Used
+   *  by the chip to show "was → is" preview without forcing the
+   *  rail to look it up. */
+  previousValue?: unknown;
+  /** Short rationale the assistant generated for the suggestion —
+   *  rendered as the chip's tooltip. */
+  rationale?: string;
 };
 
 // PR 10 — workflow turn state.  Aggregates the events the WS streams

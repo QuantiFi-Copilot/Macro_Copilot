@@ -5,18 +5,21 @@
 // derived descriptors + the registered control components.  All
 // edits flow through the parent's override dispatcher; this
 // component holds no state of its own.
+//
+// Header reuses the same column vocabulary as the DAG / Results
+// surfaces (Primitive / Operator / Output) plus a category-rail
+// gradient on top so the editor pane carries the same visual
+// identity as the stage card in the DAG strip.
 // ============================================================================
 
 import { useMemo } from 'react';
 import type { NodeSummary, WorkspaceDetail } from '@/services/workspaceApi';
-import {
-  prettyStageTitle,
-  stageKindLabel,
-} from '@/components/build/lib/stageDisplay';
+import { prettyStageTitle } from '@/components/build/lib/stageDisplay';
 import {
   railColorForStage,
   stageCategoryForNode,
 } from '@/components/build/lib/stageCategory';
+import { columnLabelForCategory } from '@/components/build/lib/stageColumn';
 import { ParameterControlSwitch } from './ParameterControlSwitch';
 import { deriveControlsForStage } from './lib/deriveControlsForStage';
 import {
@@ -42,6 +45,7 @@ export function StageParameterEditor({
   const descriptors = useMemo(() => deriveControlsForStage(node), [node]);
   const category = stageCategoryForNode(node, workspace);
   const railColor = railColorForStage(category);
+  const columnLabel = columnLabelForCategory(category);
 
   // Split descriptors into "editable" and "read-only / topology"
   // groups so the form puts the user's editing surface up top + the
@@ -52,7 +56,7 @@ export function StageParameterEditor({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header
-        className="flex shrink-0 items-baseline gap-2 border-b border-line-subtle px-5 py-3"
+        className="flex shrink-0 flex-col gap-0.5 border-b border-line-subtle px-5 py-3.5"
         style={{
           backgroundImage: `linear-gradient(90deg, transparent 0%, ${railColor} 18%, ${railColor} 82%, transparent 100%)`,
           backgroundRepeat: 'no-repeat',
@@ -60,20 +64,21 @@ export function StageParameterEditor({
           backgroundPosition: 'top',
         }}
       >
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.18em] text-fg-faint">
-          {stageKindLabel(node.kind)}
-        </span>
-        <h3 className="truncate text-[13.5px] font-semibold tracking-[-0.008em] text-fg-primary">
+        <span className="kicker text-fg-muted">{columnLabel}</span>
+        <h3 className="truncate text-[14px] font-semibold tracking-[-0.012em] text-fg-primary">
           {prettyStageTitle(node.name ?? node.node_id)}
         </h3>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-5 px-5 py-5">
+        <div className="flex flex-col gap-6 px-5 py-5">
           {editable.length === 0 ? (
             <EmptyEditor />
           ) : (
-            <Section title="Editable parameters">
+            <Section
+              title="Editable parameters"
+              meta={`${editable.length}`}
+            >
               {editable.map((d) => (
                 <ControlRow
                   key={overrideKey(d.path)}
@@ -86,7 +91,7 @@ export function StageParameterEditor({
           )}
 
           {readOnly.length > 0 && (
-            <Section title="Stage identity">
+            <Section title="Stage identity" meta={`${readOnly.length}`}>
               {readOnly.map((d) => (
                 <ControlRow
                   key={overrideKey(d.path)}
@@ -132,16 +137,21 @@ function ControlRow({
 
 function Section({
   title,
+  meta,
   children,
 }: {
   title: string;
+  meta?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-fg-muted">
-        {title}
-      </h4>
+      <div className="flex items-baseline justify-between">
+        <h4 className="kicker text-fg-muted">{title}</h4>
+        {meta && (
+          <span className="font-mono text-[10px] text-fg-faint">{meta}</span>
+        )}
+      </div>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
   );

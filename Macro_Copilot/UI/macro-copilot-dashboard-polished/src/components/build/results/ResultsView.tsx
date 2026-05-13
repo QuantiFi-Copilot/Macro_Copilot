@@ -13,7 +13,9 @@
 //
 // Cards inherit the WidgetCard chrome from Monitor, so the visual
 // register is consistent between the home dashboard and Build's
-// Results tab.
+// Results tab.  Section headers use the global ``.kicker`` primitive
+// + a short description so the user can scan "what am I looking at"
+// in one glance.
 // ============================================================================
 
 import { useMemo } from 'react';
@@ -46,12 +48,13 @@ export function ResultsView({ detail }: Props) {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-6 py-6">
+    <div className="flex min-w-0 flex-col gap-7 px-6 py-6">
       {terminalNode && (
         <section className="flex flex-col gap-3">
           <SectionHeader
             label="Terminal output"
             description="The workflow's final artifact — what the analysis ultimately produced."
+            count={1}
           />
           <div className="grid grid-cols-12 gap-4 lg:gap-5">
             <NodeWidgetCard
@@ -72,6 +75,7 @@ export function ResultsView({ detail }: Props) {
                 ? 'Per-stage artifacts produced on the way to the terminal output.'
                 : 'Every artifact this workspace produced.'
             }
+            count={otherNodes.length}
           />
           <div className="grid grid-cols-12 gap-4 lg:gap-5">
             {otherNodes.map((n) => (
@@ -92,16 +96,21 @@ export function ResultsView({ detail }: Props) {
 function SectionHeader({
   label,
   description,
+  count,
 }: {
   label: string;
   description: string;
+  count: number;
 }) {
   return (
-    <div>
-      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-fg-muted">
-        {label}
-      </h2>
-      <p className="mt-0.5 text-[11px] text-fg-faint">{description}</p>
+    <div className="flex items-baseline justify-between gap-3 px-0.5">
+      <div className="min-w-0">
+        <h2 className="kicker text-fg-muted">{label}</h2>
+        <p className="mt-0.5 text-[11px] text-fg-faint">{description}</p>
+      </div>
+      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-fg-faint">
+        {count} {count === 1 ? 'stage' : 'stages'}
+      </span>
     </div>
   );
 }

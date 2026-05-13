@@ -36,6 +36,7 @@ import { WorkspaceCopilotRail } from './copilot-rail/WorkspaceCopilotRail';
 import { BuildEmptyState } from './empty/BuildEmptyState';
 import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
+import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
 // ``resolveNodeRenderer`` returns real renderers, not the fallback.
@@ -142,22 +143,43 @@ function SlugBoundShell({ slug }: { slug: string }) {
     return detail.name?.trim() || undefined;
   }, [detail]);
 
+  // Slug-bound shell — wrap in the overrides provider so the
+  // Parameters tab AND the copilot rail share one queue.  The
+  // provider needs a concrete workspace to bind its fork pipeline
+  // to; gate the wrap on the detail being loaded.
+  if (detail) {
+    return (
+      <WorkspaceOverridesProvider workspace={detail}>
+        <BuildShellLayout
+          canvas={<BuildCompleted detail={detail} replay={replay} />}
+          copilotRail={
+            <WorkspaceCopilotRail
+              mode="completed"
+              workspaceTitle={workspaceTitle}
+              workspace={detail}
+            />
+          }
+        />
+      </WorkspaceOverridesProvider>
+    );
+  }
+
+  // Loading / error fall-through — render the layout without the
+  // overrides provider since there's no workspace to bind to yet.
   return (
     <BuildShellLayout
       canvas={
         error ? (
           <ErrorCanvas slug={slug} message={String(error.message)} />
-        ) : isLoading || !detail ? (
-          <LoadingCanvas />
         ) : (
-          <BuildCompleted detail={detail} replay={replay} />
+          <LoadingCanvas />
         )
       }
       copilotRail={
         <WorkspaceCopilotRail
           mode="completed"
           workspaceTitle={workspaceTitle}
-          workspace={detail}
+          workspace={null}
         />
       }
     />

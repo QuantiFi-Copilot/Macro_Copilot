@@ -32,6 +32,7 @@ import { StageCard } from './StageCard';
 import { EdgeConnector } from './EdgeConnector';
 import { topologicalOrder } from '../lib/topologicalOrder';
 import { stageCategoryForNode } from '../lib/stageCategory';
+import { columnLabelForCategory } from '../lib/stageColumn';
 import type { StageCategory } from '../lib/buildTypes';
 
 type Props = {
@@ -115,17 +116,6 @@ function StageColumn({
       {children}
     </div>
   );
-}
-
-function columnLabelForCategory(category: StageCategory): string {
-  switch (category) {
-    case 'input':
-      return 'Primitive';
-    case 'transform':
-      return 'Operator';
-    case 'output':
-      return 'Output';
-  }
 }
 
 /** Dashed-border tile at the end of the strip — non-interactive in
