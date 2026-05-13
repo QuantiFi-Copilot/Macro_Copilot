@@ -15,6 +15,7 @@
 // ============================================================================
 
 import { useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BUILD_CATEGORIES } from './categoryDefinitions';
 import { CategoryTile } from './CategoryTile';
 import {
@@ -30,8 +31,17 @@ type Props = {
 
 export function BuildEmptyState({ onSend, composerDisabled }: Props) {
   const composerRef = useRef<EmptyStateComposerHandle | null>(null);
+  const navigate = useNavigate();
 
   const handleTile = (category: BuildEmptyCategory) => {
+    // Phase R4 — tiles tagged with ``builderTool`` deep-link into the
+    // standalone model builder canvas instead of seeding the composer.
+    // The other tiles keep the original behaviour of dropping a prompt
+    // into the centre composer.
+    if (category.builderTool) {
+      navigate(`/workspace?builder=${encodeURIComponent(category.builderTool)}`);
+      return;
+    }
     composerRef.current?.seed(category.promptSeed);
   };
 
