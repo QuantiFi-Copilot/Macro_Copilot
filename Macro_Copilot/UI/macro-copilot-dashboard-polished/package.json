@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "typecheck:full": "tsc -p tsconfig.json --noEmit",
+    "test:build": "node scripts/run_build_tests.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
