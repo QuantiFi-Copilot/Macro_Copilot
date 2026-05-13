@@ -396,12 +396,22 @@ const REGISTRY_INDEX: Record<string, ModelMetadata> = Object.fromEntries(
   MODELS.map((m) => [m.toolName, m] as const),
 );
 
+// R6.1 — every public lookup goes through ``normalizeToolName`` so
+// Library manifest shorthand (e.g. ``half_life_tool``) resolves to the
+// same canonical entry as the backend-prefixed form
+// (``calculate_half_life_tool``).  Without this the Library "Open in
+// Build" CTA mis-routes rich-model tools to the ``?context=`` decoder,
+// producing the "Could not decode workspace context" card the user
+// audit flagged.
+
+import { normalizeToolName } from '@/lib/toolNames';
+
 export function getModelMetadata(toolName: string): ModelMetadata | null {
-  return REGISTRY_INDEX[toolName] ?? null;
+  return REGISTRY_INDEX[normalizeToolName(toolName)] ?? null;
 }
 
 export function hasModelMetadata(toolName: string): boolean {
-  return toolName in REGISTRY_INDEX;
+  return normalizeToolName(toolName) in REGISTRY_INDEX;
 }
 
 export function listModels(): ModelMetadata[] {
@@ -409,12 +419,14 @@ export function listModels(): ModelMetadata[] {
 }
 
 /** Resolve the ParamHint for a field, with a sensible default when the
- *  registry entry omits it (or doesn't exist at all). */
+ *  registry entry omits it (or doesn't exist at all).  ``toolName`` is
+ *  normalised so callers can pass either the manifest shorthand or the
+ *  backend-canonical form. */
 export function paramHintFor(
   toolName: string,
   fieldName: string,
 ): ParamHint {
-  const meta = REGISTRY_INDEX[toolName];
+  const meta = REGISTRY_INDEX[normalizeToolName(toolName)];
   return (
     (meta?.paramHints && meta.paramHints[fieldName]) ?? {
       control: 'auto',

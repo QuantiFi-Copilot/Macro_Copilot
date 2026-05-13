@@ -21,6 +21,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   fetchDetailSpread,
   fetchDetailCrossMarket,
@@ -42,6 +43,8 @@ import {
   type DecodedPrimitive,
   type PrimitiveViewKind,
 } from './contextDecoder';
+import { paramSpecsFor, resolveParamValue } from './paramSpecs';
+import { PrimitiveParamControls } from './PrimitiveParamControls';
 import { SpreadPrimitiveView } from './SpreadPrimitiveView';
 import { CrossMarketPrimitiveView } from './CrossMarketPrimitiveView';
 import { ButterflyPrimitiveView } from './ButterflyPrimitiveView';
@@ -49,6 +52,21 @@ import { YieldPrimitiveView } from './YieldPrimitiveView';
 import { RegimePrimitiveView } from './RegimePrimitiveView';
 import { ScannerPrimitiveView } from './ScannerPrimitiveView';
 import { ForwardPrimitiveView } from './ForwardPrimitiveView';
+
+// ----------------------------------------------------------------------------
+// Discriminated narrowing
+// ----------------------------------------------------------------------------
+
+/** The decoded variant the typed-detail fetch path handles.  Builder
+ *  decodes are redirected to ``?builder=`` BEFORE reaching this path
+ *  (see ``VirtualPrimitiveCanvas`` below). */
+type DecodedTypedPrimitive = Exclude<DecodedPrimitive, { kind: 'builder' }>;
+
+function isTypedPrimitive(
+  decoded: DecodedPrimitive,
+): decoded is DecodedTypedPrimitive {
+  return decoded.kind !== 'builder';
+}
 
 // ----------------------------------------------------------------------------
 // Per-view payload discriminator + fetcher dispatcher
@@ -75,7 +93,7 @@ function coerceLookbackDays(raw: string | undefined): number | undefined {
 }
 
 async function dispatchFetch(
-  decoded: DecodedPrimitive,
+  decoded: DecodedTypedPrimitive,
 ): Promise<Payload> {
   const p = decoded.params;
   const lookback = coerceLookbackDays(p['lookback_days']);
@@ -159,12 +177,68 @@ type Props = {
 
 export function VirtualPrimitiveCanvas({ contextParam }: Props) {
   const decoded = decodePrimitiveContext(contextParam);
+  const navigate = useNavigate();
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // R6.2 — fold the param-spec defaults into ``decoded.params`` before
+  // anything else reads it.  When the user clicks "Open in Build" on
+  // the Library with no params (the common case), the URL only carries
+  // ``{tool: "calculate_curve_spread_tool", params: {}}`` — without
+  // this fold, the first fetch would land with all-empty params and
+  // the typed-detail endpoint would reject it.  After the fold the
+  // dispatchFetch call below + the PrimitiveParamControls component
+  // both see a fully-populated params dict matching the spec defaults.
+  const effectiveParams: Record<string, string> = {};
+  if (decoded && isTypedPrimitive(decoded)) {
+    for (const spec of paramSpecsFor(decoded.kind)) {
+      effectiveParams[spec.key] = resolveParamValue(spec, decoded.params);
+    }
+    // Carry through any URL-supplied params the spec list doesn't
+    // declare (the typed-detail endpoints accept e.g. ``field_name``
+    // even though the spec list doesn't expose a control for it).
+    for (const [k, v] of Object.entries(decoded.params)) {
+      if (!(k in effectiveParams)) effectiveParams[k] = v;
+    }
+  }
+
+  // Mutate the URL when the user picks a new value in the controls
+  // strip.  We re-encode ``?context=`` with the same toolName + the
+  // updated params dict — the canvas's decode-then-fetch effect picks
+  // it up on the next render and re-runs the fetch with the new
+  // arguments.  Bookmark / share / refresh stay correct because the
+  // URL is still the source of truth.
+  const handleParamChange = (key: string, value: string) => {
+    if (!decoded || !isTypedPrimitive(decoded)) return;
+    const nextParams = { ...effectiveParams, [key]: value };
+    const nextCtx = encodeURIComponent(
+      JSON.stringify({
+        tools: [{ tool: decoded.toolName, params: nextParams }],
+        tool_count: 1,
+      }),
+    );
+    navigate(`/workspace?context=${nextCtx}`, { replace: true });
+  };
+
+  // R6.1 — when the decoded tool is a rich-model primitive (PCA /
+  // rolling regression / attribution / half-life / beta-adjusted-
+  // spread), short-circuit to ``?builder=<toolName>`` so the standalone
+  // playground mounts with the user's params pre-filled.  This is the
+  // half of the Library → Build bridge that used to drop into the
+  // orange "Could not decode" card.
   useEffect(() => {
-    if (!decoded) {
+    if (decoded?.kind !== 'builder') return;
+    const qs = new URLSearchParams();
+    qs.set('builder', decoded.toolName);
+    for (const [k, v] of Object.entries(decoded.params)) {
+      qs.set(k, v);
+    }
+    navigate(`/workspace?${qs.toString()}`, { replace: true });
+  }, [decoded, navigate]);
+
+  useEffect(() => {
+    if (!decoded || !isTypedPrimitive(decoded)) {
       setPayload(null);
       setError(null);
       setIsLoading(false);
@@ -182,7 +256,10 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
     setIsLoading(true);
     setError(null);
     setPayload(null);
-    dispatchFetch(decoded)
+    // Pass effectiveParams (defaults folded in) so the first fetch
+    // lands with sensible values rather than the empty params Library
+    // sends.
+    dispatchFetch({ ...decoded, params: effectiveParams })
       .then((p) => {
         if (cancelled) return;
         setPayload(p);
@@ -198,18 +275,40 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [decoded?.kind, decoded?.toolName, JSON.stringify(decoded?.params)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [decoded?.kind, decoded?.toolName, JSON.stringify(effectiveParams)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!decoded) {
     return <DecodeError contextParam={contextParam} />;
   }
+  // Builder redirects through the effect above; show a tight loader
+  // for the single frame the navigate() lands.
+  if (decoded.kind === 'builder') {
+    return <BuilderRedirectingCanvas toolName={decoded.toolName} />;
+  }
+
+  // Typed primitive view: render the params strip + the body together.
+  // R6.2 — every typed view now has user-editable dropdowns at the top.
+  const specs = paramSpecsFor(decoded.kind);
+  let body: React.ReactNode;
   if (error) {
-    return <FetchError decoded={decoded} message={error} />;
+    body = <FetchError decoded={decoded} message={error} />;
+  } else if (isLoading || !payload) {
+    body = <LoadingCanvas kind={decoded.kind} />;
+  } else {
+    body = <PrimitiveDispatcher payload={payload} />;
   }
-  if (isLoading || !payload) {
-    return <LoadingCanvas kind={decoded.kind} />;
-  }
-  return <PrimitiveDispatcher payload={payload} />;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PrimitiveParamControls
+        specs={specs}
+        current={effectiveParams}
+        isLoading={isLoading}
+        onChange={handleParamChange}
+      />
+      <div className="min-h-0 flex-1 overflow-hidden">{body}</div>
+    </div>
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -250,11 +349,23 @@ function LoadingCanvas({ kind }: { kind: PrimitiveViewKind }) {
   );
 }
 
+function BuilderRedirectingCanvas({ toolName }: { toolName: string }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6">
+      <Loader2 size={16} className="animate-spin text-ice-300" />
+      <span className="text-[12px] text-fg-muted">
+        Opening builder for{' '}
+        <span className="font-mono text-fg-secondary">{toolName}</span>…
+      </span>
+    </div>
+  );
+}
+
 function FetchError({
   decoded,
   message,
 }: {
-  decoded: DecodedPrimitive;
+  decoded: DecodedTypedPrimitive;
   message: string;
 }) {
   return (
