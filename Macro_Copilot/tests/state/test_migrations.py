@@ -259,12 +259,14 @@ class TestUpgradeHead:
         finally:
             engine.dispose()
 
-        # Latest head is the backtest-archetype closed-family-
-        # extension sentinel (0008, Phase 1 PR 19).
-        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 -> 0008.
-        assert version == "0008_backtest_archetype", (
+        # Latest head is the workspaces bound_slot_values + template_id
+        # extension (0009, Phase 3 PR B — adds the columns the Build
+        # surface's fork-with-overrides endpoint needs).
+        # Chains: 0001 -> 0002 -> 0003 -> 0004 -> 0005 -> 0006 -> 0007 ->
+        #         0008 -> 0009.
+        assert version == "0009_workspace_bound_slot_values", (
             f"Expected alembic_version to point at "
-            f"0008_backtest_archetype, got {version!r}.  "
+            f"0009_workspace_bound_slot_values, got {version!r}.  "
             "Either a new migration landed without updating this test, "
             "or the head chain is broken."
         )

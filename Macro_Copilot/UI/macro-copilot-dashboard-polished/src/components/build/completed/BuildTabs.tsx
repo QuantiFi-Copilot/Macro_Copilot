@@ -15,8 +15,10 @@ export type BuildTabId = 'dag' | 'results' | 'parameters' | 'notes';
 const TABS: { id: BuildTabId; label: string; soon?: boolean }[] = [
   { id: 'dag', label: 'DAG' },
   { id: 'results', label: 'Results' },
-  { id: 'parameters', label: 'Parameters', soon: true },
-  { id: 'notes', label: 'Notes', soon: true },
+  // PR B — Parameters + Notes now real surfaces.  ``soon`` flag
+  // removed; the tab strip's hit-targets are unchanged.
+  { id: 'parameters', label: 'Parameters' },
+  { id: 'notes', label: 'Notes' },
 ];
 
 type Props = {

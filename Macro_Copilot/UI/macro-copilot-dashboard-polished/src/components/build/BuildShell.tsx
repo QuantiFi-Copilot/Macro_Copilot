@@ -154,7 +154,11 @@ function SlugBoundShell({ slug }: { slug: string }) {
         )
       }
       copilotRail={
-        <WorkspaceCopilotRail mode="completed" workspaceTitle={workspaceTitle} />
+        <WorkspaceCopilotRail
+          mode="completed"
+          workspaceTitle={workspaceTitle}
+          workspace={detail}
+        />
       }
     />
   );

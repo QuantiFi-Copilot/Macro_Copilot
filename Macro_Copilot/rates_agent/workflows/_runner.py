@@ -332,6 +332,7 @@ def run_template_with_resolver(
     object_storage: Any = None,
     workspace_name: Optional[str] = None,
     workspace_created_by: Optional[str] = None,
+    parent_workspace_id: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Resolve a template by id, bind the supplied slot_values,
     pre-flight validate, execute against the supplied resolver +
@@ -464,6 +465,13 @@ def run_template_with_resolver(
             object_storage=object_storage,
             workspace_name=workspace_name,
             workspace_created_by=workspace_created_by,
+            # PR B — carry the slot_values onto the persisted
+            # workspace row so future variants can re-bind with a
+            # patch.  Copy defensively so mutations through
+            # ``slot_values`` after this point can't reach the
+            # stored snapshot.
+            bound_slot_values=dict(slot_values or {}),
+            parent_workspace_id=parent_workspace_id,
         )
         envelope["persistence"] = persistence
         if persistence.get("ok") is True:
@@ -488,6 +496,8 @@ def _persist_executed_workflow(
     object_storage: Any,
     workspace_name: Optional[str],
     workspace_created_by: Optional[str],
+    bound_slot_values: Optional[Dict[str, Any]] = None,
+    parent_workspace_id: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Persist node artifacts + DAG + workspace for a successful run.
 
@@ -499,6 +509,18 @@ def _persist_executed_workflow(
     Imports of state-layer modules are deferred to call-time to
     avoid pulling them into the cold path used by CLI / test
     fixtures that pass ``persist=False``.
+
+    PR B kwargs
+    -----------
+    ``bound_slot_values`` is the dict the user / LLM passed to
+    ``template.bind()``.  Persisted on the workspace row so the
+    fork-with-overrides endpoint can re-bind with a patch.  When
+    None (legacy / synthetic callers), the workspace is created
+    with NULL ``bound_slot_values`` and the fork affordance stays
+    disabled.
+
+    ``parent_workspace_id`` lets a fork pass through its parent
+    linkage at create time.  ``None`` for top-level workspaces.
     """
     if engine is None:
         return {
@@ -540,6 +562,9 @@ def _persist_executed_workflow(
                     name=workspace_name,
                     created_by=workspace_created_by,
                     focus_node=workflow.terminal_node_id,
+                    template_id=template_id,
+                    bound_slot_values=bound_slot_values,
+                    parent_workspace_id=parent_workspace_id,
                 )
             except InvalidNameError as exc:
                 # Reserved / oversize names get rejected cleanly.
@@ -558,6 +583,9 @@ def _persist_executed_workflow(
                     name=None,
                     created_by=workspace_created_by,
                     focus_node=workflow.terminal_node_id,
+                    template_id=template_id,
+                    bound_slot_values=bound_slot_values,
+                    parent_workspace_id=parent_workspace_id,
                 )
     except Exception as exc:
         logger.exception("[%s] persistence failed", template_id)
@@ -587,14 +615,16 @@ def run_template(
     object_storage: Any = None,
     workspace_name: Optional[str] = None,
     workspace_created_by: Optional[str] = None,
+    parent_workspace_id: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Production wrapper: same as ``run_template_with_resolver`` but
     with the rates_primitive_resolver injected.  This is what the MCP
     server, CLI, and orchestrator-side code call.
 
-    Persistence kwargs (``persist`` / ``object_storage`` /
-    ``workspace_name`` / ``workspace_created_by``) are forwarded
-    verbatim — see ``run_template_with_resolver`` for semantics.
+    Persistence kwargs are forwarded verbatim — see
+    ``run_template_with_resolver`` for semantics.  ``parent_workspace_id``
+    is the PR B addition that lets the fork endpoint stamp the
+    parent linkage on the child workspace at create time.
     """
     return run_template_with_resolver(
         template_id,
@@ -605,6 +635,7 @@ def run_template(
         object_storage=object_storage,
         workspace_name=workspace_name,
         workspace_created_by=workspace_created_by,
+        parent_workspace_id=parent_workspace_id,
     )
 
 
