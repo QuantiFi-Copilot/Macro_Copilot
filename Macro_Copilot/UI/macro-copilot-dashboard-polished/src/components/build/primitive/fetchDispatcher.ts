@@ -45,19 +45,26 @@ export type Payload =
  *
  *    - ``builder`` — handled upstream by a useEffect redirect to
  *      ``?builder=<toolName>``.
+ *    - ``generic_builder`` (PR2) — handled upstream by mounting the
+ *      ``GenericPrimitiveBuilder``; runs via the schema-driven
+ *      ``POST /tools/{name}/run`` endpoint, not a typed-detail GET.
  *    - ``unsupported_known`` (PR1) — handled upstream by mounting the
  *      ``UnsupportedKnownToolCanvas`` card; no backend fetch happens.
  *
  *  Exported so callers can gate before calling ``dispatchFetch``. */
 export type DecodedTypedPrimitive = Exclude<
   DecodedPrimitive,
-  { kind: 'builder' } | { kind: 'unsupported_known' }
+  { kind: 'builder' } | { kind: 'generic_builder' } | { kind: 'unsupported_known' }
 >;
 
 export function isTypedPrimitive(
   decoded: DecodedPrimitive,
 ): decoded is DecodedTypedPrimitive {
-  return decoded.kind !== 'builder' && decoded.kind !== 'unsupported_known';
+  return (
+    decoded.kind !== 'builder' &&
+    decoded.kind !== 'generic_builder' &&
+    decoded.kind !== 'unsupported_known'
+  );
 }
 
 /** Coerce a lookback-days URL param into the number the typed-detail

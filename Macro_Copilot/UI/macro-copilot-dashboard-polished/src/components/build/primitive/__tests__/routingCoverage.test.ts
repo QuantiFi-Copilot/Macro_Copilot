@@ -217,21 +217,15 @@ check('isKnownBackendTool: unknown tools are NOT known', () => {
 // isUnsupportedKnownTool — the 9 tools that should surface unsupported card.
 // ----------------------------------------------------------------------------
 
-check('isUnsupportedKnownTool: the 9 PR1 unsupported tools', () => {
-  const expected = new Set([
-    'build_sovereign_yield_panel_tool',
-    'calculate_breakeven_inflation_tool',
-    'calculate_swap_spread_tool',
-    'calculate_zscore_custom_tool',
-    'calculate_ois_cross_market_spread_tool',
-    'calculate_ois_curve_spread_tool',
-    'compute_financing_rate_tool',
-    'get_ois_rate_level_tool',
-    'scan_ois_extremes_tool',
-  ]);
-  for (const t of expected) {
-    assertTruthy(isUnsupportedKnownTool(t), `unsupported-known: ${t}`);
-  }
+// PR2 shrank the unsupported set: only ``scan_ois_extremes_tool``
+// stays here (manifest-only, no PrimitiveSpec, no run endpoint).  The
+// 8 previously-unsupported tools now route to the generic schema-
+// driven builder; their assertions moved to ``genericBuilder.test.ts``.
+check('isUnsupportedKnownTool: only scan_ois_extremes_tool after PR2', () => {
+  assertTruthy(
+    isUnsupportedKnownTool('scan_ois_extremes_tool'),
+    'scan_ois_extremes_tool is unsupported',
+  );
 });
 
 check('isUnsupportedKnownTool: typed-view tools are NOT unsupported', () => {
@@ -247,15 +241,10 @@ check('isUnsupportedKnownTool: typed-view tools are NOT unsupported', () => {
   );
 });
 
-check('isUnsupportedKnownTool: resolves manifest shorthand', () => {
-  // zscore_custom shorthand → calculate_zscore_custom_tool (unsupported)
-  assertTruthy(
-    isUnsupportedKnownTool('zscore_custom_tool'),
-    'zscore_custom shorthand unsupported',
-  );
-});
-
-check('unsupportedKnownReasonFor: every unsupported tool has explicit copy', () => {
+check('isUnsupportedKnownTool: PR2 generic-builder tools are NOT unsupported', () => {
+  // Every tool that PR2 promotes to the generic builder is no longer
+  // unsupported.  Asserting the negation here guards against
+  // accidentally re-adding any of them to the unsupported set.
   for (const t of [
     'build_sovereign_yield_panel_tool',
     'calculate_breakeven_inflation_tool',
@@ -265,19 +254,20 @@ check('unsupportedKnownReasonFor: every unsupported tool has explicit copy', () 
     'calculate_ois_curve_spread_tool',
     'compute_financing_rate_tool',
     'get_ois_rate_level_tool',
-    'scan_ois_extremes_tool',
   ]) {
-    const r = unsupportedKnownReasonFor(t);
-    assertTruthy(r.label.length > 0, `${t}: label`);
-    assertTruthy(r.reason.length > 0, `${t}: reason`);
-    assertTruthy(r.whatWorksNow.length > 0, `${t}: whatWorksNow`);
-    // Generic fallback uses the canonical name as the label; explicit
-    // entries should NOT collapse to that.
-    if (r.label === t) {
-      throw new Error(
-        `unsupportedKnownReasonFor(${t}) fell through to generic fallback (label === toolName)`,
-      );
-    }
+    assertEqual(isUnsupportedKnownTool(t), false, `not unsupported: ${t}`);
+  }
+});
+
+check('unsupportedKnownReasonFor: scan_ois_extremes_tool has explicit copy', () => {
+  const r = unsupportedKnownReasonFor('scan_ois_extremes_tool');
+  assertTruthy(r.label.length > 0, 'label');
+  assertTruthy(r.reason.length > 0, 'reason');
+  assertTruthy(r.whatWorksNow.length > 0, 'whatWorksNow');
+  if (r.label === 'scan_ois_extremes_tool') {
+    throw new Error(
+      'unsupportedKnownReasonFor(scan_ois_extremes_tool) fell through to generic fallback',
+    );
   }
 });
 
@@ -337,41 +327,16 @@ check('decode: half_life_tool (shorthand) → builder', () => {
   assertEqual(out!.toolName, 'calculate_half_life_tool', 'normalised toolName');
 });
 
-check('decode: calculate_swap_spread_tool → unsupported_known', () => {
+// PR2 — these tools now route to the schema-driven generic builder
+// rather than the paused unsupported card.  See ``genericBuilder.test.ts``
+// for the canonical decode assertions for each tool; the duplicate
+// checks here remain to lock the priority interaction with typed views.
+check('decode: scan_ois_extremes_tool → unsupported_known (last paused tool)', () => {
   const out = decodePrimitiveContext(
-    encodeContext([{ tool: 'calculate_swap_spread_tool' }]),
+    encodeContext([{ tool: 'scan_ois_extremes_tool' }]),
   );
   assertEqual(out!.kind, 'unsupported_known', 'kind');
-  assertEqual(out!.toolName, 'calculate_swap_spread_tool', 'toolName');
-});
-
-check('decode: calculate_ois_curve_spread_tool → unsupported_known', () => {
-  const out = decodePrimitiveContext(
-    encodeContext([{ tool: 'calculate_ois_curve_spread_tool' }]),
-  );
-  assertEqual(out!.kind, 'unsupported_known', 'kind');
-});
-
-check('decode: calculate_breakeven_inflation_tool → unsupported_known', () => {
-  const out = decodePrimitiveContext(
-    encodeContext([{ tool: 'calculate_breakeven_inflation_tool' }]),
-  );
-  assertEqual(out!.kind, 'unsupported_known', 'kind');
-});
-
-check('decode: build_sovereign_yield_panel_tool → unsupported_known', () => {
-  const out = decodePrimitiveContext(
-    encodeContext([{ tool: 'build_sovereign_yield_panel_tool' }]),
-  );
-  assertEqual(out!.kind, 'unsupported_known', 'kind');
-});
-
-check('decode: calculate_ois_rate_level_tool (verb-mismatch) → unsupported_known + normalised', () => {
-  const out = decodePrimitiveContext(
-    encodeContext([{ tool: 'calculate_ois_rate_level_tool' }]),
-  );
-  assertEqual(out!.kind, 'unsupported_known', 'kind');
-  assertEqual(out!.toolName, 'get_ois_rate_level_tool', 'normalised toolName');
+  assertEqual(out!.toolName, 'scan_ois_extremes_tool', 'toolName');
 });
 
 check('decode: malformed context → null (decode-error path)', () => {
@@ -396,14 +361,29 @@ check('decode: builder + primitive → builder wins (priority)', () => {
   assertEqual(out!.kind, 'builder', 'builder wins over spread');
 });
 
-check('decode: primitive + unsupported_known → primitive wins (priority)', () => {
+check('decode: typed primitive + generic_builder → typed wins (priority)', () => {
+  // PR2 priority: BUILDER > typed view > generic_builder > unsupported_known.
+  // A typed chart conveys more information than a configure-and-run
+  // form, so curve_spread wins over swap_spread (generic_builder).
   const out = decodePrimitiveContext(
     encodeContext([
-      { tool: 'calculate_swap_spread_tool' }, // unsupported
+      { tool: 'calculate_swap_spread_tool' }, // generic_builder
       { tool: 'calculate_curve_spread_tool' }, // typed view
     ]),
   );
-  assertEqual(out!.kind, 'spread', 'spread wins over unsupported_known');
+  assertEqual(out!.kind, 'spread', 'spread wins over generic_builder');
+});
+
+check('decode: generic_builder + unsupported_known → generic_builder wins (priority)', () => {
+  // The generic builder is configurable + runnable; a paused tool is
+  // not.  Tie-break favours the runnable surface.
+  const out = decodePrimitiveContext(
+    encodeContext([
+      { tool: 'scan_ois_extremes_tool' },     // unsupported_known
+      { tool: 'calculate_swap_spread_tool' }, // generic_builder
+    ]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'generic_builder beats unsupported_known');
 });
 
 // ----------------------------------------------------------------------------
@@ -446,16 +426,20 @@ check('decodeList: builder entry filtered out', () => {
   );
 });
 
-check('decodeList: unsupported_known IS retained', () => {
+check('decodeList: generic_builder + unsupported_known are both retained', () => {
+  // PR2 — multi-card grid renders typed primitives + generic builder
+  // tiles + unsupported tiles together.  Builders alone are filtered.
   const list = decodePrimitiveList(
     encodeContext([
-      { tool: 'calculate_curve_spread_tool' },
-      { tool: 'calculate_swap_spread_tool' }, // unsupported_known
+      { tool: 'calculate_curve_spread_tool' }, // typed view
+      { tool: 'calculate_swap_spread_tool' },  // generic_builder
+      { tool: 'scan_ois_extremes_tool' },      // unsupported_known
     ]),
   );
-  assertEqual(list.length, 2, 'both retained');
-  assertEqual(list[0].kind, 'spread', 'first: typed');
-  assertEqual(list[1].kind, 'unsupported_known', 'second: unsupported_known');
+  assertEqual(list.length, 3, 'all three retained');
+  assertEqual(list[0].kind, 'spread', 'first: typed view');
+  assertEqual(list[1].kind, 'generic_builder', 'second: generic_builder');
+  assertEqual(list[2].kind, 'unsupported_known', 'third: unsupported_known');
 });
 
 check('decodeList: malformed payload → empty list', () => {

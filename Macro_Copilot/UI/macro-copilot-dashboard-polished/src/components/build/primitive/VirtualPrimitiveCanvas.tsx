@@ -47,6 +47,7 @@ import { RegimePrimitiveView } from './RegimePrimitiveView';
 import { ScannerPrimitiveView } from './ScannerPrimitiveView';
 import { ForwardPrimitiveView } from './ForwardPrimitiveView';
 import { UnsupportedKnownToolCanvas } from './UnsupportedKnownToolCanvas';
+import { GenericPrimitiveBuilder } from './GenericPrimitiveBuilder';
 
 // ----------------------------------------------------------------------------
 // Component
@@ -167,10 +168,24 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
   if (decoded.kind === 'builder') {
     return <BuilderRedirectingCanvas toolName={decoded.toolName} />;
   }
-  // PR1 — known-backend tool with no Build renderer yet.  Render an
-  // explicit "unsupported_known" card instead of dropping the user
-  // into the orange decode-error path or the empty shell.  This is
-  // the explicit-state replacement the user audit asked for.
+  // PR2 — runnable primitive without a bespoke typed view.  Mount the
+  // schema-driven generic builder: fetches the ``ToolCard``, renders a
+  // form from ``input_fields``, runs via ``POST /tools/{name}/run``.
+  // Replaces the PR1 unsupported card for these tools — they're now
+  // configurable + executable from Build.
+  if (decoded.kind === 'generic_builder') {
+    return (
+      <GenericPrimitiveBuilder
+        toolName={decoded.toolName}
+        initialParams={decoded.params}
+      />
+    );
+  }
+  // PR1 — known but NOT runnable (manifest-only / paused).  Render
+  // the explicit "unsupported_known" card.  Reserved for tools
+  // without a ``PrimitiveSpec`` entry, so attempting to run them
+  // would 500 — the card explains the gap and links to Ask /
+  // Library.
   if (decoded.kind === 'unsupported_known') {
     return (
       <UnsupportedKnownToolCanvas

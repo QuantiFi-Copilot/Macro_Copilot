@@ -1,0 +1,441 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// ============================================================================
+// genericBuilder.test.ts — PR2 generic-builder + paramHint-inference assertions.
+// ----------------------------------------------------------------------------
+// Sibling of ``routingCoverage.test.ts``.  Covers the PR2-specific
+// surface area:
+//
+//   1. ``RUNNABLE_PRIMITIVE_TOOLS`` registry membership.
+//   2. ``isRunnablePrimitive`` resolves manifest shorthand + the verb
+//      mismatch.
+//   3. Decoder emits ``generic_builder`` for every runnable primitive
+//      without a typed view AND without a model-registry entry.
+//   4. Decoder still emits the right ``builder`` / typed-view / paused
+//      variant for the surrounding registry rows.
+//   5. ``inferFieldControl`` returns sensible controls for the shared
+//      rates vocabulary (curve_family / tenor / lookback_days / etc.).
+//
+// Same ``check`` shim + esbuild-bundle execution path as the PR1
+// routingCoverage tests; the file is tsc-checked under the app
+// tsconfig and exports a runner the harness can call directly.
+// ============================================================================
+
+import {
+  decodePrimitiveContext,
+  decodePrimitiveList,
+} from '../contextDecoder';
+import {
+  RUNNABLE_PRIMITIVE_TOOLS,
+  isRunnablePrimitive,
+  normalizeToolName,
+} from '@/lib/toolNames';
+import { inferFieldControl, paramHintFor } from '@/lib/modelRegistry';
+
+type Check = { label: string; fn: () => void };
+const _checks: Check[] = [];
+
+function check(label: string, fn: () => void): void {
+  _checks.push({ label, fn });
+}
+
+function assertEqual<T>(actual: T, expected: T, label: string): void {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  if (a !== e) {
+    throw new Error(`assertEqual failed: ${label}\n  expected: ${e}\n  actual:   ${a}`);
+  }
+}
+
+function assertTruthy(value: unknown, label: string): void {
+  if (!value) throw new Error(`assertTruthy failed: ${label}`);
+}
+
+function encodeContext(
+  tools: Array<{ tool: string; params?: Record<string, unknown> }>,
+): string {
+  return encodeURIComponent(
+    JSON.stringify({
+      tools: tools.map((t) => ({ tool: t.tool, params: t.params ?? {} })),
+      tool_count: tools.length,
+    }),
+  );
+}
+
+// ----------------------------------------------------------------------------
+// RUNNABLE_PRIMITIVE_TOOLS — closed-set sanity
+// ----------------------------------------------------------------------------
+
+check('RUNNABLE_PRIMITIVE_TOOLS: contains exactly the 17 _PRIMITIVE_SPECS keys', () => {
+  // Verified against ``grep -E '^        tool_name=' rates_agent/workflows/__init__.py``
+  // at PR review time.  Adding a primitive to the backend MUST add it
+  // here too; the size assertion catches accidental omissions.
+  const expected = [
+    // Sovereign-bond domain
+    'build_sovereign_yield_panel_tool',
+    'calculate_beta_adjusted_spread_tool',
+    'calculate_breakeven_inflation_tool',
+    'calculate_cross_market_spread_tool',
+    'calculate_curve_spread_tool',
+    'calculate_half_life_tool',
+    'calculate_pca_yield_curve_tool',
+    'calculate_rolling_regression_tool',
+    'calculate_swap_spread_tool',
+    'calculate_yield_change_attribution_pca_tool',
+    'calculate_zscore_custom_tool',
+    'get_yield_levels_tool',
+    // OIS domain
+    'calculate_ois_cross_market_spread_tool',
+    'calculate_ois_curve_spread_tool',
+    'calculate_ois_forward_rate_tool',
+    'compute_financing_rate_tool',
+    'get_ois_rate_level_tool',
+  ];
+  assertEqual(
+    RUNNABLE_PRIMITIVE_TOOLS.size,
+    expected.length,
+    `set size (got ${RUNNABLE_PRIMITIVE_TOOLS.size}, expected ${expected.length})`,
+  );
+  for (const t of expected) {
+    assertTruthy(RUNNABLE_PRIMITIVE_TOOLS.has(t), `missing: ${t}`);
+  }
+});
+
+check('isRunnablePrimitive: typed-view tools are runnable', () => {
+  // All seven typed-view tools live in ``_PRIMITIVE_SPECS`` so the
+  // decoder's "typed view" step beats the "generic builder" step
+  // for them.  Confirming they're runnable rules out a misalignment.
+  for (const t of [
+    'calculate_curve_spread_tool',
+    'calculate_cross_market_spread_tool',
+    'get_yield_levels_tool',
+  ]) {
+    assertTruthy(isRunnablePrimitive(t), `runnable: ${t}`);
+  }
+});
+
+check('isRunnablePrimitive: resolves manifest shorthand', () => {
+  assertTruthy(
+    isRunnablePrimitive('half_life_tool'),
+    'half_life shorthand is runnable',
+  );
+  assertTruthy(
+    isRunnablePrimitive('pca_yield_curve_tool'),
+    'pca shorthand is runnable',
+  );
+});
+
+check('isRunnablePrimitive: verb-mismatch alias resolves', () => {
+  // ``calculate_ois_rate_level_tool`` (manifest) → ``get_ois_rate_level_tool``
+  // (backend).  Both forms should report runnable.
+  assertTruthy(
+    isRunnablePrimitive('calculate_ois_rate_level_tool'),
+    'calculate_ois_rate_level shorthand is runnable',
+  );
+  assertTruthy(
+    isRunnablePrimitive('get_ois_rate_level_tool'),
+    'get_ois_rate_level canonical is runnable',
+  );
+});
+
+check('isRunnablePrimitive: scan_ois_extremes_tool is NOT runnable', () => {
+  // Manifest-only entry — no PrimitiveSpec on the backend, so
+  // attempting to POST /tools/scan_ois_extremes_tool/run would 500.
+  // This is the only ``KNOWN_BACKEND_TOOLS`` entry that should
+  // surface the paused card after PR2.
+  assertEqual(
+    isRunnablePrimitive('scan_ois_extremes_tool'),
+    false,
+    'scan_ois_extremes_tool is paused',
+  );
+});
+
+check('isRunnablePrimitive: manifest-only typed-view tools are NOT runnable', () => {
+  // ``calculate_butterfly_tool``, ``classify_curve_move_tool``,
+  // ``scan_extremes_tool`` ship typed-detail GET endpoints on the
+  // rates API but aren't registered in ``_PRIMITIVE_SPECS``.  The
+  // decoder routes them through their typed views; ``isRunnablePrimitive``
+  // returns false so we never accidentally route them through
+  // ``POST /tools/{name}/run``.
+  for (const t of [
+    'calculate_butterfly_tool',
+    'classify_curve_move_tool',
+    'scan_extremes_tool',
+  ]) {
+    assertEqual(isRunnablePrimitive(t), false, `not runnable via /run: ${t}`);
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Decoder — every runnable primitive without a typed view → generic_builder
+// ----------------------------------------------------------------------------
+
+check('decode: calculate_swap_spread_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_swap_spread_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+  assertEqual(out!.toolName, 'calculate_swap_spread_tool', 'toolName');
+});
+
+check('decode: calculate_ois_curve_spread_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_ois_curve_spread_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: calculate_ois_cross_market_spread_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_ois_cross_market_spread_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: calculate_ois_forward_rate_tool → generic_builder (replaces placeholder)', () => {
+  // PR2 — previously this routed to the no-op ``forward`` typed view.
+  // Now it routes to the generic builder which can actually configure
+  // + run the primitive against the backend.
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_ois_forward_rate_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: get_ois_rate_level_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'get_ois_rate_level_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: calculate_ois_rate_level_tool (verb-mismatch shorthand) → generic_builder + normalised', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_ois_rate_level_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+  assertEqual(out!.toolName, 'get_ois_rate_level_tool', 'normalised toolName');
+});
+
+check('decode: calculate_breakeven_inflation_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_breakeven_inflation_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: build_sovereign_yield_panel_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'build_sovereign_yield_panel_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: compute_financing_rate_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'compute_financing_rate_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: calculate_zscore_custom_tool → generic_builder', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_zscore_custom_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+});
+
+check('decode: zscore_custom_tool (shorthand) → generic_builder + normalised', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'zscore_custom_tool' }]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+  assertEqual(
+    out!.toolName,
+    'calculate_zscore_custom_tool',
+    'normalised toolName',
+  );
+});
+
+check('decode: params dict is forwarded into the generic_builder variant', () => {
+  // The schema-driven builder reads the URL params dict on mount; an
+  // Ask hand-off that carries ``{curve_family: USD_SOFR_OIS, tenor: 5Y}``
+  // should land in the form pre-filled.
+  const out = decodePrimitiveContext(
+    encodeContext([
+      {
+        tool: 'calculate_ois_curve_spread_tool',
+        params: { curve_family: 'USD_SOFR_OIS', short_tenor: '2Y', long_tenor: '5Y' },
+      },
+    ]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'kind');
+  assertEqual(
+    out!.params,
+    { curve_family: 'USD_SOFR_OIS', short_tenor: '2Y', long_tenor: '5Y' },
+    'params forwarded verbatim',
+  );
+});
+
+// ----------------------------------------------------------------------------
+// Decoder priority + model-builder safety
+// ----------------------------------------------------------------------------
+
+check('decode: builder beats generic_builder (rich model wins)', () => {
+  // PCA is a runnable primitive, but it ALSO has a model-registry
+  // entry, so the decoder must surface the rich playground rather
+  // than the generic builder.  Same for half-life / regression /
+  // attribution / beta-adjusted-spread — every model tool below.
+  for (const t of [
+    'calculate_pca_yield_curve_tool',
+    'calculate_rolling_regression_tool',
+    'calculate_yield_change_attribution_pca_tool',
+    'calculate_half_life_tool',
+    'calculate_beta_adjusted_spread_tool',
+  ]) {
+    const out = decodePrimitiveContext(encodeContext([{ tool: t }]));
+    assertEqual(out!.kind, 'builder', `${t}: kind`);
+    assertEqual(out!.toolName, normalizeToolName(t), `${t}: toolName`);
+  }
+});
+
+check('decodeList: generic_builder entries are retained in order', () => {
+  const list = decodePrimitiveList(
+    encodeContext([
+      { tool: 'calculate_swap_spread_tool' },         // generic_builder
+      { tool: 'calculate_curve_spread_tool' },        // typed view
+      { tool: 'calculate_ois_curve_spread_tool' },    // generic_builder
+    ]),
+  );
+  assertEqual(list.length, 3, 'three entries');
+  assertEqual(list[0].kind, 'generic_builder', '0: generic_builder');
+  assertEqual(list[1].kind, 'spread', '1: typed view');
+  assertEqual(list[2].kind, 'generic_builder', '2: generic_builder');
+});
+
+// ----------------------------------------------------------------------------
+// inferFieldControl — schema-driven field heuristic
+// ----------------------------------------------------------------------------
+
+check('inferFieldControl: curve family aliases all resolve to curve_family', () => {
+  for (const name of [
+    'curve_family',
+    'curve_family_1',
+    'curve_family_2',
+    'sovereign_curve_family',
+    'ois_curve_family',
+    'nominal_curve_family',
+    'real_curve_family',
+    'proxy_curve',
+  ]) {
+    assertEqual(inferFieldControl(name).control, 'curve_family', `${name}: control`);
+  }
+});
+
+check('inferFieldControl: tenor aliases all resolve to tenor', () => {
+  for (const name of [
+    'tenor',
+    'short_tenor',
+    'long_tenor',
+    'belly_tenor',
+    'target_tenor',
+    'front_tenor',
+    'back_tenor',
+    'start_tenor',
+    'end_tenor',
+    'forward_start',
+    'forward_length',
+  ]) {
+    assertEqual(inferFieldControl(name).control, 'tenor', `${name}: control`);
+  }
+});
+
+check('inferFieldControl: lookback aliases all resolve to lookback_slider', () => {
+  for (const name of [
+    'lookback_days',
+    'rolling_window_days',
+    'z_score_window_days',
+    'regression_window_days',
+  ]) {
+    assertEqual(
+      inferFieldControl(name).control,
+      'lookback_slider',
+      `${name}: control`,
+    );
+  }
+});
+
+check('inferFieldControl: date aliases resolve to date control', () => {
+  for (const name of [
+    'start_date',
+    'end_date',
+    'as_of_date',
+    'prior_date',
+  ]) {
+    assertEqual(inferFieldControl(name).control, 'date', `${name}: control`);
+  }
+});
+
+check('inferFieldControl: unknown field name → auto', () => {
+  assertEqual(
+    inferFieldControl('something_random').control,
+    'auto',
+    'unknown name',
+  );
+});
+
+check('paramHintFor: registered hint overrides inference', () => {
+  // The rolling-regression model registers ``target_spec: series_spec``.
+  // Without the explicit registration the field name has no canonical
+  // mapping, but the registry hint must beat ``inferFieldControl`` for
+  // every model tool.  Sanity check the override priority.
+  const hint = paramHintFor(
+    'calculate_rolling_regression_tool',
+    'target_spec',
+  );
+  assertEqual(hint.control, 'series_spec', 'rolling regression target_spec');
+});
+
+check('paramHintFor: unregistered tool falls through to inference', () => {
+  // Swap-spread is runnable but has no model-registry entry.  The
+  // ``sovereign_curve_family`` field should be inferred as a
+  // curve_family control via the new heuristic.
+  const hint = paramHintFor(
+    'calculate_swap_spread_tool',
+    'sovereign_curve_family',
+  );
+  assertEqual(hint.control, 'curve_family', 'swap_spread sovereign_curve_family');
+});
+
+check('paramHintFor: unregistered tool, unknown field → auto', () => {
+  const hint = paramHintFor('calculate_swap_spread_tool', 'something_unknown');
+  assertEqual(hint.control, 'auto', 'falls through to auto');
+});
+
+// ----------------------------------------------------------------------------
+// Runner — same shim as routingCoverage.test.ts.
+// ----------------------------------------------------------------------------
+
+export function runAllGenericBuilderTests(): void {
+  let passed = 0;
+  let failed = 0;
+  for (const { label, fn } of _checks) {
+    try {
+      fn();
+      passed += 1;
+    } catch (err) {
+      failed += 1;
+      // eslint-disable-next-line no-console
+      console.error(`✗ ${label}\n  ${(err as Error).message}`);
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.log(`\ngeneric-builder coverage: ${passed} passed, ${failed} failed`);
+  if (failed > 0) {
+    throw new Error(`${failed} generic-builder check(s) failed`);
+  }
+}
+
+const _meta = (import.meta as unknown) as { main?: boolean };
+if (_meta && _meta.main) {
+  runAllGenericBuilderTests();
+}

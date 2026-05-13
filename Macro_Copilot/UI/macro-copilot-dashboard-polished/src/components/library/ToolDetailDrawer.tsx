@@ -49,6 +49,7 @@ import {
 import { hasModelMetadata } from '@/lib/modelRegistry';
 import {
   isKnownBackendTool,
+  isRunnablePrimitive,
   isUnsupportedKnownTool,
   normalizeToolName,
 } from '@/lib/toolNames';
@@ -346,18 +347,30 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   // half_life_tool``).  Normalise before lookup so both forms resolve.
   const canonicalName = normalizeToolName(tool.implementation.tool_function);
   const isModel = hasModelMetadata(canonicalName);
-  // PR1 — every known tool gets a deterministic Build destination.
-  // The decoder maps:
+  // PR1 + PR2 — every known tool gets a deterministic Build
+  // destination.  The decoder maps:
   //   - ``hasModelMetadata`` ⇒ rich-model builder (``?builder=``)
   //   - typed-view tool ⇒ chart canvas (``?context=``)
+  //   - PR2: ``isRunnablePrimitive`` (no typed view) ⇒ generic
+  //     schema-driven builder (still ``?context=``; decoder emits
+  //     ``generic_builder`` variant)
   //   - ``isUnsupportedKnownTool`` ⇒ explicit unsupported-known card
-  //     (still ``?context=``, decoded by ``contextDecoder`` into the
-  //     ``unsupported_known`` variant)
+  //     (still ``?context=``; decoder emits ``unsupported_known``)
   //   - everything else ⇒ ``?context=`` as a best-effort handoff;
   //     ``VirtualPrimitiveCanvas`` shows the decode-error card only
   //     when the tool name is truly unknown.
+  //
+  // Note ``isRunnablePrimitive`` covers both model-registry tools AND
+  // every other ``_PRIMITIVE_SPECS`` entry; we check ``isModel``
+  // first so the rich playground wins over the generic builder.
+  const isGenericBuilder =
+    !isModel &&
+    isRunnablePrimitive(canonicalName) &&
+    !hasTypedView(canonicalName);
   const isUnsupported =
-    !isModel && isUnsupportedKnownTool(canonicalName);
+    !isModel &&
+    !isGenericBuilder &&
+    isUnsupportedKnownTool(canonicalName);
   const isKnown = isModel || isKnownBackendTool(canonicalName);
 
   const handleClick = () => {
@@ -365,12 +378,12 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
       navigate(`/workspace?builder=${encodeURIComponent(canonicalName)}`);
       return;
     }
-    // Typed primitive OR unsupported-known: same ``?context=`` URL;
-    // ``contextDecoder`` picks the right variant downstream so the
-    // canvas mounts the chart view or the unsupported-known card.
-    // For unsupported / truly-unknown tools, the canvas surfaces the
-    // honest "tool is paused" / "decode error" card — never silently
-    // routes to the empty shell.
+    // Every other branch — typed view, generic builder, unsupported,
+    // truly-unknown — rides ``?context=`` with an empty params dict.
+    // The decoder picks the right variant downstream so the canvas
+    // mounts the matching surface.  For unsupported / truly-unknown
+    // tools the canvas surfaces an honest card; for generic-builder
+    // tools (PR2) the canvas mounts a schema-driven form.
     const context = encodeURIComponent(
       JSON.stringify({
         tools: [{ tool: canonicalName, params: {} }],
@@ -380,23 +393,26 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
     navigate(`/workspace?context=${context}`);
   };
 
-  // R6.5 + PR1 — button copy + tooltip differentiate the three
+  // R6.5 + PR1 + PR2 — button copy + tooltip differentiate the four
   // destinations so users know what they're about to land on:
-  //   - builder → "Open in builder"
+  //   - model builder → "Open in builder"
   //   - typed primitive → "Open in Build"
-  //   - unsupported-known → "Open Build (unsupported)" — the click
-  //     still works (it surfaces the unsupported card) but the label
-  //     promises only what's available.
+  //   - PR2 generic builder → "Open builder (schema)"
+  //   - unsupported-known → "Open Build (unsupported)"
   let buttonLabel = 'Open in Build';
   let title = 'Opens the chart canvas with editable parameter dropdowns';
   if (isModel) {
     buttonLabel = 'Open in builder';
     title =
       'Opens the standalone model builder with editable controls + methodology';
+  } else if (isGenericBuilder) {
+    buttonLabel = 'Open builder';
+    title =
+      'PR2: opens a schema-driven builder — editable inputs from this primitive’s ToolCard plus a Run button that posts to /tools/{name}/run';
   } else if (isUnsupported) {
     buttonLabel = 'Open Build (unsupported)';
     title =
-      'Build does not have a renderer for this tool yet — the card explains the gap and links to Ask';
+      'Build does not have a run path for this tool yet — the card explains the gap and links to Ask';
   } else if (!isKnown) {
     // Truly-unknown manifest entry — should be rare.  Still navigate
     // so the user sees the decode-error card rather than a silent
@@ -416,6 +432,26 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
       <span>{buttonLabel}</span>
     </button>
   );
+}
+
+/** Closed list mirror of ``contextDecoder.TOOL_TO_VIEW``.  Used by the
+ *  Library CTA to decide whether to label a runnable primitive as
+ *  "Open in Build" (typed-view shipped) vs "Open builder" (PR2
+ *  schema-driven fallback).  Kept private to this module because
+ *  the decoder is the source of truth; this is a UX-only echo for
+ *  button copy.  If the decoder's typed-view list changes,
+ *  ``routingCoverage.test.ts`` will catch the drift. */
+const TYPED_VIEW_TOOLS: ReadonlySet<string> = new Set([
+  'calculate_curve_spread_tool',
+  'calculate_cross_market_spread_tool',
+  'calculate_butterfly_tool',
+  'get_yield_levels_tool',
+  'classify_curve_move_tool',
+  'scan_extremes_tool',
+]);
+
+function hasTypedView(canonicalName: string): boolean {
+  return TYPED_VIEW_TOOLS.has(canonicalName);
 }
 
 // ----------------------------------------------------------------------------
