@@ -46,6 +46,7 @@ import { YieldPrimitiveView } from './YieldPrimitiveView';
 import { RegimePrimitiveView } from './RegimePrimitiveView';
 import { ScannerPrimitiveView } from './ScannerPrimitiveView';
 import { ForwardPrimitiveView } from './ForwardPrimitiveView';
+import { UnsupportedKnownToolCanvas } from './UnsupportedKnownToolCanvas';
 
 // ----------------------------------------------------------------------------
 // Component
@@ -165,6 +166,18 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
   // for the single frame the navigate() lands.
   if (decoded.kind === 'builder') {
     return <BuilderRedirectingCanvas toolName={decoded.toolName} />;
+  }
+  // PR1 — known-backend tool with no Build renderer yet.  Render an
+  // explicit "unsupported_known" card instead of dropping the user
+  // into the orange decode-error path or the empty shell.  This is
+  // the explicit-state replacement the user audit asked for.
+  if (decoded.kind === 'unsupported_known') {
+    return (
+      <UnsupportedKnownToolCanvas
+        toolName={decoded.toolName}
+        params={decoded.params}
+      />
+    );
   }
 
   // Typed primitive view: render the params strip + the body together.
