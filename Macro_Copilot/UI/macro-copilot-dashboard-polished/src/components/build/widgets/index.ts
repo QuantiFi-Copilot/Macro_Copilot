@@ -26,8 +26,14 @@ import './SeriesSetWidget';
 import './EventSetWidget';
 import './PanelWidget';
 import './WindowedPanelWidget';
-import './ScalarMetricWidget';
 import './TradeSetWidget';
+// PR4 — ``ScalarMetricWidget`` registration is deliberately dropped:
+// the backend's ``ArtifactTypeLiteral`` is closed at six families
+// and ``ScalarMetric`` is a deferred future addition (see
+// ``shared/operators/summarize_trades/config.yaml`` planned_extensions).
+// Scalar-shaped outputs ship as ``Panel`` with one row today; the
+// PR4 ``PanelWidget`` handles them.  See ``ScalarMetricWidget.tsx``
+// header for the re-enablement checklist.
 
 // Per-tool specialisations — registered after the per-type generics
 // so they unambiguously win the lookup priority.
