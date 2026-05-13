@@ -64,7 +64,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 # Make sure the project root is on sys.path BEFORE any in-repo imports
 # below.  Mirrors the bootstrap pattern in the per-domain MCP servers.
@@ -79,9 +78,23 @@ from database.database import get_db_engine  # noqa: E402
 # Importing each template's package triggers ``register_template`` via
 # their ``__init__.py``, populating the substrate's process-wide
 # template registry.  Required so ``list_workflows()`` sees them.
+#
+# NOTE: ``rates_agent.workflows.backtest`` is intentionally NOT imported
+# here.  The backtest archetype is paused from the LLM-facing surface
+# until the data substrate carries the fields it needs to produce
+# economically-meaningful trade P&L (MOD_DUR_MID + CUR_CPN + DAY_CNT_DES
+# + PX_DIRTY for DV01 weighting; CPI-U NSA + seasonal factors for TIPS
+# carry; OTR history; true O/N OIS; bid/ask).  Without those, the V1
+# backtest is a yield-change distribution mislabelled as a P&L
+# backtest.  The template, operators (construct_trades / evaluate_trades
+# / summarize_trades), and tests remain in the repo and run under the
+# existing test gauntlet — they just don't reach the LLM router or the
+# MCP catalogue.  Re-enable by uncommenting the import below once the
+# data prerequisites land.
+#
+#   import rates_agent.workflows.backtest  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
-import rates_agent.workflows.backtest  # noqa: F401, E402
 
 from rates_agent.workflows._runner import (  # noqa: E402
     describe_workflow_card,
@@ -443,140 +456,22 @@ def regime_conditioned_relationship_workflow(
     return json.dumps(envelope, default=str)
 
 
-@mcp.tool()
-def backtest_workflow(
-    signal_tool_name: str,
-    signal_params: dict,
-    signal_output_field: str,
-    signal_threshold: float,
-    long_leg_curve_family: str,
-    long_leg_tenor: str,
-    short_leg_curve_family: str,
-    short_leg_tenor: str,
-    start_date: str,
-    end_date: str,
-    long_leg_instrument_key: str = None,
-    short_leg_instrument_key: str = None,
-    long_leg_weight: float = -1.0,
-    short_leg_weight: float = 1.0,
-    holding_window_days: int = 20,
-    financing_method: str = "overnight_index_proxy",
-    financing_proxy_curve: str = None,
-    financing_constant_rate_pct: float = None,
-    financing_basis: str = "act_360",
-) -> str:
-    """Execute the canonical backtest workflow: threshold a signal,
-    extract events, build long-short trades, fetch a price panel,
-    compute a financing-rate series, evaluate per-trade P&L
-    (including financing carry), and summarise into hit-rate /
-    Sharpe / drawdown / percentiles.
-
-    Use this tool when the user asks:
-      - "Backtest buying X when signal Y exceeds threshold Z, holding
-        for N days, financing at <method>."
-      - "Long-short trade triggered by a signal threshold."
-      - "What if I bought TIPS every time UST 2Y yields spiked above
-        their 1-year mean?"
-
-    Canonical V1 binding (TIPS-vs-Nominal):
-      signal_tool_name = "calculate_zscore_custom_tool"
-      signal_params = {
-          "curve_family": "UST", "tenor": "2Y",
-          "window_days": 252, "lookback_days": 1825,
-      }
-      signal_output_field = "time_series_zscore"
-      signal_threshold = 1.0
-      long_leg_curve_family = "USD_TIPS"
-      long_leg_tenor = "10Y"
-      long_leg_weight = -1.0           # negative = profit when yield falls
-      short_leg_curve_family = "UST"
-      short_leg_tenor = "2Y"
-      short_leg_weight = 1.0           # positive = profit when yield rises
-      holding_window_days = 125         # ~6 months
-      start_date = "2019-01-01"
-      end_date = "2024-12-31"
-      financing_method = "overnight_index_proxy"
-      financing_proxy_curve = "USD_SOFR_OIS"
-      financing_basis = "act_360"
-
-    Methodology disclosures (rendered on the workspace card):
-      - Frictionless: mid-price; no bid/ask, no slippage.
-      - Financing via OIS overnight proxy (when method=overnight_index_proxy);
-        defensible but not actual repo.  V1 uses 1W tenor as the
-        shortest-available proxy for the overnight rate.
-      - Fixed-tenor generic benchmarks; OTR-history is Phase 2.
-      - No TIPS CPI seasonal carry — the long-leg TIPS P&L
-        understates true carry by the seasonal accrual; CPI
-        ingestion is Phase 2.
-      - PR 12 sign convention: positive leg.weight in the yield-
-        change P&L formula means betting yield UP (= short bond in
-        conventional language).  Pick weight signs deliberately.
-
-    Parameters
-    ----------
-    signal_tool_name : str
-        MCP tool emitting the signal series.
-    signal_params : dict
-        Complete *Input dict for the signal primitive.
-    signal_output_field : str
-        Which time_series* field to lift as the trigger.
-    signal_threshold : float
-        |signal| > threshold triggers an event.
-    long_leg_curve_family, long_leg_tenor : str
-        Long leg.  Default weight=-1 (profit when yield falls).
-    short_leg_curve_family, short_leg_tenor : str
-        Short leg.  Default weight=+1 (profit when yield rises).
-    holding_window_days : int, optional
-        Business days held per trade (default 20).
-    start_date, end_date : str
-        Price + financing fetch window (YYYY-MM-DD).
-    financing_method : str, optional
-        ``overnight_index_proxy`` (default), ``constant_rate``,
-        ``term_repo_curve`` (V1 raises), ``gc_special_blend`` (V1 raises).
-    financing_proxy_curve : str, optional
-        Required when financing_method=overnight_index_proxy.
-    financing_constant_rate_pct : float, optional
-        Required when financing_method=constant_rate.
-    financing_basis : str, optional
-        ``act_360`` (default) | ``act_365`` | ``act_act_isda``.
-    """
-    template_id = "backtest"
-    engine, err = _engine_or_error_envelope(template_id)
-    if err is not None:
-        return err
-
-    # Auto-compose instrument_key strings from curve_family + tenor
-    # when the caller didn't pre-compute them.  This keeps the
-    # LLM-facing surface ergonomic while preserving the substrate's
-    # strict-slot-ref contract (no nested format-string substitution).
-    if long_leg_instrument_key is None:
-        long_leg_instrument_key = f"{long_leg_curve_family}_{long_leg_tenor}"
-    if short_leg_instrument_key is None:
-        short_leg_instrument_key = f"{short_leg_curve_family}_{short_leg_tenor}"
-
-    slot_values = {
-        "signal_tool_name": signal_tool_name,
-        "signal_params": signal_params,
-        "signal_output_field": signal_output_field,
-        "signal_threshold": signal_threshold,
-        "long_leg_curve_family": long_leg_curve_family,
-        "long_leg_tenor": long_leg_tenor,
-        "long_leg_instrument_key": long_leg_instrument_key,
-        "long_leg_weight": long_leg_weight,
-        "short_leg_curve_family": short_leg_curve_family,
-        "short_leg_tenor": short_leg_tenor,
-        "short_leg_instrument_key": short_leg_instrument_key,
-        "short_leg_weight": short_leg_weight,
-        "holding_window_days": holding_window_days,
-        "start_date": start_date,
-        "end_date": end_date,
-        "financing_method": financing_method,
-        "financing_proxy_curve": financing_proxy_curve,
-        "financing_constant_rate_pct": financing_constant_rate_pct,
-        "financing_basis": financing_basis,
-    }
-    envelope = run_template(template_id, slot_values, engine=engine)
-    return json.dumps(envelope, default=str)
+# NOTE: ``backtest_workflow`` MCP tool intentionally removed from the
+# LLM-facing surface in this PR.  Rationale: the V1 backtest archetype
+# computes a yield-change distribution and labels it as trade P&L
+# (Sharpe / drawdown / hit rate).  That labelling is not defensible
+# without DV01 weighting, TIPS CPI carry, OTR resolution, and true
+# O/N OIS financing — none of which the ingested data layer carries
+# today.  Surfacing it to the LLM produces numbers a PM cannot trust.
+# The template, operators, primitives, and tests remain in the repo
+# under their respective test gauntlets; only the LLM-facing MCP tool
+# wrapper is hidden.  Re-enable by restoring the import above and the
+# tool wrapper below once the data prerequisites land
+# (MOD_DUR_MID + CUR_CPN + DAY_CNT_DES + PX_DIRTY for sovereign/linker
+# legs; CPI-U NSA + seasonal factors for TIPS carry; OTR history;
+# true O/N OIS).  See ``docs/technical_debt.md`` item #24 for the
+# data prerequisites and ``docs/architecture/backtest.md`` for the
+# methodology spec.
 
 
 # ===========================================================================

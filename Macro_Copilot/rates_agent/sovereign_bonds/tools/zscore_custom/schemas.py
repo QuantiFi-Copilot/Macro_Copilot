@@ -147,7 +147,28 @@ class ZscoreCustomMetrics(BaseModel):
 
 
 class ZscoreCustomOutput(BaseModel):
-    """Top-level response for the zscore_custom tool."""
+    """Top-level response for the zscore_custom tool.
+
+    Two TimeSeries fields are exposed, both carrying the SAME payload:
+    the rolling z-score over the displayed lookback_days window.  The
+    duplication is a substrate-naming-convention adapter, not a
+    semantic split.
+
+    Why both fields exist
+    ---------------------
+    ``time_series`` was the V1 field name (kept for backward
+    compatibility — every backtest/event_study test prior to this PR
+    binds it).  ``time_series_zscore`` is the canonical name used by
+    every other z-score-emitting primitive in the codebase
+    (curve_spread, cross_market_spread, swap_spread, butterfly,
+    breakeven_inflation, OIS forward_rate).  Adding it here closes the
+    naming inconsistency that caused the workflow_router to bind
+    ``time_series_zscore`` for zscore_custom and crash at the bridge
+    lift step.
+
+    Callers should prefer ``time_series_zscore`` going forward; the
+    legacy ``time_series`` field remains valid and identical.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -157,7 +178,19 @@ class ZscoreCustomOutput(BaseModel):
         description=(
             "Rolling z-score over the displayed lookback_days window.  "
             "Uses the shared ``TimeSeries`` shape (see "
-            "shared.schemas.time_series); units = 'z_score'."
+            "shared.schemas.time_series); units = 'z_score'.  Legacy "
+            "field name retained for backward compatibility — "
+            "equivalent to ``time_series_zscore``."
+        ),
+    )
+    time_series_zscore: TimeSeries = Field(
+        ...,
+        description=(
+            "Rolling z-score over the displayed lookback_days window — "
+            "canonical naming alias for ``time_series``.  Identical "
+            "payload by construction; both fields are populated from "
+            "the same computation.  Matches the ``time_series_zscore`` "
+            "convention used by every other z-score-emitting primitive."
         ),
     )
 
