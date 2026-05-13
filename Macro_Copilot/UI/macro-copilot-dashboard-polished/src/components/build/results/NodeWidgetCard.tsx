@@ -7,6 +7,24 @@
 // renderer registry; falls back to the registry's fallback when the
 // artifact type is unrecognised.
 //
+// Card layout (matches mockups B/C):
+//
+//   ┌─────────────────────────────────────────────────────┐
+//   │ PRIMITIVE                                <lineage>  │  ← kicker + chip
+//   │ <Pretty Stage Title>                                │
+//   │ ─────────────────────────────────────────────────── │
+//   │ <renderer body — sparkline / panel / scalar …>     │
+//   │ ─────────────────────────────────────────────────── │
+//   │ lineage <hash> · tool_name · 2026-05-12 · 12ms      │  ← provenance footer
+//   └─────────────────────────────────────────────────────┘
+//
+// The header kicker uses the same column vocabulary the DAG strip
+// emits ("Primitive" / "Operator" / "Output") so a stage's identity
+// reads consistently between the DAG tab and the Results tab.  The
+// lineage chip in the top-right is a quick "this is the artifact
+// behind this card" anchor — clicking it (PR follow-up) opens the
+// node's artifact in the inspector.
+//
 // When ``artifact`` is null (node persisted without an artifact —
 // shouldn't happen for completed workflows, but the substrate
 // allows it), we render a "no artifact" placeholder so the layout
@@ -26,10 +44,8 @@ import {
   stageCategoryForNode,
   widgetCategoryForStage,
 } from '@/components/build/lib/stageCategory';
-import {
-  prettyStageTitle,
-  stageKindLabel,
-} from '@/components/build/lib/stageDisplay';
+import { prettyStageTitle } from '@/components/build/lib/stageDisplay';
+import { columnLabelForCategory } from '@/components/build/lib/stageColumn';
 import { ArtifactMeta } from '@/components/build/widgets/shared/ArtifactMeta';
 import type { WidgetSize } from '@/components/monitor/registry';
 
@@ -44,7 +60,7 @@ export function NodeWidgetCard({ node, workspace, size }: Props) {
   const widgetCategory = widgetCategoryForStage(stageCategory);
 
   const title = prettyStageTitle(node.name ?? node.node_id);
-  const kicker = stageKindLabel(node.kind);
+  const kicker = columnLabelForCategory(stageCategory);
 
   // Always read from the registry — branchless w.r.t. artifact type.
   const Renderer = useMemo(
@@ -55,13 +71,34 @@ export function NodeWidgetCard({ node, workspace, size }: Props) {
     [node],
   );
 
+  // Short lineage hash for the header meta slot.  Trimmed to the
+  // conventional 8 chars so the chip stays compact; the full hash is
+  // still in the provenance footer.
+  const headerLineage = node.artifact?.hash
+    ? node.artifact.hash.slice(0, 8)
+    : null;
+
   return (
     <WidgetCard
       category={widgetCategory}
       size={size}
       isEditing={false}
     >
-      <WidgetHeader kicker={kicker} title={title} />
+      <WidgetHeader
+        kicker={kicker}
+        title={title}
+        meta={
+          headerLineage ? (
+            <span
+              className="lineage-chip"
+              title={`Artifact lineage ${node.artifact?.hash}`}
+            >
+              <span className="opacity-70">lineage</span>
+              <span>{headerLineage}</span>
+            </span>
+          ) : null
+        }
+      />
 
       {Renderer && node.artifact ? (
         <Renderer

@@ -19,9 +19,7 @@ import { registerArtifactRenderer } from '@/components/build/lib/nodeRendererReg
 const TradeSetWidget: NodeRenderer = ({ artifact }) => {
   return (
     <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
-      <div className="text-[10.5px] uppercase tracking-[0.16em] text-fg-muted">
-        TradeSet
-      </div>
+      <div className="kicker text-fg-muted">TradeSet</div>
       <div className="mt-3 flex items-baseline gap-2">
         <span className="font-serif-display text-[26px] font-light leading-none text-fg-primary">
           {artifact.row_count ?? '—'}

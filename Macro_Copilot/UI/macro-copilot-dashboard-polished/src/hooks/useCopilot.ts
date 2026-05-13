@@ -255,6 +255,24 @@ export function useCopilot(): UseCopilotResult {
       }
 
       case 'done': {
+        // Phase 4 — rebrand the wire's snake-case ``proposed_overrides``
+        // to the React message's camelCase ``proposedOverrides``.  Map
+        // each entry's wire fields (``value_label`` / ``node_id`` /
+        // ``previous_value``) to the camelCase equivalents the chip UI
+        // expects.  No-op when the event omits the field, so older
+        // backends that don't emit overrides keep working.
+        const proposedOverrides =
+          event.proposed_overrides && event.proposed_overrides.length > 0
+            ? event.proposed_overrides.map((o) => ({
+                id: o.id,
+                path: o.path,
+                value: o.value,
+                valueLabel: o.value_label,
+                nodeId: o.node_id,
+                previousValue: o.previous_value,
+                rationale: o.rationale,
+              }))
+            : null;
         updateStreamingMessage((msg) => ({
           ...msg,
           isStreaming: false,
@@ -265,6 +283,7 @@ export function useCopilot(): UseCopilotResult {
           ),
           workspaceContext: event.workspace_context,
           totalDurationMs: event.total_duration_ms,
+          proposedOverrides,
         }));
         streamingMsgId.current = null;
         setIsThinking(false);
