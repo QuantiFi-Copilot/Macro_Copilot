@@ -43,6 +43,7 @@ import type { NodeRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { registerArtifactRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { PayloadShell } from './shared/PayloadShell';
 import {
+  classifyArtifactDate,
   formatDate,
   formatNumberWithUnits,
   panelCell,
@@ -106,10 +107,22 @@ function OneRowSummary({ payload }: { payload: PanelPayloadEnvelope }) {
   const columns = panelColumns(payload);
   const unitsByColumn = payload.metadata.units_by_column ?? {};
   const rowDate = payload.payload.index?.[0] ?? null;
+  // PR2 — classify the as-of date so the footer doesn't leak
+  // ``summarize_series``-style ``1900-01-01`` sentinel rows or other
+  // synthetic markers.  Real dates display normally; sentinels +
+  // unparseable values suppress the line entirely (the card is a
+  // metric-strip already; the date adds no signal in those cases).
+  const rowDateClass = classifyArtifactDate(rowDate);
+  const showAsOf = rowDateClass.kind === 'real_date';
   return (
     <div className="flex min-h-0 flex-1 flex-col px-5 pt-3 pb-4">
       <div className="kicker text-fg-muted">
         Summary · 1 row · {columns.length} column{columns.length === 1 ? '' : 's'}
+        {rowDateClass.kind === 'summary_sentinel' && (
+          <span className="ml-2 rounded-sm border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 normal-case tracking-normal text-violet-200">
+            scalar marker
+          </span>
+        )}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
         {columns.map((col, i) => {
@@ -126,7 +139,7 @@ function OneRowSummary({ payload }: { payload: PanelPayloadEnvelope }) {
           );
         })}
       </div>
-      {rowDate != null && (
+      {showAsOf && (
         <div className="mt-3 font-mono text-[10px] text-fg-faint">
           as-of {formatDate(rowDate)}
         </div>
@@ -204,7 +217,9 @@ function MultiRowPreview({
               ) : (
                 <tr key={`r${slot}`} className="border-t border-line-subtle/40">
                   <td className="py-1 pr-3 font-mono text-fg-secondary">
-                    {formatDate(rowIndex[slot])}
+                    {classifyArtifactDate(rowIndex[slot]).kind === 'real_date'
+                      ? formatDate(rowIndex[slot])
+                      : MISSING_VALUE_DASH}
                   </td>
                   {visibleColumns.map((col, ci) => {
                     const value = panelCell(payload, slot, ci);

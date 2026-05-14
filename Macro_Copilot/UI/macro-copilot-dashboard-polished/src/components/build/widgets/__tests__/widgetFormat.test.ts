@@ -17,20 +17,27 @@
 // ============================================================================
 
 import {
+  classifyArtifactDate,
   eventCountFromPayload,
+  EVENT_OFFSET_ANCHOR,
   firstSeriesObservation,
   formatDate,
   formatNumber,
   formatNumberWithUnits,
+  getEventOffsetEncoding,
+  isSentinelOneRowSeries,
   lastSeriesObservation,
   MISSING_VALUE_DASH,
+  offsetLabel,
   panelCell,
   panelColumns,
   panelRowIndex,
+  rowLabelForSeries,
   seriesFiniteCount,
   seriesObservationCount,
   seriesSetMemberAsSeries,
   seriesSetMembers,
+  SUMMARY_SENTINEL_DATE,
   tradeRowCount,
   unitKind,
   windowedEventCount,
@@ -422,6 +429,221 @@ check('tradeRowCount: malformed payload → 0', () => {
   const env = tradeSetEnv(3);
   (env.payload as any).trades = null;
   assertEqual(tradeRowCount(env), 0, 'null trades');
+});
+
+// ----------------------------------------------------------------------------
+// PR2 — central date-policy classification
+// ----------------------------------------------------------------------------
+
+check('classifyArtifactDate: null / undefined / empty → unknown', () => {
+  assertEqual(classifyArtifactDate(null).kind, 'unknown', 'null');
+  assertEqual(classifyArtifactDate(undefined).kind, 'unknown', 'undefined');
+  assertEqual(classifyArtifactDate('').kind, 'unknown', 'empty');
+});
+
+check('classifyArtifactDate: non-string → unknown', () => {
+  assertEqual(classifyArtifactDate(0).kind, 'unknown', 'number');
+  assertEqual(classifyArtifactDate({}).kind, 'unknown', 'object');
+  assertEqual(classifyArtifactDate([]).kind, 'unknown', 'array');
+});
+
+check('classifyArtifactDate: 1900-01-01 → summary_sentinel', () => {
+  assertEqual(
+    classifyArtifactDate(SUMMARY_SENTINEL_DATE).kind,
+    'summary_sentinel',
+    'plain',
+  );
+  assertEqual(
+    classifyArtifactDate('1900-01-01T00:00:00Z').kind,
+    'summary_sentinel',
+    'iso datetime',
+  );
+});
+
+check(
+  'classifyArtifactDate: 1970-01-01 WITHOUT encoding hint → real_date',
+  () => {
+    // Without the encoding hint, 1970-01-01 is left alone — could be
+    // a real (if obscure) market date.  Codex audit specifically
+    // warned against suppressing it universally.
+    assertEqual(
+      classifyArtifactDate(EVENT_OFFSET_ANCHOR).kind,
+      'real_date',
+      'default',
+    );
+  },
+);
+
+check(
+  'classifyArtifactDate: 1970-* WITH encoding hint → event_offset_anchor',
+  () => {
+    assertEqual(
+      classifyArtifactDate('1970-01-01', { hasEventOffsetEncoding: true })
+        .kind,
+      'event_offset_anchor',
+      'anchor',
+    );
+    assertEqual(
+      classifyArtifactDate('1970-01-06', { hasEventOffsetEncoding: true })
+        .kind,
+      'event_offset_anchor',
+      'anchor + offset',
+    );
+  },
+);
+
+check('classifyArtifactDate: real date → real_date', () => {
+  assertEqual(
+    classifyArtifactDate('2024-03-14').kind,
+    'real_date',
+    'iso date',
+  );
+  assertEqual(
+    classifyArtifactDate('2024-03-14T12:00:00Z').kind,
+    'real_date',
+    'iso datetime',
+  );
+});
+
+check('classifyArtifactDate: unparseable string → unknown', () => {
+  assertEqual(
+    classifyArtifactDate('not-a-date').kind,
+    'unknown',
+    'garbage',
+  );
+});
+
+check('classifyArtifactDate: raw echoed back when parseable', () => {
+  const c = classifyArtifactDate('2024-03-14');
+  assertEqual(c.raw, '2024-03-14', 'raw');
+});
+
+// ----------------------------------------------------------------------------
+// offsetLabel
+// ----------------------------------------------------------------------------
+
+check('offsetLabel: zero → t0', () => {
+  assertEqual(offsetLabel(0), 't0', 'zero');
+});
+
+check('offsetLabel: positive → t+N', () => {
+  assertEqual(offsetLabel(3), 't+3', '+3');
+  assertEqual(offsetLabel(10), 't+10', '+10');
+});
+
+check('offsetLabel: negative → t-N (sign baked in)', () => {
+  assertEqual(offsetLabel(-5), 't-5', '-5');
+  assertEqual(offsetLabel(-1), 't-1', '-1');
+});
+
+check('offsetLabel: non-finite → MISSING_VALUE_DASH', () => {
+  assertEqual(offsetLabel(NaN), MISSING_VALUE_DASH, 'NaN');
+  assertEqual(offsetLabel(Infinity), MISSING_VALUE_DASH, 'Inf');
+});
+
+// ----------------------------------------------------------------------------
+// Sentinel + event_offset Series-shape detection
+// ----------------------------------------------------------------------------
+
+function sentinelSeriesEnv(): SeriesPayloadEnvelope {
+  return {
+    artifact_type: 'Series',
+    metadata: {
+      series_key: 'summary/UST_10Y_mean',
+      units: 'percent',
+      frequency: null,
+      missingness_policy: {},
+      lineage: { steps: [] },
+    },
+    payload: {
+      index: [SUMMARY_SENTINEL_DATE],
+      values: [4.21],
+      name: 'summary',
+      type: 'Series',
+    },
+  };
+}
+
+function offsetSeriesEnv(): SeriesPayloadEnvelope {
+  return {
+    artifact_type: 'Series',
+    metadata: {
+      series_key: 'cond_agg/UST_10Y',
+      units: 'bps',
+      frequency: null,
+      missingness_policy: {},
+      lineage: { steps: [] },
+    },
+    payload: {
+      index: ['1970-01-01', '1970-01-02', '1970-01-03'],
+      values: [0, 2.5, 5.0],
+      name: 'cond_agg',
+      type: 'Series',
+      index_encoding: {
+        kind: 'event_offset',
+        anchor: '1970-01-01',
+        offsets: [0, 1, 2],
+      },
+    } as unknown as SeriesPayloadEnvelope['payload'],
+  };
+}
+
+check('isSentinelOneRowSeries: one row at sentinel → true', () => {
+  assertEqual(
+    isSentinelOneRowSeries(sentinelSeriesEnv()),
+    true,
+    'sentinel match',
+  );
+});
+
+check('isSentinelOneRowSeries: regular Series → false', () => {
+  assertEqual(isSentinelOneRowSeries(seriesEnv()), false, 'calendar');
+});
+
+check('isSentinelOneRowSeries: multi-row at sentinel → false', () => {
+  const env = sentinelSeriesEnv();
+  env.payload.index = [SUMMARY_SENTINEL_DATE, SUMMARY_SENTINEL_DATE];
+  env.payload.values = [4.0, 4.1];
+  assertEqual(isSentinelOneRowSeries(env), false, 'two rows');
+});
+
+check('getEventOffsetEncoding: returns encoding when present', () => {
+  const enc = getEventOffsetEncoding(offsetSeriesEnv());
+  if (!enc) throw new Error('encoding null');
+  assertEqual(enc.anchor, '1970-01-01', 'anchor');
+  assertEqual(enc.offsets, [0, 1, 2], 'offsets');
+});
+
+check('getEventOffsetEncoding: null on calendar Series', () => {
+  assertEqual(getEventOffsetEncoding(seriesEnv()), null, 'no encoding');
+});
+
+check('rowLabelForSeries: event-offset payload → t+N labels', () => {
+  const env = offsetSeriesEnv();
+  assertEqual(rowLabelForSeries(env, 0), 't0', 'idx 0');
+  assertEqual(rowLabelForSeries(env, 1), 't+1', 'idx 1');
+  assertEqual(rowLabelForSeries(env, 2), 't+2', 'idx 2');
+});
+
+check('rowLabelForSeries: sentinel one-row → empty string', () => {
+  assertEqual(rowLabelForSeries(sentinelSeriesEnv(), 0), '', 'sentinel');
+});
+
+check('rowLabelForSeries: real-date Series → raw ISO', () => {
+  assertEqual(
+    rowLabelForSeries(seriesEnv(), 0),
+    '2025-01-01',
+    'iso passthrough',
+  );
+});
+
+check('rowLabelForSeries: out-of-bounds offset → MISSING_VALUE_DASH', () => {
+  const env = offsetSeriesEnv();
+  assertEqual(
+    rowLabelForSeries(env, 99),
+    MISSING_VALUE_DASH,
+    'oob offset',
+  );
 });
 
 // ----------------------------------------------------------------------------

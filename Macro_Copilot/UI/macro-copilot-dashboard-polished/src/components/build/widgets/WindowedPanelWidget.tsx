@@ -32,6 +32,7 @@ import type { NodeRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { registerArtifactRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { PayloadShell } from './shared/PayloadShell';
 import {
+  classifyArtifactDate,
   formatDate,
   formatNumberWithUnits,
   MISSING_VALUE_DASH,
@@ -153,7 +154,10 @@ function WindowedBody({
               ) : (
                 <tr key={`e${slot}`} className="border-t border-line-subtle/40">
                   <td className="py-1 pr-3 font-mono text-fg-secondary">
-                    {formatDate(payload.payload.event_dates?.[slot])}
+                    {classifyArtifactDate(payload.payload.event_dates?.[slot])
+                      .kind === 'real_date'
+                      ? formatDate(payload.payload.event_dates?.[slot])
+                      : MISSING_VALUE_DASH}
                   </td>
                   {visibleOffsets.indices.map((oIdx) => {
                     const v = payload.payload.data?.[slot]?.[oIdx];
