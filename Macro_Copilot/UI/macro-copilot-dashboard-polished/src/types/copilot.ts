@@ -69,8 +69,34 @@ export type ToolCallSummary = {
 };
 
 export type WorkspaceContext = {
-  tools: Array<{ tool: string; params: Record<string, unknown> }>;
+  tools: Array<WorkspaceContextTool>;
   tool_count: number;
+};
+
+/** One tool entry in the ``workspace_context`` block emitted on the
+ *  ``done`` event.  Pre-PR-B-α only ``tool`` and ``params`` were
+ *  emitted; PR-B-α added optional ``domain`` / ``status`` / ``error``
+ *  / ``duration_ms`` so the Build canvas can render an honest "this
+ *  tool failed" tile next to working cards instead of silently
+ *  dropping errored entries.  All new fields are optional — pre-PR-B-α
+ *  consumers that read only ``tool`` / ``params`` continue to work. */
+export type WorkspaceContextTool = {
+  tool: string;
+  params: Record<string, unknown>;
+  /** Originating domain ("rates" / "ois" / …) when the trace recorded
+   *  it.  Carried so the Build canvas can group cards by domain or
+   *  surface the domain chip on each card.  Optional — older
+   *  ``workspace_context`` payloads omit it. */
+  domain?: string | null;
+  /** "ok" (explicit) or "error" (set when the source trace carried a
+   *  non-null ``error`` string).  Absent when the trace had no
+   *  status, mirroring the backend's policy of not writing null
+   *  fields. */
+  status?: 'ok' | 'error';
+  /** Tool error message — populated when ``status === 'error'``. */
+  error?: string;
+  /** Tool execution time in milliseconds, when the trace recorded it. */
+  duration_ms?: number;
 };
 
 // --- Outgoing client events ---

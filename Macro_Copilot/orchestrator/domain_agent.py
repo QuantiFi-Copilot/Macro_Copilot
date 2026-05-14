@@ -460,8 +460,21 @@ class DomainAgentSession:
         facts = _extract_facts(raw_tool_outputs)
 
         # Build workspace_context from the trace.
+        # PR-B-α — propagate the trace's optional ``error`` +
+        # ``duration_ms`` fields so the workspace_context entries can
+        # carry per-call status metadata.  Build's Ask → Build canvas
+        # consumes this to render an honest "this tool failed" tile
+        # alongside the working cards instead of silently dropping the
+        # entry.  Backward compatible: extract_workspace_context only
+        # emits the optional fields when the source dict has them.
         trace_dicts = [
-            {"tool": t.tool, "params": t.params, "domain": self.domain.value}
+            {
+                "tool": t.tool,
+                "params": t.params,
+                "domain": self.domain.value,
+                "error": t.error,
+                "duration_ms": t.duration_ms,
+            }
             for t in tool_calls_seen
         ]
         workspace_context = extract_workspace_context(trace_dicts)
