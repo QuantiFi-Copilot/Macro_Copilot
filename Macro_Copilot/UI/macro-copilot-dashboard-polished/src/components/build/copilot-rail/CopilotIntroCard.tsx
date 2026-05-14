@@ -4,11 +4,14 @@
 // Two modes:
 //   - ``empty``     — Build canvas has no workspace open.  Tells the
 //                     user what kinds of prompts the copilot accepts
-//                     and surfaces a few starter chips.
+//                     and surfaces a few starter chips.  The
+//                     workspace-scoped composer below this card is
+//                     disabled on the empty surface because the
+//                     primary composer is the centre column.
 //   - ``completed`` — A workspace is open.  Tells the user how to
-//                     interrogate this specific workspace (PR B
-//                     enables this for real; PR A leaves the
-//                     starter chips visible but disabled).
+//                     interrogate this specific workspace.  The
+//                     composer below the card is live and dispatches
+//                     workspace-scoped messages.
 //
 // The card uses the same ``research-card`` surface treatment as
 // Monitor's widgets so the right rail reads consistently with the
@@ -75,13 +78,13 @@ function CompletedBody() {
     <>
       <p className="text-[11.5px] leading-[1.55] text-fg-secondary">
         This workspace's DAG and per-node results are on the canvas.
-        In PR B you'll be able to chat with this analysis — override
-        a stage's parameters, fork a variant, or ask for plain-
-        English explanation of any node.
+        Use the composer below to chat about this analysis — ask the
+        copilot to explain a node, propose a parameter override, or
+        suggest a follow-up step.
       </p>
       <p className="text-[10.5px] leading-[1.45] text-fg-faint">
-        Composer below is intentionally read-only in PR A so the
-        interactive surface ships as a single reviewable change.
+        Approved overrides land in the Parameters tab and can be
+        applied as a fork — your original workspace is preserved.
       </p>
     </>
   );
