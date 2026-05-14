@@ -99,6 +99,172 @@ export function formatDate(
 }
 
 // ---------------------------------------------------------------------------
+// PR2 — central date policy.
+// ---------------------------------------------------------------------------
+//
+// The backend operators emit two LEGITIMATE sentinel dates that look
+// like real market dates to a naive renderer:
+//
+//   - ``summarize_series`` (``shared/operators/summarize_series/operator.py``)
+//     emits a one-row Series whose single index entry is the
+//     hard-coded ``SUMMARY_SENTINEL_DATE = 1900-01-01``.  The
+//     surrounding workflow uses this row as a "scalar summary"
+//     marker — the date is semantically meaningless.
+//
+//   - ``conditional_aggregate``
+//     (``shared/operators/conditional_aggregate/operator.py``) emits
+//     a Series whose index is ``_OFFSET_ANCHOR + Timedelta(days=offset)``
+//     where ``_OFFSET_ANCHOR = 1970-01-01`` and ``offset`` is
+//     ``[0, 1, ..., N]`` for an N-day forward window.  The artifact
+//     store auto-promotes ``payload.index_encoding =
+//     {kind: "event_offset", anchor, offsets}`` so downstream
+//     consumers can translate the synthetic dates back to
+//     event-relative offsets ("t+5", "t-2", "t0").
+//
+// Pre-PR2 the widgets called ``formatDate`` on these values blindly
+// → users saw "as-of 1900-01-01" / "as-of 1970-01-06" on event-study
+// aggregate cards and regime summary cards.  Both look like garbage
+// data.  PR2 introduces a single classification helper that every
+// widget consults before rendering a date.
+
+/** ISO-8601 string for the ``summarize_series`` operator's sentinel
+ *  date.  Hard-coded on both backend + frontend; changing it requires
+ *  a coordinated schema bump.  See operator source. */
+export const SUMMARY_SENTINEL_DATE = '1900-01-01';
+
+/** ISO-8601 string for the ``conditional_aggregate`` operator's
+ *  event-offset anchor.  Same source-of-truth discipline. */
+export const EVENT_OFFSET_ANCHOR = '1970-01-01';
+
+/** Closed-vocabulary classification of an artifact-side date value.
+ *  Drives per-widget rendering policy ("show as a date" vs "hide" vs
+ *  "translate to offset label" vs "fallback").  Adding a new
+ *  classification is a closed-family extension — one entry on the
+ *  union + one branch in the classifier. */
+export type ArtifactDateClass =
+  | 'real_date' // a real calendar date the user should see
+  | 'summary_sentinel' // 1900-01-01 — semantically a "scalar marker"
+  | 'event_offset_anchor' // 1970-01-01 or +N days — event-relative offset
+  | 'unknown'; // null / unparseable / empty
+
+export interface ClassifiedDate {
+  kind: ArtifactDateClass;
+  /** Original raw string echoed back (when classification yields a
+   *  parseable string).  Useful for debugging + tooltip detail. */
+  raw?: string;
+}
+
+/** Classify an artifact-side date value into the closed family.
+ *  Pure — no React, no I/O.  Pass ``hasEventOffsetEncoding: true``
+ *  when the surrounding Series carries an ``index_encoding`` blob;
+ *  that's the only signal that lets us treat ``1970-01-NN`` as an
+ *  event-relative offset (and NOT as a real Unix-epoch date).
+ *
+ *  Without that context, ``1970-01-01`` could be a real (if obscure)
+ *  market date, so we leave it alone — Codex's audit specifically
+ *  warned against suppressing sentinels universally. */
+export function classifyArtifactDate(
+  value: unknown,
+  context: { hasEventOffsetEncoding?: boolean } = {},
+): ClassifiedDate {
+  if (value === null || value === undefined) return { kind: 'unknown' };
+  if (typeof value !== 'string') return { kind: 'unknown' };
+  if (value === '') return { kind: 'unknown' };
+
+  // The 1900-01-01 sentinel is documented by ``summarize_series`` as
+  // semantically meaningless.  No legitimate market data lives there.
+  if (value.startsWith(SUMMARY_SENTINEL_DATE)) {
+    return { kind: 'summary_sentinel', raw: value };
+  }
+
+  // 1970-01-NN classification is context-dependent:
+  //   - WITH ``hasEventOffsetEncoding: true`` (the surrounding Series
+  //     payload carries an event_offset blob), every 1970-* date is
+  //     synthetic.
+  //   - WITHOUT that signal, we leave it as a regular date — the
+  //     widget renders ``1970-01-01`` literally because we can't
+  //     prove it's synthetic.  Defensive: that case shouldn't fire
+  //     for any real workspace today.
+  if (context.hasEventOffsetEncoding && value.startsWith('1970-')) {
+    return { kind: 'event_offset_anchor', raw: value };
+  }
+
+  // Parseable real date — return as ``real_date``.
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return { kind: 'unknown', raw: value };
+  return { kind: 'real_date', raw: value };
+}
+
+/** Read the optional ``index_encoding`` blob off a persisted Series
+ *  payload.  Returns ``null`` when the payload doesn't carry one
+ *  (the common case — only ``conditional_aggregate`` Series emit
+ *  this today).  Pure. */
+export function getEventOffsetEncoding(
+  payload: SeriesPayloadEnvelope,
+): { anchor: string; offsets: number[] } | null {
+  const enc = payload.payload.index_encoding;
+  if (!enc) return null;
+  if (enc.kind !== 'event_offset') return null;
+  if (!Array.isArray(enc.offsets)) return null;
+  return { anchor: enc.anchor, offsets: enc.offsets };
+}
+
+/** Render an integer offset as ``t-N`` / ``t0`` / ``t+N``.  Used by
+ *  the SeriesWidget when the payload's ``index_encoding`` decodes the
+ *  date axis as event-relative offsets.  Mirrors the same vocabulary
+ *  ``WindowedPanelWidget`` already uses. */
+export function offsetLabel(offset: number): string {
+  if (!Number.isFinite(offset)) return MISSING_VALUE_DASH;
+  if (offset === 0) return 't0';
+  if (offset > 0) return `t+${offset}`;
+  return `t${offset}`; // negative already carries its sign
+}
+
+/** True when the Series payload is the one-row summary shape
+ *  ``summarize_series`` emits: exactly one observation index at the
+ *  ``SUMMARY_SENTINEL_DATE`` sentinel.  Drives SeriesWidget's
+ *  "scalar summary" rendering mode (no sparkline, no as-of date,
+ *  big-number layout).  Pure. */
+export function isSentinelOneRowSeries(
+  payload: SeriesPayloadEnvelope,
+): boolean {
+  const idx = payload.payload.index;
+  if (!Array.isArray(idx) || idx.length !== 1) return false;
+  return classifyArtifactDate(idx[0]).kind === 'summary_sentinel';
+}
+
+/** Pick the right label for the ``i``-th observation of a Series
+ *  body.  Encapsulates the date-policy dispatch:
+ *
+ *    - When the payload carries an event-offset encoding, return
+ *      ``offsetLabel(offsets[i])``.
+ *    - When the date classifies as the summary sentinel, return
+ *      ``""`` (the renderer skips the row label in that case —
+ *      typically pairs with a scalar-summary rendering mode).
+ *    - When the date classifies as a real market date, return the
+ *      raw ISO string the renderer formats as needed.
+ *    - Otherwise return ``MISSING_VALUE_DASH``.
+ *
+ *  Pure.  Centralising this here means a widget that needs per-row
+ *  labels never has to re-implement the policy. */
+export function rowLabelForSeries(
+  payload: SeriesPayloadEnvelope,
+  rowIndex: number,
+): string {
+  const enc = getEventOffsetEncoding(payload);
+  if (enc !== null) {
+    const offset = enc.offsets[rowIndex];
+    if (typeof offset === 'number') return offsetLabel(offset);
+    return MISSING_VALUE_DASH;
+  }
+  const raw = payload.payload.index?.[rowIndex];
+  const cls = classifyArtifactDate(raw);
+  if (cls.kind === 'summary_sentinel') return '';
+  if (cls.kind === 'real_date') return cls.raw ?? MISSING_VALUE_DASH;
+  return MISSING_VALUE_DASH;
+}
+
+// ---------------------------------------------------------------------------
 // Number formatting — every numeric cell in the widgets routes here so
 // the visual register stays consistent.
 // ---------------------------------------------------------------------------

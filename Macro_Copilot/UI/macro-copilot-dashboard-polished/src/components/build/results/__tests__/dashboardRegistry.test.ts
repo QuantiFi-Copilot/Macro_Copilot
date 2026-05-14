@@ -302,9 +302,18 @@ check('resolveEventStudyArtifacts: binds every canonical node_id', () => {
 
 check('resolveEventStudyArtifacts: missing nodes → null + reported as missing', () => {
   const ws = eventStudyWorkspace();
-  // Strip out events + windows.
+  // PR2 — to make the "missing" assertion genuine we have to strip
+  // BOTH the canonical events/windows nodes AND the unconditional
+  // siblings that share their operator_name.  Otherwise the new
+  // layer-2 fallback would (intentionally) rescue the role.  This
+  // test specifically covers the case where the role is fully
+  // absent from the workspace.
   ws.nodes = ws.nodes.filter(
-    (n) => n.node_id !== 'events' && n.node_id !== 'windows',
+    (n) =>
+      n.node_id !== 'events' &&
+      n.node_id !== 'windows' &&
+      n.node_id !== 'unconditional_events' &&
+      n.node_id !== 'unconditional_windows',
   );
   const m = resolveEventStudyArtifacts(ws);
   assertEqual(m.roles.events, null, 'events null');

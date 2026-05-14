@@ -30,10 +30,12 @@ import { Sparkline } from '@/components/ui/Sparkline';
 import type { ChartTone } from '@/lib/chart';
 import { PayloadShell } from './shared/PayloadShell';
 import {
+  classifyArtifactDate,
   firstSeriesObservation,
   formatDate,
   formatNumberWithUnits,
   lastSeriesObservation,
+  MISSING_VALUE_DASH,
   seriesFiniteCount,
   seriesObservationCount,
   seriesSetMemberAsSeries,
@@ -236,9 +238,14 @@ function MemberPreview({
             <span className="font-mono text-[16px] tabular-nums text-fg-primary">
               {formatNumberWithUnits(last.value, units)}
             </span>
-            <span className="font-mono text-[10px] text-fg-faint">
-              as-of {formatDate(last.date)}
-            </span>
+            {/* PR2 — suppress the "as-of" line for sentinel / unknown
+             *  dates so member previews don't echo synthetic markers
+             *  on rare SeriesSets that share a sentinel common_index. */}
+            {classifyArtifactDate(last.date).kind === 'real_date' && (
+              <span className="font-mono text-[10px] text-fg-faint">
+                as-of {formatDate(last.date)}
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -253,11 +260,19 @@ function MemberPreview({
       <div className="grid gap-x-4 gap-y-1.5 px-5 pt-2 pb-3 grid-cols-2 sm:grid-cols-4">
         <MetaCell
           label="First date"
-          value={first ? formatDate(first.date) : '—'}
+          value={
+            first && classifyArtifactDate(first.date).kind === 'real_date'
+              ? formatDate(first.date)
+              : MISSING_VALUE_DASH
+          }
         />
         <MetaCell
           label="Last date"
-          value={last ? formatDate(last.date) : '—'}
+          value={
+            last && classifyArtifactDate(last.date).kind === 'real_date'
+              ? formatDate(last.date)
+              : MISSING_VALUE_DASH
+          }
         />
         <MetaCell label="Obs" value={totalObs.toLocaleString()} />
         <MetaCell label="Finite" value={finiteObs.toLocaleString()} />
