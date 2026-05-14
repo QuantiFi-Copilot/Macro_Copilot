@@ -70,6 +70,7 @@ export type ControlKind =
   | 'lookback_slider'    // int slider with lookback presets (calendar days)
   | 'enum'               // generic enum dropdown (uses field's examples)
   | 'date'               // YYYY-MM-DD date input
+  | 'field_name'         // PR5 — Bloomberg observation-field dropdown
   | 'auto';              // fall back to ParameterPanel's schema-driven default
 
 export type ParamHint = {
@@ -508,6 +509,18 @@ export function inferFieldControl(fieldName: string): ParamHint {
     fieldName === 'prior_date'
   ) {
     return { control: 'date' };
+  }
+  // PR5 — Bloomberg observation-field pickers.  Every primitive's
+  // config.yaml ships a ``default_field_name`` (``YLD_YTM_MID`` for
+  // sovereigns, ``PX_LAST`` for OIS), but the override knob was
+  // rendering as a free-text input because the inferer only
+  // recognised the bare ``field_name`` field.  The schema-driven
+  // generic builder hit this gap whenever a tool's input class
+  // declared ``sovereign_field_name`` / ``ois_field_name`` (cross-
+  // domain primitives), ``nominal_field_name`` / ``real_field_name``
+  // (breakeven), or any prefixed Bloomberg-mnemonic field name.
+  if (fieldName === 'field_name' || fieldName.endsWith('_field_name')) {
+    return { control: 'field_name' };
   }
   return { control: 'auto' };
 }

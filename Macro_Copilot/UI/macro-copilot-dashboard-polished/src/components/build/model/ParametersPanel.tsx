@@ -42,6 +42,29 @@ import {
 } from './controls/CurveAndTenor';
 
 // ---------------------------------------------------------------------------
+// PR5 — Bloomberg observation-field options.  Renders for every
+// descriptor whose name ends with ``field_name`` (see
+// ``inferFieldControl`` in modelRegistry.ts).  The list spans both the
+// sovereign yield mnemonics (YLD_*) and the OIS / generic price
+// mnemonics (PX_*); the inferer doesn't try to second-guess which
+// half applies to which tool — closer to the truth is to show the
+// full set and let the user pick what their primitive's config.yaml
+// declared as the default.  Schema-supplied ``field.examples`` win
+// when present so a backend-locked enumeration overrides this list.
+// ---------------------------------------------------------------------------
+
+const BLOOMBERG_FIELD_OPTIONS: Array<{ value: string; label?: string }> = [
+  { value: 'YLD_YTM_MID', label: 'YLD_YTM_MID · mid yield-to-maturity' },
+  { value: 'YLD_YTM_BID', label: 'YLD_YTM_BID · bid yield' },
+  { value: 'YLD_YTM_ASK', label: 'YLD_YTM_ASK · ask yield' },
+  { value: 'YLD_CNV_MID', label: 'YLD_CNV_MID · conventional yield' },
+  { value: 'PX_LAST', label: 'PX_LAST · last price' },
+  { value: 'PX_MID', label: 'PX_MID · mid price' },
+  { value: 'PX_BID', label: 'PX_BID · bid price' },
+  { value: 'PX_ASK', label: 'PX_ASK · ask price' },
+];
+
+// ---------------------------------------------------------------------------
 // FormState — the union of "what the controls write" for any one field.
 // ---------------------------------------------------------------------------
 
@@ -153,6 +176,78 @@ function marshalSeriesSpec(spec: SeriesSpecValue): Record<string, unknown> | und
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// PR5 — required-field validation
+// ---------------------------------------------------------------------------
+//
+// Pre-PR5 the marshaller silently dropped empty / undefined values
+// (correct — Pydantic distinguishes missing-key from empty-string,
+// and the canonical wire shape omits unset optionals).  But REQUIRED
+// fields with no default rendered as empty inputs that the user
+// could submit blank, producing the unhelpful
+// ``Field required [type=missing, input_value=...]`` error from the
+// backend.  This helper collects the list so the panel can:
+//
+//   - disable the Run button until the gap is filled, and
+//   - surface an inline error under each affected control.
+//
+// Pure function — no React imports — so any caller (the typed
+// preset surfaces, future automation) can audit a FormState without
+// rendering anything.
+
+export interface MissingFieldFinding {
+  /** ``input_fields[].name`` for the offending field. */
+  name: string;
+  /** Human-friendly label (snake-cased name with capitals) for
+   *  banner / tooltip copy. */
+  label: string;
+}
+
+export function missingRequiredFields(
+  form: FormState,
+  fields: ToolFieldDescriptor[],
+  hintFor: (name: string) => ControlKind,
+): MissingFieldFinding[] {
+  const out: MissingFieldFinding[] = [];
+  for (const f of fields) {
+    if (!f.required) continue;
+    const control = hintFor(f.name);
+    if (isFieldFilled(form[f.name], control)) continue;
+    out.push({ name: f.name, label: humanLabelFor(f.name) });
+  }
+  return out;
+}
+
+/** True when the form value for a field is non-empty given its
+ *  control type.  Pure — used by ``missingRequiredFields`` and the
+ *  per-field renderer to flag inline errors. */
+function isFieldFilled(value: FieldValue, control: ControlKind): boolean {
+  if (value === undefined || value === null) return false;
+  if (control === 'series_spec') {
+    const spec = value as SeriesSpecValue;
+    return marshalSeriesSpec(spec) !== undefined;
+  }
+  if (control === 'series_spec_list') {
+    const arr = (value as SeriesSpecValue[]) ?? [];
+    return arr.some((s) => marshalSeriesSpec(s) !== undefined);
+  }
+  if (control === 'multi_tenor') {
+    return ((value as string[]) ?? []).some((s) => s.length > 0);
+  }
+  if (typeof value === 'string') return value.length > 0;
+  // Defensive: an unexpected shape we can't introspect counts as
+  // filled — we'd rather let a quirky tool's submission through
+  // and let the backend produce the canonical error than block on
+  // a false negative here.
+  return true;
+}
+
+function humanLabelFor(snake: string): string {
+  return snake
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function marshalForm(
   form: FormState,
   fields: ToolFieldDescriptor[],
@@ -226,6 +321,31 @@ export function ParametersPanel({
     [card.input_fields, hidden],
   );
 
+  // PR5 — collect required fields the user hasn't filled in.  Drives
+  // both the Run-button disabled state and the per-control inline
+  // error.  Cheap to recompute on every render.  Re-uses the
+  // ``hintFor`` helper declared above so we never compute hints
+  // twice per render.
+  const missing = useMemo(
+    () => missingRequiredFields(form, fields, hintFor),
+    // ``hintFor`` is closed over ``card.tool_name`` — recompute when
+    // the tool or its visible-fields list shifts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [form, fields, card.tool_name],
+  );
+  const missingByName = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of missing) s.add(m.name);
+    return s;
+  }, [missing]);
+  const hasMissing = missing.length > 0;
+  const runDisabled = isRunning || hasMissing;
+  const runTooltip = hasMissing
+    ? `Fill in the required field${missing.length === 1 ? '' : 's'}: ${missing
+        .map((m) => m.label)
+        .join(', ')}`
+    : undefined;
+
   const setField = (name: string, v: FieldValue) =>
     onChange({ ...form, [name]: v });
 
@@ -246,6 +366,7 @@ export function ParametersPanel({
               presets={hint.presets}
               value={form[field.name]}
               setValue={(v) => setField(field.name, v)}
+              showMissingError={missingByName.has(field.name)}
             />
           );
         })}
@@ -255,12 +376,15 @@ export function ParametersPanel({
         <button
           type="button"
           onClick={onRun}
-          disabled={isRunning}
+          disabled={runDisabled}
+          title={runTooltip}
           className={cn(
             'flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[12.5px] font-semibold tracking-[-0.005em] transition-all duration-150 ease-sleek',
             isRunning
               ? 'cursor-wait border-line-soft bg-white/[0.02] text-fg-muted'
-              : 'border-ice-400/40 bg-gradient-to-b from-ice-500/25 to-ice-700/25 text-ice-100 hover:border-ice-400/60 hover:from-ice-500/35 hover:to-ice-700/35',
+              : hasMissing
+                ? 'cursor-not-allowed border-line-soft bg-white/[0.02] text-fg-muted opacity-70'
+                : 'border-ice-400/40 bg-gradient-to-b from-ice-500/25 to-ice-700/25 text-ice-100 hover:border-ice-400/60 hover:from-ice-500/35 hover:to-ice-700/35',
           )}
         >
           {isRunning ? (
@@ -287,6 +411,11 @@ export function ParametersPanel({
           </button>
         ) : null}
       </div>
+      {hasMissing && (
+        <p className="text-[10.5px] leading-[1.5] text-coral-200">
+          Required: {missing.map((m) => m.label).join(', ')}.
+        </p>
+      )}
     </div>
   );
 }
@@ -309,6 +438,7 @@ function FieldRenderer({
   presets,
   value,
   setValue,
+  showMissingError,
 }: {
   field: ToolFieldDescriptor;
   control: ControlKind;
@@ -317,7 +447,21 @@ function FieldRenderer({
   presets?: number[];
   value: FieldValue;
   setValue: (v: FieldValue) => void;
+  /** PR5 — true iff the panel computed this field as a missing
+   *  required input.  When set, the renderer appends a small coral
+   *  caption beneath the control so the user can see exactly where
+   *  the gap is.  Read-only flag; the panel owns the calculation. */
+  showMissingError?: boolean;
 }) {
+  // PR5 — augment ``help`` with the inline-required error.  Done at
+  // the renderer entrance so every control variant inherits the
+  // caption without each branch having to re-thread the prop.
+  const effectiveHelp = showMissingError
+    ? help
+      ? `${help} · required`
+      : 'Required field — pick a value before running.'
+    : help;
+  help = effectiveHelp;
   if (control === 'series_spec') {
     return (
       <SeriesSpecPicker
@@ -403,6 +547,26 @@ function FieldRenderer({
           value={(value as string) ?? ''}
           onChange={(v) => setValue(v)}
           options={examples.map((e) => ({ value: e }))}
+        />
+      </ControlField>
+    );
+  }
+  if (control === 'field_name') {
+    // PR5 — schema-supplied ``field.examples`` wins (a backend-
+    // locked enumeration); otherwise we serve the canonical
+    // Bloomberg-mnemonic vocabulary so the user can't free-text
+    // a typo (``YDL_YTM_MID`` etc.) into a runtime error.
+    const opts =
+      field.examples && field.examples.length > 0
+        ? field.examples.map((e) => ({ value: String(e) }))
+        : BLOOMBERG_FIELD_OPTIONS;
+    return (
+      <ControlField label={label} required={field.required} help={help}>
+        <StyledSelect
+          value={(value as string) ?? ''}
+          onChange={(v) => setValue(v)}
+          options={opts}
+          placeholder="select field"
         />
       </ControlField>
     );

@@ -383,6 +383,78 @@ check('inferFieldControl: unknown field name → auto', () => {
   );
 });
 
+// ----------------------------------------------------------------------------
+// PR5 — Bloomberg observation-field detection
+// ----------------------------------------------------------------------------
+//
+// Pre-PR5 the inferer recognised ``field_name`` only as a sort
+// priority — there was no ``field_name`` ControlKind, so the bare
+// ``field_name`` field rendered as plain text and the canonical
+// prefixed variants (``sovereign_field_name`` / ``ois_field_name`` /
+// ``nominal_field_name`` / ``real_field_name``) fell through to
+// ``auto`` → free-text input.  Users could type a typo
+// (``YDL_YTM_MID``) and only learn about it from a backend error.
+// PR5 routes every ``*_field_name`` pattern to the new
+// ``field_name`` ControlKind which renders the canonical
+// Bloomberg-mnemonic dropdown.
+
+check('inferFieldControl: bare field_name → field_name', () => {
+  assertEqual(
+    inferFieldControl('field_name').control,
+    'field_name',
+    'bare field_name',
+  );
+});
+
+check('inferFieldControl: prefixed *_field_name → field_name', () => {
+  for (const name of [
+    'sovereign_field_name',
+    'ois_field_name',
+    'nominal_field_name',
+    'real_field_name',
+    'target_field_name',
+    'regressor_field_name',
+  ]) {
+    assertEqual(
+      inferFieldControl(name).control,
+      'field_name',
+      `${name}: control`,
+    );
+  }
+});
+
+check('inferFieldControl: field_name suffix collisions stay auto', () => {
+  // We deliberately match only ``_field_name`` (with the underscore
+  // boundary).  ``output_field`` and ``output_field_name_lock`` are
+  // unrelated — they must NOT route to ``field_name``.
+  for (const name of [
+    'output_field',
+    'output_field_name_lock',
+    'fieldname', // no underscore
+  ]) {
+    assertEqual(
+      inferFieldControl(name).control === 'field_name',
+      false,
+      `${name}: not field_name`,
+    );
+  }
+});
+
+check('paramHintFor: ois primitive field_name slot → field_name', () => {
+  // End-to-end via paramHintFor: the OIS curve-spread primitive has
+  // no model-registry entry, so the inference must drive the dropdown
+  // for ``ois_field_name`` / ``sovereign_field_name`` parameters.
+  for (const tool of [
+    'calculate_ois_curve_spread_tool',
+    'calculate_swap_spread_tool',
+  ]) {
+    const hint = paramHintFor(tool, 'ois_field_name');
+    assertEqual(hint.control, 'field_name', `${tool}: ois_field_name`);
+    const sov = paramHintFor(tool, 'sovereign_field_name');
+    assertEqual(sov.control, 'field_name', `${tool}: sovereign_field_name`);
+  }
+});
+
 check('paramHintFor: registered hint overrides inference', () => {
   // The rolling-regression model registers ``target_spec: series_spec``.
   // Without the explicit registration the field name has no canonical
