@@ -146,10 +146,20 @@ function resolveBuildHref(message: CopilotMessage): string | null {
   //    multi-card grid, or (PR1) an unsupported-known card.  Tool
   //    names are normalised here too so manifest shorthand doesn't
   //    confuse downstream lookups.
+  //
+  //    PR-B-β — append ``&handoff=ask`` so Build can distinguish
+  //    Ask-originated context from Library-blank opens (which use the
+  //    same ``?context=`` URL pattern but with empty params).  The
+  //    Build-side router reads this marker via ``isAskHandoff(...)``
+  //    and threads it through the typed canvases; the missing-param
+  //    tile only fires on the Ask-handoff path so blank Library opens
+  //    keep folding spec defaults as before.  Backward compatible:
+  //    pre-PR-B-β shared URLs without the marker default to the
+  //    library policy and continue to render with defaults.
   if (message.workspaceContext) {
     const normalised = normaliseWorkspaceContext(message.workspaceContext);
     const encoded = encodeURIComponent(JSON.stringify(normalised));
-    return `/workspace?context=${encoded}`;
+    return `/workspace?context=${encoded}&handoff=ask`;
   }
   return null;
 }

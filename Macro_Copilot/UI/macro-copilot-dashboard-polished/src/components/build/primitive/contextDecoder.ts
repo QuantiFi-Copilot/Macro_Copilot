@@ -94,6 +94,16 @@ export type DecodedPrimitive =
       /** Flat string-only params dict.  Matches the typed-detail endpoint
        *  query-param shape. */
       params: Record<string, string>;
+      /** PR-B-β — full structured params dict preserving nested
+       *  objects / arrays.  ``params`` (above) is the flat string-only
+       *  projection typed-detail endpoints accept; ``paramsStructured``
+       *  is the source-of-truth shape Ask emitted, used by surfaces
+       *  that consume nested values (rich-model builder seed list,
+       *  generic-builder series_spec preloading).  Always populated
+       *  by the decoder — equal to ``params`` for scalar-only inputs,
+       *  carries the extra entries on nested inputs.  Additive:
+       *  pre-PR-B-β consumers that read only ``params`` keep working. */
+      paramsStructured: Record<string, unknown>;
     }
   | {
       kind: 'builder';
@@ -103,6 +113,11 @@ export type DecodedPrimitive =
       /** Flat string-only params dict forwarded to the builder as deep-
        *  link initial form values (e.g. ``?builder=...&curve_family=UST``). */
       params: Record<string, string>;
+      /** PR-B-β — see ``PrimitiveViewKind`` variant.  Lets the rich-
+       *  model builder seed ``series_spec`` / ``series_spec_list`` /
+       *  multi-tenor controls from an Ask handoff that carried nested
+       *  config. */
+      paramsStructured: Record<string, unknown>;
     }
   | {
       kind: 'generic_builder';
@@ -115,6 +130,11 @@ export type DecodedPrimitive =
        *  args already populated.  When empty, the builder seeds from
        *  the schema defaults. */
       params: Record<string, string>;
+      /** PR-B-β — full structured params for the generic builder's
+       *  schema-driven form.  Lets fields whose schema type is
+       *  ``object`` / ``array`` (e.g. ``regressor_specs``) seed
+       *  correctly when Ask supplied them. */
+      paramsStructured: Record<string, unknown>;
     }
   | {
       kind: 'unsupported_known';
@@ -125,6 +145,10 @@ export type DecodedPrimitive =
        *  affordance can hand the call back to the chat with the user's
        *  intended args intact. */
       params: Record<string, string>;
+      /** PR-B-β — full structured params, carried for symmetry with
+       *  the other variants.  Unused on the unsupported card today
+       *  but useful when the "Try in Ask" affordance ships. */
+      paramsStructured: Record<string, unknown>;
     };
 
 /** Map MCP tool names → typed primitive view kinds.  Adding a new entry
@@ -193,17 +217,22 @@ function decodeOne(
 ): DecodedPrimitive | null {
   const canonical = normalizeToolName(rawToolName);
   const params = stringifyParams(rawParams);
+  // PR-B-β — also keep a structured copy that preserves nested
+  // objects / arrays.  ``stringifyParams`` drops those (the typed-
+  // detail endpoints only accept scalars), but the rich-model + the
+  // generic builder surfaces consume them when seeding their forms.
+  const paramsStructured = preserveStructuredParams(rawParams);
 
   // 1. Rich-model tools (highest priority — explicit analytical
   //    playground beats every other primitive surface).
   if (hasModelMetadata(canonical)) {
-    return { kind: 'builder', toolName: canonical, params };
+    return { kind: 'builder', toolName: canonical, params, paramsStructured };
   }
 
   // 2. Typed primitive views — bespoke chart / scanner / regime cards.
   const view = TOOL_TO_VIEW[canonical];
   if (view) {
-    return { kind: view, toolName: canonical, params };
+    return { kind: view, toolName: canonical, params, paramsStructured };
   }
 
   // 3. PR2 — backend-runnable primitives without a typed view get the
@@ -211,14 +240,24 @@ function decodeOne(
   //    ``POST /api/v1/tools/{name}/run`` endpoint so the form can
   //    actually execute against the backend.
   if (isRunnablePrimitive(canonical)) {
-    return { kind: 'generic_builder', toolName: canonical, params };
+    return {
+      kind: 'generic_builder',
+      toolName: canonical,
+      params,
+      paramsStructured,
+    };
   }
 
   // 4. Known but not runnable (manifest-only, paused, or otherwise
   //    not in ``_PRIMITIVE_SPECS``) — surface the honest paused card
   //    rather than drop into the decode-error path.
   if (isKnownBackendTool(canonical)) {
-    return { kind: 'unsupported_known', toolName: canonical, params };
+    return {
+      kind: 'unsupported_known',
+      toolName: canonical,
+      params,
+      paramsStructured,
+    };
   }
 
   // 5. Truly unknown — caller falls through to ``null`` handling
@@ -306,9 +345,36 @@ function priorityOf(decoded: DecodedPrimitive): number {
   return VIEW_PRIORITY[decoded.kind];
 }
 
+/** PR-B-β — preserve EVERY non-null param verbatim, including nested
+ *  objects / arrays.  ``stringifyParams`` (below) is the flat
+ *  string-only projection typed-detail endpoints accept; this
+ *  preserves the full structure for surfaces that consume nested
+ *  config (rich-model builders' ``series_spec`` / ``regressor_specs``,
+ *  generic builder's structured form fields).
+ *
+ *  Pure: returns a fresh dict — does not mutate ``params``.  Null /
+ *  undefined values are dropped so consumers don't have to defend
+ *  against them.  Nested values are JSON-shaped on the wire, so we
+ *  pass them through unchanged — JSON.parse already gave us plain
+ *  objects / arrays. */
+function preserveStructuredParams(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params ?? {})) {
+    if (v === null || v === undefined) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 /** Coerce an MCP params dict into a flat string-only dict.  Drops nulls
  *  and stringifies numbers / booleans; skips objects/arrays since the
- *  typed-detail endpoints accept scalar query params only. */
+ *  typed-detail endpoints accept scalar query params only.
+ *
+ *  PR-B-β — kept for typed-detail endpoints' query-param contract.
+ *  Surfaces that need nested values read ``DecodedPrimitive.paramsStructured``
+ *  instead. */
 function stringifyParams(
   params: Record<string, unknown>,
 ): Record<string, string> {
