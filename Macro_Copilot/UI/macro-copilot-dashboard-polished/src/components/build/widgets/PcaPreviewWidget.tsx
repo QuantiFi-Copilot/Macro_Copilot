@@ -1,28 +1,26 @@
 // ============================================================================
-// PcaPreviewWidget — per-tool renderer for ``calculate_pca_yield_curve_tool``.
+// PcaPreviewWidget — per-tool persisted-artifact card for PCA.
 // ----------------------------------------------------------------------------
-// Phase R3 replaces the original thin "preview" widget with the rich
-// ``PcaLoadingsRenderer`` lifted from the legacy model-workspace.  The
-// widget bridges the persisted-workspace surface to the bespoke renderer
-// via ``RichModelWidget``, which re-runs the tool to fetch the full output
-// dict (until the backend ships a payload-fetch endpoint).
+// PR1 (new plan) — pivots from the legacy live-output renderer
+// (``PcaLoadingsRenderer``) to the payload-shape-correct
+// ``RichModelWidget``.  The persisted PCA artifact is a single
+// factor-score Series; loadings + variance + current factor levels
+// only exist on the live-run *Output dict (see
+// ``model/ModelWorkspacePage`` for the live-run path).  The widget
+// now renders the persisted Series + an honest "what's not in this
+// snapshot" callout via the per-tool adapter.
 //
-// The file keeps its historical name so the registry imports + the per-
-// tool key (``Series:calculate_pca_yield_curve_tool``) stay stable — only
-// the body changes.
+// The filename + per-tool registry key
+// (``Series:calculate_pca_yield_curve_tool``) stay stable so existing
+// imports + the resolver lookup don't drift.
 // ============================================================================
 
 import type { NodeRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { registerToolRenderer } from '@/components/build/lib/nodeRendererRegistry';
-import { PcaLoadingsRenderer } from '@/components/build/model/renderers/PcaLoadingsRenderer';
 import { RichModelWidget } from './shared/RichModelWidget';
 
 const PcaPreviewWidget: NodeRenderer = (props) => (
-  <RichModelWidget
-    {...props}
-    Renderer={PcaLoadingsRenderer}
-    toolDisplayName="PCA"
-  />
+  <RichModelWidget {...props} toolName="calculate_pca_yield_curve_tool" />
 );
 
 registerToolRenderer(

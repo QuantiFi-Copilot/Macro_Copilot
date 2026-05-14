@@ -36,10 +36,16 @@ import './TradeSetWidget';
 // header for the re-enablement checklist.
 
 // Per-tool specialisations — registered after the per-type generics
-// so they unambiguously win the lookup priority.
+// so they unambiguously win the lookup priority.  Each widget is a
+// thin caller of ``RichModelWidget`` with a per-tool ``toolName``
+// prop; the persistent-artifact adapter handles all five model
+// tools end-to-end (no payload-shape mismatch — see
+// ``persistedModelAdapters.ts``).
 import './PcaPreviewWidget';
 import './RollingRegressionPreviewWidget';
 import './AttributionPreviewWidget';
+import './HalfLifePreviewWidget';
+import './BetaAdjustedSpreadPreviewWidget';
 
 import './FallbackWidget';
 
@@ -53,4 +59,6 @@ export { TradeSetWidget } from './TradeSetWidget';
 export { PcaPreviewWidget } from './PcaPreviewWidget';
 export { RollingRegressionPreviewWidget } from './RollingRegressionPreviewWidget';
 export { AttributionPreviewWidget } from './AttributionPreviewWidget';
+export { HalfLifePreviewWidget } from './HalfLifePreviewWidget';
+export { BetaAdjustedSpreadPreviewWidget } from './BetaAdjustedSpreadPreviewWidget';
 export { FallbackWidget } from './FallbackWidget';

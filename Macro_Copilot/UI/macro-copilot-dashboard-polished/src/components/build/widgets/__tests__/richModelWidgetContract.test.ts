@@ -136,11 +136,6 @@ check('RichModelWidget does NOT import runPrimitive (PR3 invariant)', () => {
 
 check('RichModelWidget surfaces persisted-snapshot identity in the body', () => {
   assertContains(_src, 'persisted ·', 'persisted-identity kicker present');
-  assertContains(
-    _src,
-    '/artifacts/',
-    'footer mentions the /artifacts endpoint origin',
-  );
 });
 
 check('RichModelWidget renders typed error / loading / no-hash states', () => {
@@ -152,17 +147,6 @@ check('RichModelWidget renders typed error / loading / no-hash states', () => {
 check('RichModelWidget propagates refetch via the error state', () => {
   assertContains(_src, 'onRetry={refetch}', 'wires refetch into error state');
 });
-
-check(
-  'RichModelWidget exposes the (legacy compat) output dict to the Renderer',
-  () => {
-    assertContains(
-      _src,
-      'data.payload',
-      'passes the payload body through to the Renderer for back-compat',
-    );
-  },
-);
 
 check('RichModelWidget reads the artifact hash from node.artifact_hash first', () => {
   assertContains(
@@ -180,11 +164,179 @@ check('No accidental runPrimitive call survives anywhere in the function body', 
 });
 
 // ----------------------------------------------------------------------------
+// PR1 (new plan) — adapter dispatch + no legacy Renderer prop
+// ----------------------------------------------------------------------------
+
+check('PR1: RichModelWidget consumes the per-tool adapter (adaptModelArtifact)', () => {
+  assertContains(_src, 'adaptModelArtifact', 'uses adapter');
+  assertContains(_src, 'getModelAdapter', 'uses metadata lookup');
+  assertContains(
+    _src,
+    "from './persistedModelAdapters'",
+    'canonical adapter path',
+  );
+});
+
+check('PR1: RichModelWidget dispatches on all three adapter view variants', () => {
+  assertContains(_src, "'persisted_series'", 'persisted_series branch');
+  assertContains(_src, "'shape_mismatch'", 'shape_mismatch branch');
+  assertContains(
+    _src,
+    "'pure_snapshot_unavailable'",
+    'pure_snapshot_unavailable branch',
+  );
+});
+
+check('PR1: RichModelWidget delegates to the per-type registry (NOT per-tool)', () => {
+  // The widget MUST resolve the body via ``resolveArtifactTypeRenderer``
+  // (per-type only).  Using the per-tool registry would recurse back
+  // into this widget for ``(Series, calculate_pca_yield_curve_tool)``.
+  assertContains(
+    _src,
+    'resolveArtifactTypeRenderer',
+    'per-type renderer lookup',
+  );
+});
+
+check('PR1: RichModelWidget renders the detail-unavailable callout', () => {
+  // The "what's not in this saved snapshot" copy is the load-bearing
+  // honest-fallback affordance.  Per the brief: "Do not hide missing
+  // fields behind dashes."
+  assertContains(
+    _src,
+    'Not in this saved snapshot',
+    'detail-unavailable header',
+  );
+});
+
+check('PR1: RichModelWidget no longer takes a Renderer prop', () => {
+  // The legacy ``Renderer`` prop was the shape-mismatch vector
+  // (passing the substrate-canonical payload body to a renderer
+  // that expected the live ``*Output`` dict).  The new component
+  // signature DOES NOT take Renderer; assert it.
+  assertNotContains(
+    _src,
+    'Renderer: RichModelRenderer',
+    'no legacy Renderer prop typedef',
+  );
+  assertNotContains(
+    _src,
+    '<Renderer output=',
+    'no legacy Renderer invocation',
+  );
+});
+
+// ----------------------------------------------------------------------------
+// PR1 — each per-tool preview widget uses the new API
+// ----------------------------------------------------------------------------
+
+async function loadPreviewWidgetSource(name: string): Promise<string> {
+  // @ts-expect-error - node-only.
+  const fs = (await import('fs')) as NodeFs;
+  const _g = globalThis as unknown as NodeGlobal;
+  const cwd = _g.process?.cwd?.() ?? '.';
+  const candidates = [
+    `${cwd}/src/components/build/widgets/${name}`,
+    `./src/components/build/widgets/${name}`,
+  ];
+  for (const p of candidates) {
+    try {
+      return fs.readFileSync(p, 'utf8');
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(`${name} not found`);
+}
+
+let _previewSrc: Record<string, string> = {};
+
+check('PR1: PcaPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
+  const src = _previewSrc['PcaPreviewWidget.tsx'];
+  assertContains(
+    src,
+    'toolName="calculate_pca_yield_curve_tool"',
+    'passes tool name',
+  );
+  assertNotContains(src, 'Renderer=', 'no Renderer prop');
+});
+
+check('PR1: RollingRegressionPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
+  const src = _previewSrc['RollingRegressionPreviewWidget.tsx'];
+  assertContains(
+    src,
+    'toolName="calculate_rolling_regression_tool"',
+    'passes tool name',
+  );
+  assertNotContains(src, 'Renderer=', 'no Renderer prop');
+});
+
+check('PR1: AttributionPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
+  const src = _previewSrc['AttributionPreviewWidget.tsx'];
+  assertContains(
+    src,
+    'toolName="calculate_yield_change_attribution_pca_tool"',
+    'passes tool name',
+  );
+  assertNotContains(src, 'Renderer=', 'no Renderer prop');
+});
+
+check('PR1: HalfLifePreviewWidget exists + uses adapter via RichModelWidget', () => {
+  const src = _previewSrc['HalfLifePreviewWidget.tsx'];
+  assertContains(
+    src,
+    'toolName="calculate_half_life_tool"',
+    'half-life tool name',
+  );
+  assertContains(src, 'RichModelWidget', 'uses RichModelWidget');
+});
+
+check('PR1: BetaAdjustedSpreadPreviewWidget exists + uses adapter via RichModelWidget', () => {
+  const src = _previewSrc['BetaAdjustedSpreadPreviewWidget.tsx'];
+  assertContains(
+    src,
+    'toolName="calculate_beta_adjusted_spread_tool"',
+    'beta-adj tool name',
+  );
+  assertContains(src, 'RichModelWidget', 'uses RichModelWidget');
+});
+
+check('PR1: no preview widget retains stale "re-runs the tool" docstring', () => {
+  for (const name of [
+    'PcaPreviewWidget.tsx',
+    'RollingRegressionPreviewWidget.tsx',
+    'AttributionPreviewWidget.tsx',
+    'HalfLifePreviewWidget.tsx',
+    'BetaAdjustedSpreadPreviewWidget.tsx',
+  ]) {
+    const src = _previewSrc[name];
+    assertNotContains(src, 're-runs the tool', `${name}: stale re-run comment`);
+    assertNotContains(
+      src,
+      'until the backend ships a payload',
+      `${name}: stale backend comment`,
+    );
+  }
+});
+
+// ----------------------------------------------------------------------------
 // Runner — async so it can await the one-shot source load.
 // ----------------------------------------------------------------------------
 
 export async function runAllRichModelWidgetContractTests(): Promise<void> {
   _src = await loadRichModelWidgetSource();
+  // Eagerly load every preview-widget source for the PR1 checks
+  // that need them.
+  const previewFiles = [
+    'PcaPreviewWidget.tsx',
+    'RollingRegressionPreviewWidget.tsx',
+    'AttributionPreviewWidget.tsx',
+    'HalfLifePreviewWidget.tsx',
+    'BetaAdjustedSpreadPreviewWidget.tsx',
+  ];
+  for (const f of previewFiles) {
+    _previewSrc[f] = await loadPreviewWidgetSource(f);
+  }
   let passed = 0;
   let failed = 0;
   for (const { label, fn } of _checks) {
