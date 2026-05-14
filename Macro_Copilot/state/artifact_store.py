@@ -792,15 +792,35 @@ def _series_to_stored(art: Series) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 def _detect_event_offset_encoding(
     art: Series,
 ) -> Optional[Dict[str, Any]]:
-    """If the Series was produced by ``conditional_aggregate``, return
-    a JSON-safe ``index_encoding`` blob declaring the index as
-    event-relative offsets.  Returns ``None`` for any other Series so
-    the normal date-index preview keeps working.
+    """If the Series was produced by an operator that records event-
+    relative offsets on its lineage step, return a JSON-safe
+    ``index_encoding`` blob.  Returns ``None`` for any other Series
+    so the normal date-index preview keeps working.
 
-    The encoding is read off the final lineage step's params (the
-    operator records ``offset_anchor`` + ``event_relative_offsets``
-    there).  Defensive: returns ``None`` if the lineage shape doesn't
-    match what we expect.
+    Allowed operator names (closed list):
+      - ``conditional_aggregate`` — the SOURCE of the encoding.  It
+        synthesises the ``1970-01-01 + Timedelta(days=offset)``
+        index and records ``offset_anchor`` + ``event_relative_offsets``
+        on its lineage step's params so consumers can recover the
+        event-relative interpretation.
+      - ``series_arithmetic`` (PR-C) — when both operands of a binary
+        op carry consistent event-offset metadata (or a unary /
+        scalar op with a single operand that carries it), the
+        operator propagates the same two fields onto its step.
+        That keeps the encoding alive through the event-study
+        workflow's terminal ``compare`` Series (which subtracts the
+        unconditional aggregate from the conditional aggregate).
+
+    Other operators MUST NOT be added to this list without an
+    explicit propagation contract — walking past an unknown operator
+    risks the encoding being false if that operator changed the
+    index semantics.
+
+    Defensive on every shape check: missing / wrong-type params
+    return ``None`` rather than producing a malformed encoding.  A
+    wrong encoding mislabels the user-facing chart x-axis with
+    synthetic offsets that don't correspond to real days — strictly
+    worse than no encoding at all.
     """
     try:
         steps = list(art.lineage.steps)
@@ -809,7 +829,10 @@ def _detect_event_offset_encoding(
     if not steps:
         return None
     last = steps[-1]
-    if getattr(last, "name", None) != "conditional_aggregate":
+    if getattr(last, "name", None) not in (
+        "conditional_aggregate",
+        "series_arithmetic",
+    ):
         return None
     params = getattr(last, "params", None) or {}
     offsets = params.get("event_relative_offsets")

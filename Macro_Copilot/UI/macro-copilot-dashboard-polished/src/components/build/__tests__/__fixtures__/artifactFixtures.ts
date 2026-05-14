@@ -286,6 +286,59 @@ export function conditionalAggregateSeries(): SeriesPayloadEnvelope {
   };
 }
 
+/** PR-C — event-study ``compare`` Series fixture.  Represents the
+ *  terminal output of ``subtract(conditional_aggregate, unconditional_aggregate)``
+ *  in the event-study workflow.  Pre-PR-C this artifact's stored
+ *  payload had NO ``index_encoding`` (the artifact-store detector
+ *  only recognised the metadata on a ``conditional_aggregate``
+ *  step; ``compare``'s last step is ``series_arithmetic``).  The
+ *  SeriesWidget then rendered the index as literal ``1970-01-NN``
+ *  dates — exactly the bug Codex's audit flagged.
+ *
+ *  PR-C threads the encoding through ``series_arithmetic``'s
+ *  lineage step + extends the detector so this fixture's payload
+ *  now carries ``index_encoding`` on the wire.  The widget side is
+ *  unchanged — it already reads ``payload.index_encoding`` via
+ *  ``getEventOffsetEncoding`` regardless of which operator emitted
+ *  the Series. */
+export function eventStudyCompareSeries(): SeriesPayloadEnvelope {
+  return {
+    artifact_type: 'Series',
+    metadata: {
+      series_key: 'EventStudy/UST_10Y/compare',
+      units: 'bps',
+      frequency: null,
+      missingness_policy: {},
+      lineage: { steps: [] },
+    },
+    payload: {
+      // Same 1970-anchored synthetic dates as conditionalAggregateSeries
+      // — both operands of the subtract op shared this index, so the
+      // output preserves it.
+      index: [
+        '1969-12-29',
+        '1969-12-30',
+        '1969-12-31',
+        '1970-01-01',
+        '1970-01-02',
+        '1970-01-03',
+      ],
+      // Abnormal response = conditional − unconditional, so values are
+      // small and centred around zero (the canonical event-study
+      // expectation when no abnormal response is present).
+      values: [-0.2, -0.1, 0.0, 0.4, 0.8, 0.6],
+      name: 'compare_abnormal_response',
+      type: 'Series',
+      index_encoding: {
+        kind: 'event_offset',
+        anchor: '1970-01-01',
+        // Symmetric window: t-3 .. t+2.
+        offsets: [-3, -2, -1, 0, 1, 2],
+      },
+    } as SeriesPayloadEnvelope['payload'],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 3. Regime-relationship artifact envelopes
 // ---------------------------------------------------------------------------
@@ -612,6 +665,12 @@ export const ALL_SERIES_FIXTURES: Record<string, () => SeriesPayloadEnvelope> =
     event_study_signal: eventStudySignalSeries,
     event_study_target: eventStudyTargetSeries,
     conditional_aggregate: conditionalAggregateSeries,
+    // PR-C — event-study terminal ``compare`` (series_arithmetic on
+    // two cond_agg operands).  Pre-PR-C this fixture had no
+    // index_encoding; PR-C threads the encoding through the
+    // operator's lineage step + extends the artifact-store detector
+    // so the stored payload carries it.
+    event_study_compare: eventStudyCompareSeries,
     regime_lhs: regimeLhsSeries,
     regime_rhs: regimeRhsSeries,
     sentinel_one_row: sentinelOneRowSeries,

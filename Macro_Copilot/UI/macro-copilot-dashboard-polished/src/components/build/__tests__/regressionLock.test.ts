@@ -49,6 +49,7 @@ import {
   attributionPureSnapshotSeries,
   betaAdjustedSpreadSeries,
   conditionalAggregateSeries,
+  eventStudyCompareSeries,
   eventStudyEventSet,
   eventStudySlotSchema,
   eventStudyTargetSeries,
@@ -311,6 +312,55 @@ check('§B · conditional-aggregate fixture carries an event_offset encoding', (
       `${idx} → event_offset_anchor`,
     );
   }
+});
+
+// PR-C — series_arithmetic-emitted Series also carries the encoding.
+// Pre-PR-C the event-study terminal ``compare`` artifact lost the
+// encoding because the artifact-store detector only recognised
+// ``conditional_aggregate`` as the producing operator.  PR-C:
+//   (a) ``series_arithmetic`` operator now propagates the offset
+//       metadata onto its lineage step's params when both operands
+//       carry consistent encoding.
+//   (b) The detector's allowed-operator list now includes
+//       ``series_arithmetic`` so the encoding survives onto the
+//       stored payload the frontend reads.
+// The widget side is UNCHANGED — it always reads ``payload.index_encoding``
+// via ``getEventOffsetEncoding`` regardless of which operator emitted
+// the Series.  This check locks the contract from the consumer side:
+// any Series fixture (regardless of source) with ``index_encoding``
+// decodes correctly.
+check('§B · event-study compare fixture (series_arithmetic) decodes the encoding', () => {
+  // PR-C invariant: the SeriesWidget mounts ``OffsetLabeledSeries``
+  // whenever ``getEventOffsetEncoding(payload)`` returns non-null —
+  // see ``SeriesWidget.tsx:87``.  ``OffsetLabeledSeries`` reads the
+  // ``offsets[i]`` array directly to label each row as ``t-N`` /
+  // ``t0`` / ``t+N``; it does NOT route through ``classifyArtifactDate``
+  // for the encoded case.  So the contract we lock here is:
+  //   - the fixture's payload carries ``index_encoding``,
+  //   - ``getEventOffsetEncoding`` returns the canonical anchor +
+  //     the full offset list (including negatives), and
+  //   - the offset count matches the payload index length so the
+  //     per-row label lookup never falls off the end.
+  // Note: the negative-offset dates (e.g. ``1969-12-29`` for t-3)
+  // intentionally do NOT match the ``classifyArtifactDate``
+  // ``startsWith('1970-')`` heuristic — that helper is a generic
+  // utility for widgets without their own encoding; SeriesWidget
+  // doesn't use it on the encoded path.  The OffsetLabeledSeries
+  // path renders these correctly regardless.
+  const sample = eventStudyCompareSeries();
+  const enc = getEventOffsetEncoding(sample);
+  assertTruthy(enc, 'PR-C: compare fixture has index_encoding');
+  assertEqual(enc!.anchor, '1970-01-01', 'anchor matches cond_agg producer');
+  assertEqual(
+    enc!.offsets,
+    [-3, -2, -1, 0, 1, 2],
+    'offsets preserved through series_arithmetic step',
+  );
+  assertEqual(
+    enc!.offsets.length,
+    (sample.payload.index ?? []).length,
+    'one offset per row — OffsetLabeledSeries indexes by position',
+  );
 });
 
 check('§B · SeriesWidget source dispatches the three render modes', async () => {
