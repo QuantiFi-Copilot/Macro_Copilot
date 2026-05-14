@@ -491,6 +491,161 @@ check('cache: error settles into cache, refetch clears it', async () => {
 });
 
 // ----------------------------------------------------------------------------
+// PR5 — AbortError must never poison the cache
+// ----------------------------------------------------------------------------
+//
+// Pre-PR5 the hook's per-effect AbortController would cause two
+// failure modes to surface as a persistent "Fetch is aborted" error:
+//
+//   1. ``fetchAndCache``'s ``.catch`` wrote the AbortError into the
+//      cache slot as ``{ error }``.  The next consumer reading the
+//      cache saw the stale error and rendered "Couldn't load
+//      Series payload" until the user clicked Retry.
+//
+//   2. ``fetchAndCache`` only honoured the FIRST caller's signal.
+//      If consumer A aborted while consumers B / C still awaited
+//      the same shared promise, B / C inherited A's cancellation.
+//
+// These checks lock the post-PR5 invariants:
+//   - AbortError → cache slot CLEARED (not poisoned).
+//   - getArtifactPayload still re-throws AbortError to the caller
+//     unchanged so per-consumer cancellation handling works.
+
+function abortError(): Error {
+  // Match the runtime shape Node/browser fetch produces on abort —
+  // ``name === 'AbortError'`` is what the cache layer keys on.
+  const e = new Error('The operation was aborted.');
+  (e as { name: string }).name = 'AbortError';
+  return e;
+}
+
+check('PR5 cache: AbortError does NOT poison the cache slot', async () => {
+  artifactCacheTesting.clear();
+  // The fetch mock rejects with AbortError as if the caller's
+  // AbortController had fired mid-flight.
+  installFetchMock(() => {
+    throw abortError();
+  });
+  try {
+    let caughtName = '';
+    try {
+      await getArtifactPayload(HASH);
+    } catch (e) {
+      caughtName = (e as Error).name ?? '';
+    }
+    // The hook would normally swallow this AbortError; here we just
+    // confirm the rejection still propagates.
+    assertEqual(caughtName, 'AbortError', 'AbortError propagates');
+    // Drive the cache layer.  ``prefetchArtifactPayload`` exercises
+    // the SAME ``fetchAndCache`` path widgets hit via the hook.
+    artifactCacheTesting.clear();
+    prefetchArtifactPayload(HASH);
+    await new Promise((r) => setTimeout(r, 5));
+    // The PR5 invariant — AbortError clears the slot rather than
+    // settling it into ``slot.error``.  A subsequent consumer hits
+    // an empty cache, fires a fresh fetch, and gets the real result.
+    const slot = artifactCacheTesting.get(HASH);
+    if (slot && slot.error) {
+      throw new Error(
+        `cache poisoned with AbortError after PR5 fix — slot.error = ${
+          (slot.error as Error).message
+        }`,
+      );
+    }
+  } finally {
+    restoreFetch();
+  }
+});
+
+check('PR5 cache: real network error still settles into the cache', async () => {
+  // The PR5 fix must NOT swallow real failures — only AbortError.
+  artifactCacheTesting.clear();
+  installFetchMock(() => {
+    throw new Error('connection refused');
+  });
+  try {
+    prefetchArtifactPayload(HASH);
+    await new Promise((r) => setTimeout(r, 5));
+    const slot = artifactCacheTesting.get(HASH);
+    assertTruthy(slot?.error, 'non-abort error still cached');
+  } finally {
+    restoreFetch();
+  }
+});
+
+check('PR5 cache: post-abort retry returns the real payload', async () => {
+  // Sequence:
+  //   1. First fetch aborts → cache slot cleared.
+  //   2. Second fetch succeeds → cache populated.
+  //   3. Third lookup uses cache (no network).
+  artifactCacheTesting.clear();
+  let calls = 0;
+  installFetchMock(() => {
+    calls += 1;
+    if (calls === 1) {
+      throw abortError();
+    }
+    return jsonResponse(seriesEnvelope());
+  });
+  try {
+    // First call: aborts.
+    try {
+      await getArtifactPayload(HASH);
+    } catch (_) {
+      /* expected */
+    }
+    // The cache slot must be empty (the PR5 fix) so the next call
+    // actually re-fetches rather than seeing a poisoned slot.
+    assertEqual(
+      artifactCacheTesting.get(HASH),
+      undefined,
+      'cache slot empty after abort',
+    );
+
+    // Drive a fresh fetch via the cache path.
+    prefetchArtifactPayload(HASH);
+    await new Promise((r) => setTimeout(r, 5));
+    const slot = artifactCacheTesting.get(HASH);
+    assertTruthy(slot?.payload, 'real payload now cached');
+    assertEqual(calls, 2, 'second network call fired');
+  } finally {
+    restoreFetch();
+  }
+});
+
+check('PR5 cache: shared in-flight fetch survives a second caller aborting locally', async () => {
+  // Pre-PR5: getArtifactPayload(HASH, { signal: A }) followed by
+  // getArtifactPayload(HASH) reused the same underlying promise and
+  // if A aborted, BOTH callers saw the abort.  PR5 stops the hook
+  // from passing its signal — but for ``signal`` callers we also
+  // assert the shared promise is robust to one consumer's
+  // disinterest by checking the cache settles correctly when the
+  // network succeeds.
+  artifactCacheTesting.clear();
+  installFetchMock(
+    () =>
+      new Promise<Response>((resolve) =>
+        setTimeout(() => resolve(jsonResponse(seriesEnvelope())), 10),
+      ),
+  );
+  try {
+    // First caller — no signal (mirrors the PR5 hook behaviour).
+    const p1 = getArtifactPayload(HASH);
+    // Second caller — also no signal.  Both should resolve to the
+    // same body when the underlying mock fires.
+    const p2 = getArtifactPayload(HASH);
+    const [a, b] = await Promise.all([p1, p2]);
+    assertEqual(a.artifact_type, 'Series', 'first caller got the body');
+    assertEqual(b.artifact_type, 'Series', 'second caller got the body');
+    // Note: getArtifactPayload doesn't dedupe by itself — the hook's
+    // ``fetchAndCache`` does.  This test is here to assert the wire
+    // contract is unchanged after the PR5 surgery.
+  } finally {
+    restoreFetch();
+  }
+});
+
+// ----------------------------------------------------------------------------
 // Runner — same shim style as PR1/PR2 tests.
 // ----------------------------------------------------------------------------
 

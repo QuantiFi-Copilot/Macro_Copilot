@@ -52,7 +52,7 @@
 // ``useWorkflows``.
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ArtifactPayloadResponse } from '@/types/artifacts';
 import {
   ArtifactPayloadError,
@@ -121,9 +121,32 @@ async function fetchAndCache(
       return payload;
     })
     .catch((err) => {
+      // fix-PR5 — never persist an ``AbortError`` as a permanent
+      // cache result.  Pre-PR5 we wrote it into ``slot.error`` and
+      // every future consumer of the same hash inherited a fake
+      // "Fetch is aborted" failure even though the underlying
+      // artifact was perfectly fetchable.  The retry button worked
+      // because it deleted the slot first, which masked the bug
+      // from quick local testing.
+      //
+      // On abort we instead CLEAR the in-flight slot so the next
+      // consumer triggers a fresh request, and we still re-throw so
+      // the awaiting hook's per-consumer ``cancelled`` flag (or its
+      // own ``AbortError`` filter) sees the rejection.
+      const isAbort =
+        (err as { name?: string })?.name === 'AbortError' ||
+        // ``DOMException`` from ``fetch`` on some runtimes uses
+        // ``code === 20`` for the abort case.  Defensive check so
+        // we never inadvertently poison the cache on the same
+        // semantic event regardless of how the platform spells it.
+        (err as { code?: number })?.code === 20;
       const slot = _cache.get(hash);
       if (slot && slot.promise === promise) {
-        _cache.set(hash, { error: err as Error });
+        if (isAbort) {
+          _cache.delete(hash);
+        } else {
+          _cache.set(hash, { error: err as Error });
+        }
       }
       throw err;
     });
@@ -175,13 +198,32 @@ export interface UseArtifactPayloadResult {
  *  error: null}`` when ``hash`` is null / undefined / malformed — the
  *  hook never fires a network request for a missing hash.
  *
- *  Cancellation
- *  -----------
- *  When the consuming component unmounts (or the hash changes) we
- *  abort the in-flight fetch via ``AbortController``.  The cache
- *  slot is left intact — a different mount with the same hash can
- *  still pick up the cached result if the abort raced with
- *  resolution. */
+ *  Cancellation (fix-PR5)
+ *  ---------------------
+ *  Pre-PR5 the hook owned a per-consumer ``AbortController`` and
+ *  aborted the in-flight fetch on unmount.  That collaboration had
+ *  two failure modes:
+ *
+ *    1. The aborted fetch's rejection settled into the shared cache
+ *       slot as a permanent error.  Any subsequent consumer reading
+ *       the cache (including the very next render under React
+ *       StrictMode) saw "Fetch is aborted" until the user clicked
+ *       Retry.
+ *
+ *    2. ``fetchAndCache`` only accepts the FIRST caller's signal.
+ *       If consumer A aborted while consumers B / C were also
+ *       awaiting the same shared promise, B / C inherited A's
+ *       cancellation and saw the same fake failure.
+ *
+ *  PR5 stops passing a signal from the hook.  Each consumer keeps a
+ *  per-effect ``cancelled`` flag and uses it to ignore stale
+ *  callbacks; the underlying fetch runs to completion and primes
+ *  the cache for whichever consumer is still listening (or none —
+ *  the cache survives an empty audience because content-addressed
+ *  artifacts are valid forever).  ``fetchAndCache`` still accepts
+ *  ``signal?`` for backwards compatibility — any future caller that
+ *  truly wants cancellation can pass one — and additionally guards
+ *  against poisoning the cache on abort. */
 export function useArtifactPayload(
   hash: string | null | undefined,
 ): UseArtifactPayloadResult {
@@ -206,12 +248,7 @@ export function useArtifactPayload(
   // re-fire the network call even when the hash is unchanged.
   const [refetchSeq, setRefetchSeq] = useState(0);
 
-  // Ref for cancellation — survives re-renders so the cleanup closure
-  // always sees the latest controller.
-  const abortRef = useRef<AbortController | null>(null);
-
   useEffect(() => {
-    abortRef.current?.abort();
     if (!hash || !isLikelyArtifactHash(hash)) {
       // Reset to the "no-hash" state cleanly.  Don't read the cache
       // here — if the hash is null we have no business reading from
@@ -240,11 +277,14 @@ export function useArtifactPayload(
     setError(null);
     setIsLoading(true);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+    // PR5 — per-consumer cancellation lives on this local flag.  We
+    // intentionally do NOT pass an AbortSignal into fetchAndCache:
+    // see the hook docstring above for why aborting the shared
+    // underlying fetch on unmount caused the "Fetch is aborted"
+    // cache poisoning bug.
     let cancelled = false;
 
-    fetchAndCache(hash, controller.signal)
+    fetchAndCache(hash)
       .then((payload) => {
         if (cancelled) return;
         setData(payload);
@@ -253,6 +293,10 @@ export function useArtifactPayload(
       })
       .catch((err) => {
         if (cancelled) return;
+        // Defensive — fetchAndCache itself never persists AbortError
+        // since PR5, but consumers passing their own signal could
+        // still surface one.  Drop it on the floor so the loading
+        // state doesn't flip to a confusing "aborted" message.
         if ((err as { name?: string })?.name === 'AbortError') return;
         setError(err as Error);
         setData(null);
@@ -261,7 +305,6 @@ export function useArtifactPayload(
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [hash, refetchSeq]);
 
