@@ -33,6 +33,8 @@ export function PendingOverridesBar() {
     hasPending,
     isApplying,
     error,
+    validation,
+    canApply,
     apply,
     resetAll,
     clearError,
@@ -45,6 +47,11 @@ export function PendingOverridesBar() {
   const isForkable = Boolean(
     workspace.template_id && workspace.bound_slot_values,
   );
+  // PR3 — index validation errors by override key so each chip can
+  // render its own inline error footnote without re-scanning the
+  // list per render.
+  const errorByKey = new Map<string, string>();
+  for (const e of validation.errors) errorByKey.set(e.overrideKey, e.message);
 
   return (
     <div className="sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-lineage-400/30 bg-lineage-500/[0.06] px-5 py-3 backdrop-blur-sm">
@@ -78,10 +85,15 @@ export function PendingOverridesBar() {
             <button
               type="button"
               onClick={apply}
-              disabled={isApplying}
+              disabled={!canApply}
+              title={
+                !validation.ok
+                  ? 'Resolve the validation errors below before forking.'
+                  : undefined
+              }
               className={cn(
                 'composer-send-active flex items-center gap-1.5 rounded-md px-3 py-1 text-[11.5px] font-semibold text-ink-900 transition-opacity',
-                isApplying && 'opacity-60',
+                !canApply && 'cursor-not-allowed opacity-60',
               )}
             >
               {isApplying ? (
@@ -106,6 +118,7 @@ export function PendingOverridesBar() {
 
       <ChipsRow
         entries={entries}
+        errorByKey={errorByKey}
         onClear={(o) => dispatch({ type: 'clear', descriptor: descriptorForOverride(o) })}
       />
 
@@ -129,34 +142,71 @@ export function PendingOverridesBar() {
 
 function ChipsRow({
   entries,
+  errorByKey,
   onClear,
 }: {
   entries: ParamOverride[];
+  errorByKey: Map<string, string>;
   onClear: (o: ParamOverride) => void;
 }) {
   if (entries.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {entries.map((o) => (
-        <span
-          key={overrideKey(o.path)}
-          className="group inline-flex items-center gap-1 rounded-md border border-lineage-400/35 bg-lineage-500/10 px-1.5 py-0.5 font-mono text-[10px] text-lineage-200"
-        >
-          <span className="text-lineage-200">{labelFor(o)}</span>
-          <span className="text-lineage-200/50">·</span>
-          <span className="text-lineage-200/70">{formatVal(o.previousValue)}</span>
-          <span className="text-lineage-200/70">→</span>
-          <span className="text-lineage-200">{formatVal(o.value)}</span>
-          <button
-            type="button"
-            onClick={() => onClear(o)}
-            aria-label={`Clear override for ${labelFor(o)}`}
-            className="ml-0.5 flex h-3 w-3 items-center justify-center rounded-sm text-lineage-200/40 transition-colors hover:bg-lineage-500/25 hover:text-lineage-100"
-          >
-            <X size={9} strokeWidth={2.5} />
-          </button>
-        </span>
-      ))}
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {entries.map((o) => {
+          const okey = overrideKey(o.path);
+          const errMsg = errorByKey.get(okey);
+          return (
+            <span
+              key={okey}
+              className={cn(
+                'group inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px]',
+                errMsg
+                  ? 'border-coral-400/45 bg-coral-500/10 text-coral-200'
+                  : 'border-lineage-400/35 bg-lineage-500/10 text-lineage-200',
+              )}
+              title={errMsg ?? undefined}
+              data-testid={`override-chip:${okey}`}
+            >
+              <span>{labelFor(o)}</span>
+              <span className="opacity-50">·</span>
+              <span className="opacity-70">{formatVal(o.previousValue)}</span>
+              <span className="opacity-70">→</span>
+              <span>{formatVal(o.value)}</span>
+              <button
+                type="button"
+                onClick={() => onClear(o)}
+                aria-label={`Clear override for ${labelFor(o)}`}
+                className="ml-0.5 flex h-3 w-3 items-center justify-center rounded-sm opacity-50 transition-opacity hover:bg-white/[0.1] hover:opacity-100"
+              >
+                <X size={9} strokeWidth={2.5} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+      {entries.some((o) => errorByKey.has(overrideKey(o.path))) && (
+        <ul className="flex flex-col gap-0.5 text-[10px] leading-[1.4] text-coral-200">
+          {entries
+            .filter((o) => errorByKey.has(overrideKey(o.path)))
+            .map((o) => {
+              const okey = overrideKey(o.path);
+              return (
+                <li key={okey} className="flex items-start gap-1.5">
+                  <AlertCircle
+                    size={10}
+                    strokeWidth={1.75}
+                    className="mt-0.5 shrink-0"
+                    aria-hidden
+                  />
+                  <span className="font-mono">
+                    {okey}: {errorByKey.get(okey)}
+                  </span>
+                </li>
+              );
+            })}
+        </ul>
+      )}
     </div>
   );
 }

@@ -42,7 +42,30 @@ export type ParamControlKind =
   | 'readonly_json'; // unknown dict — read-only inspection only
 
 /** Per-kind extra metadata.  Typed as a discriminated union so each
- *  control reads only the metadata its kind defines. */
+ *  control reads only the metadata its kind defines.
+ *
+ *  PR3 — ``tool_name`` and ``output_field`` carry richer context so the
+ *  controls can render as validated dropdowns instead of free-text:
+ *
+ *    - ``tool_name.allowedTools``: the tool catalogue (loaded via
+ *      ``useTools``).  When populated, the control renders a
+ *      ``<select>`` over these values; when empty/undefined, the
+ *      control falls back to the read-only chip (existing behavior
+ *      for node-level ``tool_name`` params, which ARE topology-
+ *      locked).
+ *    - ``output_field.allowedFields``: the output_fields exposed by
+ *      the currently-selected tool.  Populated by the deriver after
+ *      it walks the tool catalogue + the paired tool slot.
+ *    - ``output_field.relatedToolSlot``: name of the sibling tool
+ *      slot this output_field validates against (e.g. ``signal_
+ *      output_field`` is paired with ``signal_tool_name``).
+ *      Persisted on the meta so the validator can resolve which
+ *      tool was actually selected at submit time.
+ *    - ``output_field.selectedTool``: snapshot of the paired tool
+ *      slot's CURRENT value (bound or overridden).  Carried so the
+ *      control header can show "Field name for {tool}" without
+ *      having to plumb the override map.
+ */
 export type ParamControlMeta =
   | { kind: 'curve_family'; allowedDomains: Array<'sovereign' | 'ois'> }
   | { kind: 'tenor'; commonTenors: string[] }
@@ -52,7 +75,20 @@ export type ParamControlMeta =
   | { kind: 'threshold'; min: number; max: number; step: number }
   | { kind: 'date' }
   | { kind: 'tool_name'; allowedTools?: string[] }
-  | { kind: 'output_field'; allowedFields?: string[] }
+  | {
+      kind: 'output_field';
+      allowedFields?: string[];
+      /** Sibling tool slot name this output_field validates against
+       *  (e.g. ``signal_tool_name`` for ``signal_output_field``).
+       *  Populated by the deriver when it finds a paired tool slot;
+       *  ``null`` when the pairing is unknown so the validator knows
+       *  to skip the cross-slot check rather than failing closed. */
+      relatedToolSlot?: string | null;
+      /** Snapshot of the paired tool slot's current value at the
+       *  time descriptors were derived.  Used by the control to
+       *  caption the field choice. */
+      selectedTool?: string | null;
+    }
   | { kind: 'boolean' }
   | {
       kind: 'numeric';

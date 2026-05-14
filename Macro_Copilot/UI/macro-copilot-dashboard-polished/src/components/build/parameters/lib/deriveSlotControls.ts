@@ -43,6 +43,7 @@
 
 import type {
   SlotDeclaration,
+  ToolCard,
   WorkflowTemplateCard,
 } from '@/types/workflows';
 import type {
@@ -75,18 +76,84 @@ const COMMON_TENORS = [
   '30Y',
 ];
 
+/** PR3 — index a tool catalogue by ``tool_name`` so the deriver +
+ *  validator can resolve output_field choices in O(1).  Pure
+ *  helper exposed for tests; the deriver builds one internally. */
+export function indexToolCatalogue(
+  tools: ToolCard[] | null,
+): Record<string, ToolCard> {
+  const out: Record<string, ToolCard> = {};
+  for (const t of tools ?? []) out[t.tool_name] = t;
+  return out;
+}
+
+/** PR3 — name-pattern test for slot-level tool-name slots.  These are
+ *  workspace-scoped tool selectors (e.g. ``signal_tool_name``,
+ *  ``target_tool_name``) that the substrate's fork endpoint
+ *  legitimately accepts.  Node-level ``tool_name`` (on a persisted
+ *  NodeSummary's params) is something else — that one is topology-
+ *  locked and we don't touch its rendering here. */
+export function isToolNameSlot(leafName: string): boolean {
+  const lower = leafName.toLowerCase();
+  return lower === 'tool_name' || lower.endsWith('_tool_name');
+}
+
+/** PR3 — name-pattern test for slot-level output-field slots.  These
+ *  are workspace-scoped field selectors (e.g. ``signal_output_field``,
+ *  ``target_output_field``) paired with a sibling tool slot. */
+export function isOutputFieldSlot(leafName: string): boolean {
+  const lower = leafName.toLowerCase();
+  if (lower === 'output_field') return true;
+  if (lower.endsWith('_output_field')) return true;
+  return false;
+}
+
+/** PR3 — given an output-field slot name, return the paired tool-name
+ *  slot it validates against.  Convention: ``{prefix}_output_field``
+ *  is paired with ``{prefix}_tool_name``.  Returns ``null`` when the
+ *  paired slot can't be inferred (bare ``output_field`` with no
+ *  prefix, or a non-conventional naming). */
+export function pairedToolSlotFor(leafName: string): string | null {
+  const lower = leafName.toLowerCase();
+  if (lower === 'output_field') return 'tool_name';
+  const m = /^(.+)_output_field$/.exec(lower);
+  if (!m) return null;
+  return `${m[1]}_tool_name`;
+}
+
 /** Top-level entry point — derives the editable-descriptor list for
  *  every slot the workspace's template declares.  Falls back to the
  *  bound-values themselves when the schema is missing (legacy
  *  workspaces predate ``slot_schema`` surfacing).
  *
+ *  PR3 — optionally accepts a ``tools`` catalogue + a snapshot of the
+ *  paired tool-name slots' current values (bound + any pending
+ *  overrides), so the output_field control can render a dropdown
+ *  filtered by the chosen tool's output_fields.  Both are optional —
+ *  when absent, the derivation degrades to the pre-PR3 shape
+ *  (the existing read-only chip) rather than silently emitting a
+ *  free-text input.
+ *
  *  Pure function — no React, no async — straightforward to test. */
 export function deriveSlotControls(args: {
   boundSlotValues: Record<string, unknown> | null;
   slotSchema: SlotDeclaration[] | null;
+  /** PR3 — full tool catalogue from ``useTools()``.  When provided,
+   *  tool_name slots get a populated ``allowedTools`` list and
+   *  output_field slots get the right ``allowedFields`` for their
+   *  paired tool. */
+  tools?: ToolCard[] | null;
+  /** PR3 — effective values for tool-name slots (i.e.
+   *  ``boundSlotValues`` merged with any pending tool-name
+   *  overrides).  Used to resolve which output_fields are valid
+   *  for an output_field slot.  When omitted, falls back to
+   *  ``boundSlotValues`` directly. */
+  effectiveToolSelections?: Record<string, string> | null;
 }): ParamControlDescriptor[] {
   const bound = args.boundSlotValues ?? {};
   const schema = args.slotSchema ?? [];
+  const toolIndex = indexToolCatalogue(args.tools ?? null);
+  const toolSelections = args.effectiveToolSelections ?? null;
 
   // When the template card hasn't loaded yet (or the workspace is
   // legacy + has no template_id), fall back to deriving from the
@@ -95,7 +162,7 @@ export function deriveSlotControls(args: {
   // overridable through the same fork pipeline — the backend
   // resolves them against the actual slot schema at bind time.
   if (schema.length === 0) {
-    return walkBoundValuesAsScalars(bound);
+    return walkBoundValuesAsScalars(bound, toolIndex, toolSelections);
   }
 
   const out: ParamControlDescriptor[] = [];
@@ -128,6 +195,9 @@ export function deriveSlotControls(args: {
             value: innerValue,
             helpText: `Inside ${prettyKey(decl.name)}.`,
             parentDecl: decl,
+            toolIndex,
+            toolSelections,
+            boundSlotValues: bound,
           }),
         );
       }
@@ -159,6 +229,9 @@ export function deriveSlotControls(args: {
         value,
         helpText: decl.description,
         parentDecl: decl,
+        toolIndex,
+        toolSelections,
+        boundSlotValues: bound,
       }),
     );
   }
@@ -185,14 +258,23 @@ export function deriveSlotControls(args: {
 
 /** Convenience: derive controls from a ``WorkflowTemplateCard`` +
  *  workspace bound values.  Thin wrapper so consumers don't have to
- *  spell out the schema-from-card extraction at every call site. */
+ *  spell out the schema-from-card extraction at every call site.
+ *
+ *  PR3 — accepts the same optional ``tools`` + ``effectiveToolSelections``
+ *  the underlying ``deriveSlotControls`` takes, so callers wiring
+ *  the slot panel against ``useTools()`` don't need to know about
+ *  the lower-level shape. */
 export function deriveSlotControlsFromCard(args: {
   boundSlotValues: Record<string, unknown> | null;
   card: WorkflowTemplateCard | null;
+  tools?: ToolCard[] | null;
+  effectiveToolSelections?: Record<string, string> | null;
 }): ParamControlDescriptor[] {
   return deriveSlotControls({
     boundSlotValues: args.boundSlotValues,
     slotSchema: args.card?.slot_schema ?? null,
+    tools: args.tools,
+    effectiveToolSelections: args.effectiveToolSelections,
   });
 }
 
@@ -205,10 +287,24 @@ function buildDescriptor(args: {
   value: unknown;
   helpText?: string;
   parentDecl?: SlotDeclaration;
+  /** PR3 — when present, tool_name / output_field slots get a
+   *  populated allowedTools / allowedFields list off this catalogue. */
+  toolIndex?: Record<string, ToolCard>;
+  /** PR3 — effective tool-name selections (bound ∪ pending overrides)
+   *  used to resolve which output_fields are valid for the paired
+   *  tool slot. */
+  toolSelections?: Record<string, string> | null;
+  /** PR3 — full bound-slot-values map.  Used as the fallback look-up
+   *  for the paired tool slot when ``toolSelections`` is not provided. */
+  boundSlotValues?: Record<string, unknown>;
 }): ParamControlDescriptor {
   const leaf = args.path[args.path.length - 1];
   const kind = classifyKind(leaf, args.value, args.parentDecl);
-  const meta = buildMeta(kind, leaf, args.value);
+  const meta = buildMeta(kind, leaf, args.value, {
+    toolIndex: args.toolIndex ?? {},
+    toolSelections: args.toolSelections ?? null,
+    boundSlotValues: args.boundSlotValues ?? {},
+  });
   return {
     path: args.path,
     label: prettyKey(leaf),
@@ -221,13 +317,25 @@ function buildDescriptor(args: {
 /** Map a slot's (leaf-name + value + optional schema declaration)
  *  to a ``ParamControlKind``.  Name patterns win when present —
  *  they encode the user's intent (curve_family / tenor / threshold).
- *  Otherwise the schema's declared type drives the fall-through. */
+ *  Otherwise the schema's declared type drives the fall-through.
+ *
+ *  PR3 — adds tool_name + output_field detection.  Crucially, the
+ *  output_field check runs BEFORE the field_name check so a
+ *  ``signal_output_field`` slot routes to the tool-aware
+ *  output_field control instead of the Bloomberg-mnemonic
+ *  field_name control. */
 function classifyKind(
   leaf: string,
   value: unknown,
   parentDecl?: SlotDeclaration,
 ): ParamControlKind {
   const lower = leaf.toLowerCase();
+
+  // PR3 — tool_name + output_field slot detection.  Must come
+  // BEFORE the legacy field_name check so an ``X_output_field``
+  // slot doesn't get misclassified as a Bloomberg-mnemonic field.
+  if (isToolNameSlot(leaf)) return 'tool_name';
+  if (isOutputFieldSlot(leaf)) return 'output_field';
 
   // Name-pattern heuristics — same vocabulary the node-param deriver
   // uses so the control UX is consistent across surfaces.
@@ -277,6 +385,11 @@ function buildMeta(
   kind: ParamControlKind,
   leaf: string,
   value: unknown,
+  ctx: {
+    toolIndex: Record<string, ToolCard>;
+    toolSelections: Record<string, string> | null;
+    boundSlotValues: Record<string, unknown>;
+  },
 ): ParamControlMeta {
   switch (kind) {
     case 'curve_family': {
@@ -299,10 +412,36 @@ function buildMeta(
       return { kind, min: 0, max: 5, step: 0.1 };
     case 'date':
       return { kind };
-    case 'tool_name':
-      return { kind };
-    case 'output_field':
-      return { kind };
+    case 'tool_name': {
+      // PR3 — populate ``allowedTools`` from the catalogue.  Empty
+      // when the catalogue hasn't loaded; the control degrades to
+      // the read-only chip + a "loading tools…" caption in that
+      // case rather than rendering a misleading free-text input.
+      const allowed = Object.keys(ctx.toolIndex).sort();
+      return allowed.length > 0
+        ? { kind, allowedTools: allowed }
+        : { kind };
+    }
+    case 'output_field': {
+      // PR3 — pair this output_field slot with a sibling tool slot
+      // and populate allowedFields from the tool's output_fields.
+      // ``relatedToolSlot === null`` is honest: the validator skips
+      // the cross-slot check entirely in that case.
+      const paired = pairedToolSlotFor(leaf);
+      const selectedTool = paired
+        ? resolveSelectedTool(paired, ctx.toolSelections, ctx.boundSlotValues)
+        : null;
+      const card = selectedTool ? ctx.toolIndex[selectedTool] : undefined;
+      const fields = card
+        ? card.output_fields.map((f) => f.name)
+        : undefined;
+      return {
+        kind,
+        relatedToolSlot: paired,
+        selectedTool: selectedTool ?? null,
+        allowedFields: fields,
+      };
+    }
     case 'boolean':
       return { kind };
     case 'numeric':
@@ -319,13 +458,35 @@ function buildMeta(
   }
 }
 
+/** PR3 — resolve the EFFECTIVE current value of a tool-name slot.
+ *  Order: pending override snapshot → bound value → null.  The
+ *  override snapshot is preferred so an output_field control reflects
+ *  the user's in-progress tool change as they queue overrides
+ *  (instead of stale-rendering against the bound tool).  Returns
+ *  ``null`` when the slot is empty / not a string. */
+function resolveSelectedTool(
+  toolSlotName: string,
+  selections: Record<string, string> | null,
+  bound: Record<string, unknown>,
+): string | null {
+  if (selections && typeof selections[toolSlotName] === 'string') {
+    return selections[toolSlotName];
+  }
+  const raw = bound[toolSlotName];
+  return typeof raw === 'string' && raw.length > 0 ? raw : null;
+}
+
 /** Pre-PR5 fall-through used when the template card hasn't loaded
  *  (or the workspace pre-dates the slot-schema surface).  Walks the
  *  bound values one level so the user can at least edit the obvious
  *  scalars; dict slots are dict-expanded by the same one-level rule
- *  ``deriveSlotControls`` uses. */
+ *  ``deriveSlotControls`` uses.  PR3 — also receives the tool
+ *  catalogue + tool-selection context so tool_name / output_field
+ *  slots remain validated even when the template card is missing. */
 function walkBoundValuesAsScalars(
   bound: Record<string, unknown>,
+  toolIndex: Record<string, ToolCard>,
+  toolSelections: Record<string, string> | null,
 ): ParamControlDescriptor[] {
   const out: ParamControlDescriptor[] = [];
   for (const [key, value] of Object.entries(bound)) {
@@ -344,6 +505,9 @@ function walkBoundValuesAsScalars(
             path: [key, nk],
             value: nv,
             helpText: `Inside ${prettyKey(key)}.`,
+            toolIndex,
+            toolSelections,
+            boundSlotValues: bound,
           }),
         );
       }
@@ -360,7 +524,13 @@ function walkBoundValuesAsScalars(
       continue;
     }
     out.push(
-      buildDescriptor({ path: [key], value }),
+      buildDescriptor({
+        path: [key],
+        value,
+        toolIndex,
+        toolSelections,
+        boundSlotValues: bound,
+      }),
     );
   }
   return out;
@@ -396,6 +566,10 @@ function helpForLeaf(
     return 'Rolling-window length used by the statistical fit.';
   if (kind === 'field_name')
     return 'Bloomberg field mnemonic (overrides config.yaml default).';
+  if (kind === 'tool_name')
+    return 'Registered tool that produces this branch of the DAG.';
+  if (kind === 'output_field')
+    return 'Output field exposed by the selected tool.';
   if (kind === 'threshold')
     return '|signal| boundary at which an event fires.';
   if (lower.startsWith('start_'))

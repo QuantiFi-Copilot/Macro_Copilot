@@ -35,6 +35,7 @@ import {
   forkWorkspace,
   type WorkspaceDetail,
 } from '@/services/workspaceApi';
+import { useTools, useWorkflow } from '@/hooks/useWorkflows';
 import {
   hasPendingOverrides,
   overridesReducer,
@@ -47,6 +48,11 @@ import {
   type ParamControlDescriptor,
   type ParamOverride,
 } from '@/components/build/parameters/lib/controlSchema';
+import {
+  validateOverrides,
+  type OverrideValidationError,
+  type OverrideValidationResult,
+} from '@/components/build/parameters/lib/validateOverrides';
 
 // ----------------------------------------------------------------------------
 // Context value shape
@@ -72,9 +78,21 @@ export interface WorkspaceOverridesValue {
   /** Last fork-attempt error.  Cleared on a successful apply or on
    *  ``clearError()``. */
   error: string | null;
+  /** PR3 — pure cross-slot validation result for the queued
+   *  overrides (tool catalogue + bound slot values + schema).
+   *  Consumed by ``PendingOverridesBar`` to gate the Apply button
+   *  and surface per-chip inline errors.  ``ok === true`` means
+   *  every queued override is consistent. */
+  validation: OverrideValidationResult;
+  /** True iff Apply should be enabled.  Computed off ``hasPending``,
+   *  ``isApplying``, the forkable check, and ``validation.ok``.
+   *  Centralised here so every consumer sees the same gate. */
+  canApply: boolean;
   /** Submit the queued overrides as a fork.  On success navigates to
    *  the new workspace slug.  Rejects only on transport-level errors;
-   *  domain errors set ``error`` and resolve normally. */
+   *  domain errors set ``error`` and resolve normally.
+   *  PR3 — rejects with a domain error when ``validation.ok === false``
+   *  so a misconfigured override can never reach the backend. */
   apply: () => Promise<void>;
   /** Convenience wrapper: dispatch ``{type:'set', descriptor, value}``
    *  for an arbitrary descriptor.  Used by chat-driven overrides
@@ -109,6 +127,13 @@ export function WorkspaceOverridesProvider({
   const [overrides, dispatch] = useReducer(overridesReducer, {});
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // PR3 — pull the workflow card + tool catalogue for cross-slot
+  // validation.  Both gracefully degrade: missing card → skip slot-
+  // existence check; missing tool catalogue → skip tool-name /
+  // output-field cross-checks.  We don't fail closed on transient
+  // network blips.
+  const { data: card } = useWorkflow(workspace.template_id ?? null);
+  const { data: tools } = useTools();
 
   const setOverride = useCallback(
     (descriptor: ParamControlDescriptor, value: unknown) => {
@@ -128,14 +153,47 @@ export function WorkspaceOverridesProvider({
     dispatch({ type: 'reset' });
   }, []);
 
+  // PR3 — derive validation off the latest snapshot.  Memoised so
+  // consumers can re-render on each keystroke without re-validating
+  // every queue entry.
+  const knownSlotNames = useMemo<Set<string> | null>(() => {
+    if (!card) return null;
+    return new Set(card.slot_schema.map((s) => s.name));
+  }, [card]);
+
+  const validation = useMemo<OverrideValidationResult>(
+    () =>
+      validateOverrides({
+        overrides,
+        boundSlotValues: workspace.bound_slot_values,
+        tools,
+        knownSlotNames,
+      }),
+    [overrides, workspace.bound_slot_values, tools, knownSlotNames],
+  );
+
+  const isForkable = Boolean(
+    workspace.template_id && workspace.bound_slot_values,
+  );
+
   const apply = useCallback(async () => {
     if (!hasPendingOverrides(overrides)) return;
-    const isForkable = Boolean(
-      workspace.template_id && workspace.bound_slot_values,
-    );
     if (!isForkable) {
       setError(
         'This workspace pre-dates the fork substrate (no template_id / bound_slot_values).  Re-run the original prompt to make it forkable.',
+      );
+      return;
+    }
+    // PR3 — refuse to submit when the queue contains a cross-slot
+    // inconsistency.  Picking the first error keeps the banner
+    // terse; the per-chip inline messages already point users at
+    // every individual problem.
+    if (!validation.ok) {
+      const first: OverrideValidationError | undefined = validation.errors[0];
+      setError(
+        first
+          ? `Can't fork: ${first.message}`
+          : `Can't fork: queued overrides have validation errors.`,
       );
       return;
     }
@@ -153,7 +211,7 @@ export function WorkspaceOverridesProvider({
     } finally {
       setIsApplying(false);
     }
-  }, [overrides, workspace, navigate]);
+  }, [overrides, workspace, navigate, isForkable, validation]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -161,6 +219,9 @@ export function WorkspaceOverridesProvider({
     () => hasPendingOverrides(overrides),
     [overrides],
   );
+
+  const canApply =
+    hasPending && !isApplying && isForkable && validation.ok;
 
   const value = useMemo<WorkspaceOverridesValue>(
     () => ({
@@ -170,6 +231,8 @@ export function WorkspaceOverridesProvider({
       dispatch,
       isApplying,
       error,
+      validation,
+      canApply,
       apply,
       setOverride,
       clearOverride,
@@ -182,6 +245,8 @@ export function WorkspaceOverridesProvider({
       hasPending,
       isApplying,
       error,
+      validation,
+      canApply,
       apply,
       setOverride,
       clearOverride,

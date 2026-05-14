@@ -25,6 +25,9 @@
 import {
   deriveSlotControls,
   deriveSlotControlsFromCard,
+  isOutputFieldSlot,
+  isToolNameSlot,
+  pairedToolSlotFor,
 } from '../lib/deriveSlotControls';
 import { findStagesForSlot } from '../lib/findStagesForSlot';
 import {
@@ -32,12 +35,17 @@ import {
   overridesReducer,
   overridesToServerPatch,
 } from '../lib/overridesState';
+import {
+  isProposedOverrideValid,
+  validateOverrides,
+} from '../lib/validateOverrides';
 import type {
   ParamControlDescriptor,
   ParamOverride,
 } from '../lib/controlSchema';
 import type {
   SlotDeclaration,
+  ToolCard,
   WorkflowTemplateCard,
 } from '@/types/workflows';
 import type { NodeSummary } from '@/services/workspaceApi';
@@ -569,6 +577,551 @@ check('overridesToServerPatch: setting back to original clears the override', ()
     overridesToServerPatch(state),
     { slot_overrides: {}, slot_dict_overrides: {} },
     'empty patch',
+  );
+});
+
+// ----------------------------------------------------------------------------
+// PR3 — tool_name / output_field slot detection helpers
+// ----------------------------------------------------------------------------
+
+check('isToolNameSlot: matches bare and prefixed tool_name slots', () => {
+  assertEqual(isToolNameSlot('tool_name'), true, 'bare');
+  assertEqual(isToolNameSlot('signal_tool_name'), true, 'prefixed');
+  assertEqual(isToolNameSlot('TARGET_TOOL_NAME'), true, 'caps');
+  assertEqual(isToolNameSlot('tool_name_suffix'), false, 'suffix mismatch');
+  assertEqual(isToolNameSlot('curve_family'), false, 'unrelated slot');
+});
+
+check('isOutputFieldSlot: matches bare and prefixed output_field slots', () => {
+  assertEqual(isOutputFieldSlot('output_field'), true, 'bare');
+  assertEqual(isOutputFieldSlot('signal_output_field'), true, 'prefixed');
+  assertEqual(isOutputFieldSlot('target_OUTPUT_FIELD'), true, 'caps');
+  assertEqual(isOutputFieldSlot('field_name'), false, 'bloomberg field');
+  assertEqual(isOutputFieldSlot('output_field_extra'), false, 'suffix mismatch');
+});
+
+check('pairedToolSlotFor: derives sibling tool_name for output_field', () => {
+  assertEqual(pairedToolSlotFor('output_field'), 'tool_name', 'bare');
+  assertEqual(
+    pairedToolSlotFor('signal_output_field'),
+    'signal_tool_name',
+    'signal pair',
+  );
+  assertEqual(
+    pairedToolSlotFor('target_output_field'),
+    'target_tool_name',
+    'target pair',
+  );
+  assertEqual(pairedToolSlotFor('curve_family'), null, 'unrelated');
+});
+
+// ----------------------------------------------------------------------------
+// PR3 — deriveSlotControls populates allowedTools / allowedFields
+// ----------------------------------------------------------------------------
+
+function toolCatalogue(): ToolCard[] {
+  return [
+    {
+      tool_name: 'get_yield_levels_tool',
+      domain: 'rates',
+      description: 'Sovereign yield levels.',
+      input_fields: [],
+      output_fields: [
+        { name: 'time_series', type: 'Series', required: true },
+        { name: 'spot', type: 'float', required: true },
+      ],
+      methodology: {
+        what_it_does: '',
+        assumptions: [],
+        citations: [],
+        planned_extensions: [],
+      },
+      conventions: [],
+    },
+    {
+      tool_name: 'get_swap_rates_tool',
+      domain: 'rates',
+      description: 'OIS swap rates.',
+      input_fields: [],
+      output_fields: [
+        { name: 'swap_curve', type: 'Series', required: true },
+        { name: 'forward_curve', type: 'Series', required: false },
+      ],
+      methodology: {
+        what_it_does: '',
+        assumptions: [],
+        citations: [],
+        planned_extensions: [],
+      },
+      conventions: [],
+    },
+  ];
+}
+
+check('deriveSlotControls: *_tool_name slot → tool_name kind with catalogue', () => {
+  const out = deriveSlotControls({
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    slotSchema: [
+      {
+        name: 'signal_tool_name',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+    ],
+    tools: toolCatalogue(),
+  });
+  assertEqual(out.length, 1, '1 descriptor');
+  assertEqual(out[0].meta.kind, 'tool_name', 'tool_name kind');
+  const meta = out[0].meta as Extract<typeof out[0]['meta'], { kind: 'tool_name' }>;
+  assertEqual(
+    meta.allowedTools,
+    ['get_swap_rates_tool', 'get_yield_levels_tool'],
+    'allowedTools from catalogue (sorted)',
+  );
+  assertEqual(out[0].readOnly ?? false, false, 'editable');
+});
+
+check('deriveSlotControls: *_tool_name without catalogue → kind set, allowedTools undefined', () => {
+  const out = deriveSlotControls({
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    slotSchema: [
+      {
+        name: 'signal_tool_name',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+    ],
+    // No tools — catalogue not loaded.
+  });
+  assertEqual(out[0].meta.kind, 'tool_name', 'still tool_name kind');
+  const meta = out[0].meta as Extract<typeof out[0]['meta'], { kind: 'tool_name' }>;
+  assertEqual(meta.allowedTools, undefined, 'allowedTools absent');
+});
+
+check('deriveSlotControls: *_output_field slot → output_field kind keyed by paired tool', () => {
+  const out = deriveSlotControls({
+    boundSlotValues: {
+      signal_tool_name: 'get_yield_levels_tool',
+      signal_output_field: 'time_series',
+    },
+    slotSchema: [
+      {
+        name: 'signal_tool_name',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+      {
+        name: 'signal_output_field',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+    ],
+    tools: toolCatalogue(),
+  });
+  const fieldDesc = out.find((d) => d.path[0] === 'signal_output_field');
+  assertTruthy(fieldDesc, 'field descriptor present');
+  assertEqual(
+    fieldDesc!.meta.kind,
+    'output_field',
+    'output_field kind',
+  );
+  const meta = fieldDesc!.meta as Extract<
+    NonNullable<typeof fieldDesc>['meta'],
+    { kind: 'output_field' }
+  >;
+  assertEqual(
+    meta.relatedToolSlot,
+    'signal_tool_name',
+    'paired tool slot',
+  );
+  assertEqual(
+    meta.selectedTool,
+    'get_yield_levels_tool',
+    'selectedTool from bound',
+  );
+  assertEqual(
+    meta.allowedFields,
+    ['time_series', 'spot'],
+    'fields from chosen tool',
+  );
+});
+
+check('deriveSlotControls: output_field reflects effectiveToolSelections (pending override)', () => {
+  // User queued a tool-name override.  The output_field control
+  // should reflect the OVERRIDE, not the bound tool.
+  const out = deriveSlotControls({
+    boundSlotValues: {
+      signal_tool_name: 'get_yield_levels_tool',
+      signal_output_field: 'time_series',
+    },
+    slotSchema: [
+      {
+        name: 'signal_tool_name',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+      {
+        name: 'signal_output_field',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+    ],
+    tools: toolCatalogue(),
+    effectiveToolSelections: { signal_tool_name: 'get_swap_rates_tool' },
+  });
+  const fieldDesc = out.find((d) => d.path[0] === 'signal_output_field');
+  const meta = fieldDesc!.meta as Extract<
+    NonNullable<typeof fieldDesc>['meta'],
+    { kind: 'output_field' }
+  >;
+  assertEqual(
+    meta.selectedTool,
+    'get_swap_rates_tool',
+    'override wins over bound',
+  );
+  assertEqual(
+    meta.allowedFields,
+    ['swap_curve', 'forward_curve'],
+    'fields from override target',
+  );
+});
+
+check('deriveSlotControls: output_field with no paired tool → relatedToolSlot null', () => {
+  // Bare ``output_field`` slot with NO ``tool_name`` slot in the
+  // schema.  Pairing still defaults to ``tool_name`` (the convention)
+  // but there's no value bound → selectedTool: null + no allowedFields.
+  const out = deriveSlotControls({
+    boundSlotValues: { output_field: 'time_series' },
+    slotSchema: [
+      {
+        name: 'output_field',
+        type: 'str',
+        required: true,
+        description: '',
+      },
+    ],
+    tools: toolCatalogue(),
+  });
+  const meta = out[0].meta as Extract<
+    typeof out[0]['meta'],
+    { kind: 'output_field' }
+  >;
+  assertEqual(meta.relatedToolSlot, 'tool_name', 'still paired');
+  assertEqual(meta.selectedTool, null, 'no tool selected');
+  assertEqual(meta.allowedFields, undefined, 'no fields without tool');
+});
+
+check('deriveSlotControls: numeric int slot stays numeric kind', () => {
+  const out = deriveSlotControls({
+    boundSlotValues: { custom_count: 7 },
+    slotSchema: [
+      {
+        name: 'custom_count',
+        type: 'int',
+        required: true,
+        description: '',
+      },
+    ],
+  });
+  assertEqual(out[0].meta.kind, 'numeric', 'numeric for int');
+});
+
+check('deriveSlotControls: nested dict tool_name + output_field also typed', () => {
+  // Some templates nest the tool/field selector inside a config dict.
+  // The dict-expansion path must apply the same classifier so inner
+  // fields with ``_tool_name`` / ``_output_field`` leaf names still
+  // route to the typed controls.
+  const out = deriveSlotControls({
+    boundSlotValues: {
+      signal_params: {
+        signal_tool_name: 'get_yield_levels_tool',
+        signal_output_field: 'time_series',
+      },
+    },
+    slotSchema: [
+      {
+        name: 'signal_params',
+        type: 'dict',
+        required: true,
+        description: '',
+      },
+    ],
+    tools: toolCatalogue(),
+  });
+  const tool = out.find(
+    (d) => d.path.length === 2 && d.path[1] === 'signal_tool_name',
+  );
+  const field = out.find(
+    (d) => d.path.length === 2 && d.path[1] === 'signal_output_field',
+  );
+  assertTruthy(tool, 'tool inner descriptor');
+  assertTruthy(field, 'field inner descriptor');
+  assertEqual(tool!.meta.kind, 'tool_name', 'inner tool_name kind');
+  assertEqual(field!.meta.kind, 'output_field', 'inner output_field kind');
+});
+
+// ----------------------------------------------------------------------------
+// PR3 — validateOverrides
+// ----------------------------------------------------------------------------
+
+check('validateOverrides: empty queue → ok', () => {
+  const res = validateOverrides({
+    overrides: {},
+    boundSlotValues: {},
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, true, 'ok');
+  assertEqual(res.errors, [], 'no errors');
+});
+
+check('validateOverrides: tool_name with known tool → ok', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Signal Tool',
+    meta: { kind: 'tool_name', allowedTools: ['get_yield_levels_tool'] },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const state = overridesReducer({}, {
+    type: 'set',
+    descriptor: desc,
+    value: 'get_swap_rates_tool',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, true, 'known tool accepted');
+});
+
+check('validateOverrides: tool_name with unknown tool → unknown_tool error', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Signal Tool',
+    meta: { kind: 'tool_name', allowedTools: ['get_yield_levels_tool'] },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const state = overridesReducer({}, {
+    type: 'set',
+    descriptor: desc,
+    value: 'made_up_tool',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, false, 'rejected');
+  assertEqual(res.errors[0].reason, 'unknown_tool', 'reason');
+  assertEqual(
+    res.errors[0].overrideKey,
+    'signal_tool_name',
+    'override key',
+  );
+});
+
+check('validateOverrides: output_field outside paired tool → unknown_output_field error', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_output_field'],
+    label: 'Signal Output',
+    meta: {
+      kind: 'output_field',
+      allowedFields: ['time_series', 'spot'],
+      selectedTool: 'get_yield_levels_tool',
+      relatedToolSlot: 'signal_tool_name',
+    },
+    currentValue: 'time_series',
+  };
+  const state = overridesReducer({}, {
+    type: 'set',
+    descriptor: desc,
+    value: 'not_a_real_field',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: {
+      signal_tool_name: 'get_yield_levels_tool',
+      signal_output_field: 'time_series',
+    },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, false, 'rejected');
+  assertEqual(
+    res.errors[0].reason,
+    'unknown_output_field',
+    'reason',
+  );
+});
+
+check('validateOverrides: changing tool + matching field together → ok', () => {
+  // Pair: changing tool_name to get_swap_rates_tool AND
+  // output_field to swap_curve (a valid pairing).
+  const toolDesc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Tool',
+    meta: { kind: 'tool_name', allowedTools: [] },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const fieldDesc: ParamControlDescriptor = {
+    path: ['signal_output_field'],
+    label: 'Field',
+    meta: {
+      kind: 'output_field',
+      allowedFields: ['time_series', 'spot'],
+      selectedTool: 'get_yield_levels_tool',
+      relatedToolSlot: 'signal_tool_name',
+    },
+    currentValue: 'time_series',
+  };
+  let state = overridesReducer({}, {
+    type: 'set',
+    descriptor: toolDesc,
+    value: 'get_swap_rates_tool',
+  });
+  state = overridesReducer(state, {
+    type: 'set',
+    descriptor: fieldDesc,
+    value: 'swap_curve',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: {
+      signal_tool_name: 'get_yield_levels_tool',
+      signal_output_field: 'time_series',
+    },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, true, 'effective-tool match accepted');
+});
+
+check('validateOverrides: unknown slot when schema is known → unknown_slot error', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['imaginary_slot'],
+    label: 'Imaginary',
+    meta: { kind: 'string' },
+    currentValue: 'x',
+  };
+  const state = overridesReducer({}, {
+    type: 'set',
+    descriptor: desc,
+    value: 'y',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: {},
+    tools: null,
+    knownSlotNames: new Set(['curve_family', 'tenor']),
+  });
+  assertEqual(res.ok, false, 'rejected');
+  assertEqual(res.errors[0].reason, 'unknown_slot', 'reason');
+});
+
+check('validateOverrides: missing tool catalogue → skips tool checks', () => {
+  // A tool_name override with NO catalogue loaded must NOT block
+  // apply; we'd otherwise fail closed on a transient network blip.
+  const desc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Tool',
+    meta: { kind: 'tool_name' },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const state = overridesReducer({}, {
+    type: 'set',
+    descriptor: desc,
+    value: 'whatever',
+  });
+  const res = validateOverrides({
+    overrides: state,
+    boundSlotValues: {},
+    tools: null,
+  });
+  assertEqual(res.ok, true, 'tool check skipped without catalogue');
+});
+
+// ----------------------------------------------------------------------------
+// PR3 — isProposedOverrideValid (chip-level validator)
+// ----------------------------------------------------------------------------
+
+check('isProposedOverrideValid: valid chip → ok', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Tool',
+    meta: { kind: 'tool_name' },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const res = isProposedOverrideValid({
+    descriptor: desc,
+    value: 'get_swap_rates_tool',
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, true, 'valid');
+});
+
+check('isProposedOverrideValid: unknown tool chip → invalid', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_tool_name'],
+    label: 'Tool',
+    meta: { kind: 'tool_name' },
+    currentValue: 'get_yield_levels_tool',
+  };
+  const res = isProposedOverrideValid({
+    descriptor: desc,
+    value: 'nonexistent_tool',
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, false, 'invalid');
+  assertEqual(res.errors[0].reason, 'unknown_tool', 'reason');
+});
+
+check('isProposedOverrideValid: unknown slot chip → invalid', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['made_up_slot'],
+    label: 'Made Up',
+    meta: { kind: 'string' },
+    currentValue: '',
+  };
+  const res = isProposedOverrideValid({
+    descriptor: desc,
+    value: 'x',
+    boundSlotValues: {},
+    tools: null,
+    knownSlotNames: new Set(['curve_family']),
+  });
+  assertEqual(res.ok, false, 'invalid');
+  assertEqual(res.errors[0].reason, 'unknown_slot', 'reason');
+});
+
+check('isProposedOverrideValid: invalid output_field for paired tool → invalid', () => {
+  const desc: ParamControlDescriptor = {
+    path: ['signal_output_field'],
+    label: 'Field',
+    meta: {
+      kind: 'output_field',
+      relatedToolSlot: 'signal_tool_name',
+      selectedTool: 'get_yield_levels_tool',
+      allowedFields: ['time_series', 'spot'],
+    },
+    currentValue: 'time_series',
+  };
+  const res = isProposedOverrideValid({
+    descriptor: desc,
+    value: 'swap_curve',
+    boundSlotValues: { signal_tool_name: 'get_yield_levels_tool' },
+    tools: toolCatalogue(),
+  });
+  assertEqual(res.ok, false, 'rejected');
+  assertEqual(
+    res.errors[0].reason,
+    'unknown_output_field',
+    'reason',
   );
 });
 
