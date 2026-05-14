@@ -33,18 +33,53 @@ import {
   type DecodedTypedPrimitive,
   type Payload,
 } from './fetchDispatcher';
-import { paramSpecsFor, resolveParamValue } from './paramSpecs';
+import {
+  missingRequiredTypedParams,
+  paramSpecsFor,
+  resolveParamValue,
+} from './paramSpecs';
+import { MissingParamsCard } from './MissingParamsCard';
+import type { CallMeta } from './MultiPrimitiveCanvas';
 import { cn } from '@/utils/cn';
 
 type Props = {
   decoded: DecodedTypedPrimitive;
+  /** PR-B-β — true when the URL carried ``handoff=ask``.  Gates the
+   *  missing-param tile: when set and a required param is missing
+   *  from the RAW context (pre-fold), the card renders
+   *  ``MissingParamsCard`` instead of folding spec defaults and
+   *  fetching with the wrong instrument.  Library-blank opens
+   *  (askHandoff=false) keep the pre-PR-B-β default-folding
+   *  behaviour, so blank Library entries still land on a working
+   *  default chart. */
+  askHandoff?: boolean;
+  /** PR-B-β — when ``MultiPrimitiveCanvas`` detects this card shares
+   *  a ``(toolName, params)`` signature with siblings in the grid,
+   *  it passes the 1-based ordinal + total so the card can render
+   *  a ``· call N of M`` chip.  Undefined when the card is unique,
+   *  so the chip stays out of the way. */
+  callMeta?: CallMeta;
 };
 
-export function MultiPrimitiveCard({ decoded }: Props) {
+export function MultiPrimitiveCard({
+  decoded,
+  askHandoff = false,
+  callMeta,
+}: Props) {
   const navigate = useNavigate();
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // PR-B-β — Ask-handoff path: check required params against the RAW
+  // ``decoded.params`` BEFORE folding spec defaults.  When missing,
+  // skip the fetch entirely and render the honest missing-param tile
+  // (handled below as an early return).  Library-blank opens skip
+  // this check (askHandoff defaults to false) so the existing
+  // default-folding path continues to work.
+  const missingForAsk = askHandoff
+    ? missingRequiredTypedParams(decoded.kind, decoded.params)
+    : [];
 
   // Fold spec defaults into the params the same way the single canvas
   // does — keeps the compact-card fetch consistent with the full-card
@@ -57,7 +92,24 @@ export function MultiPrimitiveCard({ decoded }: Props) {
     if (!(k in effectiveParams)) effectiveParams[k] = v;
   }
 
+  // PR-B-β — skip the fetch entirely when the Ask-handoff missing-
+  // param tile would render.  Triggering the fetch with defaulted
+  // params would (a) waste the network call AND (b) prime the cache
+  // with results for the WRONG instrument; the early-render path
+  // below short-circuits the JSX so the fetch effect's payload
+  // never reaches the screen, but we still skip the work.
+  const shouldFetch = !(askHandoff && missingForAsk.length > 0);
+
   useEffect(() => {
+    if (!shouldFetch) {
+      // Reset any previous state so a re-render with stale payload
+      // doesn't briefly flash.  Safe — JSX below renders the
+      // missing-param card regardless.
+      setPayload(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     // Forward / scanner placeholders use a different summary; everything
     // else fetches its typed-detail.
     if (decoded.kind === 'forward') {
@@ -81,7 +133,7 @@ export function MultiPrimitiveCard({ decoded }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [decoded.kind, decoded.toolName, JSON.stringify(effectiveParams)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shouldFetch, decoded.kind, decoded.toolName, JSON.stringify(effectiveParams)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Click anywhere → open this primitive in the full single canvas
   // (with editable param dropdowns).  We re-encode ``?context=`` with
@@ -97,6 +149,22 @@ export function MultiPrimitiveCard({ decoded }: Props) {
     navigate(`/workspace?context=${ctx}`);
   };
 
+  // PR-B-β — Ask-handoff missing-param early return.  Renders the
+  // honest "missing X, Y" tile instead of the silent default chart.
+  // Library-blank opens (askHandoff=false) skip this branch entirely
+  // and continue with the default-folding render below.
+  if (askHandoff && missingForAsk.length > 0) {
+    return (
+      <MissingParamsCard
+        toolName={decoded.toolName}
+        kind={decoded.kind}
+        missingParams={missingForAsk}
+        presentParams={decoded.params}
+        compact
+      />
+    );
+  }
+
   return (
     <button
       type="button"
@@ -106,7 +174,11 @@ export function MultiPrimitiveCard({ decoded }: Props) {
     >
       <span aria-hidden className="research-card-rail" />
 
-      <Header decoded={decoded} effectiveParams={effectiveParams} />
+      <Header
+        decoded={decoded}
+        effectiveParams={effectiveParams}
+        callMeta={callMeta}
+      />
 
       <div className="min-h-[60px] flex-1">
         {isLoading && <CompactLoading />}
@@ -124,14 +196,31 @@ export function MultiPrimitiveCard({ decoded }: Props) {
 function Header({
   decoded,
   effectiveParams,
+  callMeta,
 }: {
   decoded: DecodedTypedPrimitive;
   effectiveParams: Record<string, string>;
+  /** PR-B-β — populated when the grid contains 2+ cards with this
+   *  same ``(toolName, params)`` signature.  Renders a tiny
+   *  ``· call N of M`` chip so duplicate cards don't look like a
+   *  rendering bug. */
+  callMeta?: CallMeta;
 }) {
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
-        <span className="kicker text-fg-muted">{kickerFor(decoded.kind)}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="kicker text-fg-muted">{kickerFor(decoded.kind)}</span>
+          {callMeta && (
+            <span
+              className="kicker text-fg-faint"
+              data-testid="multi-card-call-chip"
+              title={`This (tool, params) signature appears ${callMeta.m} times in the grid; this is the ${callMeta.n}${ordinalSuffix(callMeta.n)} call.`}
+            >
+              · call {callMeta.n} of {callMeta.m}
+            </span>
+          )}
+        </div>
         <h4 className="mt-0.5 truncate text-[13px] font-semibold tracking-[-0.008em] text-fg-primary">
           {titleFor(decoded, effectiveParams)}
         </h4>
@@ -144,6 +233,15 @@ function Header({
       />
     </div>
   );
+}
+
+function ordinalSuffix(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'st';
+  if (mod10 === 2 && mod100 !== 12) return 'nd';
+  if (mod10 === 3 && mod100 !== 13) return 'rd';
+  return 'th';
 }
 
 // ----------------------------------------------------------------------------

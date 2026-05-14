@@ -37,9 +37,15 @@ import { MultiGenericBuilderCard } from './MultiGenericBuilderCard';
 type Props = {
   /** Raw value of the ``?context=`` URL param.  Already URI-encoded JSON. */
   contextParam: string;
+  /** PR-B-β — true when ``BuildShell.ContextCanvasRouter`` saw
+   *  ``handoff=ask`` on the URL.  Threaded into each
+   *  ``MultiPrimitiveCard`` so the missing-param tile only fires for
+   *  Ask-originated context; Library-blank opens (no marker) keep the
+   *  pre-PR-B-β silent-defaults behaviour. */
+  askHandoff: boolean;
 };
 
-export function MultiPrimitiveCanvas({ contextParam }: Props) {
+export function MultiPrimitiveCanvas({ contextParam, askHandoff }: Props) {
   const list = useMemo(() => decodePrimitiveList(contextParam), [contextParam]);
 
   // PR2 — three buckets in the multi-card grid:
@@ -54,6 +60,13 @@ export function MultiPrimitiveCanvas({ contextParam }: Props) {
   const typedCount = list.filter(isTypedPrimitive).length;
   const builderCount = list.filter((d) => d.kind === 'generic_builder').length;
   const unsupportedCount = list.filter((d) => d.kind === 'unsupported_known').length;
+
+  // PR-B-β — count duplicate (toolName, params) signatures so each
+  // repeated card can render a ``· call N of M`` chip.  Without the
+  // chip two cards with identical content look like a rendering bug;
+  // with it the user knows the Ask trace really did invoke the tool
+  // N times in a row (and can drill into each).
+  const callIndex = computeCallIndex(list);
 
   return (
     <div className="ambient-grid flex h-full min-h-0 flex-col overflow-y-auto">
@@ -80,8 +93,16 @@ export function MultiPrimitiveCanvas({ contextParam }: Props) {
       <div className="grid flex-1 gap-3 px-6 py-5 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((decoded, i) => {
           const key = `${decoded.toolName}-${i}-${cardKey(decoded)}`;
+          const callMeta = callIndex.get(i);
           if (isTypedPrimitive(decoded)) {
-            return <MultiPrimitiveCard key={key} decoded={decoded} />;
+            return (
+              <MultiPrimitiveCard
+                key={key}
+                decoded={decoded}
+                askHandoff={askHandoff}
+                callMeta={callMeta}
+              />
+            );
           }
           if (decoded.kind === 'generic_builder') {
             return (
@@ -105,6 +126,48 @@ export function MultiPrimitiveCanvas({ contextParam }: Props) {
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// PR-B-β — call-index map for duplicate-card disambiguation.
+// ---------------------------------------------------------------------------
+//
+// Returns a ``Map<entryIndex, { n, m }>`` where ``n`` is this entry's
+// 1-based ordinal among its siblings sharing the same
+// ``(toolName, params)`` signature, and ``m`` is the total siblings.
+// Unique signatures DON'T get an entry in the map — the per-card
+// renderer skips the chip when ``callMeta`` is undefined.
+//
+// Why we compute it at the grid level: each card needs to know its
+// position relative to the FULL list, which the card itself doesn't
+// have.  Hoisting the computation here keeps cards as a pure
+// projection of (decoded + meta).
+
+export interface CallMeta {
+  n: number;
+  m: number;
+}
+
+function computeCallIndex(
+  list: DecodedPrimitive[],
+): Map<number, CallMeta> {
+  // First pass: group indices by signature.
+  const bySig = new Map<string, number[]>();
+  list.forEach((d, i) => {
+    const sig = `${d.toolName}::${cardKey(d)}`;
+    const arr = bySig.get(sig);
+    if (arr) arr.push(i);
+    else bySig.set(sig, [i]);
+  });
+  // Second pass: emit per-index meta only when m > 1.
+  const out = new Map<number, CallMeta>();
+  for (const indices of bySig.values()) {
+    if (indices.length < 2) continue;
+    indices.forEach((listIdx, n) => {
+      out.set(listIdx, { n: n + 1, m: indices.length });
+    });
+  }
+  return out;
 }
 
 function kickerFor(typed: number, builders: number, unsupported: number): string {

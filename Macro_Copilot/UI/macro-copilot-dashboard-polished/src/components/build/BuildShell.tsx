@@ -43,6 +43,7 @@ import {
   decodePrimitiveContext,
   decodePrimitiveList,
 } from './primitive/contextDecoder';
+import { isAskHandoff } from './primitive/handoffSignal';
 import { BuilderCanvas } from './model/BuilderCanvas';
 import { WorkflowStatusCanvas } from './workflow/WorkflowStatusCanvas';
 // Side-effect import — populates the node renderer registry before
@@ -190,7 +191,12 @@ function SlugFreeShell({
       />
     );
   } else if (contextParam) {
-    canvas = <ContextCanvasRouter contextParam={contextParam} />;
+    canvas = (
+      <ContextCanvasRouter
+        contextParam={contextParam}
+        searchParams={searchParams}
+      />
+    );
   } else if (isBuilding) {
     canvas = <BuildBuilding prompt={pendingPrompt!} />;
   } else {
@@ -224,17 +230,47 @@ function SlugFreeShell({
 //   3. Otherwise → VirtualPrimitiveCanvas (single-card with editable
 //      dropdowns + the decode-error path for unrecognised tools).
 
-function ContextCanvasRouter({ contextParam }: { contextParam: string }) {
+function ContextCanvasRouter({
+  contextParam,
+  searchParams,
+}: {
+  contextParam: string;
+  /** PR-B-β — full ``URLSearchParams`` so we can read the
+   *  ``handoff=ask`` marker and gate the missing-param tile on it.
+   *  Library-blank opens lack the marker → existing silent-defaults
+   *  behaviour is preserved. */
+  searchParams: URLSearchParams;
+}) {
+  // Compute the handoff origin ONCE at the router level — every
+  // downstream surface (single canvas, multi canvas, individual
+  // cards) inherits the same value so the visible behaviour stays
+  // consistent across the page.
+  const askHandoff = isAskHandoff(searchParams);
   const builderHit = decodePrimitiveContext(contextParam);
   if (builderHit?.kind === 'builder') {
     // Single canvas handles the builder redirect via useEffect.
-    return <VirtualPrimitiveCanvas contextParam={contextParam} />;
+    return (
+      <VirtualPrimitiveCanvas
+        contextParam={contextParam}
+        askHandoff={askHandoff}
+      />
+    );
   }
   const list = decodePrimitiveList(contextParam);
   if (list.length > 1) {
-    return <MultiPrimitiveCanvas contextParam={contextParam} />;
+    return (
+      <MultiPrimitiveCanvas
+        contextParam={contextParam}
+        askHandoff={askHandoff}
+      />
+    );
   }
-  return <VirtualPrimitiveCanvas contextParam={contextParam} />;
+  return (
+    <VirtualPrimitiveCanvas
+      contextParam={contextParam}
+      askHandoff={askHandoff}
+    />
+  );
 }
 
 // ----------------------------------------------------------------------------

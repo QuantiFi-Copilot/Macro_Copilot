@@ -332,3 +332,62 @@ export function resolveParamValue(
   if (url != null && url !== '') return url;
   return spec.defaultValue;
 }
+
+// ---------------------------------------------------------------------------
+// PR-B-β — required-param taxonomy per typed-view kind.
+// ---------------------------------------------------------------------------
+//
+// Used by ``MultiPrimitiveCard`` / ``VirtualPrimitiveCanvas`` to decide
+// whether an Ask-handoff card should render the missing-param tile
+// instead of silently folding ``spec.defaultValue`` and producing a
+// misleading fake card (e.g. ``IT_BTP-DE_BUND`` standing in for a
+// ``UST-Bund`` call whose ``curve_family_1`` / ``curve_family_2`` got
+// dropped upstream).
+//
+// What "required" means here
+// --------------------------
+// A required param is one without which the card's output would be
+// SEMANTICALLY meaningless or misleading — e.g. a cross-market spread
+// is undefined without both curve families.  Knobs that are pure
+// display choices (``lookback_days``, ``field_name``) are NOT required:
+// when missing they fall back to the spec default cleanly, and the
+// user sees a still-correct card.
+//
+// Library-blank opens DO NOT trigger this check — the missing-param
+// rule is gated on the ``handoff === 'ask'`` URL signal so blank
+// surfaces continue to render with defaults as before.
+
+const REQUIRED_BY_KIND: Record<PrimitiveViewKind, ReadonlyArray<string>> = {
+  spread: ['curve_family', 'short_tenor', 'long_tenor'],
+  cross_market: ['curve_family_1', 'curve_family_2', 'tenor'],
+  butterfly: ['curve_family', 'short_tenor', 'belly_tenor', 'long_tenor'],
+  yield: ['curve_family', 'tenor'],
+  regime: ['curve_family', 'front_tenor', 'back_tenor'],
+  scanner: [],
+  forward: [],
+};
+
+/** Returns the names of params the kind cannot render meaningfully
+ *  without.  Pure, closed-family — adding a new ``PrimitiveViewKind``
+ *  requires adding an entry here too. */
+export function requiredParamsFor(
+  kind: PrimitiveViewKind,
+): ReadonlyArray<string> {
+  return REQUIRED_BY_KIND[kind] ?? [];
+}
+
+/** Compute the list of required-but-missing params for a typed-view
+ *  card given the raw URL params (BEFORE spec defaults are folded in).
+ *  Pure.  Used by the Ask-handoff missing-param card.  An empty list
+ *  means the card is safe to fetch. */
+export function missingRequiredTypedParams(
+  kind: PrimitiveViewKind,
+  rawParams: Record<string, string> | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const key of requiredParamsFor(kind)) {
+    const v = rawParams?.[key];
+    if (v == null || v === '') out.push(key);
+  }
+  return out;
+}

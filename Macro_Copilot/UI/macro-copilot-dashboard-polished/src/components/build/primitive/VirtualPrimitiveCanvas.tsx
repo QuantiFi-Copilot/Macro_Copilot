@@ -37,7 +37,12 @@ import {
   type DecodedTypedPrimitive,
   type Payload,
 } from './fetchDispatcher';
-import { paramSpecsFor, resolveParamValue } from './paramSpecs';
+import {
+  missingRequiredTypedParams,
+  paramSpecsFor,
+  resolveParamValue,
+} from './paramSpecs';
+import { MissingParamsCard } from './MissingParamsCard';
 import { PrimitiveParamControls } from './PrimitiveParamControls';
 import { SpreadPrimitiveView } from './SpreadPrimitiveView';
 import { CrossMarketPrimitiveView } from './CrossMarketPrimitiveView';
@@ -56,9 +61,19 @@ import { GenericPrimitiveBuilder } from './GenericPrimitiveBuilder';
 type Props = {
   /** Raw value of the ``?context=`` URL param.  Already URI-encoded JSON. */
   contextParam: string;
+  /** PR-B-β — true when the URL carried ``handoff=ask``.  Passed
+   *  through to the typed-view body so the Ask-handoff missing-param
+   *  tile fires correctly for single-card Ask handoffs (in addition
+   *  to the multi-card grid).  Library-blank opens (askHandoff=false)
+   *  continue to fold spec defaults and render a working chart, so
+   *  the existing Library behaviour is preserved. */
+  askHandoff?: boolean;
 };
 
-export function VirtualPrimitiveCanvas({ contextParam }: Props) {
+export function VirtualPrimitiveCanvas({
+  contextParam,
+  askHandoff = false,
+}: Props) {
   const decoded = decodePrimitiveContext(contextParam);
   const navigate = useNavigate();
   const [payload, setPayload] = useState<Payload | null>(null);
@@ -85,6 +100,17 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
       if (!(k in effectiveParams)) effectiveParams[k] = v;
     }
   }
+
+  // PR-B-β — Ask-handoff missing-param check.  Runs on the RAW
+  // ``decoded.params`` (pre-fold) so we catch the exact gap Ask left.
+  // ``missingForAsk.length > 0`` later short-circuits the fetch + the
+  // body to the honest missing-param tile.  Library-blank opens
+  // (askHandoff=false) skip this so the silent-default chart still
+  // renders.
+  const missingForAsk =
+    askHandoff && decoded && isTypedPrimitive(decoded)
+      ? missingRequiredTypedParams(decoded.kind, decoded.params)
+      : [];
 
   // Mutate the URL when the user picks a new value in the controls
   // strip.  We re-encode ``?context=`` with the same toolName + the
@@ -127,6 +153,16 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
       setIsLoading(false);
       return;
     }
+    // PR-B-β — skip the fetch when the Ask-handoff missing-param tile
+    // is about to render.  Same rationale as MultiPrimitiveCard:
+    // firing the fetch with defaulted params primes the cache with
+    // results for the WRONG instrument.
+    if (missingForAsk.length > 0) {
+      setPayload(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     // The forward placeholder doesn't fetch; mount the view directly.
     if (decoded.kind === 'forward') {
       setPayload({ kind: 'forward', data: null });
@@ -158,7 +194,12 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [decoded?.kind, decoded?.toolName, JSON.stringify(effectiveParams)]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    decoded?.kind,
+    decoded?.toolName,
+    JSON.stringify(effectiveParams),
+    missingForAsk.length,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!decoded) {
     return <DecodeError contextParam={contextParam} />;
@@ -174,10 +215,15 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
   // Replaces the PR1 unsupported card for these tools — they're now
   // configurable + executable from Build.
   if (decoded.kind === 'generic_builder') {
+    // PR-B-β — pass the STRUCTURED params so the builder can seed
+    // ``series_spec`` / ``series_spec_list`` / ``multi_tenor``
+    // controls from an Ask hand-off that included nested config.
+    // ``decoded.paramsStructured`` is a superset of ``decoded.params``
+    // (same scalar entries + any nested ones the decoder preserved).
     return (
       <GenericPrimitiveBuilder
         toolName={decoded.toolName}
-        initialParams={decoded.params}
+        initialParams={decoded.paramsStructured}
       />
     );
   }
@@ -199,7 +245,26 @@ export function VirtualPrimitiveCanvas({ contextParam }: Props) {
   // R6.2 — every typed view now has user-editable dropdowns at the top.
   const specs = paramSpecsFor(decoded.kind);
   let body: React.ReactNode;
-  if (error) {
+  // PR-B-β — Ask handoff with missing required params: render the
+  // honest tile instead of the loading/error/data states.  The
+  // params strip still renders above, so the user can fill in the
+  // gap via the dropdowns — once they do, the URL re-encodes, the
+  // missing-param check passes, and the body switches to the chart.
+  if (missingForAsk.length > 0) {
+    body = (
+      <div className="flex h-full min-h-0 items-center justify-center px-6 py-6">
+        <div className="w-full max-w-[520px]">
+          <MissingParamsCard
+            toolName={decoded.toolName}
+            kind={decoded.kind}
+            missingParams={missingForAsk}
+            presentParams={decoded.params}
+            compact={false}
+          />
+        </div>
+      </div>
+    );
+  } else if (error) {
     body = <FetchError decoded={decoded} message={error} />;
   } else if (isLoading || !payload) {
     body = <LoadingCanvas kind={decoded.kind} />;

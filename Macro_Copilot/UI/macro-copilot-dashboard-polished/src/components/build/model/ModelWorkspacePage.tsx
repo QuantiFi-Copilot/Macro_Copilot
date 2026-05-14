@@ -58,7 +58,7 @@ import { LineagePanel } from './LineagePanel';
 type ModelWorkspacePageProps = {
   toolName: string;
   /** URL-supplied initial overrides (per-field, scalar values only). */
-  initialParams: Record<string, string>;
+  initialParams: Record<string, unknown>;
 };
 
 export function ModelWorkspacePage({
@@ -105,7 +105,7 @@ function ModelWorkspaceBody({
   initialParams,
 }: {
   card: ToolCard;
-  initialParams: Record<string, string>;
+  initialParams: Record<string, unknown>;
 }) {
   const meta = getModelMetadata(card.tool_name);
 
@@ -370,7 +370,10 @@ function humanLabel(snake: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function seedForm(card: ToolCard, initialParams: Record<string, string>): FormState {
+function seedForm(
+  card: ToolCard,
+  initialParams: Record<string, unknown>,
+): FormState {
   const out: FormState = {};
   const visible = sortFields(card.input_fields, new Set());
   const meta = getModelMetadata(card.tool_name);
@@ -380,17 +383,35 @@ function seedForm(card: ToolCard, initialParams: Record<string, string>): FormSt
     const hint = paramHintFor(card.tool_name, f.name);
 
     // Priority order, highest first:
-    //   1. URL override (scalar fields only — nested shapes can't ride the URL)
+    //   1. URL override.  PR-B-β: now accepts nested objects /
+    //      arrays from Ask hand-offs in addition to the legacy
+    //      scalar-only URL path — structured controls (series_spec,
+    //      series_spec_list, multi_tenor) seed from properly-shaped
+    //      payloads when present; scalar controls coerce to string.
     //   2. Registry-supplied defaultParams (structured + scalar)
     //   3. Pydantic schema default (from ToolCard.input_fields[].default)
-    const isScalarControl =
-      hint.control !== 'series_spec' &&
-      hint.control !== 'series_spec_list' &&
-      hint.control !== 'multi_tenor';
-
-    if (isScalarControl && initialParams[f.name] !== undefined) {
-      out[f.name] = initialParams[f.name];
-      continue;
+    const raw = initialParams[f.name];
+    if (raw !== undefined && raw !== null) {
+      if (hint.control === 'series_spec' && isPlainObject(raw)) {
+        out[f.name] = raw as FieldValue;
+        continue;
+      }
+      if (hint.control === 'series_spec_list' && Array.isArray(raw)) {
+        out[f.name] = raw as FieldValue;
+        continue;
+      }
+      if (hint.control === 'multi_tenor' && Array.isArray(raw)) {
+        out[f.name] = raw.map((v) => String(v)) as FieldValue;
+        continue;
+      }
+      const isScalarControl =
+        hint.control !== 'series_spec' &&
+        hint.control !== 'series_spec_list' &&
+        hint.control !== 'multi_tenor';
+      if (isScalarControl && isCoercibleScalar(raw)) {
+        out[f.name] = String(raw);
+        continue;
+      }
     }
     if (registryDefaults[f.name] !== undefined) {
       out[f.name] = registryDefaults[f.name] as FieldValue;
@@ -399,6 +420,18 @@ function seedForm(card: ToolCard, initialParams: Record<string, string>): FormSt
     out[f.name] = defaultFormValue(f, hint.control);
   }
   return out;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isCoercibleScalar(v: unknown): v is string | number | boolean {
+  return (
+    typeof v === 'string' ||
+    typeof v === 'number' ||
+    typeof v === 'boolean'
+  );
 }
 
 /** Round-trip a marshalled params dict back into a FormState — used when

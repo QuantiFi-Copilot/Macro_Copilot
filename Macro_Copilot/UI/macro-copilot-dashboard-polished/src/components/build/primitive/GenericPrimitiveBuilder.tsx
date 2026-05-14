@@ -75,8 +75,16 @@ type Props = {
   /** URL-supplied params dict.  Pre-fills the form when the user
    *  arrived via Ask (multi-tool hand-off) or via a deep-link with
    *  explicit field values; empty for a bare Library "Open in Build"
-   *  click (form falls through to schema defaults). */
-  initialParams: Record<string, string>;
+   *  click (form falls through to schema defaults).
+   *
+   *  PR-B-β widens the value type from ``string`` to ``unknown`` so
+   *  Ask hand-offs can carry NESTED params (``series_spec``,
+   *  ``regressor_specs`` array, ``tenors`` list, etc.) verbatim
+   *  from the workspace_context.  ``seedFormFromSchema`` handles
+   *  the per-control-kind shape coercion; the existing scalar-only
+   *  callers keep working because every ``Record<string, string>``
+   *  is also a ``Record<string, unknown>``. */
+  initialParams: Record<string, unknown>;
 };
 
 export function GenericPrimitiveBuilder({ toolName, initialParams }: Props) {
@@ -102,7 +110,7 @@ function GenericPrimitiveBuilderBody({
   initialParams,
 }: {
   card: ToolCard;
-  initialParams: Record<string, string>;
+  initialParams: Record<string, unknown>;
 }) {
   const navigate = useNavigate();
 
@@ -329,23 +337,56 @@ function LoadError({ toolName, message }: { toolName: string; message: string })
  *  discipline the rich model builder uses.  */
 function seedFormFromSchema(
   card: ToolCard,
-  initialParams: Record<string, string>,
+  initialParams: Record<string, unknown>,
 ): FormState {
   const out: FormState = {};
   const visible = sortFields(card.input_fields, hiddenFieldsFor(card));
   for (const f of visible) {
     const hint = paramHintFor(card.tool_name, f.name);
-    const isScalarControl =
-      hint.control !== 'series_spec' &&
-      hint.control !== 'series_spec_list' &&
-      hint.control !== 'multi_tenor';
-    if (isScalarControl && initialParams[f.name] !== undefined) {
-      out[f.name] = initialParams[f.name];
-      continue;
+    const raw = initialParams[f.name];
+    // PR-B-β — structured-control seeding.  When Ask sends a
+    // properly-shaped value for series_spec / series_spec_list /
+    // multi_tenor, use it as the initial form value.  Falls back to
+    // the schema default when the shape doesn't match (defensive).
+    if (raw !== undefined && raw !== null) {
+      if (hint.control === 'series_spec' && isPlainObject(raw)) {
+        out[f.name] = raw as FormState[string];
+        continue;
+      }
+      if (hint.control === 'series_spec_list' && Array.isArray(raw)) {
+        out[f.name] = raw as FormState[string];
+        continue;
+      }
+      if (hint.control === 'multi_tenor' && Array.isArray(raw)) {
+        out[f.name] = raw.map((v) => String(v)) as FormState[string];
+        continue;
+      }
+      // Scalar controls: accept any string / number / boolean and
+      // coerce to string (the form state expects string scalars).
+      const isScalarControl =
+        hint.control !== 'series_spec' &&
+        hint.control !== 'series_spec_list' &&
+        hint.control !== 'multi_tenor';
+      if (isScalarControl && isCoercibleScalar(raw)) {
+        out[f.name] = String(raw);
+        continue;
+      }
     }
     out[f.name] = defaultFormValue(f, hint.control);
   }
   return out;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isCoercibleScalar(v: unknown): v is string | number | boolean {
+  return (
+    typeof v === 'string' ||
+    typeof v === 'number' ||
+    typeof v === 'boolean'
+  );
 }
 
 function hiddenFieldsFor(card: ToolCard): Set<string> {
