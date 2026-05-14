@@ -19,9 +19,11 @@
 // bubble on the empty surface.
 // ============================================================================
 
-import { Check, Lightbulb } from 'lucide-react';
+import { AlertTriangle, Check, Lightbulb } from 'lucide-react';
+import { useTools, useWorkflow } from '@/hooks/useWorkflows';
 import { useOptionalWorkspaceOverrides } from '@/components/build/lib/workspaceOverridesContext';
 import type { ParamControlDescriptor } from '@/components/build/parameters/lib/controlSchema';
+import { isProposedOverrideValid } from '@/components/build/parameters/lib/validateOverrides';
 import type { ProposedOverride } from '@/types/copilot';
 import { cn } from '@/utils/cn';
 
@@ -31,10 +33,20 @@ type Props = {
 
 export function ProposedOverridesChips({ proposals }: Props) {
   const ctx = useOptionalWorkspaceOverrides();
+  // PR3 — pull the workflow card + tool catalogue so each chip
+  // can be validated against the workspace's slot schema BEFORE
+  // dispatching.  An unmapped chip (unknown slot, unknown tool,
+  // tool/output-field mismatch) renders as a disabled "can't apply
+  // safely" tile rather than firing into the override queue.
+  const { data: card } = useWorkflow(ctx?.workspace.template_id ?? null);
+  const { data: tools } = useTools();
 
   if (proposals.length === 0) return null;
   const provider = ctx;
   const queued = new Set(Object.keys(provider?.overrides ?? {}));
+  const knownSlotNames = card
+    ? new Set(card.slot_schema.map((s) => s.name))
+    : null;
 
   return (
     <div className="mt-2 flex flex-col gap-1.5 rounded-md border border-lineage-400/25 bg-lineage-500/[0.05] px-2.5 py-2">
@@ -57,26 +69,50 @@ export function ProposedOverridesChips({ proposals }: Props) {
           const key = chipKey(p, i);
           const isQueued = queued.has(key);
           const label = formatChipLabel(p);
+          const descriptor = descriptorFor(p);
+          // PR3 — provider may be null (chips rendered on the empty
+          // shell).  In that case we can't validate against a real
+          // workspace yet; treat as "needs workspace" and disable.
+          const validation = provider
+            ? isProposedOverrideValid({
+                descriptor,
+                value: p.value,
+                boundSlotValues: provider.workspace.bound_slot_values,
+                tools,
+                knownSlotNames,
+              })
+            : { ok: false, errors: [] };
+          const invalidReason = validation.errors[0]?.message ?? null;
+          const isInvalid = !validation.ok && provider !== null;
+          const titleText = isInvalid
+            ? `Cannot apply this suggestion safely: ${invalidReason}`
+            : (p.rationale ?? undefined);
           return (
             <button
               key={key}
               type="button"
-              title={p.rationale ?? undefined}
-              disabled={!provider}
+              title={titleText}
+              disabled={!provider || isInvalid}
               onClick={() => {
-                if (!provider) return;
-                const descriptor = descriptorFor(p);
+                if (!provider || isInvalid) return;
                 provider.setOverride(descriptor, p.value);
               }}
+              data-testid={`proposed-chip:${key}`}
+              data-validation={isInvalid ? 'invalid' : 'ok'}
               className={cn(
                 'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] transition-colors',
-                isQueued
-                  ? 'border-mint-400/40 bg-mint-500/15 text-mint-300'
-                  : 'border-lineage-400/35 bg-lineage-500/10 text-lineage-200 hover:border-lineage-300/55 hover:bg-lineage-500/20',
-                !provider && 'opacity-50 cursor-not-allowed',
+                isInvalid
+                  ? 'border-coral-400/40 bg-coral-500/10 text-coral-200 cursor-not-allowed'
+                  : isQueued
+                    ? 'border-mint-400/40 bg-mint-500/15 text-mint-300'
+                    : 'border-lineage-400/35 bg-lineage-500/10 text-lineage-200 hover:border-lineage-300/55 hover:bg-lineage-500/20',
+                !provider && !isInvalid && 'opacity-50 cursor-not-allowed',
               )}
             >
-              {isQueued && (
+              {isInvalid && (
+                <AlertTriangle size={9} strokeWidth={2.5} aria-hidden />
+              )}
+              {!isInvalid && isQueued && (
                 <Check size={9} strokeWidth={2.5} aria-hidden />
               )}
               <span>{label}</span>

@@ -33,13 +33,16 @@
 import { useMemo } from 'react';
 import { AlertCircle, Boxes, Lock } from 'lucide-react';
 import type { NodeSummary, WorkspaceDetail } from '@/services/workspaceApi';
-import { useWorkflow } from '@/hooks/useWorkflows';
+import { useTools, useWorkflow } from '@/hooks/useWorkflows';
 import { useWorkspaceOverrides } from '@/components/build/lib/workspaceOverridesContext';
 import {
   overrideKey,
   type ParamControlDescriptor,
 } from './lib/controlSchema';
-import { deriveSlotControlsFromCard } from './lib/deriveSlotControls';
+import {
+  deriveSlotControlsFromCard,
+  isToolNameSlot,
+} from './lib/deriveSlotControls';
 import { findStagesForSlot } from './lib/findStagesForSlot';
 import { ParameterControlSwitch } from './ParameterControlSwitch';
 
@@ -50,10 +53,33 @@ type Props = {
 export function WorkspaceSlotsPanel({ detail }: Props) {
   const { data: card, isLoading: cardLoading, error: cardError } =
     useWorkflow(detail.template_id);
+  // PR3 — the tool catalogue powers the tool_name / output_field
+  // dropdowns.  When the network call is still pending, the deriver
+  // emits read-only descriptors with a "Loading tool catalogue…"
+  // caption so the surface never devolves to a free-text input.
+  const { data: tools } = useTools();
   const { overrides, dispatch } = useWorkspaceOverrides();
 
   const isForkable =
     !!detail.template_id && detail.bound_slot_values !== null;
+
+  // PR3 — extract the user's pending tool-name selections so the
+  // output_field control reflects the in-progress tool override
+  // instead of stale-rendering against the bound tool.  Walking the
+  // override map is cheap (O(N) with N <= a few dozen pending entries).
+  const effectiveToolSelections = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const o of Object.values(overrides)) {
+      if (
+        o.mode === 'scalar' &&
+        isToolNameSlot(o.path[0]) &&
+        typeof o.value === 'string'
+      ) {
+        out[o.path[0]] = o.value;
+      }
+    }
+    return out;
+  }, [overrides]);
 
   const descriptors = useMemo<ParamControlDescriptor[]>(
     () =>
@@ -61,9 +87,17 @@ export function WorkspaceSlotsPanel({ detail }: Props) {
         ? deriveSlotControlsFromCard({
             boundSlotValues: detail.bound_slot_values,
             card,
+            tools,
+            effectiveToolSelections,
           })
         : [],
-    [isForkable, detail.bound_slot_values, card],
+    [
+      isForkable,
+      detail.bound_slot_values,
+      card,
+      tools,
+      effectiveToolSelections,
+    ],
   );
 
   if (!isForkable) {
@@ -179,8 +213,16 @@ function SlotRow({
           </span>
         )}
         {stages.length === 0 ? (
-          <span className="font-mono text-fg-faint">
-            Affects: (computed during binding)
+          // PR3 — when the heuristic mapping turns up nothing, this
+          // slot's effect is genuinely workspace-scoped (the
+          // substrate's slot→node binding isn't exposed on the
+          // workspace summary, so we don't claim a specific node).
+          // Honest is better than guessing.
+          <span
+            title="The substrate doesn't expose slot→node provenance; this override applies workspace-wide and the affected stages are computed at fork-bind time."
+            className="inline-flex items-center rounded-sm border border-dashed border-line-soft bg-white/[0.012] px-1.5 py-0.5 font-mono text-fg-faint"
+          >
+            Workspace-scoped
           </span>
         ) : (
           <>
@@ -195,7 +237,13 @@ function SlotRow({
                       ? 'inline-flex items-center rounded-sm border border-line-soft bg-white/[0.025] px-1.5 py-0.5 font-mono text-fg-secondary'
                       : 'inline-flex items-center rounded-sm border border-dashed border-line-soft px-1.5 py-0.5 font-mono text-fg-faint'
                 }
-                title={`Match strength: ${m.strength}`}
+                title={
+                  m.strength === 'exact'
+                    ? `Exact match (name + value) on ${m.nodeId}`
+                    : m.strength === 'value'
+                      ? `Value match on ${m.nodeId} — heuristic, may be approximate`
+                      : `Name-only match on ${m.nodeId} — heuristic, may be approximate`
+                }
               >
                 {m.label}
               </span>

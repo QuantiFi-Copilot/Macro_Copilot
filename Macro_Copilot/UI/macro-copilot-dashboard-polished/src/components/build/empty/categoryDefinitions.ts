@@ -80,8 +80,14 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'Code',
     soon: true,
     soonReason:
-      'Unconstrained DAG composition arrives with the Tier 2 LLM reasoning surface (Phase 2).  In the meantime, ask the copilot in plain English.',
-    promptSeed:
-      'Compose a new analysis from these primitives and operators: …',
+      'Unconstrained DAG composition arrives with the Tier 2 LLM reasoning surface (Phase 2).  In the meantime, describe your analysis in plain English and the copilot will assemble a supported workflow for you.',
+    // PR3 — ``soon: true`` disables the tile so ``onSelect`` never
+    // fires.  Pre-PR3 this entry carried a placeholder ``promptSeed``
+    // ("Compose a new analysis from these primitives and operators: …")
+    // that was unreachable code AND misleading copy: it suggested an
+    // open-ended composer the backend can't yet execute.  We replace
+    // it with the empty string so the only source of truth for the
+    // user remains the ``soonReason`` caption.
+    promptSeed: '',
   },
 ];
