@@ -42,7 +42,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
@@ -345,9 +345,33 @@ class DomainAgentSession:
         answer_parts: list[str] = []
         tool_calls_seen: list[ChildToolCallTrace] = []
         raw_tool_outputs: list[tuple[str, dict, str]] = []  # (tool, params, raw_json)
-        current_tool_name: Optional[str] = None
-        current_tool_params: dict = {}
-        current_tool_start: Optional[float] = None
+        # PR-D — per-invocation context for the tool event loop.
+        # Pre-PR-D this code used three SHARED MUTABLE variables
+        # (``current_tool_name`` / ``current_tool_params`` /
+        # ``current_tool_start``) to correlate ``on_tool_start`` ↔
+        # ``on_tool_end`` events.  That assumed strict serial pairing
+        # — but Claude can emit multiple ``tool_use`` blocks in a
+        # single response, and LangGraph's ``ToolNode`` then dispatches
+        # them concurrently.  When events interleave (start-A,
+        # start-B, start-C, end-A, end-B, end-C) every shared
+        # assignment in start-B / start-C clobbered A's params before
+        # end-A could read them, and the post-end reset wiped state
+        # so end-B and end-C saw ``params={}``.  Result on the user
+        # surface: one card with correct params, N-1 cards with all
+        # params missing → PR-B-β's "missing params" tile fires for
+        # genuinely-correct tool invocations.  See the screenshots
+        # attached to PR-D's description.
+        #
+        # PR-D keys per-invocation context by the LangGraph
+        # ``run_id`` (a UUID present on every astream_events v2
+        # event for the same invocation — see LangChain docs).  Each
+        # ``on_tool_end`` looks up ITS OWN start's data by id, so
+        # interleaved events are handled correctly without any
+        # shared mutable state.  The dict is bounded — entries are
+        # ``pop``ped on the matching end, and orphan starts (no end
+        # event before the loop exits) are negligible memory (the
+        # whole turn is short-lived).
+        inflight_tools: Dict[str, Dict[str, Any]] = {}
 
         try:
             async for event in self._graph.astream_events(
@@ -358,42 +382,72 @@ class DomainAgentSession:
                 kind = event.get("event", "")
                 name = event.get("name", "")
                 data = event.get("data", {})
+                # PR-D — the run_id correlator.  Defensive: some
+                # LangChain versions may emit events without it for
+                # synthetic / wrapping nodes; we fall back to
+                # ``f"__no_run_id__:{name}"`` so the inflight lookup
+                # still does something useful for the serial single-
+                # tool case (the bug we're fixing only triggers when
+                # multiple tools fire in parallel, which they only
+                # do under astream_events v2 where ``run_id`` is
+                # always present per the v2 contract).
+                run_id = event.get("run_id") or f"__no_run_id__:{name}"
 
                 if kind == "on_tool_start":
-                    current_tool_name = name
-                    current_tool_start = time.monotonic()
                     tool_input = data.get("input", {})
                     if isinstance(tool_input, str):
                         try:
                             tool_input = json.loads(tool_input)
                         except (json.JSONDecodeError, TypeError):
                             tool_input = {}
-                    current_tool_params = tool_input if isinstance(tool_input, dict) else {}
+                    params = (
+                        tool_input if isinstance(tool_input, dict) else {}
+                    )
+                    inflight_tools[run_id] = {
+                        "name": name,
+                        "params": params,
+                        "start_time": time.monotonic(),
+                    }
 
                     if on_event is not None:
-                        label = make_tool_label(name, current_tool_params)
+                        label = make_tool_label(name, params)
                         await on_event(
                             SessionEvent(
                                 type="tool_call",
                                 data={
                                     "tool": name,
                                     "label": label,
-                                    "params": current_tool_params,
+                                    "params": params,
                                     "domain": self.domain.value,
                                 },
                             )
                         )
 
                 elif kind == "on_tool_end":
-                    duration_ms = None
-                    if current_tool_start is not None:
-                        duration_ms = round((time.monotonic() - current_tool_start) * 1000)
+                    # Look up THIS invocation's context by run_id.
+                    # ``pop`` removes the entry so the dict stays
+                    # bounded; missing entries (orphan end events)
+                    # fall back to the event's ``name`` + empty
+                    # params — same fail-soft contract the pre-PR-D
+                    # code had when ``current_tool_name`` happened
+                    # to be ``None`` (the ``or name`` branch).
+                    ctx = inflight_tools.pop(run_id, None)
+                    tool_name = (ctx["name"] if ctx else None) or name
+                    params: Dict[str, Any] = (
+                        ctx["params"] if ctx else {}
+                    )
+                    start_time = ctx["start_time"] if ctx else None
+                    duration_ms: Optional[int] = (
+                        round((time.monotonic() - start_time) * 1000)
+                        if start_time is not None
+                        else None
+                    )
 
                     # The tool output is a JSON string (per our MCP server
                     # convention).  Save the raw text for fact extraction.
                     tool_output_text = _stringify_tool_output(data.get("output"))
                     raw_tool_outputs.append(
-                        (current_tool_name or name, current_tool_params, tool_output_text)
+                        (tool_name, params, tool_output_text)
                     )
                     # If the tool returned {"error": "..."}, surface it on
                     # the trace so partial same-domain failures are
@@ -402,8 +456,8 @@ class DomainAgentSession:
                     tool_error = _tool_error_from_output(tool_output_text)
                     tool_calls_seen.append(
                         ChildToolCallTrace(
-                            tool=current_tool_name or name,
-                            params=current_tool_params,
+                            tool=tool_name,
+                            params=params,
                             duration_ms=duration_ms,
                             error=tool_error,
                         )
@@ -414,7 +468,7 @@ class DomainAgentSession:
                             SessionEvent(
                                 type="tool_result",
                                 data={
-                                    "tool": current_tool_name or name,
+                                    "tool": tool_name,
                                     "domain": self.domain.value,
                                     "duration_ms": duration_ms,
                                     # Frontend can render an error badge
@@ -424,10 +478,6 @@ class DomainAgentSession:
                                 },
                             )
                         )
-
-                    current_tool_name = None
-                    current_tool_start = None
-                    current_tool_params = {}
 
                 elif kind == "on_chat_model_stream":
                     chunk = data.get("chunk")
