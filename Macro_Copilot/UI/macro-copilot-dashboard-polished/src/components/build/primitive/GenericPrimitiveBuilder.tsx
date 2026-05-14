@@ -209,13 +209,6 @@ function GenericPrimitiveBuilderBody({
             isRunning={isRunning}
             errorMessage={runError}
           />
-          {runResult?.ok ? (
-            <p className="mt-3 text-[10.5px] italic leading-[1.5] text-fg-faint">
-              PR2 surfaces the primitive&apos;s raw output via the auto-
-              renderer.  Full artifact-quality widgets (Panel /
-              WindowedPanel / EventSet) land in PR4.
-            </p>
-          ) : null}
         </section>
 
         {/* Right rail — methodology + conventions (read-only) */}
@@ -244,7 +237,7 @@ function Header({ card }: { card: ToolCard }) {
             </span>
           ) : null}
           <span className="rounded-md border border-ice-400/25 bg-ice-500/10 px-1.5 py-[1px] text-[9.5px] uppercase tracking-[0.07em] text-ice-200">
-            schema builder · PR2
+            schema builder
           </span>
           <span className="rounded-md border border-line-soft bg-white/[0.02] px-1.5 py-[1px] font-mono text-[9.5px] uppercase tracking-[0.07em] text-fg-muted">
             {card.tool_name}

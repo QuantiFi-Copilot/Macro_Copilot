@@ -408,7 +408,7 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   } else if (isGenericBuilder) {
     buttonLabel = 'Open builder';
     title =
-      'PR2: opens a schema-driven builder — editable inputs from this primitive’s ToolCard plus a Run button that posts to /tools/{name}/run';
+      'Opens a schema-driven builder — editable inputs from this primitive’s ToolCard plus a Run button that posts to /tools/{name}/run';
   } else if (isUnsupported) {
     buttonLabel = 'Open Build (unsupported)';
     title =

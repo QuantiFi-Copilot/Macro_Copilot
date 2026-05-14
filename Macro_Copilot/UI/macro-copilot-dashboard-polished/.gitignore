@@ -1,0 +1,19 @@
+# PR-A — TypeScript incremental-build cache.  Regenerated on every
+# ``tsc -b`` / ``npm run build``; tracking it polluted every PR diff
+# with a binary blob and forced merge conflicts when two branches
+# touched anything compile-relevant.  See PR-A description for the
+# audit context.
+*.tsbuildinfo
+
+# Vite production build output.  ``npm run build`` writes here; the
+# bundle is shipped via deploy infra rather than committed.
+dist/
+dist-ssr/
+
+# Local dev / editor scratch.
+.DS_Store
+node_modules/
+
+# Vite caches per-machine module-graph snapshots; never useful to
+# share between machines.
+.vite/
