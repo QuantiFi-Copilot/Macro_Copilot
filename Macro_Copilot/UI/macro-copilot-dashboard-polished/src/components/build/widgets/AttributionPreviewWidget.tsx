@@ -1,26 +1,28 @@
 // ============================================================================
-// AttributionPreviewWidget — per-tool renderer for yield-change attribution.
+// AttributionPreviewWidget — per-tool persisted-artifact card.
 // ----------------------------------------------------------------------------
-// Phase R3 replaces the thin "preview" widget with the rich
-// ``AttributionRenderer`` (component-level contribution waterfall +
-// residual breakdown from the legacy model-workspace).  Registered for
-// both ``Series`` and ``Panel`` artifact shapes — the attribution tool
-// can emit either depending on its configured output_field.
+// PR1 (new plan) — attribution's output_class is pure-snapshot (no
+// time_series field).  The substrate's Series bridge can't lift a
+// time_series from a pure-snapshot output, so today the persisted-
+// artifact path doesn't exist end-to-end.  The widget renders an
+// honest "snapshot view not persistable today" callout instead of
+// the legacy ``AttributionRenderer`` (which expected live-run
+// ``current_metrics``).
 //
-// Filename retained from the phase 3 placeholder so widget-registry
-// imports stay stable.
+// Both ``Series`` and ``Panel`` per-tool registrations are preserved
+// so the persisted-widget surface stays the same.  If a future
+// extension persists attribution as a Panel snapshot, the adapter
+// can branch to a Panel-shape rendering with minimal change.
 // ============================================================================
 
 import type { NodeRenderer } from '@/components/build/lib/nodeRendererRegistry';
 import { registerToolRenderer } from '@/components/build/lib/nodeRendererRegistry';
-import { AttributionRenderer } from '@/components/build/model/renderers/AttributionRenderer';
 import { RichModelWidget } from './shared/RichModelWidget';
 
 const AttributionPreviewWidget: NodeRenderer = (props) => (
   <RichModelWidget
     {...props}
-    Renderer={AttributionRenderer}
-    toolDisplayName="attribution"
+    toolName="calculate_yield_change_attribution_pca_tool"
   />
 );
 

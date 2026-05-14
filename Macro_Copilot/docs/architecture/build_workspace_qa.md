@@ -31,7 +31,7 @@ shapes, listed alongside their canvas in the table below.
 | `npm run typecheck` (or `node_modules/.bin/tsc -p tsconfig.app.json --noEmit`) | tsc clean — no errors                              |
 | `npm run typecheck:full` / `tsc -p tsconfig.json --noEmit` | full project clean                                 |
 | `npm run build` / `vite build`                          | production bundle builds (chunk-size warnings are expected and pre-PR8) |
-| `npm run test:build` (PR8 — see `scripts/run_build_tests.mjs`) | every Build-folder test passes (currently 225 assertions across 13 test files) |
+| `npm run test:build` (PR8 — see `scripts/run_build_tests.mjs`) | every Build-folder test passes (currently 281 assertions across 14 test files after PR1-followup) |
 
 The runtime test suite uses esbuild to bundle each `.test.ts` file
 and runs the bundle with Node.  The repo does not ship a JS test
@@ -55,7 +55,8 @@ dependency only for this PR unless the repo already supports it").
 | PR6 — DAG view contract                  | `src/components/build/dag/__tests__/dagContract.test.ts`               | 12         |
 | PR7 — dashboard registry + resolver      | `src/components/build/results/__tests__/dashboardRegistry.test.ts`     | 18         |
 | PR7 — Results tab structural contract    | `src/components/build/results/__tests__/dashboardContract.test.ts`     | 11         |
-| **PR8 — e2e Build flow matrix**          | `src/components/build/__tests__/buildE2E.test.ts`                      | 1+         |
+| PR8 — e2e Build flow matrix              | `src/components/build/__tests__/buildE2E.test.ts`                      | 27         |
+| **PR1-followup — persisted-model adapters** | `src/components/build/widgets/__tests__/persistedModelAdapters.test.ts` | **20**  |
 
 The PR8 e2e file walks every row of the manual matrix below through
 the pure-logic layer (decoder → builder kind → dashboard kind →
@@ -161,6 +162,8 @@ fire.  All routes are relative to the Build app root.
 | # | Issue                                                                                            | Fix                                                                                              |
 | - | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | 1 | `nodeRendererRegistry.ts:249` always-true `!==` comparison flagged by esbuild on every build     | Introduced a module-scoped `DEFAULT_FALLBACK_SENTINEL` reference and compare against it          |
+| 2 | Persisted PCA / rolling-regression / attribution / half-life / beta-adjusted-spread cards passed `StoredArtifact.payload` to renderers that expected the live `*Output` dict (`current_metrics`, `time_series_*`); rendered empty bodies | PR1-followup: dropped the legacy `Renderer` prop; replaced with a per-tool adapter (`persistedModelAdapters.ts`) that classifies the payload + drives an honest "what's in this saved snapshot" / "what's not" surface |
+| 3 | Stale "re-runs the tool / until backend ships payload endpoint" docstrings in `Pca-/RollingRegression-PreviewWidget.tsx` | Removed; preview widgets now document the adapter contract |
 
 ## Manual reproduction notes
 
