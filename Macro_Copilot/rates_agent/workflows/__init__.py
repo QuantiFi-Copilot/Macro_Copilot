@@ -172,6 +172,12 @@ from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (
     SwapBreakevenBasisSimpleOutput,
     calculate_swap_breakeven_basis_simple,
 )
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
+    CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+    InflationSwapButterflyInput,
+    InflationSwapButterflyOutput,
+    calculate_inflation_swap_butterfly,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -601,6 +607,32 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # in BPS, rolling z-score in Z_SCORE units.  Operator-
             # layer unit-compat checks rely on these declarations.
             "time_series_basis": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_inflation_swap_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_butterfly_tool",
+        callable=calculate_inflation_swap_butterfly,
+        input_class=InflationSwapButterflyInput,
+        output_class=InflationSwapButterflyOutput,
+        config_path=INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS butterfly row list —
+            # frontend consumes ``butterfly_bps`` per row, so the
+            # unit is BPS.  Even though the underlying ZCIS rates
+            # are quoted in PERCENT, this is a CURVATURE-OF-RATES
+            # object and the inflation_swaps domain established
+            # the BPS convention for curve-shape views via
+            # inflation_swap_curve_spread; mirrors that here.
+            # Distinct from the real_yield_butterfly's PERCENT
+            # convention (because real yields are level objects,
+            # not curve-shape objects in this repo's V1 wire
+            # conventions).
+            "time_series": "bps",
+            # Canonical TimeSeries: ZCIS butterfly history in BPS,
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
             "time_series_zscore": "z_score",
         },
     ),

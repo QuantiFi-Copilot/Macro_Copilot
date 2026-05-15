@@ -51,6 +51,16 @@ Tool surface
    ZCIS basis effects, surfaced via the wire-disclosed
    methodology_label.
 
+6. calculate_inflation_swap_butterfly_tool — same-curve ZCIS
+   butterfly (3-point ZCIS curve curvature, e.g. USD_ZCIS
+   5s10s30s, EUR_ZCIS 2s5s10s, GBP_ZCIS 2s10s30s) computed by
+   composing the ZCIS rate-level primitive THREE times and
+   applying the FIXED simple-butterfly weighting
+   ``(belly - 0.5*(short + long)) * 100`` in BPS.  Raw inflation-
+   swap-rate space — NO basis subtraction, NO IRP adjustment, NO
+   fitted curve.  Surfaces the same reference-metadata fields
+   shared by all three legs by the same-curve invariant.
+
 Each tool description tells the LLM:
   (a) what the tool does
   (b) which user questions it should handle
@@ -77,6 +87,7 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_swaps.tools.schemas import (  # noqa: E402
     CrossMarketInflationSwapSpreadInput,
+    InflationSwapButterflyInput,
     InflationSwapCurveSpreadInput,
     InflationSwapForwardInput,
     InflationSwapRateLevelInput,
@@ -101,6 +112,10 @@ from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import
 from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (  # noqa: E402
     CONFIG_PATH as SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
     calculate_swap_breakeven_basis_simple,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (  # noqa: E402
+    CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+    calculate_inflation_swap_butterfly,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -1046,6 +1061,211 @@ def calculate_swap_breakeven_basis_simple_tool(
             "[calculate_swap_breakeven_basis_simple_tool] withheld "
             "bespoke=%d basis=%d zscore=%d rows from LLM context.",
             bespoke_rows, basis_rows, zscore_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 6: calculate_inflation_swap_butterfly
+# ===========================================================================
+@mcp.tool()
+def calculate_inflation_swap_butterfly_tool(
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the same-curve zero-coupon inflation swap (ZCIS)
+    butterfly (3-point ZCIS curve curvature) between three pillars
+    of the same ZCIS curve family (e.g. USD_ZCIS 5s10s30s,
+    EUR_ZCIS 2s5s10s, GBP_ZCIS 2s10s30s), plus daily/weekly/monthly
+    bps changes, 1-year z-score, and trailing 1Y high/low/percentile
+    in bps.  Surfaces the load-bearing reference metadata
+    (``inflation_index_family``, ``index_lag``, ``interpolation``,
+    ``underlying_index``) shared by all three legs by the same-curve
+    invariant so the desk can interpret the butterfly honestly.
+
+    Butterfly formula (FIXED simple-butterfly weighting, weight
+    tuple ``(-0.5, +1.0, -0.5)`` on ``(short, belly, long)`` in
+    raw inflation-swap-rate space, then * 100 to convert to BPS):
+
+      butterfly_bps = (belly_zcis_pct
+                       - 0.5 * (short_zcis_pct + long_zcis_pct)) * 100
+
+    Sign convention: POSITIVE = belly cheap (belly ZCIS rate HIGH
+    relative to half-weighted wings); NEGATIVE = belly rich.
+    Matches sovereign / real-yield / breakeven butterflies.
+
+    Raw inflation-swap-rate space — NO subtraction of a model-
+    derived basis (e.g. swap-vs-linker breakeven basis), NO
+    inflation-risk-premium adjustment, NO routing through a fitted
+    curve object.
+
+    Use this tool when the user asks about:
+    - ZCIS curve curvature           (e.g. "Where's USD_ZCIS
+      5s10s30s curvature?")
+    - ZCIS 3-point butterfly trades  (e.g. "How much has GBP
+      2s10s30s ZCIS butterfly moved this month?")
+    - ZCIS curvature extremes        (e.g. "Is EUR 2s5s10s ZCIS
+      butterfly at a 1-year wide?")
+
+    Do NOT use this tool for:
+    - ZCIS curve spreads (e.g. USD_ZCIS 5s10s) — that's
+      ``calculate_inflation_swap_curve_spread_tool``.
+    - ZCIS forwards (e.g. USD_ZCIS 5Y5Y) — that's
+      ``calculate_inflation_swap_forward_tool``.
+    - Cross-market ZCIS spreads — that's
+      ``calculate_cross_market_inflation_swap_spread_tool``.
+    - Linker bond-implied breakeven butterflies — call the
+      inflation_indexed_bonds agent's
+      ``calculate_breakeven_butterfly_tool``.
+    - Real-yield butterflies — call the inflation_indexed_bonds
+      agent's ``calculate_real_yield_butterfly_tool``.
+    - Nominal sovereign butterflies — call the sovereign_bonds
+      agent's ``calculate_butterfly_tool``.
+
+    Parameters
+    ----------
+    curve_family : str
+        Inflation-swap curve identifier exactly as stored in
+        instrument_master.  Examples: 'USD_ZCIS', 'EUR_ZCIS',
+        'GBP_ZCIS'.  See
+        ``rates_agent/playbooks/inflation_swaps.yml``.  Same-curve
+        invariant: a single ``curve_family`` is shared by all three
+        endpoints.
+    short_tenor : str
+        Short wing tenor (e.g. '2Y' for 2s5s10s, '5Y' for 5s10s30s).
+        Must be a supported ZCIS pillar on this curve_family —
+        current ingested grid is 1Y / 2Y / 3Y / 5Y / 10Y / 20Y /
+        30Y on each of USD_ZCIS / EUR_ZCIS / GBP_ZCIS.
+    belly_tenor : str
+        Belly (body) tenor (e.g. '5Y' for 2s5s10s, '10Y' for
+        5s10s30s).  Must be strictly between ``short_tenor`` and
+        ``long_tenor`` in year fraction.
+    long_tenor : str
+        Long wing tenor (e.g. '10Y' for 2s5s10s, '30Y' for
+        5s10s30s).  Must be strictly longer than ``belly_tenor``.
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365).
+    field_name : str, optional
+        Bloomberg field mnemonic for the ZCIS rate.  Leave as the
+        default empty string ""  to use the bundled
+        ``default_zcis_rate_field`` convention from
+        inflation_swap_butterfly/config.yaml (currently 'PX_MID').
+        Mirrors the empty-string sentinel pattern used by sovereign
+        / OIS / linker / ZCIS level / ZCIS curve-spread / ZCIS
+        forward tools so the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_zcis_rate_field``.  Same shadowing pattern fixed
+    # for sovereign curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = InflationSwapButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_inflation_swap_butterfly_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_inflation_swap_butterfly_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the inflation_swap_butterfly tool's bundled config
+    # explicitly so the dependency is observable here.  The cross-
+    # config lint enforces value-agreement on the shared convention
+    # names with the inner level primitive's bundled config, so
+    # threading this same ToolConfig into the inner calls keeps
+    # methodology consistent end-to-end.
+    try:
+        isb_config = load_tool_config(
+            INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+        )
+        result = calculate_inflation_swap_butterfly(
+            engine=engine, params=params, config=isb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_inflation_swap_butterfly_tool] unhandled "
+            "error for %s %s/%s/%s",
+            params.curve_family,
+            params.short_tenor,
+            params.belly_tenor,
+            params.long_tenor,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "calculate_inflation_swap_butterfly_tool failed "
+                    f"for {params.curve_family} "
+                    f"{params.short_tenor}/{params.belly_tenor}/"
+                    f"{params.long_tenor}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_inflation_swap_butterfly_tool] tool call "
+        "complete: %s %s/%s/%s → %s",
+        params.curve_family,
+        params.short_tenor,
+        params.belly_tenor,
+        params.long_tenor,
+        status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip bespoke and canonical TimeSeries payloads before
+    # returning to the LLM (frontend REST path returns the full
+    # payload).  Same convention as sibling rate-level / curve-
+    # spread / forward / cross-market / basis tools.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in (
+            "time_series", "time_series_butterfly", "time_series_zscore",
+        )
+    }
+    bespoke_rows = len(result.get("time_series", []) or [])
+    butterfly_rows = len(
+        result.get("time_series_butterfly", {}).get("rows", []) or []
+    )
+    zscore_rows = len(
+        result.get("time_series_zscore", {}).get("rows", []) or []
+    )
+    if bespoke_rows or butterfly_rows or zscore_rows:
+        logger.info(
+            "[calculate_inflation_swap_butterfly_tool] withheld "
+            "bespoke=%d butterfly=%d zscore=%d rows from LLM "
+            "context.",
+            bespoke_rows, butterfly_rows, zscore_rows,
         )
     return json.dumps(llm_response, default=str)
 

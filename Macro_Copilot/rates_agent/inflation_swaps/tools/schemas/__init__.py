@@ -69,6 +69,16 @@ from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple.schemas impor
     SwapBreakevenBasisSimpleTimeSeriesRow,
 )
 
+# Inflation-swap butterfly (same-curve, three-tenor curvature) —
+# re-exported from the per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/inflation_swap_butterfly/``).
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly.schemas import (
+    InflationSwapButterflyCurrentMetrics,
+    InflationSwapButterflyInput,
+    InflationSwapButterflyOutput,
+    InflationSwapButterflyTimeSeriesRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -96,4 +106,9 @@ __all__ = [
     "SwapBreakevenBasisSimpleCurrentMetrics",
     "SwapBreakevenBasisSimpleTimeSeriesRow",
     "SwapBreakevenBasisSimpleOutput",
+    # inflation_swap_butterfly
+    "InflationSwapButterflyInput",
+    "InflationSwapButterflyCurrentMetrics",
+    "InflationSwapButterflyTimeSeriesRow",
+    "InflationSwapButterflyOutput",
 ]
