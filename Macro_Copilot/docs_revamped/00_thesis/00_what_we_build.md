@@ -4,7 +4,7 @@
 
 **Version:** v1.2
 **Last reviewed:** 2026-05-16
-**Status:** load-bearing. Changes require an ADR in [`../07_decisions/`](../07_decisions/) and a coordinated bump to any dependent file in [`01_non_negotiables.md`](01_non_negotiables.md).
+**Status:** load-bearing. Changes require an ADR in [`../05_decisions/`](../05_decisions/) and a coordinated bump to any dependent file in [`01_non_negotiables.md`](01_non_negotiables.md).
 
 ---
 
@@ -119,9 +119,9 @@ The principles inherit the thesis; they do not replace it. Read this file once; 
 
 The contents of this file are thesis-level commitments. They change slowly, in coordinated PRs, with explicit decision records. The procedure:
 
-1. **Open an ADR** in [`../07_decisions/`](../07_decisions/) describing the proposed change and its consequences for principles, contracts, runbooks, and roadmap. Thesis changes have the largest downstream footprint in this docs tree; budget the review accordingly.
+1. **Open an ADR** in [`../05_decisions/`](../05_decisions/) describing the proposed change and its consequences for principles, contracts, runbooks, and roadmap. Thesis changes have the largest downstream footprint in this docs tree; budget the review accordingly.
 2. **Land the ADR and the thesis change in the same PR** — never separately. The ADR records the *why*; the thesis records the *what*. They must agree.
-3. **Coordinate updates** to any principle (`01_non_negotiables.md`), contract (`02_components/*/contract.md`), or roadmap entry (`08_roadmap/`) that depends on the thesis-level claim. Stale downstream files after a thesis change are P10 violations.
+3. **Coordinate updates** to any principle (`01_non_negotiables.md`), contract (`02_components/*/contract.md`), or roadmap entry (`06_roadmap/`) that depends on the thesis-level claim. Stale downstream files after a thesis change are P10 violations.
 4. **Bump the version** of this file (v1 → v2) and update `Last reviewed`. The version log at the bottom of this file records every change.
 
 Thesis stability is a feature, not a bug. Slow change is what makes the principles trustworthy and what lets downstream contracts compound on a stable foundation.

@@ -4,7 +4,7 @@
 
 **Version:** v1.3
 **Last reviewed:** 2026-05-16
-**Status:** load-bearing — any change after first-ADR adoption requires an ADR in [`../07_decisions/`](../07_decisions/). Pre-canonical revisions are recorded in the version log at the bottom of this file.
+**Status:** load-bearing — any change after first-ADR adoption requires an ADR in [`../05_decisions/`](../05_decisions/). Pre-canonical revisions are recorded in the version log at the bottom of this file.
 
 ---
 
@@ -54,7 +54,7 @@ Stating a rule does not enforce it. Three lightweight mechanisms are planned to 
 
 1. **CLAUDE.md hook *(planned — not yet active)*.** The repo's [`CLAUDE.md`](../../CLAUDE.md) currently contains only graphify instructions. A follow-on PR adds a section instructing any AI agent to consult this file at session start and cite the relevant principle ID in commit messages. Until that PR lands, agent-side enforcement is by explicit prompt only.
 2. **Per-component contracts inherit by ID.** Every `02_components/*/contract.md` opens with an explicit list of the principles it operationalises for that component type. The contract is the principle's local expression. Read the principle once, then the contract — do not re-derive.
-3. **Review gates cite IDs.** Every checklist in [`../05_review_gates/`](../05_review_gates/) has lines tagged with the principle ID being verified. A reviewer's eye is trained to scan for P-numbers.
+3. **Review gates cite IDs.** Every per-component runbook in [`../02_components/`](../02_components/) carries a PR review checklist whose lines are tagged with the principle ID being verified. (Earlier in the revamp these lived in a separate `05_review_gates/` folder; they were folded into each component's `runbook.md` so the checklist sits next to the procedure it gates.) A reviewer's eye is trained to scan for P-numbers.
 
 No tooling. No CI hook on this file. The enforcement is cultural and procedural. That is enough provided everyone — human and agent — uses the IDs consistently. The CLAUDE.md hook PR is tracked as an open follow-on; until it lands, this file is bound by human discipline alone.
 
@@ -91,22 +91,22 @@ There is a deliberate distinction between **shortcuts** (forbidden) and **docume
 
 **Relates to.** P3 (consistency by contract is the enforcement mechanism), P10 (no parallel "v2" copies).
 
-**Operational application.** [`02_components/*/contract.md`](../02_components/), [`04_standards/file_and_folder_layout.md`](../04_standards/), [`05_review_gates/`](../05_review_gates/)
+**Operational application.** [`02_components/*/contract.md`](../02_components/), [`03_standards/file_and_folder_layout.md`](../03_standards/), per-component PR review checklists in `02_components/<component>/runbook.md`
 
 ---
 
 ### P2 — Accuracy is non-negotiable
 
-**Rule.** Every component, regardless of size, meets its accuracy bar before it merges. The bar is stated in the component's contract and tested in [`06_quality_and_evals/`](../06_quality_and_evals/). When a value cannot be computed to acceptable accuracy, the answer is to *ingest* the value from a source of record. When neither computation nor ingestion is possible, the answer is to *refuse* (per P6). It is never to guess, approximate silently, or ship a half-correct calculation.
+**Rule.** Every component, regardless of size, meets its accuracy bar before it merges. The bar is stated in the component's contract and tested in [`04_quality_and_evals/`](../04_quality_and_evals/). When a value cannot be computed to acceptable accuracy, the answer is to *ingest* the value from a source of record. When neither computation nor ingestion is possible, the answer is to *refuse* (per P6). It is never to guess, approximate silently, or ship a half-correct calculation.
 
 **Rationale.** A wrong primitive contaminates every workflow that uses it. The cost of a wrong number compounds; the cost of an extra test does not. The "lineage is the product" claim under P4 is empty if the values in the lineage are themselves wrong. This principle is what makes the platform's audit story defensible.
 
 **Verify.**
-- The 3-test pattern (compute + wiring + parity) passes on every primitive. See [`04_standards/test_patterns.md`](../04_standards/).
+- The 3-test pattern (compute + wiring + parity) passes on every primitive. See [`03_standards/test_patterns.md`](../03_standards/).
 - Parity is tested against the source-of-record data, with tolerance stated in the test docstring — not chosen post-hoc to make the test pass.
 - Tolerance for derived calculations is stated in the component's `contract.md`, not invented per-test.
 - No `# TODO: add test` or `# TODO: improve accuracy` in a merged PR.
-- Coverage thresholds in [`04_standards/test_patterns.md`](../04_standards/) are met.
+- Coverage thresholds in [`03_standards/test_patterns.md`](../03_standards/) are met.
 
 **Anti-patterns (auto-reject).**
 - A primitive without a parity fixture against the source of record
@@ -123,7 +123,7 @@ There is a deliberate distinction between **shortcuts** (forbidden) and **docume
 
 **Relates to.** P5 (any approximation must be disclosed), P6 (the alternative to inaccuracy is refusal, not guesswork), P4 (accuracy without determinism is unverifiable).
 
-**Operational application.** [`04_standards/test_patterns.md`](../04_standards/), [`06_quality_and_evals/`](../06_quality_and_evals/), per-component admission checklists in [`05_review_gates/`](../05_review_gates/)
+**Operational application.** [`03_standards/test_patterns.md`](../03_standards/), [`04_quality_and_evals/`](../04_quality_and_evals/), per-component PR review checklists in `02_components/<component>/runbook.md`
 
 ---
 
@@ -135,9 +135,9 @@ There is a deliberate distinction between **shortcuts** (forbidden) and **docume
 
 **Verify.**
 - File layout matches the canonical contract: primitive = `config.yaml` + `schemas.py` + `compute.py` + `__init__.py`; operator = `config.yaml` + `schemas.py` + `operator.py`.
-- Names follow [`04_standards/naming_conventions.md`](../04_standards/).
+- Names follow [`03_standards/naming_conventions.md`](../03_standards/).
 - All mandatory fields in the component's `contract.md` are present.
-- The component passes the matching admission checklist in [`05_review_gates/`](../05_review_gates/).
+- The component passes the matching PR review checklist in `02_components/<component>/runbook.md`.
 - If a developer's instinct is "this case is different," the default conclusion is *they are wrong*. Either the contract is wrong (open a contract-revision PR with an ADR) or the implementation is wrong. Both are valid; an in-place exception is not.
 
 **Anti-patterns (auto-reject).**
@@ -152,7 +152,7 @@ There is a deliberate distinction between **shortcuts** (forbidden) and **docume
 
 **Relates to.** P1 (consistency is how future-proofing is enforced in practice), P8 (closed families are a specific kind of contract), P10 (the contract is the single source of truth for the shape).
 
-**Operational application.** [`02_components/*/contract.md`](../02_components/), [`02_components/*/file_layout.md`](../02_components/), [`04_standards/naming_conventions.md`](../04_standards/), [`04_standards/file_and_folder_layout.md`](../04_standards/), [`05_review_gates/`](../05_review_gates/)
+**Operational application.** [`02_components/*/contract.md`](../02_components/), [`02_components/*/file_layout.md`](../02_components/), [`03_standards/naming_conventions.md`](../03_standards/), [`03_standards/file_and_folder_layout.md`](../03_standards/), per-component PR review checklists in `02_components/<component>/runbook.md`
 
 ---
 
@@ -197,7 +197,7 @@ The four pins of replay are explicit. They are not interchangeable.
 
 **Relates to.** P2 (accuracy is only meaningful if it is repeatable), P5 (replayability requires explicit methodology pinning, which requires disclosure), P10 (one canonical hash per artifact).
 
-**Operational application.** [`01_architecture/06_bridge.md`](../01_architecture/), [`01_architecture/07_state_and_persistence.md`](../01_architecture/), [`01_architecture/08_replay_and_versioning.md`](../01_architecture/), [`04_standards/hash_determinism.md`](../04_standards/), [`06_quality_and_evals/replay_acceptance.md`](../06_quality_and_evals/) — all forthcoming.
+**Operational application.** [`01_architecture/06_bridge.md`](../01_architecture/), [`01_architecture/07_state_and_persistence.md`](../01_architecture/), [`01_architecture/08_replay_and_versioning.md`](../01_architecture/), [`03_standards/hash_determinism.md`](../03_standards/), [`04_quality_and_evals/replay_acceptance.md`](../04_quality_and_evals/) — all forthcoming.
 
 ---
 
@@ -208,14 +208,14 @@ The four pins of replay are explicit. They are not interchangeable.
 **Rationale.** Macro Copilot's trust model is *"show your work, then earn the user's trust."* A PM comparing this product to a known data terminal has no patience for hidden assumptions; if an output uses an OIS proxy for repo, the PM must see that on the card, not discover it weeks later. Hidden conventions destroy trust on first contact and never recover. Disclosure is what makes P2 (accuracy) sufficient — a disclosed approximation is honest; an undisclosed one is fraud.
 
 **Verify.**
-- Every `Convention` in every tool's `config.yaml` carries a non-empty `source` tag drawn from the methodology-source taxonomy. No `"default"`, no `"standard"`, no `"tbd"`, no empty string. The taxonomy is documented in `04_standards/methodology_disclosure.md` (forthcoming).
+- Every `Convention` in every tool's `config.yaml` carries a non-empty `source` tag drawn from the methodology-source taxonomy. No `"default"`, no `"standard"`, no `"tbd"`, no empty string. The taxonomy is documented in `03_standards/methodology_disclosure.md` (forthcoming).
 - Methodology cards display the central knob, every consequential convention, every active proxy, and a "what this does NOT do" block.
 - Workflow templates carry a "what this does NOT do" disclosure (e.g., for `backtest`: frictionless, mid-price, no transaction costs, OIS proxy for repo).
 - Refusals under P6 state the specific missing capability ("no rolling-correlation operator exists"), not a generic "I can't do this."
 - Every active proxy is named on the methodology card in plain language, not buried in code comments.
 
 **Anti-patterns (auto-reject).**
-- Convention `source` tagged as `"default"`, `"standard"`, `"convention"`, `"bloomberg"` (vague — name the specific field convention, not the vendor), or empty — per the taxonomy in `04_standards/methodology_disclosure.md` (forthcoming)
+- Convention `source` tagged as `"default"`, `"standard"`, `"convention"`, `"bloomberg"` (vague — name the specific field convention, not the vendor), or empty — per the taxonomy in `03_standards/methodology_disclosure.md` (forthcoming)
 - Burying a proxy in a code comment instead of the methodology card
 - "We'll add the disclosure later" as merge justification
 - Returning a number without showing the conventions that produced it
@@ -226,7 +226,7 @@ The four pins of replay are explicit. They are not interchangeable.
 
 **Relates to.** P2 (accuracy is verifiable only when assumptions are stated), P6 (a refusal under P6 is itself a disclosure), P7 (vendor identity is one of the things that must be transparently disclosed when relevant).
 
-**Operational application.** [`02_components/primitive/conventions.md`](../02_components/primitive/), [`04_standards/methodology_disclosure.md`](../04_standards/) — both forthcoming.
+**Operational application.** [`02_components/primitive/conventions.md`](../02_components/primitive/), [`03_standards/methodology_disclosure.md`](../03_standards/) — both forthcoming.
 
 ---
 
@@ -265,7 +265,7 @@ Across all three layers: refusal is always preferred to hallucinated competence.
 
 **Relates to.** P2 (the alternative to inaccuracy is refusal, not silent error), P5 (refusal must be specific to be honest disclosure), P3 (the same exception type / envelope shape across a component family is itself a contract).
 
-**Operational application.** [`04_standards/error_handling.md`](../04_standards/), [`02_components/*/contract.md`](../02_components/), [`02_components/orchestration/`](../02_components/orchestration/) (the transport-boundary contracts)
+**Operational application.** [`03_standards/error_handling.md`](../03_standards/), [`02_components/*/contract.md`](../02_components/), [`02_components/orchestration/`](../02_components/orchestration/) (the transport-boundary contracts)
 
 ---
 
@@ -282,8 +282,8 @@ The day a second L1 adapter is needed, the cost of every L2–L5 coupling become
 - Vendor SDK imports (`blpapi`, etc.) appear only inside [`../../ingestion/`](../../ingestion/). Grep for them above L1 is empty for *new* code.
 - Vendor authentication and pagination logic lives only in the adapter layer.
 - A new L1 adapter (for any second source of record) implements the same contract — verifiable by a contract-test suite reused across adapters.
-- Vendor-specific parity tests live in [`06_quality_and_evals/`](../06_quality_and_evals/), keyed by adapter name.
-- Migration register: any pre-existing L2–L5 file that references a vendor by name is logged in `08_roadmap/tech_debt_register.md` with a planned migration; **net-new files do not add to the register.**
+- Vendor-specific parity tests live in [`04_quality_and_evals/`](../04_quality_and_evals/), keyed by adapter name.
+- Migration register: any pre-existing L2–L5 file that references a vendor by name is logged in `06_roadmap/tech_debt_register.md` with a planned migration; **net-new files do not add to the register.**
 
 **Anti-patterns (auto-reject for new code).**
 - A new primitive that imports a vendor SDK
@@ -302,7 +302,7 @@ The day a second L1 adapter is needed, the cost of every L2–L5 coupling become
 
 **Relates to.** P5 (when a deployment is bound to a specific vendor, the user-facing disclosure names the vendor — this is not a P7 violation), P9 (the operator layer is doubly insulated — finance-blind *and* free of vendor field shapes), P1 (no new code that takes a vendor-shaped shortcut "for now").
 
-**Operational application.** `01_architecture/01_l1_data_substrate.md` (forthcoming), [`02_components/playbook/contract.md`](../02_components/playbook/), [`06_quality_and_evals/`](../06_quality_and_evals/), [`08_roadmap/tech_debt_register.md`](../08_roadmap/)
+**Operational application.** `01_architecture/01_l1_data_substrate.md` (forthcoming), [`02_components/playbook/contract.md`](../02_components/playbook/), [`04_quality_and_evals/`](../04_quality_and_evals/), [`06_roadmap/tech_debt_register.md`](../06_roadmap/)
 
 ---
 
@@ -315,8 +315,8 @@ The day a second L1 adapter is needed, the cost of every L2–L5 coupling become
 **Verify.**
 - Workflow archetypes are a `Literal[...]` type (`shared/archetypes.py` or equivalent), not a free string.
 - Artifact types are a `Literal[...]` discriminator on the artifact base class.
-- Methodology source tags resolve to an enum (or are migrating toward one — see `04_standards/methodology_disclosure.md`, forthcoming).
-- New entries to a closed family are added only via PRs that include: an ADR in [`../07_decisions/`](../07_decisions/), a closed-family-extension gate from [`../05_review_gates/`](../05_review_gates/), and corresponding updates to router / validator / UI / gauntlet.
+- Methodology source tags resolve to an enum (or are migrating toward one — see `03_standards/methodology_disclosure.md`, forthcoming).
+- New entries to a closed family are added only via PRs that include: an ADR in [`../05_decisions/`](../05_decisions/), the closed-family-extension PR review checklist from the relevant component's `runbook.md` (e.g., for archetypes: `02_components/workflow_template/runbook.md`; for artifact types: `02_components/artifact/runbook.md` — both forthcoming), and corresponding updates to router / validator / UI / gauntlet.
 - The set of closed families is listed in `01_architecture/00_overview.md` (forthcoming).
 
 **Anti-patterns (auto-reject).**
@@ -331,7 +331,7 @@ The day a second L1 adapter is needed, the cost of every L2–L5 coupling become
 
 **Relates to.** P3 (the closed family is the contract that consistency enforces), P10 (the closed family is the single source of truth for the valid set).
 
-**Operational application.** [`02_components/workflow_template/archetype_extension_policy.md`](../02_components/workflow_template/), [`02_components/artifact/closed_family_policy.md`](../02_components/artifact/), [`05_review_gates/archetype_closed_family_extension_gate.md`](../05_review_gates/), [`05_review_gates/artifact_type_closed_family_extension_gate.md`](../05_review_gates/)
+**Operational application.** [`02_components/workflow_template/archetype_extension_policy.md`](../02_components/workflow_template/), [`02_components/artifact/closed_family_policy.md`](../02_components/artifact/), the closed-family-extension PR review checklists in `02_components/workflow_template/runbook.md` and `02_components/artifact/runbook.md` (both forthcoming).
 
 ---
 
@@ -360,7 +360,7 @@ The day a second L1 adapter is needed, the cost of every L2–L5 coupling become
 
 **Relates to.** P3 (the boundary is a contract; the contract is consistency), P7 (operators are doubly insulated — both finance-blind and vendor-blind), P8 (the artifact types operators consume are themselves a closed family).
 
-**Operational application.** [`02_components/operator/contract.md`](../02_components/operator/), [`01_architecture/03_l3_operators.md`](../01_architecture/), [`04_standards/file_and_folder_layout.md`](../04_standards/) — all forthcoming.
+**Operational application.** [`02_components/operator/contract.md`](../02_components/operator/), [`01_architecture/03_l3_operators.md`](../01_architecture/), [`03_standards/file_and_folder_layout.md`](../03_standards/) — all forthcoming.
 
 ---
 
@@ -393,7 +393,7 @@ During the initial population of this tree, some sections are simply *not yet wr
 
 **Relates to.** P3 (the contract is the single source of truth for the shape), P5 (one methodology card per artifact, never duplicated), P8 (the closed family is one set, defined once).
 
-**Operational application.** All cross-document linking. [`04_standards/code_review_checklist.md`](../04_standards/). `glossary.md` (forthcoming).
+**Operational application.** All cross-document linking. [`03_standards/code_review_checklist.md`](../03_standards/). `glossary.md` (forthcoming).
 
 ---
 
@@ -477,7 +477,7 @@ In practice this resolves to:
 
 **Relates to.** P2 (P2's accuracy bar — "indistinguishable from source of record" — is defined by P12 in scope-setting terms), P5 (any computation that approaches but does not equal the source of record must disclose the methodology and the analyst-override mode), P6 (when neither ingestion nor matching computation is possible, the platform refuses), P7 (the source of record is whatever L1 adapter is connected; the boundary travels with the adapter).
 
-**Operational application.** This principle is the canonical source for the scope-discipline rule (the three-question framework). Downstream: [`02_components/primitive/admission_checklist.md`](../02_components/primitive/) (the three-question framework is item 1 of the new-primitive checklist), [`05_review_gates/primitive_admission_gate.md`](../05_review_gates/) — both forthcoming.
+**Operational application.** This principle is the canonical source for the scope-discipline rule (the three-question framework). Downstream: [`02_components/primitive/runbook.md`](../02_components/primitive/runbook.md) — the three-question framework is in the pre-flight check; the PR review checklist enforces it.
 
 ---
 
@@ -485,7 +485,7 @@ In practice this resolves to:
 
 Principles in this file are stable on purpose. Changes are slow on purpose. The procedure for changing one:
 
-1. **Open an ADR** in [`../07_decisions/`](../07_decisions/) describing the proposed change, the reason, the impact across `02_components/`, `04_standards/`, and `05_review_gates/`, and any code-side mechanical changes required.
+1. **Open an ADR** in [`../05_decisions/`](../05_decisions/) describing the proposed change, the reason, the impact across `02_components/` (including per-component runbooks and their PR review checklists) and `03_standards/`, and any code-side mechanical changes required.
 2. **Get review** from at least one code owner. Principle changes are higher-stakes than feature changes; they affect every future PR.
 3. **Land the ADR and the principle change in the same PR** — never separately. The ADR is the immutable record; the principle is the operational rule. They must agree.
 4. **Bump the version** of this file (`v1` → `v2`) and update `Last reviewed`. If the change supersedes a principle entirely, the old `P<N>` is marked superseded in place — its ID is *not reused*; the replacement gets a new ID (`P11`, `P12`, …).
@@ -512,7 +512,7 @@ Citation discipline is what makes the IDs durable. Cite by ID; never paraphrase 
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1.3 | 2026-05-16 | Stand-alone-tree pass: removed every cross-link out of this docs tree into the prior project documentation (the prior tree is being deleted at cleanup; this tree is the single source from day one). Quotes previously attributed to prior docs are now stated inline as the platform's own doctrine. Forward references to forthcoming files in [`01_architecture/`](../01_architecture/), [`04_standards/`](../04_standards/), [`05_review_gates/`](../05_review_gates/), [`06_quality_and_evals/`](../06_quality_and_evals/) replace prior cross-links. P10 migration-window exception removed (the migration model no longer applies — the tree is canonical, not migrated). | (pending) |
+| v1.3 | 2026-05-16 | Stand-alone-tree pass: removed every cross-link out of this docs tree into the prior project documentation (the prior tree is being deleted at cleanup; this tree is the single source from day one). Quotes previously attributed to prior docs are now stated inline as the platform's own doctrine. Forward references to forthcoming files in [`01_architecture/`](../01_architecture/), [`03_standards/`](../03_standards/), [`05_review_gates/`](../05_review_gates/), [`04_quality_and_evals/`](../04_quality_and_evals/) replace prior cross-links. P10 migration-window exception removed (the migration model no longer applies — the tree is canonical, not migrated). | (pending) |
 | v1.2 | 2026-05-16 | Added two principles, append-only (IDs never move): (a) **P11 — Domain isolation.** Each domain agent has hard-wired access only to its own tools and data; cross-domain queries are orchestrated at the supervisor layer, which composes structured outputs from multiple single-domain agents. Eliminates tool-selection ambiguity and forces single-domain expertise. Sibling-pattern agents, never inheritance; shared substrate (`shared/operators/`, `shared/artifacts/`, `shared/workflow/`) is the explicit exception per P9. (b) **P12 — Bloomberg Accuracy Boundary.** Codifies the scope-discipline rule: never recompute what the source of record provides better; ingest, compute to indistinguishable accuracy, or refuse. Embeds the three-question decision framework as a required answer on every new-primitive PR. Principle name follows current source-of-record (Bloomberg); underlying logic generalises with whichever L1 adapter is connected. Quick Index updated. | (pending) |
 | v1.1 | 2026-05-16 | Pre-canonical revisions before first ADR: (a) P1 — explicit allowance for documented refusal surfaces (`NotImplementedError` with `planned_extensions` + test); (b) P2 — anti-patterns replaced with reviewer-enforceable criteria (parity fixture, tolerance from contract, failure-case assertions); (c) P4 — restructured around the exact four-pin model (`head_hash`, `tool_config_hash`, `methodology_version_id` *metadata-only*, `application_version_id` *metadata-only*), split current Phase-0 substrate from Phase-1+ target acceptance bar; (d) P6 — three-layer split (compute / optional lookups / transport boundary), `return None` allowed iff typed `Optional`, MCP/API envelopes are the *correct* shape at transport; (e) P7 — reframed as source-of-record boundary + vendor SDK isolation; acknowledges current Bloomberg-first reality, scoped to net-new code; (f) P10 — migration-window exception added (later removed in v1.3); (g) "How these principles bind" — CLAUDE.md hook flagged as planned, not yet active. No ADR exists yet; first ADR will retroactively record this set. | (pending — `0001-initial-non-negotiables.md`) |
 | v1   | 2026-05-16 | Initial principle set (P1–P10) — superseded same day by v1.1 review. | — |

@@ -4,7 +4,7 @@
 
 **Version:** v1.1
 **Last reviewed:** 2026-05-17
-**Status:** load-bearing component contract. Changes require an ADR in [`../../07_decisions/`](../../07_decisions/).
+**Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
 **Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P10 (single source of truth), P11 (domain isolation by agent).
 **See also:** [`runbook.md`](runbook.md) — the procedure for adding a new playbook.
 

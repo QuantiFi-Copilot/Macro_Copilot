@@ -152,7 +152,7 @@ Tool-specific overrides win over artifact-type defaults. The registry lives at [
 
 - **What a widget contract looks like** (mandatory props, lifecycle, error states) → `../02_components/` (forthcoming).
 - **What renders inside Build's DAG tab** at the node level → `../02_components/workspace/` (forthcoming).
-- **Widget registry extension policy** (how to add a new widget) → `../03_runbooks/` (forthcoming).
+- **Widget registry extension policy** (how to add a new widget) → the relevant component runbook under `../02_components/` (forthcoming).
 - **The API route contract surface** (request/response shapes per endpoint) → `02_api_contract.md` (forthcoming).
 - **The backend orchestration that produces the data these surfaces render** → [`00_internal_architecture.md`](00_internal_architecture.md).
 

@@ -168,7 +168,7 @@ This is a flow doc. The following live elsewhere and are deliberately not duplic
 - **What makes a valid primitive / operator / workflow template / artifact** → [`../02_components/`](../02_components/) (one folder per component type).
 - **The L1 data substrate** (playbooks, ingestion, instrument_master, time_series) → `01_l1_data_substrate.md` (forthcoming).
 - **The lineage / replay model** (the four pins, `head_hash`, hash invariants) → `08_replay_and_versioning.md` (forthcoming).
-- **The methodology-source taxonomy** (P5 enforcement at the convention layer) → `../04_standards/methodology_disclosure.md` (forthcoming).
+- **The methodology-source taxonomy** (P5 enforcement at the convention layer) → `../03_standards/methodology_disclosure.md` (forthcoming).
 - **State schema details** (tables, columns, indexes) → `07_state_and_persistence.md` (forthcoming).
 - **Domain agent contracts** (sibling-pattern, MCP server requirements, registry shape) → [`../02_components/orchestration/`](../02_components/orchestration/) (forthcoming).
 - **External UI surfaces** (pages, components, widget rendering) → [`01_external_architecture.md`](01_external_architecture.md).

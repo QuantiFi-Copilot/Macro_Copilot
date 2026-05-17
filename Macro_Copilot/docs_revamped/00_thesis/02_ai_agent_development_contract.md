@@ -5,7 +5,7 @@
 **Version:** v1.1
 **Last reviewed:** 2026-05-16
 **Audience:** AI agents writing or modifying code (primary). Humans collaborating with such agents (secondary).
-**Status:** load-bearing. Changes require an ADR in [`../07_decisions/`](../07_decisions/).
+**Status:** load-bearing. Changes require an ADR in [`../05_decisions/`](../05_decisions/).
 
 ---
 
@@ -77,23 +77,23 @@ Per [`../../CLAUDE.md`](../../CLAUDE.md), the graphify graph is the agent's prim
 
 ## Per-task reading (before any code change)
 
-The reading list depends on the task type. All of the per-component files referenced below live under [`../02_components/`](../02_components/), [`../03_runbooks/`](../03_runbooks/), [`../04_standards/`](../04_standards/), and [`../05_review_gates/`](../05_review_gates/) — many are still forthcoming. If the relevant contract has not been drafted, see **AC3**.
+The reading list depends on the task type. Per-component files (both `README.md` for the contract and `runbook.md` for the procedure + PR review checklist) live under [`../02_components/`](../02_components/); cross-cutting rules live under [`../03_standards/`](../03_standards/). Many of these are still forthcoming for components other than `playbook` and `primitive`. If the relevant contract has not been drafted, see **AC3**.
 
 | Task type | Class | Read before writing any code |
 |---|---|---|
 | Typo / formatting / comment / single-line fix that does not change behaviour | Trivial | Nothing required. Cite the file in the commit; no trailer required. |
-| Add a test for an existing component | Standard | The component's `contract.md` and the relevant principle (typically P2 + P6) |
-| Modify an existing primitive's method body without changing a methodology default | Standard | `02_components/primitive/contract.md`, plus the principle the change addresses |
-| Modify an existing operator's method body | Standard | `02_components/operator/contract.md`, plus the principle the change addresses |
-| Add an optional field to an existing schema | Standard | The component's `contract.md` + `04_standards/error_handling.md` |
-| Bug fix in an existing primitive or operator (no methodology change) | Standard | The component's `contract.md`, plus the principle the bug violates (typical: P2 + P3 + P5 + P6) |
-| Add a new primitive | Load-bearing | `02_components/primitive/contract.md`, `02_components/primitive/admission_checklist.md`, `03_runbooks/03_add_a_primitive.md`, `04_standards/test_patterns.md`, `05_review_gates/primitive_admission_gate.md` |
-| Add a new operator | Load-bearing | `02_components/operator/contract.md`, `02_components/operator/admission_checklist.md`, `03_runbooks/05_add_an_operator.md`, `04_standards/file_and_folder_layout.md` |
-| Add a new workflow template | Load-bearing | `02_components/workflow_template/contract.md`, `02_components/workflow_template/admission_checklist.md`, `03_runbooks/06_add_a_workflow_template.md` |
-| Add a new playbook | Load-bearing | `02_components/playbook/contract.md`, `03_runbooks/01_add_a_playbook.md`, `01_architecture/01_l1_data_substrate.md` |
-| Modify a methodology default on a shipped primitive | Load-bearing | `04_standards/methodology_disclosure.md`, `05_review_gates/methodology_change_gate.md`, and AC8 escalation before any code |
-| Add or remove a closed-family member (artifact type, archetype, source-tag) | Load-bearing | `02_components/artifact/closed_family_policy.md` (or the relevant policy), `05_review_gates/archetype_closed_family_extension_gate.md`, `07_decisions/` (file an ADR first) |
-| Add a new domain agent (e.g., FX) | Load-bearing | `03_runbooks/09_add_a_new_agent.md`, plus the primitive / operator / template / orchestration contracts |
+| Add a test for an existing component | Standard | The component's `README.md` (contract) and the relevant principle (typically P2 + P6) |
+| Modify an existing primitive's method body without changing a methodology default | Standard | `02_components/primitive/README.md`, plus the principle the change addresses |
+| Modify an existing operator's method body | Standard | `02_components/operator/README.md` (forthcoming), plus the principle the change addresses |
+| Add an optional field to an existing schema | Standard | The component's `README.md` + `03_standards/error_handling.md` (forthcoming) |
+| Bug fix in an existing primitive or operator (no methodology change) | Standard | The component's `README.md`, plus the principle the bug violates (typical: P2 + P3 + P5 + P6) |
+| Add a new primitive | Load-bearing | `02_components/primitive/README.md` (contract) + `02_components/primitive/runbook.md` (procedure + PR review checklist) + `03_standards/test_patterns.md` (forthcoming) |
+| Add a new operator | Load-bearing | `02_components/operator/README.md` + `02_components/operator/runbook.md` + `03_standards/file_and_folder_layout.md` — all forthcoming |
+| Add a new workflow template | Load-bearing | `02_components/workflow_template/README.md` + `02_components/workflow_template/runbook.md` — both forthcoming |
+| Add a new playbook | Load-bearing | `02_components/playbook/README.md` + `02_components/playbook/runbook.md` + `01_architecture/01_l1_data_substrate.md` (forthcoming) |
+| Modify a methodology default on a shipped primitive | Load-bearing | `03_standards/methodology_disclosure.md` (forthcoming) + the methodology-change section of the component's `runbook.md` + AC8 escalation before any code |
+| Add or remove a closed-family member (artifact type, archetype, source-tag) | Load-bearing | The relevant component's `README.md` closed-family policy section + its `runbook.md` extension PR review checklist + `05_decisions/` (file an ADR first) |
+| Add a new domain agent (e.g., FX) | Load-bearing | The cross-component agent-bootstrapping runbook (forthcoming; currently distributed across the per-component runbooks); plus all four component contracts |
 | Documentation update inside `docs_revamped/` | Depends — Trivial for tweaks, Load-bearing for changes to any file in `00_thesis/` `01_architecture/` `02_components/*/contract.md` | [`../README.md`](../README.md) (contribution rules), this file, the file being changed |
 
 ## Quick index — the AC rules
@@ -104,7 +104,7 @@ The reading list depends on the task type. All of the per-component files refere
 | **AC2** | Cite, never paraphrase | Cite rule IDs (P or AC numbers); never restate the rule in your own words. |
 | **AC3** | Follow the canonical contract, or precedent + flag, or stop | Contract exists → follow it. Missing but ≥3-instance precedent in code → follow the precedent and flag the gap. Neither → stop and surface. |
 | **AC4** | Use Graphify for navigation | Graphify first, grep second. Update the graph after every code change. |
-| **AC5** | Self-check against the gate before done | Run the items in the matching `05_review_gates/` checklist that apply to the change. Trivial = one-line sanity check; Load-bearing = full gate. |
+| **AC5** | Self-check against the gate before done | Run the items in the matching component's PR review checklist (in `02_components/<component>/runbook.md`) that apply to the change. Trivial = one-line sanity check; Load-bearing = full gate. |
 | **AC6** | Cite operationalised principles in commits | Commit trailer: `Operationalises: P<N>; AC<X>.` Mandatory on Standard and Load-bearing commits; optional on Trivial. |
 | **AC7** | Refuse rather than invent | Missing pattern AND no precedent → refuse with reason. Do not invent precedent-setting patterns. |
 | **AC8** | Ask only on the named triggers; otherwise decide | When a trigger applies, ask. When no trigger applies, decide and surface the decision in the PR — do not ask for permission on judgment calls. |
@@ -165,7 +165,7 @@ Each rule follows the same skeleton: **Rule** (the imperative), **Why** (the rea
 
 ### AC5 — Self-check against the gate before declaring done, proportional to change class
 
-**Rule.** Before saying *"this task is complete"*, run the self-check at the depth your change class requires. Trivial = one-line sanity check. Standard = items in the matching `05_review_gates/` checklist that apply to the change. Load-bearing = full gate, every item.
+**Rule.** Before saying *"this task is complete"*, run the self-check at the depth your change class requires. Trivial = one-line sanity check. Standard = items in the matching component's PR review checklist (in `02_components/<component>/runbook.md`) that apply to the change. Load-bearing = full gate, every item.
 
 **Why.** Declaring done before checking is the most common cause of PRs that ship contract violations. Once the agent has declared done, the cost of catching the violation moves entirely to human review — exactly what the gate is designed to prevent. The proportional split exists so the self-check has signal at every change class instead of becoming ceremony on the small ones.
 
@@ -254,7 +254,7 @@ Run the items that apply to your change class. Each item is tagged with the mini
 - [ ] **[standard+] Tests reflect the contract** (P2). Tests assert what the *contract* requires, not what the implementation currently produces. Failure cases are tested (P6). Tolerance is from the contract, not chosen post-hoc.
 - [ ] **[standard+] No invented patterns.** Every file shape, name, and contract field matches the canonical contract or the precedent — not "almost," exactly.
 - [ ] **[standard+] AC6.** Commit message ends with the `Operationalises: …` trailer listing the relevant IDs.
-- [ ] **[load-bearing] AC5.** Did I run through the matching gate checklist in [`../05_review_gates/`](../05_review_gates/), item by item, with no skipping?
+- [ ] **[load-bearing] AC5.** Did I run through the matching PR review checklist in the component's `runbook.md`, item by item, with no skipping?
 - [ ] **[load-bearing] Methodology disclosure** (P5). Methodology cards updated for any convention change. Every `Convention.source` tag is non-empty and from the taxonomy.
 - [ ] **[load-bearing] Determinism** (P4). Hash-stability test still passes. No wall-clock time, no unfixed random seeds, no `dict` order assumed in serialisation.
 - [ ] **[load-bearing] Single source of truth** (P10). I did not duplicate a fact across files. If I needed the same fact in two places, one is the source and the other links.
@@ -322,7 +322,7 @@ Per [`../../CLAUDE.md`](../../CLAUDE.md): the graphify graph at `graphify-out/` 
 
 Same discipline as the principles and the thesis:
 
-1. **Open an ADR** in [`../07_decisions/`](../07_decisions/) describing the proposed change and the agent-behaviour consequences.
+1. **Open an ADR** in [`../05_decisions/`](../05_decisions/) describing the proposed change and the agent-behaviour consequences.
 2. **Land the ADR and the contract change in the same PR.**
 3. **Bump the version** of this file. The version log records every change.
 
