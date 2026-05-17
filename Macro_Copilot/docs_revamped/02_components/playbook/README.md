@@ -2,7 +2,7 @@
 
 > The declarative YAML spec that owns an agent's data universe — what instruments exist, which vendor fields to pull for them, how often, and how the ingestion pipeline must handle the result. **Agent-agnostic by design**: the contract on this page holds whether the agent is rates, FX, credit, equity, commodities, options, or any future addition.
 
-**Version:** v1
+**Version:** v1.1
 **Last reviewed:** 2026-05-17
 **Status:** load-bearing component contract. Changes require an ADR in [`../../07_decisions/`](../../07_decisions/).
 **Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P10 (single source of truth), P11 (domain isolation by agent).
@@ -26,22 +26,34 @@ A playbook is **declarative**. It contains no Python, no inline code, no compute
 
 Both the extractor and the ingester are vendor-aware (they live below L1 — see P7); the playbook itself is **vendor-shape-aware** only in the sense that it names vendor fields by their canonical mnemonics. Swapping the source-of-record (Bloomberg today, an internal data lake or another vendor tomorrow) requires changes only in the extractor and the L1 adapter, never in the playbook structure.
 
+### Implementation reality today (versus the contract target)
+
+The contract described in this document is agent-agnostic and vendor-agnostic *by design* — it is the target the platform commits to as new agents and adapters come online. **The current implementation is rates-first and Bloomberg-first, in three specific places**, and a new agent will not be drop-in until each is addressed:
+
+- **`utils/push_playbooks.py` is hardcoded** to sync from `rates_agent/playbooks/` to GCS. Adding an FX, credit, or equity agent's playbooks requires either generalising this script or extending it to walk every agent's `playbooks/` folder. (Tracked as a known gap.)
+- **The extractors (`utils/historical_extractor.py`, `utils/incremental_extractor.py`) depend on `blpapi`** and treat Bloomberg as the only source-of-record. A second L1 adapter ships as a sibling extractor following the same contract, not as a vendor-branch inside the existing one.
+- **`instrument_master` has typed columns (`curve_family`, `tenor`, `country`, `currency`, `underlying_index`, `contract_code`, …) shaped for rates today**. Asset-class-specific typed columns will be added via schema migrations (P8-flavoured decisions); domain-specific fields land in the `attributes` JSONB until they are query-hot enough to promote.
+
+Treat the rest of this document as the *contract surface* — the discipline a playbook must satisfy regardless of agent. Operational integration with the current path (the rates / Bloomberg one) is documented in [`runbook.md`](runbook.md) and flagged where it diverges.
+
 ## What every playbook commits to
 
 Four guarantees. These are the contract the rest of the platform relies on; violating any of them is a substrate bug, not a "config choice."
 
 | # | Guarantee | What it means | Where enforced |
 |---|---|---|---|
-| 1 | **Declarative.** | The playbook is pure data. No conditional logic, no inline computation, no field that requires interpretation beyond a vendor mnemonic. | The YAML loader rejects unexpected node types. |
-| 2 | **Atomic ingestion.** | A successful run inserts every row of the load *or* zero rows. There is no partial state. Delete-then-upsert-then-audit-flip happens inside one Postgres transaction. | The ingester's `engine.begin()` block wraps delete + upsert + audit status update as one unit. |
-| 3 | **Idempotent.** | Re-running the same playbook against the same vendor snapshot produces the same database state — no duplicate rows, no spurious new `load_audit` records. Determined by SHA-256 over a canonicalised content view of the Parquet (excluding lineage stamps like `extracted_at`, `git_commit_hash`). | The dedup gate skips ingestion when the incoming `source_file_hash` matches the previous successful load's hash. Drives P4 at the data layer. |
-| 4 | **Coverage-gated.** | If the incoming extraction returns fewer than **80% of the previous successful load's instrument count**, the load aborts, the audit row goes to `FAILED`, and the prior data is left untouched. A partial Bloomberg pull cannot wipe out good history. | The ingester's coverage check runs *before* the delete branch of the atomic transaction. |
+| 1 | **Declarative.** | The playbook is pure data. No conditional logic, no inline computation, no field that requires interpretation beyond a vendor mnemonic. | *Today:* the loader is `yaml.safe_load` with defensive filtering at read time — a row missing `ticker` is dropped, a metric missing `bloomberg_field` is dropped. There is no strict schema validator that rejects unexpected top-level keys or unknown per-row fields. Adding a strict Pydantic-backed playbook validator is a known follow-up. |
+| 2 | **Atomic ingestion of the destructive section.** | The destructive section of a load — *delete prior `market_data_daily` rows (full scope or window) + upsert the new `market_data_daily` rows + flip `load_audit.status` to `SUCCESS`* — runs inside one Postgres transaction. If any step fails, the entire destructive section rolls back, leaving prior market data intact. | The ingester's `with engine.begin() as conn:` block wraps these three operations as one unit. **Outside the critical transaction** (so they pre-exist any retry): the audit row is inserted with `status = RUNNING`, and `instrument_master` is upserted. Both are idempotent on retry (audit gets a fresh `load_id`; `instrument_master` is keyed on `(vendor, vendor_ticker)`); including them in the critical transaction would extend lock windows without correctness benefit. |
+| 3 | **Idempotent on market data.** | Re-running the same playbook against the same vendor snapshot produces no duplicate rows in `market_data_daily`. Determined by SHA-256 over a canonicalised content view of the *extracted Parquet* (excluding lineage stamps like `extracted_at`, `git_commit_hash`, `playbook_hash`). | The dedup gate skips the destructive section when the incoming `source_file_hash` matches the previous successful load's hash for the same `playbook_name`. **A `SKIPPED_DUPLICATE` row is still inserted into `load_audit`** — by design, so the audit trail records every ingestion attempt (including dedup hits) and a missing audit row never means "nothing happened, we just don't know." Drives P4 at the data layer. |
+| 4 | **Coverage-gated, in two places.** | Two independent gates protect against partial data: (a) the **extractor's 90% upload gate** — if fewer than 90% of the playbook's universe tickers returned data from the vendor, the extractor refuses to upload the Parquet at all; (b) the **ingester's 80% destructive gate** — if the incoming Parquet has fewer than 80% of the previous successful load's instrument count, the ingester aborts the destructive section, marks the audit `FAILED`, and leaves prior data intact. The two thresholds are deliberately different — see the *Coverage gates* subsection below. | Extractor gate in `utils/historical_extractor.py` and `utils/incremental_extractor.py`; ingester gate in `ingestion/ingest_parquet.py`, running before the destructive transaction. |
 
 These four guarantees are agent-agnostic. They apply to every playbook the same way, regardless of asset class.
 
 ## The universal contract
 
-Every playbook MUST have these top-level keys. Names are case-sensitive and stable across asset classes:
+Every playbook MUST have the top-level keys listed below. Names are case-sensitive and stable across asset classes. There are eight required keys; the order is conventional (review-friendly), not enforced.
+
+> **Current behaviour vs. target contract.** The current extractor (`utils/historical_extractor.py`) tolerates additional operational top-level keys it reads as defaults — `vendor`, `instrument_type`, `default_instrument_type`, `curve_family`, `underlying_index`, `is_rolling_contract`, `is_active`, `bdh_kwargs`, `bdp_kwargs`. These are not part of the universal contract: they are extractor-side operational defaults that pre-date the stricter shape this document codifies. The target contract is what is documented below; tightening the extractor to reject unknown top-level keys is a future schema-hardening decision (file an ADR when it is taken). Until then, new playbooks SHOULD restrict themselves to the documented keys, and reviewers SHOULD push back on uses of the legacy operational keys for new playbooks.
 
 ```yaml
 playbook_name: <string>           # unique slug; matches the filename stem
@@ -71,7 +83,7 @@ universe:                         # list of instrument declarations — see "the
 ### The top-level fields, one by one
 
 - **`playbook_name`** — unique identifier across all agents. Lowercase snake_case. Matches the filename stem (so `sovereign_bonds.yml` has `playbook_name: sovereign_bonds`). A new playbook chooses a new name; renaming an existing playbook breaks `load_audit` continuity and is therefore a closed-family-style decision (file an ADR).
-- **`playbook_version`** — semver. Bumped whenever the YAML changes in any way that affects what gets ingested: universe rows added/removed, fields added/removed, `extraction` window changed. Cosmetic edits (whitespace, key reorder, comment changes) do not bump the version because the playbook hash canonicalises them out.
+- **`playbook_version`** — semver. Bumped whenever the YAML changes in a way that affects what gets ingested: universe rows added/removed, target/reference metrics added/removed, `extraction` window changed. Cosmetic edits (whitespace, key reorder, comment changes) do not require a bump because they do not change the *extracted Parquet* and therefore do not change the ingester's dedup hash — but they *do* change `playbook_hash` (which is a raw SHA-256 of the YAML bytes; see the *Versioning* section below for the full two-hash distinction).
 - **`asset_class`** — the discriminator. Today: `rates`. Future: `fx`, `credit`, `equities`, `commodities`, `options`, `crypto`, etc. The value is stamped into `instrument_master.asset_class` and is queryable. Adding a new asset-class value is a closed-family-style decision (P8) — file an ADR.
 - **`dataset_name`** — the human-friendly grouping that appears in lineage cards, replay UIs, and `load_audit`. Often equal to `playbook_name`, but it can differ when one playbook covers multiple economically-related groups (e.g., a `vol_surfaces` dataset might span equity, FX, and rates vol playbooks at the dataset name level).
 - **`description`** — one paragraph. Describes what the playbook covers and why. Read by humans browsing the catalogue; not parsed by any downstream tool.
@@ -89,12 +101,12 @@ The choice between historical and incremental is **operational** (per-run, set b
 
 These are two distinct kinds of vendor field:
 
-- **`target_metrics`** are **time-series** fields — one value per instrument, per day. They land as rows in `macro_data.market_data_daily` keyed by `(trade_date, instrument_id, field_name)`. Each `metric_id` corresponds to one `field_name` in that table. Examples: a yield, a price, an open-interest count.
+- **`target_metrics`** are **time-series** fields — one value per instrument, per day. They land as rows in `macro_data.market_data_daily` keyed by `(trade_date, instrument_id, field_name)`. **`field_name` in the table is the vendor mnemonic itself** (e.g., `YLD_YTM_MID`, `PX_LAST`, `OPEN_INT`) — *not* the internal `metric_id` declared in the playbook. The `metric_id` is the human-friendly name surfaced in catalogues and methodology cards; the on-disk `field_name` mirrors what the vendor returned. Examples: a yield, a price, an open-interest count.
 - **`reference_metrics`** are **static** fields — one value per instrument, stamped once on `instrument_master` (either into a typed column or into the `attributes` JSONB). They do not change daily, and the ingester does not re-row them per day. Examples: maturity date, coupon, settlement convention, contract size.
 
 The split exists because the two have very different storage costs (time-series scales linearly with days; reference fields do not) and very different query patterns. Both lists can be empty in a degenerate case; in practice every playbook has at least one target metric.
 
-**Vendor mnemonic naming.** Today the field is named `bloomberg_field` because Bloomberg is the source of record. When a second adapter ships, the per-vendor name will be added alongside (`internal_lake_field`, `xyz_vendor_field`, etc.) without renaming the existing one — the existing tag stays accurate for whichever rows were ingested through that adapter. P7 isolation means the rest of the platform never reads these mnemonic strings directly; primitives read by `metric_id` or by `field_name` against the enriched view.
+**Vendor mnemonic naming.** Today the field is named `bloomberg_field` because Bloomberg is the source of record, and the vendor mnemonic stored in the playbook is also what lands in `market_data_daily.field_name` — primitives query the enriched view by that mnemonic. When a second adapter ships, the per-vendor name will be added alongside (`internal_lake_field`, `xyz_vendor_field`, etc.) without renaming the existing one — the existing tag stays accurate for whichever rows were ingested through that adapter. P7 isolation means the rest of the platform never *parses* the mnemonic to decide vendor behaviour; primitives use it as a string key against the enriched view.
 
 ### The `universe` block — where asset classes differ
 
@@ -207,13 +219,33 @@ Do not use it for:
 
 ### Versioning
 
-- `playbook_version` bumps on any **content-affecting** change: adding/removing a universe row, adding/removing a metric, changing `extraction.start_date` or `incremental_window_days`.
-- Cosmetic edits (whitespace, key order, comments) do not require a version bump — the playbook's content hash canonicalises them out so a re-extraction does not double-ingest.
+- `playbook_version` bumps on any **content-affecting** change: adding/removing a universe row, adding/removing a metric, changing `extraction.start_date` or `incremental_window_days`. The version is a contributor-driven semver — there is no automatic check that the bump matches the change.
 - The version number is stamped into every `load_audit` row, so historical loads remain attributable to the version they were produced under.
+
+**Two distinct hashes; do not conflate.** This is the most common source of confusion:
+
+- **`playbook_hash`** is a raw SHA-256 of the YAML file's bytes (see `_sha256_file(pb_path)` in `utils/historical_extractor.py`). It changes on *any* edit, including cosmetic ones (whitespace, key reorder, comment changes). It is stamped into `load_audit.playbook_hash` for traceability — *"which exact bytes were on disk when this extraction ran"* — but it is **not** what the dedup gate compares.
+- **`source_file_hash` (a.k.a. the *normalized data hash*)** is SHA-256 over a canonicalised content view of the *extracted Parquet*, with lineage stamps (`playbook_hash`, `git_commit_hash`, `extractor_version`, `extracted_at`, etc.) explicitly excluded. This is what the ingester's dedup gate compares against the previous successful load's hash. See `ingestion/hashing.py`.
+
+**Practical consequence.** A cosmetic edit to a playbook YAML changes `playbook_hash` but does **not** change `source_file_hash`, because the extractor reads the same fields the same way and produces the same Parquet content. So a re-extraction after a cosmetic edit still dedups cleanly at the ingester (a `SKIPPED_DUPLICATE` audit row is inserted with the new `playbook_hash` but no destructive section runs). What this means in practice: cosmetic edits do *not* require a version bump if the universe and metrics are unchanged, because the data the playbook produces is unchanged — but the `playbook_hash` provenance trail will still show the bytes were different on that run.
+
+### Coverage gates (the two distinct thresholds)
+
+Two independent gates protect the dataset from partial extractions. They are *not* the same gate at different points; they ask different questions against different baselines:
+
+| Gate | Where it runs | What it compares | Threshold | What happens on failure |
+|---|---|---|---|---|
+| **Extractor upload gate** | Inside the extractor, before any Parquet is written to GCS. | *Tickers successfully returned by the vendor* ÷ *tickers declared in the playbook's `universe`*. | **≥ 90%** | The extractor refuses to upload; no Parquet lands in `gs://…/data/`; nothing reaches the ingester. The extraction run is logged as failed for that playbook. |
+| **Ingester destructive gate** | Inside the ingester, after the incoming Parquet is hash-checked, before the critical (destructive) transaction. | *Unique instruments in the incoming Parquet* ÷ *unique instruments in the previous successful `load_audit` row*. | **≥ 80%** | The ingester aborts; marks the `load_audit` row `FAILED`; leaves prior `market_data_daily` and `instrument_master` data intact. Parquet stays in `gs://…/data/` for investigation. |
+
+The two thresholds are deliberately different. The 90% extractor gate is *pre-upload sanity* — catches transient vendor issues before they propagate. The 80% ingester gate is the *destructive-load safety* — protects historical data from being deleted if some upstream change shrinks the universe.
+
+Both thresholds are global and hardcoded in code today; per-playbook tuning is a known gap.
 
 ### First load vs. subsequent loads
 
-- The coverage gate compares incoming instrument count to the previous successful load's count. On the **very first load** there is no prior, and the gate trivially passes — but this is the only time it does so without comparison, so first loads warrant extra care.
+- The ingester's 80% gate compares incoming instrument count to the previous successful load's count. On the **very first load** there is no prior, and the gate trivially passes — but this is the only time it does so without comparison, so first loads warrant extra care.
+- The 90% extractor gate is still active on first loads (it compares against the playbook's own universe size), so it provides some protection. But it is not a substitute for manual verification on first load.
 - A first load of a new playbook should be done in `historical` mode against the full `extraction.start_date`. After the first successful load, subsequent runs default to `incremental` and re-fetch only `incremental_window_days` worth of recent data.
 
 ### Concurrent runs
@@ -225,7 +257,7 @@ There is no per-playbook locking today. Concurrent ingestion of the same playboo
 Auto-reject in review:
 
 - **Inline computation in the playbook.** *"Coupon × 100"*, *"if currency=USD then X"*. The playbook is declarative; derivations belong in primitives.
-- **A new top-level key.** The five top-level keys (`playbook_name`, `playbook_version`, `asset_class`, `dataset_name`, `description`, `extraction`, `target_metrics`, `reference_metrics`, `universe`) are the contract. Adding a new one is a P8 decision; file an ADR before introducing it.
+- **A new top-level key not in the eight-key contract.** The eight required top-level keys (`playbook_name`, `playbook_version`, `asset_class`, `dataset_name`, `description`, `extraction`, `target_metrics`, `reference_metrics`, `universe`) are the target contract. The current extractor tolerates a handful of legacy operational keys (see *Current behaviour vs. target contract* above); new playbooks SHOULD NOT use them. Adding a new contractual top-level key is a P8 decision; file an ADR before introducing it.
 - **A vendor mnemonic that looks made up.** *"BBG_YIELD_THING"*. Every `bloomberg_field` value must be a real, documented Bloomberg field. The extractor will fail at runtime; the review catches it earlier.
 - **Per-row fields that drift across rows in the same playbook.** If some rows have a `coupon` field and others don't, either (a) it is genuinely missing for the second set (then make that explicit with `coupon: null` and document why) or (b) it should be present for all and was forgotten. Drift breaks the JSONB merge in `attributes`.
 - **`is_active: false` rows used as a soft-delete mechanism.** If an instrument is no longer in the universe, remove the row and let the next ingestion's coverage gate handle it (or, if it would push you under the 80% gate, do a documented one-time threshold override). Carrying inactive rows pollutes downstream queries.
@@ -255,10 +287,15 @@ These are documented gaps; they do not affect the contract today but are flagged
 3. **Field-level reload.** When a `target_metric` is removed in a new playbook version and the load runs in historical mode, the prior data for that field is deleted alongside the still-active fields. Removing fields is currently a destructive operation — granular field-level versioning is a known gap.
 4. **Schema discipline on `attributes`.** No enforcement of shape. If a vendor adds a new label on a reference field, it lands in `attributes` silently. Primitives that assume a specific JSONB shape can break. Mitigation: each agent's playbook contract documents the `attributes` schema it relies on.
 5. **No "soft-deprecate" path for universe rows.** Removing a row triggers the coverage gate at 80%; large universe trims need either a one-time threshold override or a planned multi-step shrink.
-6. **Coverage threshold is global.** The 80% threshold is hard-coded in the ingester; per-playbook tuning is not yet supported. Some playbooks (e.g., declining-liquidity legacy markets) may warrant a different gate.
+6. **Coverage thresholds are global.** Both the 90% extractor-upload threshold and the 80% ingester-destructive threshold are hard-coded; per-playbook tuning is not yet supported. Some playbooks (e.g., declining-liquidity legacy markets, or universes with a known number of inactive tickers) may warrant different thresholds, or per-ticker-tier thresholds.
+
+7. **No strict playbook schema validation.** The loader is `yaml.safe_load` with defensive filtering — unknown top-level keys are silently tolerated, unknown per-row fields land in `attributes` JSONB without warning. A Pydantic playbook model (rejecting unexpected keys and validating per-row required fields) is a known follow-up that would let this document's contract be enforced mechanically.
+
+8. **`push_playbooks.py` is rates-hardcoded.** The sync script that uploads local YAML to GCS hard-codes `rates_agent/playbooks/`. Adding a second agent's playbooks requires either generalising this script (walk every `<agent>/playbooks/` folder) or running a per-agent equivalent. Tracked as part of the broader "make the operational path agent-agnostic" work.
 
 ## Version log
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1 | 2026-05-17 | Initial playbook contract. Universal top-level shape (five required keys + the universe block); the four ingestion guarantees (declarative, atomic, idempotent, coverage-gated); per-row field conventions (`ticker`, `instrument_type`, `country`, `currency`, `tenor`, family field); domain-extension policy via typed columns or `attributes` JSONB; vendor-mnemonic isolation (P7); per-agent ownership (P11); anti-patterns list; primitives–playbook boundary; six open questions captured. | (pending) |
+| v1.1 | 2026-05-17 | Nine factual corrections from pre-canonical review, each re-verified against the cited source files: (a) **Guarantee #1 (Declarative)** — softened the "loader rejects unexpected node types" claim; the loader is `yaml.safe_load` with defensive filtering; strict validator is a known follow-up. (b) **Guarantee #2 (Atomic)** — narrowed scope to *delete + market_data_daily upsert + audit-success flip* (which IS atomic per `with engine.begin() as conn:`); the audit-RUNNING insert and `instrument_master` upsert happen *outside* the critical transaction (deliberately, per the in-code comment, for retry idempotency and lock-window reasons). (c) **Guarantee #3 (Idempotent)** — corrected to *no duplicate `market_data_daily` rows*; a `SKIPPED_DUPLICATE` audit row IS inserted on a dedup hit by design (preserves audit trail). (d) **Guarantee #4 (Coverage-gated)** — restated as TWO distinct gates: 90% extractor-upload gate (in `historical_extractor.py` / `incremental_extractor.py`) and 80% ingester-destructive gate (in `ingest_parquet.py`); added a dedicated *Coverage gates* subsection with a side-by-side table. (e) **`target_metrics` storage** — corrected the claim that `metric_id` becomes `field_name`; the **vendor mnemonic** (`bloomberg_field`) becomes `field_name` in `market_data_daily`. (f) **Versioning** — distinguished `playbook_hash` (raw SHA-256 of YAML bytes) from `source_file_hash` / normalised data hash (canonicalised over Parquet content); cosmetic edits change `playbook_hash` but not the dedup hash. (g) **Universal contract count** — corrected "five top-level keys" (was listed as nine) to "eight required top-level keys"; added a "current behaviour vs. target contract" caveat acknowledging that the current extractor tolerates legacy operational keys (`vendor`, `default_instrument_type`, `bdh_kwargs`, etc.). (h) **Implementation reality** — added an explicit section near the top documenting the three places the current operational path is rates-first / Bloomberg-first (hardcoded `push_playbooks.py`, `blpapi`-dependent extractors, rates-shaped typed columns on `instrument_master`); flagged each as a tracked gap. (i) **Open questions** — added items 7 (no strict schema validator) and 8 (`push_playbooks.py` is rates-hardcoded). | (pending) |
+| v1 | 2026-05-17 | Initial playbook contract. Replaced by v1.1 the same day after a factual-review pass. | — |

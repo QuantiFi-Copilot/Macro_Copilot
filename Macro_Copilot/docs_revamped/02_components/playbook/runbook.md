@@ -2,7 +2,7 @@
 
 > Step-by-step procedure for adding a new playbook to an agent. Use this when you are introducing a new instrument family, a new asset class, or splitting an over-broad existing playbook.
 
-**Version:** v1
+**Version:** v1.1
 **Last reviewed:** 2026-05-17
 **Audience:** any contributor (human or AI agent) introducing a new playbook.
 **Prerequisite reading:** [`README.md`](README.md) in this folder — the contract every playbook honours. Read it once before starting; refer back when a step says *"per the contract."*
@@ -89,7 +89,30 @@ universe:
 
 **Domain-specific fields and `attributes`.** Any per-row field that is asset-class-specific and not already a typed column on `instrument_master` lands in the `attributes` JSONB after ingestion. The playbook still declares these fields explicitly per row; the ingester routes them. If a field becomes query-hot for the asset class, it gets promoted to a typed column via a schema migration in a separate PR (P8-flavoured; file an ADR for the migration).
 
-## Step 3 — Run the extraction
+## Step 3 — Sync the playbook to GCS (the GCP playbooks bucket)
+
+**This step is easy to miss and is the most common reason a first extraction "doesn't see" the new playbook.** The extractor does **not** read playbooks from your local working tree; it pulls them from the GCS playbooks prefix (`gs://macro-storage-bucket/playbooks/`). You must push the local YAML up first.
+
+The standard invocation:
+
+```bash
+python utils/push_playbooks.py
+```
+
+This walks the local `rates_agent/playbooks/` directory and uploads every `.yml` / `.yaml` file to `gs://macro-storage-bucket/playbooks/`.
+
+**Two operational warnings on `push_playbooks.py`:**
+
+1. **It is currently hardcoded to `rates_agent/playbooks/`.** If you are adding a playbook for a future non-rates agent (FX, credit, equities), the script as-shipped will not pick it up. The fix is either to generalise the script to walk every `<agent>/playbooks/` folder, or to run a per-agent equivalent. Treat this as a blocker for new-agent playbook work and address it in the same PR or as a documented prerequisite.
+2. **It overwrites by filename.** A push will replace whatever YAML currently exists at that GCS path. There is no version checking at the sync layer. The version discipline lives at the `playbook_version` field inside the file (and is stamped into `load_audit` on every extraction).
+
+After the sync, verify the playbook is in the bucket:
+
+```bash
+gsutil ls gs://macro-storage-bucket/playbooks/ | grep <playbook_name>
+```
+
+## Step 4 — Run the extraction
 
 Run the historical extractor against the new playbook. The standard invocation:
 
@@ -101,27 +124,30 @@ python utils/historical_extractor.py --playbook <playbook_name>
 
 The extractor:
 
-1. Loads the playbook YAML.
-2. Validates its shape (the top-level keys + the per-row required fields).
-3. Pulls each `target_metric` and `reference_metric` from the source-of-record vendor for every ticker in `universe`, over the date range `[start_date, today]`.
-4. Computes the playbook hash and the source-file (content) hash.
-5. Writes a Parquet file to object storage with provenance columns (`playbook_hash`, `git_commit_hash`, `extractor_version`, `extracted_at`, `source_file`).
+1. **Pulls all playbook YAMLs from GCS** into a temp directory (filtered to `--playbook` if specified).
+2. Loads each YAML via `yaml.safe_load`.
+3. Filters universe rows to those carrying a `ticker`; filters target metrics to those carrying a `bloomberg_field`. (No strict schema validator today — see the README's *Implementation reality* section.)
+4. Pulls each `target_metric` and `reference_metric` from the source-of-record vendor (Bloomberg today) for every ticker in `universe`, over the date range `[start_date, today]`.
+5. Computes the **raw `playbook_hash`** (SHA-256 of the YAML bytes) — used for provenance stamping in `load_audit`.
+6. Runs the **extractor's 90% coverage gate**: if fewer than 90% of `universe` tickers returned data, the extractor refuses to upload the Parquet at all.
+7. If the gate passes, writes a Parquet file to GCS under `gs://macro-storage-bucket/data/` with provenance columns (`playbook_hash`, `git_commit_hash`, `extractor_version`, `extracted_at`, `source_file`, etc.).
 
-If the extractor reports a coverage ratio significantly below 100% (e.g., many tickers returned zero rows), stop and investigate **before** running the ingestion. The 80% gate at ingestion time is the floor, not the target.
+If the extractor aborts on the 90% gate, do not relax the threshold to push past it. Diagnose the failed tickers first (often a vendor field is wrong, or a ticker has been retired). The 90% gate exists to stop a partial extraction from ever reaching the ingester; bypassing it defeats its purpose.
 
-## Step 4 — Run the ingestion
+## Step 5 — Run the ingestion
 
 Trigger ingestion. The ingester:
 
-1. Lists Parquet files for this playbook.
-2. Computes the content hash and compares to the latest successful `load_audit` for the same `playbook_name`. If they match, the load is skipped with status `SKIPPED_DUPLICATE` — that is the idempotency contract (Guarantee #3 in the contract).
-3. Inserts a `load_audit` row with `status = RUNNING`.
-4. Runs the **coverage gate**: counts the unique instruments in the incoming Parquet, compares to the previous successful load's count. If the ratio is below 0.8, aborts the load, marks the audit `FAILED`, leaves all prior data intact.
-5. If the coverage gate passes, enters the atomic transaction: upserts to `instrument_master`, deletes prior `market_data_daily` rows (full scope in historical mode, window only in incremental), upserts the new daily rows, flips `load_audit` status to `SUCCESS`. All in one Postgres transaction. Failure anywhere rolls everything back.
+1. Lists Parquet files for this playbook in `gs://macro-storage-bucket/data/`.
+2. Computes the **normalised content hash** (over the Parquet content, excluding lineage stamps) and compares it to the `source_file_hash` of the latest successful `load_audit` row for the same `playbook_name`. If they match, **a fresh `SKIPPED_DUPLICATE` row is still inserted into `load_audit`** (so the audit trail records the dedup event) and the destructive section is skipped — that is the idempotency contract (Guarantee #3 in the contract).
+3. If not a duplicate, inserts a `load_audit` row with `status = RUNNING` (this insert is **outside** the destructive transaction — so it persists even if the destructive section later rolls back, leaving a `RUNNING` row that the outer handler flips to `FAILED`).
+4. Upserts `instrument_master` (also **outside** the destructive transaction — idempotent on `(vendor, vendor_ticker)`).
+5. Runs the **ingester's 80% destructive coverage gate**: counts the unique instruments in the incoming Parquet, compares to the previous successful load's count. If the ratio is below 0.8, aborts the load, marks the audit `FAILED`, leaves all prior `market_data_daily` data intact.
+6. If the destructive gate passes, enters the **critical (destructive) transaction**: deletes prior `market_data_daily` rows (full scope in `historical` mode, window only in `incremental`), upserts the new daily rows, flips `load_audit.status` to `SUCCESS`. All three operations inside one `with engine.begin() as conn:` block. Failure anywhere inside this block rolls all three back; the outer exception handler then flips the (already-persisted) audit row from `RUNNING` to `FAILED` on a separate transaction.
 
-**First load reality check.** On the very first load of a new playbook, there is no previous successful load to compare against — the coverage gate trivially passes. **This is the only run where the gate provides no protection.** Treat the first load with extra care: verify the universe count matches your Pre-flight Decision 4, verify the date range coverage is what you expected, verify the loaded fields are populated for all tickers (not just for some).
+**First-load reality check.** On the very first load of a new playbook, there is no previous successful load to compare against — the ingester's 80% destructive gate trivially passes. The extractor's 90% gate still applies (it compares against the playbook's own universe), but neither gate gives you ticker-level data-quality assurance on first load. **Treat the first load with extra care:** verify the universe count matches your Pre-flight Decision 4, verify the date range coverage is what you expected, verify the loaded fields are populated for all tickers (not just for some). Step 6 below is the verification list.
 
-## Step 5 — Verify
+## Step 6 — Verify
 
 Before declaring the playbook live, verify:
 
@@ -129,9 +155,9 @@ Before declaring the playbook live, verify:
 2. **Field coverage per ticker.** For each `target_metric`, every ticker has at least the expected number of days of data. The schema does not enforce this; you check it manually on first load.
 3. **Reference fields.** `attributes` JSONB on `instrument_master` carries every domain-specific field you declared in the playbook, with no silent drops.
 4. **Audit row.** `SELECT * FROM macro_data.load_audit WHERE playbook_name = '<your_name>' ORDER BY ingested_at DESC LIMIT 1;` shows `status = 'SUCCESS'`, a non-empty `playbook_hash`, and a non-empty `source_file_hash`.
-5. **Hash stability re-run.** Re-run the ingestion on the same Parquet. The second run should land with status `SKIPPED_DUPLICATE` (idempotency contract, Guarantee #3). If it does not, the content-hash logic has a bug and the playbook does not yet satisfy P4 — block the merge until fixed.
+5. **Dedup re-run check.** Re-run the ingestion on the same Parquet (or run the extractor + ingestion sequence a second time without any data changes). The second ingestion run should insert a fresh `SKIPPED_DUPLICATE` row into `load_audit` with the same `source_file_hash` as the first successful run, and the destructive section should not execute (no row count change in `market_data_daily`). If the destructive section runs again (re-deletes and re-inserts), the content-hash logic has a bug and the playbook does not yet satisfy P4 — block the merge until fixed.
 
-## Step 6 — Wire downstream
+## Step 7 — Wire downstream
 
 A playbook only adds value once primitives use it. Confirm at least one of the following is true at merge time, or open a follow-up:
 
@@ -145,14 +171,16 @@ If a playbook is genuinely needed for analytical reach the platform has not yet 
 
 Things reviewers see repeatedly:
 
+- **Forgetting Step 3 (sync to GCS).** The most common first-time failure: the playbook is committed locally, the extractor is run, and nothing happens because the extractor never sees the new YAML — it reads from `gs://macro-storage-bucket/playbooks/`, not from the local working tree. Always `python utils/push_playbooks.py` before the extractor. (And remember the script is rates-hardcoded — see Step 3's warnings.)
 - **Inconsistent family field across rows.** Some rows have `curve_family: UST`, others have `curve_family: ust` (case drift), others omit it entirely. Primitives filter by exact match — these instruments will be invisible. Lint the file before committing.
 - **A `start_date` earlier than the vendor's live data for the instrument.** The extractor will return empty rows for the early years; the audit row's `requested_start_date` will not match the real data start. Investigate vendor-side coverage before picking the date.
-- **Forgetting to bump `playbook_version`.** A version of `1.0` on an edit that adds new rows produces a misleading audit trail (the new rows look like they were always there). Bump on every content change.
-- **Adding a top-level key the contract does not have.** The five top-level keys are the universal contract. Adding a sixth is a P8 decision and requires an ADR.
+- **Forgetting to bump `playbook_version` on a content-affecting change.** Cosmetic edits do not require a bump (the normalised dedup hash is unchanged), but adding/removing rows or metrics does. A wrong-version audit trail makes historical replay misleading.
+- **Adding a new top-level key not in the eight-key contract.** The current extractor tolerates a handful of legacy operational keys, but new playbooks should not lean on them. A new *contractual* top-level key is a P8 decision and requires an ADR.
 - **Universe rows that are duplicates by `ticker`.** The unique key on `instrument_master` is `(vendor, vendor_ticker)`. Two rows with the same ticker will collide on upsert; the second wins, the first is silently lost. Deduplicate in the YAML.
 - **Using `is_active: false` as a soft delete.** Per the contract, just remove the row. Carrying inactive rows pollutes downstream queries.
 - **Treating `attributes` as a junk drawer.** Every JSONB field has implicit downstream consumers. Document the shape your playbook expects in the PR description, and confirm no primitive is silently broken by the new shape.
-- **Skipping the first-load verification (Step 5).** The coverage gate does not run on the first load — Step 5 is your only protection. Reviewers should see the verification queries and their outputs in the PR description.
+- **Skipping the first-load verification (Step 6).** Neither gate gives you ticker-level data-quality assurance on first load — Step 6 is your only protection. Reviewers should see the verification queries and their outputs in the PR description.
+- **Bypassing the 90% extractor gate by ad-hoc lowering the threshold.** The gate exists to stop a partial extraction from ever reaching the ingester. Diagnose the failed tickers; do not lower the threshold to push past them.
 
 ## PR review checklist
 
@@ -161,14 +189,15 @@ The reviewer signs off when each item is met. Cite the matching principle by ID;
 - [ ] **Pre-flight Decision 1–6** answered explicitly in the PR description.
 - [ ] **P11.** Playbook lives under the correct `<agent>/playbooks/` folder; not shared across agents.
 - [ ] **P8 (if applicable).** A new `asset_class` value is accompanied by an ADR.
-- [ ] **Contract — top-level keys.** All five required top-level keys are present; no extra top-level keys; the order is conventional.
+- [ ] **Contract — top-level keys.** All eight required top-level keys are present; the playbook does not introduce new contractual top-level keys; if any of the legacy operational keys (`vendor`, `default_instrument_type`, `bdh_kwargs`, etc.) appear, the PR description justifies why.
 - [ ] **Contract — required per-row fields.** Every row in `universe` carries `ticker` and `instrument_type`. The family field is present consistently across every row.
 - [ ] **Vendor mnemonics.** Every `bloomberg_field` value is a real, documented field.
 - [ ] **P1.** No `is_active: false` rows, no `# TODO: fix in v2` comments without a linked roadmap item, no placeholder universe rows ("just an example").
-- [ ] **P4 idempotency.** Step 5's re-run check shows `SKIPPED_DUPLICATE` on the second ingestion.
-- [ ] **Atomicity verified.** Step 4's audit row shows `SUCCESS`; no orphan `RUNNING` row from a failed prior attempt.
-- [ ] **First-load verification.** Step 5's row counts, field coverage, and audit-row inspection are in the PR description.
-- [ ] **Downstream wired.** Step 6 — primitive consumers either exist or are explicitly planned in a linked follow-up issue.
+- [ ] **Step 3 done.** The local YAML has been synced to `gs://macro-storage-bucket/playbooks/` via `python utils/push_playbooks.py`. For a non-rates agent, any required `push_playbooks.py` generalisation is in this PR or an explicit prerequisite PR.
+- [ ] **P4 idempotency.** Step 6's dedup re-run check shows a fresh `SKIPPED_DUPLICATE` audit row with matching `source_file_hash` on the second ingestion; no destructive section runs.
+- [ ] **Atomicity verified.** Step 5's audit row shows `SUCCESS`; no orphan `RUNNING` row from a failed prior attempt.
+- [ ] **First-load verification.** Step 6's row counts, field coverage, and audit-row inspection are in the PR description.
+- [ ] **Downstream wired.** Step 7 — primitive consumers either exist or are explicitly planned in a linked follow-up issue.
 - [ ] **No `attributes` schema drift.** If the playbook introduces a new JSONB field shape, the expected schema is documented in the PR description and no existing primitive is broken by the addition.
 - [ ] **Description.** The playbook's `description` block is one paragraph, names what is covered and what is not.
 - [ ] **AC6.** Commit message ends with `Operationalises: P1, P3, P4, P5, P7, P11; AC1, AC3, AC5, AC6.` (adjust IDs to whichever apply).
@@ -177,4 +206,5 @@ The reviewer signs off when each item is met. Cite the matching principle by ID;
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1 | 2026-05-17 | Initial runbook for adding a new playbook. Pre-flight check (six decisions before any YAML), six-step procedure (location → draft → extract → ingest → verify → wire), common-pitfalls list, PR review checklist with principle-ID citations. | (pending) |
+| v1.1 | 2026-05-17 | Restructured to match the README's v1.1 factual corrections: (a) Inserted **Step 3 — Sync to GCS** as a first-class step (was the most common first-time failure: the extractor reads from `gs://…/playbooks/`, not the local working tree); flagged `push_playbooks.py`'s rates-hardcode as an operational gap for non-rates agents. (b) Renumbered the extraction / ingestion / verify / wire steps to 4 / 5 / 6 / 7; tightened the extractor description to name the actual YAML loader (`yaml.safe_load` with defensive filtering, no strict schema) and the 90% upload gate. (c) Tightened the ingester description to name the two coverage gates explicitly, clarify that the audit-RUNNING insert and `instrument_master` upsert happen outside the destructive transaction, and clarify that dedup re-runs insert a fresh `SKIPPED_DUPLICATE` audit row. (d) Common-pitfalls list updated: added "forgot Step 3 (sync to GCS)" as the leading pitfall; added "bypassing the 90% extractor gate." (e) PR review checklist: added a "Step 3 done" item; updated the top-level-keys check to match the README's eight-keys-plus-legacy-tolerance framing. | (pending) |
+| v1 | 2026-05-17 | Initial runbook for adding a new playbook. Replaced by v1.1 the same day after a factual-review pass aligned with the README's corrections. | — |
