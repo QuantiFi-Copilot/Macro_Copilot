@@ -141,7 +141,7 @@ This documentation tree is in the process of being populated. The shell is in pl
 | `02_components/workflow_template/` (README + runbook) | ✅ written (WT1–WT16) |
 | `02_components/workspace/` | ⏳ pending |
 | `02_components/orchestration/` | ⏳ pending |
-| `03_standards/` | ⏳ pending |
+| `03_standards/` (README + 9 lateral files) | ✅ written (naming_conventions, file_and_folder_layout, typed_boundary_discipline, error_handling, test_patterns, methodology_disclosure, hash_determinism, closed_family_discipline, code_review_checklist) |
 | `04_quality_and_evals/` | ⏳ pending |
 | `05_decisions/` | ⏳ pending |
 | `06_roadmap/` | ⏳ pending |

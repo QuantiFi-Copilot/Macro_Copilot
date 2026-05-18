@@ -2,8 +2,8 @@
 
 > The contract every workflow template in the Macro Copilot platform must satisfy — what makes something a valid template at all, what makes a particular template well-formed, and the principles that govern when (and how) a new template (or a new archetype) may be added. **Asset-class-blind by construction** — workflow templates compose finance-blind operators around finance-aware primitives via slot bindings; the *template's substrate* (nodes + edges + operators) is asset-class-blind, while the asset-class specificity lives inside the slot-bound primitive choices and the human-readable naming.
 
-**Version:** v1
-**Last reviewed:** 2026-05-17
+**Version:** v1.1
+**Last reviewed:** 2026-05-18
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
 **Operationalises principles:** P1 (built right, not as a placeholder), P3 (consistency by contract — every template has the same shape), P4 (determinism — bound templates are content-addressed by the lineage of their terminal artifact), P5 (honest disclosure — methodology lives in YAML on the card, not in code), **P8 (closed-family discipline — the *archetype* family is closed; the *template* catalogue is open within that family)**, P9 (asset-class-blind substrate — the operator DAG never branches on asset class), P10 (single source of truth — `WORKFLOW_ARCHETYPES` and `SlotDeclaration.type` are the only valid enumerations), P11 (sibling-isolated agent packages — templates live under `<agent>/workflows/`, never under `shared/`).
 **See also:** [`runbook.md`](runbook.md) — the procedure for adding a new template (or a new archetype, which is the heavier closed-family extension).
@@ -93,7 +93,7 @@ SlotDeclaration.type ∈ {"str", "int", "float", "bool", "dict", "list"}
 
 The closed slot-constraint family today has exactly one variant: `RelativeOrderConstraint`. Future variants (`mutual_exclusion`, `conditional_required`, `set_membership`, `regex_match`) are reserved per the constraint-union design but not yet implemented.
 
-A bound `WorkflowTemplate` produces a `Workflow` (substrate-level concrete DAG, [`shared/workflow/types.py`](../../../shared/workflow/types.py)). The executor (`execute_workflow(workflow)` in [`shared/workflow/executor.py`](../../../shared/workflow/executor.py)) runs the DAG in topological order, persists intermediate artifacts, and returns a `WorkflowResult` whose `terminal_artifact` is the user-facing deliverable.
+A bound `WorkflowTemplate` produces a `Workflow` (substrate-level concrete DAG, [`shared/workflow/types.py`](../../../shared/workflow/types.py)). The executor (`execute_workflow(workflow)` in [`shared/workflow/executor.py`](../../../shared/workflow/executor.py)) runs the DAG in topological order, holds every intermediate artifact in an in-memory `node_artifacts` dict, and returns a `WorkflowResult` whose `terminal_artifact` is the user-facing deliverable plus the full intermediate set keyed by `node_id`. Persistence of artifacts to the artifact store (if any) happens at a higher layer than the executor itself; the executor's contract is in-memory only.
 
 ## What a workflow template is *not*
 
@@ -103,7 +103,7 @@ Six boundary statements that prevent common misclassifications:
 - **Not a script.** A template does not run code at parse time. It declares structure; the executor runs it. No template's `template.yaml` may reference Python callables or import side-effects.
 - **Not a primitive.** Primitives are finance-aware compute (rates_agent/primitives/...). Templates compose primitives via node entries, but they do not own compute. A "small workflow" with one primitive node and one operator is still a template, not a primitive — what matters is the DAG declaration, not the size.
 - **Not an operator.** Operators are finance-blind structural transformations. Templates compose operators; they are not operators themselves. A template never appears in `OPERATOR_REGISTRY`.
-- **Not a UI component.** Templates produce artifacts; the UI renders artifacts. The template's terminal artifact type (e.g. `Series`, `Panel`, `TradeSet`) is what the UI binds against — the template itself has no rendering logic.
+- **Not a UI component.** Templates produce artifacts; the UI renders artifacts. The template's terminal artifact type (a member of the substrate's `TerminalArtifact` union — today `Series`, `SeriesSet`, `EventSet`, `Panel`, or `WindowedPanel` per [`shared/workflow/result.py`](../../../shared/workflow/result.py)) is what the UI binds against — the template itself has no rendering logic. `TradeSet` is not currently in the executor's terminal-artifact union; a template ending at `construct_trades` would need to thread a downstream operator (e.g. `evaluate_trades` → `summarize_trades`) before the terminal can be returned.
 - **Not optional.** Every workflow served to a user runs through some template (or through the open-graph path, which is gated separately). The template catalogue *is* the platform's analysis catalogue.
 
 ## How to use this document
@@ -129,7 +129,7 @@ For ongoing work: do not re-read this file from top to bottom. Look up the speci
 | **WT11** | III | Typed edges + closed-family artifact hand-offs | Every edge declares `target_input_slot` matching a real `OperatorSpec.input_slots` entry; the validator confirms the source node's output artifact type is compatible with the target slot's declared type. List-shaped slots (`"List[Series]"`) aggregate multiple edges with the same `(target_node_id, target_input_slot)` pair into a single list at execution time. |
 | **WT12** | III | Bind-time loud, runtime loud — no silent fallback | Missing slot, unknown slot, type mismatch, or constraint violation raises `SlotBindingError` at `bind()` *before* a `Workflow` is constructed. Primitive/operator runtime failures raise `WorkflowExecutionError` wrapped with workflow + node context. No silent defaults; no swallowed exceptions; no envelopes. |
 | **WT13** | IV | Methodology disclosure via the TemplateCard | Every template surfaces a `TemplateCard` (derived automatically via `card_for_template(template)`) with `archetype`, `description`, `slot_schema`, `terminal_artifact_type`, `primitives_used`, `operators_used`, `node_count`, `edge_count`, `archetype_signature`. The card is the LLM-facing and (eventually) UI-facing methodology surface. Nothing about the template's structure is hidden from the card. |
-| **WT14** | IV | Archetype signature for LLM selection | Every template declares 4–10 `archetype_signature` cues — short structural phrases (≤120 chars each) the LLM matches against user prompts during template selection. Cues are author-defined natural-language patterns in desk vocabulary, not free-form prose. Empty signature lists are permitted by the schema but operationally disqualifying — the template is unselectable. |
+| **WT14** | IV | Archetype signature for LLM selection | Every user-facing template declares 4–10 `archetype_signature` cues — short structural phrases (≤120 chars each) the LLM matches against user prompts during template selection. The substrate permits empty / single-cue signatures (loader-permissive); the 4–10 range is a review-gate norm. Empty signatures are operationally disqualifying for the user-facing catalogue. |
 | **WT15** | IV | Test pattern | Every template ships with: structural-validity tests (template loads, registers, passes validators), slot-binding-rejection tests (missing/unknown/wrong-type/constraint-violation each raise `SlotBindingError`), real-data E2E test with the agent's primitive resolver, **mandatory instrument-agnostic test** (same template runs unchanged against a finance-blind synthetic resolver), and a topology-archetype-fit gate (operators used are appropriate for the declared archetype). |
 | **WT16** | IV | Registration discipline — auto-register at import, idempotent | Every template's `<agent>/workflows/<template>/__init__.py` calls `register_template(template)` on module import. Registration is idempotent (re-registering identical content is a no-op); re-registration with different content raises. Tests use `clear_template_registry()` between runs to isolate state. |
 
@@ -193,31 +193,37 @@ Two archetypes (`attribution_decomposition`, `cross_sectional_screen`) are in th
 
 **Relates to.** [P8](../../00_thesis/01_non_negotiables.md), [P11](../../00_thesis/01_non_negotiables.md). Operator analog is [OPR3](../operator/README.md#opr3--shared-residence) (operators live at `shared/operators/`); template analog: templates live at `<agent>/workflows/`, not `shared/workflows/`, because each template is asset-class-aware in its slot-bound primitive choices even though the substrate it composes is asset-class-blind.
 
-### WT3 — Asset-class-blind substrate
+### WT3 — Asset-class-blind operator topology; agent-scoped literal primitives are a documented tradeoff
 
-**Rule.** A template's *substrate* — the operator DAG topology, the artifact types flowing between operators, the validator's checks — is **asset-class-blind**. Asset-class specificity lives in three permitted places, and only those three:
+**Rule.** A template's **operator substrate** — the operator names in the DAG, the edge structure, the artifact types flowing between operators, the validator's type-compatibility checks — is **asset-class-blind**. Asset-class specificity in a template is permitted only in:
 
-1. **Slot-bound primitive choices.** A `PrimitiveNodeTemplate` whose `tool_name` is `{$slot: signal_tool_name}` is asset-class-blind at the template level; the *selected* primitive (e.g. `calculate_ois_curve_spread_tool` for rates) is asset-class-specific, but the template only knows it through the bind-time slot value.
+1. **Primitive `tool_name` values (literal *or* `{$slot: ...}`).** A `PrimitiveNodeTemplate.tool_name` may be either a `{$slot: ...}` reference (the asset-class-blind path — the *selected* primitive at bind time is asset-class-specific, but the template structure is not) **or** a literal primitive name (the agent-scoped path — the template's analysis genuinely requires a specific primitive of that agent, and the template is by construction agent-scoped). The first path is preferred for templates whose analysis is structurally cross-asset; the second is an accepted tradeoff for templates whose analysis is intrinsically tied to a specific primitive (e.g., `backtest` hardcodes `build_sovereign_yield_panel_tool` and `compute_financing_rate_tool` because the analysis requires a sovereign-yield price panel and a financing-rate panel — these are not abstractions the template can defer to bind-time choice).
 2. **Human-readable naming + description.** The template's natural-language description, slot descriptions, and `archetype_signature` cues may use asset-class vocabulary (rates terminology in `rates_agent/workflows/`, FX terminology in a future `fx_agent/workflows/`, etc.). That is desk-readable language, not type-level reasoning.
-3. **Folder placement under the agent.** A template at `rates_agent/workflows/event_study/` is rates-scoped by its agent's primitive resolver; a future `fx_agent/workflows/event_study/` would be FX-scoped by the FX resolver. The *template structure* is identical; the *resolver context* differs.
+3. **Folder placement under the agent.** A template at `rates_agent/workflows/event_study/` is rates-scoped by its agent's primitive resolver; a future `fx_agent/workflows/event_study/` would be FX-scoped by the FX resolver. The *operator substrate* is identical; the *resolver context* differs.
 
-Within the YAML, the substrate that links nodes through edges must work unchanged for any asset class.
+Within the YAML, the operator DAG and edge structure must work unchanged for any asset class even when some primitive nodes are literal.
 
-**Why.** [P9](../../00_thesis/01_non_negotiables.md) (asset-class-blind operator substrate) at the workflow layer. Templates are how that substrate becomes a user-facing analysis; if templates branched on asset class at the topology level, the platform's cross-asset claim would collapse at the highest layer. Concretely: the proof that an event_study template "works on FX" is that the *same* `template.yaml`, executed with an FX-aware resolver and FX-shaped slot values, produces a structurally correct artifact. WT15's mandatory instrument-agnostic test is what enforces this in practice.
+**Why.** [P9](../../00_thesis/01_non_negotiables.md) (asset-class-blind operator substrate) at the workflow layer. Templates are how that substrate becomes a user-facing analysis; if templates branched on asset class at the *operator* layer, the platform's cross-asset claim would collapse at the highest layer.
+
+The distinction between "operator substrate" and "primitive nodes" is load-bearing. Operators are finance-blind by contract (OPR6); their composition is what makes a template's analysis structurally meaningful for any asset class. Primitives are finance-aware by contract (PR1); a template that binds a literal primitive name is an explicit, reviewable choice to scope the template to that primitive's domain — the template's *operator substrate* is still finance-blind, but the *template as a whole* is agent-scoped.
+
+WT15's mandatory instrument-agnostic test verifies the **operator substrate's** asset-class-blindness: the test runs the same template against a synthetic primitive resolver. For templates whose `tool_name` fields are all slot-substituted, the test runs end-to-end with synthetic primitives wired in by name. For templates with literal primitives (e.g. `backtest`), the synthetic resolver patches each literal primitive's data-fetcher so the substrate runs unchanged with synthetic data — the operator chain still proves asset-class-blind even though the primitive selection is fixed.
 
 **Verify.**
 - No operator in the DAG branches on asset class (already enforced at the operator layer by OPR6).
 - No edge's `target_input_slot` is asset-class-specific (operator slot names are structural, e.g. `series_list`, `events`, `target`, `panel`, never `rates_panel`).
-- The template's `nodes` + `edges` + `terminal_node_id` are structurally meaningful even when re-bound to non-rates primitives (the instrument-agnostic test from WT15 proves this).
+- Every literal `tool_name` in the template is documented in the YAML comments with the rationale for not slot-substituting it (the analysis intrinsically requires this primitive).
+- The template's operator substrate is structurally meaningful when re-bound — either via slot substitution OR via fetcher patches on the literal primitives — to produce non-rates synthetic data (the instrument-agnostic test from WT15 proves this).
 
 **Anti-patterns.**
 - Hardcoded asset-class concepts in operator names within the template (`operator_name: align_rates_series` — there is no such operator; the right thing is `align_series`).
 - A `node_id` that embeds asset-class vocabulary in a way that suggests the substrate cares (`node_id: rates_curve_event` vs the asset-class-blind `node_id: events`).
 - A template that imports from another agent's package (`from fx_agent.primitives import ...`). Templates compose primitives via the resolver indirection, never via direct import (P11 violation).
+- A literal `tool_name` *without* a rationale comment in the YAML. If the choice not to slot-substitute is deliberate, document it; otherwise convert to `{$slot: ...}`.
 
 **Exceptions.** Asset-class vocabulary is permitted (and expected) in `description`, slot `description` fields, `archetype_signature` cues, and the canonical-V1-binding comment block at the top of `template.yaml`. Those surfaces are for human + LLM understanding, not for substrate dispatch.
 
-**Relates to.** [P9](../../00_thesis/01_non_negotiables.md), [P11](../../00_thesis/01_non_negotiables.md), [OPR6](../operator/README.md#opr6--asset-class--domain-blind-contract), [ART3](../artifact/README.md#art3--asset-class-blind-types). The asset-class-blindness chain runs from operators (OPR6) and artifact types (ART3) up through templates (WT3); a violation at any layer breaks the chain.
+**Relates to.** [P9](../../00_thesis/01_non_negotiables.md), [P11](../../00_thesis/01_non_negotiables.md), [OPR6](../operator/README.md#opr6--asset-class--domain-blind-contract), [ART3](../artifact/README.md#art3--asset-class-blind-types). The asset-class-blindness chain runs from operators (OPR6) and artifact types (ART3) up through templates (WT3); a violation at the operator layer breaks the chain. A literal primitive node in a template does not break the chain — it is a documented agent-scoping decision.
 
 ---
 
@@ -281,7 +287,7 @@ The "sibling template" pattern also makes versioning + retirement clean: depreca
 **Rule.** A new template is admitted only when:
 
 1. **It owns a clear archetype (WT1).** The `archetype` field is set; the cues, description, and topology are consistent with that archetype.
-2. **Every node it references exists in the substrate.** Every operator name in the `nodes` list resolves to an entry in `OPERATOR_REGISTRY`; every primitive tool name (whether literal or slot-substitutable via WT7's allowance) is reachable via the agent's primitive resolver — verified at template-loader / validator time.
+2. **Every node it references exists in the substrate.** Every operator name in the `nodes` list resolves to an entry in `OPERATOR_REGISTRY` — checked by `validate_workflow(workflow)`. Every primitive tool name (whether literal or slot-substituted at bind time) is reachable via the agent's primitive resolver — checked by `validate_workflow(workflow, primitive_resolver=<agent>_primitive_resolver)`. The loader (`load_workflow_template`) only parses YAML into `WorkflowTemplate`; primitive / operator resolvability is checked at validate time, **after binding**, when the resolver is supplied.
 3. **Every edge's source-output type matches the target-slot's declared type (WT11).** The substrate's `validate_workflow()` runs before any execution and rejects type-incompatible compositions.
 4. **The terminal artifact has a real consumer.** Either the UI surface renders this template's `terminal_artifact_type`, or a downstream workflow consumes it, or the terminal is a workspace artifact users can inspect. A template whose output is never read is dead catalogue.
 
@@ -409,32 +415,37 @@ The `dict` and `list` types are the catch-alls for compound values: a `SeriesSpe
 
 **Rule.** Every template declares exactly one `terminal_node_id`, a string identifying a real node in the DAG. The terminal node's output artifact is the workflow's terminal artifact — the user-facing deliverable.
 
-The terminal artifact's type (a closed-family `ArtifactTypeLiteral`) is derived automatically:
+The terminal artifact's type (a closed-family `ArtifactTypeLiteral`) is derived automatically by `card_for_template(template)` (see [`shared/workflow/template_card.py`](../../../shared/workflow/template_card.py)):
 
-- If the terminal node is a `PrimitiveNodeTemplate`, the terminal artifact type is `"Series"` (or `"Panel"`, depending on the primitive's bridge — single-series primitives go through the Series bridge; multi-series primitives go through the Panel bridge).
+- If the terminal node is a `PrimitiveNodeTemplate`, the card hardcodes the terminal artifact type as `"Series"`. (The bridge invariant the card is keyed off — primitive-terminal templates have always used the Series bridge in v1; Panel-terminal templates terminate at an operator that emits `Panel`.)
 - If the terminal node is an `OperatorNodeTemplate`, the terminal artifact type is the operator's declared `OperatorSpec.output_type`.
 
 The terminal artifact type surfaces on the `TemplateCard` (WT13) so the LLM, the UI, and the catalogue all know what kind of result the template produces.
 
-The template-loader and the substrate validator together check three reachability invariants:
+**Substrate-enforced invariant (loader-time, today):** `Workflow.__init__` checks that `terminal_node_id` matches a `node_id` in the `nodes` list (see [`shared/workflow/types.py`](../../../shared/workflow/types.py)). A typo or dangling reference raises `ValueError` at construction.
 
-1. **`terminal_node_id` references a real node.** A typo / dangling reference is rejected at load time.
-2. **The terminal node has at least one inbound edge** (unless it is a `PrimitiveNodeTemplate` and thus has no inbound edges by contract).
-3. **The terminal node is reachable from the DAG's roots** — there is at least one path from a node with zero inbound edges to the terminal node.
+**Review-gate invariants (not loader-enforced today; reviewer must check):**
+
+1. **The terminal node has at least one inbound edge** unless it is a `PrimitiveNodeTemplate` (which has no inbound edges by contract). A template with an isolated "future use" operator-typed terminal is a deferred-implementation gap, not a runtime crash — the executor will raise an unrelated error when it gets to that node — but the reviewer catches it first.
+2. **The terminal node is reachable from the DAG's roots.** Equivalent to (1) for connected DAGs; named separately because future multi-terminal-candidate templates may make the distinction matter.
+
+The substrate's `validate_workflow()` (see [`shared/workflow/validate.py`](../../../shared/workflow/validate.py)) does check cycle-freeness, operator existence, slot completeness, type compatibility, and primitive resolvability (when a `primitive_resolver` is supplied). It does not currently enforce terminal-reachability; that check is a planned substrate addition tracked in the open-questions list below. Until then, the review gate is the enforcement mechanism.
 
 **Why.** A template without a clear terminal artifact is a workflow that does something but produces nothing. The terminal-node discipline is what makes the workflow's *output contract* explicit: the UI and the LLM both bind against the terminal artifact's type, so any ambiguity here breaks both.
 
 The derivation rule (terminal type from terminal operator's `output_type`) is what keeps templates honest under operator changes — if an operator's `output_type` changes, every template whose terminal is that operator changes too, in lockstep.
 
 **Verify.**
-- `terminal_node_id` matches a `node_id` in the `nodes` list.
-- The terminal node is reachable from at least one root in the DAG.
-- `card_for_template(template).terminal_artifact_type` is a member of `ARTIFACT_TYPE_NAMES`.
+- `terminal_node_id` matches a `node_id` in the `nodes` list (substrate-enforced).
+- The terminal node is reachable from at least one root in the DAG (review gate).
+- `card_for_template(template).terminal_artifact_type` is a member of `ARTIFACT_TYPE_NAMES` (or `"Series"` for primitive-terminal templates).
 - If the terminal is an operator, `card_for_template(template).terminal_artifact_type == OPERATOR_REGISTRY[operator_name].output_type`.
+- The terminal artifact type is a member of the executor's `TerminalArtifact` union (`Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`). A template whose terminal type is outside that union (e.g. `TradeSet` from a `construct_trades` terminal) will not deserialize into the substrate's `WorkflowResult` and must thread a downstream operator first.
 
 **Anti-patterns.**
 - A template with `terminal_node_id: summarize` but no node with `node_id: summarize`. Loader rejects.
-- A template whose terminal node is unreachable (an isolated "future use" node attached to nothing). Validator rejects.
+- A template whose terminal node is unreachable (an isolated "future use" node attached to nothing). Review gate rejects; runtime fails later if it slips through.
+- A template whose terminal operator emits `TradeSet`. `WorkflowResult.terminal_artifact`'s union excludes `TradeSet`; thread an evaluator/summariser downstream.
 - A template with two terminal nodes (the schema only allows one; in practice this would be two analyses bundled into one template — see WT1).
 
 **Exceptions.** None.
@@ -486,19 +497,30 @@ The list-aggregation rule (multiple edges to the same `(target_node_id, target_i
 
 | When | What | Exception | Where raised |
 |---|---|---|---|
-| At `template.bind(slot_values)` | Missing required slot | `SlotBindingError` | `WorkflowTemplate.bind` |
+| At `load_workflow_template(path)` | Malformed YAML, schema validation failure | `WorkflowTemplateError` (subclasses `Exception`) | [`shared/workflow/template_loader.py`](../../../shared/workflow/template_loader.py) |
+| At `register_template(template)` | Re-registering different content with the same `template_id` | `TemplateRegistryError` (subclasses `Exception`) | [`shared/workflow/template_registry.py`](../../../shared/workflow/template_registry.py) |
+| At `Workflow(...)` construction | `terminal_node_id` not in `nodes` | `ValueError` | [`shared/workflow/types.py`](../../../shared/workflow/types.py) |
+| At `template.bind(slot_values)` | Missing required slot | `SlotBindingError` (subclasses `ValueError`) | [`shared/workflow/template.py`](../../../shared/workflow/template.py) |
 | At `template.bind(slot_values)` | Unknown slot in `slot_values` | `SlotBindingError` | `WorkflowTemplate.bind` |
 | At `template.bind(slot_values)` | Type mismatch (e.g. slot declared `int`, value is `str`) | `SlotBindingError` | `WorkflowTemplate.bind` |
 | At `template.bind(slot_values)` | Cross-slot constraint violated (`RelativeOrderConstraint`) | `SlotBindingError` | constraint's `.evaluate(...)` |
-| At `validate_workflow(workflow)` | Topology cycle | `WorkflowValidationError` | `shared/workflow/validate.py` |
+| At `validate_workflow(workflow)` | Topology cycle | `WorkflowValidationError` (subclasses `ValueError`) | [`shared/workflow/validate.py`](../../../shared/workflow/validate.py) |
 | At `validate_workflow(workflow)` | Unknown operator name | `WorkflowValidationError` | substrate validator |
 | At `validate_workflow(workflow)` | Edge target-slot mismatch | `WorkflowValidationError` | substrate validator |
-| At `validate_workflow(workflow)` | Unreachable terminal | `WorkflowValidationError` | substrate validator |
-| At `execute_workflow(workflow)` | Primitive runtime failure | `WorkflowExecutionError` (wraps the primitive's exception with node + workflow context) | `shared/workflow/executor.py` |
+| At `validate_workflow(workflow, primitive_resolver=...)` | Unknown primitive `tool_name` (when resolver supplied) | `WorkflowValidationError` | substrate validator |
+| At `execute_workflow(workflow)` | Primitive runtime failure | `WorkflowExecutionError` (subclasses `RuntimeError`; wraps the primitive's exception with node + workflow context) | [`shared/workflow/executor.py`](../../../shared/workflow/executor.py) |
 | At `execute_workflow(workflow)` | Operator runtime failure | `WorkflowExecutionError` (wraps the operator's `<Operator>Error`) | `shared/workflow/executor.py` |
 | At `execute_workflow(workflow)` | Output not in closed family | `WorkflowExecutionError` | substrate executor |
 
-All four exception classes subclass `ValueError` for caller convenience. None of these is silently swallowed; none is replaced by a default value; none is converted into a `{"error": "..."}` envelope. The caller (supervisor, eval harness, CI) is responsible for deciding how to surface the error; the substrate's job is to raise.
+The exception hierarchy is **not uniform** — different layers raise different base classes:
+
+- **Schema / loader / registry errors** subclass `Exception` directly (`WorkflowTemplateError`, `TemplateRegistryError`). Catch with `except Exception` or by class name.
+- **Bind-time and validation errors** subclass `ValueError` (`SlotBindingError`, `WorkflowValidationError`). Catch with `except ValueError` for combined handling or by class name for precision.
+- **Runtime executor errors** subclass `RuntimeError` (`WorkflowExecutionError`). Catch by class name; do *not* catch with `except ValueError` (it won't match).
+
+The non-uniformity is intentional: bind-time errors are *programmer / caller errors* (Pythonic `ValueError`), runtime errors are *runtime conditions outside the caller's input* (`RuntimeError`), and loader/registry errors are *substrate-layer concerns* (`Exception`, deliberately broad). None of these is silently swallowed; none is replaced by a default value; none is converted into a `{"error": "..."}` envelope. The caller (supervisor, eval harness, CI) is responsible for deciding how to surface the error; the substrate's job is to raise.
+
+Note: terminal-node *reachability* (no inbound edges, unreachable from roots) is **not** currently raised by the substrate validator — see WT10. That gap is a review-gate norm, not a runtime exception. A reachability-validator addition is tracked in the open-questions list below.
 
 **Why.** [P6](../../00_thesis/01_non_negotiables.md) (no silent failure) at every workflow-layer boundary. A silently-swallowed slot-binding error becomes a workflow that runs on default values and produces an artifact the caller didn't ask for — the LLM thinks the analysis succeeded when it actually used the wrong inputs. A silently-swallowed runtime error becomes a partial DAG result the caller cannot distinguish from a genuine answer. Both modes destroy the platform's trustworthiness; both are categorically refused.
 
@@ -561,20 +583,27 @@ The "always concrete operators, slot-substitutable primitives" asymmetry is deli
 
 ### WT14 — Archetype signature for LLM selection
 
-**Rule.** Every template declares an `archetype_signature` — a list of 4–10 short cues (≤120 chars each, non-empty strings) the LLM router matches against user prompts during template selection. Cues are **author-defined natural-language patterns in desk vocabulary** — phrases a desk analyst would actually use when describing the analysis. They are *not*:
+**Rule.** Every template declares an `archetype_signature` — a list of short cues (≤120 chars each, non-empty strings) the LLM router matches against user prompts during template selection.
+
+**Substrate-enforced (today):** Cues that are present must be non-empty strings of ≤120 chars (validated by `SlotDeclaration`-style Pydantic checks on the template schema). The substrate **permits** an empty `archetype_signature` list (`default_factory=list` on the field) and **permits** a single-cue signature — substrate tests in [`tests/test_workflow_template_system.py`](../../../tests/test_workflow_template_system.py) explicitly cover the "default empty signature is legal" and "single cue round-trips" cases.
+
+**Review-gate norm (this contract, enforced at PR review):** every template that ships user-facing declares **4–10 cues**. Below four is insufficient coverage of natural-language variation desk analysts use; above ten dilutes match precision. The 4–10 range is a review-time discipline imposed by this contract on top of the substrate's permissive schema, not a loader-enforced rule.
+
+Cues are **author-defined natural-language patterns in desk vocabulary** — phrases a desk analyst would actually use when describing the analysis. They are *not*:
 
 - Free-form prose paragraphs (cues are scannable, not skimmable).
 - Marketing copy ("our flagship analysis").
 - Schema-style declarations ("input: time series; output: number").
 
-The schema permits an empty `archetype_signature` list (`default_factory=list` on the field), but an empty list is operationally disqualifying: the template is unselectable by the LLM router because there are no cues to match. Every template that ships intends to be selectable, so every template ships with non-empty cues.
+An empty cue list is **operationally disqualifying** at the user-facing surface: the template is unselectable by the LLM router because there are no cues to match. Templates with empty signatures that still load are useful for testing or substrate-only execution but are not eligible for the user-facing catalogue (WT16).
 
 **Why.** Templates are catalogue entries the LLM picks from. The matching mechanism is signature-string proximity (not embedding similarity, not exact match) — so the cues need to *cover the natural-language space of the analysis*. Four cues capture roughly the variation desk analysts use in framing a question; ten cues exhaustively cover unusual phrasings without diluting the match. The 120-char limit keeps each cue scannable in catalogue tooling and short enough to be a structural phrase, not a sentence.
 
 The cues live on the template (not in a central router config) so the router stays uniform across all templates and so deprecating / editing a template's cues is a local change.
 
 **Verify.**
-- Every template's `archetype_signature` is a list of non-empty strings, each ≤120 chars.
+- Every template's `archetype_signature` is a list of non-empty strings, each ≤120 chars (substrate-enforced).
+- A user-facing template's signature has 4–10 cues (review gate; not loader-enforced).
 - The cues are in desk vocabulary (rates vocabulary for rates_agent templates, etc.) — readable by an analyst, not just by the substrate.
 - The cues disambiguate this template from any other sibling templates within the same archetype (WT5).
 
@@ -595,7 +624,7 @@ The cues live on the template (not in a central router config) so the router sta
 1. **Structural validity** — the template loads (`load_workflow_template(path)` succeeds), registers (`register()` is idempotent), and the schema validators all pass. Node + edge counts match the documented shape. The `archetype_signature` cues meet WT14's constraints (count, length, non-empty).
 2. **Slot-binding rejection** — for each of the four bind-time failure modes from WT12 (missing required slot, unknown slot, type mismatch, cross-slot constraint violation), one test that asserts `SlotBindingError` is raised with a specific message.
 3. **Real-data E2E** — the template, bound with canonical V1 inputs, executed via the agent's real primitive resolver against a real (or near-real synthetic) database, produces a typed terminal artifact whose lineage spans every node in the DAG.
-4. **Mandatory instrument-agnostic test** — the same template, executed unchanged against a **finance-blind synthetic primitive resolver** (`tests/_workflow_synthetic_fetchers.py`), produces a structurally correct terminal artifact. This test is what proves WT3 (asset-class-blindness): the substrate of the template (operators + DAG topology) runs on any indexed numeric data, not just rates.
+4. **Mandatory instrument-agnostic test** — the same template, executed unchanged against a finance-blind synthetic data source, produces a structurally correct terminal artifact. The pattern depends on whether the template's `tool_name` fields are slot-substituted or literal (see WT3). For slot-substituted templates, build a local `PrimitiveResolver` from synthetic `PrimitiveSpec` entries (the pattern in [`tests/test_workflow_event_study.py`](../../../tests/test_workflow_event_study.py)'s `synthetic_resolver` fixture). For literal-primitive templates, use the agent's real resolver with [`tests/_workflow_synthetic_fetchers.py`](../../../tests/_workflow_synthetic_fetchers.py)'s `patch_all_synthetic_fetchers()` context — the file provides DB-fetcher patches, not a resolver. Either way, the test proves WT3 (asset-class-blindness): the template's **operator substrate** (operators + DAG topology + edge structure) runs on any indexed numeric data, not just rates.
 5. **Topology-archetype-fit gate** — assertions that the template uses only operators that belong to its archetype's structural family. For example, an `event_study` template uses `event_windows` and `conditional_aggregate`; a `regime_conditioned_relationship` template uses `apply_mask` and `rolling_regression`; a `backtest` template uses `construct_trades` and `evaluate_trades`. This gate is what prevents a template from silently drifting into a wrong-archetype shape over time as operators are added.
 
 The card-content test (WT13) is often folded into structural validity (it verifies `card_for_template(template)` produces expected `primitives_used` markers, etc.). It can also live as a separate test if the template's card surface is large.
@@ -658,7 +687,16 @@ Registration is **idempotent**: re-registering an identical `WorkflowTemplate` (
 
 Tests use `clear_template_registry()` between runs to isolate state (`tests/conftest.py` typically wires this).
 
-**Why.** Templates are catalogue entries; the catalogue is populated at import time. The agent's `workflows/__init__.py` imports each template's package, which triggers `register()`, which loads + registers the template. After agent boot, the substrate's registry holds every available template; the LLM router and the supervisor both read from this single source.
+**Which templates get into the user-facing catalogue is a separate decision from registration.** A template's `__init__.py` registers it with the substrate (so the executor can dispatch it, so tests can exercise it), but whether the LLM router and the MCP / API surface *see* it is controlled by which user-facing entry-point modules import its package. Today those entry points are:
+
+- [`rates_agent/workflows/mcp_server.py`](../../../rates_agent/workflows/mcp_server.py) — the MCP server that exposes templates to the LLM. It explicitly imports each template package it wants registered for routing.
+- [`api/routes/workflows/catalogue.py`](../../../api/routes/workflows/catalogue.py) — the REST catalogue endpoint. It explicitly imports the templates it exposes.
+
+Both surfaces today import `event_study` and `regime_conditioned_relationship`; `backtest` is intentionally excluded from MCP routing (the `mcp_server.py` comment block explains why — the V1 backtest is a yield-change distribution missing the data prerequisites for true economic P&L). The agent's `workflows/__init__.py` is **not** an auto-import barrel; it does not enumerate every template.
+
+A template that ships without being imported by either surface is still tested + executable directly (the tests in `tests/test_workflow_<template>.py` import the package directly to register it), but is invisible to the user-facing router. That gap between "in repo + tested" and "registered in user-facing catalogue" is a deliberate gating mechanism, not an oversight.
+
+**Why.** Templates are catalogue entries; the catalogue is populated at import time. Each template's self-registration (the `__init__.py::register()` pattern) is what guarantees uniformity at the substrate level — every template registers the same way, idempotently. The user-facing surfaces' explicit imports are what give the catalogue's owners a control surface for staging templates (in repo, tested, but not yet user-visible).
 
 Idempotency is what makes this safe under repeated imports (which happen in tests, in REPL workflows, in hot-reload-style development). The "same ID, different content rejects" rule is what prevents silent catalogue corruption when two PRs both edit the same template_id without coordination.
 
@@ -666,11 +704,14 @@ Idempotency is what makes this safe under repeated imports (which happen in test
 - Every template's `__init__.py` follows the four-symbol pattern (`<TEMPLATE>_TEMPLATE_PATH`, `load_<template>_template()`, `register()`, top-level `register()` call).
 - `register_template(same_template_twice)` is a no-op.
 - `register_template(different_template_same_id)` raises `TemplateRegistryError`.
+- If the template should be user-facing, the PR adds an import in `rates_agent/workflows/mcp_server.py` (for MCP / LLM routing) and `api/routes/workflows/catalogue.py` (for REST exposure). If the template is intentionally not user-facing (e.g. paused like `backtest`), the rationale is documented in a comment at the relevant entry-point.
 
 **Anti-patterns.**
 - A template registered manually from the agent's `__init__.py` instead of self-registering. Couples the agent to the template detail.
 - A template registered lazily (only on first call to `get_template`). The catalogue is incomplete at agent-boot; the LLM router can't see the template.
 - A template registered via a side-effect of importing `template.yaml` directly. The YAML is data; only the `__init__.py` is allowed to call `register_template`.
+- A template marked user-facing in the PR description but not actually imported by `mcp_server.py` or `catalogue.py`. The user-facing claim is unverified.
+- A template imported by a user-facing surface without a rationale for inclusion (or, conversely, paused-status without a rationale for exclusion). The catalogue's curation is a documented decision, not a default.
 
 **Exceptions.** None.
 
@@ -680,17 +721,17 @@ Idempotency is what makes this safe under repeated imports (which happen in test
 
 ## The current catalogue
 
-For reference, the templates registered today, organised by archetype:
+For reference, the templates that exist today, organised by archetype. **"In repo + tested"** means the template folder exists, registers with the substrate when its package is imported, and ships with the WT15 test suite. **"In user-facing catalogue"** means the MCP server ([`rates_agent/workflows/mcp_server.py`](../../../rates_agent/workflows/mcp_server.py)) and the REST catalogue ([`api/routes/workflows/catalogue.py`](../../../api/routes/workflows/catalogue.py)) explicitly import the package — making it routable by the LLM and visible to API callers. The two columns can differ deliberately (cf. WT16).
 
-| Archetype | Template(s) | Terminal artifact type | Status |
-|---|---|---|---|
-| `event_study` | `event_study` (`rates_agent/workflows/event_study/`) | `Series` | Live + tested (E2E + instrument-agnostic + topology-fit) |
-| `regime_conditioned_relationship` | `regime_conditioned_relationship` (`rates_agent/workflows/regime_conditioned_relationship/`) | `Series` | Live + tested (E2E + instrument-agnostic + topology-fit + cross-slot constraint) |
-| `backtest` | `backtest` (`rates_agent/workflows/backtest/`) | `Panel` (summary metrics) | Live + tested (E2E + parity + synthetic) |
-| `attribution_decomposition` | — | — | Archetype reserved; no template registered (WT2 forward declaration) |
-| `cross_sectional_screen` | — | — | Archetype reserved; no template registered (WT2 forward declaration) |
+| Archetype | Template | Terminal artifact type | In repo + tested | In user-facing catalogue | Notes |
+|---|---|---|---|---|---|
+| `event_study` | `event_study` (`rates_agent/workflows/event_study/`) | `Series` | ✅ E2E + instrument-agnostic + topology-fit | ✅ MCP + REST | live |
+| `regime_conditioned_relationship` | `regime_conditioned_relationship` (`rates_agent/workflows/regime_conditioned_relationship/`) | `Series` | ✅ E2E + instrument-agnostic + topology-fit + cross-slot constraint | ✅ MCP + REST | live |
+| `backtest` | `backtest` (`rates_agent/workflows/backtest/`) | `Panel` (summary metrics) | ✅ E2E + parity + synthetic | ❌ paused | V1 backtest is a yield-change distribution; missing data prerequisites for true economic P&L (MOD_DUR_MID, CPI-U NSA + seasonal factors, OTR history, true O/N OIS, bid/ask). Rationale + re-enable instructions in `mcp_server.py`'s comment block. |
+| `attribution_decomposition` | — | — | — | — | Archetype reserved; no template (WT2 forward declaration) |
+| `cross_sectional_screen` | — | — | — | — | Archetype reserved; no template (WT2 forward declaration) |
 
-**Three templates, five archetypes, one agent.** The catalogue is deliberately small at v1; the principles in this document govern the catalogue *as it grows*, which is the rest of this year's roadmap.
+**Three templates in repo (two user-facing), five archetypes, one agent.** The catalogue is deliberately small at v1; the principles in this document govern the catalogue *as it grows*, which is the rest of this year's roadmap. The "in repo / in catalogue" split is itself the discipline — a paused template stays exercised by tests while the data prerequisites land, without leaking an incomplete analysis to the LLM router.
 
 ## Non-standard templates (coming soon)
 
@@ -744,4 +785,5 @@ Workflow-template-principle changes are higher-stakes than per-template changes 
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1 | 2026-05-17 | Initial workflow-template contract. Sixteen principles (WT1–WT16) organised in four groups: definitional (WT1–WT3 — archetype ownership, closed archetype family, asset-class-blind substrate), admission (WT4–WT6 — ADR-gated archetype extension, V1 one-template-per-archetype discipline, reachability + producer-consumer pair), well-formedness (WT7–WT12 — topology lock, slot schema as only caller surface, closed slot type taxonomy, terminal node discipline, typed edges + closed-family hand-offs, bind-time + runtime loud failure), operational (WT13–WT16 — TemplateCard methodology disclosure, archetype-signature LLM selection, five-layer test pattern with mandatory instrument-agnostic test, auto-register-at-import discipline). Mapped each principle to its primitive / operator / artifact analog where one exists and called out the workflow-specific divergences (two methodology surfaces — slot schema vs YAML-locked; topology lock with narrow slot-substitution allowance; the instrument-agnostic test as the WT3 enforcement mechanism; the archetype-signature as the LLM-routing surface). Current catalogue table (3 live templates across 3 of 5 archetypes; 2 archetypes reserved without templates). Anti-patterns catalogue. Non-standard template category flagged as forthcoming. Six open questions / known gaps catalogued. | (pending) |
+| v1.1 | 2026-05-18 | Pre-canonical corrections after a factual-review pass against the live workflow substrate: (a) **WT3 softened** — distinguished "asset-class-blind operator topology" from "agent-scoped literal primitive nodes"; literal `PrimitiveNodeTemplate.tool_name` values are an accepted tradeoff for templates whose analysis is intrinsically tied to specific primitives (e.g. `backtest` hardcodes `build_sovereign_yield_panel_tool` + `compute_financing_rate_tool`); the operator substrate is still asset-class-blind; new anti-pattern requires rationale comments in YAML for literal `tool_name`. (b) **Universal-contract paragraph** — removed the incorrect "executor persists intermediate artifacts" claim; the executor holds `node_artifacts` in-memory and returns them in `WorkflowResult`; persistence (if any) is a higher-layer concern. (c) **Terminal artifact union** (WT10 + "What this is not") — removed `TradeSet` from the terminal-type discussion (`WorkflowResult.TerminalArtifact` excludes it); a template ending at `construct_trades` must thread a downstream operator first. Corrected the primitive-terminal type derivation from "Series or Panel" to "hardcoded Series" per `template_card.py`. (d) **WT10 reachability invariants** — split into substrate-enforced ("`terminal_node_id` in `node_ids`", checked by `Workflow.__init__`) and review-gate (inbound edge + root-reachability, NOT currently checked by `validate_workflow()`); added an open-questions entry for the validator addition. (e) **WT12 exception hierarchy** — corrected the wrong claim that "all four exception classes subclass `ValueError`". Real hierarchy: `WorkflowTemplateError` / `TemplateRegistryError` subclass `Exception`; `SlotBindingError` / `WorkflowValidationError` subclass `ValueError`; `WorkflowExecutionError` subclasses `RuntimeError`. New table also covers loader/registry errors and clarifies that terminal-reachability is not a runtime exception today. (f) **WT14 cue-count** — separated substrate-enforced (≤120 chars, non-empty strings; empty list + single cue are explicitly permitted by `tests/test_workflow_template_system.py`) from review-gate (4–10 cues for user-facing templates). The 4–10 range is this contract's discipline, not a loader rule. (g) **WT16 registration discipline** — rewritten to match repo reality: the agent's `workflows/__init__.py` is NOT an auto-import barrel; user-facing visibility is controlled by explicit imports in `rates_agent/workflows/mcp_server.py` and `api/routes/workflows/catalogue.py`; "in repo + tested" and "in user-facing catalogue" are deliberately separable states. (h) **Admission criterion 2 (WT6)** — primitive resolvability is checked at `validate_workflow(..., primitive_resolver=...)` time, NOT at loader time (the loader only parses YAML). (i) **Current catalogue table** — split into two visibility columns ("in repo + tested" vs "in user-facing catalogue"); marked `backtest` as paused with the `mcp_server.py` rationale (V1 backtest is a yield-change distribution missing data prerequisites for true economic P&L). | (pending) |
+| v1 | 2026-05-17 | Initial workflow-template contract. Sixteen principles (WT1–WT16) organised in four groups: definitional (WT1–WT3 — archetype ownership, closed archetype family, asset-class-blind substrate), admission (WT4–WT6 — ADR-gated archetype extension, V1 one-template-per-archetype discipline, reachability + producer-consumer pair), well-formedness (WT7–WT12), operational (WT13–WT16). Superseded by v1.1 the next day after a factual-review pass against the live substrate. | — |

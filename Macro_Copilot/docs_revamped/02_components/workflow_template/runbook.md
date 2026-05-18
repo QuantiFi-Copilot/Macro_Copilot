@@ -2,8 +2,8 @@
 
 > Step-by-step procedure for two distinct admissions: (a) adding a **new template** to an existing archetype (the common case), and (b) **extending the closed archetype family** (the rare, ADR-gated case). Both procedures land a `template.yaml`, an `__init__.py`, and a five-layer test suite; the archetype-extension procedure additionally edits the substrate's closed enum and ships a parity-test update.
 
-**Version:** v1
-**Last reviewed:** 2026-05-17
+**Version:** v1.1
+**Last reviewed:** 2026-05-18
 **Audience:** any contributor (human or AI agent) introducing a new template.
 **Prerequisite reading:** [`README.md`](README.md) — the workflow-template contract (WT1–WT16). Read it once before starting; refer back when a step says *"per principle WT<N>."*
 **Operationalises principles:** P1 (built right, not as a placeholder), P3 (every template follows the same shape), P9 (asset-class-blind substrate — the *defining* constraint at the workflow layer), P11 (sibling-isolated agents), and workflow-template-specific WT1–WT16 throughout.
@@ -295,23 +295,36 @@ register()
 
 **Per WT16**: the top-level `register()` call is what makes the template appear in the catalogue at agent boot. The function is idempotent (safe under repeated imports); re-registering different content with the same `template_id` raises.
 
-### Step 5 — Wire the template into the agent's `workflows/__init__.py`
+### Step 5 — Wire the template into the user-facing surface(s)
+
+The template's own `__init__.py` self-registers with the substrate at import (per WT16), but **whether the user-facing router and the REST catalogue see it is a separate decision**. The agent's `<agent>/workflows/__init__.py` is NOT an auto-import barrel; it does not enumerate every template. Instead, two user-facing entry points control the LLM-facing and API-facing catalogues, and each one imports templates explicitly:
 
 ```python
-# <agent>/workflows/__init__.py
+# rates_agent/workflows/mcp_server.py — the MCP/LLM router surface.
 
-# Importing each template's package triggers its register() side
-# effect; the substrate's registry then holds every template the
-# agent owns.
+# Side-effect imports trigger each template's register() and make
+# it routable by the LLM.  Explicit, not auto-discovered.
+import rates_agent.workflows.event_study  # noqa: F401, E402
+import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
+import rates_agent.workflows.<new_template_id>  # noqa: F401, E402     # ← added
 
-from <agent>.workflows import (
-    <existing_template_1>,
-    <existing_template_2>,
-    <new_template_id>,          # ← added
-)
+# Templates can also be intentionally NOT imported here (paused).
+# Example: backtest is paused until V2 data prerequisites land:
+#   #   import rates_agent.workflows.backtest  # noqa: F401, E402
+# When pausing a template, document the rationale in a comment.
 ```
 
-Without this import, the template's `__init__.py` is never imported and `register()` is never called — the template is invisible to the substrate. The CI test `test_workflow_template_system.py` typically asserts that every template folder under `<agent>/workflows/` is registered after agent boot; if a template's folder exists but the agent's `__init__.py` does not import it, the test fails.
+```python
+# api/routes/workflows/catalogue.py — the REST/MCP catalogue surface.
+
+import rates_agent.workflows.event_study  # noqa: F401
+import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
+import rates_agent.workflows.<new_template_id>  # noqa: F401              # ← added
+```
+
+For a new template that should be user-facing from day one, add the import to *both* surfaces. For a template that is genuinely paused (data prerequisites missing, archetype not yet user-ready, etc.), leave the user-facing imports out *and document the reason* in a comment block at the entry point (cf. the backtest comment in `mcp_server.py`). The template is still substrate-registered (so the executor can dispatch it and tests can exercise it), but it does not reach the LLM router or the REST catalogue.
+
+If you skip the user-facing imports for a template that should be user-visible, the template is invisible to the catalogue tests (`tests/test_workflow_router.py`, `tests/test_workflow_template_system.py`) and the LLM cannot route to it. The CI suite catches the discrepancy if the PR description claims user-facing intent but no entry point imports the package.
 
 ### Step 6 — Write the test suite (per WT15)
 
@@ -394,40 +407,84 @@ def test_<template_id>_e2e_with_real_resolver(real_db_engine):
     # Terminal artifact shape
     assert artifact_type_name(result.terminal_artifact) == "<expected_type>"
 
-    # Lineage chain spans the DAG
-    assert len(result.terminal_artifact.lineage.steps) >= len(template.nodes)
+    # Every node produced an intermediate artifact (executor cache check).
+    # Note: do NOT assert
+    #   len(result.terminal_artifact.lineage.steps) >= len(template.nodes)
+    # That invariant only holds for purely linear DAGs. For branched
+    # DAGs, auxiliary branches embed via OperatorStep.auxiliary_lineages
+    # (OPR10) rather than as top-level steps in the primary chain.
+    expected_node_ids = {n.node_id for n in template.nodes}
+    assert set(result.node_artifacts.keys()) == expected_node_ids
 
-    # Intermediate artifacts present
-    for node in template.nodes:
-        assert node.node_id in result.node_artifacts
+    # Workflow's human-readable summary names every node (executor
+    # builds this from the topologically-sorted node sequence).
+    for nid in expected_node_ids:
+        assert nid in result.workflow_lineage_summary
 ```
 
 For most templates, `real_db_engine` is a fixture that connects to a test-scoped Postgres with synthetic but realistic time-series data. See `tests/conftest.py` for the fixture pattern.
 
 #### 6d. Mandatory instrument-agnostic test (WT3 enforcement)
 
-```python
-def test_<template_id>_e2e_with_synthetic_resolver():
-    """The template's substrate (operator DAG + edge structure) is
-    asset-class-blind (WT3).  Running the same template against a
-    finance-blind synthetic resolver is what proves this."""
-    from tests._workflow_synthetic_fetchers import (
-        synthetic_primitive_resolver,
-    )
-    from shared.workflow import execute_workflow
+This test proves the **operator substrate** (operator DAG + edge structure) is asset-class-blind (WT3). There is no shared `synthetic_primitive_resolver` in the codebase; each template's test file defines what it needs. Two patterns, picked based on whether the template's `tool_name` fields are slot-substituted (preferred) or literal (the backtest-style tradeoff documented in WT3):
 
-    template = load_<template>_template()
-    workflow = template.bind(<synthetic_slot_values>)
-    result = execute_workflow(
-        workflow,
-        engine=None,                                 # synthetic resolver
-        primitive_resolver=synthetic_primitive_resolver,
+**Pattern A — slot-substituted `tool_name` templates (`event_study`, `regime_conditioned_relationship`, …).** Build a local finance-blind resolver out of one or more synthetic `PrimitiveSpec` entries (hand-crafted callable + `*Input` + `*Output` Pydantic classes + a stub `config.yaml`); bind the template's slots to the synthetic tool names; execute. Pattern shown in [`tests/test_workflow_event_study.py`](../../../tests/test_workflow_event_study.py)'s `synthetic_resolver` fixture and `_synthetic_signal_callable` / `_synthetic_target_callable` helpers.
+
+```python
+@pytest.fixture
+def synthetic_resolver(tmp_path) -> PrimitiveResolver:
+    # Build PrimitiveSpec entries for the synthetic tools this
+    # template needs.  Each callable accepts (engine, params, config)
+    # and returns a dict the bridge can lift to a Series/Panel artifact.
+    signal_spec = PrimitiveSpec(
+        tool_name="synthetic_signal_tool",
+        callable=_synthetic_signal_callable,
+        # ...input/output classes, config_path, output_field_units...
     )
+    target_spec = PrimitiveSpec(...)
+    specs = {s.tool_name: s for s in [signal_spec, target_spec]}
+    return lambda name: specs[name]
+
+
+def test_<template_id>_runs_against_synthetic_resolver(synthetic_resolver):
+    template = load_<template>_template()
+    workflow = template.bind({
+        "signal_tool_name": "synthetic_signal_tool",
+        "target_tool_name": "synthetic_target_tool",
+        # ... other slot values bound to synthetic-friendly inputs ...
+    })
+    result = execute_workflow(
+        workflow, engine=None, primitive_resolver=synthetic_resolver,
+    )
+    assert artifact_type_name(result.terminal_artifact) == "<expected_type>"
+```
+
+**Pattern B — literal-primitive templates (`backtest`-style).** The template's `tool_name` fields are not slot-substituted because the analysis requires specific primitives (per WT3). Use the real agent resolver, but patch each primitive's DB-fetcher with `tests._workflow_synthetic_fetchers.patch_all_synthetic_fetchers()` (or the narrower `q1_canonical_fetchers_context()` / `q2_canonical_fetchers_context()`) so the substrate runs end-to-end on synthetic data:
+
+```python
+from tests._workflow_synthetic_fetchers import patch_all_synthetic_fetchers
+
+
+def test_<template_id>_runs_against_synthetic_fetchers():
+    template = load_<template>_template()
+    workflow = template.bind(<canonical_slot_values>)
+
+    patches = patch_all_synthetic_fetchers()
+    for p in patches:
+        p.start()
+    try:
+        result = execute_workflow(
+            workflow, engine=None,
+            primitive_resolver=<agent>_primitive_resolver,
+        )
+    finally:
+        for p in patches:
+            p.stop()
 
     assert artifact_type_name(result.terminal_artifact) == "<expected_type>"
 ```
 
-The synthetic resolver emits typed `TimeSeries` payloads with random-walk / temperature / cosine-wave data — nothing rates-specific. If this test passes, the template's substrate is genuinely asset-class-blind. If it fails because an operator received unexpected data shape, the template has rates-specific assumptions leaking into operator params (refactor) or into operator selection (refactor).
+In both patterns, the data flowing through the operator chain is synthetic (random walks / cosine waves / temperature-shaped values — nothing rates-specific). If the operator chain runs to completion and produces a structurally correct terminal artifact, the template's *operator substrate* is asset-class-blind. If it fails because an operator received unexpected data shape, the template has asset-class assumptions leaking into operator params (refactor) or into operator selection (refactor).
 
 #### 6e. Topology-archetype-fit gate
 
@@ -631,4 +688,5 @@ The reviewer signs off when each item is met. Cite the matching WT-number; do no
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1 | 2026-05-17 | Initial runbook for adding a new workflow template (Path A) and for extending the closed `WORKFLOW_ARCHETYPES` family (Path B). Seven pre-flight decisions (archetype identification, sibling-template check, asset-class-blindness commitment, slot schema design, topology design, slot constraints, archetype-signature design). Path A seven-step procedure: PR-description pre-flight → place folder → draft `template.yaml` → draft `__init__.py` → wire into agent `workflows/__init__.py` → write five-layer test suite (structural + slot-binding rejection + real-data E2E + instrument-agnostic E2E + topology-archetype-fit gate) → run CI. Path B six-step procedure: ADR → extend `Literal` + tuple → update parity test → land first template (or forward-declare) → update LLM router taxonomy → multi-reviewer sign-off. Automation explicitly out-of-scope — template authorship requires design judgment that pattern-matching cannot do; scope expansion can later include scaffold generation but not design decisions. PR review checklist organised by WT-group (definitional, admission, well-formedness, operational, universal). Common-pitfalls list anchored to specific WT-numbers. | (pending) |
+| v1.1 | 2026-05-18 | Pre-canonical corrections aligned with the README v1.1 revisions: (a) Step 5 rewritten — replaced the incorrect "wire into agent's `workflows/__init__.py`" pattern with the real two-surface explicit-import pattern (`rates_agent/workflows/mcp_server.py` for MCP/LLM routing, `api/routes/workflows/catalogue.py` for REST exposure); documented that the agent's `workflows/__init__.py` is NOT an auto-import barrel. Added paused-template example with the `backtest` comment-block pattern. (b) Step 6c E2E assertion — replaced the wrong `len(result.terminal_artifact.lineage.steps) >= len(template.nodes)` invariant (which only holds for linear DAGs; branched DAGs embed auxiliary lineages via `OperatorStep.auxiliary_lineages`) with the real assertion pattern from `tests/test_workflow_event_study.py` (assert every `node_id` is in `result.node_artifacts` and in `result.workflow_lineage_summary`). (c) Step 6d instrument-agnostic test — corrected the wrong import (`tests._workflow_synthetic_fetchers.synthetic_primitive_resolver` does not exist; that file provides fetcher patches, not a resolver). Documented both real patterns: Pattern A (slot-substituted `tool_name` templates) builds a local `PrimitiveResolver` from synthetic `PrimitiveSpec` entries; Pattern B (literal-primitive templates like `backtest`) uses the agent's real resolver with `patch_all_synthetic_fetchers()` context. | (pending) |
+| v1 | 2026-05-17 | Initial runbook for adding a new workflow template (Path A) and for extending the closed `WORKFLOW_ARCHETYPES` family (Path B). Seven pre-flight decisions, seven-step Path-A procedure, six-step Path-B procedure. Superseded by v1.1 the next day after a factual-review pass against the live workflow substrate. | — |
