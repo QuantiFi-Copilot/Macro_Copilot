@@ -40,6 +40,9 @@ DEFAULT_VENDOR = os.getenv("DATA_VENDOR", "BLOOMBERG")
 DEFAULT_LOOKBACK_DAYS = int(os.getenv("DEFAULT_LOOKBACK_DAYS", "30"))
 MAX_HISTORICAL_FIELDS_PER_REQUEST = int(os.getenv("MAX_HISTORICAL_FIELDS_PER_REQUEST", "25"))
 MAX_REFERENCE_FIELDS_PER_REQUEST = int(os.getenv("MAX_REFERENCE_FIELDS_PER_REQUEST", "50"))
+# Maximum number of underlying-contract tickers per batched ``bdp()`` call in
+# the metadata-history flow. SYNC INVARIANT with utils/historical_extractor.py.
+MAX_REFERENCE_TICKERS_PER_REQUEST = int(os.getenv("MAX_REFERENCE_TICKERS_PER_REQUEST", "50"))
 
 
 def _resolve_gcp_key_path(base_dir: Path) -> Optional[Path]:
@@ -640,6 +643,13 @@ def _fetch_underlying_contract_static(
     Per-underlying-contract bdp() helper. Returns ``{field_upper: value}``
     mapping with the same normalisation pass _fetch_reference_metadata
     applies (xbbg -> flat dict, dates ISO-stringified, NaN -> None).
+
+    Retained as a fallback path used by
+    :func:`_fetch_underlying_contracts_static_batch` when an entire
+    batch call raises — the batch fetcher then retries each ticker in
+    the failed chunk individually through this single-ticker helper, so
+    a one-bad-contract problem (delisted ticker, terminal hiccup) does
+    not lose data for the other 49 tickers in the chunk.
     """
     if not bloomberg_fields:
         return {}
@@ -660,6 +670,114 @@ def _fetch_underlying_contract_static(
                 f"fields {field_chunk}: {exc}"
             )
     return raw
+
+
+def _normalize_bdp_batch_output(
+    df: Any,
+    requested_tickers: List[str],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Convert ``xbbg.blp.bdp(tickers=[T1, T2, ...], flds=[F1, F2, ...])``
+    multi-ticker output into a ``{ticker: {field_upper: value}}`` map.
+
+    SYNC INVARIANT with utils/historical_extractor.py — see the
+    SELF-CONTAINED EXTRACTOR header at the top of this file.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    if df is None:
+        return out
+    if not isinstance(df, pd.DataFrame):
+        if isinstance(df, pd.Series) and requested_tickers:
+            single = _normalize_bdp_output(df, fallback_ticker=requested_tickers[0])
+            if single:
+                out[requested_tickers[0]] = {
+                    str(k).upper(): v for k, v in single.items()
+                }
+        return out
+    if df.empty:
+        return out
+
+    for ticker, row in df.iterrows():
+        if isinstance(row, pd.DataFrame):
+            row = row.iloc[0]
+        ticker_str = str(ticker)
+        normalised: Dict[str, Any] = {}
+        for k, v in row.items():
+            normalised[str(k).upper()] = _clean_scalar(v)
+        out[ticker_str] = normalised
+    return out
+
+
+def _fetch_underlying_contracts_static_batch(
+    underlying_tickers: List[str],
+    bloomberg_fields: List[str],
+    request_kwargs: Dict[str, Any],
+    ticker_chunk_size: int = MAX_REFERENCE_TICKERS_PER_REQUEST,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Batched-and-deduped variant of :func:`_fetch_underlying_contract_static`.
+
+    Returns ``{ticker: {field_upper: value}}`` for every requested ticker
+    that Bloomberg returned data for. Tickers Bloomberg couldn't resolve
+    are absent from the output (caller skips them, matching the
+    single-call contract).
+
+    Performance properties: see the docstring in
+    utils/historical_extractor.py — this is the SYNC-INVARIANT mirror.
+    On fallback (chunk-level batch failure), falls back to per-ticker
+    single calls so a one-bad-contract failure does not lose data for
+    the other tickers in the chunk.
+    """
+    if not underlying_tickers or not bloomberg_fields:
+        return {}
+
+    seen: set = set()
+    distinct_tickers: List[str] = []
+    for t in underlying_tickers:
+        if t and t not in seen:
+            seen.add(t)
+            distinct_tickers.append(t)
+
+    out: Dict[str, Dict[str, Any]] = {}
+
+    for ticker_chunk in _chunked(distinct_tickers, ticker_chunk_size):
+        if not ticker_chunk:
+            continue
+        chunk_out: Dict[str, Dict[str, Any]] = {}
+        chunk_failed = False
+        for field_chunk in _chunked(bloomberg_fields, MAX_REFERENCE_FIELDS_PER_REQUEST):
+            try:
+                df = blp.bdp(
+                    tickers=list(ticker_chunk),
+                    flds=list(field_chunk),
+                    **request_kwargs,
+                )
+            except Exception as exc:
+                print(
+                    f"      [WARNING] batched bdp() failed for "
+                    f"{len(ticker_chunk)} ticker(s) on fields "
+                    f"{field_chunk}: {exc}. Falling back to single-ticker "
+                    "calls for this chunk."
+                )
+                chunk_failed = True
+                break
+            partial = _normalize_bdp_batch_output(df, requested_tickers=list(ticker_chunk))
+            for ticker, fields in partial.items():
+                chunk_out.setdefault(ticker, {}).update(fields)
+
+        if chunk_failed:
+            for ticker in ticker_chunk:
+                fallback_raw = _fetch_underlying_contract_static(
+                    underlying_ticker=ticker,
+                    bloomberg_fields=bloomberg_fields,
+                    request_kwargs=request_kwargs,
+                )
+                if fallback_raw:
+                    out[ticker] = fallback_raw
+        else:
+            out.update(chunk_out)
+
+    return out
 
 
 def run_metadata_history_extraction(selected_playbooks: Optional[Set[str]] = None) -> None:
@@ -803,10 +921,11 @@ def run_metadata_history_extraction(selected_playbooks: Optional[Set[str]] = Non
             rows_by_vendor_ticker: Dict[str, List[Dict[str, Any]]] = {}
             tickers_with_data = 0
 
+            # PASS 1 — enumerate the chain for every rolling generic.
+            chain_by_generic: Dict[str, List[str]] = {}
             for item in universe_items:
                 generic_ticker = item["ticker"]
                 print(f"  Enumerating chain for {generic_ticker}...")
-
                 underlying_tickers = _fetch_chain_underlyings(
                     generic_ticker=generic_ticker,
                     chain_field=chain_field,
@@ -815,15 +934,57 @@ def run_metadata_history_extraction(selected_playbooks: Optional[Set[str]] = Non
                 )
                 if not underlying_tickers:
                     print(f"    [!] No underlying contracts returned for {generic_ticker}")
+                    chain_by_generic[generic_ticker] = []
+                    continue
+                chain_by_generic[generic_ticker] = underlying_tickers
+                print(f"    [OK] chain length = {len(underlying_tickers)}")
+
+            # PASS 2 — collect distinct underlyings and batch-fetch.
+            # See utils/historical_extractor.py for the full rationale;
+            # this is the SYNC-INVARIANT mirror.
+            distinct_underlyings: List[str] = []
+            seen_underlyings: set = set()
+            for chain in chain_by_generic.values():
+                for u in chain:
+                    if u and u not in seen_underlyings:
+                        seen_underlyings.add(u)
+                        distinct_underlyings.append(u)
+
+            if distinct_underlyings:
+                total_chain_membership = sum(len(c) for c in chain_by_generic.values())
+                projected_calls = (
+                    len(distinct_underlyings) + MAX_REFERENCE_TICKERS_PER_REQUEST - 1
+                ) // MAX_REFERENCE_TICKERS_PER_REQUEST
+                print(
+                    f"\n  Batch bdp() over {len(distinct_underlyings)} distinct underlying(s) "
+                    f"(saved {total_chain_membership - len(distinct_underlyings)} duplicate(s) "
+                    f"via chain-overlap dedup); ~{projected_calls} batched call(s) "
+                    f"vs ~{total_chain_membership} per-ticker calls under the prior shape."
+                )
+                static_by_underlying = _fetch_underlying_contracts_static_batch(
+                    underlying_tickers=distinct_underlyings,
+                    bloomberg_fields=bloomberg_field_list,
+                    request_kwargs=reference_request_kwargs,
+                )
+                print(
+                    f"  [OK] batch bdp() returned data for "
+                    f"{len(static_by_underlying)}/{len(distinct_underlyings)} underlyings."
+                )
+            else:
+                static_by_underlying = {}
+
+            # PASS 3 — per generic, look up cached static data and run
+            # the expiry_roll window math. No Bloomberg calls in this
+            # pass; all data is in memory already.
+            for item in universe_items:
+                generic_ticker = item["ticker"]
+                underlying_tickers = chain_by_generic.get(generic_ticker, [])
+                if not underlying_tickers:
                     continue
 
                 contract_records: List[Dict[str, Any]] = []
                 for underlying in underlying_tickers:
-                    raw = _fetch_underlying_contract_static(
-                        underlying_ticker=underlying,
-                        bloomberg_fields=bloomberg_field_list,
-                        request_kwargs=reference_request_kwargs,
-                    )
+                    raw = static_by_underlying.get(underlying)
                     if not raw:
                         continue
                     record: Dict[str, Any] = {"_underlying_ticker": underlying}
