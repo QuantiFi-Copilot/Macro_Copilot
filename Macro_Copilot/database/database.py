@@ -1,10 +1,10 @@
 import os
 from contextlib import contextmanager, nullcontext
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
-from sqlalchemy import MetaData, Table, create_engine, func, select
+from sqlalchemy import MetaData, Table, create_engine, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Connection, Engine
 
@@ -476,3 +476,323 @@ def upsert_market_data_timeseries(
         instrument_id_map=instrument_id_map,
         load_id=load_id,
     )
+
+
+# ==============================================================================
+# INSTRUMENT METADATA HISTORY (SCD2)
+# ==============================================================================
+#
+# Closes ``docs/technical_debt.md`` item #2 from the substrate side.
+# ADR: ``docs_revamped/05_decisions/0001-instrument-metadata-history.md``.
+#
+# These helpers do NOT modify ``upsert_instrument_master`` or
+# ``ingest_parquet.py``. The live ingestion path is unchanged in Step 0.
+# History rows are written by explicit callers:
+#
+#   * The Step-1.1 backfill script populates effective-dated rows for all
+#     rolling tickers from Bloomberg generic-ticker-day metadata.
+#   * A later PR may wire ``ingest_parquet.run_ingestion_pipeline`` to call
+#     ``upsert_instrument_metadata_history`` per-rolling-ticker on each
+#     ingestion (append-on-change). That wiring is deliberately deferred
+#     until backfill has populated the table and verified the read path.
+#
+# Until either of those runs, the table stays empty and the enriched view's
+# COALESCE falls through to ``instrument_master`` — byte-identical to the
+# pre-history view output.
+
+_HISTORY_VALUE_COLUMNS = (
+    "contract_code",
+    "expiry_date",
+    "maturity_date",
+    "security_name",
+    "settlement_date",
+    "accrual_start_date",
+    "accrual_end_date",
+    "tick_size",
+    "tick_value",
+    "contract_size",
+    "exchange_code",
+    "underlying_ticker",
+    "attributes",
+    "load_id",
+)
+
+
+def _normalize_history_record(
+    record: Dict[str, Any],
+    ticker_to_id: Dict[str, int],
+    vendor_default: str,
+) -> Dict[str, Any]:
+    """
+    Internal: turn a caller-supplied record into a clean dict mapping the
+    columns of ``macro_data.instrument_metadata_history``.
+
+    A record must carry either ``instrument_id`` or ``vendor_ticker``.
+    ``effective_from`` is required; ``effective_to`` defaults to NULL
+    ("currently in effect"). Every other column is optional.
+
+    The returned dict has **uniform keys across every record**: every
+    column in ``_HISTORY_VALUE_COLUMNS`` plus ``instrument_id``,
+    ``effective_from``, ``effective_to`` is always present, with
+    ``None`` for absent values. SQLAlchemy bulk ``insert(...).values([
+    ...])`` generates the column list from the first row, so dictionaries
+    with different key sets across rows produce inconsistent INSERT
+    statements; normalising every row to the same key set avoids that
+    class of bug.
+    """
+    instrument_id = record.get("instrument_id")
+    if instrument_id is None:
+        vt = record.get("vendor_ticker")
+        if not vt:
+            raise ValueError(
+                "instrument_metadata_history record needs either "
+                "`instrument_id` or `vendor_ticker`."
+            )
+        instrument_id = ticker_to_id.get(vt)
+        if instrument_id is None:
+            raise ValueError(
+                f"instrument_metadata_history: vendor_ticker {vt!r} "
+                f"(vendor={vendor_default!r}) is not present in "
+                "instrument_master. Upsert the master row first."
+            )
+
+    effective_from = record.get("effective_from")
+    if effective_from is None:
+        raise ValueError(
+            "instrument_metadata_history record requires `effective_from`."
+        )
+
+    row: Dict[str, Any] = {
+        "instrument_id": int(instrument_id),
+        "effective_from": effective_from,
+        "effective_to": record.get("effective_to"),  # NULL allowed
+    }
+    # Every history column always present, defaulting to None — uniform key
+    # set across rows so SQLAlchemy bulk insert generates a single coherent
+    # column list. (Without this, two records with disjoint optional fields
+    # would produce ``ProgrammingError`` or silently dropped values.)
+    for col in _HISTORY_VALUE_COLUMNS:
+        row[col] = record.get(col)
+    return row
+
+
+def upsert_instrument_metadata_history(
+    connectable: Connectable,
+    records: List[Dict[str, Any]],
+) -> int:
+    """
+    Append-on-change writer for ``macro_data.instrument_metadata_history``.
+
+    Each record MUST carry:
+      - ``instrument_id`` (int) **or** ``vendor_ticker`` (str)
+      - ``effective_from`` (date)
+
+    Optional columns (each becomes a typed column on the history row):
+      ``effective_to`` (NULL = currently in effect),
+      ``contract_code``, ``expiry_date``, ``maturity_date``, ``security_name``,
+      ``settlement_date``, ``accrual_start_date``, ``accrual_end_date``,
+      ``tick_size``, ``tick_value``, ``contract_size``, ``exchange_code``,
+      ``underlying_ticker``, ``attributes`` (JSONB), ``load_id``.
+
+    Behavior:
+      * Idempotent on ``(instrument_id, effective_from)`` via
+        ``ON CONFLICT DO UPDATE`` — re-running a backfill is safe and
+        updates fields in place rather than duplicating rows.
+      * Does NOT close prior open windows. Callers wanting append-on-change
+        semantics (close prior open row's effective_to to new.effective_from
+        − 1) invoke :func:`close_open_metadata_window` explicitly. Keeping
+        the two steps separate makes idempotent re-runs cheaper to reason
+        about: a backfill can be retried without producing window-collapse
+        artefacts.
+
+    Connection contract: same as the other helpers in this module —
+    accepts either an :class:`Engine` (self-managed transaction) or a
+    :class:`Connection` (caller-managed transaction). See :func:`_txn`.
+    """
+    if not records:
+        return 0
+
+    metadata = MetaData(schema="macro_data")
+    history = Table("instrument_metadata_history", metadata, autoload_with=connectable)
+    master = Table("instrument_master", metadata, autoload_with=connectable)
+
+    # Resolve any vendor_ticker → instrument_id in one round-trip. Records
+    # that already carry instrument_id need no lookup. Records with neither
+    # raise from _normalize_history_record below.
+    vendor_default = "BLOOMBERG"
+    for r in records:
+        if r.get("vendor"):
+            vendor_default = r["vendor"]
+            break
+
+    tickers_needing_resolution = sorted({
+        r["vendor_ticker"]
+        for r in records
+        if r.get("instrument_id") is None and r.get("vendor_ticker")
+    })
+
+    ticker_to_id: Dict[str, int] = {}
+    if tickers_needing_resolution:
+        lookup_stmt = (
+            select(master.c.vendor_ticker, master.c.instrument_id)
+            .where(master.c.vendor == vendor_default)
+            .where(master.c.vendor_ticker.in_(tickers_needing_resolution))
+        )
+        with _txn(connectable) as conn:
+            rows = conn.execute(lookup_stmt).fetchall()
+        ticker_to_id = {row.vendor_ticker: row.instrument_id for row in rows}
+
+    clean: List[Dict[str, Any]] = [
+        _normalize_history_record(r, ticker_to_id, vendor_default)
+        for r in records
+    ]
+    if not clean:
+        return 0
+
+    stmt = insert(history).values(clean)
+    update_set = {
+        c.name: stmt.excluded[c.name]
+        for c in history.c
+        if c.name
+        not in {
+            "metadata_history_id",
+            "instrument_id",
+            "effective_from",
+            "created_at",
+        }
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["instrument_id", "effective_from"],
+        set_=update_set,
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    affected = result.rowcount or 0
+    print(f"[DB] Upserted {affected} rows into instrument_metadata_history.")
+    return affected
+
+
+def close_open_metadata_window(
+    connectable: Connectable,
+    instrument_id: int,
+    new_effective_from: Any,
+) -> int:
+    """
+    Close the currently-open (``effective_to IS NULL``) history row for an
+    instrument by setting its ``effective_to`` to ``new_effective_from - 1
+    day``.
+
+    Used by the backfill / live-append path when introducing a new
+    effective window for an instrument: the prior open window's terminal
+    date becomes the day before the new window begins. Only the most
+    recent open row is closed (matching ``effective_from < new``); rows
+    already closed are not touched.
+
+    Returns the number of rows updated (0 if no open prior window existed,
+    1 in the typical case).
+    """
+    new_from = pd.to_datetime(new_effective_from).date()
+    close_to = new_from - timedelta(days=1)
+
+    metadata = MetaData(schema="macro_data")
+    history = Table("instrument_metadata_history", metadata, autoload_with=connectable)
+
+    stmt = (
+        history.update()
+        .where(history.c.instrument_id == int(instrument_id))
+        .where(history.c.effective_to.is_(None))
+        .where(history.c.effective_from < new_from)
+        .values(effective_to=close_to)
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    return result.rowcount or 0
+
+
+_METADATA_AT_SQL = text(
+    """
+    SELECT
+        i.instrument_id,
+        i.vendor,
+        i.vendor_ticker,
+        i.asset_class,
+        i.instrument_type,
+        i.curve_family,
+        i.country,
+        i.currency,
+        i.tenor,
+        i.underlying_index,
+        i.is_rolling_contract,
+        i.is_active,
+        COALESCE(hist.contract_code,  i.contract_code)  AS contract_code,
+        COALESCE(hist.expiry_date,    i.expiry_date)    AS expiry_date,
+        COALESCE(hist.maturity_date,  i.maturity_date)  AS maturity_date,
+        hist.security_name,
+        hist.settlement_date,
+        hist.accrual_start_date,
+        hist.accrual_end_date,
+        hist.tick_size,
+        hist.tick_value,
+        hist.contract_size,
+        hist.exchange_code,
+        hist.underlying_ticker,
+        hist.effective_from,
+        hist.effective_to,
+        hist.attributes AS history_attributes,
+        i.attributes    AS master_attributes
+    FROM macro_data.instrument_master i
+    LEFT JOIN LATERAL (
+        SELECT h.*
+        FROM macro_data.instrument_metadata_history h
+        WHERE i.is_rolling_contract = TRUE
+          AND h.instrument_id = i.instrument_id
+          AND h.effective_from <= :as_of_date
+          AND (h.effective_to IS NULL OR h.effective_to >= :as_of_date)
+        ORDER BY h.effective_from DESC
+        LIMIT 1
+    ) hist ON TRUE
+    WHERE i.instrument_id = :instrument_id
+    """
+)
+
+
+def get_instrument_metadata_at(
+    engine: Engine,
+    instrument_id: int,
+    as_of_date: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Point-in-time metadata getter for one instrument.
+
+    Returns a single dict carrying the metadata in effect on
+    ``as_of_date``, with the SCD2 history overlay applied:
+
+      * For a rolling-contract ticker whose history row covers
+        ``as_of_date``: the history row's ``contract_code`` /
+        ``expiry_date`` / ``maturity_date`` win, plus every
+        history-only typed column (``security_name``, ``tick_size``,
+        accrual window, etc.) is populated.
+      * For a non-rolling ticker, or a rolling ticker outside any
+        backfilled window: the ``instrument_master`` row's values win
+        via COALESCE; the history-only typed columns are NULL.
+
+    ``master_attributes`` and ``history_attributes`` are returned as
+    separate JSONB blobs so the caller can decide a merge policy
+    (typically: ``history_attributes`` wins on conflict, else master).
+
+    Returns ``None`` only if no ``instrument_master`` row exists for the
+    given ``instrument_id``.
+    """
+    as_of = pd.to_datetime(as_of_date).date().isoformat()
+    with engine.connect() as conn:
+        row = (
+            conn.execute(
+                _METADATA_AT_SQL,
+                {"instrument_id": int(instrument_id), "as_of_date": as_of},
+            )
+            .mappings()
+            .first()
+        )
+    return dict(row) if row else None
