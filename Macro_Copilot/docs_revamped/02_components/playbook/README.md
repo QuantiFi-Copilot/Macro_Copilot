@@ -2,8 +2,8 @@
 
 > The declarative YAML spec that owns an agent's data universe — what instruments exist, which vendor fields to pull for them, how often, and how the ingestion pipeline must handle the result. **Agent-agnostic by design**: the contract on this page holds whether the agent is rates, FX, credit, equity, commodities, options, or any future addition.
 
-**Version:** v1.1
-**Last reviewed:** 2026-05-17
+**Version:** v1.2
+**Last reviewed:** 2026-05-19
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
 **Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P10 (single source of truth), P11 (domain isolation by agent).
 **See also:** [`runbook.md`](runbook.md) — the procedure for adding a new playbook.
@@ -51,7 +51,7 @@ These four guarantees are agent-agnostic. They apply to every playbook the same 
 
 ## The universal contract
 
-Every playbook MUST have the top-level keys listed below. Names are case-sensitive and stable across asset classes. There are eight required keys; the order is conventional (review-friendly), not enforced.
+Every playbook MUST have the top-level keys listed below. Names are case-sensitive and stable across asset classes. There are eight required keys; the order is conventional (review-friendly), not enforced. As of v1.2 there is one additional **optional** top-level section (`metadata_history`) for playbooks whose universe includes rolling-contract tickers — see [`#the-metadata_history-section-optional`](#the-metadata_history-section-optional) below.
 
 > **Current behaviour vs. target contract.** The current extractor (`utils/historical_extractor.py`) tolerates additional operational top-level keys it reads as defaults — `vendor`, `instrument_type`, `default_instrument_type`, `curve_family`, `underlying_index`, `is_rolling_contract`, `is_active`, `bdh_kwargs`, `bdp_kwargs`. These are not part of the universal contract: they are extractor-side operational defaults that pre-date the stricter shape this document codifies. The target contract is what is documented below; tightening the extractor to reject unknown top-level keys is a future schema-hardening decision (file an ADR when it is taken). Until then, new playbooks SHOULD restrict themselves to the documented keys, and reviewers SHOULD push back on uses of the legacy operational keys for new playbooks.
 
@@ -252,6 +252,72 @@ Both thresholds are global and hardcoded in code today; per-playbook tuning is a
 
 There is no per-playbook locking today. Concurrent ingestion of the same playbook can race; the atomic transaction protects against state corruption, but the second run may waste work or briefly overwrite rows the first run had just written. Treat playbook ingestion as **operationally serialised** by external orchestration (one run at a time per playbook). Adding an advisory lock per `playbook_name` is a known gap, tracked as a follow-up.
 
+## The `metadata_history` section (optional)
+
+Introduced in playbook contract v1.2 alongside [ADR 0002](../../05_decisions/0002-playbook-metadata-history-section.md). This is the **only** optional top-level section in the contract today.
+
+A playbook declares this section iff its universe includes **rolling-contract tickers** (e.g., generic-front futures such as `TY1 Comdty`, `SFR1 Comdty`, `ER1 Comdty`) AND a consuming primitive needs per-day-correct historical reference metadata (per-effective-window expiry, accrual, conversion factor, tick size, etc.). The section drives the extractor's `--mode metadata-history` flow, which writes effective-dated rows to the sibling SCD2 table `macro_data.instrument_metadata_history` (shipped in [ADR 0001](../../05_decisions/0001-instrument-metadata-history.md)). Playbooks whose universe is entirely non-rolling (sovereign benchmarks, OIS swaps, ZCIS, linkers) do NOT declare this section.
+
+```yaml
+metadata_history:
+  enabled: true                                  # Master switch. Absent / false → section ignored.
+  chain_field: "FUT_CHAIN"                       # Bloomberg bds-mnemonic that enumerates the
+                                                 # underlying chain for a rolling generic.
+                                                 # Verified per-playbook in the operator's manual
+                                                 # mnemonic-check step; the contract here does NOT
+                                                 # claim the value above is correct for every
+                                                 # rolling universe.
+  chain_overrides:                               # Optional dict of override params passed to bds().
+                                                 # Use to pull the full historical chain rather than
+                                                 # only currently-listed contracts.
+    INCLUDE_EXPIRED_CONTRACTS: "Y"
+  roll_convention:
+    type: "expiry_roll"                          # The only value supported today. Future values
+                                                 # (e.g. ``first_notice_roll``, ``n_days_before_expiry``)
+                                                 # require an ADR amendment.
+    roll_field: "LAST_TRADEABLE_DT"              # Per-contract bdp() field naming the date on which
+                                                 # the contract stops being the front. The effective
+                                                 # window of contract C_i is
+                                                 #   from prior(C_{i-1}.roll_field) + 1
+                                                 #   to   C_i.roll_field
+                                                 # for sorted contracts within the chain. The latest
+                                                 # contract's effective_to is NULL (currently in effect).
+    first_trade_field: "FUT_FIRST_TRADE_DT"      # Used only for the chain's earliest contract to
+                                                 # anchor the leftmost window's effective_from.
+  static_fields:                                 # Per-underlying-contract bdp() fields. column_name
+                                                 # MUST match a typed column on
+                                                 # instrument_metadata_history (see database/schema.sql
+                                                 # section 4); unknown names land in the row's
+                                                 # attributes JSONB.
+    - column_name: "contract_code"
+      bloomberg_field: "TICKER"
+    - column_name: "expiry_date"
+      bloomberg_field: "LAST_TRADEABLE_DT"
+    # … see ADR 0002 for the full set of supported column_names.
+```
+
+**Valid `static_fields[*].column_name` values** (must match a typed column on `instrument_metadata_history`):
+
+```
+contract_code, expiry_date, maturity_date, security_name, settlement_date,
+accrual_start_date, accrual_end_date, tick_size, tick_value, contract_size,
+exchange_code, underlying_ticker
+```
+
+Any other `column_name` is routed to the history row's `attributes` JSONB. Typos in this field are silent today (the strict playbook validator — open question #7 — will catch them when it lands).
+
+**Which universe rows are picked up.** Only rows in `universe` whose `is_rolling_contract: true` are passed to the chain-enumeration loop. Non-rolling rows in the same playbook are silently skipped — the same playbook can mix rolling and non-rolling tickers and the metadata-history extraction is a no-op for the non-rolling rows. In practice today, the only playbooks that need this section are `bond_futures.yml` and `policy_futures.yml`.
+
+**Runtime mechanics** (full discussion in ADR 0002):
+
+- The extractor runs `bds(generic, chain_field, **chain_overrides)` per rolling-ticker to enumerate the underlying chain, then `bdp(contract, …)` per chain member for the configured static fields.
+- Effective windows are computed under `roll_convention.type` (today: `expiry_roll`).
+- The extractor enforces a 90% coverage gate (rolling-tickers with no chain output) and an overlap-validation gate (windows must not overlap or share a boundary day) before writing the parquet.
+- The parquet uploads to `gs://<bucket>/metadata_history/<dataset_name>/`, a sibling prefix to the existing time-series `data/` prefix.
+- The ingester routes blobs under `metadata_history/` to `instrument_metadata_history` via `upsert_instrument_metadata_history` + `close_open_metadata_window`. Same atomic-txn / audit-row / dedup-hash machinery as the time-series path. The database-level `EXCLUDE USING GIST` constraint on the history table is the last line of defence; the ingester applies the same overlap-validation gate first so the failure is human-readable.
+
+**Verification.** The exact Bloomberg mnemonics shown above (`FUT_CHAIN`, `LAST_TRADEABLE_DT`, `FUT_FIRST_TRADE_DT`, …) are illustrative; the operator workflow for adding this section to a real playbook still follows the existing manual-verification pattern (drop a verification script against Bloomberg, confirm every mnemonic returns, only then commit the playbook edit). The contract documents the shape; the playbook author owns the field-correctness check.
+
 ## Anti-patterns
 
 Auto-reject in review:
@@ -297,5 +363,6 @@ These are documented gaps; they do not affect the contract today but are flagged
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
+| v1.2 | 2026-05-19 | Added the optional top-level **`metadata_history`** section for playbooks whose universe includes rolling-contract tickers (`is_rolling_contract: true`). The section declares the Bloomberg chain-enumeration mnemonic, an optional override dict, a roll-convention type (today: `expiry_roll`), and a list of per-underlying-contract static fields keyed by typed columns on `macro_data.instrument_metadata_history`. Drives the extractor's `--mode metadata-history` flow and the ingester's `gs://<bucket>/metadata_history/<dataset>/` blob route. Purely additive: existing playbooks are unaffected, and the default extractor mode (`time-series`) ignores this section. No production playbook is edited in the PR that introduces this contract change — production `metadata_history` declarations on `bond_futures.yml` / `policy_futures.yml` follow in a separate PR after the operator's manual Bloomberg-mnemonic verification step. | [ADR 0002](../../05_decisions/0002-playbook-metadata-history-section.md) |
 | v1.1 | 2026-05-17 | Nine factual corrections from pre-canonical review, each re-verified against the cited source files: (a) **Guarantee #1 (Declarative)** — softened the "loader rejects unexpected node types" claim; the loader is `yaml.safe_load` with defensive filtering; strict validator is a known follow-up. (b) **Guarantee #2 (Atomic)** — narrowed scope to *delete + market_data_daily upsert + audit-success flip* (which IS atomic per `with engine.begin() as conn:`); the audit-RUNNING insert and `instrument_master` upsert happen *outside* the critical transaction (deliberately, per the in-code comment, for retry idempotency and lock-window reasons). (c) **Guarantee #3 (Idempotent)** — corrected to *no duplicate `market_data_daily` rows*; a `SKIPPED_DUPLICATE` audit row IS inserted on a dedup hit by design (preserves audit trail). (d) **Guarantee #4 (Coverage-gated)** — restated as TWO distinct gates: 90% extractor-upload gate (in `historical_extractor.py` / `incremental_extractor.py`) and 80% ingester-destructive gate (in `ingest_parquet.py`); added a dedicated *Coverage gates* subsection with a side-by-side table. (e) **`target_metrics` storage** — corrected the claim that `metric_id` becomes `field_name`; the **vendor mnemonic** (`bloomberg_field`) becomes `field_name` in `market_data_daily`. (f) **Versioning** — distinguished `playbook_hash` (raw SHA-256 of YAML bytes) from `source_file_hash` / normalised data hash (canonicalised over Parquet content); cosmetic edits change `playbook_hash` but not the dedup hash. (g) **Universal contract count** — corrected "five top-level keys" (was listed as nine) to "eight required top-level keys"; added a "current behaviour vs. target contract" caveat acknowledging that the current extractor tolerates legacy operational keys (`vendor`, `default_instrument_type`, `bdh_kwargs`, etc.). (h) **Implementation reality** — added an explicit section near the top documenting the three places the current operational path is rates-first / Bloomberg-first (hardcoded `push_playbooks.py`, `blpapi`-dependent extractors, rates-shaped typed columns on `instrument_master`); flagged each as a tracked gap. (i) **Open questions** — added items 7 (no strict schema validator) and 8 (`push_playbooks.py` is rates-hardcoded). | (pending) |
 | v1 | 2026-05-17 | Initial playbook contract. Replaced by v1.1 the same day after a factual-review pass. | — |

@@ -24,6 +24,8 @@ from database.database import (  # noqa: E402
     mark_load_audit_skipped_duplicate,
     update_load_audit_status,
     count_instruments_in_load,
+    upsert_instrument_metadata_history,
+    close_open_metadata_window,
 )
 
 # The dedup hash logic lives in its own module so it can be imported
@@ -33,6 +35,15 @@ from database.database import (  # noqa: E402
 from ingestion.hashing import (  # noqa: E402
     NORMALIZED_HASH_EXCLUDED_COLUMNS,
     compute_normalized_data_hash as _compute_normalized_data_hash,
+)
+
+# Shared helpers for the metadata-history flow (ADR 0002). Both this
+# ingester and ``utils/historical_extractor.py`` import from here so the
+# overlap-validation gate uses one implementation in both places.
+from ingestion.metadata_history import (  # noqa: E402
+    group_rows_by_vendor_ticker as _group_history_rows_by_vendor_ticker,
+    parquet_to_history_records as _history_parquet_to_records,
+    validate_no_overlaps as _history_validate_no_overlaps,
 )
 
 # --- CONFIGURATION ---
@@ -258,6 +269,321 @@ def _delete_existing_playbook_window(
 
 
 # ==============================================================================================
+# METADATA-HISTORY PROCESSING (ADR 0002)
+#
+# Parquets under gs://<bucket>/metadata_history/<dataset>/ are the output of
+# ``utils/historical_extractor.py --mode metadata-history``. They carry a
+# DIFFERENT shape from the time-series parquets handled above:
+#
+#   * Rows are wide effective-dated metadata, one per
+#     (generic_ticker, effective_window), not long-format
+#     (trade_date, ticker, field_name, field_value).
+#   * Destination is ``macro_data.instrument_metadata_history`` (the SCD2
+#     sibling table from ADR 0001), not ``market_data_daily``.
+#
+# This processing function mirrors the time-series flow's structure
+# (dedup hash, RUNNING audit row, atomic-txn destructive section, audit
+# flip, blob archive) but with the metadata-history destinations.
+# ==============================================================================================
+
+
+def _process_metadata_history_blob(
+    bucket: "storage.Bucket",
+    blob: "storage.Blob",
+    engine,
+    temp_dir: Path,
+) -> bool:
+    """
+    Process one metadata-history parquet end-to-end.
+
+    Returns True on success (whether the parquet was ingested or
+    skipped-duplicate); False if any failure path was hit. The caller
+    aggregates ``False`` into the pipeline's ``any_failures`` flag.
+
+    Failure modes:
+      * Empty parquet  -> warn, skip, return False.
+      * Dedup hit       -> SKIPPED_DUPLICATE audit row, archive, return True.
+      * Sanity gate    -> mark audit FAILED, leave blob in place, return False.
+      * Overlap gate   -> mark audit FAILED, leave blob in place, return False.
+      * Vendor ticker not in instrument_master -> mark audit FAILED, leave
+        blob in place, return False.
+      * Any other exception in the destructive section -> the
+        ``with engine.begin() as conn:`` block rolls back, the outer
+        handler flips the audit row to FAILED on a separate txn,
+        return False.
+    """
+    filename = Path(blob.name).name
+    local_path = temp_dir / filename
+    load_id: Optional[int] = None
+
+    try:
+        print(f"\nProcessing (metadata-history): {filename}")
+
+        blob.download_to_filename(str(local_path))
+        df = pd.read_parquet(local_path)
+        normalized_data_hash = _compute_normalized_data_hash(df)
+
+        if df.empty:
+            print(f"  [WARNING] File {filename} is empty. Skipping.")
+            return False
+
+        # --- Lineage / dedup -----------------------------------------------
+        playbook_name = _first_non_null(df, "playbook_name") or "unknown_playbook"
+        playbook_version = _first_non_null(df, "playbook_version")
+        dataset_name = _first_non_null(df, "dataset_name")
+        requested_start_date = _first_non_null(df, "requested_start_date")
+        requested_end_date = _first_non_null(df, "requested_end_date")
+        extracted_at = _first_non_null(df, "extracted_at")
+        extraction_mode = str(
+            _first_non_null(df, "extraction_mode") or "metadata_history"
+        ).strip().lower()
+
+        if extraction_mode != "metadata_history":
+            print(
+                f"  [WARNING] File {filename} is under metadata_history/ but "
+                f"declares extraction_mode={extraction_mode!r}. Skipping."
+            )
+            return False
+
+        latest_success = get_latest_successful_load_for_playbook(engine, playbook_name)
+        latest_success_hash = latest_success.get("source_file_hash") if latest_success else None
+
+        if latest_success_hash and latest_success_hash == normalized_data_hash:
+            print(
+                f"  [SKIP] Parquet hash matches latest successful load for playbook "
+                f"'{playbook_name}'. Skipping ingestion."
+            )
+            mark_load_audit_skipped_duplicate(
+                engine=engine,
+                playbook_name=playbook_name,
+                playbook_version=playbook_version,
+                source_file_name=filename,
+                source_file_hash=normalized_data_hash,
+                dataset_name=dataset_name,
+                requested_start_date=requested_start_date,
+                requested_end_date=requested_end_date,
+                extracted_at=extracted_at,
+                notes=(
+                    f"Skipped duplicate metadata-history artifact from GCS object {blob.name}; "
+                    "source_file_hash matches the latest successful load for this playbook. "
+                    f"(extraction_mode={extraction_mode})"
+                ),
+            )
+            try:
+                new_blob_name = blob.name.replace(
+                    "metadata_history/", "archive/metadata_history/", 1
+                )
+                bucket.rename_blob(blob, new_blob_name)
+                print(f"  [SUCCESS] Archived duplicate to gs://{BUCKET_NAME}/{new_blob_name}")
+            except Exception as archive_err:
+                print(
+                    f"  [WARNING] Duplicate correctly skipped but GCS archival failed: "
+                    f"{archive_err}. File remains in metadata_history/; dedup hash will skip "
+                    "it on next run."
+                )
+            return True
+
+        audit_record = {
+            "playbook_name": playbook_name,
+            "playbook_version": playbook_version,
+            "playbook_hash": _first_non_null(df, "playbook_hash") or normalized_data_hash,
+            "git_commit_hash": _first_non_null(df, "git_commit_hash"),
+            "extractor_version": _first_non_null(df, "extractor_version"),
+            "source_file_name": filename,
+            "source_file_hash": normalized_data_hash,
+            "dataset_name": dataset_name,
+            "requested_start_date": requested_start_date,
+            "requested_end_date": requested_end_date,
+            "extracted_at": extracted_at,
+            "status": "RUNNING",
+            "notes": (
+                f"Processing GCS object {blob.name} | "
+                f"extraction_mode={extraction_mode}"
+            ),
+        }
+
+        print("  [DB] Inserting load_audit record...")
+        load_id = insert_load_audit(engine, audit_record)
+
+        # --- Defence-in-depth overlap gate (mirror of the extractor's pre-write gate) ---
+        grouped = _group_history_rows_by_vendor_ticker(df)
+        conflicts = _history_validate_no_overlaps(grouped)
+        if conflicts:
+            preview = "; ".join(conflicts[:5])
+            more = f" (+{len(conflicts) - 5} more)" if len(conflicts) > 5 else ""
+            msg = (
+                f"Overlap-validation gate found {len(conflicts)} conflict(s) in "
+                f"metadata-history parquet for playbook '{playbook_name}': "
+                f"{preview}{more}. Aborting; the EXCLUDE constraint on "
+                "instrument_metadata_history would otherwise reject the bulk insert "
+                "mid-batch."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Sanity gate (analogue of the 80% time-series gate) -----------
+        incoming_ticker_count = len(grouped)
+        if latest_success and latest_success.get("load_id"):
+            # For metadata-history we count distinct rolling tickers represented
+            # in the previous successful load via load_id on the history table.
+            try:
+                metadata = MetaData(schema="macro_data")
+                history_table = Table(
+                    "instrument_metadata_history", metadata, autoload_with=engine
+                )
+                with engine.begin() as conn:
+                    prior_count = conn.execute(
+                        select(history_table.c.instrument_id.distinct())
+                        .where(history_table.c.load_id == latest_success["load_id"])
+                    ).rowcount or 0
+            except Exception as exc:
+                # If the prior-load count cannot be determined, log and proceed
+                # (better to allow ingestion than to block on an audit-side
+                # observability failure).
+                print(f"  [WARNING] Could not count prior-load tickers: {exc}")
+                prior_count = 0
+            if prior_count > 0:
+                coverage = incoming_ticker_count / prior_count
+                if coverage < 0.8:
+                    msg = (
+                        f"Sanity gate FAILED: incoming parquet covers {incoming_ticker_count} "
+                        f"rolling tickers vs {prior_count} in the previous successful "
+                        f"metadata-history load (coverage {coverage:.0%}, threshold 80%). "
+                        "Aborting to prevent silent shrinkage of effective windows."
+                    )
+                    print(f"  [ABORT] {msg}")
+                    update_load_audit_status(engine, load_id, "FAILED", msg)
+                    return False
+                print(
+                    f"  [OK] Sanity gate passed: "
+                    f"{incoming_ticker_count}/{prior_count} rolling tickers "
+                    f"({coverage:.0%})."
+                )
+
+        # --- Resolve vendor_ticker -> instrument_id via instrument_master ---
+        unique_tickers = sorted({str(t) for t in df["vendor_ticker"].dropna().unique()})
+        if not unique_tickers:
+            msg = f"No vendor_ticker values present in metadata-history parquet {filename}"
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        metadata = MetaData(schema="macro_data")
+        master_table = Table("instrument_master", metadata, autoload_with=engine)
+        vendor_default = _first_non_null(df, "vendor") or DEFAULT_VENDOR
+        with engine.begin() as conn:
+            rows = conn.execute(
+                select(master_table.c.vendor_ticker, master_table.c.instrument_id)
+                .where(master_table.c.vendor == vendor_default)
+                .where(master_table.c.vendor_ticker.in_(unique_tickers))
+            ).fetchall()
+        instrument_id_map: Dict[str, int] = {r.vendor_ticker: r.instrument_id for r in rows}
+        missing_tickers = [t for t in unique_tickers if t not in instrument_id_map]
+        if missing_tickers:
+            msg = (
+                f"metadata-history parquet references {len(missing_tickers)} vendor_ticker(s) "
+                f"not present in instrument_master "
+                f"({', '.join(missing_tickers[:5])}"
+                f"{'...' if len(missing_tickers) > 5 else ''}). "
+                "Ingest the time-series playbook owning these tickers first."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Build typed records ready for the upsert helper ---------------
+        try:
+            records = _history_parquet_to_records(
+                df,
+                instrument_id_map=instrument_id_map,
+                load_id=load_id,
+            )
+        except ValueError as exc:
+            msg = f"Failed to assemble history records from {filename}: {exc}"
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        if not records:
+            msg = (
+                f"metadata-history parquet {filename} produced 0 records after "
+                "instrument_id resolution; nothing to write."
+            )
+            print(f"  [WARNING] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Critical destructive section ---------------------------------
+        # Same single-transaction shape as the time-series flow: any
+        # exception inside the block rolls back close+upsert+audit-flip
+        # atomically, and the outer handler flips the audit row to FAILED
+        # on a separate transaction.
+        with engine.begin() as conn:
+            # Per-instrument, close any open prior window before the new
+            # rows land. The new windows include their own
+            # effective_to=NULL terminal row (for the currently-effective
+            # contract), so leaving a prior open row would cause an EXCLUDE
+            # violation. close_open_metadata_window sets the prior row's
+            # effective_to = new_effective_from - 1, matching the GIST
+            # daterange '[]' inclusive bounds.
+            per_instrument_min_from: Dict[int, str] = {}
+            for r in records:
+                iid = r["instrument_id"]
+                ef = r["effective_from"]
+                cur = per_instrument_min_from.get(iid)
+                if cur is None or pd.to_datetime(ef).date() < pd.to_datetime(cur).date():
+                    per_instrument_min_from[iid] = ef
+            for iid, min_from in per_instrument_min_from.items():
+                close_open_metadata_window(conn, iid, min_from)
+
+            print(f"  [DB] Upserting {len(records)} metadata-history rows...")
+            upsert_instrument_metadata_history(conn, records)
+
+            update_load_audit_status(
+                conn,
+                load_id,
+                "SUCCESS",
+                (
+                    f"Successfully loaded metadata-history from GCS object {blob.name} | "
+                    f"extraction_mode={extraction_mode} | "
+                    f"rolling_tickers={len(instrument_id_map)} | rows={len(records)}"
+                ),
+            )
+
+        # --- Archive (best-effort) -----------------------------------------
+        try:
+            new_blob_name = blob.name.replace(
+                "metadata_history/", "archive/metadata_history/", 1
+            )
+            bucket.rename_blob(blob, new_blob_name)
+            print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+        except Exception as archive_err:
+            print(
+                f"  [WARNING] DB load succeeded but GCS archival failed: {archive_err}. "
+                "File remains in metadata_history/; dedup hash will skip it on next run."
+            )
+
+        return True
+
+    except Exception as exc:
+        print(f"  [ERROR] Failed to process metadata-history parquet {filename}: {exc}")
+        if load_id is not None:
+            try:
+                update_load_audit_status(
+                    engine, load_id, "FAILED",
+                    f"Processing failed for GCS object {blob.name}: {exc}",
+                )
+            except Exception as audit_err:
+                print(f"  [ERROR] Could not update load_audit status: {audit_err}")
+        return False
+
+    finally:
+        if local_path.exists():
+            local_path.unlink()
+
+
+# ==============================================================================================
 # MAIN PIPELINE
 # ==============================================================================================
 def run_ingestion_pipeline():
@@ -281,14 +607,24 @@ def run_ingestion_pipeline():
 
     # --- PHASE 1: SCAN INBOX ---
     print("\n[PHASE 1] Scanning GCP Inbox for new data...")
-    blobs = list(bucket.list_blobs(prefix="data/"))
-    parquet_blobs = [b for b in blobs if b.name.endswith(".parquet")]
+    timeseries_blobs = [
+        b for b in bucket.list_blobs(prefix="data/")
+        if b.name.endswith(".parquet")
+    ]
+    metadata_history_blobs = [
+        b for b in bucket.list_blobs(prefix="metadata_history/")
+        if b.name.endswith(".parquet")
+    ]
+    parquet_blobs = timeseries_blobs  # Legacy alias for the time-series loop below.
 
-    if not parquet_blobs:
+    if not timeseries_blobs and not metadata_history_blobs:
         print("[INFO] No new Parquet files found in the inbox. Exiting cleanly.")
         return
 
-    print(f"[INFO] Found {len(parquet_blobs)} file(s) to process.")
+    print(
+        f"[INFO] Found {len(timeseries_blobs)} time-series file(s) and "
+        f"{len(metadata_history_blobs)} metadata-history file(s) to process."
+    )
 
     temp_dir = current_dir / "temp_processing"
     temp_dir.mkdir(exist_ok=True)
@@ -550,6 +886,25 @@ def run_ingestion_pipeline():
         finally:
             if local_path.exists():
                 local_path.unlink()
+
+    # --- PHASE 3: METADATA-HISTORY PROCESSING (ADR 0002) ---
+    # Independent of the time-series loop above. Each parquet is processed
+    # via _process_metadata_history_blob, which manages its own dedup
+    # check, audit row, atomic destructive section, and archive — same
+    # contract as the time-series flow.
+    if metadata_history_blobs:
+        print(
+            f"\n[PHASE 3] Processing {len(metadata_history_blobs)} metadata-history parquet(s)..."
+        )
+        for blob in metadata_history_blobs:
+            ok = _process_metadata_history_blob(
+                bucket=bucket,
+                blob=blob,
+                engine=engine,
+                temp_dir=temp_dir,
+            )
+            if not ok:
+                any_failures = True
 
     try:
         temp_dir.rmdir()
