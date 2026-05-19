@@ -11,21 +11,32 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from google.cloud import storage
 from xbbg import blp
 
-# Make the project's own ``ingestion`` package importable when this script
-# is invoked as ``python utils/historical_extractor.py`` (the cwd-relative
-# default for the operator workflow). The ingester's shared validation
-# module lives under ``ingestion/`` so both the extractor and the
-# ingester pipeline use the same overlap-validation logic — matching the
-# ``EXCLUDE USING GIST`` constraint on the SCD2 history table from ADR 0001
-# and surfacing the same human-readable conflict messages.
-_PROJECT_ROOT_FOR_INGESTION = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT_FOR_INGESTION) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT_FOR_INGESTION))
-
-from ingestion.metadata_history import (  # noqa: E402
-    HISTORY_TYPED_COLUMNS as _SHARED_HISTORY_TYPED_COLUMNS,
-    validate_no_overlaps as _shared_validate_no_overlaps,
-)
+# ============================================================================
+# SELF-CONTAINED EXTRACTOR
+#
+# This script is designed to run as a single file on the Bloomberg terminal
+# host. To preserve that operational property, this module deliberately
+# does NOT import anything from sibling project packages (no `from ingestion
+# import ...`, no `from database import ...`, no `from shared import ...`).
+# The only project-internal dependency is the playbook YAML files pulled at
+# runtime from GCS.
+#
+# The pure-Python helpers ``_HISTORY_TYPED_COLUMNS`` and
+# ``_validate_no_overlaps`` defined further down in this file are inlined
+# copies of the canonical implementation in
+# ``Macro_Copilot/ingestion/metadata_history.py`` (which the database-side
+# ingester uses). Both copies MUST stay byte-identical in behaviour
+# because they enforce the same contract — the ``EXCLUDE USING GIST``
+# constraint on ``macro_data.instrument_metadata_history`` (ADR 0001).
+# The DB constraint is the ultimate enforcement; this in-extractor copy
+# is for human-readable pre-write failure reporting on the Bloomberg
+# host before any parquet is uploaded.
+#
+# If you ever modify these helpers here, modify them identically in
+# ``ingestion/metadata_history.py`` AND in
+# ``utils/incremental_extractor.py`` (which carries the same inlined
+# copies). The contract is documented in ADR 0002.
+# ============================================================================
 
 # --- CONFIGURATION ---
 BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "macro-storage-bucket")
@@ -447,11 +458,133 @@ def _compute_effective_windows_expiry_roll(
     return windows
 
 
-# ``_validate_no_overlaps`` is re-exported from the shared module to keep
-# legacy imports working; the canonical implementation lives in
-# ``ingestion.metadata_history`` so the ingester uses the same logic without
-# transitively importing the Bloomberg SDK.
-_validate_no_overlaps = _shared_validate_no_overlaps
+# Typed-column set on ``macro_data.instrument_metadata_history`` (per
+# database/schema.sql section 4). Inlined here for the self-contained
+# extractor constraint. MUST stay byte-identical to
+# ``HISTORY_TYPED_COLUMNS`` in ``ingestion/metadata_history.py`` and
+# ``utils/incremental_extractor.py``.
+_HISTORY_TYPED_COLUMNS: tuple = (
+    "contract_code",
+    "expiry_date",
+    "maturity_date",
+    "security_name",
+    "settlement_date",
+    "accrual_start_date",
+    "accrual_end_date",
+    "tick_size",
+    "tick_value",
+    "contract_size",
+    "exchange_code",
+    "underlying_ticker",
+)
+
+
+def _validate_no_overlaps(
+    rows_by_vendor_ticker: Dict[str, List[Dict[str, Any]]],
+) -> List[str]:
+    """
+    Defence-in-depth overlap detector for the metadata-history flow.
+
+    For each generic ticker, walks rows sorted by ``effective_from`` and
+    reports conflicts where consecutive windows overlap or share a
+    boundary day. Returns a list of human-readable conflict descriptions;
+    an empty list means the input is clean and may be written.
+
+    Rules (matching the ``EXCLUDE USING GIST`` constraint on
+    ``instrument_metadata_history`` shipped in ADR 0001):
+
+      * Every row must carry ``effective_from``.
+      * If a row has ``effective_to``, it must be ``>= effective_from``.
+      * ``effective_to=None`` is only valid on the chronologically-last
+        row per ticker (the currently-effective window).
+      * Consecutive rows must not overlap or share a boundary day —
+        matching the DB constraint's '[]' inclusive bounds.
+
+    Sync invariant: this function MUST stay byte-identical in behaviour
+    to ``validate_no_overlaps`` in
+    ``Macro_Copilot/ingestion/metadata_history.py`` and the inlined
+    copy in ``Macro_Copilot/utils/incremental_extractor.py``. The DB
+    ``EXCLUDE`` constraint is the ultimate enforcement; this in-extractor
+    copy is for human-readable failure reporting BEFORE parquet upload.
+    """
+    conflicts: List[str] = []
+    for vendor_ticker, rows in rows_by_vendor_ticker.items():
+        if not rows:
+            continue
+
+        bad_missing_from = [r for r in rows if r.get("effective_from") in (None, "")]
+        if bad_missing_from:
+            conflicts.append(
+                f"{vendor_ticker}: {len(bad_missing_from)} row(s) missing effective_from"
+            )
+            continue
+
+        try:
+            sorted_rows = sorted(
+                rows,
+                key=lambda r: pd.to_datetime(r["effective_from"]).date(),
+            )
+        except Exception as exc:
+            conflicts.append(
+                f"{vendor_ticker}: failed to parse effective_from on at least one row: {exc}"
+            )
+            continue
+
+        n = len(sorted_rows)
+        for i, curr in enumerate(sorted_rows):
+            try:
+                curr_from = pd.to_datetime(curr["effective_from"]).date()
+            except Exception as exc:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has unparseable effective_from "
+                    f"({curr['effective_from']!r}): {exc}"
+                )
+                continue
+
+            curr_to_raw = curr.get("effective_to")
+            curr_to = None
+            if curr_to_raw not in (None, ""):
+                try:
+                    curr_to = pd.to_datetime(curr_to_raw).date()
+                except Exception as exc:
+                    conflicts.append(
+                        f"{vendor_ticker}: row {i} has unparseable effective_to "
+                        f"({curr_to_raw!r}): {exc}"
+                    )
+                    continue
+
+            if curr_to is not None and curr_to < curr_from:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has effective_to ({curr_to}) "
+                    f"before effective_from ({curr_from})"
+                )
+                continue
+
+            is_last = i == n - 1
+            if curr_to is None and not is_last:
+                later = sorted_rows[i + 1]
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has effective_to=NULL but is not "
+                    f"the latest window (next row effective_from="
+                    f"{later['effective_from']})"
+                )
+                continue
+
+            if is_last or curr_to is None:
+                continue
+
+            nxt = sorted_rows[i + 1]
+            try:
+                nxt_from = pd.to_datetime(nxt["effective_from"]).date()
+            except Exception:
+                # Already reported on the next iteration.
+                continue
+            if nxt_from <= curr_to:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} (effective_to={curr_to}) "
+                    f"overlaps row {i + 1} (effective_from={nxt_from})"
+                )
+    return conflicts
 
 
 def _resolve_metadata_history_section(
