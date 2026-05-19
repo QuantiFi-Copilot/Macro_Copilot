@@ -32,7 +32,7 @@ interpolation of user-supplied identifiers.
 from __future__ import annotations
 
 from datetime import date
-from typing import Iterable, Optional, Sequence
+from typing import Dict, Iterable, Optional, Sequence
 
 import pandas as pd
 from sqlalchemy import text
@@ -42,6 +42,14 @@ from sqlalchemy.engine import Engine
 # ============================================================================
 # ONE CURVE, N TENORS
 # ============================================================================
+#
+# ``contract_code`` (added in Step 0, TD#11): optional disambiguator for
+# playbooks where ``(curve_family, tenor)`` is not unique. Today the only
+# such playbook is ``bond_futures.yml`` (TY1/UXY1 both UST_FUT 10Y; US1/WN1
+# both UST_FUT 30Y), where the per-row ``contract_code`` field (typed
+# column on instrument_master) is the canonical disambiguator. Default
+# ``None`` preserves the pre-Step-0 query exactly, so every existing
+# sovereign / OIS / inflation caller works unchanged.
 
 def fetch_tenor_group(
     engine: Engine,
@@ -49,6 +57,7 @@ def fetch_tenor_group(
     tenors: Sequence[str],
     field_name: str,
     start_date: date,
+    contract_code: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch an arbitrary set of tenors on one curve.
 
@@ -59,11 +68,28 @@ def fetch_tenor_group(
     ``tenors`` length can be 2 (curve_spread, curve_regime), 3
     (butterfly), or more.  Uses PostgreSQL's ``= ANY(:tenors)`` so the
     bound list can be arbitrary width without rewriting the SQL.
+
+    ``contract_code`` (optional, default ``None``): when the
+    ``(curve_family, tenor)`` pair is ambiguous (today: only
+    ``bond_futures.yml`` — TY1 vs UXY1 share UST_FUT 10Y), pass the
+    per-row ``contract_code`` from the playbook to narrow to a single
+    instrument. Default ``None`` preserves the pre-Step-0 query.
+
+    **Limitation.** The kwarg filters every requested tenor by the same
+    ``contract_code``. That is correct for a single-contract single-tenor
+    lookup but does NOT express the typical multi-leg futures-strip use
+    case where each leg has its own ``contract_code`` (e.g. SFR1/SFR2/SFR3
+    across the SOFR strip). The right shape for multi-leg futures fetches
+    is a dedicated contract-keyed fetcher; that lands when the first
+    bond-future / strip-snapshot primitive is built (Phase 2 of the
+    primitive roadmap). Until then, callers needing multiple distinct
+    contract codes call this fetcher once per ``contract_code``.
     """
     if not tenors:
         raise ValueError("fetch_tenor_group requires at least one tenor.")
 
-    sql = text("""
+    where_extra = " AND contract_code = :contract_code" if contract_code is not None else ""
+    sql = text(f"""
         SELECT
             trade_date,
             tenor,
@@ -73,18 +99,20 @@ def fetch_tenor_group(
           AND tenor        = ANY(:tenors)
           AND field_name   = :field_name
           AND trade_date  >= :start_date
+          {where_extra}
         ORDER BY trade_date
     """)
+    params: Dict[str, object] = {
+        "curve_family": curve_family,
+        "tenors": list(tenors),
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if contract_code is not None:
+        params["contract_code"] = contract_code
+
     with engine.connect() as conn:
-        result = conn.execute(
-            sql,
-            {
-                "curve_family": curve_family,
-                "tenors": list(tenors),
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
+        result = conn.execute(sql, params)
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
@@ -100,16 +128,23 @@ def fetch_tenor_pair(
     long_tenor: str,
     field_name: str,
     start_date: date,
+    contract_code: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch exactly two tenors on one curve.  Thin wrapper around
     ``fetch_tenor_group`` preserved for the curve_spread tool's original
-    call signature."""
+    call signature.
+
+    ``contract_code`` (optional): see :func:`fetch_tenor_group` —
+    disambiguator for playbooks where ``(curve_family, tenor)`` is not
+    unique. Default ``None`` preserves the pre-Step-0 query.
+    """
     return fetch_tenor_group(
         engine=engine,
         curve_family=curve_family,
         tenors=[short_tenor, long_tenor],
         field_name=field_name,
         start_date=start_date,
+        contract_code=contract_code,
     )
 
 
@@ -130,29 +165,60 @@ _FETCH_SINGLE_TENOR_SQL = text("""
 """)
 
 
+_FETCH_SINGLE_TENOR_BY_CONTRACT_SQL = text("""
+    SELECT
+        trade_date,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family  = :curve_family
+      AND tenor         = :tenor
+      AND field_name    = :field_name
+      AND trade_date   >= :start_date
+      AND contract_code = :contract_code
+    ORDER BY trade_date
+""")
+
+
 def fetch_single_tenor(
     engine: Engine,
     curve_family: str,
     tenor: str,
     field_name: str,
     start_date: date,
+    contract_code: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch a single-tenor series on one curve.
 
     Returns a long-format DataFrame with columns
     ``['trade_date', 'field_value']``.  Used by yield_levels and any
     future OIS single-rate tool.
+
+    ``contract_code`` (optional, default ``None``): see
+    :func:`fetch_tenor_group` — disambiguator for playbooks where
+    ``(curve_family, tenor)`` is not unique (today: only
+    ``bond_futures.yml``). Default ``None`` preserves the pre-Step-0
+    query so every existing sovereign / OIS / inflation caller works
+    unchanged.
     """
+    if contract_code is None:
+        sql = _FETCH_SINGLE_TENOR_SQL
+        params: Dict[str, object] = {
+            "curve_family": curve_family,
+            "tenor": tenor,
+            "field_name": field_name,
+            "start_date": start_date.isoformat(),
+        }
+    else:
+        sql = _FETCH_SINGLE_TENOR_BY_CONTRACT_SQL
+        params = {
+            "curve_family": curve_family,
+            "tenor": tenor,
+            "field_name": field_name,
+            "start_date": start_date.isoformat(),
+            "contract_code": contract_code,
+        }
     with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_SINGLE_TENOR_SQL,
-            {
-                "curve_family": curve_family,
-                "tenor": tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
+        result = conn.execute(sql, params)
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
@@ -183,24 +249,68 @@ def fetch_cross_market_pair(
     tenor: str,
     field_name: str,
     start_date: date,
+    contract_code_1: Optional[str] = None,
+    contract_code_2: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch the same tenor on two different curves.
 
     Returns a long-format DataFrame with columns
     ``['trade_date', 'curve_family', 'field_value']``.  Callers pivot
     on ``curve_family`` (via ``pivot_and_align_tenors(key_col='curve_family')``).
+
+    ``contract_code_1`` / ``contract_code_2`` (optional, both default
+    ``None``): see :func:`fetch_tenor_group` — per-leg disambiguator for
+    playbooks where ``(curve_family, tenor)`` is not unique (today: only
+    bond_futures cross-country pairs like UST_FUT 10Y vs DE_FUT 10Y where
+    each side has multiple `contract_code`s sharing 10Y). Pass each side's
+    canonical contract code; pass ``None`` per leg if that side is
+    unambiguous. Both default ``None`` preserves the pre-Step-0 query.
     """
+    if contract_code_1 is None and contract_code_2 is None:
+        sql = _FETCH_CROSS_MARKET_SQL
+        params: Dict[str, object] = {
+            "curve_family_1": curve_family_1,
+            "curve_family_2": curve_family_2,
+            "tenor": tenor,
+            "field_name": field_name,
+            "start_date": start_date.isoformat(),
+        }
+    else:
+        # Per-leg disambiguator: each (curve_family, optional contract_code)
+        # pair is matched independently with OR. A leg with no contract_code
+        # matches every contract_code on that curve_family (pre-Step-0 shape).
+        params = {
+            "curve_family_1": curve_family_1,
+            "curve_family_2": curve_family_2,
+            "tenor": tenor,
+            "field_name": field_name,
+            "start_date": start_date.isoformat(),
+        }
+        leg1_clause = "curve_family = :curve_family_1"
+        if contract_code_1 is not None:
+            leg1_clause += " AND contract_code = :contract_code_1"
+            params["contract_code_1"] = contract_code_1
+        leg2_clause = "curve_family = :curve_family_2"
+        if contract_code_2 is not None:
+            leg2_clause += " AND contract_code = :contract_code_2"
+            params["contract_code_2"] = contract_code_2
+        sql = text(f"""
+            SELECT
+                trade_date,
+                curve_family,
+                field_value
+            FROM macro_data.v_market_data_daily_enriched
+            WHERE tenor       = :tenor
+              AND field_name  = :field_name
+              AND trade_date >= :start_date
+              AND (
+                    ({leg1_clause})
+                 OR ({leg2_clause})
+              )
+            ORDER BY trade_date
+        """)
     with engine.connect() as conn:
-        result = conn.execute(
-            _FETCH_CROSS_MARKET_SQL,
-            {
-                "curve_family_1": curve_family_1,
-                "curve_family_2": curve_family_2,
-                "tenor": tenor,
-                "field_name": field_name,
-                "start_date": start_date.isoformat(),
-            },
-        )
+        result = conn.execute(sql, params)
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
@@ -286,6 +396,7 @@ _FETCH_SCAN_ALL_SQL = text("""
         trade_date,
         curve_family,
         tenor,
+        contract_code,
         field_value
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
@@ -300,6 +411,7 @@ _FETCH_SCAN_FILTERED_SQL = text("""
         trade_date,
         curve_family,
         tenor,
+        contract_code,
         field_value
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
@@ -334,8 +446,19 @@ def fetch_scan_universe(
 
     Returns
     -------
-    pd.DataFrame with columns ``['trade_date', 'curve_family', 'tenor',
-    'field_value']``.
+    pd.DataFrame with columns
+    ``['trade_date', 'curve_family', 'tenor', 'contract_code', 'field_value']``.
+
+    ``contract_code`` is included in the output so scanners that span a
+    universe with non-unique ``(curve_family, tenor)`` (today: only
+    ``bond_futures`` — TY1/UXY1 both UST_FUT 10Y, US1/WN1 both UST_FUT 30Y)
+    can dedupe / disambiguate downstream. For unique-keyed universes
+    (sovereign, OIS, inflation), every row in a given ``(curve_family,
+    tenor)`` group will share the same ``contract_code`` (often NULL for
+    cash-rate playbooks) — the column is harmless to ignore.
+
+    Added in Step 0 (TD#11). Pre-Step-0 callers using named-column access
+    are unaffected; the extra column is additive.
     """
     bind_params: dict = {
         "instrument_type": instrument_type,

@@ -5,6 +5,11 @@
 -- ================================================================================================
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
+-- ``btree_gist`` provides ``=`` operator class support inside GIST indexes,
+-- which the EXCLUDE constraint on ``instrument_metadata_history`` (section 4)
+-- needs to combine equality on ``instrument_id`` with range overlap on the
+-- effective window.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE SCHEMA IF NOT EXISTS macro_data;
 
 -- ================================================================================================
@@ -96,8 +101,88 @@ CREATE INDEX IF NOT EXISTS idx_market_data_daily_field
     ON macro_data.market_data_daily (field_name, trade_date DESC);
 
 -- ================================================================================================
--- 4. ENRICHED DAILY VIEW
+-- 4. INSTRUMENT METADATA HISTORY (SCD2 for rolling-contract metadata)
+-- Goal: preserve per-day reference metadata (contract_code, expiry_date, maturity_date,
+--       security_name, tick_size, accrual windows, …) for rolling-generic tickers
+--       (TY1, FV1, SFR1-8, ER1-8, …) whose underlying contract changes as the front rolls.
+--
+-- Design (ADR docs_revamped/05_decisions/0001-instrument-metadata-history.md):
+--   * macro_data.instrument_master keeps its current shape and holds the *current* state per
+--     ticker (this is what bdp() returns today and what upsert_instrument_master writes).
+--   * macro_data.instrument_metadata_history captures *prior* effective windows plus the
+--     *current* window (with effective_to = NULL).
+--   * Reads route through v_market_data_daily_enriched (below), which COALESCEs history onto
+--     master so reads stay byte-identical until backfill populates the history table.
+--
+-- Closes docs/technical_debt.md item #2.
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS macro_data.instrument_metadata_history (
+    metadata_history_id BIGSERIAL PRIMARY KEY,
+    instrument_id BIGINT NOT NULL REFERENCES macro_data.instrument_master(instrument_id),
+    effective_from DATE NOT NULL,
+    effective_to   DATE,                              -- NULL = currently in effect
+    -- Mirrors of instrument_master's rolling-sensitive typed columns:
+    contract_code  VARCHAR(32),
+    expiry_date    DATE,
+    maturity_date  DATE,
+    -- Reference fields that today live in attributes JSONB on instrument_master but are
+    -- needed per-effective-window for Phase 2-4 futures primitives. Promoted to typed
+    -- columns here because they are query-hot for the upcoming RV stack (CTD, basis, DV01).
+    security_name      VARCHAR(256),
+    settlement_date    DATE,
+    accrual_start_date DATE,
+    accrual_end_date   DATE,
+    tick_size      NUMERIC(20, 10),
+    tick_value     NUMERIC(20, 10),
+    contract_size  NUMERIC(20, 4),
+    exchange_code  VARCHAR(32),
+    underlying_ticker VARCHAR(128),
+    -- Per-window escape hatch for asset-class-specific fields not promoted to typed cols.
+    attributes JSONB,
+    -- Provenance: which load wrote this row.
+    load_id BIGINT REFERENCES macro_data.load_audit(load_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_instrument_metadata_history_window
+        UNIQUE (instrument_id, effective_from),
+    CONSTRAINT ck_instrument_metadata_history_window
+        CHECK (effective_to IS NULL OR effective_to >= effective_from),
+    -- Reject overlapping effective windows per instrument at write time.
+    -- The view's LATERAL ORDER BY effective_from DESC LIMIT 1 silently picks
+    -- the latest matching row when windows overlap; this constraint stops
+    -- bad writes from ever producing that ambiguity. Adjacent windows that
+    -- share a boundary day are also rejected (bounds = '[]' inclusive), which
+    -- matches close_open_metadata_window()'s "new.effective_from - 1" close
+    -- semantics in database.py.
+    CONSTRAINT ex_instrument_metadata_history_no_overlap
+        EXCLUDE USING GIST (
+            instrument_id WITH =,
+            daterange(effective_from, COALESCE(effective_to, 'infinity'::date), '[]') WITH &&
+        )
+);
+
+-- Point-in-time lookup: "which row was in effect for this instrument on this trade_date?"
+-- The LATERAL subquery in the enriched view below uses this index for O(log N) per row.
+CREATE INDEX IF NOT EXISTS idx_instrument_metadata_history_pit
+    ON macro_data.instrument_metadata_history (instrument_id, effective_from DESC);
+
+CREATE INDEX IF NOT EXISTS idx_instrument_metadata_history_attributes
+    ON macro_data.instrument_metadata_history USING GIN (attributes);
+
+-- ================================================================================================
+-- 5. ENRICHED DAILY VIEW (with SCD2 history overlay)
 -- Goal: make querying easier by joining observations to instrument metadata.
+--       For rolling-contract tickers, COALESCE per-day-effective history onto the (current)
+--       instrument_master row so historical trade_date queries see the metadata that was
+--       actually true on that date, not today's overwrite.
+--
+-- Column shape is UNCHANGED from the pre-history version of this view: same 21 columns,
+-- same types, same order. When the history table is empty (today, before the Step-1.1
+-- backfill), every COALESCE falls through to the instrument_master values → byte-identical
+-- output. After backfill, historical trade_date rows reflect their effective-window metadata.
+--
+-- Performance note: the LATERAL is guarded by ``i.is_rolling_contract = true`` so non-rolling
+-- tickers (sovereign benchmarks, OIS, ZCIS, linkers — the vast majority of rows today) skip
+-- the lookup entirely. Rolling-row reads pay one extra O(log N) index hit per row.
 -- ================================================================================================
 CREATE OR REPLACE VIEW macro_data.v_market_data_daily_enriched AS
 SELECT
@@ -112,9 +197,9 @@ SELECT
     i.currency,
     i.tenor,
     i.underlying_index,
-    i.contract_code,
-    i.expiry_date,
-    i.maturity_date,
+    COALESCE(hist.contract_code, i.contract_code) AS contract_code,
+    COALESCE(hist.expiry_date,   i.expiry_date)   AS expiry_date,
+    COALESCE(hist.maturity_date, i.maturity_date) AS maturity_date,
     i.is_rolling_contract,
     i.is_active,
     d.field_name,
@@ -124,4 +209,17 @@ SELECT
     i.attributes
 FROM macro_data.market_data_daily d
 JOIN macro_data.instrument_master i
-  ON d.instrument_id = i.instrument_id;
+  ON d.instrument_id = i.instrument_id
+LEFT JOIN LATERAL (
+    SELECT
+        h.contract_code,
+        h.expiry_date,
+        h.maturity_date
+    FROM macro_data.instrument_metadata_history h
+    WHERE i.is_rolling_contract = TRUE
+      AND h.instrument_id = d.instrument_id
+      AND h.effective_from <= d.trade_date
+      AND (h.effective_to IS NULL OR h.effective_to >= d.trade_date)
+    ORDER BY h.effective_from DESC
+    LIMIT 1
+) hist ON TRUE;
