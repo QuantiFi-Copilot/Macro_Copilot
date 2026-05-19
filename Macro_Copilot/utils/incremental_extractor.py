@@ -1,14 +1,37 @@
 import os
 import sys
 import yaml
+import argparse
 import hashlib
 import subprocess
 import pandas as pd
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from google.cloud import storage
 from xbbg import blp
+
+# ============================================================================
+# SELF-CONTAINED EXTRACTOR
+#
+# Same operational property as utils/historical_extractor.py: this script
+# runs as a single file on the Bloomberg terminal host with NO project-
+# internal imports (no `from ingestion ...`, no `from database ...`).
+# The pure-Python helpers ``_HISTORY_TYPED_COLUMNS`` and
+# ``_validate_no_overlaps`` are inlined below, byte-identical copies of
+# the canonical implementation in
+# ``Macro_Copilot/ingestion/metadata_history.py``. The DB
+# ``EXCLUDE USING GIST`` constraint on
+# ``macro_data.instrument_metadata_history`` (ADR 0001) is the ultimate
+# enforcement; these inlined helpers exist for human-readable pre-write
+# failure reporting on the Bloomberg host.
+#
+# If you modify these helpers, you MUST update all three locations:
+#   1. ``ingestion/metadata_history.py``        (canonical, DB-side)
+#   2. ``utils/historical_extractor.py``        (inlined, BBG-side)
+#   3. ``utils/incremental_extractor.py``       (inlined, BBG-side — this file)
+# The contract is documented in ADR 0002.
+# ============================================================================
 
 # --- CONFIGURATION ---
 BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "macro-storage-bucket")
@@ -283,7 +306,653 @@ def _fetch_reference_metadata(
     return mapped
 
 
-def run_incremental_extraction():
+def _parse_selected_playbooks(raw_values: Optional[List[str]]) -> Optional[Set[str]]:
+    """
+    Parse CLI ``--playbook`` arguments into a set of playbook names to
+    filter against. Accepts repeated flags and comma-separated values.
+    Returns ``None`` when no filter is specified (extractor runs every
+    playbook in GCS).
+    """
+    if not raw_values:
+        return None
+
+    selected: Set[str] = set()
+    for raw_value in raw_values:
+        if not raw_value:
+            continue
+        for token in str(raw_value).split(","):
+            cleaned = token.strip()
+            if cleaned:
+                selected.add(cleaned)
+
+    return selected or None
+
+
+# ============================================================================
+# METADATA-HISTORY MODE — helpers shared by run_metadata_history_extraction.
+#
+# Substrate for the SCD2 sibling table macro_data.instrument_metadata_history
+# shipped in ADR 0001. Driven by the optional ``metadata_history:`` playbook
+# section formalised in ADR 0002. None of these helpers touch Bloomberg or
+# the network — they are pure-Python transforms / validators, deliberately
+# isolated so the unit tests in
+# tests/state/test_metadata_history_extraction.py can exercise them
+# without a live BBG / GCS session.
+#
+# These are byte-identical copies of the same helpers in
+# ``utils/historical_extractor.py``. The "incremental" aspect of this
+# extractor is operational (run frequency / staleness recovery), not
+# semantic — under ``--mode metadata-history`` both files produce
+# identical parquets for the same playbook + Bloomberg state. The
+# duplication is intentional per the SELF-CONTAINED EXTRACTOR rule at
+# the top of this file.
+# ============================================================================
+
+
+_HISTORY_TYPED_COLUMNS: tuple = (
+    "contract_code",
+    "expiry_date",
+    "maturity_date",
+    "security_name",
+    "settlement_date",
+    "accrual_start_date",
+    "accrual_end_date",
+    "tick_size",
+    "tick_value",
+    "contract_size",
+    "exchange_code",
+    "underlying_ticker",
+)
+
+
+def _extract_underlying_tickers_from_chain(
+    chain_df: Any,
+    fallback_column: Optional[str] = None,
+) -> List[str]:
+    """
+    Convert ``xbbg.blp.bds(...)`` output for a chain-enumeration field
+    (typically ``FUT_CHAIN``) into a flat list of underlying-contract
+    ticker strings.
+
+    xbbg's column naming differs across Bloomberg vintages (``Security
+    Description`` / ``security_description`` / ``Security_Description``).
+    We probe canonical names in order, then fall back to the first
+    string-valued column. ``fallback_column`` is the playbook's escape
+    hatch — when an operator learns in A2 that a specific vintage uses
+    a different column name, they pass it via
+    ``metadata_history.chain_column_name``.
+    """
+    if chain_df is None:
+        return []
+    if not isinstance(chain_df, pd.DataFrame):
+        return []
+    if chain_df.empty:
+        return []
+
+    candidates = [
+        "Security Description",
+        "security_description",
+        "Security_Description",
+        "SECURITY_DES",
+        "security_des",
+        "value",  # xbbg sometimes flattens bulk-data into a "value" column
+    ]
+    if fallback_column:
+        candidates.insert(0, fallback_column)
+
+    for col in candidates:
+        if col in chain_df.columns:
+            tickers = [
+                str(v).strip()
+                for v in chain_df[col].dropna().tolist()
+                if str(v).strip()
+            ]
+            if tickers:
+                return tickers
+
+    for col in chain_df.columns:
+        if chain_df[col].dtype == object:
+            tickers = [
+                str(v).strip()
+                for v in chain_df[col].dropna().tolist()
+                if str(v).strip()
+            ]
+            if tickers:
+                return tickers
+    return []
+
+
+def _compute_effective_windows_expiry_roll(
+    contracts: List[Dict[str, Any]],
+    roll_field_column: str,
+    first_trade_field_column: str,
+) -> List[Dict[str, Any]]:
+    """
+    Apply the ``expiry_roll`` convention from ADR 0002 to a chain of
+    underlying contracts:
+
+      * C_1 (oldest): effective_from = C_1.first_trade_field,
+                      effective_to   = C_1.roll_field
+      * C_i (middle): effective_from = C_{i-1}.roll_field + 1 day,
+                      effective_to   = C_i.roll_field
+      * C_n (latest): effective_from = C_{n-1}.roll_field + 1 day,
+                      effective_to   = NULL  (currently in effect)
+
+    Each input contract dict carries the typed-column mapping for ONE
+    underlying contract (output of ``bdp(contract, [field, …])``). The
+    returned list contains one window-record per contract, augmented
+    with ``effective_from`` and ``effective_to`` keys.
+
+    Returns ``[]`` if no valid contracts remain after filtering rows
+    missing either anchor field.
+    """
+    if not contracts:
+        return []
+
+    valid: List[Dict[str, Any]] = []
+    for c in contracts:
+        roll_val = c.get(roll_field_column)
+        first_val = c.get(first_trade_field_column)
+        if roll_val is None or first_val is None:
+            continue
+        try:
+            roll_dt = pd.to_datetime(roll_val).date()
+            first_dt = pd.to_datetime(first_val).date()
+        except Exception:
+            continue
+        valid.append({**c, "_roll_dt": roll_dt, "_first_trade_dt": first_dt})
+
+    if not valid:
+        return []
+
+    valid.sort(key=lambda r: r["_roll_dt"])
+
+    windows: List[Dict[str, Any]] = []
+    prev_roll: Optional[date] = None
+    for i, c in enumerate(valid):
+        is_last = i == len(valid) - 1
+        if i == 0:
+            effective_from = c["_first_trade_dt"]
+        else:
+            effective_from = prev_roll + timedelta(days=1)
+        effective_to = None if is_last else c["_roll_dt"]
+        window = {k: v for k, v in c.items() if not k.startswith("_")}
+        window["effective_from"] = effective_from.isoformat()
+        window["effective_to"] = effective_to.isoformat() if effective_to else None
+        windows.append(window)
+        prev_roll = c["_roll_dt"]
+    return windows
+
+
+def _validate_no_overlaps(
+    rows_by_vendor_ticker: Dict[str, List[Dict[str, Any]]],
+) -> List[str]:
+    """
+    Defence-in-depth overlap detector for the metadata-history flow.
+
+    For each generic ticker, walks rows sorted by ``effective_from`` and
+    reports conflicts where consecutive windows overlap or share a
+    boundary day. Returns a list of human-readable conflict descriptions;
+    an empty list means the input is clean.
+
+    Sync invariant: byte-identical in behaviour to ``validate_no_overlaps``
+    in ``ingestion/metadata_history.py`` and the same-named copy in
+    ``utils/historical_extractor.py``.
+    """
+    conflicts: List[str] = []
+    for vendor_ticker, rows in rows_by_vendor_ticker.items():
+        if not rows:
+            continue
+
+        bad_missing_from = [r for r in rows if r.get("effective_from") in (None, "")]
+        if bad_missing_from:
+            conflicts.append(
+                f"{vendor_ticker}: {len(bad_missing_from)} row(s) missing effective_from"
+            )
+            continue
+
+        try:
+            sorted_rows = sorted(
+                rows,
+                key=lambda r: pd.to_datetime(r["effective_from"]).date(),
+            )
+        except Exception as exc:
+            conflicts.append(
+                f"{vendor_ticker}: failed to parse effective_from on at least one row: {exc}"
+            )
+            continue
+
+        n = len(sorted_rows)
+        for i, curr in enumerate(sorted_rows):
+            try:
+                curr_from = pd.to_datetime(curr["effective_from"]).date()
+            except Exception as exc:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has unparseable effective_from "
+                    f"({curr['effective_from']!r}): {exc}"
+                )
+                continue
+
+            curr_to_raw = curr.get("effective_to")
+            curr_to = None
+            if curr_to_raw not in (None, ""):
+                try:
+                    curr_to = pd.to_datetime(curr_to_raw).date()
+                except Exception as exc:
+                    conflicts.append(
+                        f"{vendor_ticker}: row {i} has unparseable effective_to "
+                        f"({curr_to_raw!r}): {exc}"
+                    )
+                    continue
+
+            if curr_to is not None and curr_to < curr_from:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has effective_to ({curr_to}) "
+                    f"before effective_from ({curr_from})"
+                )
+                continue
+
+            is_last = i == n - 1
+            if curr_to is None and not is_last:
+                later = sorted_rows[i + 1]
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} has effective_to=NULL but is not "
+                    f"the latest window (next row effective_from="
+                    f"{later['effective_from']})"
+                )
+                continue
+
+            if is_last or curr_to is None:
+                continue
+
+            nxt = sorted_rows[i + 1]
+            try:
+                nxt_from = pd.to_datetime(nxt["effective_from"]).date()
+            except Exception:
+                continue
+            if nxt_from <= curr_to:
+                conflicts.append(
+                    f"{vendor_ticker}: row {i} (effective_to={curr_to}) "
+                    f"overlaps row {i + 1} (effective_from={nxt_from})"
+                )
+    return conflicts
+
+
+def _resolve_metadata_history_section(
+    playbook: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """
+    Return the playbook's ``metadata_history`` section if it is present
+    and declares ``enabled: true``; otherwise return None.
+
+    Sync invariant with ``utils/historical_extractor.py``.
+    """
+    section = playbook.get("metadata_history")
+    if not isinstance(section, dict):
+        return None
+    if not section.get("enabled"):
+        return None
+
+    if not isinstance(section.get("static_fields"), list) or not section["static_fields"]:
+        return None
+    if not section.get("chain_field"):
+        return None
+    roll = section.get("roll_convention") or {}
+    if not isinstance(roll, dict) or not roll.get("roll_field") or not roll.get("first_trade_field"):
+        return None
+    if roll.get("type", "expiry_roll") != "expiry_roll":
+        raise ValueError(
+            f"metadata_history.roll_convention.type={roll.get('type')!r} is not "
+            "supported. The only value supported in PR A1 is 'expiry_roll'. "
+            "See ADR 0002."
+        )
+    return section
+
+
+def _fetch_chain_underlyings(
+    generic_ticker: str,
+    chain_field: str,
+    chain_overrides: Dict[str, Any],
+    fallback_column: Optional[str] = None,
+) -> List[str]:
+    """
+    Thin wrapper around ``xbbg.blp.bds`` that returns the list of
+    underlying contracts in a chain for a given generic ticker.
+    """
+    try:
+        df = blp.bds(
+            tickers=generic_ticker,
+            flds=chain_field,
+            **(chain_overrides or {}),
+        )
+    except Exception as exc:
+        print(f"    [WARNING] bds() failed for {generic_ticker} {chain_field}: {exc}")
+        return []
+    return _extract_underlying_tickers_from_chain(df, fallback_column=fallback_column)
+
+
+def _fetch_underlying_contract_static(
+    underlying_ticker: str,
+    bloomberg_fields: List[str],
+    request_kwargs: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Per-underlying-contract bdp() helper. Returns ``{field_upper: value}``
+    mapping with the same normalisation pass _fetch_reference_metadata
+    applies (xbbg -> flat dict, dates ISO-stringified, NaN -> None).
+    """
+    if not bloomberg_fields:
+        return {}
+    raw: Dict[str, Any] = {}
+    for field_chunk in _chunked(bloomberg_fields, MAX_REFERENCE_FIELDS_PER_REQUEST):
+        try:
+            df = blp.bdp(
+                tickers=underlying_ticker,
+                flds=field_chunk,
+                **request_kwargs,
+            )
+            normalized = _normalize_bdp_output(df, fallback_ticker=underlying_ticker)
+            for k, v in normalized.items():
+                raw[str(k).upper()] = v
+        except Exception as exc:
+            print(
+                f"      [WARNING] bdp() failed for {underlying_ticker} "
+                f"fields {field_chunk}: {exc}"
+            )
+    return raw
+
+
+def run_metadata_history_extraction(selected_playbooks: Optional[Set[str]] = None) -> None:
+    """
+    Mode-specific extraction path for the SCD2 rolling-contract metadata
+    table (``macro_data.instrument_metadata_history``), invoked via
+    ``--mode metadata-history``.
+
+    Semantically identical to ``run_metadata_history_extraction`` in
+    ``utils/historical_extractor.py``. The "incremental" distinction
+    between the two extractor scripts applies only to the time-series
+    flow (incremental_window_days slicing); chain enumeration always
+    pulls the full chain (with ``INCLUDE_EXPIRED_CONTRACTS=Y`` if the
+    playbook declares it). The ingester's parquet-hash dedup gate makes
+    re-runs cheap when the chain hasn't changed.
+
+    ADR: ``docs_revamped/05_decisions/0002-playbook-metadata-history-section.md``.
+    """
+    print("Initializing Library Extraction Agent (mode: metadata-history)...")
+
+    base_dir = Path(__file__).resolve().parent
+    script_path = Path(__file__).resolve()
+    gcp_key_path = _resolve_gcp_key_path(base_dir)
+
+    temp_playbooks_dir = base_dir / "temp_playbooks"
+    temp_data_dir = base_dir / "temp_data"
+    temp_playbooks_dir.mkdir(exist_ok=True)
+    temp_data_dir.mkdir(exist_ok=True)
+
+    any_failures = False
+
+    try:
+        if not gcp_key_path:
+            print(f"[FATAL] Cannot find GCP Key '{GCP_KEY_FILENAME}' in expected locations.")
+            any_failures = True
+            return
+
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+
+        print("\n[PHASE 1] Pulling playbooks from GCP...")
+        blobs = bucket.list_blobs(prefix="playbooks/")
+        playbook_files: List[Path] = []
+
+        for blob in blobs:
+            if blob.name.endswith(".yml") or blob.name.endswith(".yaml"):
+                local_path = temp_playbooks_dir / Path(blob.name).name
+                blob.download_to_filename(str(local_path))
+                playbook_files.append(local_path)
+                print(f"  -> Downloaded: {Path(blob.name).name}")
+
+        if selected_playbooks:
+            filtered_files: List[Path] = []
+            for pb_path in playbook_files:
+                if pb_path.name in selected_playbooks or pb_path.stem in selected_playbooks:
+                    filtered_files.append(pb_path)
+            playbook_files = filtered_files
+            print(f"\n[INFO] Playbook filter active: {sorted(selected_playbooks)}")
+            print(f"[INFO] Matched {len(playbook_files)} playbook file(s) after filtering.")
+
+        if not playbook_files:
+            print("[ABORT] No playbooks found in the GCP bucket. Exiting.")
+            any_failures = True
+            return
+
+        print("\n[PHASE 2] Executing metadata-history extraction...")
+
+        for pb_path in playbook_files:
+            with open(pb_path, "r", encoding="utf-8") as f:
+                playbook = yaml.safe_load(f) or {}
+
+            section = _resolve_metadata_history_section(playbook)
+            if section is None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: no enabled metadata_history section. "
+                    "(This is expected for non-rolling playbooks such as sovereign_bonds.)"
+                )
+                continue
+
+            lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
+            asset_class = lineage_meta["asset_class"]
+            dataset_name = lineage_meta["dataset_name"]
+            universe_items = playbook.get("universe", []) or []
+            universe_items = [
+                item
+                for item in universe_items
+                if isinstance(item, dict)
+                and item.get("ticker")
+                and item.get("is_rolling_contract")
+            ]
+            reference_request_kwargs = _build_reference_request_kwargs(playbook)
+            start_date, end_date = _resolve_date_window(playbook)
+
+            chain_field = section["chain_field"]
+            chain_overrides = section.get("chain_overrides") or {}
+            chain_fallback_column = section.get("chain_column_name")
+            roll_convention = section["roll_convention"]
+            roll_field = roll_convention["roll_field"]
+            first_trade_field = roll_convention["first_trade_field"]
+            static_fields = section["static_fields"]
+
+            bloomberg_field_list: List[str] = []
+            seen_fields: Set[str] = set()
+            for entry in static_fields:
+                if not isinstance(entry, dict):
+                    continue
+                f = entry.get("bloomberg_field")
+                if f and f not in seen_fields:
+                    bloomberg_field_list.append(f)
+                    seen_fields.add(f)
+            for f in (roll_field, first_trade_field):
+                if f not in seen_fields:
+                    bloomberg_field_list.append(f)
+                    seen_fields.add(f)
+
+            field_to_column: Dict[str, str] = {}
+            for entry in static_fields:
+                if not isinstance(entry, dict):
+                    continue
+                col = entry.get("column_name")
+                fld = entry.get("bloomberg_field")
+                if col and fld:
+                    field_to_column[fld.upper()] = col
+
+            if not universe_items:
+                print(
+                    f"\n[WARNING] {pb_path.name}: no rolling-contract tickers in "
+                    "universe. Skipping."
+                )
+                continue
+
+            print(f"\nProcessing Playbook: {pb_path.name}")
+            print(f"  Playbook name: {lineage_meta['playbook_name']}")
+            print(f"  Playbook version: {lineage_meta['playbook_version']}")
+            print(f"  Rolling tickers: {len(universe_items)}")
+            print(f"  Chain field: {chain_field}")
+            print(f"  Static fields: {len(static_fields)} -> {len(bloomberg_field_list)} BBG mnemonics")
+
+            extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            rows_by_vendor_ticker: Dict[str, List[Dict[str, Any]]] = {}
+            tickers_with_data = 0
+
+            for item in universe_items:
+                generic_ticker = item["ticker"]
+                print(f"  Enumerating chain for {generic_ticker}...")
+
+                underlying_tickers = _fetch_chain_underlyings(
+                    generic_ticker=generic_ticker,
+                    chain_field=chain_field,
+                    chain_overrides=chain_overrides,
+                    fallback_column=chain_fallback_column,
+                )
+                if not underlying_tickers:
+                    print(f"    [!] No underlying contracts returned for {generic_ticker}")
+                    continue
+
+                contract_records: List[Dict[str, Any]] = []
+                for underlying in underlying_tickers:
+                    raw = _fetch_underlying_contract_static(
+                        underlying_ticker=underlying,
+                        bloomberg_fields=bloomberg_field_list,
+                        request_kwargs=reference_request_kwargs,
+                    )
+                    if not raw:
+                        continue
+                    record: Dict[str, Any] = {"_underlying_ticker": underlying}
+                    for fld_upper, value in raw.items():
+                        col = field_to_column.get(fld_upper)
+                        if col:
+                            record[col] = _clean_scalar(value)
+                        record[fld_upper] = _clean_scalar(value)
+                    contract_records.append(record)
+
+                if not contract_records:
+                    print(f"    [!] No bdp() data returned for any underlying of {generic_ticker}")
+                    continue
+
+                windows = _compute_effective_windows_expiry_roll(
+                    contracts=contract_records,
+                    roll_field_column=roll_field.upper(),
+                    first_trade_field_column=first_trade_field.upper(),
+                )
+                if not windows:
+                    print(
+                        f"    [!] No valid effective windows computed for {generic_ticker} "
+                        f"(missing {roll_field}/{first_trade_field} on every chain member)"
+                    )
+                    continue
+
+                payload_rows: List[Dict[str, Any]] = []
+                allowed_cols = set(field_to_column.values()) | {"effective_from", "effective_to"}
+                for w in windows:
+                    row = {
+                        "vendor": item.get("vendor", playbook.get("vendor", DEFAULT_VENDOR)),
+                        "vendor_ticker": generic_ticker,
+                        "effective_from": w["effective_from"],
+                        "effective_to": w.get("effective_to"),
+                    }
+                    for k, v in w.items():
+                        if k in allowed_cols or k in {"effective_from", "effective_to"}:
+                            row[k] = v
+                    payload_rows.append(row)
+
+                rows_by_vendor_ticker[generic_ticker] = payload_rows
+                tickers_with_data += 1
+                print(f"    [OK] {len(payload_rows)} effective window(s) for {generic_ticker}")
+
+            expected_count = len(universe_items)
+            if expected_count > 0:
+                coverage = tickers_with_data / expected_count
+                if coverage < 0.9:
+                    print(
+                        f"\n  [ABORT] Coverage gate: only {tickers_with_data}/{expected_count} "
+                        f"rolling tickers produced metadata-history rows ({coverage:.0%}). "
+                        "Refusing to upload partial data. Threshold is 90%."
+                    )
+                    any_failures = True
+                    continue
+
+            conflicts = _validate_no_overlaps(rows_by_vendor_ticker)
+            if conflicts:
+                print(
+                    f"\n  [ABORT] Overlap-validation gate found {len(conflicts)} "
+                    f"conflict(s); refusing to upload:"
+                )
+                for c in conflicts[:10]:
+                    print(f"    - {c}")
+                if len(conflicts) > 10:
+                    print(f"    ... and {len(conflicts) - 10} more")
+                any_failures = True
+                continue
+
+            all_rows: List[Dict[str, Any]] = []
+            for rows in rows_by_vendor_ticker.values():
+                all_rows.extend(rows)
+
+            if not all_rows:
+                print(f"  [WARNING] No rows assembled for {dataset_name}. Skipping upload.")
+                continue
+
+            final_df = pd.DataFrame(all_rows)
+            for meta_key, meta_val in lineage_meta.items():
+                final_df[meta_key] = meta_val
+            final_df["requested_start_date"] = start_date
+            final_df["requested_end_date"] = end_date
+            final_df["extracted_at"] = extracted_at
+            final_df["extraction_mode"] = "metadata_history"
+
+            print(f"\n[PHASE 3] Compiling and Pushing Data for {dataset_name}...")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            parquet_filename = f"{dataset_name}_metadata_history_{timestamp}.parquet"
+            local_parquet_path = temp_data_dir / parquet_filename
+            final_df.to_parquet(local_parquet_path, engine="pyarrow", index=False)
+
+            blob_name = f"metadata_history/{dataset_name}/{parquet_filename}"
+            out_blob = bucket.blob(blob_name)
+            out_blob.upload_from_filename(str(local_parquet_path))
+
+            print(f"  [SUCCESS] Parquet uploaded to gs://{BUCKET_NAME}/{blob_name}")
+            print(f"  [INFO] Total rows uploaded: {len(final_df)}")
+            local_parquet_path.unlink(missing_ok=True)
+
+    except Exception as exc:
+        any_failures = True
+        print(f"[FATAL] metadata-history pipeline failed: {exc}")
+
+    finally:
+        print("\nCleaning up temporary files...")
+        if temp_playbooks_dir.exists():
+            for f in temp_playbooks_dir.glob("*"):
+                if f.is_file():
+                    f.unlink()
+            try:
+                temp_playbooks_dir.rmdir()
+            except OSError:
+                pass
+        if temp_data_dir.exists():
+            for f in temp_data_dir.glob("*"):
+                if f.is_file():
+                    f.unlink()
+            try:
+                temp_data_dir.rmdir()
+            except OSError:
+                pass
+
+        if any_failures:
+            print("\n*** METADATA-HISTORY EXTRACTION COMPLETE (WITH FAILURES) ***")
+            sys.exit(1)
+        print("\n*** METADATA-HISTORY EXTRACTION COMPLETE ***")
+
+
+def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
     """
     Pull playbooks from GCP, extract Bloomberg historical data, enrich with optional
     reference/static metadata, save long-format parquet, and upload results to GCP.
@@ -321,6 +990,15 @@ def run_incremental_extraction():
                 blob.download_to_filename(str(local_path))
                 playbook_files.append(local_path)
                 print(f"  -> Downloaded: {Path(blob.name).name}")
+
+        if selected_playbooks:
+            filtered_files: List[Path] = []
+            for pb_path in playbook_files:
+                if pb_path.name in selected_playbooks or pb_path.stem in selected_playbooks:
+                    filtered_files.append(pb_path)
+            playbook_files = filtered_files
+            print(f"\n[INFO] Playbook filter active: {sorted(selected_playbooks)}")
+            print(f"[INFO] Matched {len(playbook_files)} playbook file(s) after filtering.")
 
         if not playbook_files:
             print("[ABORT] No playbooks found in the GCP bucket. Exiting.")
@@ -574,4 +1252,35 @@ def run_incremental_extraction():
 
 
 if __name__ == "__main__":
-    run_incremental_extraction()
+    parser = argparse.ArgumentParser(
+        description="Run the incremental Bloomberg extractor for selected playbooks."
+    )
+    parser.add_argument(
+        "--playbook",
+        action="append",
+        help="Playbook filename or stem to run. Repeat the flag or pass comma-separated values.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["time-series", "metadata-history"],
+        default="time-series",
+        help=(
+            "Extraction mode. ``time-series`` (default) is the canonical "
+            "bdh/bdp incremental flow that has always shipped — produces "
+            "long-format parquet under gs://<bucket>/data/<dataset>/, "
+            "consumed by the ingester's market_data_daily path. "
+            "``metadata-history`` runs the bds(FUT_CHAIN) + bdp(per-underlying) "
+            "flow for playbooks declaring an enabled ``metadata_history:`` "
+            "section — produces wide effective-dated parquet under "
+            "gs://<bucket>/metadata_history/<dataset>/, consumed by the "
+            "ingester's instrument_metadata_history path. See "
+            "docs_revamped/05_decisions/0002-playbook-metadata-history-section.md."
+        ),
+    )
+    args = parser.parse_args()
+    selected_playbooks = _parse_selected_playbooks(args.playbook)
+
+    if args.mode == "metadata-history":
+        run_metadata_history_extraction(selected_playbooks=selected_playbooks)
+    else:
+        run_incremental_extraction(selected_playbooks=selected_playbooks)

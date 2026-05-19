@@ -1,12 +1,13 @@
-"""ingestion.metadata_history — shared helpers for the metadata-history flow.
+"""ingestion.metadata_history — canonical helpers for the metadata-history flow.
 
 The metadata-history path moves data through three layers:
 
-  1. ``utils/historical_extractor.py --mode metadata-history`` —
-     enumerates the underlying-contract chain per rolling generic,
-     fetches per-contract static fields, computes effective windows
-     under the ADR-0002 ``expiry_roll`` convention, and writes a wide
-     parquet to ``gs://<bucket>/metadata_history/<dataset>/``.
+  1. ``utils/historical_extractor.py --mode metadata-history`` and
+     ``utils/incremental_extractor.py --mode metadata-history`` —
+     enumerate the underlying-contract chain per rolling generic,
+     fetch per-contract static fields, compute effective windows under
+     the ADR-0002 ``expiry_roll`` convention, and write a wide parquet
+     to ``gs://<bucket>/metadata_history/<dataset>/``.
 
   2. ``ingestion/ingest_parquet.py`` (this module's parent) —
      downloads those parquets, validates them again as defence-in-depth,
@@ -21,11 +22,34 @@ The metadata-history path moves data through three layers:
      ``EXCLUDE USING GIST`` constraint that rejects any overlapping
      or boundary-sharing effective window per instrument.
 
-This module owns the **shared validation logic** the extractor and the
-ingester both run. Keeping it here (under ``ingestion/``, not under
-``utils/``) lets both callers import it without the ingester transitively
-picking up the ``xbbg`` Bloomberg dependency that ``utils/historical_extractor``
-imports at the top of its module.
+----------------------------------------------------------------------------
+CANONICAL / SYNC INVARIANT
+----------------------------------------------------------------------------
+This module is the **canonical** implementation of:
+  * ``HISTORY_TYPED_COLUMNS`` — the typed-column set on
+    ``macro_data.instrument_metadata_history``.
+  * ``validate_no_overlaps`` — the overlap detector that mirrors the
+    DB ``EXCLUDE USING GIST`` constraint's semantics.
+
+The two extractor scripts (``utils/historical_extractor.py`` and
+``utils/incremental_extractor.py``) carry **inlined byte-identical
+copies** of both, because they are designed to run as single-file scripts
+on the Bloomberg terminal host with NO project-internal imports (the
+operator copies one file onto the Bloomberg PC and runs it). The inlined
+copies exist so the extractors can surface human-readable pre-write
+failure messages BEFORE a parquet is uploaded to GCS.
+
+If you change either ``HISTORY_TYPED_COLUMNS`` or ``validate_no_overlaps``
+in this file, you MUST update the matching inlined copies in:
+  * ``utils/historical_extractor.py``  (search for "_HISTORY_TYPED_COLUMNS" / "_validate_no_overlaps")
+  * ``utils/incremental_extractor.py`` (same names)
+
+The DB ``EXCLUDE`` constraint is the ultimate enforcement; if the three
+copies ever drift, the DB will reject the bad parquet at the destructive
+transaction's INSERT step (the ingester's atomic txn rolls back, audit
+row is flipped to FAILED, prior data preserved). The inlined extractor
+copies exist to make that failure surface earlier and more legibly on the
+Bloomberg host.
 
 References:
   * ADR 0001 — sibling SCD2 table:
