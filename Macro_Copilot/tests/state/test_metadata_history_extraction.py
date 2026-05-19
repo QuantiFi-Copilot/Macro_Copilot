@@ -338,3 +338,234 @@ class TestResolveMetadataHistorySection:
             {"metadata_history": section}
         )
         assert out is not None
+
+
+# ============================================================================
+# Batched bdp() — the optimisation that turns ~6,500 single-ticker calls
+# on a first full backfill into ~30-150 batched calls. The semantic
+# contract MUST be byte-identical to the single-ticker path; these tests
+# pin that contract.
+# ============================================================================
+
+
+class TestNormalizeBdpBatchOutput:
+    """``_normalize_bdp_batch_output`` parses the xbbg multi-ticker
+    DataFrame shape (index=ticker, columns=field) into a
+    ``{ticker: {field_upper: value}}`` map. Field names are upper-cased
+    to match the single-ticker normaliser's contract so downstream code
+    is agnostic to which fetch path produced the values."""
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert historical_extractor._normalize_bdp_batch_output(None, []) == {}
+        assert historical_extractor._normalize_bdp_batch_output(pd.DataFrame(), []) == {}
+
+    def test_two_tickers_two_fields(self) -> None:
+        df = pd.DataFrame(
+            {
+                "LAST_TRADEABLE_DT": ["2023-12-19", "2024-03-19"],
+                "FUT_FIRST_TRADE_DT": ["2022-12-21", "2023-03-21"],
+            },
+            index=["TYZ23 Comdty", "TYH24 Comdty"],
+        )
+        out = historical_extractor._normalize_bdp_batch_output(
+            df, requested_tickers=["TYZ23 Comdty", "TYH24 Comdty"]
+        )
+        assert sorted(out.keys()) == ["TYH24 Comdty", "TYZ23 Comdty"]
+        assert out["TYZ23 Comdty"]["LAST_TRADEABLE_DT"] == "2023-12-19"
+        assert out["TYH24 Comdty"]["FUT_FIRST_TRADE_DT"] == "2023-03-21"
+
+    def test_field_names_are_upper_cased(self) -> None:
+        """Matches the single-ticker normaliser's convention so downstream
+        ``field_to_column.get(fld_upper)`` lookups work identically
+        regardless of which fetch path produced the dict."""
+        df = pd.DataFrame(
+            {"last_tradeable_dt": ["2023-12-19"]},
+            index=["TYZ23 Comdty"],
+        )
+        out = historical_extractor._normalize_bdp_batch_output(
+            df, requested_tickers=["TYZ23 Comdty"]
+        )
+        assert "LAST_TRADEABLE_DT" in out["TYZ23 Comdty"]
+        assert "last_tradeable_dt" not in out["TYZ23 Comdty"]
+
+    def test_unresolved_ticker_is_absent_from_output(self) -> None:
+        """Bloomberg returns no row for tickers it can't resolve — those
+        tickers simply don't appear in the output map. Caller skips
+        them downstream (same as the single-call empty-result path)."""
+        df = pd.DataFrame(
+            {"LAST_TRADEABLE_DT": ["2023-12-19"]},
+            index=["TYZ23 Comdty"],
+        )
+        out = historical_extractor._normalize_bdp_batch_output(
+            df, requested_tickers=["TYZ23 Comdty", "FAKE99 Comdty"]
+        )
+        assert "TYZ23 Comdty" in out
+        assert "FAKE99 Comdty" not in out
+
+    def test_pandas_timestamp_normalised_to_iso_string(self) -> None:
+        """``_clean_scalar`` runs on every cell — pandas Timestamp values
+        become ISO date strings so the parquet round-trips deterministically."""
+        df = pd.DataFrame(
+            {"LAST_TRADEABLE_DT": [pd.Timestamp("2023-12-19")]},
+            index=["TYZ23 Comdty"],
+        )
+        out = historical_extractor._normalize_bdp_batch_output(
+            df, requested_tickers=["TYZ23 Comdty"]
+        )
+        assert out["TYZ23 Comdty"]["LAST_TRADEABLE_DT"] == "2023-12-19"
+
+    def test_nan_normalised_to_none(self) -> None:
+        df = pd.DataFrame(
+            {"LAST_TRADEABLE_DT": ["2023-12-19", float("nan")]},
+            index=["TYZ23 Comdty", "BAD99 Comdty"],
+        )
+        out = historical_extractor._normalize_bdp_batch_output(
+            df, requested_tickers=["TYZ23 Comdty", "BAD99 Comdty"]
+        )
+        assert out["TYZ23 Comdty"]["LAST_TRADEABLE_DT"] == "2023-12-19"
+        assert out["BAD99 Comdty"]["LAST_TRADEABLE_DT"] is None
+
+
+class TestFetchUnderlyingContractsStaticBatch:
+    """``_fetch_underlying_contracts_static_batch`` dedups + chunks +
+    falls back to single-ticker calls when a batched chunk raises."""
+
+    def test_empty_inputs_return_empty(self) -> None:
+        assert historical_extractor._fetch_underlying_contracts_static_batch(
+            underlying_tickers=[],
+            bloomberg_fields=["LAST_TRADEABLE_DT"],
+            request_kwargs={},
+        ) == {}
+        assert historical_extractor._fetch_underlying_contracts_static_batch(
+            underlying_tickers=["TYZ23 Comdty"],
+            bloomberg_fields=[],
+            request_kwargs={},
+        ) == {}
+
+    def test_dedups_repeated_tickers_one_call(self) -> None:
+        """Passing the same ticker 8 times (typical for policy_futures
+        where SFR1-8 share underlyings) results in ONE bdp call for it."""
+        call_count = {"n": 0}
+        captured_tickers: List[List[str]] = []
+
+        def fake_bdp(tickers, flds, **kwargs):
+            call_count["n"] += 1
+            captured_tickers.append(list(tickers) if isinstance(tickers, list) else [tickers])
+            df = pd.DataFrame(
+                {"LAST_TRADEABLE_DT": ["2023-12-19"] * len(tickers)},
+                index=list(tickers),
+            )
+            return df
+
+        with patch.object(historical_extractor.blp, "bdp", side_effect=fake_bdp):
+            out = historical_extractor._fetch_underlying_contracts_static_batch(
+                underlying_tickers=["TYZ23 Comdty"] * 8,
+                bloomberg_fields=["LAST_TRADEABLE_DT"],
+                request_kwargs={},
+            )
+        assert call_count["n"] == 1
+        assert captured_tickers[0] == ["TYZ23 Comdty"]  # deduped
+        assert out == {"TYZ23 Comdty": {"LAST_TRADEABLE_DT": "2023-12-19"}}
+
+    def test_chunks_by_max_tickers_per_request(self) -> None:
+        """120 distinct tickers with chunk size 50 → 3 bdp calls
+        (50 + 50 + 20)."""
+        captured_chunks: List[List[str]] = []
+
+        def fake_bdp(tickers, flds, **kwargs):
+            captured_chunks.append(list(tickers))
+            df = pd.DataFrame(
+                {"LAST_TRADEABLE_DT": ["2024-01-01"] * len(tickers)},
+                index=list(tickers),
+            )
+            return df
+
+        many_tickers = [f"FAKE{i} Comdty" for i in range(120)]
+        with patch.object(historical_extractor.blp, "bdp", side_effect=fake_bdp):
+            out = historical_extractor._fetch_underlying_contracts_static_batch(
+                underlying_tickers=many_tickers,
+                bloomberg_fields=["LAST_TRADEABLE_DT"],
+                request_kwargs={},
+                ticker_chunk_size=50,
+            )
+        assert [len(c) for c in captured_chunks] == [50, 50, 20]
+        assert len(out) == 120
+
+    def test_batch_failure_falls_back_to_single_calls(self) -> None:
+        """When the batched bdp() raises, the chunk falls back to
+        single-ticker calls one at a time, preserving the no-data-loss
+        contract (a one-bad-contract problem must not lose data for the
+        other tickers in the chunk)."""
+        single_call_count = {"n": 0}
+        single_call_tickers: List[str] = []
+
+        def fake_bdp(tickers, flds, **kwargs):
+            if isinstance(tickers, list):
+                # Batched call: raise to trigger fallback.
+                raise RuntimeError("synthetic terminal hiccup")
+            # Single call: return one row.
+            single_call_count["n"] += 1
+            single_call_tickers.append(tickers)
+            df = pd.DataFrame(
+                {"LAST_TRADEABLE_DT": ["2023-12-19"]},
+                index=[tickers],
+            )
+            return df
+
+        with patch.object(historical_extractor.blp, "bdp", side_effect=fake_bdp):
+            out = historical_extractor._fetch_underlying_contracts_static_batch(
+                underlying_tickers=["TYZ23 Comdty", "TYH24 Comdty"],
+                bloomberg_fields=["LAST_TRADEABLE_DT"],
+                request_kwargs={},
+            )
+        assert single_call_count["n"] == 2  # one fallback call per ticker
+        assert sorted(single_call_tickers) == ["TYH24 Comdty", "TYZ23 Comdty"]
+        assert "TYZ23 Comdty" in out
+        assert "TYH24 Comdty" in out
+
+    def test_output_drives_same_window_math_as_single_calls(self) -> None:
+        """End-to-end semantic equivalence: feed the batch fetcher's
+        output through ``_compute_effective_windows_expiry_roll`` and
+        confirm the resulting windows pass the overlap gate — the same
+        contract the single-call path satisfies."""
+
+        # Synthetic chain with three sequential contracts.
+        def fake_bdp(tickers, flds, **kwargs):
+            # Batched call — return three rows in the order requested.
+            data = {
+                "TYZ23 Comdty": ("2022-12-21", "2023-12-19"),
+                "TYH24 Comdty": ("2023-03-21", "2024-03-19"),
+                "TYM24 Comdty": ("2023-06-21", "2024-06-18"),
+            }
+            t_list = list(tickers) if isinstance(tickers, list) else [tickers]
+            return pd.DataFrame(
+                {
+                    "FUT_FIRST_TRADE_DT": [data[t][0] for t in t_list],
+                    "LAST_TRADEABLE_DT": [data[t][1] for t in t_list],
+                },
+                index=t_list,
+            )
+
+        with patch.object(historical_extractor.blp, "bdp", side_effect=fake_bdp):
+            static = historical_extractor._fetch_underlying_contracts_static_batch(
+                underlying_tickers=["TYZ23 Comdty", "TYH24 Comdty", "TYM24 Comdty"],
+                bloomberg_fields=["FUT_FIRST_TRADE_DT", "LAST_TRADEABLE_DT"],
+                request_kwargs={},
+            )
+
+        contracts = []
+        for ticker, fields in static.items():
+            contracts.append({"_underlying": ticker, **fields})
+
+        windows = historical_extractor._compute_effective_windows_expiry_roll(
+            contracts=contracts,
+            roll_field_column="LAST_TRADEABLE_DT",
+            first_trade_field_column="FUT_FIRST_TRADE_DT",
+        )
+        # Three contracts → three windows; last is open-ended.
+        assert len(windows) == 3
+        assert windows[-1]["effective_to"] is None
+        # And the windows pass the overlap gate (which is the contract
+        # both the extractor's pre-write and the DB EXCLUDE enforce).
+        conflicts = historical_extractor._validate_no_overlaps({"TY1 Comdty": windows})
+        assert conflicts == []
