@@ -126,6 +126,8 @@ def _build_instrument_attributes(row: pd.Series, filename: str) -> Dict[str, Any
         "tenor",
         "underlying_index",
         "contract_code",
+        "cusip",
+        "isin",
         "expiry_date",
         "maturity_date",
         "is_rolling_contract",
@@ -740,6 +742,10 @@ def run_ingestion_pipeline():
                     "tenor": row.get("tenor") if pd.notna(row.get("tenor")) else None,
                     "underlying_index": row.get("underlying_index") if pd.notna(row.get("underlying_index")) else None,
                     "contract_code": row.get("contract_code") if pd.notna(row.get("contract_code")) else None,
+                    # Cash-bond identity (ADR 0003) — typed columns on instrument_master.
+                    # NULL for every non-cash-bond playbook (none declare these fields today).
+                    "cusip": row.get("cusip") if pd.notna(row.get("cusip")) else None,
+                    "isin": row.get("isin") if pd.notna(row.get("isin")) else None,
                     "expiry_date": row.get("expiry_date") if pd.notna(row.get("expiry_date")) else None,
                     "maturity_date": row.get("maturity_date") if pd.notna(row.get("maturity_date")) else None,
                     "is_rolling_contract": _safe_bool(row.get("is_rolling_contract"), False),
