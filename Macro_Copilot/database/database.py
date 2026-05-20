@@ -1055,3 +1055,218 @@ def get_otr_at(
             .first()
         )
     return dict(row) if row else None
+
+
+# ==============================================================================
+# EVENT CALENDAR HELPERS (ADR 0004)
+#
+# Substrate for macro_data.event_calendar — one row per macro EVENT (an
+# economic release, a central-bank meeting, or a sovereign auction). Events do
+# not fit market_data_daily's long (trade_date, instrument_id, field_name,
+# value) shape, so they get their own wide table. These helpers follow the
+# established _normalize_* / upsert_* / get_* shape and the _txn-Connectable
+# contract. B1 lands these; the Step-3 data PR (B2) is the first caller —
+# B1 itself ingests no event data.
+# ==============================================================================
+
+# The closed set of valid event_category values. event_category is a free
+# VARCHAR on the table (consistent with asset_class / instrument_type); this
+# tuple is the single code-level source of truth for the valid set (P8/P10).
+# Extending it is a deliberate, ADR-recorded decision.
+EVENT_CATEGORIES = ("economic_release", "central_bank_meeting", "auction")
+
+# Optional event_calendar value columns, defaulted to None on every record so
+# the bulk insert generates a single coherent column list (see
+# _normalize_event_record). The four required columns — event_type,
+# event_category, country, release_date — are set explicitly, not via this loop.
+_EVENT_VALUE_COLUMNS = (
+    "currency",
+    "central_bank",
+    "release_time",
+    "period",
+    "actual",
+    "consensus_median",
+    "consensus_high",
+    "consensus_low",
+    "prior",
+    "revised_prior",
+    "surprise",
+    "surprise_std_dev",
+    "high_yield",
+    "bid_to_cover",
+    "tail_bps",
+    "indirect_pct",
+    "related_instrument_id",
+    "attributes",
+    "load_id",
+)
+
+
+def _normalize_event_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Internal: turn a caller-supplied event record into a clean dict mapping the
+    columns of ``macro_data.event_calendar``.
+
+    A record MUST carry ``event_type``, ``event_category``, ``country`` and
+    ``release_date``. Every other column is optional. If ``event_category`` is
+    outside :data:`EVENT_CATEGORIES` the function WARNS but does not abort —
+    ``event_category`` is a free ``VARCHAR``, and refusing here would be
+    stricter than the schema (P6: the typed exception is reserved for genuine
+    contract violations; an unrecognised-but-storable category is a warning).
+
+    The returned dict has **uniform keys across every record** — the four
+    required columns plus every column in :data:`_EVENT_VALUE_COLUMNS`, with
+    ``None`` for absent values — so SQLAlchemy bulk ``insert(...).values([...])``
+    derives one coherent column list. Mirrors :func:`_normalize_otr_record`.
+    """
+    event_type = record.get("event_type")
+    event_category = record.get("event_category")
+    country = record.get("country")
+    release_date = record.get("release_date")
+
+    if not event_type:
+        raise ValueError("event_calendar record requires `event_type`.")
+    if not event_category:
+        raise ValueError("event_calendar record requires `event_category`.")
+    if not country:
+        raise ValueError("event_calendar record requires `country`.")
+    if release_date is None:
+        raise ValueError("event_calendar record requires `release_date`.")
+
+    if event_category not in EVENT_CATEGORIES:
+        print(
+            f"[WARNING] event_calendar record has event_category="
+            f"{event_category!r}, which is not one of the documented "
+            f"EVENT_CATEGORIES {EVENT_CATEGORIES}. Writing it anyway "
+            "(event_category is a free VARCHAR); verify this is intended."
+        )
+
+    row: Dict[str, Any] = {
+        "event_type": str(event_type),
+        "event_category": str(event_category),
+        "country": str(country),
+        "release_date": release_date,
+    }
+    for col in _EVENT_VALUE_COLUMNS:
+        row[col] = record.get(col)
+    # Foreign-key columns are integers; a parquet round-trip can yield numpy
+    # int64 or a string, so cast when present.
+    for fk in ("related_instrument_id", "load_id"):
+        if row[fk] is not None:
+            row[fk] = int(row[fk])
+    return row
+
+
+def upsert_event_calendar(
+    connectable: Connectable,
+    records: List[Dict[str, Any]],
+) -> int:
+    """
+    Idempotent writer for ``macro_data.event_calendar``.
+
+    Each record MUST carry:
+      - ``event_type`` (str), ``event_category`` (str), ``country`` (str)
+      - ``release_date`` (date)
+
+    Optional columns: ``currency``, ``central_bank``, ``release_time``,
+    ``period``, the economic-release numeric fields (``actual``,
+    ``consensus_median``, ``consensus_high``, ``consensus_low``, ``prior``,
+    ``revised_prior``, ``surprise``, ``surprise_std_dev``), the auction result
+    fields (``high_yield``, ``bid_to_cover``, ``tail_bps``, ``indirect_pct``),
+    ``related_instrument_id``, ``attributes`` (JSONB), ``load_id``.
+
+    Behavior:
+      * Idempotent on the natural key ``(event_type, country, release_date)``
+        via ``ON CONFLICT DO UPDATE`` — re-ingesting the calendar is safe, and
+        an auction's result columns fill in on a post-auction re-upsert of the
+        same row (ADR 0004 — one row per auction, updated post-auction).
+
+    Connection contract: accepts either an :class:`Engine` (self-managed
+    transaction) or a :class:`Connection` (caller-managed). See :func:`_txn`.
+    """
+    if not records:
+        return 0
+
+    metadata = MetaData(schema="macro_data")
+    events = Table("event_calendar", metadata, autoload_with=connectable)
+
+    # Reflection types the JSONB column with ``none_as_null=False`` (SQLAlchemy
+    # default), under which a Python ``None`` binds as the JSON ``'null'``
+    # literal rather than SQL ``NULL``. Override so an absent attributes blob
+    # persists as a genuine SQL ``NULL`` — the same fix applied to
+    # ``upsert_instrument_metadata_history`` and ``upsert_otr_history``.
+    events.c.attributes.type = JSONB(none_as_null=True)
+
+    clean: List[Dict[str, Any]] = [_normalize_event_record(r) for r in records]
+
+    stmt = insert(events).values(clean)
+    update_set = {
+        c.name: stmt.excluded[c.name]
+        for c in events.c
+        if c.name
+        not in {
+            "event_id",
+            "event_type",
+            "country",
+            "release_date",
+            "created_at",
+        }
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["event_type", "country", "release_date"],
+        set_=update_set,
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    affected = result.rowcount or 0
+    print(f"[DB] Upserted {affected} rows into event_calendar.")
+    return affected
+
+
+_EVENTS_IN_WINDOW_SQL = text(
+    """
+    SELECT *
+    FROM macro_data.event_calendar
+    WHERE event_type = :event_type
+      AND release_date >= :start_date
+      AND release_date <= :end_date
+    ORDER BY release_date, event_id
+    """
+)
+
+
+def get_events_in_window(
+    engine: Engine,
+    event_type: str,
+    start_date: Any,
+    end_date: Any,
+) -> List[Dict[str, Any]]:
+    """
+    Read the ``event_calendar`` rows of one ``event_type`` whose
+    ``release_date`` falls within ``[start_date, end_date]`` (both inclusive),
+    ordered by ``release_date``.
+
+    Returns a list of dicts (one per event row); an empty list when no event
+    of that type falls in the window — the absence is information, not an
+    error, so no exception is raised.
+
+    The window bounds accept anything ``pandas.to_datetime`` parses (ISO
+    strings, ``datetime``, ``date``).
+    """
+    start = pd.to_datetime(start_date).date().isoformat()
+    end = pd.to_datetime(end_date).date().isoformat()
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                _EVENTS_IN_WINDOW_SQL,
+                {
+                    "event_type": str(event_type),
+                    "start_date": start,
+                    "end_date": end,
+                },
+            )
+            .mappings()
+            .all()
+        )
+    return [dict(r) for r in rows]
