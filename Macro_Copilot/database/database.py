@@ -648,9 +648,19 @@ def _normalize_history_record(
     return row
 
 
+# Default batch size for the instrument_metadata_history upsert.
+# instrument_metadata_history rows bind ~17 columns each, so a 2_000-row
+# batch is ~34_000 bound parameters — comfortably under PostgreSQL's
+# ~65_535-parameter-per-statement protocol limit. The default is lower
+# than ``DEFAULT_MARKET_DATA_UPSERT_BATCH_SIZE`` (10_000) because these
+# rows are ~3x wider than market_data_daily rows.
+DEFAULT_METADATA_HISTORY_UPSERT_BATCH_SIZE = 2_000
+
+
 def upsert_instrument_metadata_history(
     connectable: Connectable,
     records: List[Dict[str, Any]],
+    batch_size: int = DEFAULT_METADATA_HISTORY_UPSERT_BATCH_SIZE,
 ) -> int:
     """
     Append-on-change writer for ``macro_data.instrument_metadata_history``.
@@ -677,12 +687,32 @@ def upsert_instrument_metadata_history(
         about: a backfill can be retried without producing window-collapse
         artefacts.
 
+    Batching
+    --------
+    A large backfill (every rolling-contract chain enumerated at once)
+    can produce enough records that a single ``INSERT ... ON CONFLICT``
+    would bind more than PostgreSQL's ~65_535-parameter-per-statement
+    protocol limit — each row binds ~17 columns. The upsert is therefore
+    issued in batches of ``batch_size`` records (default 2_000 →
+    ~34_000 bound parameters).
+
+    **All batches execute on a single connection inside ONE transaction.**
+    ``_txn(connectable)`` is opened once around the batch loop and the
+    function never commits per batch, so the caller's atomic-composition
+    contract is preserved exactly — e.g. the ingester's metadata-history
+    critical section (``close_open_metadata_window`` per instrument +
+    this upsert + audit-flip) still commits atomically or rolls back
+    together. See :func:`upsert_market_data_daily` for the same pattern.
+
     Connection contract: same as the other helpers in this module —
     accepts either an :class:`Engine` (self-managed transaction) or a
     :class:`Connection` (caller-managed transaction). See :func:`_txn`.
     """
     if not records:
         return 0
+
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}.")
 
     metadata = MetaData(schema="macro_data")
     history = Table("instrument_metadata_history", metadata, autoload_with=connectable)
@@ -735,9 +765,11 @@ def upsert_instrument_metadata_history(
     if not clean:
         return 0
 
-    stmt = insert(history).values(clean)
-    update_set = {
-        c.name: stmt.excluded[c.name]
+    # Column names whose values are refreshed on an
+    # (instrument_id, effective_from) conflict — constant across batches,
+    # so computed once here and reused per batch below.
+    update_col_names = [
+        c.name
         for c in history.c
         if c.name
         not in {
@@ -746,15 +778,38 @@ def upsert_instrument_metadata_history(
             "effective_from",
             "created_at",
         }
-    }
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["instrument_id", "effective_from"],
-        set_=update_set,
-    )
+    ]
 
+    total_rows = len(clean)
+    num_batches = (total_rows + batch_size - 1) // batch_size
+    affected = 0
+
+    # Single transaction around the WHOLE batch loop. Do not move the
+    # ``with _txn`` inside the loop — that would commit per batch and
+    # break the caller's atomic delete/close + upsert + audit-flip
+    # contract.
     with _txn(connectable) as conn:
-        result = conn.execute(stmt)
-    affected = result.rowcount or 0
+        for batch_index in range(num_batches):
+            start = batch_index * batch_size
+            end = min(start + batch_size, total_rows)
+            batch_records = clean[start:end]
+
+            stmt = insert(history).values(batch_records)
+            update_set = {
+                name: stmt.excluded[name] for name in update_col_names
+            }
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["instrument_id", "effective_from"],
+                set_=update_set,
+            )
+
+            result = conn.execute(stmt)
+            affected += result.rowcount or 0
+            print(
+                f"[DB] Upserted instrument_metadata_history batch "
+                f"{batch_index + 1}/{num_batches} rows {start}-{end - 1}"
+            )
+
     print(f"[DB] Upserted {affected} rows into instrument_metadata_history.")
     return affected
 

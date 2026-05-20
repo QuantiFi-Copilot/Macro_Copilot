@@ -277,6 +277,132 @@ class TestCriticalSectionComposition:
         conn.execute.assert_not_called()
         conn.begin.assert_not_called()
 
+    @staticmethod
+    def _make_fake_history_table() -> MagicMock:
+        """Fake ``instrument_metadata_history`` table whose ``.c`` is
+        iterable (the helper iterates ``history.c`` to build the
+        conflict-update column set) and exposes a ``.attributes`` column
+        with a settable ``.type`` (the helper reassigns
+        ``history.c.attributes.type`` to a ``none_as_null`` JSONB)."""
+
+        class _FakeColumns:
+            def __init__(self, names: List[str]) -> None:
+                self._cols: List[Any] = []
+                for n in names:
+                    col = MagicMock()
+                    col.name = n
+                    self._cols.append(col)
+                    setattr(self, n, col)
+
+            def __iter__(self) -> Any:
+                return iter(self._cols)
+
+        fake_table = MagicMock()
+        fake_table.c = _FakeColumns([
+            "metadata_history_id", "instrument_id", "effective_from",
+            "effective_to", "contract_code", "expiry_date", "maturity_date",
+            "security_name", "settlement_date", "accrual_start_date",
+            "accrual_end_date", "tick_size", "tick_value", "contract_size",
+            "exchange_code", "underlying_ticker", "attributes", "load_id",
+            "created_at",
+        ])
+        return fake_table
+
+    def test_upsert_instrument_metadata_history_under_connection_batches(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``upsert_instrument_metadata_history(connection, records, ...)``
+        runs its INSERT-ON-CONFLICT batches on the caller's connection and
+        opens no sub-transaction.
+
+        3 records (all carrying ``instrument_id`` so the vendor-ticker
+        resolution SELECT is skipped) with ``batch_size=2`` -> 2 batches
+        -> 2 ``conn.execute`` calls, ``conn.begin`` never called."""
+        from database import database as db_mod
+
+        conn = self._make_connection_stub()
+
+        fake_history = self._make_fake_history_table()
+        fake_master = MagicMock()
+        monkeypatch.setattr(
+            db_mod, "Table",
+            lambda name, *a, **k: (
+                fake_history if name == "instrument_metadata_history" else fake_master
+            ),
+        )
+        fake_stmt = MagicMock()
+        fake_stmt.excluded = MagicMock()
+        fake_stmt.values.return_value = fake_stmt
+        fake_stmt.on_conflict_do_update.return_value = "<mh_upsert_stmt>"
+        monkeypatch.setattr(db_mod, "insert", lambda *a, **k: fake_stmt)
+
+        records = [
+            {"instrument_id": 1, "effective_from": "2024-01-01", "contract_code": "A"},
+            {"instrument_id": 1, "effective_from": "2024-04-01", "contract_code": "B"},
+            {"instrument_id": 1, "effective_from": "2024-07-01", "contract_code": "C"},
+        ]
+
+        db_mod.upsert_instrument_metadata_history(conn, records, batch_size=2)
+
+        # 3 records / batch_size 2 -> 2 batches. The resolution SELECT is
+        # skipped (every record already carries instrument_id), so the
+        # only execute calls are the 2 upsert batches.
+        assert conn.execute.call_count == 2
+        assert conn.execute.call_args_list == [
+            unittest_mock_call("<mh_upsert_stmt>"),
+            unittest_mock_call("<mh_upsert_stmt>"),
+        ]
+        conn.begin.assert_not_called()
+
+    def test_upsert_instrument_metadata_history_engine_path_one_transaction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``upsert_instrument_metadata_history(engine, records, ...)``
+        opens exactly ONE transaction and runs every batch inside it —
+        batching must not turn one helper call into multiple transactions.
+
+        5 records (all with ``instrument_id`` -> resolution SELECT
+        skipped) with ``batch_size=2`` -> 3 batches inside one
+        ``engine.begin()``."""
+        from database import database as db_mod
+
+        engine = MagicMock(spec=Engine)
+        connection = MagicMock(spec=Connection)
+        connection.execute.return_value = MagicMock(rowcount=0)
+        begin_ctx = MagicMock()
+        begin_ctx.__enter__ = MagicMock(return_value=connection)
+        begin_ctx.__exit__ = MagicMock(return_value=False)
+        engine.begin.return_value = begin_ctx
+
+        fake_history = self._make_fake_history_table()
+        fake_master = MagicMock()
+        monkeypatch.setattr(
+            db_mod, "Table",
+            lambda name, *a, **k: (
+                fake_history if name == "instrument_metadata_history" else fake_master
+            ),
+        )
+        fake_stmt = MagicMock()
+        fake_stmt.excluded = MagicMock()
+        fake_stmt.values.return_value = fake_stmt
+        fake_stmt.on_conflict_do_update.return_value = "<mh_upsert_stmt>"
+        monkeypatch.setattr(db_mod, "insert", lambda *a, **k: fake_stmt)
+
+        records = [
+            {"instrument_id": 1, "effective_from": f"2024-0{m}-01"}
+            for m in range(1, 6)
+        ]
+
+        # 5 records / batch_size 2 -> 3 batches.
+        db_mod.upsert_instrument_metadata_history(engine, records, batch_size=2)
+
+        # ONE transaction opened for the whole helper call …
+        engine.begin.assert_called_once()
+        begin_ctx.__enter__.assert_called_once()
+        begin_ctx.__exit__.assert_called_once()
+        # … and all 3 batches executed inside that single transaction.
+        assert connection.execute.call_count == 3
+
 
 # ============================================================================
 # ROLLBACK CONTRACT — exception inside the critical block rolls back

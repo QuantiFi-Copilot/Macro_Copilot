@@ -60,6 +60,13 @@ MARKET_DATA_UPSERT_BATCH_SIZE = int(
     os.getenv("MARKET_DATA_UPSERT_BATCH_SIZE", "10000")
 )
 
+# Batch size for the instrument_metadata_history upsert. These rows are
+# ~3x wider than market_data_daily rows (~17 bound columns each), so the
+# default is lower — see ``database.database.upsert_instrument_metadata_history``.
+METADATA_HISTORY_UPSERT_BATCH_SIZE = int(
+    os.getenv("METADATA_HISTORY_UPSERT_BATCH_SIZE", "2000")
+)
+
 
 # ==============================================================================================
 # HELPERS
@@ -557,8 +564,14 @@ def _process_metadata_history_blob(
             for iid, min_from in per_instrument_min_from.items():
                 close_open_metadata_window(conn, iid, min_from)
 
+            # Upserted in bounded batches (METADATA_HISTORY_UPSERT_BATCH_SIZE)
+            # but ALL batches run on this same ``conn`` inside the critical
+            # transaction — close-window + every upsert batch + audit-flip
+            # still commit atomically or roll back together.
             print(f"  [DB] Upserting {len(records)} metadata-history rows...")
-            upsert_instrument_metadata_history(conn, records)
+            upsert_instrument_metadata_history(
+                conn, records, batch_size=METADATA_HISTORY_UPSERT_BATCH_SIZE
+            )
 
             update_load_audit_status(
                 conn,
