@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
 from sqlalchemy import MetaData, Table, create_engine, func, select, text
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.engine import Connection, Engine
 
 
@@ -615,6 +615,20 @@ def upsert_instrument_metadata_history(
     metadata = MetaData(schema="macro_data")
     history = Table("instrument_metadata_history", metadata, autoload_with=connectable)
     master = Table("instrument_master", metadata, autoload_with=connectable)
+
+    # SQLAlchemy reflects a Postgres JSONB column with ``none_as_null=False``
+    # (its default). Under that default the JSONB bind processor renders a
+    # Python ``None`` as the JSON ``'null'`` literal — a real JSONB value —
+    # NOT a SQL ``NULL``. For metadata-history rows whose every static field
+    # maps to a typed column, ``attributes`` is always ``None``; left as-is,
+    # every row would persist a JSONB ``'null'`` (``attributes IS NOT NULL``
+    # would be true, the GIN index would carry a useless entry per row, and
+    # ``jsonb_typeof`` would report ``'null'``). Overriding the reflected
+    # column's type to ``none_as_null=True`` makes a Python ``None`` persist
+    # as a genuine SQL ``NULL`` while a real dict still serialises to JSONB
+    # normally. Reassigning ``.type`` before the INSERT is compiled is what
+    # makes the new bind processor take effect.
+    history.c.attributes.type = JSONB(none_as_null=True)
 
     # Resolve any vendor_ticker → instrument_id in one round-trip. Records
     # that already carry instrument_id need no lookup. Records with neither
