@@ -44,7 +44,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any, List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call as unittest_mock_call
 
 import pytest
 from sqlalchemy.engine import Connection, Engine
@@ -161,7 +161,14 @@ class TestCriticalSectionComposition:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """``upsert_market_data_daily(connection, df, ...)`` runs its
-        INSERT-ON-CONFLICT on the caller's connection.  No sub-transaction."""
+        INSERT-ON-CONFLICT batches on the caller's connection.  No
+        sub-transaction is opened — every batch composes into the caller's
+        transaction.
+
+        Forces ``batch_size=2`` over a 3-row frame → 2 batches → 2
+        ``conn.execute`` calls, all on the caller's connection, and
+        ``conn.begin`` never called.  This pins the contract that batching
+        the upsert did NOT weaken the atomic-composition guarantee."""
         from database import database as db_mod
         import pandas as pd
 
@@ -171,7 +178,9 @@ class TestCriticalSectionComposition:
         fake_table = MagicMock()
         monkeypatch.setattr(db_mod, "Table", lambda *a, **k: fake_table)
         # Stub the insert() statement builder so the chain doesn't reach
-        # real SQLAlchemy compilation.
+        # real SQLAlchemy compilation. A fresh insert() is built per batch;
+        # the stub returns the same fake_stmt each time, so every batch
+        # executes the same "<upsert_stmt>" sentinel.
         fake_stmt = MagicMock()
         fake_stmt.excluded = MagicMock()
         fake_stmt.values.return_value = fake_stmt
@@ -179,16 +188,93 @@ class TestCriticalSectionComposition:
         monkeypatch.setattr(db_mod, "insert", lambda *a, **k: fake_stmt)
 
         df = pd.DataFrame({
-            "trade_date": ["2024-01-15"],
-            "instrument_id": [1],
-            "field_name": ["YLD_YTM_MID"],
-            "field_value": [4.10],
+            "trade_date": ["2024-01-15", "2024-01-16", "2024-01-17"],
+            "instrument_id": [1, 1, 1],
+            "field_name": ["YLD_YTM_MID", "YLD_YTM_MID", "YLD_YTM_MID"],
+            "field_value": [4.10, 4.11, 4.12],
+        })
+
+        db_mod.upsert_market_data_daily(conn, df=df, load_id=99, batch_size=2)
+
+        # 3 rows / batch_size 2 → 2 batches → 2 execute calls.
+        assert conn.execute.call_count == 2
+        assert conn.execute.call_args_list == [
+            unittest_mock_call("<upsert_stmt>"),
+            unittest_mock_call("<upsert_stmt>"),
+        ]
+        # Critically: every batch ran on the caller's connection — the
+        # helper did NOT start its own (sub-)transaction.
+        conn.begin.assert_not_called()
+
+    def test_upsert_market_data_daily_engine_path_one_transaction_for_all_batches(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``upsert_market_data_daily(engine, df, ...)`` opens exactly ONE
+        transaction (``engine.begin()`` once) and runs EVERY batch inside
+        it.  This is the Engine-path mirror of the contract above: batching
+        must not turn one helper call into multiple transactions."""
+        from database import database as db_mod
+        import pandas as pd
+
+        # Engine whose .begin() yields a single connection for the whole
+        # helper call.
+        engine = MagicMock(spec=Engine)
+        connection = MagicMock(spec=Connection)
+        connection.execute.return_value = MagicMock(rowcount=0)
+        begin_ctx = MagicMock()
+        begin_ctx.__enter__ = MagicMock(return_value=connection)
+        begin_ctx.__exit__ = MagicMock(return_value=False)
+        engine.begin.return_value = begin_ctx
+
+        fake_table = MagicMock()
+        monkeypatch.setattr(db_mod, "Table", lambda *a, **k: fake_table)
+        fake_stmt = MagicMock()
+        fake_stmt.excluded = MagicMock()
+        fake_stmt.values.return_value = fake_stmt
+        fake_stmt.on_conflict_do_update.return_value = "<upsert_stmt>"
+        monkeypatch.setattr(db_mod, "insert", lambda *a, **k: fake_stmt)
+
+        df = pd.DataFrame({
+            "trade_date": ["2024-01-15", "2024-01-16", "2024-01-17",
+                           "2024-01-18", "2024-01-19"],
+            "instrument_id": [1, 1, 1, 1, 1],
+            "field_name": ["YLD_YTM_MID"] * 5,
+            "field_value": [4.10, 4.11, 4.12, 4.13, 4.14],
+        })
+
+        # 5 rows / batch_size 2 → 3 batches.
+        db_mod.upsert_market_data_daily(engine, df=df, load_id=99, batch_size=2)
+
+        # ONE transaction opened for the whole helper call …
+        engine.begin.assert_called_once()
+        begin_ctx.__enter__.assert_called_once()
+        begin_ctx.__exit__.assert_called_once()
+        # … and all 3 batches executed inside that single transaction.
+        assert connection.execute.call_count == 3
+
+    def test_upsert_market_data_daily_skips_when_all_field_values_null(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A frame whose every ``field_value`` is null is dropped by the
+        cleaning pass; the helper returns cleanly without opening a
+        transaction or executing any statement."""
+        from database import database as db_mod
+        import pandas as pd
+
+        conn = self._make_connection_stub()
+        monkeypatch.setattr(db_mod, "Table", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(db_mod, "insert", lambda *a, **k: MagicMock())
+
+        df = pd.DataFrame({
+            "trade_date": ["2024-01-15", "2024-01-16"],
+            "instrument_id": [1, 1],
+            "field_name": ["YLD_YTM_MID", "YLD_YTM_MID"],
+            "field_value": [None, None],
         })
 
         db_mod.upsert_market_data_daily(conn, df=df, load_id=99)
 
-        # Used caller's connection; did NOT open a sub-transaction.
-        conn.execute.assert_called_once_with("<upsert_stmt>")
+        conn.execute.assert_not_called()
         conn.begin.assert_not_called()
 
 
