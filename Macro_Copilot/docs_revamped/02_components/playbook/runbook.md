@@ -2,11 +2,11 @@
 
 > Step-by-step procedure for adding a new playbook to an agent. Use this when you are introducing a new instrument family, a new asset class, or splitting an over-broad existing playbook.
 
-**Version:** v1.1
-**Last reviewed:** 2026-05-17
+**Version:** v1.2
+**Last reviewed:** 2026-05-20
 **Audience:** any contributor (human or AI agent) introducing a new playbook.
 **Prerequisite reading:** [`README.md`](README.md) in this folder — the contract every playbook honours. Read it once before starting; refer back when a step says *"per the contract."*
-**Operationalises principles:** P1 (built right, not as a placeholder), P3 (every playbook follows the same shape), P7 (vendor SDK isolation), P8 (closed-family extension when adding a new `asset_class`), P11 (each agent owns its own playbooks).
+**Operationalises principles:** P1 (built right, not as a placeholder), P2 (accuracy), P3 (every playbook follows the same shape), P5 (honest disclosure), P7 (vendor SDK isolation), P8 (closed-family extension when adding a new `asset_class`), P11 (each agent owns its own playbooks), P12 (source-of-record boundary).
 **AC class:** Adding a new playbook is **Load-bearing** per [`../../00_thesis/02_ai_agent_development_contract.md`](../../00_thesis/02_ai_agent_development_contract.md). Run the full self-check; do not skip the gate.
 
 ---
@@ -27,7 +27,7 @@ The dividing line: a new playbook gets a new `playbook_name` and a new file. An 
 
 ## Pre-flight check — decide these BEFORE writing any YAML
 
-A new playbook is hard to renamed-or-restructured after the first ingestion (audit history is keyed on `playbook_name`). Six decisions to make and document in the PR description before the YAML lands. **If any of these is uncertain, stop and ask the human (AC8).**
+A new playbook is hard to renamed-or-restructured after the first ingestion (audit history is keyed on `playbook_name`). Seven decisions to make and document in the PR description before the YAML lands. **If any of these is uncertain, stop and ask the human (AC8).**
 
 | # | Decision | What you are committing to |
 |---|---|---|
@@ -37,6 +37,7 @@ A new playbook is hard to renamed-or-restructured after the first ingestion (aud
 | 4 | **What is the expected universe size?** | Rough count of `universe` rows. Drives the coverage-gate sanity check on first load (the gate is 80% of prior — first load has no prior, so the count is the baseline). |
 | 5 | **What is the historical `start_date`?** | The earliest date the extractor will pull. This determines first-load size; later reductions delete history. Picking a too-early date wastes ingestion; picking a too-late date forces a re-pull later. |
 | 6 | **Does the source-of-record vendor publish every field you need?** | List every `target_metric` and `reference_metric`. For each, confirm the field exists with the documented mnemonic. A missing vendor field is the most common reason a playbook fails its first ingestion. |
+| 7 | **Which non-vendor convention metadata is manually encoded, and how was it verified?** | List every hard-coded convention or metadata field that is not pulled as a target/reference metric: day counts, roll conventions, settlement conventions, index lags, interpolation methods, fixing calendars, payment delays, etc. For each, record the verification source and the scope checked. Do not assume one value applies across every tenor, curve, country, or subtype until that uniformity has been verified. |
 
 Write these answers in the PR description. The reviewer reads them before reading the YAML.
 
@@ -86,6 +87,26 @@ universe:
 **Per the contract** ([`README.md`](README.md)), every row in `universe` must carry `ticker` and `instrument_type`. The other per-row fields are asset-class-specific; mirror the family axis decision from Pre-flight Decision 3 across every row.
 
 **Vendor field validation while drafting.** For each `bloomberg_field`, confirm the mnemonic exists. If you are not certain, look it up before committing — invented mnemonics cost a failed extraction round-trip and confuse the audit trail. If a field genuinely does not exist in the vendor, the right answer is either to drop it from the playbook or to refuse the playbook (per P6) — never to ship a mnemonic that fails at runtime.
+
+**Manual metadata validation while drafting.** Treat every manually encoded convention field as a data claim, even when it lands in `attributes` JSONB rather than in a typed column. Do not hard-code `index_lag`, `interpolation`, day-count conventions, roll conventions, calendars, settlement conventions, payment delays, or similar fields unless you have verified both:
+
+1. **The value itself** — from Bloomberg if it exposes the convention cleanly, otherwise from a manual Bloomberg-screen check and/or authoritative market documentation.
+2. **The scope where the value is reused** — across the maturities, tenors, curve families, countries, currencies, indices, and instrument subtypes where the YAML repeats it.
+
+During Phase A / candidate drafting, mark unverified convention fields explicitly:
+
+```yaml
+index_lag: "3M"          # CANDIDATE CONVENTION — manually verify by market
+interpolation: "Daily"   # CANDIDATE CONVENTION — manually verify by market
+```
+
+In the final playbook, replace the candidate marker with the verification evidence or cite it in the PR description:
+
+```yaml
+fixed_leg_day_count: ACT/360  # VERIFIED MANUAL 2026-05-20 — Bloomberg SWPM screen, USD SOFR all tenors
+```
+
+If the metadata varies, encode it row-by-row. The existing OIS playbook is the model: its leg day-count conventions vary by curve family, and its roll conventions vary by tenor for some curves. A reviewer should reject a broad copy-paste convention if the PR does not show that the convention was checked at the same granularity where it is applied.
 
 **Domain-specific fields and `attributes`.** Any per-row field that is asset-class-specific and not already a typed column on `instrument_master` lands in the `attributes` JSONB after ingestion. The playbook still declares these fields explicitly per row; the ingester routes them. If a field becomes query-hot for the asset class, it gets promoted to a typed column via a schema migration in a separate PR (P8-flavoured; file an ADR for the migration).
 
@@ -179,6 +200,7 @@ Things reviewers see repeatedly:
 - **Universe rows that are duplicates by `ticker`.** The unique key on `instrument_master` is `(vendor, vendor_ticker)`. Two rows with the same ticker will collide on upsert; the second wins, the first is silently lost. Deduplicate in the YAML.
 - **Using `is_active: false` as a soft delete.** Per the contract, just remove the row. Carrying inactive rows pollutes downstream queries.
 - **Treating `attributes` as a junk drawer.** Every JSONB field has implicit downstream consumers. Document the shape your playbook expects in the PR description, and confirm no primitive is silently broken by the new shape.
+- **Hard-coding convention metadata without evidence.** A value in `attributes` can still be wrong. If a playbook repeats `index_lag: 3M`, `interpolation: Daily`, `fixed_leg_day_count: ACT/360`, or similar convention metadata across rows, the PR must show that the value was verified and that the reuse scope is valid. If the convention varies by tenor, curve, country, index, or subtype, encode the variation row-by-row.
 - **Skipping the first-load verification (Step 6).** Neither gate gives you ticker-level data-quality assurance on first load — Step 6 is your only protection. Reviewers should see the verification queries and their outputs in the PR description.
 - **Bypassing the 90% extractor gate by ad-hoc lowering the threshold.** The gate exists to stop a partial extraction from ever reaching the ingester. Diagnose the failed tickers; do not lower the threshold to push past them.
 
@@ -186,12 +208,14 @@ Things reviewers see repeatedly:
 
 The reviewer signs off when each item is met. Cite the matching principle by ID; do not paraphrase (AC2).
 
-- [ ] **Pre-flight Decision 1–6** answered explicitly in the PR description.
+- [ ] **Pre-flight Decision 1–7** answered explicitly in the PR description.
+- [ ] **Pre-flight Decision 7.** Every manually encoded convention / metadata field is listed with its verification source, scope checked, variation found, and final encoding.
 - [ ] **P11.** Playbook lives under the correct `<agent>/playbooks/` folder; not shared across agents.
 - [ ] **P8 (if applicable).** A new `asset_class` value is accompanied by an ADR.
 - [ ] **Contract — top-level keys.** All eight required top-level keys are present; the playbook does not introduce new contractual top-level keys; if any of the legacy operational keys (`vendor`, `default_instrument_type`, `bdh_kwargs`, etc.) appear, the PR description justifies why.
 - [ ] **Contract — required per-row fields.** Every row in `universe` carries `ticker` and `instrument_type`. The family field is present consistently across every row.
 - [ ] **Vendor mnemonics.** Every `bloomberg_field` value is a real, documented field.
+- [ ] **Manual metadata.** No hard-coded convention field remains unverified. Candidate conventions are either verified and documented, narrowed row-by-row, or deferred.
 - [ ] **P1.** No `is_active: false` rows, no `# TODO: fix in v2` comments without a linked roadmap item, no placeholder universe rows ("just an example").
 - [ ] **Step 3 done.** The local YAML has been synced to `gs://macro-storage-bucket/playbooks/` via `python utils/push_playbooks.py`. For a non-rates agent, any required `push_playbooks.py` generalisation is in this PR or an explicit prerequisite PR.
 - [ ] **P4 idempotency.** Step 6's dedup re-run check shows a fresh `SKIPPED_DUPLICATE` audit row with matching `source_file_hash` on the second ingestion; no destructive section runs.
@@ -206,5 +230,6 @@ The reviewer signs off when each item is met. Cite the matching principle by ID;
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
+| v1.2 | 2026-05-20 | Added the manual metadata verification gate. New playbooks must now document every hard-coded convention field, the source used to verify it, and the scope checked for variation before the value can ship. Added candidate/final comment patterns, a common pitfall, and review checklist entries for convention metadata. | — |
 | v1.1 | 2026-05-17 | Restructured to match the README's v1.1 factual corrections: (a) Inserted **Step 3 — Sync to GCS** as a first-class step (was the most common first-time failure: the extractor reads from `gs://…/playbooks/`, not the local working tree); flagged `push_playbooks.py`'s rates-hardcode as an operational gap for non-rates agents. (b) Renumbered the extraction / ingestion / verify / wire steps to 4 / 5 / 6 / 7; tightened the extractor description to name the actual YAML loader (`yaml.safe_load` with defensive filtering, no strict schema) and the 90% upload gate. (c) Tightened the ingester description to name the two coverage gates explicitly, clarify that the audit-RUNNING insert and `instrument_master` upsert happen outside the destructive transaction, and clarify that dedup re-runs insert a fresh `SKIPPED_DUPLICATE` audit row. (d) Common-pitfalls list updated: added "forgot Step 3 (sync to GCS)" as the leading pitfall; added "bypassing the 90% extractor gate." (e) PR review checklist: added a "Step 3 done" item; updated the top-level-keys check to match the README's eight-keys-plus-legacy-tolerance framing. | (pending) |
 | v1 | 2026-05-17 | Initial runbook for adding a new playbook. Replaced by v1.1 the same day after a factual-review pass aligned with the README's corrections. | — |

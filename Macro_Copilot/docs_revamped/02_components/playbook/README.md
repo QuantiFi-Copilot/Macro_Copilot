@@ -2,10 +2,10 @@
 
 > The declarative YAML spec that owns an agent's data universe — what instruments exist, which vendor fields to pull for them, how often, and how the ingestion pipeline must handle the result. **Agent-agnostic by design**: the contract on this page holds whether the agent is rates, FX, credit, equity, commodities, options, or any future addition.
 
-**Version:** v1.3
+**Version:** v1.4
 **Last reviewed:** 2026-05-20
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
-**Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P10 (single source of truth), P11 (domain isolation by agent).
+**Operationalises principles:** P1 (future-proofed), P2 (accuracy), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P10 (single source of truth), P11 (domain isolation by agent), P12 (source-of-record boundary).
 **See also:** [`runbook.md`](runbook.md) — the procedure for adding a new playbook.
 
 ---
@@ -205,6 +205,32 @@ These are the practices that keep playbooks consistent across agents.
 - Each `target_metric` / `reference_metric` references the vendor field by its canonical mnemonic in the field-name slot (`bloomberg_field` today). When a second adapter ships, additional vendor slots are added alongside without renaming the existing one — the rows already ingested through Bloomberg keep their `bloomberg_field` provenance.
 - Do not put computed or derived fields here. The playbook is for raw vendor fields only; derivation belongs in primitives.
 
+### Manually encoded metadata and conventions
+
+Not every field a playbook needs is a clean vendor time series or a clean `bdp` reference field. Some fields are stable market-convention metadata: day-count conventions, roll conventions, settlement conventions, indexation lags, interpolation methods, fixing calendars, payment delays, and similar per-instrument terms. These fields usually land in `attributes` JSONB unless promoted to typed columns, but they are still **data claims**. Treat them with the same seriousness as Bloomberg mnemonics.
+
+**Rule: do not hard-code convention metadata unless it has been verified and the scope of the hard-code is defensible.** A playbook author must do one of the following before finalising the YAML:
+
+- Probe Bloomberg directly when it exposes the convention cleanly, either through the normal verification script or a manual Bloomberg-terminal check.
+- If Bloomberg does not expose the convention in a clean machine-readable field, verify it manually from Bloomberg screens and/or authoritative market documentation, then record that source in the PR notes or playbook comments.
+- Leave the value marked as a candidate (`# CANDIDATE CONVENTION`) until the verification is complete. Final playbooks should use an explicit marker such as `# VERIFIED MANUAL 2026-05-20 — Bloomberg SWPM screen` or the equivalent PR evidence.
+
+The verification must cover the exact scope where the value is reused. Do not copy one convention across every row merely because it is true for one ticker, tenor, curve, or subtype. Check whether the convention varies across:
+
+- maturities / tenors inside the same family;
+- curve families, countries, currencies, and indices;
+- instrument subtypes, such as generic benchmark tickers versus individual bonds, or nominal versus inflation-linked instruments.
+
+If a convention varies, encode the variation row-by-row rather than hiding it behind a playbook-level default. The existing `ois.yml` is the intended pattern: it manually encodes stable swap-leg conventions per row, and those conventions are not uniform everywhere. For example, the current OIS playbook has `fixed_leg_day_count` / `float_leg_day_count` varying by curve family (`USD_SOFR_OIS` and `EUR_ESTR_OIS` use `ACT/360`; `GBP_SONIA_OIS`, `JPY_OIS`, `AUD_OIS`, and `CAD_OIS` use `ACT/365.FIXED`), and `fixed_leg_roll_convention` / `float_leg_roll_convention` vary by tenor for `USD_SOFR_OIS` and `CAD_OIS` (`1W` through `1Y` use `Backward (EOM)`, while `2Y` and longer use `Backward`). This is why convention metadata must be verified at the right granularity.
+
+For new playbooks, the PR should include a short metadata validation matrix for every manually encoded convention:
+
+| Field | Verification source | Scope checked | Variation found? | Final encoding |
+|---|---|---|---|---|
+| `index_lag` | Bloomberg/manual screen or external source | country + index family | yes/no | per-row value / deferred |
+
+If the value cannot be verified, do not silently hard-code it. Either defer the field, narrow the playbook scope, or keep the playbook in candidate form until the operator can verify it.
+
 ### `attributes` JSONB
 
 The `attributes` column on `instrument_master` is the escape hatch for fields the typed schema does not cover. Use it when:
@@ -363,6 +389,7 @@ These are documented gaps; they do not affect the contract today but are flagged
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
+| v1.4 | 2026-05-20 | Added the manually encoded metadata / convention verification rule. Convention fields in `attributes` (day counts, roll conventions, index lags, interpolation methods, calendars, settlement conventions, etc.) are now explicitly treated as data claims: they must be Bloomberg-verified when possible, manually/source verified otherwise, and checked at the correct granularity before being hard-coded. The OIS playbook is documented as the reference pattern because its conventions vary by curve family and tenor. | — |
 | v1.3 | 2026-05-20 | Factual update — no change to the playbook YAML contract surface (required keys and the optional `metadata_history` section are unchanged). Recorded the cash-bond substrate additions so the contract's enumerations stay accurate: the new `instrument_type` value **`sovereign_cash_bond`**, and two new `instrument_master` typed columns **`cusip` / `isin`** (cash-bond identity — query-hot lookup keys promoted per the typed-column rule; `coupon` / `issue_date` / `outstanding` remain in `attributes`). Substrate landed by PR A3; the first cash-bond playbook follows in PR A4. | [ADR 0003](../../05_decisions/0003-cash-bond-substrate.md) |
 | v1.2 | 2026-05-19 | Added the optional top-level **`metadata_history`** section for playbooks whose universe includes rolling-contract tickers (`is_rolling_contract: true`). The section declares the Bloomberg chain-enumeration mnemonic, an optional override dict, a roll-convention type (today: `expiry_roll`), and a list of per-underlying-contract static fields keyed by typed columns on `macro_data.instrument_metadata_history`. Drives the extractor's `--mode metadata-history` flow and the ingester's `gs://<bucket>/metadata_history/<dataset>/` blob route. Purely additive: existing playbooks are unaffected, and the default extractor mode (`time-series`) ignores this section. No production playbook is edited in the PR that introduces this contract change — production `metadata_history` declarations on `bond_futures.yml` / `policy_futures.yml` follow in a separate PR after the operator's manual Bloomberg-mnemonic verification step. | [ADR 0002](../../05_decisions/0002-playbook-metadata-history-section.md) |
 | v1.1 | 2026-05-17 | Nine factual corrections from pre-canonical review, each re-verified against the cited source files: (a) **Guarantee #1 (Declarative)** — softened the "loader rejects unexpected node types" claim; the loader is `yaml.safe_load` with defensive filtering; strict validator is a known follow-up. (b) **Guarantee #2 (Atomic)** — narrowed scope to *delete + market_data_daily upsert + audit-success flip* (which IS atomic per `with engine.begin() as conn:`); the audit-RUNNING insert and `instrument_master` upsert happen *outside* the critical transaction (deliberately, per the in-code comment, for retry idempotency and lock-window reasons). (c) **Guarantee #3 (Idempotent)** — corrected to *no duplicate `market_data_daily` rows*; a `SKIPPED_DUPLICATE` audit row IS inserted on a dedup hit by design (preserves audit trail). (d) **Guarantee #4 (Coverage-gated)** — restated as TWO distinct gates: 90% extractor-upload gate (in `historical_extractor.py` / `incremental_extractor.py`) and 80% ingester-destructive gate (in `ingest_parquet.py`); added a dedicated *Coverage gates* subsection with a side-by-side table. (e) **`target_metrics` storage** — corrected the claim that `metric_id` becomes `field_name`; the **vendor mnemonic** (`bloomberg_field`) becomes `field_name` in `market_data_daily`. (f) **Versioning** — distinguished `playbook_hash` (raw SHA-256 of YAML bytes) from `source_file_hash` / normalised data hash (canonicalised over Parquet content); cosmetic edits change `playbook_hash` but not the dedup hash. (g) **Universal contract count** — corrected "five top-level keys" (was listed as nine) to "eight required top-level keys"; added a "current behaviour vs. target contract" caveat acknowledging that the current extractor tolerates legacy operational keys (`vendor`, `default_instrument_type`, `bdh_kwargs`, etc.). (h) **Implementation reality** — added an explicit section near the top documenting the three places the current operational path is rates-first / Bloomberg-first (hardcoded `push_playbooks.py`, `blpapi`-dependent extractors, rates-shaped typed columns on `instrument_master`); flagged each as a tracked gap. (i) **Open questions** — added items 7 (no strict schema validator) and 8 (`push_playbooks.py` is rates-hardcoded). | (pending) |

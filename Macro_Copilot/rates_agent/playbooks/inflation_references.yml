@@ -1,0 +1,158 @@
+# ============================================================================
+# VERIFIED 2026-05-20 — inflation_references playbook  (work order B3)
+#
+# Status: VERIFIED. Every ticker and Bloomberg mnemonic below was confirmed on
+# a live Bloomberg terminal by scripts/inflation_references_bloomberg_check.py:
+# all 6 index tickers return a clean monthly PX_LAST series (2006 to present),
+# and each index is independently cross-confirmed by the REFERENCE_INDEX field
+# of the inflation-linked bond that settles against it.
+#
+# This playbook covers the headline inflation REFERENCE INDICES that the
+# existing inflation-linked-bond and inflation-swap playbooks settle against.
+# It is a regular --mode time-series playbook: each universe row is one
+# monthly index, the index level rides in PX_LAST.
+#
+# ----------------------------------------------------------------------------
+# WHAT IS DELIBERATELY ABSENT FROM THIS PLAYBOOK — none of it is guessed:
+#
+#   (1) SEASONAL FACTORS. full_plan.md names their source as the statistical
+#       agencies (FRB / BLS / Eurostat / ONS), not Bloomberg. The verification
+#       script's SECTION 2 probe confirmed Bloomberg exposes no dedicated
+#       seasonal-factor series — only a US SA index, with no equivalent for
+#       the other markets. Seasonal factors are therefore DEFERRED to a
+#       non-Bloomberg follow-up; they cannot be sourced uniformly here.
+#
+#   (2) index_lag CONVENTION metadata is NOT on this playbook at all. The
+#       indexation lag is a per-BOND fact, not a per-index one: the
+#       verification script's SECTION 3 confirmed old-style UK gilts settle
+#       UKRPI at an 8-month lag while every other market uses 3 months — two
+#       linkers can settle the SAME index at different lags. Bloomberg exposes
+#       the lag as the reference field INFLATION_LAG on the inflation-linked
+#       BOND, so it belongs on inflation_indexed_bonds.yml as a per-bond
+#       reference field, NOT here. SECTION 3's INFLATION_LAG readings (US 3M,
+#       UK 8M, Germany/France/Canada/Japan 3M) are kept as evidence for that
+#       future bond-playbook revision. This playbook ships index levels only.
+#
+#   The daily-index INTERPOLATION rule is likewise NOT in this playbook.
+#   Bloomberg exposes no reference field for it, so it cannot be sourced the
+#   way INFLATION_LAG can. It is logged as technical debt
+#   (docs/technical_debt.md item #25) and added in a later work order — to be
+#   sourced from each debt office's index-linked-bond prospectus.
+# ----------------------------------------------------------------------------
+#
+# `release_event_type` IS present — it is not vendor metadata, it is an
+# agent-controlled forward-link key naming the event_calendar event_type a
+# future primitive will join to once work order B2 populates the release
+# calendar. Its exact string is finalised to match B2's event_type naming.
+# ============================================================================
+
+playbook_name: inflation_references
+playbook_version: "1.0"
+asset_class: rates
+dataset_name: inflation_references
+description: |
+  Monthly headline inflation reference indices — US CPI-U, UK RPI, Euro-area
+  HICP, France CPI, Canada CPI, Japan CPI — the published indices that
+  inflation-linked bonds and inflation swaps are settled against. One universe
+  row per index; the monthly index level is the single time-series field.
+  Per-row `attributes` carry `release_event_type`, a forward-link string to
+  the event_calendar event_type for a future release-calendar join (B2).
+  Indexation conventions are NOT in this playbook: the indexation lag is a
+  per-bond fact (Bloomberg field INFLATION_LAG on the linker bond) and
+  belongs on inflation_indexed_bonds.yml; the daily-index interpolation rule
+  is deferred as technical debt (docs/technical_debt.md item #25). Seasonal-
+  adjustment factors are out of scope for B3. This playbook ships the monthly
+  index level only.
+
+extraction:
+  start_date: "2005-01-01"
+  # CPI is a MONTHLY series and is revised — a 60-day incremental window always
+  # re-pulls the latest two monthly prints plus revisions (the daily rates
+  # playbooks use 14, which would be too narrow for a monthly, revised series).
+  incremental_window_days: 60
+
+target_metrics:
+  - metric_id: "index_level"
+    bloomberg_field: "PX_LAST"        # VERIFIED 2026-05-20 — clean monthly series on all 6 index tickers
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"   # VERIFIED 2026-05-20
+
+universe:
+  # --------------------------------------------------------------------------
+  # United States — CPI Urban Consumers, NOT seasonally adjusted.
+  # The index US TIPS and USD zero-coupon inflation swaps settle against.
+  # --------------------------------------------------------------------------
+  - ticker: "CPURNSA Index"            # VERIFIED 2026-05-20 — 239 monthly pts; "US CPI Urban Consumers NSA"
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "US"
+    currency: "USD"
+    inflation_index_family: "US_CPI_URBAN"
+    release_event_type: "us_cpi"
+
+  # --------------------------------------------------------------------------
+  # United Kingdom — Retail Prices Index, all items.
+  # The index UK index-linked gilts and GBP ZCIS settle against.
+  # --------------------------------------------------------------------------
+  - ticker: "UKRPI Index"              # VERIFIED 2026-05-20 — 240 monthly pts; "UK RPI All Items NSA"
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "UK"
+    currency: "GBP"
+    inflation_index_family: "UK_RPI"
+    release_event_type: "uk_rpi"
+
+  # --------------------------------------------------------------------------
+  # Euro area — HICP excluding tobacco.
+  # The index EUR zero-coupon inflation swaps settle against.
+  # --------------------------------------------------------------------------
+  - ticker: "CPTFEMU Index"            # VERIFIED 2026-05-20 — 240 monthly pts; "Eurostat Eurozone HICP Ex Toba"
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "Euro area"
+    currency: "EUR"
+    inflation_index_family: "EU_HICP"
+    release_event_type: "eu_hicp"
+
+  # --------------------------------------------------------------------------
+  # France — CPI excluding tobacco.
+  # The index French OATi inflation-linked bonds settle against.
+  # --------------------------------------------------------------------------
+  - ticker: "FRCPXTOB Index"           # VERIFIED 2026-05-20 — 240 monthly pts; "France CPI Ex Tobacco"
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "France"
+    currency: "EUR"
+    inflation_index_family: "FR_CPI"
+    release_event_type: "fr_cpi"
+
+  # --------------------------------------------------------------------------
+  # Canada — CPI, all items.
+  # The index Canadian Real Return Bonds settle against.
+  # --------------------------------------------------------------------------
+  - ticker: "CACPI Index"              # VERIFIED 2026-05-20 — 240 monthly pts; "STCA Canada CPI NSA"
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "Canada"
+    currency: "CAD"
+    inflation_index_family: "CAN_CPI"
+    release_event_type: "ca_cpi"
+
+  # --------------------------------------------------------------------------
+  # Japan — CPI, all items. Reference for JGBi.
+  # --------------------------------------------------------------------------
+  - ticker: "JCPNJGBI Index"           # VERIFIED 2026-05-20 — 239 monthly pts;
+                                       # "Japan CPI for Govt CPI Bonds". The
+                                       # JNCPI* / JCPN* nationwide-CPI tickers
+                                       # all failed bdh PX_LAST; the JGBi
+                                       # linker's REFERENCE_INDEX field named
+                                       # JCPNJGBI Index as the true settlement
+                                       # index, confirmed by clean bdh history.
+    instrument_type: "inflation_reference"
+    curve_family: "INFLATION_REFERENCE"
+    country: "Japan"
+    currency: "JPY"
+    inflation_index_family: "JP_CPI"
+    release_event_type: "jp_cpi"

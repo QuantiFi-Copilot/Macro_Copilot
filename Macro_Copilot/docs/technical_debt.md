@@ -401,6 +401,47 @@ per the "owner of the cross-domain concept" convention.  PR 21 adds
 an explicit par-par-approximation disclosure to its config.yaml so
 the workspace methodology card surfaces the true-ASW gap.
 
+### 25. Inflation-linker daily-index interpolation convention not sourced
+
+WHERE: rates_agent/playbooks/inflation_references.yml (work order B3),
+       inflation_indexed_bonds.yml, inflation_swaps.yml — the per-row
+       `interpolation` attribute.
+WHAT: An inflation-linked bond settles against a DAILY reference index
+      interpolated from monthly CPI prints. Two facts govern that daily
+      reference index: (a) the indexation LAG, and (b) the INTERPOLATION
+      RULE that maps the two bracketing monthly prints onto a given
+      settlement date. The lag (a) IS verified — Bloomberg exposes it as
+      the reference field INFLATION_LAG on the linker bond, and B3 encodes
+      it per row. The interpolation rule (b) could NOT be located on
+      Bloomberg: it is exposed as a reference field on neither the CPI
+      index ticker nor the linker bond, and the B3 verification script's
+      terminal run found no mnemonic carrying it.
+IMPACT: index_lag alone is enough to ship inflation_references in B3 (index
+      levels + the verified lag). It is NOT enough to compute an exact
+      daily reference index for an arbitrary settlement date — that needs
+      the interpolation rule. Markets do not share one rule: US TIPS,
+      OATi/OAT€i and new-style UK gilts use the canonical day-count linear
+      interpolation between the two monthly prints; old-style UK RPI
+      linkers use an 8-month lag with NO interpolation (the bare monthly
+      index). Hard-coding a single guessed rule across markets would
+      corrupt any daily-reference-index or cash-flow-projection primitive
+      built on top — the same data-corruption risk that kept index_lag
+      out of the playbook until it was verified.
+FIX: Source the per-market interpolation rule from an authoritative
+      non-Bloomberg reference (each debt office's index-linked-bond
+      prospectus / technical specification — US Treasury, UK DMO, Agence
+      France Trésor, Bank of Canada, Japan MOF) and encode one VERIFIED
+      `interpolation` attribute per playbook row, exactly the way index_lag
+      is encoded from INFLATION_LAG. Until then the attribute is
+      deliberately absent — never guessed.
+EFFORT: Low-Medium — no schema or code change; per-market manual
+      verification (~6 markets) plus a one-line attribute per playbook row.
+WHEN: Before any primitive that computes a daily reference index, projects
+      linker cash flows, or prices an inflation-linked bond off the
+      reference indices. NOT needed for B3's index-level ingestion, nor for
+      primitives that consume the monthly index directly.
+
+
 ## Phase 1 closure punch list (for reference)
 
 Per the original Phase 1 Week 7-8 plan:
