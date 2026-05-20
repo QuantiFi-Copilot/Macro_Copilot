@@ -78,4 +78,8 @@ collect_ignore = [
     "test_cross_market_inflation_swap_spread_sql_validation.py",
     "test_swap_breakeven_basis_simple_sql_validation.py",
     "test_inflation_swap_butterfly_sql_validation.py",
+
+    # FX live-DB readiness gate.  Standalone CLI runner; requires a
+    # running local Postgres with ingested FX data.
+    "test_fx_data_readiness.py",
 ]
