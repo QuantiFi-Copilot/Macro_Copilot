@@ -51,6 +51,15 @@ BUCKET_NAME = "macro-storage-bucket"
 GCP_KEY_FILENAME = "library-extractor-key.json"
 DEFAULT_VENDOR = "BLOOMBERG"
 
+# Batch size for the market_data_daily upsert. Large historical reloads
+# (>1M rows) must be upserted in bounded batches — see
+# ``database.database.upsert_market_data_daily``. The default (10_000)
+# works without configuration; override via the env var only if a
+# specific deployment needs a different bound.
+MARKET_DATA_UPSERT_BATCH_SIZE = int(
+    os.getenv("MARKET_DATA_UPSERT_BATCH_SIZE", "10000")
+)
+
 
 # ==============================================================================================
 # HELPERS
@@ -851,12 +860,17 @@ def run_ingestion_pipeline():
                     )
 
                 # 7. Upsert daily time-series data using instrument_id + load_id.
+                #    Upserted in bounded batches (MARKET_DATA_UPSERT_BATCH_SIZE)
+                #    but ALL batches run on this same ``conn`` inside the
+                #    critical transaction — delete + every upsert batch +
+                #    audit-flip still commit atomically or roll back together.
                 print(f"  [DB] Upserting {len(df)} daily market data rows...")
                 upsert_market_data_daily(
                     connectable=conn,
                     df=df,
                     instrument_id_map=instrument_id_map,
                     load_id=load_id,
+                    batch_size=MARKET_DATA_UPSERT_BATCH_SIZE,
                 )
 
                 # 8. All DB mutations succeeded — flip audit row to SUCCESS

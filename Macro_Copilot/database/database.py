@@ -372,14 +372,23 @@ def count_instruments_in_load(engine, load_id: int) -> int:
 # ==============================================================================
 # DYNAMIC DAILY MARKET DATA (THE 'WHAT')
 # ==============================================================================
+# Default batch size for the market_data_daily upsert.  market_data_daily
+# rows bind up to 5 columns each (trade_date, instrument_id, field_name,
+# field_value, load_id), so a 10_000-row batch is ~50_000 bound parameters
+# — comfortably under PostgreSQL's ~65_535-parameter-per-statement protocol
+# limit.  See ``upsert_market_data_daily`` for the full rationale.
+DEFAULT_MARKET_DATA_UPSERT_BATCH_SIZE = 10_000
+
+
 def upsert_market_data_daily(
     connectable: Connectable,
     df: pd.DataFrame,
     instrument_id_map: Optional[Dict[str, int]] = None,
     load_id: Optional[int] = None,
+    batch_size: int = DEFAULT_MARKET_DATA_UPSERT_BATCH_SIZE,
 ):
     """
-    Bulk upsert into `macro_data.market_data_daily`.
+    Bulk upsert into `macro_data.market_data_daily`, in bounded batches.
 
     Supported input shapes:
     1. DataFrame already contains `instrument_id`
@@ -388,6 +397,36 @@ def upsert_market_data_daily(
     If a record for (trade_date, instrument_id, field_name) exists, it updates:
     - field_value
     - load_id
+
+    Batching
+    --------
+    A large historical parquet (e.g. a full sovereign reload of >1M rows)
+    cannot be upserted as a SINGLE ``INSERT ... ON CONFLICT`` statement:
+    one statement with N rows binds N × ~5 parameters, which both blows
+    past PostgreSQL's ~65_535-parameter-per-statement protocol limit AND
+    builds an enormous in-memory statement + record list that can OOM-kill
+    the ingestion worker (the worker dies with no Python exception — the
+    OS kills it).
+
+    This function therefore upserts in batches of ``batch_size`` rows
+    (default 10_000 → ~50_000 bound parameters).  Each batch's record
+    list is materialised only for that slice — the full DataFrame is never
+    expanded into one giant list of dicts.
+
+    **All batches execute on a single connection inside ONE transaction.**
+    The function does NOT commit per batch.  ``_txn(connectable)`` is
+    opened once around the whole batch loop:
+
+      - If ``connectable`` is an :class:`Engine`: one ``engine.begin()``
+        wraps every batch; the helper call is one atomic transaction.
+      - If ``connectable`` is a :class:`Connection`: every batch composes
+        into the caller's transaction (the helper opens no transaction of
+        its own).  This is what preserves the ingester's critical-section
+        contract — ``delete prior rows + ALL upsert batches + audit-flip``
+        commit together, or roll back together.  Committing per batch
+        here would reintroduce the exact corruption mode
+        ``docs/technical_debt.md`` item #1 closed (old rows deleted,
+        only some new batches committed).
 
     Connection contract
     -------------------
@@ -403,11 +442,21 @@ def upsert_market_data_daily(
         print("[DB] DataFrame is empty. Skipping market_data_daily upsert.")
         return
 
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}.")
+
     df_clean = df.copy()
 
     df_clean["trade_date"] = pd.to_datetime(df_clean["trade_date"]).dt.strftime("%Y-%m-%d")
     df_clean["field_name"] = df_clean["field_name"].astype(str).str.upper()
     df_clean = df_clean.dropna(subset=["field_value"])
+
+    if df_clean.empty:
+        print(
+            "[DB] All rows had a null field_value after cleaning. "
+            "Skipping market_data_daily upsert."
+        )
+        return
 
     if "instrument_id" not in df_clean.columns:
         ticker_col = None
@@ -439,25 +488,40 @@ def upsert_market_data_daily(
     if "load_id" in df_clean.columns:
         target_columns.append("load_id")
 
-    records = df_clean[target_columns].to_dict(orient="records")
+    df_target = df_clean[target_columns]
+    total_rows = len(df_target)
+    num_batches = (total_rows + batch_size - 1) // batch_size
 
     metadata = MetaData(schema="macro_data")
     table = Table("market_data_daily", metadata, autoload_with=connectable)
 
-    stmt = insert(table).values(records)
-    update_set = {"field_value": stmt.excluded.field_value}
-    if "load_id" in target_columns:
-        update_set["load_id"] = stmt.excluded.load_id
-
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["trade_date", "instrument_id", "field_name"],
-        set_=update_set,
-    )
-
+    # Single transaction around the WHOLE batch loop.  Do not move the
+    # ``with _txn`` inside the loop — that would commit per batch and break
+    # the atomic delete+upsert+audit-flip contract.
     with _txn(connectable) as conn:
-        conn.execute(stmt)
+        for batch_index in range(num_batches):
+            start = batch_index * batch_size
+            end = min(start + batch_size, total_rows)
 
-    print(f"[DB] Successfully upserted {len(records)} rows into market_data_daily.")
+            # Materialise records for THIS slice only — never the whole frame.
+            batch_records = df_target.iloc[start:end].to_dict(orient="records")
+
+            stmt = insert(table).values(batch_records)
+            update_set = {"field_value": stmt.excluded.field_value}
+            if "load_id" in target_columns:
+                update_set["load_id"] = stmt.excluded.load_id
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["trade_date", "instrument_id", "field_name"],
+                set_=update_set,
+            )
+
+            conn.execute(stmt)
+            print(
+                f"[DB] Upserted market_data_daily batch {batch_index + 1}/{num_batches} "
+                f"rows {start}-{end - 1}"
+            )
+
+    print(f"[DB] Successfully upserted {total_rows} rows into market_data_daily.")
 
 
 # ==============================================================================
@@ -468,19 +532,21 @@ def upsert_market_data_timeseries(
     df: pd.DataFrame,
     instrument_id_map: Optional[Dict[str, int]] = None,
     load_id: Optional[int] = None,
+    batch_size: int = DEFAULT_MARKET_DATA_UPSERT_BATCH_SIZE,
 ):
     """
     Backward-compatible wrapper so older ingestion code can still call the old
     function name while writing into the new `market_data_daily` table.
 
     Accepts either an Engine or a Connection — same contract as
-    :func:`upsert_market_data_daily`.
+    :func:`upsert_market_data_daily`, including the ``batch_size`` parameter.
     """
     return upsert_market_data_daily(
         connectable=connectable,
         df=df,
         instrument_id_map=instrument_id_map,
         load_id=load_id,
+        batch_size=batch_size,
     )
 
 
