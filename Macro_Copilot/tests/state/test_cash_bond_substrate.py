@@ -13,18 +13,23 @@ substrate:
   * `upsert_otr_history` / `close_open_otr_window` honour the
     `_txn`-Connectable contract — handed a `Connection`, they run on the
     caller's transaction and never open a sub-transaction.
+  * `_infer_instrument_type` returns `sovereign_cash_bond` for the
+    cash-bond dataset and never mis-types a cash bond as plain
+    `sovereign` via the legacy substring fallback.
+  * `_build_instrument_attributes` excludes `cusip` / `isin` from the
+    JSONB payload (they are routed to typed columns instead).
 
 The tests do NOT spin up Postgres. The normalisation logic is pure
 Python; the upsert/close tests stub the SQLAlchemy `Table` reflection
 and `insert` builder exactly as `test_transactional_ingestion.py` does,
 so no live DB schema is introspected.
 
-Scope note: the ingester's `_build_instrument_attributes` exclude-set
-change (cusip/isin excluded from the JSONB payload) is NOT unit-tested
-here. `ingestion/ingest_parquet.py` imports the Google Cloud Storage SDK
-at module load, so the existing test suite never imports it in a unit
-test; that change is covered by `py_compile` + review, consistent with
-the rest of the suite.
+`ingestion/ingest_parquet.py` imports the Google Cloud Storage SDK at
+module load, so the `ingest_parquet` fixture stubs `google.cloud` in
+`sys.modules` before importing the module — mirroring how
+`test_metadata_history_extraction.py` stubs `xbbg`. The stub is scoped
+to the test via `monkeypatch.setitem`, so collection of other test
+files is unaffected.
 
 Related contracts:
   * ADR 0003 (cash-bond substrate — CUSIP/ISIN identity + otr_history).
@@ -39,6 +44,7 @@ from pathlib import Path
 from typing import Any, List
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
 from sqlalchemy.engine import Connection
 
@@ -383,3 +389,103 @@ class TestCloseOpenOtrWindow:
             )
             == 0
         )
+
+
+# ============================================================================
+# INGESTER — _infer_instrument_type + _build_instrument_attributes
+#
+# ingestion/ingest_parquet.py does `from google.cloud import storage` at
+# module load. The GCS SDK is not a unit-test dependency, so the fixture
+# stubs google.cloud in sys.modules before importing the module — the same
+# pattern test_metadata_history_extraction.py uses for xbbg.
+# ============================================================================
+
+
+@pytest.fixture
+def ingest_parquet(monkeypatch: pytest.MonkeyPatch):
+    """Import `ingestion.ingest_parquet` with the Google Cloud Storage SDK
+    stubbed. `monkeypatch.setitem` scopes the sys.modules stubs to the test,
+    so collection of other test files is unaffected."""
+    import importlib
+
+    for name in ("google", "google.cloud", "google.cloud.storage"):
+        if name not in sys.modules:
+            monkeypatch.setitem(sys.modules, name, MagicMock())
+    return importlib.import_module("ingestion.ingest_parquet")
+
+
+class TestInferInstrumentTypeCashBond:
+    """`_infer_instrument_type` returns `sovereign_cash_bond` for the cash-bond
+    dataset and never mis-types a cash bond as plain `sovereign` (ADR 0003)."""
+
+    def test_explicit_instrument_type_is_preferred(self, ingest_parquet: Any) -> None:
+        """An explicit instrument_type on the row always wins over inference."""
+        row = pd.Series(
+            {"instrument_type": "sovereign_cash_bond", "ticker": "912810TZ9 Govt"}
+        )
+        assert (
+            ingest_parquet._infer_instrument_type(row, "sovereign_cash_bonds")
+            == "sovereign_cash_bond"
+        )
+
+    def test_cash_bond_dataset_inferred_when_type_absent(
+        self, ingest_parquet: Any
+    ) -> None:
+        """No explicit instrument_type → the dataset-name fallback must return
+        `sovereign_cash_bond`, NOT plain `sovereign`."""
+        row = pd.Series({"ticker": "912810TZ9 Govt"})
+        assert (
+            ingest_parquet._infer_instrument_type(row, "sovereign_cash_bonds")
+            == "sovereign_cash_bond"
+        )
+
+    def test_cash_bond_rule_precedes_generic_sovereign(
+        self, ingest_parquet: Any
+    ) -> None:
+        """A cash-bond ticker ends ' Govt' — the sovereign_cash_bond dataset
+        rule must win before the generic sovereign / ' govt' rule."""
+        row = pd.Series({"ticker": "DE0001102333 Govt"})
+        assert (
+            ingest_parquet._infer_instrument_type(row, "sovereign_cash_bonds")
+            == "sovereign_cash_bond"
+        )
+
+    def test_plain_sovereign_benchmark_still_inferred(
+        self, ingest_parquet: Any
+    ) -> None:
+        """Regression: the generic sovereign rule is unchanged for the
+        benchmark-curve playbook."""
+        row = pd.Series({"ticker": "GT10 Govt"})
+        assert (
+            ingest_parquet._infer_instrument_type(row, "sovereign_bonds")
+            == "sovereign"
+        )
+
+
+class TestBuildInstrumentAttributesExcludesCashBondIds:
+    """The ingester routes cusip/isin to the typed columns, so they must NOT
+    also land in the `attributes` JSONB blob (that would be a double-write)."""
+
+    def test_cusip_and_isin_excluded_from_attributes(
+        self, ingest_parquet: Any
+    ) -> None:
+        row = pd.Series(
+            {
+                "ticker": "912810TZ9 Govt",
+                "cusip": "912810TZ9",
+                "isin": "US912810TZ97",
+                "coupon": 4.25,            # not a typed column → SHOULD land in attributes
+                "field_name": "YAS_BOND_YLD",
+                "field_value": 4.11,
+            }
+        )
+        attrs = ingest_parquet._build_instrument_attributes(
+            row, filename="sovereign_cash_bonds_x.parquet"
+        )
+
+        # cusip / isin route to typed columns — never into JSONB.
+        assert "cusip" not in attrs
+        assert "isin" not in attrs
+        # A genuinely non-typed field is still captured in attributes.
+        assert attrs["coupon"] == 4.25
+        assert attrs["source_file"] == "sovereign_cash_bonds_x.parquet"

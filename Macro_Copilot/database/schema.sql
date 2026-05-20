@@ -250,8 +250,12 @@ LEFT JOIN LATERAL (
 --     window; effective_to = NULL means "currently on-the-run".
 --   * Same SCD2 + EXCLUDE pattern as instrument_metadata_history (section 4),
 --     re-keyed from instrument_id to the (country, tenor) slot. The EXCLUDE
---     constraint DB-enforces the invariant "exactly one bond is on-the-run per
---     (country, tenor) per date".
+--     constraint DB-enforces NON-OVERLAP — AT MOST ONE bond is recorded as
+--     on-the-run per (country, tenor) on any date. It does NOT enforce gapless
+--     coverage ("some bond is on-the-run on EVERY date"): a gap between a
+--     closed window and the next is structurally permitted. close_open_otr_window()
+--     produces gapless adjacency when used correctly, and the A4 OTR loader is
+--     responsible for validating no-gaps if that invariant matters downstream.
 --   * A3 lands this table empty; the Step-2 data PR (A4) populates it.
 -- ================================================================================================
 CREATE TABLE IF NOT EXISTS macro_data.otr_history (
@@ -271,8 +275,9 @@ CREATE TABLE IF NOT EXISTS macro_data.otr_history (
         UNIQUE (country, tenor, effective_from),
     CONSTRAINT ck_otr_history_window
         CHECK (effective_to IS NULL OR effective_to >= effective_from),
-    -- Reject overlapping OTR windows per (country, tenor) slot at write time.
-    -- This enforces "exactly one bond is on-the-run per slot per date". Adjacent
+    -- Reject overlapping OTR windows per (country, tenor) slot at write time —
+    -- i.e. AT MOST ONE bond is recorded as on-the-run per slot per date. (This
+    -- does not enforce gapless coverage; see the section header.) Adjacent
     -- windows that share a boundary day are also rejected (bounds = '[]'
     -- inclusive), which matches close_open_otr_window()'s "new.effective_from - 1"
     -- close semantics in database.py.

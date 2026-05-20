@@ -92,6 +92,15 @@ def _infer_instrument_type(row: pd.Series, dataset_name: Optional[str]) -> str:
     ds = (dataset_name or "").lower()
     ticker = str(row.get("ticker", "")).lower()
 
+    # `sovereign_cash_bond` (ADR 0003) must be matched BEFORE the generic
+    # `sovereign` rule: the cash-bond dataset name contains the substring
+    # "sovereign" and cash-bond tickers end " Govt", so without this both
+    # generic fallbacks below would mis-type a cash bond as plain "sovereign".
+    # Primary path is still the explicit `instrument_type` the cash-bond
+    # playbook stamps per the universal contract (handled above); this is the
+    # legacy-fallback safety net for a row that arrives without one.
+    if "sovereign_cash_bond" in ds:
+        return "sovereign_cash_bond"
     if "sovereign" in ds or ticker.endswith(" govt"):
         return "sovereign"
     if "ois" in ds:
