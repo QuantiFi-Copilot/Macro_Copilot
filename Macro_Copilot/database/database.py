@@ -1108,11 +1108,15 @@ def _normalize_event_record(record: Dict[str, Any]) -> Dict[str, Any]:
     columns of ``macro_data.event_calendar``.
 
     A record MUST carry ``event_type``, ``event_category``, ``country`` and
-    ``release_date``. Every other column is optional. If ``event_category`` is
-    outside :data:`EVENT_CATEGORIES` the function WARNS but does not abort —
-    ``event_category`` is a free ``VARCHAR``, and refusing here would be
-    stricter than the schema (P6: the typed exception is reserved for genuine
-    contract violations; an unrecognised-but-storable category is a warning).
+    ``release_date``. Every other column is optional. ``event_category`` MUST
+    be one of :data:`EVENT_CATEGORIES`; a value outside that set raises
+    ``ValueError``. ``event_category`` is a **closed family** (P8) — the DB
+    column is a free ``VARCHAR`` for schema-consistency with ``asset_class`` /
+    ``instrument_type``, and this helper is the sanctioned write path that
+    enforces the closed set. An unrecognised category is a genuine
+    contract violation, so it raises a typed exception rather than writing
+    silently (P6). Extending the set is a deliberate ADR + code change to
+    :data:`EVENT_CATEGORIES`.
 
     The returned dict has **uniform keys across every record** — the four
     required columns plus every column in :data:`_EVENT_VALUE_COLUMNS`, with
@@ -1134,11 +1138,12 @@ def _normalize_event_record(record: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("event_calendar record requires `release_date`.")
 
     if event_category not in EVENT_CATEGORIES:
-        print(
-            f"[WARNING] event_calendar record has event_category="
-            f"{event_category!r}, which is not one of the documented "
-            f"EVENT_CATEGORIES {EVENT_CATEGORIES}. Writing it anyway "
-            "(event_category is a free VARCHAR); verify this is intended."
+        raise ValueError(
+            f"event_calendar record has event_category={event_category!r}, "
+            f"which is not one of the closed set EVENT_CATEGORIES "
+            f"{EVENT_CATEGORIES}. event_category is a closed family — adding a "
+            "value is a deliberate ADR + code change to EVENT_CATEGORIES, "
+            "never a silent write."
         )
 
     row: Dict[str, Any] = {
@@ -1180,6 +1185,22 @@ def upsert_event_calendar(
         via ``ON CONFLICT DO UPDATE`` — re-ingesting the calendar is safe, and
         an auction's result columns fill in on a post-auction re-upsert of the
         same row (ADR 0004 — one row per auction, updated post-auction).
+
+    FULL-ROW UPSERT — caller contract. On a natural-key conflict **every
+    non-key column is overwritten from the incoming record.**
+    :func:`_normalize_event_record` defaults every omitted optional column to
+    ``None``, so a caller that omits a field writes ``NULL`` to it — omitted
+    fields are NOT merge-preserved. **Every call MUST therefore pass the
+    complete current state of the event.** For an auction whose results arrive
+    after the announcement, the results upsert re-sends the schedule fields
+    (``release_time``, ``period``, …) alongside the new result fields — it is
+    not a partial delta. This matches :func:`upsert_instrument_metadata_history`
+    and :func:`upsert_otr_history` (also full-row upserts) and the natural
+    extraction flow (re-pull the whole calendar each run; a vendor's
+    post-settlement auction record carries both schedule and results).
+    ``COALESCE(excluded, existing)`` merge was deliberately rejected: it would
+    diverge from the sibling upserts (P3) and would make it impossible to
+    correct a wrongly-set field back to ``NULL``.
 
     Connection contract: accepts either an :class:`Engine` (self-managed
     transaction) or a :class:`Connection` (caller-managed). See :func:`_txn`.
