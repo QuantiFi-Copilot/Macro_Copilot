@@ -2,3 +2,4 @@ UI/macro-copilot-dashboard-polished/node_modules
 secure_keys/
 .env
 tmp
+ingestion/temp_processing/
