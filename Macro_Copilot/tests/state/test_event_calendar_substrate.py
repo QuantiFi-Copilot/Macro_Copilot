@@ -141,23 +141,18 @@ class TestNormalizeEventRecord:
         )
         assert set(a.keys()) == set(b.keys())
 
-    def test_unknown_event_category_warns_but_does_not_raise(
-        self, capsys: pytest.CaptureFixture
-    ) -> None:
-        """event_category is a free VARCHAR — an unrecognised value is a
-        warning, not a typed-exception-worthy contract violation."""
-        out = _normalize_event_record(self._valid(event_category="speech"))
-        assert out["event_category"] == "speech"  # written through verbatim
-        captured = capsys.readouterr()
-        assert "[WARNING]" in captured.out
-        assert "speech" in captured.out
+    def test_unknown_event_category_raises(self) -> None:
+        """event_category is a closed family — a value outside EVENT_CATEGORIES
+        is a contract violation and raises a typed exception; it is NOT
+        silently written (P6/P8)."""
+        with pytest.raises(ValueError, match="EVENT_CATEGORIES"):
+            _normalize_event_record(self._valid(event_category="speech"))
 
-    def test_documented_categories_do_not_warn(
-        self, capsys: pytest.CaptureFixture
-    ) -> None:
+    def test_documented_categories_accepted(self) -> None:
+        """Each of the three documented categories normalises without error."""
         for category in EVENT_CATEGORIES:
-            _normalize_event_record(self._valid(event_category=category))
-        assert "[WARNING]" not in capsys.readouterr().out
+            out = _normalize_event_record(self._valid(event_category=category))
+            assert out["event_category"] == category
 
     def test_missing_event_type_raises(self) -> None:
         rec = self._valid()
@@ -293,6 +288,51 @@ class TestUpsertEventCalendar:
         # ON CONFLICT keyed on the (event_type, country, release_date) natural key.
         _, kwargs = fake_stmt.on_conflict_do_update.call_args
         assert kwargs["index_elements"] == ["event_type", "country", "release_date"]
+
+    def test_on_conflict_overwrites_every_non_key_column(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FULL-ROW UPSERT contract: ON CONFLICT DO UPDATE sets EVERY non-key
+        column from `excluded`. A caller must therefore pass the complete event
+        row on every upsert — an omitted optional field is written NULL, not
+        merge-preserved (ADR 0004; the post-auction results upsert re-sends the
+        schedule fields). This test locks that behaviour."""
+        from database import database as db_mod
+
+        conn = _make_connection_stub()
+        fake_table = MagicMock()
+        fake_table.c = _FakeColumns(_EVENT_COLUMN_NAMES)
+        monkeypatch.setattr(db_mod, "Table", lambda *a, **k: fake_table)
+
+        fake_stmt = MagicMock()
+        fake_stmt.values.return_value = fake_stmt
+        fake_stmt.on_conflict_do_update.return_value = "<stmt>"
+        monkeypatch.setattr(db_mod, "insert", lambda *a, **k: fake_stmt)
+
+        db_mod.upsert_event_calendar(
+            conn,
+            [
+                {
+                    "event_type": "ust_auction_10y",
+                    "event_category": "auction",
+                    "country": "US",
+                    "release_date": "2026-03-11",
+                }
+            ],
+        )
+
+        _, kwargs = fake_stmt.on_conflict_do_update.call_args
+        update_keys = set(kwargs["set_"].keys())
+        # The natural key + the immutable identity/audit columns are excluded;
+        # EVERY other column must be in the update set.
+        key_and_immutable = {
+            "event_id", "event_type", "country", "release_date", "created_at",
+        }
+        expected = set(_EVENT_COLUMN_NAMES) - key_and_immutable
+        assert update_keys == expected, (
+            "ON CONFLICT DO UPDATE must overwrite every non-key column — "
+            "this is the full-row-upsert contract"
+        )
 
     def test_invalid_record_raises_before_any_execute(
         self, monkeypatch: pytest.MonkeyPatch
