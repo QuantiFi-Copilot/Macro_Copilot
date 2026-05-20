@@ -87,6 +87,41 @@ HISTORY_TYPED_COLUMNS: tuple = (
 )
 
 
+def _is_missing(value: Any) -> bool:
+    """
+    True if ``value`` represents a missing effective-date field.
+
+    A missing date reaches this module in one of four shapes depending on
+    how the rows got here:
+
+      * ``None``          — in-memory dicts straight from the extractor
+                            (the terminal open window's ``effective_to``).
+      * ``""``            — empty-string sentinel.
+      * ``pd.NaT``        — a date column round-tripped through parquet:
+                            ``pd.read_parquet`` reads a NULL in a datetime
+                            column back as ``NaT``, NOT ``None``.
+      * ``float('nan')``  — a NULL in an object / float column.
+
+    The extractor-side gate only ever sees genuine ``None`` (the open
+    window is a real Python ``None`` before serialisation), so the original
+    ``x in (None, "")`` check sufficed there and ADR-0002's unit tests —
+    which build row dicts by hand — never exercised the parquet path. The
+    ingester-side gate reads the *parquet*, where the same NULL surfaces as
+    ``NaT``; ``NaT not in (None, "")`` is ``True``, so the old check let it
+    through and the subsequent ``NaT < date`` comparison raised
+    "Cannot compare NaT with datetime.date object". Treating all four
+    shapes uniformly keeps both callers correct.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def validate_no_overlaps(
     rows_by_vendor_ticker: Dict[str, List[Dict[str, Any]]],
 ) -> List[str]:
@@ -118,7 +153,7 @@ def validate_no_overlaps(
         if not rows:
             continue
 
-        bad_missing_from = [r for r in rows if r.get("effective_from") in (None, "")]
+        bad_missing_from = [r for r in rows if _is_missing(r.get("effective_from"))]
         if bad_missing_from:
             conflicts.append(
                 f"{vendor_ticker}: {len(bad_missing_from)} row(s) missing effective_from"
@@ -149,7 +184,7 @@ def validate_no_overlaps(
 
             curr_to_raw = curr.get("effective_to")
             curr_to = None
-            if curr_to_raw not in (None, ""):
+            if not _is_missing(curr_to_raw):
                 try:
                     curr_to = pd.to_datetime(curr_to_raw).date()
                 except Exception as exc:
@@ -263,17 +298,13 @@ def parquet_to_history_records(
         instrument_id = instrument_id_map[vendor_ticker]
 
         effective_from = raw.get("effective_from")
-        if effective_from in (None, ""):
+        if _is_missing(effective_from):
             raise ValueError(
                 f"metadata-history parquet row for {vendor_ticker!r} missing effective_from"
             )
 
         effective_to_raw = raw.get("effective_to")
-        effective_to = (
-            None
-            if effective_to_raw in (None, "") or pd.isna(effective_to_raw)
-            else effective_to_raw
-        )
+        effective_to = None if _is_missing(effective_to_raw) else effective_to_raw
 
         record: Dict[str, Any] = {
             "instrument_id": int(instrument_id),
@@ -283,7 +314,10 @@ def parquet_to_history_records(
 
         for col in HISTORY_TYPED_COLUMNS:
             val = raw.get(col)
-            if val is None or (isinstance(val, float) and pd.isna(val)):
+            if _is_missing(val):
+                # Catches None, "", NaN AND NaT — a date column that
+                # round-tripped through parquet as datetime64 surfaces its
+                # NULLs as NaT, which is neither a float nor a pd.Timestamp.
                 record[col] = None
             elif isinstance(val, pd.Timestamp):
                 # The extractor already stringifies dates; this is defensive
@@ -296,9 +330,7 @@ def parquet_to_history_records(
         for k, v in raw.items():
             if k in exclude_for_attributes:
                 continue
-            if v is None:
-                continue
-            if isinstance(v, float) and pd.isna(v):
+            if _is_missing(v):
                 continue
             attributes[k] = v.item() if hasattr(v, "item") else v
         record["attributes"] = attributes or None
