@@ -1,4 +1,22 @@
-status: scaffolded
-implemented: false
-exposed_in_api: false
-notes: "Placeholder for future FX tool. Not currently used by production routes."
+tool:
+  name: calculate_fx_realized_vol_tool
+  domain: fx_vol
+  description: |
+    Scaffolded placeholder for an FX realized-volatility primitive. Not
+    exposed through REST, MCP, workflows, or the Library catalogue yet.
+  category: quant_standard_analytic
+
+conventions: {}
+
+methodology:
+  what_it_does: |
+    Planned primitive for computing realized volatility from FX spot return
+    series. This config is schema-valid so repository-wide tool config
+    discovery does not fail, but the compute path deliberately raises
+    NotImplementedError until data coverage and methodology are reviewed.
+  assumptions: []
+  citations: []
+  planned_extensions:
+    - "Define return convention, annualization convention, and window choices."
+    - "Add Pydantic input/output schemas."
+    - "Implement compute(engine, params, config=None) and catalogue manifest entry."

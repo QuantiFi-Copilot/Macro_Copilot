@@ -1,32 +1,126 @@
-tool_name: fx_carry
-version: "0.1.0"
+tool:
+  name: calculate_fx_carry_tool
+  domain: fx_forwards
+  description: |
+    Cross-sectional FX forward carry snapshot — joins latest spot and
+    same-tenor forward-points observations, converts points into spot
+    units, and ranks pairs by annualized carry.
+  category: desk_invariant_primitive
+
+conventions:
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical spot observation used as the
+      denominator for forward-points carry.
+
+  default_fx_forward_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical forward-points observation for
+      the FX forward tickers in the playbook.
+
+  default_tenor:
+    value: 1M
+    source: desk_default_pending_review
+    rationale: >-
+      One-month forwards are the initial monitor default and match the
+      currently ingested FX forward playbook.
+
+  tenor_1w_days:
+    value: 5
+    source: trading_day_convention
+    rationale: >-
+      Approximate one FX trading week.
+    valid_range: [3, 10]
+
+  tenor_1m_days:
+    value: 21
+    source: trading_day_convention
+    rationale: >-
+      Approximate one FX trading month.
+    valid_range: [15, 30]
+
+  tenor_3m_days:
+    value: 63
+    source: trading_day_convention
+    rationale: >-
+      Approximate three FX trading months.
+    valid_range: [45, 90]
+
+  tenor_6m_days:
+    value: 126
+    source: trading_day_convention
+    rationale: >-
+      Approximate six FX trading months.
+    valid_range: [90, 180]
+
+  annualization_days:
+    value: 252
+    source: industry_standard_trading_year
+    rationale: >-
+      Trading-day annualization convention used across the macro stack.
+    valid_range: [240, 366]
+
+  jpy_forward_points_divisor:
+    value: 100
+    source: bloomberg_field_convention
+    rationale: >-
+      JPY forward points are quoted in hundredths of one spot unit.
+    valid_range: [1, 10000]
+
+  default_forward_points_divisor:
+    value: 10000
+    source: bloomberg_field_convention
+    rationale: >-
+      Non-JPY G10 forward points are quoted in ten-thousandths of one
+      spot unit.
+    valid_range: [1, 100000]
+
+  spot_round_decimals:
+    value: 6
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Six decimals preserves major-pair spot precision.
+    valid_range: [2, 8]
+
+  forward_points_round_decimals:
+    value: 3
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Three decimals matches the current monitor display precision for
+      forward points.
+    valid_range: [0, 6]
+
+  carry_bps_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals is sufficient for carry in basis points of spot.
+    valid_range: [0, 6]
+
+  carry_pct_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals is sufficient for annualized carry percentage.
+    valid_range: [0, 6]
 
 methodology:
-  spot_field_name: PX_LAST
-  forward_field_name: PX_LAST
-  default_tenor: 1M
-  tenor_days:
-    1W: 5
-    1M: 21
-    3M: 63
-    6M: 126
-  annualization_days: 252
-  forward_points_conversion:
-    jpy_divisor: 100
-    default_divisor: 10000
-  carry_units:
-    carry_bps_spot: bps
-    carry_annualized_pct: percent
-  sorting:
-    field: carry_annualized_pct
-    ascending: false
-  rounding:
-    spot: 6
-    forward_points: 3
-    outright_forward: 6
-    carry_bps_spot: 2
-    carry_annualized_pct: 2
-
-warnings:
-  empty_result_allowed: true
-  missing_forward_pairs_allowed: true
+  what_it_does: |
+    Finds the latest spot and same-tenor forward-points observation for
+    every FX pair with both legs in macro_data.market_data_daily, converts
+    forward points into spot units, computes carry as forward_points /
+    spot, annualizes by a trading-day tenor convention, and ranks the
+    cross-section by annualized carry.
+  assumptions:
+    - "Forward tickers store forward points, not outright forwards."
+    - "JPY pairs use a 100 divisor; non-JPY pairs use 10000."
+    - "Carry is a deterministic points-over-spot approximation, not a full collateralized total-return model."
+    - "The current implementation ranks only pairs with both spot and forward rows present."
+  citations: []
+  planned_extensions:
+    - "Support multiple forward tenors once the FX forward playbooks ingest more than 1M."
+    - "Add CIP / collateral-currency adjustments once deposit, OIS, or cross-currency basis inputs are ingested."

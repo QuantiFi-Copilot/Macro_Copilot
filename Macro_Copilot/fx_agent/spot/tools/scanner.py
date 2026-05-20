@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, Dict
+
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
-from database.database import get_db_engine
 from fx_agent.spot.tools.schemas import FXScannerInput, FXScannerOutput, FXScannerRow
 
 
@@ -23,7 +25,7 @@ def _signal_label(z_score: float | None, momentum_1m_pct: float | None) -> str:
     return "Neutral"
 
 
-def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
+def run_fx_scanner(engine: Engine, params: FXScannerInput) -> Dict[str, Any]:
     field_name = params.field_name.upper().strip()
 
     market_filter = ""
@@ -59,12 +61,11 @@ def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
         """
     )
 
-    engine = get_db_engine()
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, params=query_params)
 
     if df.empty:
-        return FXScannerOutput(rows=[])
+        return FXScannerOutput(rows=[]).model_dump()
 
     rows = []
 
@@ -119,4 +120,4 @@ def run_fx_scanner(params: FXScannerInput) -> FXScannerOutput:
         reverse=True,
     )[: params.top_n]
 
-    return FXScannerOutput(rows=rows)
+    return FXScannerOutput(rows=rows).model_dump()

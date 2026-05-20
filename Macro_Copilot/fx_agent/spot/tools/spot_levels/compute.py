@@ -1,16 +1,22 @@
 from __future__ import annotations
 
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
-from database.database import get_db_engine
 from fx_agent.spot.tools.spot_levels.schemas import (
     FXSpotLevelInput,
     FXSpotLevelMetrics,
     FXSpotLevelOutput,
 )
+from shared.config import ToolConfig, load_tool_config
+
+
+CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+_FROZEN_TRAILING_WINDOW = 252
 
 
 def _safe_pct_change(series: pd.Series, periods: int) -> Optional[float]:
@@ -26,11 +32,14 @@ def _safe_pct_change(series: pd.Series, periods: int) -> Optional[float]:
     return float((new / old - 1.0) * 100.0)
 
 
-def get_fx_spot_level(params: FXSpotLevelInput) -> FXSpotLevelOutput:
-    pair = params.pair.upper().replace("/", "").strip()
-    field_name = params.field_name.upper().strip()
+def _round_optional(value: Optional[float], decimals: int) -> Optional[float]:
+    if value is None or pd.isna(value):
+        return None
+    return round(float(value), decimals)
 
-    query = text(
+
+def _spot_query() -> Any:
+    return text(
         """
         SELECT
             d.trade_date,
@@ -51,10 +60,41 @@ def get_fx_spot_level(params: FXSpotLevelInput) -> FXSpotLevelOutput:
         """
     )
 
-    engine = get_db_engine()
+
+def get_fx_spot_level(
+    engine: Engine,
+    params: FXSpotLevelInput,
+    config: Optional[ToolConfig] = None,
+) -> Dict[str, Any]:
+    if config is None:
+        config = load_tool_config(CONFIG_PATH)
+
+    pair = params.pair.upper().replace("/", "").strip()
+    default_field = config.convention_value("default_fx_spot_field")
+    field_name = (params.field_name or default_field).upper().strip()
+
+    z_window = int(config.convention_value("z_score_window_days"))
+    z_min_periods = int(config.convention_value("z_score_min_periods"))
+    z_ddof = int(config.convention_value("z_score_ddof"))
+    trailing_window = int(config.convention_value("trailing_range_window_days"))
+    if trailing_window != _FROZEN_TRAILING_WINDOW:
+        raise NotImplementedError(
+            "trailing_range_window_days is wire-frozen at 252 because "
+            "FXSpotLevelMetrics fields are named high_252d / low_252d / "
+            "percentile_252d. See config.yaml methodology.planned_extensions."
+        )
+
+    daily_periods = int(config.convention_value("daily_change_periods"))
+    weekly_periods = int(config.convention_value("weekly_change_periods"))
+    monthly_periods = int(config.convention_value("monthly_change_periods"))
+    spot_decimals = int(config.convention_value("spot_round_decimals"))
+    pct_decimals = int(config.convention_value("pct_change_round_decimals"))
+    z_decimals = int(config.convention_value("z_score_round_decimals"))
+    percentile_decimals = int(config.convention_value("percentile_round_decimals"))
+
     with engine.connect() as conn:
         df = pd.read_sql(
-            query,
+            _spot_query(),
             conn,
             params={
                 "pair": pair,
@@ -74,16 +114,17 @@ def get_fx_spot_level(params: FXSpotLevelInput) -> FXSpotLevelOutput:
     current = float(values.iloc[-1])
     as_of_date = df["trade_date"].iloc[-1].strftime("%Y-%m-%d")
 
-    trailing = values.tail(252)
+    trailing = values.tail(z_window)
     mean_252 = trailing.mean()
-    std_252 = trailing.std(ddof=1)
+    std_252 = trailing.std(ddof=z_ddof)
 
     z_score = None
-    if len(trailing) >= 20 and std_252 and not pd.isna(std_252):
+    if len(trailing) >= z_min_periods and std_252 and not pd.isna(std_252):
         z_score = float((current - mean_252) / std_252)
 
-    high_252d = float(trailing.max()) if not trailing.empty else None
-    low_252d = float(trailing.min()) if not trailing.empty else None
+    range_values = values.tail(trailing_window)
+    high_252d = float(range_values.max()) if not range_values.empty else None
+    low_252d = float(range_values.min()) if not range_values.empty else None
 
     percentile_252d = None
     if high_252d is not None and low_252d is not None and high_252d != low_252d:
@@ -92,15 +133,15 @@ def get_fx_spot_level(params: FXSpotLevelInput) -> FXSpotLevelOutput:
     metrics = FXSpotLevelMetrics(
         as_of_date=as_of_date,
         pair=pair,
-        current_spot=current,
-        daily_change_pct=_safe_pct_change(values, 1),
-        weekly_change_pct=_safe_pct_change(values, 5),
-        monthly_change_pct=_safe_pct_change(values, 21),
-        z_score=z_score,
-        high_252d=high_252d,
-        low_252d=low_252d,
-        percentile_252d=percentile_252d,
+        current_spot=round(current, spot_decimals),
+        daily_change_pct=_round_optional(_safe_pct_change(values, daily_periods), pct_decimals),
+        weekly_change_pct=_round_optional(_safe_pct_change(values, weekly_periods), pct_decimals),
+        monthly_change_pct=_round_optional(_safe_pct_change(values, monthly_periods), pct_decimals),
+        z_score=_round_optional(z_score, z_decimals),
+        high_252d=_round_optional(high_252d, spot_decimals),
+        low_252d=_round_optional(low_252d, spot_decimals),
+        percentile_252d=_round_optional(percentile_252d, percentile_decimals),
         observation_count=int(len(df)),
     )
 
-    return FXSpotLevelOutput(current_metrics=metrics)
+    return FXSpotLevelOutput(current_metrics=metrics).model_dump()

@@ -22,9 +22,12 @@ class FXSpotLevelInput(BaseModel):
         le=7300,
         description="Calendar days of history used for calculations.",
     )
-    field_name: str = Field(
-        default="PX_LAST",
-        description="Bloomberg field to query. Defaults to PX_LAST.",
+    field_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Bloomberg field to query. Leave null to use the tool's "
+            "YAML-locked default field."
+        ),
     )
 
 

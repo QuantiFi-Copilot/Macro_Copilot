@@ -1,36 +1,49 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any, Dict, Optional
+
 import pandas as pd
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
-from database.database import get_db_engine
 from fx_agent.forwards.tools.fx_carry.schemas import (
     FXCarryInput,
     FXCarryOutput,
     FXCarryRow,
 )
+from shared.config import ToolConfig, load_tool_config
 
 
-DAYS_IN_YEAR = 252
-
-TENOR_DAYS = {
-    "1W": 5,
-    "1M": 21,
-    "3M": 63,
-    "6M": 126,
-}
+CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 
-def _points_to_spot_units(pair: str, forward_points: float) -> float:
+def _tenor_days_from_config(config: ToolConfig) -> dict[str, int]:
+    return {
+        "1W": int(config.convention_value("tenor_1w_days")),
+        "1M": int(config.convention_value("tenor_1m_days")),
+        "3M": int(config.convention_value("tenor_3m_days")),
+        "6M": int(config.convention_value("tenor_6m_days")),
+    }
+
+
+def _points_to_spot_units(
+    pair: str,
+    forward_points: float,
+    *,
+    jpy_divisor: float,
+    default_divisor: float,
+) -> float:
     """Convert Bloomberg FX forward points into spot units."""
-    return forward_points / 100.0 if "JPY" in pair else forward_points / 10000.0
+    return (
+        forward_points / jpy_divisor
+        if "JPY" in pair
+        else forward_points / default_divisor
+    )
 
 
-def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
-    tenor = params.tenor.upper().strip()
-    tenor_days = TENOR_DAYS.get(tenor, 21)
-
-    query = text(
+def _carry_query() -> Any:
+    return text(
         """
         WITH latest_spot AS (
             SELECT
@@ -45,7 +58,7 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
             JOIN macro_data.instrument_master im
                 ON d.instrument_id = im.instrument_id
             WHERE im.instrument_type = 'fx_spot'
-              AND d.field_name = 'PX_LAST'
+              AND d.field_name = :spot_field
         ),
         latest_fwd AS (
             SELECT
@@ -62,7 +75,7 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
                 ON d.instrument_id = im.instrument_id
             WHERE im.instrument_type = 'fx_forward'
               AND im.tenor = :tenor
-              AND d.field_name = 'PX_LAST'
+              AND d.field_name = :forward_field
         )
         SELECT
             s.pair,
@@ -79,15 +92,51 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
         """
     )
 
-    engine = get_db_engine()
+
+def _round(value: float, decimals: int) -> float:
+    return round(float(value), decimals)
+
+
+def get_fx_carry(
+    engine: Engine,
+    params: FXCarryInput,
+    config: Optional[ToolConfig] = None,
+) -> Dict[str, Any]:
+    if config is None:
+        config = load_tool_config(CONFIG_PATH)
+
+    tenor = (params.tenor or config.convention_value("default_tenor")).upper().strip()
+    tenor_days = _tenor_days_from_config(config).get(
+        tenor,
+        int(config.convention_value("tenor_1m_days")),
+    )
+    annualization_days = int(config.convention_value("annualization_days"))
+    spot_field = str(config.convention_value("default_fx_spot_field"))
+    forward_field = str(config.convention_value("default_fx_forward_field"))
+    jpy_divisor = float(config.convention_value("jpy_forward_points_divisor"))
+    default_divisor = float(config.convention_value("default_forward_points_divisor"))
+
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn, params={"tenor": tenor})
+        df = pd.read_sql(
+            _carry_query(),
+            conn,
+            params={
+                "tenor": tenor,
+                "spot_field": spot_field,
+                "forward_field": forward_field,
+            },
+        )
 
     if df.empty:
-        return FXCarryOutput(tenor=tenor, rows=[])
+        return FXCarryOutput(tenor=tenor, rows=[]).model_dump()
 
     df["forward_points_spot_units"] = df.apply(
-        lambda row: _points_to_spot_units(row["pair"], row["forward_points"]),
+        lambda row: _points_to_spot_units(
+            row["pair"],
+            row["forward_points"],
+            jpy_divisor=jpy_divisor,
+            default_divisor=default_divisor,
+        ),
         axis=1,
     )
 
@@ -99,7 +148,7 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
 
     df["carry_annualized_pct"] = (
         (df["forward_points_spot_units"] / df["spot"])
-        * (DAYS_IN_YEAR / tenor_days)
+        * (annualization_days / tenor_days)
         * 100
     )
 
@@ -109,21 +158,32 @@ def get_fx_carry(params: FXCarryInput) -> FXCarryOutput:
 
     df = df.sort_values("carry_annualized_pct", ascending=False)
 
+    spot_decimals = int(config.convention_value("spot_round_decimals"))
+    fwd_decimals = int(config.convention_value("forward_points_round_decimals"))
+    carry_bps_decimals = int(config.convention_value("carry_bps_round_decimals"))
+    carry_pct_decimals = int(config.convention_value("carry_pct_round_decimals"))
+
     rows = [
         FXCarryRow(
             pair=str(row["pair"]),
             spot_date=str(row["spot_date"]),
             forward_date=str(row["forward_date"]),
-            spot=float(row["spot"]),
+            spot=_round(row["spot"], spot_decimals),
             tenor=str(row["tenor"]),
-            forward_points=float(row["forward_points"]),
-            forward_points_spot_units=float(row["forward_points_spot_units"]),
-            outright_forward=float(row["outright_forward"]),
-            carry_bps_spot=float(row["carry_bps_spot"]),
-            carry_annualized_pct=float(row["carry_annualized_pct"]),
+            forward_points=_round(row["forward_points"], fwd_decimals),
+            forward_points_spot_units=_round(
+                row["forward_points_spot_units"],
+                spot_decimals,
+            ),
+            outright_forward=_round(row["outright_forward"], spot_decimals),
+            carry_bps_spot=_round(row["carry_bps_spot"], carry_bps_decimals),
+            carry_annualized_pct=_round(
+                row["carry_annualized_pct"],
+                carry_pct_decimals,
+            ),
             carry_signal=str(row["carry_signal"]),
         )
         for row in df.to_dict(orient="records")
     ]
 
-    return FXCarryOutput(tenor=tenor, rows=rows)
+    return FXCarryOutput(tenor=tenor, rows=rows).model_dump()

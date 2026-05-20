@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Renders the 3-level hierarchy from the agreed plan:
 //   Top tabs   : Primitives | Workflows | Operators (soon)
-//   Agent strip: Rates Agent (live) | FX / Credit / ... (soon, dimmed)
+//   Agent strip: live agents from manifest | planned agents dimmed
 //   Sub-strip  : All | Sovereign Bonds | OIS    ← from manifest.sub_agent_counts
 //   Categories : All + 7 functional categories  ← manifest.category_counts
 //   Search     : free-text across name/one_liner/related_tools/workflows

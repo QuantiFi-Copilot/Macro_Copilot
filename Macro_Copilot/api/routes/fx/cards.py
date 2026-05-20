@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.engine import Engine
 
+from api.dependencies import get_engine
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput
 from fx_agent.spot.tools.scanner import run_fx_scanner
@@ -23,12 +25,13 @@ class FXCardsResponse(BaseModel):
 def scanner(
     market_scope: Optional[str] = Query(default=None),
     top_n: int = Query(default=10, ge=1, le=50),
+    engine: Engine = Depends(get_engine),
 ):
     try:
-        output = run_fx_scanner(
+        return run_fx_scanner(
+            engine,
             FXScannerInput(market_scope=market_scope, top_n=top_n)
         )
-        return output.model_dump()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX scanner failed: {exc}")
 
@@ -37,12 +40,13 @@ def scanner(
 def spot_level(
     pair: str = Query(..., description="FX pair, e.g. EURUSD"),
     lookback_days: int = Query(default=365, ge=30, le=7300),
+    engine: Engine = Depends(get_engine),
 ):
     try:
-        output = get_fx_spot_level(
+        return get_fx_spot_level(
+            engine,
             FXSpotLevelInput(pair=pair, lookback_days=lookback_days)
         )
-        return output.model_dump()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX spot level failed: {exc}")
 
@@ -50,9 +54,9 @@ def spot_level(
 @router.get("/carry", summary="FX Carry")
 def carry(
     tenor: str = Query(default="1M", description="Forward tenor, e.g. 1W, 1M, 3M, 6M"),
+    engine: Engine = Depends(get_engine),
 ):
     try:
-        output = get_fx_carry(FXCarryInput(tenor=tenor))
-        return output.model_dump()
+        return get_fx_carry(engine, FXCarryInput(tenor=tenor))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX carry failed: {exc}")

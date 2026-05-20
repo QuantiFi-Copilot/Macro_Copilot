@@ -110,8 +110,7 @@ const AGENTS: AgentItem[] = [
     label: 'FX Agent',
     to: '/fx',
     icon: <LineChart size={13} />,
-    // PR 11: per the Phase 0 deck, FX is the NEXT agent to ship.
-    status: 'next',
+    status: 'live',
     scope: 'G10 · EM',
   },
   {
