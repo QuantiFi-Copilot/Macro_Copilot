@@ -300,3 +300,89 @@ CREATE INDEX IF NOT EXISTS idx_otr_history_instrument
 
 CREATE INDEX IF NOT EXISTS idx_otr_history_attributes
     ON macro_data.otr_history USING GIN (attributes);
+
+-- ================================================================================================
+-- 7. EVENT CALENDAR (macro releases, central-bank meetings, sovereign auctions)
+-- Goal: one row per macro EVENT — an economic release (CPI, NFP, retail, PMI, claims),
+--       a central-bank meeting (FOMC, ECB, BoE, BoJ), or a sovereign auction. Events do not
+--       fit market_data_daily's (trade_date, instrument_id, field_name, value) long shape:
+--       they are wide, structured, one-shot observations carrying actual / consensus / prior /
+--       surprise / release_time / period (releases) or high-yield / bid-to-cover / tail /
+--       indirect (auctions). They are also not instruments — not tradable, no vendor ticker.
+--       So they get their own table.
+--
+-- Design (ADR docs_revamped/05_decisions/0004-event-calendar-substrate.md):
+--   * One row per event. The natural key (event_type, country, release_date) is stable
+--     across the announcement -> results lifecycle, so an auction is a SINGLE row whose
+--     result columns fill in post-auction via upsert_event_calendar's ON CONFLICT DO UPDATE
+--     (the same way an economic release's `actual` is NULL before the print and filled after).
+--   * `period` is intentionally NOT in the natural key — it can be NULL at announcement and
+--     filled later; a key column that changes between ingests would break idempotency.
+--   * event_category is a free VARCHAR (economic_release | central_bank_meeting | auction) —
+--     consistent with how asset_class / instrument_type are modelled; the closed set is
+--     enforced at the code/contract level (EVENT_CATEGORIES in database.py), not via a CHECK.
+--   * related_instrument_id optionally links an event to an instrument_master row (an
+--     auctioned CUSIP, or the synthetic per-meeting WIRP instrument B2 will create).
+--   * WIRP per-meeting implied-rate pricing is a daily time series and does NOT live here —
+--     it goes into market_data_daily against a synthetic per-meeting instrument (ADR 0004).
+--   * B1 lands this table empty; the Step-3 data PR (B2) populates it.
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS macro_data.event_calendar (
+    event_id BIGSERIAL PRIMARY KEY,
+    event_type     VARCHAR(64)  NOT NULL,   -- e.g. cpi_yoy, nfp, fomc_decision, ust_auction_10y
+    event_category VARCHAR(32)  NOT NULL,   -- economic_release | central_bank_meeting | auction
+    country        VARCHAR(16)  NOT NULL,
+    currency       VARCHAR(16),
+    central_bank   VARCHAR(32),             -- FOMC / ECB / BOE / BOJ — for central_bank_meeting rows
+    release_date   DATE         NOT NULL,
+    release_time   TIME,                    -- nullable — not always known
+    period         VARCHAR(32),             -- reference period: "Mar 2026", "Q1 2026"
+    -- Economic-release numeric fields (the cross-category surprise model):
+    actual           NUMERIC(20, 8),
+    consensus_median NUMERIC(20, 8),
+    consensus_high   NUMERIC(20, 8),
+    consensus_low    NUMERIC(20, 8),
+    prior            NUMERIC(20, 8),
+    revised_prior    NUMERIC(20, 8),
+    surprise         NUMERIC(20, 8),
+    surprise_std_dev NUMERIC(20, 8),
+    -- Auction result fields (typed columns per ADR 0004; NULL for non-auction rows):
+    high_yield   NUMERIC(20, 8),
+    bid_to_cover NUMERIC(20, 8),
+    tail_bps     NUMERIC(20, 8),
+    indirect_pct NUMERIC(20, 8),
+    -- Optional linkage to an instrument (an auctioned CUSIP, or the synthetic
+    -- per-meeting WIRP instrument for a central_bank_meeting row).
+    related_instrument_id BIGINT REFERENCES macro_data.instrument_master(instrument_id),
+    -- Escape hatch: central-bank decision (hike/hold/cut), auction sized_amount,
+    -- statement classification, and any event-type-specific structured field.
+    attributes JSONB,
+    -- Provenance: which load wrote this row.
+    load_id BIGINT REFERENCES macro_data.load_audit(load_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Natural key for idempotent re-ingestion. Deliberately excludes `period`
+    -- (see the section header) so the announcement -> results upsert updates a
+    -- single row rather than inserting a duplicate.
+    CONSTRAINT uq_event_calendar_natural_key
+        UNIQUE (event_type, country, release_date)
+);
+
+-- "Every CPI release over time" — the event-study series lookup.
+CREATE INDEX IF NOT EXISTS idx_event_calendar_type_date
+    ON macro_data.event_calendar (event_type, release_date);
+
+-- "Every US event in a window".
+CREATE INDEX IF NOT EXISTS idx_event_calendar_country_date
+    ON macro_data.event_calendar (country, release_date);
+
+-- "Every auction in a window".
+CREATE INDEX IF NOT EXISTS idx_event_calendar_category_date
+    ON macro_data.event_calendar (event_category, release_date);
+
+-- FK reverse lookup ("events linked to this instrument"); Postgres does not
+-- auto-index foreign-key columns.
+CREATE INDEX IF NOT EXISTS idx_event_calendar_related_instrument
+    ON macro_data.event_calendar (related_instrument_id);
+
+CREATE INDEX IF NOT EXISTS idx_event_calendar_attributes
+    ON macro_data.event_calendar USING GIN (attributes);
