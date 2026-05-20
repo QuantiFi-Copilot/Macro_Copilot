@@ -61,7 +61,7 @@ The playbook contract README is bumped (v1.2 → v1.3) to record the new `instru
 
 ### OTR history — the mechanism
 
-**Option (a) — add `is_on_the_run BOOLEAN` to `instrument_metadata_history`.** Rejected. Three failures: (1) that table's `EXCLUDE` constraint is keyed on `instrument_id`, so it cannot enforce the real OTR invariant — *exactly one bond is OTR per `(country, tenor)` per date*; two different CUSIPs could both carry `is_on_the_run = TRUE` on the same day with nothing to stop it. (2) The enriched view's history overlay is guarded by `is_rolling_contract = TRUE`; cash bonds are individual fixed instruments (`is_rolling_contract = FALSE`), so the overlay would never fire for them. (3) Conceptually the table holds *per-instrument metadata that varies per effective window* (a futures generic's underlying contract); a cash bond's own metadata does not vary — only the slot's OTR pointer does. Wrong table.
+**Option (a) — add `is_on_the_run BOOLEAN` to `instrument_metadata_history`.** Rejected. Three failures: (1) that table's `EXCLUDE` constraint is keyed on `instrument_id`, so it cannot enforce the **at-most-one-OTR-per-slot** invariant — two different CUSIPs could both carry `is_on_the_run = TRUE` for the same `(country, tenor)` on the same day with nothing to stop it. (2) The enriched view's history overlay is guarded by `is_rolling_contract = TRUE`; cash bonds are individual fixed instruments (`is_rolling_contract = FALSE`), so the overlay would never fire for them. (3) Conceptually the table holds *per-instrument metadata that varies per effective window* (a futures generic's underlying contract); a cash bond's own metadata does not vary — only the slot's OTR pointer does. Wrong table.
 
 **Option (b) — model each OTR slot as a synthetic rolling generic.** One `instrument_master` row per `(country, tenor)` slot with `is_rolling_contract = TRUE`, whose `instrument_metadata_history` rows point at the OTR CUSIP. This reuses the Step-0 substrate including the view overlay, and is structurally the rolling-generic pattern (`TY1` → underlying contract). Rejected on cost: it requires *either* inventing synthetic non-Bloomberg tickers in `instrument_master` (a new identity convention, with an awkward `vendor`), *or* flipping `is_rolling_contract = TRUE` on the ~88 existing sovereign-benchmark rows — which silently changes the enriched view's overlay behaviour for every benchmark row and is, in any case, a data/ingestion decision that belongs to A4, not a substrate decision A3 can make cleanly.
 
@@ -109,10 +109,11 @@ CREATE TABLE IF NOT EXISTS macro_data.otr_history (
         UNIQUE (country, tenor, effective_from),
     CONSTRAINT ck_otr_history_window
         CHECK (effective_to IS NULL OR effective_to >= effective_from),
-    -- Reject overlapping OTR windows per (country, tenor) slot at write time.
-    -- This is the invariant "exactly one bond is on-the-run per slot per date";
-    -- adjacent windows sharing a boundary day are also rejected (bounds '[]'),
-    -- matching close_open_otr_window()'s "new.effective_from - 1" close.
+    -- Reject overlapping OTR windows per (country, tenor) slot at write time —
+    -- AT MOST ONE bond is recorded as on-the-run per slot per date. The
+    -- constraint does NOT enforce gapless coverage; see "Gapless coverage"
+    -- below. Adjacent windows sharing a boundary day are also rejected
+    -- (bounds '[]'), matching close_open_otr_window()'s "new − 1" close.
     CONSTRAINT ex_otr_history_no_overlap
         EXCLUDE USING GIST (
             country WITH =,
@@ -128,6 +129,10 @@ Indices:
 - `idx_otr_history_attributes` GIN on `(attributes)` — same shape as the sibling SCD2 table.
 
 The `EXCLUDE`-backing GIST index additionally serves the slot+range predicate; no separate range index is added.
+
+### Gapless coverage — an A4 responsibility, not a DB constraint
+
+The `EXCLUDE` constraint guarantees **at most one** OTR window covers any date for a slot — it rejects overlapping and boundary-sharing windows. It does **not** guarantee **gapless** coverage — that *some* bond is on-the-run on *every* date. A gap between a closed window's `effective_to` and the next window's `effective_from` is structurally permitted by the table; Postgres `EXCLUDE` can reject overlaps, it cannot require coverage. In correct data there are no gaps (the prior on-the-run bond stays OTR until the next one settles), and `close_open_otr_window` produces gapless adjacency when used before each insert (`effective_to = new_effective_from − 1`). The A4 OTR loader is responsible for producing gapless windows and SHOULD validate no-gaps as a defence-in-depth check — the same way ADR 0002's extractor/ingester run `validate_no_overlaps` alongside the DB constraint. "Exactly one bond is on-the-run per slot per date" is the real-world fact the *data* should reflect; the *constraint* enforces the no-overlap half of it.
 
 ## Design — DB helpers (`database/database.py`)
 
@@ -148,7 +153,7 @@ The PHASE-2 per-instrument record dict gains `cusip` / `isin` keys (read from th
 **Positive:**
 - A4 becomes a pure data-population task — write `sovereign_cash_bonds.yml`, extract, ingest. No schema work, no helper work.
 - `carry_and_roll` and the broader cash-bond RV stack (TD #24) are unblocked at the substrate level.
-- The OTR invariant is enforced by the database, not by application discipline — a malformed OTR backfill fails loudly at write time.
+- The no-overlap invariant is enforced by the database, not by application discipline — an OTR backfill that double-books a slot fails loudly at write time. (Gaplessness is not DB-enforceable; the A4 loader validates it — see "Gapless coverage" above.)
 - `otr_history` is the fourth instance of the SCD2 + `EXCLUDE` pattern (`instrument_metadata_history` was the first); the pattern is now demonstrably reusable, which de-risks future effective-dated needs.
 
 **Negative / known trade-offs:**
@@ -164,7 +169,7 @@ The PHASE-2 per-instrument record dict gains `cusip` / `isin` keys (read from th
    - Land the matching idempotent migration SQL for existing databases (below).
    - Land the DB helpers and the ingester change.
    - Land `MagicMock`-driven tests for the new pure-Python and Connection-composed helpers.
-2. **PR A4 (next):** `sovereign_cash_bonds.yml` (start US, expand by country later); verify the Bloomberg cash-bond mnemonics; extract; ingest; populate `otr_history`; add the OTR pre-write validator as defence-in-depth.
+2. **PR A4 (next):** `sovereign_cash_bonds.yml` (start US, expand by country later) — every universe row stamps `instrument_type: sovereign_cash_bond` explicitly per the universal contract (the ingester's coarse `_infer_instrument_type` fallback is a safety net, not the primary path); verify the Bloomberg cash-bond mnemonics; extract; ingest; populate `otr_history`; add the OTR pre-write validator as defence-in-depth (overlaps **and** gaps).
 3. **Future:** cash-bond primitives (`carry_and_roll`, `otr_ofr_spread`); a possible `CREATE OR REPLACE VIEW` to surface `cusip` if a view-read pattern proves common.
 
 ### Migration SQL — run on an existing database
@@ -173,6 +178,13 @@ Idempotent and data-safe (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXIST
 
 ```sql
 BEGIN;
+
+-- 0. btree_gist — required by the otr_history EXCLUDE constraint below (it gives
+--    GIST the "=" operator class for the country/tenor varchars). Step 0
+--    (ADR 0001) already installs it for instrument_metadata_history; repeated
+--    here, idempotently, so this migration block is self-sufficient even if run
+--    against a database that somehow lacks it.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- 1. instrument_master: cash-bond identity columns (nullable → existing rows unaffected)
 ALTER TABLE macro_data.instrument_master
