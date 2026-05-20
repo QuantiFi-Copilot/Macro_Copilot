@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS macro_data.instrument_master (
     tenor VARCHAR(16),                        -- e.g. 2Y, 5Y, 10Y
     underlying_index VARCHAR(32),             -- e.g. SOFR, SONIA, ESTR
     contract_code VARCHAR(32),                -- useful for futures/options if needed
+    cusip VARCHAR(16),                        -- cash-bond identity (ADR 0003); NULL for non-cash-bond instruments
+    isin  VARCHAR(16),                        -- cash-bond identity (ADR 0003); NULL for non-cash-bond instruments
     expiry_date DATE,
     maturity_date DATE,
     is_rolling_contract BOOLEAN NOT NULL DEFAULT FALSE,
@@ -46,6 +48,16 @@ CREATE INDEX IF NOT EXISTS idx_instrument_master_curve_family
 
 CREATE INDEX IF NOT EXISTS idx_instrument_master_attributes
     ON macro_data.instrument_master USING GIN (attributes);
+
+-- Cash-bond identity (ADR 0003). A CUSIP uniquely identifies one cash bond;
+-- the index is partial (WHERE cusip IS NOT NULL) so the majority of instruments
+-- — futures, OIS, benchmarks, linkers — which carry no CUSIP are not collapsed
+-- onto a single NULL value by the uniqueness rule.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_instrument_master_cusip
+    ON macro_data.instrument_master (cusip) WHERE cusip IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_instrument_master_isin
+    ON macro_data.instrument_master (isin) WHERE isin IS NOT NULL;
 
 -- ================================================================================================
 -- 2. LOAD AUDIT
@@ -223,3 +235,63 @@ LEFT JOIN LATERAL (
     ORDER BY h.effective_from DESC
     LIMIT 1
 ) hist ON TRUE;
+
+-- ================================================================================================
+-- 6. ON-THE-RUN (OTR) HISTORY (SCD2 for the per-(country, tenor) on-the-run slot)
+-- Goal: track which individual cash sovereign bond was on-the-run for each
+--       (country, tenor) slot over time. A freshly-auctioned 10Y is on-the-run
+--       for ~3 months until the next 10Y is auctioned, then becomes off-the-run
+--       permanently — so OTR status is a STATE of a (country, tenor) slot over
+--       time, not a static instrument attribute.
+--
+-- Design (ADR docs_revamped/05_decisions/0003-cash-bond-substrate.md):
+--   * One row per (country, tenor, effective_window). otr_instrument_id points
+--     at the macro_data.instrument_master row that was on-the-run during the
+--     window; effective_to = NULL means "currently on-the-run".
+--   * Same SCD2 + EXCLUDE pattern as instrument_metadata_history (section 4),
+--     re-keyed from instrument_id to the (country, tenor) slot. The EXCLUDE
+--     constraint DB-enforces the invariant "exactly one bond is on-the-run per
+--     (country, tenor) per date".
+--   * A3 lands this table empty; the Step-2 data PR (A4) populates it.
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS macro_data.otr_history (
+    otr_history_id BIGSERIAL PRIMARY KEY,
+    country VARCHAR(16) NOT NULL,
+    tenor   VARCHAR(16) NOT NULL,
+    effective_from DATE NOT NULL,
+    effective_to   DATE,                              -- NULL = currently on-the-run
+    otr_instrument_id BIGINT NOT NULL
+        REFERENCES macro_data.instrument_master(instrument_id),
+    -- Per-window escape hatch for fields not promoted to typed columns.
+    attributes JSONB,
+    -- Provenance: which load wrote this row.
+    load_id BIGINT REFERENCES macro_data.load_audit(load_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_otr_history_window
+        UNIQUE (country, tenor, effective_from),
+    CONSTRAINT ck_otr_history_window
+        CHECK (effective_to IS NULL OR effective_to >= effective_from),
+    -- Reject overlapping OTR windows per (country, tenor) slot at write time.
+    -- This enforces "exactly one bond is on-the-run per slot per date". Adjacent
+    -- windows that share a boundary day are also rejected (bounds = '[]'
+    -- inclusive), which matches close_open_otr_window()'s "new.effective_from - 1"
+    -- close semantics in database.py.
+    CONSTRAINT ex_otr_history_no_overlap
+        EXCLUDE USING GIST (
+            country WITH =,
+            tenor   WITH =,
+            daterange(effective_from, COALESCE(effective_to, 'infinity'::date), '[]') WITH &&
+        )
+);
+
+-- Point-in-time slot lookup: "which bond was on-the-run for this (country,
+-- tenor) on this date?" — one index hit for get_otr_at().
+CREATE INDEX IF NOT EXISTS idx_otr_history_pit
+    ON macro_data.otr_history (country, tenor, effective_from DESC);
+
+-- Reverse lookup: "which OTR window(s) did this bond occupy?"
+CREATE INDEX IF NOT EXISTS idx_otr_history_instrument
+    ON macro_data.otr_history (otr_instrument_id);
+
+CREATE INDEX IF NOT EXISTS idx_otr_history_attributes
+    ON macro_data.otr_history USING GIN (attributes);

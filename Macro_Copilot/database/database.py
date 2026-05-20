@@ -110,6 +110,10 @@ def _normalize_instrument_record(record: Dict[str, Any]) -> Dict[str, Any]:
         "tenor": rec.get("tenor"),
         "underlying_index": rec.get("underlying_index"),
         "contract_code": rec.get("contract_code"),
+        # Cash-bond identity (ADR 0003). NULL for non-cash-bond instruments;
+        # an unknown field never reaches here — it lands in `attributes`.
+        "cusip": rec.get("cusip"),
+        "isin": rec.get("isin"),
         "expiry_date": rec.get("expiry_date"),
         "maturity_date": rec.get("maturity_date"),
         "is_rolling_contract": bool(rec.get("is_rolling_contract", False)),
@@ -160,6 +164,8 @@ def upsert_instrument_master(engine, records: List[Dict[str, Any]]) -> Dict[str,
         "tenor": stmt.excluded.tenor,
         "underlying_index": stmt.excluded.underlying_index,
         "contract_code": stmt.excluded.contract_code,
+        "cusip": stmt.excluded.cusip,
+        "isin": stmt.excluded.isin,
         "expiry_date": stmt.excluded.expiry_date,
         "maturity_date": stmt.excluded.maturity_date,
         "is_rolling_contract": stmt.excluded.is_rolling_contract,
@@ -805,6 +811,245 @@ def get_instrument_metadata_at(
             conn.execute(
                 _METADATA_AT_SQL,
                 {"instrument_id": int(instrument_id), "as_of_date": as_of},
+            )
+            .mappings()
+            .first()
+        )
+    return dict(row) if row else None
+
+
+# ==============================================================================
+# ON-THE-RUN (OTR) HISTORY HELPERS (ADR 0003)
+#
+# Substrate for macro_data.otr_history — the SCD2 table that tracks which
+# individual cash sovereign bond was on-the-run for each (country, tenor) slot
+# over time. This trio mirrors the instrument_metadata_history trio
+# (upsert_instrument_metadata_history / close_open_metadata_window /
+# get_instrument_metadata_at), re-keyed from instrument_id to the
+# (country, tenor) slot. A3 lands these; the Step-2 data PR (A4) is the first
+# caller — A3 itself populates no OTR data.
+# ==============================================================================
+
+# Optional otr_history value columns, defaulted to None on every record so the
+# bulk insert generates a single coherent column list (see _normalize_otr_record).
+_OTR_VALUE_COLUMNS = (
+    "effective_to",
+    "attributes",
+    "load_id",
+)
+
+
+def _normalize_otr_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Internal: turn a caller-supplied OTR record into a clean dict mapping the
+    columns of ``macro_data.otr_history``.
+
+    A record MUST carry ``country``, ``tenor``, ``effective_from`` and
+    ``otr_instrument_id`` (the ``instrument_master`` row that was on-the-run
+    during the window). ``effective_to`` defaults to NULL ("currently
+    on-the-run"); ``attributes`` and ``load_id`` are optional.
+
+    The returned dict has **uniform keys across every record** — ``country``,
+    ``tenor``, ``effective_from``, ``otr_instrument_id`` plus every column in
+    ``_OTR_VALUE_COLUMNS``, with ``None`` for absent values. SQLAlchemy bulk
+    ``insert(...).values([...])`` derives the column list from the first row,
+    so a uniform key set avoids inconsistent INSERT statements. Mirrors
+    :func:`_normalize_history_record`.
+    """
+    country = record.get("country")
+    tenor = record.get("tenor")
+    effective_from = record.get("effective_from")
+    otr_instrument_id = record.get("otr_instrument_id")
+
+    if not country:
+        raise ValueError("otr_history record requires `country`.")
+    if not tenor:
+        raise ValueError("otr_history record requires `tenor`.")
+    if effective_from is None:
+        raise ValueError("otr_history record requires `effective_from`.")
+    if otr_instrument_id is None:
+        raise ValueError(
+            "otr_history record requires `otr_instrument_id` — resolve the "
+            "on-the-run bond's CUSIP/ticker to an instrument_id before calling."
+        )
+
+    row: Dict[str, Any] = {
+        "country": str(country),
+        "tenor": str(tenor),
+        "effective_from": effective_from,
+        "otr_instrument_id": int(otr_instrument_id),
+    }
+    for col in _OTR_VALUE_COLUMNS:
+        row[col] = record.get(col)
+    return row
+
+
+def upsert_otr_history(
+    connectable: Connectable,
+    records: List[Dict[str, Any]],
+) -> int:
+    """
+    Append-on-change writer for ``macro_data.otr_history``.
+
+    Each record MUST carry:
+      - ``country`` (str), ``tenor`` (str)
+      - ``effective_from`` (date)
+      - ``otr_instrument_id`` (int) — the ``instrument_master`` row that was
+        on-the-run for the slot during this window.
+
+    Optional columns: ``effective_to`` (NULL = currently on-the-run),
+    ``attributes`` (JSONB), ``load_id``.
+
+    Behavior:
+      * Idempotent on ``(country, tenor, effective_from)`` via
+        ``ON CONFLICT DO UPDATE`` — re-running a backfill is safe and updates
+        fields in place rather than duplicating rows.
+      * Does NOT close prior open windows. Callers wanting append-on-change
+        semantics call :func:`close_open_otr_window` explicitly first. Keeping
+        the two steps separate mirrors ``upsert_instrument_metadata_history`` /
+        ``close_open_metadata_window`` and makes idempotent re-runs cheap to
+        reason about.
+
+    Connection contract: accepts either an :class:`Engine` (self-managed
+    transaction) or a :class:`Connection` (caller-managed). See :func:`_txn`.
+    """
+    if not records:
+        return 0
+
+    metadata = MetaData(schema="macro_data")
+    otr = Table("otr_history", metadata, autoload_with=connectable)
+
+    # Reflection types the JSONB column with ``none_as_null=False`` (SQLAlchemy
+    # default), under which a Python ``None`` binds as the JSON ``'null'``
+    # literal rather than SQL ``NULL``. Override so an absent attributes blob
+    # persists as a genuine SQL ``NULL`` — the same fix applied to
+    # ``upsert_instrument_metadata_history``.
+    otr.c.attributes.type = JSONB(none_as_null=True)
+
+    clean: List[Dict[str, Any]] = [_normalize_otr_record(r) for r in records]
+
+    stmt = insert(otr).values(clean)
+    update_set = {
+        c.name: stmt.excluded[c.name]
+        for c in otr.c
+        if c.name
+        not in {
+            "otr_history_id",
+            "country",
+            "tenor",
+            "effective_from",
+            "created_at",
+        }
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["country", "tenor", "effective_from"],
+        set_=update_set,
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    affected = result.rowcount or 0
+    print(f"[DB] Upserted {affected} rows into otr_history.")
+    return affected
+
+
+def close_open_otr_window(
+    connectable: Connectable,
+    country: str,
+    tenor: str,
+    new_effective_from: Any,
+) -> int:
+    """
+    Close the currently-open (``effective_to IS NULL``) ``otr_history`` row for
+    a ``(country, tenor)`` slot by setting its ``effective_to`` to
+    ``new_effective_from - 1 day``.
+
+    Used by the OTR backfill / live-append path when a newly-auctioned bond
+    becomes on-the-run for a slot: the prior on-the-run window's terminal date
+    becomes the day before the new window begins. Only the most recent open
+    row is closed (matching ``effective_from < new``); rows already closed are
+    not touched.
+
+    Returns the number of rows updated (0 if no open prior window existed,
+    1 in the typical case). Mirrors :func:`close_open_metadata_window`.
+    """
+    new_from = pd.to_datetime(new_effective_from).date()
+    close_to = new_from - timedelta(days=1)
+
+    metadata = MetaData(schema="macro_data")
+    otr = Table("otr_history", metadata, autoload_with=connectable)
+
+    stmt = (
+        otr.update()
+        .where(otr.c.country == str(country))
+        .where(otr.c.tenor == str(tenor))
+        .where(otr.c.effective_to.is_(None))
+        .where(otr.c.effective_from < new_from)
+        .values(effective_to=close_to)
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    return result.rowcount or 0
+
+
+_OTR_AT_SQL = text(
+    """
+    SELECT
+        o.otr_history_id,
+        o.country,
+        o.tenor,
+        o.effective_from,
+        o.effective_to,
+        o.otr_instrument_id,
+        o.attributes AS otr_attributes,
+        i.vendor,
+        i.vendor_ticker,
+        i.cusip,
+        i.isin,
+        i.currency,
+        i.instrument_type,
+        i.maturity_date
+    FROM macro_data.otr_history o
+    JOIN macro_data.instrument_master i
+      ON i.instrument_id = o.otr_instrument_id
+    WHERE o.country = :country
+      AND o.tenor = :tenor
+      AND o.effective_from <= :as_of_date
+      AND (o.effective_to IS NULL OR o.effective_to >= :as_of_date)
+    ORDER BY o.effective_from DESC
+    LIMIT 1
+    """
+)
+
+
+def get_otr_at(
+    engine: Engine,
+    country: str,
+    tenor: str,
+    as_of_date: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Point-in-time on-the-run getter for one ``(country, tenor)`` slot.
+
+    Returns a single dict describing the cash bond that was on-the-run for the
+    slot on ``as_of_date`` — the ``otr_history`` window joined to the OTR
+    bond's ``instrument_master`` identity (``otr_instrument_id``,
+    ``vendor_ticker``, ``cusip``, ``isin``, ``currency``, ``maturity_date``).
+
+    Returns ``None`` (typed ``Optional``, per P6) when no OTR window covers
+    ``as_of_date`` for the slot — e.g. the slot has no backfilled history, or
+    the date predates the earliest window. The absence is information, not an
+    error; callers handle the ``None`` branch explicitly.
+
+    Mirrors :func:`get_instrument_metadata_at`.
+    """
+    as_of = pd.to_datetime(as_of_date).date().isoformat()
+    with engine.connect() as conn:
+        row = (
+            conn.execute(
+                _OTR_AT_SQL,
+                {"country": str(country), "tenor": str(tenor), "as_of_date": as_of},
             )
             .mappings()
             .first()
