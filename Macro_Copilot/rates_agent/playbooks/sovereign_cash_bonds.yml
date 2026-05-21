@@ -1,0 +1,235 @@
+# ============================================================================
+# VERIFIED 2026-05-21 — sovereign_cash_bonds playbook  (work order A4-4)
+#
+# Individual CUSIP-level sovereign cash bonds — the per-bond substrate for the
+# cash-bond RV / carry-roll / on-the-run primitive layer. Distinct from
+# sovereign_bonds.yml, which carries GT-generic yield-CURVE points: the A4
+# verification proved bond-level analytics (DV01, dirty/clean price, ASW) do
+# NOT historise on the GT generics — they require individual bond tickers.
+# This playbook is that CUSIP-level layer (ADR 0003 + ADR 0005).
+#
+# STATUS: VERIFIED. Universe and every Bloomberg mnemonic below were confirmed
+# on a live Bloomberg terminal by the A4 probe runs (2026-05-21):
+#   * scripts/sovereign_bonds_realbond_bloomberg_check.py — resolved each
+#     GT-generic to its current on-the-run cash bond.
+#   * scripts/a4_duration_field_probe.py — confirmed the five target_metrics
+#     historise via bdh on the resolved real bonds (YLD_YTM_MID, RISK_MID,
+#     PX_DIRTY_MID, PX_CLEAN_MID 14/14; ASSET_SWAP_SPD_MID 13/14).
+#   * scripts/a4_canada_asw_probe.py — settled the one outlier.
+#
+# ----------------------------------------------------------------------------
+# DELIBERATE DESIGN NOTES — none of this is guessed:
+#
+#   (1) instrument_type: sovereign_cash_bond — the new value documented by
+#       ADR 0003. asset_class stays `rates` (P8 closed-family — not extended).
+#
+#   (2) TICKER FORM is `/isin/<ISIN>`. The A4 probes proved /isin/, /cusip/
+#       and the bare ` Govt` forms return byte-identical data; /isin/ is the
+#       universal one (every bond has an ISIN; European bonds have no real
+#       CUSIP). cusip / isin land in the typed instrument_master columns
+#       (ADR 0003) via the reference_metrics below.
+#
+#   (3) NO modified-duration target_metric. The A4 duration probe found NO
+#       Bloomberg field that historises modified duration via bdh
+#       (DUR_ADJ_MID is bdp-snapshot-only; MOD_DUR / MODIFIED_DURATION /
+#       MAC_DUR_MID are not fields). DV01 (RISK_MID) IS the historised risk
+#       measure and ships here. Modified duration is recoverable downstream
+#       as RISK_MID * 100 / PX_DIRTY_MID — an arithmetic identity verified
+#       to ~5 significant figures against Bloomberg's DUR_ADJ_MID — to be
+#       computed by a primitive with full P12 disclosure, never ingested as
+#       a proxy here.
+#
+#   (4) ASSET_SWAP_SPD_MID historises fully for every market EXCEPT Canada:
+#       CAD government bonds carry only a near-empty ASW series (~2% of days
+#       — a verified per-market data characteristic, not a bug). ASW ships
+#       for all rows; Canadian bonds simply carry sparse ASW data.
+#
+#   (5) v1 universe = the current on-the-run bond for each (country, tenor)
+#       slot covered here — the curated, OTR-seeded snapshot of ADR 0005.
+#       Bloomberg FI/bond-search-driven enumeration and deeper tenor / OTR
+#       history coverage are the documented later expansions.
+#
+#   (6) Per P12 every target_metric below is an INGESTED Bloomberg value —
+#       no primitive recomputes yield, DV01, price or ASW.
+# ----------------------------------------------------------------------------
+# ============================================================================
+
+playbook_name: sovereign_cash_bonds
+playbook_version: "1.0"
+asset_class: rates
+dataset_name: sovereign_cash_bonds
+description: |
+  Daily per-bond data for individual CUSIP-level sovereign cash bonds — the
+  current on-the-run benchmark bond for each (country, tenor) slot across the
+  core liquid macro-rates markets (US, Germany, UK, Japan, France, Italy,
+  Canada, Australia, Spain). Five ingested Bloomberg analytics per bond:
+  mid yield, DV01 (risk), dirty price, clean price, and the asset-swap
+  spread. This is the CUSIP-level substrate (ADR 0003) the cash-bond RV,
+  carry/roll-down and on-the-run primitives consume — sovereign_bonds.yml
+  remains the separate GT-generic yield-curve layer. Each universe row is
+  one bond addressed by its ISIN; cusip / isin populate the typed
+  instrument_master columns, coupon / issue_date ride in `attributes`.
+  Modified duration is intentionally not a field — no Bloomberg mnemonic
+  historises it; DV01 is the historised risk measure (see header note 3).
+
+extraction:
+  start_date: "2005-01-01"
+  # Each bond's history naturally begins at its own issue date; a long
+  # start_date simply lets the extractor pull each bond's full life.
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "yield_mid"
+    bloomberg_field: "YLD_YTM_MID"          # VERIFIED 2026-05-21 — 14/14 bonds
+  - metric_id: "dv01"
+    bloomberg_field: "RISK_MID"             # VERIFIED 2026-05-21 — 14/14 bonds (the risk measure)
+  - metric_id: "dirty_price"
+    bloomberg_field: "PX_DIRTY_MID"         # VERIFIED 2026-05-21 — 14/14 bonds
+  - metric_id: "clean_price"
+    bloomberg_field: "PX_CLEAN_MID"         # VERIFIED 2026-05-21 — 14/14 bonds
+  - metric_id: "asw_spread"
+    bloomberg_field: "ASSET_SWAP_SPD_MID"   # VERIFIED 2026-05-21 — full series 13/14 markets; CAD govvies sparse (header note 4)
+
+# Static/reference fields — fetched once per bond and stamped onto each row.
+# cusip / isin route to the typed instrument_master columns (ADR 0003);
+# coupon / issue_date are preserved in the `attributes` JSONB.
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+  - column_name: "maturity_date"
+    bloomberg_field: "MATURITY"
+  - column_name: "cusip"
+    bloomberg_field: "ID_CUSIP"
+  - column_name: "isin"
+    bloomberg_field: "ID_ISIN"
+  - column_name: "coupon"
+    bloomberg_field: "CPN"
+  - column_name: "issue_date"
+    bloomberg_field: "ISSUE_DT"
+
+universe:
+  # --------------------------------------------------------------------------
+  # United States — on-the-run UST benchmarks
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/US91282CQL80"            # T 3 3/4 04/30/28
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "UST"
+    country: "US"
+    currency: "USD"
+    tenor: "2Y"
+
+  - ticker: "/isin/US91282CQQ77"            # T 4 3/8 05/15/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "UST"
+    country: "US"
+    currency: "USD"
+    tenor: "10Y"
+
+  - ticker: "/isin/US912810UU06"            # T 5 05/15/56
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "UST"
+    country: "US"
+    currency: "USD"
+    tenor: "30Y"
+
+  # --------------------------------------------------------------------------
+  # Germany — on-the-run Bund / Schatz benchmarks
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/DE000BU22130"            # BKO 2 1/2 06/14/28
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "DE_BUND"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "2Y"
+
+  - ticker: "/isin/DE000BU2Z064"            # DBR 2.9 02/15/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "DE_BUND"
+    country: "Germany"
+    currency: "EUR"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # United Kingdom — on-the-run gilt benchmarks
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/GB00BSQNRC93"            # UKT 4 3/8 03/07/28
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "UK_GILT"
+    country: "UK"
+    currency: "GBP"
+    tenor: "2Y"
+
+  - ticker: "/isin/GB00BTXS1K06"            # UKT 4 3/4 10/22/35
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "UK_GILT"
+    country: "UK"
+    currency: "GBP"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # Japan — on-the-run JGB benchmarks
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/JP1024841S56"            # JGB 1.4 05/01/28
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "JGB"
+    country: "Japan"
+    currency: "JPY"
+    tenor: "2Y"
+
+  - ticker: "/isin/JP1103821S45"            # JGB 2.4 03/20/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "JGB"
+    country: "Japan"
+    currency: "JPY"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # France — on-the-run OAT benchmark
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/FR0014012II5"            # FRTR 3 1/2 11/25/35
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "FR_OAT"
+    country: "France"
+    currency: "EUR"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # Italy — on-the-run BTP benchmark
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/IT0005676504"            # BTPS 3.45 02/01/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "IT_BTP"
+    country: "Italy"
+    currency: "EUR"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # Canada — on-the-run GoC benchmark. NOTE: ASSET_SWAP_SPD_MID is sparse for
+  # CAD government bonds (header note 4) — yield / DV01 / prices are full.
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/CA135087T537"            # CAN 3 1/4 12/01/35
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "CANADA_GOVT"
+    country: "Canada"
+    currency: "CAD"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # Australia — on-the-run ACGB benchmark
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/AU0000381832"            # ACGB 4 1/4 03/21/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "AU_GOVT"
+    country: "Australia"
+    currency: "AUD"
+    tenor: "10Y"
+
+  # --------------------------------------------------------------------------
+  # Spain — on-the-run Bono benchmark
+  # --------------------------------------------------------------------------
+  - ticker: "/isin/ES0000012Q08"            # SPGB 3.3 04/30/36
+    instrument_type: "sovereign_cash_bond"
+    curve_family: "ES_BONO"
+    country: "Spain"
+    currency: "EUR"
+    tenor: "10Y"
