@@ -1,0 +1,303 @@
+# =============================================================================
+# calculate_breakeven_inflation_simple_tool — tool configuration
+# =============================================================================
+# Canonical record of the bond-implied breakeven inflation tool's
+# conventions and methodology.  Loaded by ``shared.config.load_tool_config``
+# at compute() time.  Every shared convention (z_score_window_days,
+# z_score_min_periods, z_score_ddof, z_score_buffer_multiplier,
+# ffill_limit_days, default_field_name, period offsets, trailing range
+# window, bps/yield/z-score rounding) carries the same numeric value as
+# the sovereign and linker level tools — the cross-config lint enforces
+# value-agreement across every tool that declares the same convention
+# name.  Drift on any of those is caught.
+#
+# Concept honesty
+# ---------------
+# This tool returns a BOND-IMPLIED BREAKEVEN INFLATION — i.e. the
+# nominal-minus-real yield differential (a.k.a. inflation
+# compensation).  It is NOT a clean expected-inflation read: the
+# differential carries an inflation risk premium and a relative
+# liquidity premium between the nominal and linker bond.  The
+# methodology label below is threaded back to the wire so the desk
+# cannot misread the output.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_breakeven_inflation_simple_tool
+  domain: inflation_indexed_bonds
+  description: |
+    Generic bond-implied breakeven inflation between a sovereign
+    nominal yield and the corresponding sovereign linker real yield at
+    the same tenor:
+
+      breakeven_pct = nominal_yield_pct - real_yield_pct
+      breakeven_bps = breakeven_pct * 100
+
+    Returns the current breakeven (in pct AND bps), daily/weekly/monthly
+    bps changes, rolling 252-day z-score (in bps), trailing 252-day
+    high/low/percentile (in bps), the rolling-window length, plus the
+    two underlying yields used to form the breakeven so the desk can
+    sanity-check the decomposition.  Also emits a bespoke wire-frozen
+    ``time_series`` history of the breakeven (in bps) over the displayed
+    ``lookback_days`` window AND the canonical
+    ``shared.schemas.time_series.TimeSeries`` payloads (BPS for the
+    breakeven, Z_SCORE for the rolling z-score) so the workflow /
+    operator layer can compose without per-tool custom shapes.
+
+    Wire honesty: the output's ``methodology_label`` field is sourced
+    from ``methodology.what_it_does`` below — NOT a hardcoded literal —
+    so a YAML edit to the disclosure flows through to runtime.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool (yield_levels, curve_spread,
+      curve_move_classifier, butterfly, cross_market_spread), the OIS
+      level/spread tools, and the linker real_yield_level tool — the
+      cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches sovereign yield_levels /
+      cross_market_spread / OIS rate_level / linker real_yield_level.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches the other rates tools.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The breakeven series
+      is in bps so changes go through period_changes(already_bps=True),
+      i.e. plain subtraction (no *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as cross_market_spread / yield_levels / real_yield_level.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Same as the other rates tools; the consistency lint
+      enforces the match where declared.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (breakeven, period changes, range)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current breakeven, daily/weekly/monthly
+      changes, trailing high/low) to 0.01 bps.  Display precision;
+      matches sovereign cross_market_spread / OIS spread tools.
+      Threaded explicitly into period_changes(decimals=...) so the
+      delta_bps default of 2 cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4 is
+      not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields (the two underlying legs in pct)
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / linker level tool.  Used here for the
+      ``nominal_yield_pct`` / ``real_yield_pct`` snapshot fields and
+      for the ``breakeven_pct`` snapshot field.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for both legs
+  # ---------------------------------------------------------------------------
+  # Linkers and nominal sovereigns publish their yield-to-maturity
+  # under the same Bloomberg ``YLD_YTM_MID`` mnemonic — see the linker
+  # and sovereign playbook ``target_metrics``.  Reusing the convention
+  # name + value keeps the cross-config lint clean.  LLM/HTTP wrappers
+  # MUST use the empty/None sentinel so this default flows through.
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical observation for both
+      nominal sovereigns AND inflation linkers — the difference is the
+      underlying instrument_type, not the field code.  The instrument-
+      type discriminator is enforced in code on the DB read for both
+      legs (see compute.py); this default applies to both legs unless
+      the caller explicitly overrides per query.
+
+methodology:
+  what_it_does: |
+    Generic bond-implied breakeven inflation / inflation compensation.
+    Computed as nominal_yield_pct - real_yield_pct at the same tenor.
+    Same-country construction only: the nominal sovereign and linker
+    legs must share country and currency (e.g. UST + USD_TIPS,
+    UK_GILT + GBP_LINKER, FR_OAT + EUR_FR_LINKER, CANADA_GOVT +
+    CAD_RRB).  Cross-country pairs (e.g. DE_BUND vs EUR_FR_LINKER, or
+    UK_GILT vs USD_TIPS) are refused at compute time with a controlled
+    error envelope; this invariant is enforced in code (not via a YAML
+    allow-list) per DESIGN_PRINCIPLES.md §5.  The output is
+    INFLATION COMPENSATION, NOT a clean expected-inflation read,
+    because the differential carries an inflation risk premium and a
+    relative liquidity premium between the nominal sovereign and the
+    linker.  Use as a proxy for inflation expectations only with that
+    caveat in mind.
+
+  assumptions:
+    - "Yields stored as percent (4.25 = 4.25%); breakeven output also
+       in percent on the snapshot, with a parallel bps representation
+       (multiply by 100) used for changes / range / z-score / time
+       series consistent with the other spread-style tools."
+    - "Same z-score / period-offset / ffill / rounding conventions as
+       the other rates tools — cross-config lint enforces the values
+       agree across every tool that declares the same convention."
+    - "Nominal-minus-real direction is fixed (the desk-recognisable
+       sign).  The validator enforces nominal_curve_family !=
+       linker_curve_family; the role/ordering of the two legs is the
+       caller's responsibility — pass the nominal sovereign as the
+       first arg and the linker as the second."
+    - "Daily / weekly / monthly bps changes use period_changes with
+       already_bps=True (plain subtraction; the breakeven series is
+       already in bps).  bps_round_decimals is threaded through
+       explicitly so the YAML is authoritative."
+    - "lookback_days controls the *display* window (and the bespoke
+       time_series row count + canonical TimeSeries length), NOT the
+       rolling z-score window or the trailing range window — those are
+       independent conventions in this YAML."
+    - "Instrument-type discriminator is enforced in code (NOT in
+       YAML): linker leg requires instrument_type='inflation_linker';
+       nominal leg requires instrument_type='sovereign_benchmark'.  A
+       caller passing two linker curve families (or two nominal
+       curve families) yields a controlled error envelope.  This is
+       the load-bearing no-proxy guard — see DESIGN_PRINCIPLES.md §3
+       and STANDARD_TOOL_AND_YAML_RULES.md §J."
+    - "Same-country / same-currency invariant is enforced in code
+       (NOT in YAML): both legs must share country AND currency as
+       stored in macro_data.instrument_master.  Cross-country pairs
+       (e.g. DE_BUND vs EUR_FR_LINKER — same currency, different
+       country; UK_GILT vs USD_TIPS — different currency) yield a
+       controlled error envelope before any market-data SELECT
+       fires.  No YAML allow-list of approved country pairs by
+       design — that would let a config edit silently turn the tool
+       into a proxy.  See DESIGN_PRINCIPLES.md §5 and
+       STANDARD_TOOL_AND_YAML_RULES.md §H."
+    - "Latest-observation cutoff for the displayed window is anchored
+       to the data's latest aligned trade_date (matching OIS
+       rate_level and linker real_yield_level).  Sovereign
+       cross_market_spread anchors to date.today(); the inconsistency
+       is documented in cross_market_spread's planned_extensions."
+
+  citations: []
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked at
+       252 because the output fields high_252d_bps / low_252d_bps /
+       percentile_252d embed the number.  Path to configurability:
+       rename schema fields to high_window_bps / low_window_bps /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute().  Same
+       wire-freeze as cross_market_spread / yield_levels /
+       real_yield_level."
+    - "Inflation-risk-premium- and liquidity-premium-adjusted
+       breakeven.  The 'simple' suffix on this primitive's name is
+       deliberate — a desk-grade expected-inflation read needs IRP /
+       liquidity adjustments that depend on metadata the repo does
+       not yet ingest (e.g. swap-implied breakeven term-premium
+       estimates).  When that lands, the adjusted variant ships as a
+       separate primitive (different concept), NOT as a config knob
+       on this one."
+    - "Forward breakeven (5Y5Y-style) primitive
+       (forward_breakeven_simple) is the next planned linker primitive
+       per the catalog; it composes two snapshots from this primitive
+       into a forward.  Documented here so future readers know the
+       composition path is intentional."

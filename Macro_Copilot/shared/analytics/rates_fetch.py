@@ -179,6 +179,46 @@ _FETCH_SINGLE_TENOR_BY_CONTRACT_SQL = text("""
 """)
 
 
+# Same shape as ``_FETCH_SINGLE_TENOR_SQL`` plus an ``instrument_type``
+# filter.  Kept as a separate static query so the unfiltered bind
+# dictionary stays minimal and existing callers' DB query plans do not
+# change.  The linker ``real_yield_level`` primitive uses this path with
+# ``instrument_type='inflation_linker'`` to guarantee the tool cannot
+# silently fall through to nominal sovereign rows under a real-yield
+# label.
+_FETCH_SINGLE_TENOR_TYPED_SQL = text("""
+    SELECT
+        trade_date,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family    = :curve_family
+      AND tenor           = :tenor
+      AND field_name      = :field_name
+      AND instrument_type = :instrument_type
+      AND trade_date     >= :start_date
+    ORDER BY trade_date
+""")
+
+
+# Both disambiguators at once: ``contract_code`` AND ``instrument_type``.
+# No caller needs this combination today, but the public signature
+# accepts both optional filters, so the both-set path must produce a
+# correct query rather than silently dropping one filter.
+_FETCH_SINGLE_TENOR_BY_CONTRACT_TYPED_SQL = text("""
+    SELECT
+        trade_date,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family    = :curve_family
+      AND tenor           = :tenor
+      AND field_name      = :field_name
+      AND contract_code   = :contract_code
+      AND instrument_type = :instrument_type
+      AND trade_date     >= :start_date
+    ORDER BY trade_date
+""")
+
+
 def fetch_single_tenor(
     engine: Engine,
     curve_family: str,
@@ -186,6 +226,7 @@ def fetch_single_tenor(
     field_name: str,
     start_date: date,
     contract_code: Optional[str] = None,
+    instrument_type: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch a single-tenor series on one curve.
 
@@ -199,24 +240,37 @@ def fetch_single_tenor(
     ``bond_futures.yml``). Default ``None`` preserves the pre-Step-0
     query so every existing sovereign / OIS / inflation caller works
     unchanged.
+
+    ``instrument_type`` (optional, default ``None``): when supplied
+    (e.g. ``'inflation_linker'``), the row's ``instrument_type`` must
+    match.  The linker ``real_yield_level`` primitive uses this to
+    guarantee it cannot return nominal sovereign rows under a
+    real-yield label.  Default ``None`` adds no instrument-type filter.
+
+    The two filters are independent and orthogonal.  Passing neither
+    reproduces the original query exactly — byte-for-byte unchanged SQL
+    and bind dictionary for every pre-existing caller; either one alone,
+    or both together, narrows the row set with the corresponding bound
+    parameter(s).
     """
-    if contract_code is None:
+    params: Dict[str, object] = {
+        "curve_family": curve_family,
+        "tenor": tenor,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if contract_code is None and instrument_type is None:
         sql = _FETCH_SINGLE_TENOR_SQL
-        params: Dict[str, object] = {
-            "curve_family": curve_family,
-            "tenor": tenor,
-            "field_name": field_name,
-            "start_date": start_date.isoformat(),
-        }
-    else:
+    elif instrument_type is None:
         sql = _FETCH_SINGLE_TENOR_BY_CONTRACT_SQL
-        params = {
-            "curve_family": curve_family,
-            "tenor": tenor,
-            "field_name": field_name,
-            "start_date": start_date.isoformat(),
-            "contract_code": contract_code,
-        }
+        params["contract_code"] = contract_code
+    elif contract_code is None:
+        sql = _FETCH_SINGLE_TENOR_TYPED_SQL
+        params["instrument_type"] = instrument_type
+    else:
+        sql = _FETCH_SINGLE_TENOR_BY_CONTRACT_TYPED_SQL
+        params["contract_code"] = contract_code
+        params["instrument_type"] = instrument_type
     with engine.connect() as conn:
         result = conn.execute(sql, params)
         rows = result.fetchall()

@@ -1,0 +1,582 @@
+# =============================================================================
+# calculate_cross_country_real_yield_spread_simple_tool — tool configuration
+# =============================================================================
+# This file is the canonical record of the same-tenor cross-country
+# linker real-yield differential tool's conventions and methodology.
+# Loaded by ``shared.config.load_tool_config`` at compute() time.
+# Every shared convention (z_score_window_days, z_score_min_periods,
+# z_score_ddof, z_score_buffer_multiplier, ffill_limit_days, period
+# offsets, trailing range window, yield/z-score/bps/window_years
+# rounding, default_field_name) carries the same numeric value as
+# the sibling level primitive (real_yield_level), the same-country
+# real_yield_curve_spread, the linker breakeven_curve_spread /
+# forward / cross-country breakeven primitives, the sovereign
+# yield_levels / curve_spread / cross_market_spread tools, and the
+# OIS / inflation-swap tools — the cross-config lint enforces value-
+# agreement across every tool that declares the same convention name.
+# Drift on any of those is caught.
+#
+# Concept honesty
+# ---------------
+# This tool returns the SAME-TENOR CROSS-COUNTRY REAL-YIELD
+# DIFFERENTIAL — i.e. one linker curve's real-yield level at
+# ``tenor`` minus another linker curve's real-yield level at the same
+# ``tenor`` (e.g. USD_TIPS 10Y real yield minus GBP_LINKER 10Y real
+# yield).  Each leg is a generic linker real-yield-level read from
+# ``get_real_yield_level``; the cross-country differential is the
+# difference of two REAL YIELDS (NOT the difference of two breakevens
+# — that's the sibling cross_country_breakeven_spread_simple).
+#
+# Distinct from:
+#   - ``cross_country_breakeven_spread_simple`` (which differences two
+#     nominal-minus-linker breakevens — inflation compensation, not
+#     real-rate divergence)
+#   - ``real_yield_curve_spread`` (same-country, two-tenor difference
+#     on a single linker curve — the real-yield curve-shape object)
+#   - ``cross_market_spread`` (sovereign-nominal cross-country
+#     differential — nominal-yield divergence, not real-rate
+#     divergence)
+#
+# Index-family / market-structure caveat (load-bearing)
+# -----------------------------------------------------
+# Different countries' linkers reference DIFFERENT inflation indices
+# (USD CPI-U non-seasonally adjusted vs euro-area HICP ex-tobacco vs
+# UK RPI/CPIH vs Canada CPI) AND have materially different market-
+# structure characteristics (issuance size, liquidity premium,
+# benchmark availability at the same tenor pillar, deflation-floor
+# treatment).  These are NOT identical underlying contracts — a US
+# 10Y real yield minus a UK 10Y real yield is NOT a "pure real-rate
+# differential", it is a CPI-U-vs-RPI differential with both legs
+# carrying country-specific linker liquidity premia.  The user MUST
+# interpret the output with that index-family AND market-structure
+# mismatch in mind; the methodology disclosure threads these caveats
+# onto the wire via ``current_metrics.methodology_label``.
+#
+# Sign convention
+# ---------------
+# Per-trade-date, the displayed cross-country real-yield spread is:
+#
+#     spread_pct = first_curve_real_yield_pct - second_curve_real_yield_pct
+#
+# i.e. first_curve_family minus second_curve_family at the same
+# tenor.  This sign convention is FIXED and surfaced both in this
+# YAML and on the wire (``current_metrics.methodology_label`` plus a
+# literal token wire-locked into the canonical ``TimeSeries``
+# description).  The tool NEVER silently flips the sign; if the
+# caller wants the opposite differential, they must swap the input
+# curves.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_cross_country_real_yield_spread_simple_tool
+  domain: inflation_indexed_bonds
+  category: desk_invariant_primitive
+  description: |
+    Same-tenor cross-country linker real-yield differential between
+    two linker curves' real-yield levels at the same tenor (e.g.
+    USD_TIPS 10Y real yield minus GBP_LINKER 10Y real yield,
+    USD_TIPS 5Y real yield minus CAD_RRB 5Y real yield).  Each leg
+    is computed by composing ``get_real_yield_level`` once per
+    curve, with each call constrained to that curve's own
+    ``instrument_type='inflation_linker'`` filter (inherited from
+    the level primitive's no-proxy guard).  The two real-yield
+    series are aligned per-trade-date via a strict pandas inner-join
+    and differenced:
+
+      spread_pct = first_curve_real_yield_pct - second_curve_real_yield_pct
+
+    Returns the current cross-country real-yield spread (in
+    PERCENT — same units as the underlying real yields, NOT BPS,
+    because real yields are not multiplied by 100), daily/weekly/
+    monthly bps changes, rolling 252-day z-score (on the percent-
+    units spread), trailing 252-day high/low/percentile (in
+    PERCENT), the rolling-window length, plus the two endpoint
+    real yields and their resolved (country, currency) identities
+    used to form the spread so the desk can sanity-check the
+    decomposition.  Also emits a bespoke wire-frozen ``time_series``
+    history of the cross-country real-yield spread (in PERCENT)
+    over the displayed ``lookback_days`` window AND the canonical
+    ``shared.schemas.time_series.TimeSeries`` payloads (PERCENT for
+    the spread, Z_SCORE for the rolling z-score) so the workflow /
+    operator layer can compose without per-tool custom shapes.
+
+    Cross-country / cross-curve invariant
+    -------------------------------------
+    This primitive is explicitly a CROSS-COUNTRY object: the two
+    legs MUST come from different linker ``curve_family`` values
+    (e.g. USD_TIPS vs GBP_LINKER, USD_TIPS vs EUR_FR_LINKER, etc.).
+    The Pydantic input validator enforces
+    ``first_curve_family != second_curve_family`` at schema time
+    (no DB lookup needed).  Compute additionally re-asserts that
+    the resolved instrument_master rows for EACH curve_family map
+    to ``instrument_type='inflation_linker'`` AND a single
+    ``(country, currency)`` tuple — a non-linker curve_family on
+    either side (e.g. a nominal sovereign 'UST' or 'DE_BUND')
+    surfaces a controlled error envelope BEFORE any market-data
+    fetch fires.  For same-country curve-shape work (e.g. USD_TIPS
+    5s10s real-yield), see
+    ``calculate_real_yield_curve_spread_tool``.
+
+    Wire honesty: the output's ``methodology_label`` field is
+    sourced from ``methodology.what_it_does`` below — NOT a
+    hardcoded literal — so a YAML edit to the disclosure flows
+    through to runtime.  Index-family and market-structure caveats
+    surface explicitly both on the methodology label AND on the
+    canonical TimeSeries descriptions.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool, the OIS level/spread/forward tools, the
+      linker real_yield_level / real_yield_curve_spread /
+      breakeven_inflation_simple / forward_breakeven_simple /
+      breakeven_curve_spread / cross_country_breakeven_spread_simple
+      tools — the cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches every other rates tool that
+      declares this convention.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every other rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The cross-country
+      real-yield spread series is in PERCENT so changes go through
+      period_changes(already_bps=False), i.e. (current - prior) *
+      100 — produces a BPS change of a PERCENT-units spread.
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_pct, low_252d_pct,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as real_yield_level / real_yield_curve_spread /
+  # cross_country_breakeven_spread_simple.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies inside the composed
+      level primitive's clean step at each curve; the cross-country
+      layer itself uses a strict inner join on trade_date to avoid
+      synthesising spread points across the country pair.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct (spread, endpoint real
+  # yields, high/low)
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker level tool.  Threaded through the
+      cross-country compute so the snapshot's current_spread_pct,
+      the bespoke time_series rows' spread_pct, and the canonical
+      TimeSeries rows all agree byte-for-byte at the latest aligned
+      trade_date.  Also used for the endpoint
+      first_curve_real_yield_pct / second_curve_real_yield_pct
+      display fields and the trailing high_252d_pct / low_252d_pct
+      fields.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (period changes)
+  # ---------------------------------------------------------------------------
+  # Used for the daily / weekly / monthly bps change fields on the
+  # snapshot.  The spread itself is in PERCENT, but the desk reads
+  # spread *changes* in BPS — same as every other rates tool's
+  # period-change convention.
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps period-change output (daily/weekly/monthly changes
+      of the PERCENT-units spread) to 0.01 bps.  Display precision;
+      matches every sibling cross-country / curve-spread tool.
+      Threaded explicitly into period_changes(decimals=...) so the
+      delta_bps default of 2 cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4
+      is not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (tenor_years)
+  # ---------------------------------------------------------------------------
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the tenor_years field in
+      current_metrics.  4 decimals matches the OIS forward_rate /
+      forward_breakeven_simple / breakeven_curve_spread /
+      real_yield_curve_spread / cross_country_breakeven_spread_simple
+      value the cross-config lint enforces; this tool reuses the
+      same convention name + value.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range high / low rounding precision (passed to the
+  # composed level primitive's compute_level_metrics)
+  # ---------------------------------------------------------------------------
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches the real_yield_level / sibling level
+      tools — required because this primitive's ToolConfig is
+      threaded into the level primitive's compute.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for both endpoint legs
+  # ---------------------------------------------------------------------------
+  # Linkers publish their real yield-to-maturity under the same
+  # Bloomberg ``YLD_YTM_MID`` mnemonic that nominal sovereigns use —
+  # see the linker playbook's ``target_metrics``.  Reusing the
+  # convention name + value keeps the cross-config lint clean.
+  # LLM/HTTP wrappers MUST use the empty/None sentinel so this
+  # default flows through.  This default is passed unchanged to BOTH
+  # the first-curve and second-curve inner get_real_yield_level
+  # calls.
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Linker real yield-to-maturity is published under the same
+      Bloomberg ``YLD_YTM_MID`` mnemonic that nominal sovereigns use
+      — the difference is the underlying instrument_type (linker
+      tickers from rates_agent/playbooks/inflation_indexed_bonds.yml),
+      not the field code.  The instrument-type discriminator is
+      enforced in code on the DB read for both curves (inherited
+      from the level primitive's no-proxy guard); this default
+      applies to each curve unless the caller explicitly overrides
+      per query.
+
+methodology:
+  what_it_does: |
+    Same-tenor cross-country linker real-yield differential between
+    two linker curves' real-yield levels at the same tenor (e.g.
+    USD_TIPS 10Y real yield minus GBP_LINKER 10Y real yield,
+    USD_TIPS 5Y real yield minus EUR_FR_LINKER 5Y real yield,
+    GBP_LINKER 10Y real yield minus CAD_RRB 10Y real yield).
+    Computed per-trade-date via the SPREAD formula:
+
+      spread_pct = first_curve_real_yield_pct - second_curve_real_yield_pct
+
+    where ``first_curve_real_yield_pct`` and
+    ``second_curve_real_yield_pct`` are the linker real-yield levels
+    at ``tenor`` for first_curve_family and second_curve_family
+    respectively (each computed by ``get_real_yield_level`` filtered
+    by ``instrument_type='inflation_linker'`` AND
+    ``curve_family=?`` AND ``tenor=?`` AND ``field_name=?`` — the
+    no-proxy guard inherited transitively from the level
+    primitive's compute path).  The two real-yield series are
+    aligned per-trade-date via a strict pandas inner-join on
+    calendar trade_date AFTER each is computed independently; the
+    spread is computed only on dates where BOTH curves exist (no
+    synthetic spread points are produced).
+
+    Sign convention is FIXED at first_curve_family minus
+    second_curve_family — the tool NEVER silently flips the sign.
+    If the caller wants second minus first, they must swap the
+    input curves.
+
+    Cross-country construction by design: first_curve_family and
+    second_curve_family MUST be different linker curve families
+    (e.g. USD_TIPS vs GBP_LINKER, USD_TIPS vs EUR_FR_LINKER,
+    GBP_LINKER vs CAD_RRB).  Identical curves on both legs are
+    rejected at the schema layer — for same-country curve-shape
+    work (e.g. USD_TIPS 5s10s real-yield), use
+    ``calculate_real_yield_curve_spread_tool``.  Compute
+    additionally re-asserts that BOTH curve_families resolve under
+    ``instrument_type='inflation_linker'`` AND a single
+    ``(country, currency)`` tuple — a non-linker curve_family on
+    either side (e.g. a nominal sovereign 'UST' or 'DE_BUND')
+    yields a controlled error envelope BEFORE any market-data
+    fetch fires.
+
+    The output is a CROSS-COUNTRY REAL-RATE DIFFERENTIAL — i.e. a
+    measure of how much higher / lower one country's linker real
+    yield is than another's at the same tenor.  Distinct from a
+    cross-country breakeven differential (which differences two
+    inflation-compensation legs) and from a sovereign nominal
+    cross-market spread (which differences two nominal yields).
+    Real yields are quoted in PERCENT and the spread is reported in
+    PERCENT — same units as the underlying.  Daily / weekly /
+    monthly *changes* of the spread are reported in BPS, matching
+    the desk convention for change reporting on any rate level.
+
+    INDEX-FAMILY MISMATCH (load-bearing): different countries'
+    linkers reference DIFFERENT inflation indices — USD TIPS
+    reference CPI-U non-seasonally adjusted, EUR-area linkers
+    reference HICP ex-tobacco, UK linkers reference RPI (legacy
+    issues) or CPIH (newer issues), Canadian RRBs reference Canada
+    CPI.  These are NOT identical inflation references.  The
+    real-yield levels this tool differences are quoted against
+    their own country's index family — a US 10Y real yield minus a
+    UK 10Y real yield is therefore a CPI-U-vs-RPI real-rate
+    differential, NOT a "pure cross-country real-rate
+    differential" in any strong sense.  This tool does NOT attempt
+    to harmonise indices (no harmonisation is performed) because
+    doing so would require seasonally-adjusted / index-conversion
+    metadata the repo does not yet ingest.
+
+    MARKET-STRUCTURE MISMATCH (load-bearing): linker markets
+    differ materially across countries in benchmark availability
+    at the same tenor pillar, issuance size, liquidity premium,
+    and deflation-floor treatment.  USD TIPS, GBP linkers,
+    EUR-area linkers and Canadian RRBs are NOT fungible at the
+    same tenor.  The cross-country real-yield differential
+    therefore reflects both real-rate divergence AND relative
+    linker-market liquidity / structure differences — interpret
+    accordingly.
+
+  assumptions:
+    - "Cross-country / cross-curve invariant: first_curve_family
+       and second_curve_family must be different linker curve
+       families — the Pydantic input validator enforces
+       ``first_curve_family != second_curve_family`` at schema
+       time (NO DB lookup is needed for this guard).  Identical-
+       curve inputs are rejected before any compute work fires;
+       for same-country curve-shape work, use
+       ``calculate_real_yield_curve_spread_tool``."
+    - "Both-legs-must-be-linker invariant: compute additionally
+       re-asserts that BOTH curve_families resolve to
+       ``instrument_type='inflation_linker'`` under a DISTINCT
+       (country, currency) lookup against
+       macro_data.instrument_master.  A non-linker curve_family on
+       either side (nominal sovereign 'UST', 'DE_BUND', or any
+       other) yields a controlled error envelope BEFORE any
+       market-data SELECT fires.  Mirrors the post-fetch identity
+       guard the sibling real_yield_curve_spread uses on a single
+       curve_family — extended here to BOTH curves."
+    - "Sign convention is first_curve_family minus
+       second_curve_family and is fixed.  The tool NEVER silently
+       flips the sign; flipping the inputs (first↔second) flips
+       the displayed sign.  The sign convention is surfaced both
+       in this YAML and on the wire via
+       ``current_metrics.methodology_label`` AND a literal
+       ``first_curve_real_yield_pct - second_curve_real_yield_pct``
+       token in the canonical TimeSeries description."
+    - "INDEX-FAMILY MISMATCH (load-bearing): different countries'
+       linkers reference different inflation indices — USD TIPS
+       reference CPI-U non-seasonally adjusted, EUR-area linkers
+       reference HICP ex-tobacco, UK linkers reference RPI
+       (legacy) or CPIH (newer issues), Canadian RRBs reference
+       CPI.  These are NOT identical inflation references.  A US
+       10Y real yield minus a UK 10Y real yield is therefore a
+       CPI-U-vs-RPI real-rate differential — interpret the output
+       with that mismatch in mind; this tool does NOT attempt to
+       harmonise indices because doing so would require
+       seasonally-adjusted / index-conversion metadata the repo
+       does not yet ingest."
+    - "MARKET-STRUCTURE MISMATCH (load-bearing): linker markets
+       differ materially across countries in benchmark
+       availability at the same tenor pillar, issuance size,
+       linker-specific liquidity premium, deflation-floor
+       treatment, and on-the-run / off-the-run dynamics.  USD
+       TIPS, GBP linkers, EUR-area linkers and Canadian RRBs are
+       NOT fungible at the same tenor.  The displayed cross-
+       country real-yield differential reflects both real-rate
+       divergence AND relative linker-market liquidity / structure
+       differences; the tool does NOT decompose those components
+       (decomposition would require liquidity-premium metadata
+       the repo does not yet ingest)."
+    - "Each leg's real yield is computed by composing
+       ``get_real_yield_level`` once per curve, passing the same
+       ``ToolConfig`` so methodology stays consistent.  This
+       inherits the level primitive's no-proxy guard
+       (instrument_type='inflation_linker' filter on the DB read)
+       for free — passing a nominal sovereign curve_family at
+       either leg returns a controlled error envelope from the
+       inner level call which this tool surfaces with the
+       offending leg named (``first_curve leg failed: ...`` /
+       ``second_curve leg failed: ...``)."
+    - "Per-trade-date alignment: the two endpoint real-yield
+       series are aligned via a strict pandas inner-join on
+       trade_date AFTER each is computed independently from the
+       level primitive.  No ffill across the inner join — dates
+       where ONE leg has no data are dropped from the spread
+       series, NOT carried forward as synthetic spread points."
+    - "The real yields from the inner level primitive arrive in
+       PERCENT (rounded to ``yield_round_decimals`` upstream);
+       the cross-country spread stays in PERCENT (no *100
+       multiplier) and is rounded to ``yield_round_decimals`` at
+       compute time.  Daily / weekly / monthly changes use
+       ``period_changes(already_bps=False)`` which multiplies the
+       percent-units change by 100 to produce a BPS delta;
+       ``bps_round_decimals`` is threaded through explicitly so
+       the YAML is authoritative."
+    - "The snapshot's ``current_spread_pct`` equals
+       ``time_series[-1].spread_pct`` and
+       ``time_series_spread.rows[-1].value`` bit-for-bit at the
+       YAML's ``yield_round_decimals``; same boundary-rounding
+       discipline as real_yield_level / real_yield_curve_spread /
+       cross_country_breakeven_spread_simple."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       real_yield_level / real_yield_curve_spread /
+       cross_country_breakeven_spread_simple / OIS rate_level).
+       Linker daily series can lag wall-clock by several business
+       days; anchoring to the data's latest aligned trade_date
+       avoids silently shrinking the displayed window when data is
+       stale."
+    - "Cross-country real-yield differentials can be negative or
+       positive depending on the country pair and the regime
+       (e.g. USD TIPS minus EUR-FR linker has been both positive
+       and negative across the post-2008 history).  The math is
+       unchanged; the wire types tolerate negative values."
+
+  citations:
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_1y_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_sample_std (registered in
+       docs/architecture/methodology_sources.md)."
+    - "bloomberg_field_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "derived_from_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "team_judgment_pending_review (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked
+       at 252 because the output fields high_252d_pct /
+       low_252d_pct / percentile_252d embed the number.  Path to
+       configurability mirrors sibling level / curve-spread tools'
+       planned_extensions: rename schema fields to high_window_pct
+       / low_window_pct / percentile_window + add
+       trailing_window_days to the output; remove the
+       NotImplementedError guard in compute()."
+    - "Index-family harmonisation.  The current primitive does
+       NOT attempt to convert between CPI-U, HICP, RPI, etc. —
+       the index-family mismatch is disclosed but not adjusted
+       for.  A harmonised variant would require seasonally-
+       adjusted / index-conversion metadata (e.g. CPI-U-NSA → SA,
+       HICP → harmonised CPI) that the repo does not yet ingest,
+       and ships as a separate primitive when that metadata
+       lands."
+    - "Linker-liquidity-premium-adjusted variant.  A desk-grade
+       cross-country real-rate differential needs a liquidity-
+       premium adjustment at each leg (the relative linker-market
+       liquidity difference is part of the displayed differential
+       today).  When linker liquidity-premium metadata lands, the
+       adjusted variant ships as a separate primitive (different
+       concept), NOT as a config knob on this one."
+    - "Inflation-swap-based cross-country real-rate variant.
+       Inflation swaps decompose to a cleaner expected-inflation
+       reference than bond-implied breakevens, and combining
+       nominal sovereign yields with inflation swaps yields a
+       cleaner cross-country REAL-rate decomposition than
+       differencing two linker real yields directly.  Deferred
+       until the inflation-swap primitives mature; at that point
+       the swap-based variant ships as a separate primitive
+       (different concept), NOT as a config knob on this one."
+    - "Currency-hedged variant.  The current primitive is a raw
+       cross-country real-yield differential — it does NOT FX-
+       adjust either leg.  A currency-hedged variant requires
+       FX-forward / cross-currency basis metadata the repo does
+       not yet ingest.  When that lands, the hedged variant ships
+       as a separate primitive (different concept), NOT as a
+       config knob on this one."
