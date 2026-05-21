@@ -12,13 +12,20 @@
 
 **Branch:** `codex/fx-data-universe-extension` — stacked on `codex/fx-on-latest-build` (PR #178, draft).
 
-**Phase in flight:** **Phase A — Cash forwards depth** (step 2 of 8 — Bloomberg extraction pending).
+**Phase in flight:** **Phase A — Cash forwards depth** (step 3 of 8 — Bloomberg extraction COMPLETE for Wave 1, ingestion to Postgres pending on Mac).
 
-**Immediate next action:** Sacha runs `incremental_extractor.py --playbook fx_forwards` from the university terminal to extract the 30-ticker forwards universe from Bloomberg into GCS, then `ingest_parquet.py` to land it in Postgres, then re-runs the readiness gate in `--strict-metadata` mode.
+**Immediate next action:** Sacha goes home, runs `ingest_parquet.py` via Docker with `GCP_BUCKET_NAME=quantifi-fx-data-sacha`, then `refresh_instrument_metadata.py` per playbook, then `tests/test_fx_data_readiness.py --strict-metadata` to validate the new universe.
 
-**Step 1 (ticker verification) ✅ complete.** Long format `<PAIR><TENOR> Curncy` verified on Bloomberg for all 6 G10 pairs × 5 tenors = 30 tickers, historical depth uniform from 2000-01-03. Canonical 1Y tenor is `12M`. See [Decision log](#decision-log) for details.
+**Steps 1 and 2 ✅ complete** (Bloomberg ticker verification + canonical playbook in repo). **Step 3 partially complete:** Wave 1 Bloomberg extraction ran in ~7 minutes from the university terminal (much faster than the 30-40 min estimate — batched upsert PRs landing in the rebase paid off). 548,609 rows across 4 playbooks landed in `gs://quantifi-fx-data-sacha`. Postgres ingestion pending.
 
-**Step 2 in progress:** the canonical `fx_forwards.yml` v2.0 playbook is now committed (30 tickers, start_date 2000-01-01); the legacy `fx_forwards_curve.yml` scaffold has been deleted. Bloomberg extraction pending.
+| Playbook | Rows extracted |
+|---|---|
+| `fx_forwards` | 206,399 |
+| `fx_vol` | 204,533 |
+| `fx_crosses` | 75,713 |
+| `spot_fx` | 61,964 |
+
+**Wave 2 discovery findings recorded below** ([Wave 2 — Bloomberg discovery findings](#wave-2--bloomberg-discovery-findings-not-yet-ingested)) — not yet ingested, but the conventions are now documented for Phase B/C/D/E planning.
 
 ---
 
@@ -226,6 +233,71 @@ Each universe entry should include (minimally) for FX:
 
 The readiness gate `tests/test_fx_data_readiness.py` validates these fields. New playbooks must follow the shape.
 
+### Wave 2 — Bloomberg discovery findings (not yet ingested)
+
+Discovery wave run from the university Bloomberg terminal on 2026-05-22 in parallel with the Wave 1 extraction. **No tickers from this section are in `instrument_master` yet** — these are convention notes to inform Phase B/C/D/E playbook design when those phases ship.
+
+**EM spot — all valid, ready for Phase B ingestion when scope is decided:**
+
+| Ticker | Status |
+|---|---|
+| `USDMXN Curncy` | ✅ |
+| `USDZAR Curncy` | ✅ |
+| `USDTRY Curncy` | ✅ |
+| `USDBRL Curncy` | ✅ |
+| `USDPLN Curncy` | ✅ |
+| `USDHUF Curncy` | ✅ |
+| `USDKRW Curncy` | ✅ (deliverable, not NDF) |
+| `USDIDR Curncy` | ✅ |
+| `USDPHP Curncy` | ✅ |
+
+→ Phase B can extend `spot_fx_em.yml` or extend `spot_fx.yml` with EM market_scope, no further verification needed.
+
+**NDFs — convention identified, partial scope:**
+
+| Ticker | Status | Convention note |
+|---|---|---|
+| `IHN+1M Curncy` | ✅ | **IDR NDF outright 1M** — quoted as outright, not points |
+| `IRN+1M Curncy` | ✅ | **INR NDF outright 1M** |
+| `BCN+1M Curncy` | ✅ | **BRL NDF outright 1M** — use this, not `BRL+1M` |
+| `BRL+1M Curncy` | ⚠️ Exists but no `PX_LAST` data in any window | Stale or alias — avoid |
+| `KWN+1M Curncy` | ✅ | **KRW NDF outright 1M** |
+| `IHN+3M Curncy` | ✅ | IDR NDF outright 3M (tenor extension works) |
+| `IRN+3M Curncy` | ✅ | INR NDF outright 3M |
+| `USDCNH+1M Curncy` | ❌ Invalid | USDCNH is the deliverable offshore yuan pair — NOT an NDF format. USDCNY NDF uses a different ticker (to verify later — possibly `CCN+1M`, `CNN+1M`, or similar). |
+
+**Critical convention discovery:** NDFs are quoted as **outright forwards**, not as forward points (unlike G10 forwards where `EURUSD1M Curncy` returns small numbers like 17.09). When Phase D builds `calculate_ndf_carry`, the formula is `(outright_forward − spot) / spot` annualised, **not** `forward_points / divisor`. The G10 `calculate_fx_carry` tool will need an "ndf-aware" branch, or NDFs will need their own primitive.
+
+**Vol smile (EURUSD test, 4/4 valid) — convention confirmed:**
+
+| Ticker | Status |
+|---|---|
+| `EURUSD25R1M Curncy` | ✅ 25-delta Risk Reversal 1M |
+| `EURUSD25B1M Curncy` | ✅ 25-delta Butterfly 1M |
+| `EURUSD10R1M Curncy` | ✅ 10-delta Risk Reversal 1M |
+| `EURUSD10B1M Curncy` | ✅ 10-delta Butterfly 1M |
+
+→ Phase E vol smile playbook scope: both 25-delta and 10-delta points are available. Format is `<PAIR><DELTA><R|B><TENOR> Curncy`. Likely extends to all 6 G10 pairs and the same tenor strip as ATM. **30 ATM × (1 + 4 smile points) = 150 tickers if maximalist**, or just 25-delta only = 90 tickers.
+
+**Cross-currency basis (CIP) — fragile direct path:**
+
+| Ticker | Status |
+|---|---|
+| `EUBS3 Curncy` | ⚠️ Data in 2020, `#N/A` in 2010 AND 2026 windows |
+| `BPBS3 Curncy` | ⚠️ Same pattern (mid-period data only) |
+| `JYBS3 Curncy` | ⚠️ Same pattern |
+| `EUBS12 Curncy` | ⚠️ Same pattern |
+| `AUBS3 Curncy` | ❌ Invalid security |
+| `EUBS24 Curncy` | ❌ Invalid (likely BBG uses `EUBS2Y` or `EUBS24M`) |
+
+→ **The direct-ticker path for CIP basis is too fragile for production**. Phase C should derive CIP deviation from **OIS differential − forward-implied carry** using the OIS substrate (Sreeram's domain) and the forwards substrate (ours) — both already in DB. No new playbook needed for Phase C in this path. The basis-swap ticker formats can be re-verified in a future session if direct quotes are ever needed.
+
+**Outstanding items for future verification sessions:**
+- USDCNY NDF correct ticker format (not `USDCNH+1M`)
+- BRL NDF aliasing (`BCN+` vs `BRL+`)
+- CIP basis ticker formats post-2020 (BBG taxonomy may have changed)
+- Whether AUD basis swap has a different ticker convention (perhaps `ADBS<n>`)
+
 ### Wave 1 bucket override — temporary FX bucket via env var
 
 **Background:** the FX agent's GCS extraction landed historically in a private bucket (`gs://quantifi-fx-data-sacha`, project `quantifi-fx-agent`), while Sreeram's rates substrate lands in `gs://macro-storage-bucket`. The four pipeline scripts had inconsistent bucket configuration:
@@ -323,6 +395,8 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-21 | `fx_vol.yml` v2.0 keeps canonical filename (vs new `fx_vol_atm.yml`) per repo convention "playbook_name matches filename stem". Added `smile_point: "ATM"` metadata on every row so the future smile playbook (RR/BF, Phase E) can coexist cleanly. | Codex review |
 | 2026-05-21 | Wave 1 ticker verification (32 new tickers) complete on BBG. All 32 valid from 2000-01-03. **Asymmetric 1Y naming discovered:** forward points use `12M`, ATM vol uses `V1Y`. Tickers in `fx_vol.yml` corrected from `V12M` → `V1Y`. Internal `tenor` field kept as `"12M"` for cross-asset tool consistency. | BBG `BDH` formula verification |
 | 2026-05-22 | Bucket override: `push_playbooks.py` and `ingest_parquet.py` gained `GCP_BUCKET_NAME` env-var support (matching the extractors' existing convention). FX Wave 1 runs against `gs://quantifi-fx-data-sacha` via `export GCP_BUCKET_NAME=quantifi-fx-data-sacha`; rates / Sreeram's flow unchanged (default still `macro-storage-bucket`). Long-term plan: consolidate into one bucket once IAM is sorted. | Permission denied on `macro-storage-bucket` for `fx-agent@quantifi-fx-agent.iam` SA during Wave 1 prep |
+| 2026-05-22 | Wave 1 Bloomberg extraction ✅ — 548,609 rows across 4 playbooks pushed to `gs://quantifi-fx-data-sacha` in ~7 minutes. Postgres ingestion pending. | Sacha at university Bloomberg terminal |
+| 2026-05-22 | Wave 2 discovery complete — findings recorded under "Wave 2 — Bloomberg discovery findings". Key conventions: NDFs are quoted as outright (not forward points), vol smile (RR/BF, 25-delta and 10-delta) is available across G10 pairs, CIP basis swap direct tickers are fragile (stale/invalid for many pairs) — Phase C should derive CIP from OIS + forwards instead. | BBG verification in Excel from university terminal |
 
 ---
 
