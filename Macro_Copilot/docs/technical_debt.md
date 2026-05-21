@@ -441,6 +441,64 @@ WHEN: Before any primitive that computes a daily reference index, projects
       reference indices. NOT needed for B3's index-level ingestion, nor for
       primitives that consume the monthly index directly.
 
+### 26. Primitive/fetch-layer outlier filtering for vendor bad prints
+
+WHERE: shared analytics fetchers and rates primitives that consume
+       `macro_data.v_market_data_daily_enriched` / `market_data_daily`
+       directly (for example sovereign yield PCA, z-scores, curve spreads,
+       cross-market spreads, and future bid/ask-spread primitives).
+WHAT: The ingestion layer stores source-of-record Bloomberg values as raw
+      observations. That is the correct lineage behavior, but primitives
+      must not blindly compute over impossible vendor sentinels or bad
+      prints. A4 sovereign-benchmark bid/ask validation found one concrete
+      example in a successful, otherwise-clean load:
+
+        - `GTCAD1Y Govt`, `YLD_YTM_ASK`, `2008-05-09`
+        - stored value: `2147484.00000000`
+        - surrounding fields: `YLD_YTM_MID = 2.662`, `YLD_YTM_BID = 2.662`
+
+      This is not an economically possible sovereign yield. It behaves like
+      a Bloomberg missing/sentinel/bad-print value that passed through the
+      raw data path because the extractor/ingester currently only normalise
+      scalars and drop nulls; they do not apply domain-specific plausibility
+      filters. The same validation found a small number of benign-looking
+      bid/ask and mid-between-bid/ask inconsistencies in older benchmark
+      histories, which should be surfaced as data-quality warnings rather
+      than silently rewritten.
+IMPACT: A single impossible value can dominate downstream analytics:
+      z-scores, PCA, volatility, cross-market spreads, bid/ask-spread
+      statistics, regression inputs, and trade triggers. This is not a
+      schema or ingestion-atomicity problem — the load can be successful
+      and still contain vendor-source anomalies that primitives must guard
+      against.
+POLICY: Preserve raw vendor observations in `market_data_daily` unless a
+      dedicated raw-vs-clean storage model is introduced. Do not hand-edit
+      individual Bloomberg values silently. Primitive/fetch code should
+      apply explicit, documented, field-aware plausibility screens and
+      expose what was filtered in methodology/output metadata (P5), while
+      keeping the source-of-record value auditable (P2/P12).
+FIX: Add a shared data-quality/filtering layer used by rates fetchers before
+      primitives compute. The first rules should cover sovereign benchmark
+      yield fields (`YLD_YTM_MID`, `YLD_YTM_BID`, `YLD_YTM_ASK`):
+
+        - reject or mask yields outside a defensible range (for example
+          `[-50, 100]`, with the exact threshold documented);
+        - flag bid/ask inversions separately from hard outliers;
+        - flag cases where mid is outside the bid/ask range, but treat them
+          as warnings unless the spread/magnitude is impossible;
+        - include filtered-row counts and representative examples in the
+          primitive methodology/output payload.
+
+      The implementation should be configurable by field family rather than
+      hard-coded per primitive, and should have unit tests using the
+      `GTCAD1Y Govt` `2147484` bad-print case as a regression fixture.
+EFFORT: Medium — shared fetch/cleaning helper, primitive wiring, output
+      disclosure, and tests. No schema migration required unless the project
+      later chooses to store clean series alongside raw series.
+WHEN: Before using A4 sovereign bid/ask fields in production PCA/z-score/
+      spread/trade-trigger primitives, and before any future primitive that
+      consumes newly added vendor fields without a manual quality screen.
+
 
 ## Phase 1 closure punch list (for reference)
 
