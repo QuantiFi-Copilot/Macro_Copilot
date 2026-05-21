@@ -83,6 +83,31 @@ Phase D — NDFs                        [planned]
 Phase E — FX vol                      [planned, will require ADR 0008]
 ```
 
+### Wave 1 — Opportunistic data acquisition
+
+Independent of the phase plan above. Wave 1 = **batch all the low-risk Bloomberg extractions while the terminal is accessible**, even for phases whose tools/widgets we won't build yet. Data sits in DB ready, tool/UI work follows the phase order.
+
+**Strict discipline:** Wave 1 is **data acquisition only**. Ingesting ATM vol data does NOT mean we implement FX vol tools, build a vol UI, or extend `Domain` enum to `FX_VOL`. The phase plan dictates when tools land; Wave 1 just ensures their substrate is ready.
+
+**Scope locked for Wave 1:**
+
+| Playbook | Wave 1 action | Final ticker count | Phase that builds tools on top |
+|---|---|---|---|
+| `fx_forwards.yml` | Canonical v2.0 (G10 × 5 tenors, start 2000) | 30 | Phase A |
+| `spot_fx.yml` | v2.0: add NZDUSD, USDNOK, USDSEK (G10 majors complete) | 9 | Phase A scanners benefit; Phase B builds the panel |
+| `fx_crosses.yml` | v2.0: add NZD-side and EUR-side G10 crosses | 11 | Phase B |
+| `fx_vol.yml` | v2.0: extend ATM 1M → full tenor strip (1W/1M/3M/6M/12M) with `smile_point: "ATM"` metadata | 30 | Phase E (after ADR 0008 domain split) |
+
+**Total: 80 instruments in DB after Wave 1.**
+
+**Explicitly excluded from Wave 1** (need decisions or BBG verification before extraction):
+- NDFs (Bloomberg has multiple conventions; ticker verification needed)
+- FX vol smile (25-delta RR/BF; deltas + tenors scope decision needed)
+- CIP / cross-currency basis (direct ticker vs derived-from-OIS decision needed)
+- EM broad universe (which subset of EM? MXN, ZAR, TRY, KRW, BRL, …?)
+
+These land in their respective phases (B/C/D/E) with full architectural review.
+
 ### Phase A — Cash forwards depth — LOCKED scope
 
 Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 1Y) across G10 majors, and ship the first two parameterized FX primitives.
@@ -153,7 +178,8 @@ Goal: implied vol surface (ATM + smile) + realized vol.
 
 **Scope:**
 
-- New playbooks `fx_vol_atm.yml` (ATM straddle pricing) and `fx_vol_smile.yml` (25-delta RR + BF)
+- The ATM vol data substrate **lands in Wave 1** (data acquisition only — see [Wave 1 — Opportunistic data acquisition](#wave-1--opportunistic-data-acquisition)). The canonical `fx_vol.yml` v2.0 already covers ATM across the full G10 tenor strip. Phase E does NOT touch the substrate, it builds tools on top of it.
+- New playbook for smile data (RR + BF, e.g. `fx_vol_smile.yml`) — 25-delta and possibly 10-delta. Bloomberg ticker conventions need to be verified before this playbook is written.
 - Implement `realized_vol/compute.py` (currently scaffolded stub — see ADR 0007 rollout plan)
 - New primitives: `calculate_implied_vol_atm`, `calculate_risk_reversal`, `calculate_butterfly_skew`, `vol_smile_reconstruction`, `vol_regime_classifier`
 
@@ -199,6 +225,21 @@ Each universe entry should include (minimally) for FX:
 - `region` (`Global`, `EMEA`, `APAC`, `LATAM`)
 
 The readiness gate `tests/test_fx_data_readiness.py` validates these fields. New playbooks must follow the shape.
+
+### Bloomberg 1Y tenor naming — forwards vs vol asymmetry
+
+Bloomberg uses **inconsistent** ticker conventions for the 1-year tenor between forward points and ATM implied vol:
+
+| Asset class | 1Y format | Invalid alternative |
+|---|---|---|
+| Forward points (`<PAIR><TENOR> Curncy`) | `EURUSD12M Curncy` | `EURUSD1Y Curncy` (invalid) |
+| ATM implied vol (`<PAIR>V<TENOR> Curncy`) | `EURUSDV1Y Curncy` | `EURUSDV12M Curncy` (invalid) |
+
+Both verified via direct `BDH` formula on the Bloomberg terminal (2026-05-21).
+
+**Our playbook convention** in response: the `ticker` field carries the BBG quirk (so extraction works), but the `tenor` field stays uniform `"12M"` across asset classes (so cross-asset tools like "what's the carry vs vol at 1Y" can match on the same horizon regardless of asset). Tools that need to derive the BBG ticker from a tenor must therefore do so per-asset-class, not via a global mapping.
+
+**For future asset classes** (NDF vol, FX options smile, swaption vol, etc.) — verify the 1Y format on BBG explicitly before writing the playbook. Don't assume.
 
 ### Legacy FX DB state (pre-Phase-A audit, 2026-05-21)
 
@@ -254,6 +295,9 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-21 | Phase A step 1 (Bloomberg ticker verification) complete. Long format `<PAIR><TENOR> Curncy` valid for all 30 (6 G10 pairs × 5 tenors). History from 2000-01-03 uniform. Canonical 1Y is `12M`, not `1Y`. | BBG verification by Sacha + ChatGPT-assisted BDH formula in Excel |
 | 2026-05-21 | Canonical playbook migration: `fx_forwards.yml` (v1, `playbook_name: fx_forwards_1m`) + `fx_forwards_curve.yml` (partial scaffold) → consolidated into `fx_forwards.yml` v2.0 (`playbook_name: fx_forwards`, 30 tickers, start 2000-01-01). Convention now aligns with `runbook.md` rule "playbook_name must match filename stem". | Codex review — naming convention violation + duplicate scaffold |
 | 2026-05-21 | `fx_forwards_curve.yml` deleted from repo (no other references found via `rg fx_forwards_curve`). Its 8 tickers are subsumed by the canonical v2.0 universe. | Discipline: single canonical source of truth per dataset |
+| 2026-05-21 | Introduced "Wave 1" — opportunistic data-only batch extraction while Bloomberg is accessible. `spot_fx.yml` v2.0, `fx_crosses.yml` v2.0, `fx_vol.yml` v2.0 land alongside Phase A's forwards. Total Wave 1 footprint: 80 instruments. Strict discipline: data only, no tool/UI/domain work beyond Phase A. | Sacha at BBG terminal — exploit access window for data not yet decision-locked |
+| 2026-05-21 | `fx_vol.yml` v2.0 keeps canonical filename (vs new `fx_vol_atm.yml`) per repo convention "playbook_name matches filename stem". Added `smile_point: "ATM"` metadata on every row so the future smile playbook (RR/BF, Phase E) can coexist cleanly. | Codex review |
+| 2026-05-21 | Wave 1 ticker verification (32 new tickers) complete on BBG. All 32 valid from 2000-01-03. **Asymmetric 1Y naming discovered:** forward points use `12M`, ATM vol uses `V1Y`. Tickers in `fx_vol.yml` corrected from `V12M` → `V1Y`. Internal `tenor` field kept as `"12M"` for cross-asset tool consistency. | BBG `BDH` formula verification |
 
 ---
 
