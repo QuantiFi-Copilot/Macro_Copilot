@@ -29,6 +29,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatDrawer } from '@/components/layout/ChatDrawer';
 import { TopNav } from '@/components/ui/TopNav';
 import { RatesDataProvider } from '@/components/monitor/RatesDataProvider';
+import { FXDataProvider } from '@/components/monitor/FXDataProvider';
 import { MonitorPage } from '@/components/monitor/MonitorPage';
 import { RatesAgentPage } from '@/components/agents/RatesAgentPage';
 import { FXPage } from '@/components/fx/FXPage';
@@ -126,15 +127,17 @@ export function AppShell() {
           // the provider stays mounted so the sidebar's Today panel
           // works on every widget route.
           <RatesDataProvider>
-            <div
-              className="grid h-full"
-              style={{
-                gridTemplateColumns: 'clamp(220px, 14vw, 264px) minmax(0, 1fr)',
-              }}
-            >
-              <Sidebar />
-              <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
-            </div>
+            <FXDataProvider>
+              <div
+                className="grid h-full"
+                style={{
+                  gridTemplateColumns: 'clamp(220px, 14vw, 264px) minmax(0, 1fr)',
+                }}
+              >
+                <Sidebar />
+                <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
+              </div>
+            </FXDataProvider>
           </RatesDataProvider>
         ) : (
           // Legacy three-column shell — kept for ``/workflows`` until
@@ -151,17 +154,19 @@ export function AppShell() {
           // a single rates-data fetch per session, which is amortized
           // across navigation.
           <RatesDataProvider>
-            <div
-              className="grid h-full"
-              style={{
-                gridTemplateColumns:
-                  'clamp(220px, 14vw, 264px) minmax(0, 1fr) clamp(340px, 22vw, 420px)',
-              }}
-            >
-              <Sidebar />
-              <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
-              <ChatDrawer />
-            </div>
+            <FXDataProvider>
+              <div
+                className="grid h-full"
+                style={{
+                  gridTemplateColumns:
+                    'clamp(220px, 14vw, 264px) minmax(0, 1fr) clamp(340px, 22vw, 420px)',
+                }}
+              >
+                <Sidebar />
+                <main className="min-h-0 min-w-0 overflow-hidden">{Routed}</main>
+                <ChatDrawer />
+              </div>
+            </FXDataProvider>
           </RatesDataProvider>
         )}
       </div>
