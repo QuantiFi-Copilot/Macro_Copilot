@@ -26,6 +26,8 @@ from database.database import (  # noqa: E402
     count_instruments_in_load,
     upsert_instrument_metadata_history,
     close_open_metadata_window,
+    upsert_otr_history,
+    close_open_otr_window,
 )
 
 # The dedup hash logic lives in its own module so it can be imported
@@ -44,6 +46,22 @@ from ingestion.metadata_history import (  # noqa: E402
     group_rows_by_vendor_ticker as _group_history_rows_by_vendor_ticker,
     parquet_to_history_records as _history_parquet_to_records,
     validate_no_overlaps as _history_validate_no_overlaps,
+)
+
+# Pure-Python helpers for the OTR-resolution flow (ADR 0007). The planner is
+# the false-roll-protected SCD2 state machine; the parser turns a resolution
+# parquet into clean per-slot observations.
+from ingestion.otr_resolution import (  # noqa: E402
+    ACTION_BOOTSTRAP,
+    ACTION_CLEAR_CANDIDATE,
+    ACTION_CONFIRM_ROLL,
+    ACTION_NO_CHANGE,
+    ACTION_RECORD_CANDIDATE,
+    ACTION_SKIP_STALE,
+    build_otr_instrument_record,
+    is_ingestable_observation,
+    parquet_to_resolution_records,
+    plan_otr_transition,
 )
 
 # --- CONFIGURATION ---
@@ -617,6 +635,326 @@ def _process_metadata_history_blob(
 
 
 # ==============================================================================================
+# OTR-RESOLUTION PROCESSING (ADR 0007)
+#
+# Parquets under gs://<bucket>/otr_resolution/<dataset>/ are the output of
+# ``utils/incremental_extractor.resolve_otr()``. They carry one row per
+# (country, tenor) on-the-run slot — the bond ``bdp(<generic>, ID_ISIN)``
+# resolved as currently on-the-run. Destination is ``macro_data.otr_history``
+# (SCD2), written through the false-roll-protected planner in
+# ``ingestion.otr_resolution``.
+#
+# The flow mirrors the metadata-history flow's structure (dedup hash, RUNNING
+# audit row, atomic-txn destructive section, audit flip, archive). The
+# instrument_master upsert runs INSIDE the critical transaction (the
+# ``Connectable``-migrated helper makes that possible) so the bond identity and
+# its otr_history window commit atomically.
+# ==============================================================================================
+
+
+def _apply_otr_plan(
+    conn: Connectable,
+    plan,
+    obs: Dict[str, Any],
+    open_row: Optional[Dict[str, Any]],
+    load_id: int,
+) -> None:
+    """Apply one :class:`OtrTransitionPlan` to ``otr_history`` on ``conn``.
+
+    All writes go through the sanctioned ``upsert_otr_history`` /
+    ``close_open_otr_window`` helpers (ADR 0003) — no raw SQL. NO_CHANGE and
+    SKIP_STALE are deliberate no-ops.
+    """
+    country = obs["country"]
+    tenor = obs["tenor"]
+
+    if plan.action in (ACTION_NO_CHANGE, ACTION_SKIP_STALE):
+        return
+
+    if plan.action == ACTION_BOOTSTRAP:
+        upsert_otr_history(conn, [{
+            "country": country,
+            "tenor": tenor,
+            "effective_from": plan.new_effective_from,
+            "otr_instrument_id": int(plan.new_otr_instrument_id),
+            "effective_to": None,
+            "attributes": plan.new_attributes,
+            "load_id": load_id,
+        }])
+        return
+
+    if plan.action in (ACTION_RECORD_CANDIDATE, ACTION_CLEAR_CANDIDATE):
+        # Re-upsert the still-OPEN row (key = its own effective_from) with the
+        # updated attributes blob — only the JSONB candidate state changes; the
+        # window itself stays open and points at the same bond.
+        upsert_otr_history(conn, [{
+            "country": country,
+            "tenor": tenor,
+            "effective_from": open_row["effective_from"],
+            "otr_instrument_id": int(open_row["otr_instrument_id"]),
+            "effective_to": None,
+            "attributes": plan.open_row_attributes,
+            "load_id": load_id,
+        }])
+        return
+
+    if plan.action == ACTION_CONFIRM_ROLL:
+        # Close the prior open window at (new effective_from - 1 day), then open
+        # the new one. Order matters: the EXCLUDE GIST constraint is checked
+        # per-statement, so the prior window must be closed before the new row
+        # is inserted.
+        close_open_otr_window(conn, country, tenor, plan.close_prior_at)
+        upsert_otr_history(conn, [{
+            "country": country,
+            "tenor": tenor,
+            "effective_from": plan.new_effective_from,
+            "otr_instrument_id": int(plan.new_otr_instrument_id),
+            "effective_to": None,
+            "attributes": plan.new_attributes,
+            "load_id": load_id,
+        }])
+        return
+
+    raise ValueError(f"Unknown OTR transition plan action: {plan.action!r}")
+
+
+def _process_otr_resolution_blob(
+    bucket: "storage.Bucket",
+    blob: "storage.Blob",
+    engine,
+    temp_dir: Path,
+) -> bool:
+    """Process one OTR-resolution parquet end-to-end.
+
+    Returns True on success (ingested or skipped-duplicate); False on any
+    failure path. Mirrors ``_process_metadata_history_blob``.
+    """
+    filename = Path(blob.name).name
+    local_path = temp_dir / filename
+    load_id: Optional[int] = None
+
+    try:
+        print(f"\nProcessing (otr-resolution): {filename}")
+
+        blob.download_to_filename(str(local_path))
+        df = pd.read_parquet(local_path)
+        normalized_data_hash = _compute_normalized_data_hash(df)
+
+        if df.empty:
+            print(f"  [WARNING] File {filename} is empty. Skipping.")
+            return False
+
+        # --- Lineage / dedup -----------------------------------------------
+        # playbook_name arrives already SUFFIXED ('<playbook>__otr_resolution')
+        # from the resolver, so playbook-keyed dedup / audit is isolated from
+        # the market-data load history of the same playbook (ADR 0007).
+        playbook_name = _first_non_null(df, "playbook_name") or "unknown__otr_resolution"
+        playbook_version = _first_non_null(df, "playbook_version")
+        dataset_name = _first_non_null(df, "dataset_name")
+        requested_start_date = _first_non_null(df, "requested_start_date")
+        requested_end_date = _first_non_null(df, "requested_end_date")
+        extracted_at = _first_non_null(df, "extracted_at")
+        extraction_mode = str(
+            _first_non_null(df, "extraction_mode") or "otr_resolution"
+        ).strip().lower()
+
+        if extraction_mode != "otr_resolution":
+            print(
+                f"  [WARNING] File {filename} is under otr_resolution/ but "
+                f"declares extraction_mode={extraction_mode!r}. Skipping."
+            )
+            return False
+
+        latest_success = get_latest_successful_load_for_playbook(engine, playbook_name)
+        latest_success_hash = latest_success.get("source_file_hash") if latest_success else None
+
+        if latest_success_hash and latest_success_hash == normalized_data_hash:
+            print(
+                f"  [SKIP] Parquet hash matches latest successful otr-resolution "
+                f"load for '{playbook_name}'. Skipping ingestion."
+            )
+            mark_load_audit_skipped_duplicate(
+                engine=engine,
+                playbook_name=playbook_name,
+                playbook_version=playbook_version,
+                source_file_name=filename,
+                source_file_hash=normalized_data_hash,
+                dataset_name=dataset_name,
+                requested_start_date=requested_start_date,
+                requested_end_date=requested_end_date,
+                extracted_at=extracted_at,
+                notes=(
+                    f"Skipped duplicate otr-resolution artifact from GCS object "
+                    f"{blob.name}; source_file_hash matches the latest successful "
+                    f"load for this playbook. (extraction_mode={extraction_mode})"
+                ),
+            )
+            try:
+                new_blob_name = blob.name.replace(
+                    "otr_resolution/", "archive/otr_resolution/", 1
+                )
+                bucket.rename_blob(blob, new_blob_name)
+                print(f"  [SUCCESS] Archived duplicate to gs://{BUCKET_NAME}/{new_blob_name}")
+            except Exception as archive_err:
+                print(
+                    f"  [WARNING] Duplicate correctly skipped but GCS archival "
+                    f"failed: {archive_err}. File remains in otr_resolution/."
+                )
+            return True
+
+        # confirmation_runs is the playbook's roll-confirmation gate, carried
+        # through the parquet as a column (the ingester never reads playbooks).
+        try:
+            confirmation_runs = int(_first_non_null(df, "confirmation_runs") or 2)
+        except (TypeError, ValueError):
+            confirmation_runs = 2
+        confirmation_runs = max(1, confirmation_runs)
+
+        audit_record = {
+            "playbook_name": playbook_name,
+            "playbook_version": playbook_version,
+            "playbook_hash": _first_non_null(df, "playbook_hash") or normalized_data_hash,
+            "git_commit_hash": _first_non_null(df, "git_commit_hash"),
+            "extractor_version": _first_non_null(df, "extractor_version"),
+            "source_file_name": filename,
+            "source_file_hash": normalized_data_hash,
+            "dataset_name": dataset_name,
+            "requested_start_date": requested_start_date,
+            "requested_end_date": requested_end_date,
+            "extracted_at": extracted_at,
+            "status": "RUNNING",
+            "notes": (
+                f"Processing GCS object {blob.name} | "
+                f"extraction_mode={extraction_mode} | "
+                f"confirmation_runs={confirmation_runs}"
+            ),
+        }
+
+        print("  [DB] Inserting load_audit record...")
+        load_id = insert_load_audit(engine, audit_record)
+
+        # --- Parse the artifact into per-slot observations -----------------
+        records = parquet_to_resolution_records(df)
+        ingestable = [r for r in records if is_ingestable_observation(r)]
+        non_ok = [r for r in records if r.get("status") != "ok"]
+        if non_ok:
+            preview = "; ".join(
+                f"{r.get('slot_id')}={r.get('status')}" for r in non_ok[:6]
+            )
+            print(
+                f"  [INFO] {len(non_ok)} non-ok slot(s) carried for audit, "
+                f"no otr_history change: {preview}"
+            )
+
+        if not ingestable:
+            msg = (
+                f"otr-resolution parquet {filename} produced 0 ingestable slot "
+                "observations (all slots failed / rejected / malformed)."
+            )
+            print(f"  [WARNING] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        print(
+            f"  [INFO] {len(ingestable)} ingestable slot observation(s); "
+            f"confirmation_runs={confirmation_runs}."
+        )
+
+        # --- Critical destructive section ---------------------------------
+        # instrument_master upsert + every otr_history transition + audit flip
+        # commit atomically or roll back together.
+        metadata = MetaData(schema="macro_data")
+        otr_table = Table("otr_history", metadata, autoload_with=engine)
+
+        applied: Dict[str, int] = {}
+
+        with engine.begin() as conn:
+            # 1. Resolve every observed bond to an instrument_master row. The
+            #    /isin/<ISIN> vendor_ticker matches the market-data universe
+            #    convention so otr_history and market_data_daily converge on
+            #    one instrument_id per bond.
+            instrument_records = [build_otr_instrument_record(r) for r in ingestable]
+            instrument_id_map = upsert_instrument_master(conn, instrument_records)
+
+            # 2. Per-slot SCD2 transition via the false-roll-protected planner.
+            for obs in ingestable:
+                ticker = obs["instrument_ticker"]
+                resolved_id = instrument_id_map.get(ticker)
+                if resolved_id is None:
+                    raise ValueError(
+                        f"instrument_master upsert returned no instrument_id "
+                        f"for resolved bond {ticker}"
+                    )
+
+                open_row_raw = conn.execute(
+                    select(otr_table)
+                    .where(otr_table.c.country == obs["country"])
+                    .where(otr_table.c.tenor == obs["tenor"])
+                    .where(otr_table.c.effective_to.is_(None))
+                    .order_by(otr_table.c.effective_from.desc())
+                    .limit(1)
+                ).mappings().first()
+                open_row = dict(open_row_raw) if open_row_raw else None
+
+                plan = plan_otr_transition(
+                    open_row=open_row,
+                    resolution_date=obs["resolution_date"],
+                    resolved_instrument_id=int(resolved_id),
+                    resolved_isin=obs["resolved_isin"],
+                    confirmation_runs=confirmation_runs,
+                )
+                _apply_otr_plan(conn, plan, obs, open_row, load_id)
+                applied[plan.action] = applied.get(plan.action, 0) + 1
+                print(
+                    f"  [{plan.action}] {obs['country']} {obs['tenor']}: {plan.reason}"
+                )
+
+            summary = ", ".join(f"{k}={v}" for k, v in sorted(applied.items()))
+            update_load_audit_status(
+                conn,
+                load_id,
+                "SUCCESS",
+                (
+                    f"Successfully processed otr-resolution from GCS object "
+                    f"{blob.name} | extraction_mode={extraction_mode} | "
+                    f"slots_applied={len(ingestable)} | {summary}"
+                ),
+            )
+
+        # --- Archive (best-effort) -----------------------------------------
+        try:
+            new_blob_name = blob.name.replace(
+                "otr_resolution/", "archive/otr_resolution/", 1
+            )
+            bucket.rename_blob(blob, new_blob_name)
+            print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+        except Exception as archive_err:
+            print(
+                f"  [WARNING] DB load succeeded but GCS archival failed: "
+                f"{archive_err}. File remains in otr_resolution/; dedup hash "
+                "will skip it on next run."
+            )
+
+        return True
+
+    except Exception as exc:
+        print(f"  [ERROR] Failed to process otr-resolution parquet {filename}: {exc}")
+        if load_id is not None:
+            try:
+                update_load_audit_status(
+                    engine, load_id, "FAILED",
+                    f"Processing failed for GCS object {blob.name}: {exc}",
+                )
+            except Exception as audit_err:
+                print(f"  [ERROR] Could not update load_audit status: {audit_err}")
+        return False
+
+    finally:
+        if local_path.exists():
+            local_path.unlink()
+
+
+# ==============================================================================================
 # MAIN PIPELINE
 # ==============================================================================================
 def run_ingestion_pipeline():
@@ -648,15 +986,20 @@ def run_ingestion_pipeline():
         b for b in bucket.list_blobs(prefix="metadata_history/")
         if b.name.endswith(".parquet")
     ]
+    otr_resolution_blobs = [
+        b for b in bucket.list_blobs(prefix="otr_resolution/")
+        if b.name.endswith(".parquet")
+    ]
     parquet_blobs = timeseries_blobs  # Legacy alias for the time-series loop below.
 
-    if not timeseries_blobs and not metadata_history_blobs:
+    if not timeseries_blobs and not metadata_history_blobs and not otr_resolution_blobs:
         print("[INFO] No new Parquet files found in the inbox. Exiting cleanly.")
         return
 
     print(
-        f"[INFO] Found {len(timeseries_blobs)} time-series file(s) and "
-        f"{len(metadata_history_blobs)} metadata-history file(s) to process."
+        f"[INFO] Found {len(timeseries_blobs)} time-series file(s), "
+        f"{len(metadata_history_blobs)} metadata-history file(s) and "
+        f"{len(otr_resolution_blobs)} otr-resolution file(s) to process."
     )
 
     temp_dir = current_dir / "temp_processing"
@@ -940,6 +1283,25 @@ def run_ingestion_pipeline():
         )
         for blob in metadata_history_blobs:
             ok = _process_metadata_history_blob(
+                bucket=bucket,
+                blob=blob,
+                engine=engine,
+                temp_dir=temp_dir,
+            )
+            if not ok:
+                any_failures = True
+
+    # --- PHASE 4: OTR-RESOLUTION PROCESSING (ADR 0007) ---
+    # Independent of the loops above. Each parquet is processed via
+    # _process_otr_resolution_blob, which manages its own dedup check, audit
+    # row, atomic destructive section, and archive — same contract as the
+    # other flows. Destination is macro_data.otr_history (SCD2).
+    if otr_resolution_blobs:
+        print(
+            f"\n[PHASE 4] Processing {len(otr_resolution_blobs)} otr-resolution parquet(s)..."
+        )
+        for blob in otr_resolution_blobs:
+            ok = _process_otr_resolution_blob(
                 bucket=bucket,
                 blob=blob,
                 engine=engine,

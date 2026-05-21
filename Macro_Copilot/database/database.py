@@ -130,7 +130,9 @@ def _normalize_instrument_record(record: Dict[str, Any]) -> Dict[str, Any]:
 # ==============================================================================
 # STATIC REFERENCE DATA (THE 'WHO')
 # ==============================================================================
-def upsert_instrument_master(engine, records: List[Dict[str, Any]]) -> Dict[str, int]:
+def upsert_instrument_master(
+    connectable: Connectable, records: List[Dict[str, Any]]
+) -> Dict[str, int]:
     """
     Upserts metadata into `macro_data.instrument_master` using the unique key
     on (vendor, vendor_ticker).
@@ -144,12 +146,23 @@ def upsert_instrument_master(engine, records: List[Dict[str, Any]]) -> Dict[str,
     Strongly recommended fields:
     - instrument_type
     - country / currency / tenor / curve_family / underlying_index
+
+    Connection contract
+    -------------------
+    Accepts either an :class:`Engine` (self-managed transaction, the legacy
+    behaviour — unchanged for every existing caller) or a :class:`Connection`
+    (caller-managed transaction). Passing a Connection lets this upsert compose
+    atomically with sibling mutations under one ``with engine.begin() as conn:``
+    block — the OTR-resolution ingestion branch needs instrument_master +
+    otr_history written in a single transaction. See :func:`_txn` for the
+    dispatch rule; this brings the helper in line with every other mutating
+    writer in this module.
     """
     if not records:
         return {}
 
     metadata = MetaData(schema="macro_data")
-    table = Table("instrument_master", metadata, autoload_with=engine)
+    table = Table("instrument_master", metadata, autoload_with=connectable)
 
     clean_records = [_normalize_instrument_record(r) for r in records]
 
@@ -182,7 +195,7 @@ def upsert_instrument_master(engine, records: List[Dict[str, Any]]) -> Dict[str,
     tickers = [r["vendor_ticker"] for r in clean_records]
     vendor = clean_records[0]["vendor"]
 
-    with engine.begin() as conn:
+    with _txn(connectable) as conn:
         conn.execute(stmt)
 
         lookup_stmt = (

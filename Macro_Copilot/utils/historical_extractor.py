@@ -36,6 +36,15 @@ from xbbg import blp
 # ``ingestion/metadata_history.py`` AND in
 # ``utils/incremental_extractor.py`` (which carries the same inlined
 # copies). The contract is documented in ADR 0002.
+#
+# NO OTR RESOLVER HERE — BY DESIGN.
+# The on-the-run resolver (ADR 0007) is carried ONLY by
+# ``utils/incremental_extractor.py``, never this historical extractor.
+# Resolution is ``bdp(<generic>, ID_ISIN)`` — it returns *today's* OTR bond.
+# Running it during a historical backfill would stamp today's mapping onto
+# backfilled dates and corrupt ``macro_data.otr_history``. Resolution is
+# intrinsically a "what is true now" operation and belongs only on the
+# incremental (forward) path.
 # ============================================================================
 
 # --- CONFIGURATION ---

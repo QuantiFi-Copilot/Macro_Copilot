@@ -51,11 +51,21 @@
 #
 #   (6) Per P12 every target_metric below is an INGESTED Bloomberg value —
 #       no primitive recomputes yield, DV01, price or ASW.
+#
+#   (7) v1.1 adds the `otr_resolution:` block — the declarative on-the-run
+#       resolver capability (ADR 0007). The incremental extractor, seeing
+#       this block, resolves each GT-generic slot to its current OTR cash
+#       bond and emits a SEPARATE resolution artifact; local ingestion folds
+#       that into macro_data.otr_history (SCD2). The resolver NEVER mutates
+#       this playbook — config flows down, resolved facts flow up as data.
+#       Forward-only: OTR rolls are captured from the first resolver run on;
+#       pre-resolver historical OTR windows are NOT backfilled (the manual
+#       1st-off-the-run seed is deliberately skipped — see docs/technical_debt.md).
 # ----------------------------------------------------------------------------
 # ============================================================================
 
 playbook_name: sovereign_cash_bonds
-playbook_version: "1.0"
+playbook_version: "1.1"
 asset_class: rates
 dataset_name: sovereign_cash_bonds
 description: |
@@ -106,6 +116,155 @@ reference_metrics:
     bloomberg_field: "CPN"
   - column_name: "issue_date"
     bloomberg_field: "ISSUE_DT"
+
+# ============================================================================
+# OTR RESOLUTION  (work order A4-4 resolver — VERIFIED 2026-05-21, ADR 0007)
+#
+# Declares the on-the-run resolver capability. When the INCREMENTAL extractor
+# sees this block it additionally runs, per slot, a `bdp(<generic_ticker>,
+# ID_ISIN + reference_fields)` snapshot and emits a SEPARATE resolution
+# artifact (parquet under gs://<bucket>/otr_resolution/...). Local ingestion
+# folds that artifact into macro_data.otr_history (SCD2). This block is the
+# resolver's only input; the resolver writes data, never this file.
+#
+# INCREMENTAL-ONLY: resolution is a "what is true now" operation — `bdp` on a
+# generic returns today's OTR, not the OTR as-of a past date. The historical
+# backfill extractor deliberately never resolves (it would corrupt otr_history
+# with today's mapping stamped on backfilled dates).
+#
+# VERIFIED: each generic_ticker -> current OTR ISIN mapping was confirmed on a
+# live Bloomberg terminal by the A4-4 probe (scripts/a4_ofr_resolver_probe.py,
+# 2026-05-21) — `bdp(<generic>, ID_ISIN)` resolved every slot to the ISIN that
+# heads its universe row below.
+#
+# false-roll protection: a roll (close the open OTR window, open the next) is
+# recorded only after `confirmation_runs` resolver runs on DISTINCT dates agree
+# on the same new ISIN — one bad Bloomberg print cannot close an OTR window.
+# The first observation of a slot with no history is a bootstrap insert (it
+# establishes the baseline, closes nothing) and is NOT gated.
+#
+# slot keys: `country` / `tenor` below MUST match the universe rows so the
+# resolved bond and its otr_history slot share one (country, tenor) key.
+# ============================================================================
+otr_resolution:
+  enabled: true
+  resolution_field: "ID_ISIN"      # the field whose value defines OTR identity
+  confirmation_runs: 2             # distinct-date agreeing observations to record a roll
+  reference_fields:                # snapshot fields stamped for the resolved bond
+    - "SECURITY_DES"
+    - "ID_CUSIP"
+    - "MATURITY"
+    - "CPN"
+    - "ISSUE_DT"
+    - "CRNCY"
+  slots:
+    # United States
+    - slot_id: "US_2Y"
+      generic_ticker: "GT2 Govt"
+      country: "US"
+      currency: "USD"
+      curve_family: "UST"
+      tenor: "2Y"
+      expected_isin_prefix: "US"
+    - slot_id: "US_10Y"
+      generic_ticker: "GT10 Govt"
+      country: "US"
+      currency: "USD"
+      curve_family: "UST"
+      tenor: "10Y"
+      expected_isin_prefix: "US"
+    - slot_id: "US_30Y"
+      generic_ticker: "GT30 Govt"
+      country: "US"
+      currency: "USD"
+      curve_family: "UST"
+      tenor: "30Y"
+      expected_isin_prefix: "US"
+    # Germany
+    - slot_id: "DE_2Y"
+      generic_ticker: "GTDEM2Y Govt"
+      country: "Germany"
+      currency: "EUR"
+      curve_family: "DE_BUND"
+      tenor: "2Y"
+      expected_isin_prefix: "DE"
+    - slot_id: "DE_10Y"
+      generic_ticker: "GTDEM10Y Govt"
+      country: "Germany"
+      currency: "EUR"
+      curve_family: "DE_BUND"
+      tenor: "10Y"
+      expected_isin_prefix: "DE"
+    # United Kingdom
+    - slot_id: "GB_2Y"
+      generic_ticker: "GTGBP2Y Govt"
+      country: "UK"
+      currency: "GBP"
+      curve_family: "UK_GILT"
+      tenor: "2Y"
+      expected_isin_prefix: "GB"
+    - slot_id: "GB_10Y"
+      generic_ticker: "GTGBP10Y Govt"
+      country: "UK"
+      currency: "GBP"
+      curve_family: "UK_GILT"
+      tenor: "10Y"
+      expected_isin_prefix: "GB"
+    # Japan
+    - slot_id: "JP_2Y"
+      generic_ticker: "GTJPY2Y Govt"
+      country: "Japan"
+      currency: "JPY"
+      curve_family: "JGB"
+      tenor: "2Y"
+      expected_isin_prefix: "JP"
+    - slot_id: "JP_10Y"
+      generic_ticker: "GTJPY10Y Govt"
+      country: "Japan"
+      currency: "JPY"
+      curve_family: "JGB"
+      tenor: "10Y"
+      expected_isin_prefix: "JP"
+    # France
+    - slot_id: "FR_10Y"
+      generic_ticker: "GTFRF10Y Govt"
+      country: "France"
+      currency: "EUR"
+      curve_family: "FR_OAT"
+      tenor: "10Y"
+      expected_isin_prefix: "FR"
+    # Italy
+    - slot_id: "IT_10Y"
+      generic_ticker: "GTITL10Y Govt"
+      country: "Italy"
+      currency: "EUR"
+      curve_family: "IT_BTP"
+      tenor: "10Y"
+      expected_isin_prefix: "IT"
+    # Canada
+    - slot_id: "CA_10Y"
+      generic_ticker: "GTCAD10Y Govt"
+      country: "Canada"
+      currency: "CAD"
+      curve_family: "CANADA_GOVT"
+      tenor: "10Y"
+      expected_isin_prefix: "CA"
+    # Australia
+    - slot_id: "AU_10Y"
+      generic_ticker: "GTAUD10Y Govt"
+      country: "Australia"
+      currency: "AUD"
+      curve_family: "AU_GOVT"
+      tenor: "10Y"
+      expected_isin_prefix: "AU"
+    # Spain
+    - slot_id: "ES_10Y"
+      generic_ticker: "GTESP10Y Govt"
+      country: "Spain"
+      currency: "EUR"
+      curve_family: "ES_BONO"
+      tenor: "10Y"
+      expected_isin_prefix: "ES"
 
 universe:
   # --------------------------------------------------------------------------

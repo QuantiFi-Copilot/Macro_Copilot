@@ -499,6 +499,47 @@ WHEN: Before using A4 sovereign bid/ask fields in production PCA/z-score/
       spread/trade-trigger primitives, and before any future primitive that
       consumes newly added vendor fields without a manual quality screen.
 
+### 27. OTR resolver is forward-only — no historical backfill, detection-date dating
+
+WHERE: rates_agent/playbooks/sovereign_cash_bonds.yml (the `otr_resolution`
+       block), utils/incremental_extractor.py (`resolve_otr`),
+       ingestion/otr_resolution.py, ingestion/ingest_parquet.py
+       (`_process_otr_resolution_blob`), macro_data.otr_history.
+WHAT: The A4-4 on-the-run resolver (ADR 0007) records OTR rolls FORWARD ONLY —
+      from its first run onward. Two deliberate limitations:
+      (a) NO historical OTR backfill. `otr_history` is empty until the first
+          resolver run; OTR windows that existed before the resolver went live
+          are not reconstructed. The A4-4 probe (`a4_ofr_resolver_probe.py`)
+          proved `bdh` of a reference field does NOT historise the OTR chain —
+          there is no Bloomberg mechanism to recover past OTR windows, and the
+          manual 1st-off-the-run seed was deliberately skipped rather than
+          guessed (P2 — accuracy or refuse).
+      (b) DETECTION-DATE effective dating. A roll's `effective_from` is the
+          resolver's FIRST confirmed observation date, not the bond's true
+          auction / benchmark-roll date. At a daily incremental cadence this is
+          accurate to ~1-2 days; the gap widens if the extractor runs less
+          often. The two-run confirmation gate trades one extra run of latency
+          for false-roll protection.
+IMPACT: Point-in-time OTR queries (`get_otr_at`) are correct from the first
+      resolver run forward. For any date before that, `get_otr_at` returns
+      `None` for every slot — honest absence (P5), not a wrong answer. Any
+      OTR-history-dependent analytic (on-the-run / off-the-run RV, OTR-roll
+      carry) is valid only over the resolver-covered window, and roll dates may
+      sit a day or two after the true auction date.
+FIX: (a) is fixable only with an authoritative non-Bloomberg history of past
+      auctions / benchmark rolls per (country, tenor) — debt-office auction
+      calendars — encoded as VERIFIED `otr_history` rows with verified
+      effective dates. Until verified, do not fabricate historical windows.
+      (b) tighten by running the incremental extractor (hence the resolver)
+      daily, and/or by later cross-referencing the auction calendar to correct
+      `effective_from` to the true roll date.
+EFFORT: (a) Medium — per-market auction-history sourcing + a verified backfill
+      loader. (b) Low — a cadence/ops change, or a calendar cross-reference.
+WHEN: Before any primitive relies on OTR history PRE-DATING the resolver's
+      first run, or needs roll effective dates accurate to the exact auction
+      date. NOT needed for forward-looking OTR / off-the-run analytics over the
+      resolver-covered window.
+
 
 ## Phase 1 closure punch list (for reference)
 

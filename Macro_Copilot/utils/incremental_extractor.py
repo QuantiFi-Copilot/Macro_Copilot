@@ -1227,6 +1227,306 @@ def run_metadata_history_extraction(selected_playbooks: Optional[Set[str]] = Non
         print("\n*** METADATA-HISTORY EXTRACTION COMPLETE ***")
 
 
+# ============================================================================
+# OTR RESOLUTION  (work order A4-4 resolver — ADR 0007)
+#
+# A declarative, opt-in capability: a playbook that carries an enabled
+# ``otr_resolution:`` block gets, on every INCREMENTAL run, an extra step that
+# snapshots ``bdp(<generic_ticker>, ID_ISIN + reference_fields)`` for each slot
+# and emits a SEPARATE resolution artifact (long parquet, one row per slot,
+# under gs://<bucket>/otr_resolution/<dataset>/). Local ingestion folds that
+# artifact into ``macro_data.otr_history``.
+#
+# This lives in the INCREMENTAL extractor ONLY — never historical_extractor.py.
+# ``bdp`` on a generic returns *today's* OTR; running it during a historical
+# backfill would stamp today's mapping onto backfilled dates and corrupt
+# otr_history. Resolution is intrinsically a "what is true now" operation.
+#
+# resolve_otr() never mutates the playbook — it writes data, the resolver's
+# only output. Two false-roll-defence layers exist: (1) the per-slot sanity
+# checks in _build_resolution_row below (ISIN-prefix + maturity plausibility),
+# and (2) the ingester's distinct-date two-run confirmation gate. See ADR 0007.
+# ============================================================================
+OTR_RESOLUTION_EXTRACTION_MODE = "otr_resolution"
+
+
+def _opt_str(value: Any) -> Optional[str]:
+    """Stripped string, or None for empty / missing values."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return text or None
+
+
+def _parse_tenor_years(tenor: Any) -> Optional[float]:
+    """Parse a tenor label ('10Y' / '2Y' / '30Y') to a float number of years.
+
+    Returns None for anything not of that simple form — the maturity-
+    plausibility band is then skipped rather than guessed.
+    """
+    text = _opt_str(tenor)
+    if not text:
+        return None
+    text = text.upper().rstrip("Y").strip()
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _resolve_otr_block(playbook: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return a normalised ``otr_resolution`` config, or None when the playbook
+    declares no resolver capability (or declares it disabled / slotless)."""
+    block = playbook.get("otr_resolution")
+    if not isinstance(block, dict) or not block.get("enabled", False):
+        return None
+    slots = [
+        s for s in (block.get("slots") or [])
+        if isinstance(s, dict) and s.get("generic_ticker")
+    ]
+    if not slots:
+        return None
+    resolution_field = str(block.get("resolution_field") or "ID_ISIN").upper()
+    reference_fields = [
+        str(f).upper() for f in (block.get("reference_fields") or []) if f
+    ]
+    # confirmation_runs is the INGESTER's roll-confirmation gate; it is carried
+    # through to the resolution parquet so the ingester (which never reads the
+    # playbook) sees it. Default 2 — see ADR 0007.
+    try:
+        confirmation_runs = int(block.get("confirmation_runs", 2))
+    except (TypeError, ValueError):
+        confirmation_runs = 2
+    return {
+        "slots": slots,
+        "resolution_field": resolution_field,
+        "reference_fields": reference_fields,
+        "confirmation_runs": max(1, confirmation_runs),
+    }
+
+
+def _build_resolution_row(
+    slot: Dict[str, Any],
+    resolution_field: str,
+    bdp_values: Dict[str, Any],
+    resolution_date: str,
+    resolution_timestamp: str,
+) -> Dict[str, Any]:
+    """Pure: turn one slot's ``bdp`` result into a resolution-parquet row.
+
+    ``status`` is one of:
+      * ``ok``       — a plausible OTR ISIN was resolved;
+      * ``failed``   — ``bdp`` returned no value for ``resolution_field``;
+      * ``rejected`` — a value was returned but failed a sanity check: an
+        ISIN-prefix mismatch, an already-matured bond, or a remaining
+        maturity implausible for the slot tenor (broad band). A rejected /
+        failed row is carried in the artifact for the audit trail but the
+        ingester applies no ``otr_history`` change for it.
+    """
+    row: Dict[str, Any] = {
+        "slot_id": slot.get("slot_id"),
+        "generic_ticker": slot.get("generic_ticker"),
+        "country": slot.get("country"),
+        "currency": slot.get("currency"),
+        "curve_family": slot.get("curve_family"),
+        "tenor": slot.get("tenor"),
+        "resolved_isin": None,
+        "resolved_cusip": None,
+        "security_name": None,
+        "coupon": None,
+        "maturity_date": None,
+        "issue_date": None,
+        "instrument_ticker": None,
+        "resolution_date": resolution_date,
+        "resolution_timestamp": resolution_timestamp,
+        "status": "ok",
+        "error": None,
+    }
+
+    resolved_isin = _opt_str(_clean_scalar(bdp_values.get(str(resolution_field).upper())))
+    if not resolved_isin:
+        row["status"] = "failed"
+        row["error"] = (
+            f"bdp({slot.get('generic_ticker')}) returned no {resolution_field}"
+        )
+        return row
+
+    row["resolved_isin"] = resolved_isin
+    row["instrument_ticker"] = f"/isin/{resolved_isin}"
+    row["resolved_cusip"] = _opt_str(_clean_scalar(bdp_values.get("ID_CUSIP")))
+    row["security_name"] = _opt_str(_clean_scalar(bdp_values.get("SECURITY_DES")))
+    row["coupon"] = _clean_scalar(bdp_values.get("CPN"))
+    row["maturity_date"] = _opt_str(_clean_scalar(bdp_values.get("MATURITY")))
+    row["issue_date"] = _opt_str(_clean_scalar(bdp_values.get("ISSUE_DT")))
+    if not row["currency"]:
+        row["currency"] = _opt_str(_clean_scalar(bdp_values.get("CRNCY")))
+
+    # --- false-roll defence, layer 1: per-slot sanity checks ----------------
+    prefix = _opt_str(slot.get("expected_isin_prefix"))
+    if prefix and not resolved_isin.upper().startswith(prefix.upper()):
+        row["status"] = "rejected"
+        row["error"] = (
+            f"resolved ISIN {resolved_isin} does not start with the slot's "
+            f"expected prefix '{prefix}'"
+        )
+        return row
+
+    if row["maturity_date"]:
+        try:
+            mat_iso = pd.to_datetime(row["maturity_date"]).strftime("%Y-%m-%d")
+            row["maturity_date"] = mat_iso
+        except Exception:
+            # Unparseable maturity is not fatal — the bond is identified by
+            # ISIN; leave the raw value and let the ingester normalise.
+            mat_iso = None
+
+        if mat_iso is not None:
+            # The bond must still be alive.
+            if mat_iso <= resolution_date:
+                row["status"] = "rejected"
+                row["error"] = (
+                    f"resolved bond {resolved_isin} matures {mat_iso} on/before "
+                    f"resolution date {resolution_date} — not a live OTR bond"
+                )
+                return row
+
+            # maturity-plausibility band: the resolver only ever resolves the
+            # CURRENT on-the-run bond, whose remaining life is ~the slot tenor.
+            # A broad band [tenor*0.5, tenor+2.0] catches a gross mis-resolution
+            # (e.g. a 2Y slot resolving to a 10Y bond) while leaving normal
+            # auction-cycle variation comfortably inside.
+            tenor_years = _parse_tenor_years(slot.get("tenor"))
+            if tenor_years:
+                try:
+                    remaining = (
+                        pd.to_datetime(mat_iso) - pd.to_datetime(resolution_date)
+                    ).days / 365.25
+                    lower, upper = tenor_years * 0.5, tenor_years + 2.0
+                    if not (lower <= remaining <= upper):
+                        row["status"] = "rejected"
+                        row["error"] = (
+                            f"resolved bond {resolved_isin} has ~{remaining:.1f}y "
+                            f"to maturity — implausible for a {slot.get('tenor')} "
+                            f"slot (expected {lower:.1f}-{upper:.1f}y)"
+                        )
+                        return row
+                except Exception:
+                    pass
+
+    return row
+
+
+def resolve_otr(
+    playbook: Dict[str, Any],
+    lineage_meta: Dict[str, Any],
+    bucket: Any,
+    temp_data_dir: Path,
+    reference_request_kwargs: Dict[str, Any],
+) -> bool:
+    """Run the OTR resolver for a playbook and upload its resolution artifact.
+
+    Returns True on success (resolved + uploaded) OR clean skip (no resolver
+    block declared). Returns False if the resolver ran but produced nothing
+    usable — the caller folds that into ``any_failures``.
+    """
+    block = _resolve_otr_block(playbook)
+    if block is None:
+        return True  # no resolver capability declared — nothing to do.
+
+    slots = block["slots"]
+    resolution_field = block["resolution_field"]
+    # Request the resolution field plus every reference field, de-duplicated.
+    requested_fields: List[str] = [resolution_field] + [
+        f for f in block["reference_fields"] if f != resolution_field
+    ]
+
+    resolution_date = datetime.now().strftime("%Y-%m-%d")
+    resolution_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    print(f"\n[OTR RESOLVER] Resolving {len(slots)} on-the-run slot(s)...")
+    rows: List[Dict[str, Any]] = []
+    for slot in slots:
+        generic = slot.get("generic_ticker")
+        try:
+            bdp_values: Dict[str, Any] = {}
+            for field_chunk in _chunked(requested_fields, MAX_REFERENCE_FIELDS_PER_REQUEST):
+                df = blp.bdp(
+                    tickers=generic,
+                    flds=field_chunk,
+                    **reference_request_kwargs,
+                )
+                normalized = _normalize_bdp_output(df, fallback_ticker=generic)
+                for field_name, value in normalized.items():
+                    bdp_values[str(field_name).upper()] = value
+            row = _build_resolution_row(
+                slot, resolution_field, bdp_values, resolution_date, resolution_timestamp
+            )
+        except Exception as exc:
+            row = _build_resolution_row(
+                slot, resolution_field, {}, resolution_date, resolution_timestamp
+            )
+            row["status"] = "failed"
+            row["error"] = f"bdp() raised for {generic}: {exc}"
+
+        if row["status"] == "ok":
+            print(f"  [OK] {slot.get('slot_id')}: {generic} -> {row['resolved_isin']}")
+        else:
+            print(
+                f"  [{row['status'].upper()}] {slot.get('slot_id')}: {generic} "
+                f"-> {row['error']}"
+            )
+        rows.append(row)
+
+    ok_count = sum(1 for r in rows if r["status"] == "ok")
+    if ok_count == 0:
+        print(
+            "  [WARNING] OTR resolver resolved 0 slots — not uploading a "
+            "resolution artifact."
+        )
+        return False
+
+    df = pd.DataFrame(rows)
+    base_dataset = lineage_meta["dataset_name"]
+    base_playbook = lineage_meta["playbook_name"]
+    resolution_dataset = f"{base_dataset}_otr_resolution"
+
+    # Lineage stamps. playbook_name is SUFFIXED so the ingester's
+    # playbook-keyed dedup / audit scope for resolution artifacts is isolated
+    # from the market-data load history of the same playbook (ADR 0007).
+    df["asset_class"] = lineage_meta["asset_class"]
+    df["dataset_name"] = resolution_dataset
+    df["playbook_name"] = f"{base_playbook}__otr_resolution"
+    df["playbook_version"] = lineage_meta["playbook_version"]
+    df["playbook_hash"] = lineage_meta["playbook_hash"]
+    df["git_commit_hash"] = lineage_meta["git_commit_hash"]
+    df["extractor_version"] = lineage_meta["extractor_version"]
+    df["extraction_mode"] = OTR_RESOLUTION_EXTRACTION_MODE
+    df["confirmation_runs"] = block["confirmation_runs"]
+    df["requested_start_date"] = resolution_date
+    df["requested_end_date"] = resolution_date
+    df["extracted_at"] = resolution_timestamp
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    parquet_filename = f"{resolution_dataset}_{timestamp}.parquet"
+    local_parquet_path = temp_data_dir / parquet_filename
+    df.to_parquet(local_parquet_path, engine="pyarrow", index=False)
+
+    blob_name = f"otr_resolution/{resolution_dataset}/{parquet_filename}"
+    bucket.blob(blob_name).upload_from_filename(str(local_parquet_path))
+    local_parquet_path.unlink(missing_ok=True)
+
+    print(
+        f"  [SUCCESS] OTR resolution artifact uploaded to gs://{BUCKET_NAME}/"
+        f"{blob_name}  ({ok_count}/{len(rows)} slot(s) resolved)"
+    )
+    return True
+
+
 def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
     """
     Pull playbooks from GCP, extract Bloomberg historical data, enrich with optional
@@ -1294,6 +1594,24 @@ def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
             reference_metrics = playbook.get("reference_metrics", [])
             historical_request_kwargs = _build_historical_request_kwargs(playbook)
             reference_request_kwargs = _build_reference_request_kwargs(playbook)
+
+            # --- OTR RESOLUTION (ADR 0007) — declarative, opt-in per playbook.
+            # Runs BEFORE the market-data extraction so the market-data flow's
+            # coverage-gate `continue` statements can never skip it; the two
+            # steps are independent and write separate artifacts.
+            try:
+                if not resolve_otr(
+                    playbook=playbook,
+                    lineage_meta=lineage_meta,
+                    bucket=bucket,
+                    temp_data_dir=temp_data_dir,
+                    reference_request_kwargs=reference_request_kwargs,
+                ):
+                    any_failures = True
+            except Exception as exc:
+                print(f"  [ERROR] OTR resolution step failed for {pb_path.name}: {exc}")
+                any_failures = True
+
             start_date, end_date = _resolve_date_window(playbook)
 
             universe_items = [item for item in universe_items if isinstance(item, dict) and "ticker" in item]
