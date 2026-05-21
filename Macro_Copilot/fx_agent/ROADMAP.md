@@ -226,6 +226,30 @@ Each universe entry should include (minimally) for FX:
 
 The readiness gate `tests/test_fx_data_readiness.py` validates these fields. New playbooks must follow the shape.
 
+### Wave 1 bucket override — temporary FX bucket via env var
+
+**Background:** the FX agent's GCS extraction landed historically in a private bucket (`gs://quantifi-fx-data-sacha`, project `quantifi-fx-agent`), while Sreeram's rates substrate lands in `gs://macro-storage-bucket`. The four pipeline scripts had inconsistent bucket configuration:
+
+- `historical_extractor.py` / `incremental_extractor.py` — already honoured the `GCP_BUCKET_NAME` env var (default `macro-storage-bucket`).
+- `push_playbooks.py` / `ingest_parquet.py` — hardcoded `macro-storage-bucket` with no override.
+
+**Wave 1 fix:** added the same `GCP_BUCKET_NAME` env-var fallback to `push_playbooks.py` and `ingest_parquet.py`. Default stays `macro-storage-bucket` so Sreeram's flow is unchanged; the FX flow sets `GCP_BUCKET_NAME=quantifi-fx-data-sacha` at runtime.
+
+**To run FX extraction / ingestion against the FX bucket:**
+
+```bash
+# Extraction (on the Bloomberg-enabled machine):
+export GCP_BUCKET_NAME=quantifi-fx-data-sacha
+python utils/push_playbooks.py
+python utils/historical_extractor.py --playbook fx_forwards --playbook spot_fx --playbook fx_crosses --playbook fx_vol
+
+# Ingestion (Mac, in Docker):
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  env GCP_BUCKET_NAME=quantifi-fx-data-sacha python ingestion/ingest_parquet.py
+```
+
+**Migration plan (deferred):** consolidate FX and rates into a single shared `macro-storage-bucket` once IAM access is granted to the `fx-agent@quantifi-fx-agent.iam.gserviceaccount.com` service account. The env-var override layer will stay (it's also useful for testing / staging environments), but the default `macro-storage-bucket` will hold both rates and FX data going forward.
+
 ### Bloomberg 1Y tenor naming — forwards vs vol asymmetry
 
 Bloomberg uses **inconsistent** ticker conventions for the 1-year tenor between forward points and ATM implied vol:
@@ -298,6 +322,7 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-21 | Introduced "Wave 1" — opportunistic data-only batch extraction while Bloomberg is accessible. `spot_fx.yml` v2.0, `fx_crosses.yml` v2.0, `fx_vol.yml` v2.0 land alongside Phase A's forwards. Total Wave 1 footprint: 80 instruments. Strict discipline: data only, no tool/UI/domain work beyond Phase A. | Sacha at BBG terminal — exploit access window for data not yet decision-locked |
 | 2026-05-21 | `fx_vol.yml` v2.0 keeps canonical filename (vs new `fx_vol_atm.yml`) per repo convention "playbook_name matches filename stem". Added `smile_point: "ATM"` metadata on every row so the future smile playbook (RR/BF, Phase E) can coexist cleanly. | Codex review |
 | 2026-05-21 | Wave 1 ticker verification (32 new tickers) complete on BBG. All 32 valid from 2000-01-03. **Asymmetric 1Y naming discovered:** forward points use `12M`, ATM vol uses `V1Y`. Tickers in `fx_vol.yml` corrected from `V12M` → `V1Y`. Internal `tenor` field kept as `"12M"` for cross-asset tool consistency. | BBG `BDH` formula verification |
+| 2026-05-22 | Bucket override: `push_playbooks.py` and `ingest_parquet.py` gained `GCP_BUCKET_NAME` env-var support (matching the extractors' existing convention). FX Wave 1 runs against `gs://quantifi-fx-data-sacha` via `export GCP_BUCKET_NAME=quantifi-fx-data-sacha`; rates / Sreeram's flow unchanged (default still `macro-storage-bucket`). Long-term plan: consolidate into one bucket once IAM is sorted. | Permission denied on `macro-storage-bucket` for `fx-agent@quantifi-fx-agent.iam` SA during Wave 1 prep |
 
 ---
 

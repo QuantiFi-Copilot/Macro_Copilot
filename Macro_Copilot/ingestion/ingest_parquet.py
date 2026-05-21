@@ -86,7 +86,12 @@ from ingestion.deliverables import (  # noqa: E402
 )
 
 # --- CONFIGURATION ---
-BUCKET_NAME = "macro-storage-bucket"
+# Default bucket is the shared rates-aligned bucket; override at runtime
+# via the ``GCP_BUCKET_NAME`` env var (same convention as the
+# historical_extractor / incremental_extractor scripts). Useful while
+# the FX agent maintains its own bucket during Wave 1 — see
+# fx_agent/ROADMAP.md for the migration plan to a single shared bucket.
+BUCKET_NAME = os.getenv("GCP_BUCKET_NAME", "macro-storage-bucket")
 GCP_KEY_FILENAME = "library-extractor-key.json"
 DEFAULT_VENDOR = "BLOOMBERG"
 
