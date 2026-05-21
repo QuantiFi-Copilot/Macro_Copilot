@@ -11,10 +11,10 @@
 #   rendered_body_sha256          : a34e49f45cfbe9cfd957aa0e431104a18da432162466408388a8572f89db02d7
 #   seed_universe_count           : 14
 #   effective_universe_count      : 14
-#   otr_history_rows              : 0
-#   otr_history_latest_created_at : None
+#   otr_history_rows              : 14
+#   otr_history_latest_created_at : 2026-05-21T19:35:43.367563+01:00
 #   as_of_date                    : 2026-05-21
-#   rendered_at                   : 2026-05-21 19:10:15
+#   rendered_at                   : 2026-05-21 23:51:42
 # ============================================================================
 playbook_name: sovereign_cash_bonds
 playbook_version: '1.1'

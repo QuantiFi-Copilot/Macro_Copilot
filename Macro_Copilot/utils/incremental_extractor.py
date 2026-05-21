@@ -3,7 +3,9 @@ import sys
 import yaml
 import argparse
 import hashlib
+import json
 import subprocess
+import warnings
 import pandas as pd
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -1586,6 +1588,17 @@ def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
             with open(pb_path, "r", encoding="utf-8") as f:
                 playbook = yaml.safe_load(f) or {}
 
+            # Event playbooks (ADR 0008) declare an ``event_calendar:`` section
+            # and carry no time-series ``universe`` — they are handled by
+            # ``--mode event-calendar``, not this flow. Skip them cleanly so
+            # they are not mis-reported as failures.
+            if playbook.get("event_calendar") is not None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: event_calendar playbook — handled "
+                    "by --mode event-calendar, not the time-series flow."
+                )
+                continue
+
             lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
             asset_class = lineage_meta["asset_class"]
             dataset_name = lineage_meta["dataset_name"]
@@ -1844,6 +1857,617 @@ def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
         print("\n*** EXTRACTION PIPELINE COMPLETE ***")
 
 
+# ============================================================================
+# EVENT-CALENDAR EXTRACTION  (work order B2, ADR 0008)
+#
+# ``--mode event-calendar`` extracts macro EVENTS — economic releases and
+# central-bank meetings — into a wide parquet whose columns are
+# macro_data.event_calendar's columns, uploaded to gs://<bucket>/events/. Local
+# ingestion (``_process_event_blob``, PHASE 5) folds it into event_calendar.
+#
+# Incremental-only (ADR 0008 §4): the ECO_RELEASE_DT_LIST bds surface is a
+# recent-plus-forward window — there is no deep history to backfill — so event
+# extraction is intrinsically forward, like the OTR resolver. The historical
+# extractor never runs this mode.
+#
+# WIRP is NOT handled here: per ADR 0004 it is daily time-series data and rides
+# the ordinary ``--mode time-series`` path into market_data_daily.
+# ============================================================================
+EVENT_CALENDAR_EXTRACTION_MODE = "event_calendar"
+EVENT_FAMILIES = ("economic_release", "central_bank_meeting")
+DEFAULT_EVENT_LOOKBACK_DAYS = 800
+
+# Every macro_data.event_calendar value column an event row may carry. load_id
+# is assigned DB-side; lineage columns are stamped onto the parquet separately.
+_EVENT_ROW_COLUMNS = (
+    "event_type", "event_category", "country", "currency", "central_bank",
+    "release_date", "release_time", "period",
+    "actual", "consensus_median", "consensus_high", "consensus_low",
+    "prior", "revised_prior", "surprise", "surprise_std_dev",
+    "high_yield", "bid_to_cover", "tail_bps", "indirect_pct",
+    "related_instrument_id", "attributes",
+)
+
+
+def _blank_event_row() -> Dict[str, Any]:
+    """A fully-NULL event row — every event_calendar value column present, so a
+    DataFrame built from a mix of economic-release and meeting rows has one
+    coherent column set."""
+    return {col: None for col in _EVENT_ROW_COLUMNS}
+
+
+def _resolve_event_calendar_section(playbook: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return a normalised ``event_calendar`` config.
+
+    Returns None ONLY when the playbook carries no ``event_calendar`` key at
+    all — a genuine non-event playbook. A section that IS present but malformed
+    (non-mapping, unknown ``family``, missing ``event_category``, no ``events``)
+    raises ``ValueError``: a malformed event playbook is a config bug and must
+    fail loudly, never be silently treated as a non-event playbook (P6,
+    ADR 0008 §4).
+    """
+    block = playbook.get("event_calendar")
+    if block is None:
+        return None
+    if not isinstance(block, dict):
+        raise ValueError("event_calendar section must be a mapping.")
+    family = str(block.get("family") or "").strip().lower()
+    if family not in EVENT_FAMILIES:
+        raise ValueError(
+            f"event_calendar.family must be one of {EVENT_FAMILIES}; "
+            f"got {block.get('family')!r}."
+        )
+    event_category = str(block.get("event_category") or "").strip().lower()
+    if not event_category:
+        raise ValueError("event_calendar.event_category is required.")
+    events = [e for e in (block.get("events") or []) if isinstance(e, dict)]
+    if not events:
+        raise ValueError("event_calendar.events is empty or malformed.")
+    cfg: Dict[str, Any] = {
+        "family": family,
+        "event_category": event_category,
+        "events": events,
+    }
+    if family == "economic_release":
+        cfg["actual_field"] = str(block.get("actual_field") or "PX_LAST").upper()
+        cfg["release_date_field"] = str(
+            block.get("release_date_field") or "ECO_RELEASE_DT_LIST"
+        ).upper()
+        survey = block.get("survey_fields") or {}
+        cfg["survey_fields"] = {
+            str(col): str(bbg).upper()
+            for col, bbg in survey.items()
+            if col and bbg
+        }
+    else:  # central_bank_meeting
+        cfg["meeting_calendar_field"] = str(
+            block.get("meeting_calendar_field") or "ECO_RELEASE_DT_LIST"
+        ).upper()
+        cfg["rate_field"] = str(block.get("rate_field") or "PX_LAST").upper()
+    return cfg
+
+
+def _parse_bds_dates(bds_df: Any) -> List[date]:
+    """Pull the date column out of a bds result (e.g. ECO_RELEASE_DT_LIST) —
+    the column that yields the most parseable dates. Narwhals-agnostic."""
+    df = _coerce_to_pandas(bds_df)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return []
+    best: List[date] = []
+    # Every column is probed as dates to discover which one holds them — the
+    # non-date columns (ticker / field) coerce to NaT. pandas' format-inference
+    # UserWarning on that broad probe is expected and silenced; the parse
+    # itself (errors="coerce") is unaffected.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        for col in df.columns:
+            parsed = pd.to_datetime(df[col], errors="coerce")
+            good = [d.date() for d in parsed if pd.notna(d)]
+            if len(good) > len(best):
+                best = good
+    return sorted(set(best))
+
+
+def _bdh_to_period_records(
+    bdh_long: pd.DataFrame, actual_field: str, survey_fields: Dict[str, str]
+) -> List[Dict[str, Any]]:
+    """Pivot a long ``_normalize_bdh_output`` frame into per-period records:
+    one dict per reference period carrying ``period_date``, ``actual``, and
+    each declared survey column (keyed by its event_calendar column name)."""
+    if bdh_long is None or bdh_long.empty:
+        return []
+    by_date: Dict[str, Dict[str, Any]] = {}
+    for _, r in bdh_long.iterrows():
+        td = str(r["trade_date"])
+        by_date.setdefault(td, {})[str(r["field_name"]).upper()] = r["field_value"]
+    out: List[Dict[str, Any]] = []
+    for td in sorted(by_date):
+        fields = by_date[td]
+        rec: Dict[str, Any] = {
+            "period_date": td,
+            "actual": fields.get(actual_field.upper()),
+        }
+        for col, bbg in survey_fields.items():
+            rec[col] = fields.get(str(bbg).upper())
+        out.append(rec)
+    return out
+
+
+def _join_econ_releases(
+    period_records: List[Dict[str, Any]],
+    release_dates: List[date],
+    run_date: date,
+) -> Tuple[List[Tuple[date, Dict[str, Any], Any]], List[date], List[str]]:
+    """ADR 0008 §2 economic-release join — explicit and run-date-aware.
+
+    Returns ``(realized_pairs, scheduled_dates, warnings)``. ``realized_pairs``
+    is ``(release_date, period_record, prior_actual)``; ``scheduled_dates`` are
+    future release dates plus any realized release whose actual is not yet
+    posted (demoted to a placeholder).
+
+    Each bdh observation is paired with the realized release that published it:
+    iterating periods newest-first, a period claims the smallest still-unused
+    realized release strictly after the period's date. This is lag-agnostic and
+    naturally demotes a just-happened release whose actual has not landed in the
+    bdh series yet (no period claims it → it falls through to ``scheduled``).
+    """
+    periods = sorted(period_records, key=lambda r: str(r["period_date"]))
+    period_dates: List[Optional[date]] = []
+    for r in periods:
+        try:
+            period_dates.append(date.fromisoformat(str(r["period_date"])[:10]))
+        except (ValueError, TypeError):
+            period_dates.append(None)
+
+    realized = sorted(d for d in release_dates if d <= run_date)
+    scheduled_future = [d for d in release_dates if d > run_date]
+    warnings: List[str] = []
+
+    used: Set[date] = set()
+    pairs: List[Tuple[date, Dict[str, Any], Any]] = []
+    for i in range(len(periods) - 1, -1, -1):  # newest period first
+        pd_i = period_dates[i]
+        if pd_i is None:
+            continue
+        candidates = sorted(R for R in realized if R > pd_i and R not in used)
+        if not candidates:
+            continue
+        R = candidates[0]
+        used.add(R)
+        prior_actual = periods[i - 1]["actual"] if i > 0 else None
+        pairs.append((R, periods[i], prior_actual))
+
+    pairs.sort(key=lambda t: t[0])
+
+    # Split the UNMATCHED realized release dates. A release NEWER than every
+    # matched release is a just-happened event whose actual is not posted in
+    # the bdh series yet — keep it as a scheduled placeholder (it fills on a
+    # later run). A release that is OLDER (its period falls outside the bdh
+    # lookback window, or a rare collision) is STALE — skip it with a warning,
+    # NEVER fabricate it as a scheduled (future) row (ADR 0008 §2).
+    newest_matched = max(used) if used else None
+    pending: List[date] = []
+    stale: List[date] = []
+    for R in realized:
+        if R in used:
+            continue
+        if newest_matched is not None and R > newest_matched:
+            pending.append(R)
+        else:
+            stale.append(R)
+    scheduled = sorted(set(scheduled_future) | set(pending))
+    if stale:
+        shown = ", ".join(d.isoformat() for d in sorted(stale)[:5])
+        warnings.append(
+            f"{len(stale)} realized release date(s) had no in-window bdh "
+            f"observation and were SKIPPED (not scheduled): {shown}"
+            + ("..." if len(stale) > 5 else "")
+        )
+    if realized and not pairs:
+        warnings.append(
+            f"none of {len(realized)} realized release date(s) matched a bdh "
+            "observation — check the bdh lookback window vs the release list"
+        )
+    return pairs, scheduled, warnings
+
+
+def _rate_asof(rate_pairs: List[Tuple[date, float]], cutoff: date) -> Optional[float]:
+    """The value of the last (date, value) observation strictly before
+    ``cutoff``; None if no observation precedes it. ``rate_pairs`` MUST be
+    sorted ascending by date."""
+    result: Optional[float] = None
+    for d, v in rate_pairs:
+        if d < cutoff:
+            result = v
+        else:
+            break
+    return result
+
+
+def _cb_meeting_rows(
+    meeting_dates: List[date],
+    rate_pairs: List[Tuple[date, float]],
+    run_date: date,
+    event: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """ADR 0008 §3 — turn a bank's meeting calendar + daily policy-rate series
+    into event_calendar rows. ``actual`` = the rate held over the inter-meeting
+    period this meeting opened (last observation strictly before the next
+    meeting); ``prior`` = the rate before this meeting (last observation
+    strictly before its own date). Future meetings are scheduled placeholders."""
+    rows: List[Dict[str, Any]] = []
+    meetings = sorted(set(meeting_dates))
+    for k, M in enumerate(meetings):
+        row = _blank_event_row()
+        row["event_type"] = event.get("event_type")
+        row["event_category"] = "central_bank_meeting"
+        row["country"] = event.get("country")
+        row["currency"] = event.get("currency")
+        row["central_bank"] = event.get("central_bank")
+        row["release_date"] = M.isoformat()
+        if M <= run_date:
+            next_M = meetings[k + 1] if k + 1 < len(meetings) else None
+            cutoff = next_M if next_M is not None else (run_date + timedelta(days=1))
+            actual = _rate_asof(rate_pairs, cutoff)
+            prior = _rate_asof(rate_pairs, M)
+            row["actual"] = actual
+            row["prior"] = prior
+            if actual is not None and prior is not None:
+                if actual > prior:
+                    decision = "hike"
+                elif actual < prior:
+                    decision = "cut"
+                else:
+                    decision = "hold"
+                row["attributes"] = json.dumps({"decision": decision})
+        rows.append(row)
+    return rows
+
+
+def _extract_economic_releases(
+    section: Dict[str, Any],
+    start_date: str,
+    end_date: str,
+    run_date: date,
+    bdh_kwargs: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Extract economic-release event rows for one event playbook.
+
+    Returns ``(rows, failed)``. ``failed`` lists every configured event that
+    did NOT yield realized rows — a bdh/bds error, a missing ticker, or a
+    zero-realized-row join. A non-empty ``failed`` makes the caller refuse to
+    upload (ADR 0008 §4 coverage gate — no partial event artifact).
+    """
+    actual_field = section["actual_field"]
+    survey_fields = section["survey_fields"]  # {event_calendar_column: bbg_field}
+    release_date_field = section["release_date_field"]
+    rows: List[Dict[str, Any]] = []
+    failed: List[str] = []
+
+    for event in section["events"]:
+        ticker = event.get("ticker")
+        event_type = event.get("event_type")
+        if not ticker or not event_type:
+            failed.append(f"{event_type or '<no event_type>'}: missing ticker/event_type")
+            print(f"    [ERROR] economic_release event missing ticker/event_type: {event}")
+            continue
+
+        # Per-event consensus opt-out (ADR 0008 §2): an indicator Bloomberg
+        # exposes no survey for (e.g. Japan's composite PMI) sets
+        # ``survey: false`` — its consensus columns are then deliberately NULL.
+        use_survey = bool(event.get("survey", True))
+        event_survey = survey_fields if use_survey else {}
+        requested_fields = [actual_field] + [
+            f for f in event_survey.values() if f != actual_field
+        ]
+
+        try:
+            bdh_frames: List[pd.DataFrame] = []
+            for chunk in _chunked(requested_fields, MAX_HISTORICAL_FIELDS_PER_REQUEST):
+                raw = blp.bdh(
+                    tickers=ticker, flds=chunk,
+                    start_date=start_date, end_date=end_date, **bdh_kwargs,
+                )
+                norm = _normalize_bdh_output(raw, fallback_ticker=ticker)
+                if not norm.empty:
+                    bdh_frames.append(norm)
+            bdh_long = (
+                pd.concat(bdh_frames, ignore_index=True)
+                if bdh_frames else pd.DataFrame()
+            )
+            period_records = _bdh_to_period_records(bdh_long, actual_field, event_survey)
+            release_dates = _parse_bds_dates(blp.bds(ticker, release_date_field))
+        except Exception as exc:
+            failed.append(f"{event_type}: bdh/bds error — {exc}")
+            print(f"    [ERROR] {event_type}: bdh/bds failed for {ticker}: {exc}")
+            continue
+
+        pairs, scheduled, warnings = _join_econ_releases(
+            period_records, release_dates, run_date
+        )
+        for w in warnings:
+            print(f"    [WARN] {event_type}: {w}")
+
+        if not pairs:
+            failed.append(f"{event_type}: 0 realized event rows")
+            print(
+                f"    [ERROR] {event_type}: produced 0 realized event rows "
+                "(bdh lookback window vs release list mismatch?)"
+            )
+            continue
+
+        for release_date, period, prior_actual in pairs:
+            row = _blank_event_row()
+            row["event_type"] = event_type
+            row["event_category"] = "economic_release"
+            row["country"] = event.get("country")
+            row["currency"] = event.get("currency")
+            row["release_date"] = release_date.isoformat()
+            row["period"] = str(period["period_date"])[:10]
+            row["actual"] = _clean_scalar(period.get("actual"))
+            for col in event_survey:
+                row[col] = _clean_scalar(period.get(col))
+            row["prior"] = _clean_scalar(prior_actual)
+            rows.append(row)
+
+        for release_date in scheduled:
+            row = _blank_event_row()
+            row["event_type"] = event_type
+            row["event_category"] = "economic_release"
+            row["country"] = event.get("country")
+            row["currency"] = event.get("currency")
+            row["release_date"] = release_date.isoformat()
+            rows.append(row)
+
+        print(
+            f"    [OK] {event_type} ({ticker}): {len(pairs)} realized + "
+            f"{len(scheduled)} scheduled event row(s)"
+        )
+    return rows, failed
+
+
+def _extract_cb_meetings(
+    section: Dict[str, Any],
+    start_date: str,
+    end_date: str,
+    run_date: date,
+    bdh_kwargs: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Extract central-bank-meeting event rows for one event playbook.
+
+    Returns ``(rows, failed)`` — ``failed`` lists every configured bank that
+    did not yield meeting rows (bdh/bds error, missing rate_ticker, or an empty
+    meeting calendar). A non-empty ``failed`` aborts the upload (ADR 0008 §4).
+    """
+    rate_field = section["rate_field"]
+    calendar_field = section["meeting_calendar_field"]
+    rows: List[Dict[str, Any]] = []
+    failed: List[str] = []
+
+    for event in section["events"]:
+        rate_ticker = event.get("rate_ticker")
+        event_type = event.get("event_type")
+        if not rate_ticker or not event_type:
+            failed.append(f"{event_type or '<no event_type>'}: missing rate_ticker/event_type")
+            print(f"    [ERROR] central_bank_meeting event missing rate_ticker/event_type: {event}")
+            continue
+        try:
+            meeting_dates = _parse_bds_dates(blp.bds(rate_ticker, calendar_field))
+            raw = blp.bdh(
+                tickers=rate_ticker, flds=[rate_field],
+                start_date=start_date, end_date=end_date, **bdh_kwargs,
+            )
+            norm = _normalize_bdh_output(raw, fallback_ticker=rate_ticker)
+        except Exception as exc:
+            failed.append(f"{event_type}: bdh/bds error — {exc}")
+            print(f"    [ERROR] {event_type}: bdh/bds failed for {rate_ticker}: {exc}")
+            continue
+
+        rate_pairs: List[Tuple[date, float]] = []
+        for _, r in norm.iterrows():
+            try:
+                d = date.fromisoformat(str(r["trade_date"])[:10])
+                v = float(r["field_value"])
+            except (ValueError, TypeError):
+                continue
+            rate_pairs.append((d, v))
+        rate_pairs.sort()
+
+        bank_rows = _cb_meeting_rows(meeting_dates, rate_pairs, run_date, event)
+        if not bank_rows:
+            failed.append(f"{event_type}: 0 meeting rows (empty meeting calendar)")
+            print(f"    [ERROR] {event_type}: produced 0 meeting rows for {rate_ticker}")
+            continue
+        rows.extend(bank_rows)
+        print(
+            f"    [OK] {event_type} ({rate_ticker}): {len(bank_rows)} meeting "
+            f"event row(s) from {len(meeting_dates)} calendar date(s)"
+        )
+    return rows, failed
+
+
+def run_event_calendar_extraction(selected_playbooks: Optional[Set[str]] = None) -> None:
+    """``--mode event-calendar`` — extract macro events (economic releases,
+    central-bank meetings) into wide event parquets under gs://<bucket>/events/.
+
+    ADR: docs_revamped/05_decisions/0008-event-playbook-contract.md.
+    """
+    print("Initializing Library Extraction Agent (mode: event-calendar)...")
+
+    base_dir = Path(__file__).resolve().parent
+    script_path = Path(__file__).resolve()
+    gcp_key_path = _resolve_gcp_key_path(base_dir)
+
+    temp_playbooks_dir = base_dir / "temp_playbooks"
+    temp_data_dir = base_dir / "temp_data"
+    temp_playbooks_dir.mkdir(exist_ok=True)
+    temp_data_dir.mkdir(exist_ok=True)
+
+    any_failures = False
+
+    try:
+        if not gcp_key_path:
+            print(f"[FATAL] Cannot find GCP Key '{GCP_KEY_FILENAME}' in expected locations.")
+            any_failures = True
+            return
+
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+
+        print("\n[PHASE 1] Pulling playbooks from GCP...")
+        blobs = bucket.list_blobs(prefix="playbooks/")
+        playbook_files: List[Path] = []
+        for blob in blobs:
+            if blob.name.endswith(".yml") or blob.name.endswith(".yaml"):
+                local_path = temp_playbooks_dir / Path(blob.name).name
+                blob.download_to_filename(str(local_path))
+                playbook_files.append(local_path)
+                print(f"  -> Downloaded: {Path(blob.name).name}")
+
+        if selected_playbooks:
+            playbook_files = [
+                p for p in playbook_files
+                if p.name in selected_playbooks or p.stem in selected_playbooks
+            ]
+            print(f"\n[INFO] Playbook filter active: {sorted(selected_playbooks)}")
+            print(f"[INFO] Matched {len(playbook_files)} playbook file(s) after filtering.")
+
+        if not playbook_files:
+            print("[ABORT] No playbooks found in the GCP bucket. Exiting.")
+            any_failures = True
+            return
+
+        print("\n[PHASE 2] Executing event-calendar extraction...")
+        run_date = date.today()
+
+        for pb_path in playbook_files:
+            with open(pb_path, "r", encoding="utf-8") as f:
+                playbook = yaml.safe_load(f) or {}
+
+            try:
+                section = _resolve_event_calendar_section(playbook)
+            except ValueError as exc:
+                print(
+                    f"\n[ERROR] {pb_path.name}: malformed event_calendar section "
+                    f"— {exc} Aborting this playbook."
+                )
+                any_failures = True
+                continue
+            if section is None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: no event_calendar section "
+                    "(expected for non-event playbooks)."
+                )
+                continue
+
+            lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
+            dataset_name = lineage_meta["dataset_name"]
+            bdh_kwargs = _build_historical_request_kwargs(playbook)
+            extraction_cfg = playbook.get("extraction", {}) or {}
+            try:
+                lookback_days = int(
+                    extraction_cfg.get("lookback_days") or DEFAULT_EVENT_LOOKBACK_DAYS
+                )
+            except (TypeError, ValueError):
+                lookback_days = DEFAULT_EVENT_LOOKBACK_DAYS
+            start_date = (run_date - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+            end_date = run_date.strftime("%Y-%m-%d")
+            extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            print(f"\nProcessing event playbook: {pb_path.name}")
+            print(f"  Family       : {section['family']}")
+            print(f"  Events       : {len(section['events'])}")
+            print(f"  Window       : {start_date} -> {end_date}")
+
+            try:
+                if section["family"] == "economic_release":
+                    rows, failed = _extract_economic_releases(
+                        section, start_date, end_date, run_date, bdh_kwargs
+                    )
+                else:
+                    rows, failed = _extract_cb_meetings(
+                        section, start_date, end_date, run_date, bdh_kwargs
+                    )
+            except Exception as exc:
+                print(f"  [ERROR] Event extraction failed for {pb_path.name}: {exc}")
+                any_failures = True
+                continue
+
+            # COVERAGE GATE (ADR 0008 §4) — every configured event must yield
+            # rows. A single failed event aborts the whole playbook's upload:
+            # a partial event artifact must never ingest as a clean SUCCESS.
+            if failed:
+                print(
+                    f"  [ABORT] {pb_path.name}: {len(failed)}/"
+                    f"{len(section['events'])} configured event(s) failed "
+                    "extraction — refusing to upload a partial event artifact:"
+                )
+                for reason in failed:
+                    print(f"    - {reason}")
+                any_failures = True
+                continue
+
+            if not rows:
+                print(f"  [WARNING] {pb_path.name}: 0 event rows extracted. Skipping upload.")
+                any_failures = True
+                continue
+
+            df = pd.DataFrame(rows)
+            df["event_category"] = df["event_category"].fillna(section["event_category"])
+            df["dataset_name"] = dataset_name
+            df["playbook_name"] = lineage_meta["playbook_name"]
+            df["playbook_version"] = lineage_meta["playbook_version"]
+            df["playbook_hash"] = lineage_meta["playbook_hash"]
+            df["git_commit_hash"] = lineage_meta["git_commit_hash"]
+            df["extractor_version"] = lineage_meta["extractor_version"]
+            df["extraction_mode"] = EVENT_CALENDAR_EXTRACTION_MODE
+            df["requested_start_date"] = start_date
+            df["requested_end_date"] = end_date
+            df["extracted_at"] = extracted_at
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            parquet_filename = f"{dataset_name}_events_{timestamp}.parquet"
+            local_parquet_path = temp_data_dir / parquet_filename
+            df.to_parquet(local_parquet_path, engine="pyarrow", index=False)
+
+            blob_name = f"events/{dataset_name}/{parquet_filename}"
+            bucket.blob(blob_name).upload_from_filename(str(local_parquet_path))
+            local_parquet_path.unlink(missing_ok=True)
+            print(
+                f"  [SUCCESS] Event parquet uploaded to gs://{BUCKET_NAME}/"
+                f"{blob_name}  ({len(df)} row(s))"
+            )
+
+        try:
+            print("\n[PHASE 3] Uploading latest terminal extractor script to GCP...")
+            latest_blob = bucket.blob(f"scripts/{script_path.name}")
+            latest_blob.upload_from_filename(str(script_path))
+            print(f"  [SUCCESS] Latest script uploaded to gs://{BUCKET_NAME}/scripts/{script_path.name}")
+        except Exception as exc:
+            print(f"  [WARNING] Failed to upload terminal extractor script: {exc}")
+
+    except Exception as exc:
+        any_failures = True
+        print(f"[FATAL] Event-calendar pipeline failed: {exc}")
+
+    finally:
+        print("\nCleaning up temporary files...")
+        for d in (temp_playbooks_dir, temp_data_dir):
+            if d.exists():
+                for f in d.glob("*"):
+                    if f.is_file():
+                        f.unlink()
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+        if any_failures:
+            print("\n*** EVENT-CALENDAR EXTRACTION COMPLETE (WITH FAILURES) ***")
+            sys.exit(1)
+        print("\n*** EVENT-CALENDAR EXTRACTION COMPLETE ***")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run the incremental Bloomberg extractor for selected playbooks."
@@ -1855,7 +2479,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["time-series", "metadata-history"],
+        choices=["time-series", "metadata-history", "event-calendar"],
         default="time-series",
         help=(
             "Extraction mode. ``time-series`` (default) is the canonical "
@@ -1866,8 +2490,14 @@ if __name__ == "__main__":
             "flow for playbooks declaring an enabled ``metadata_history:`` "
             "section — produces wide effective-dated parquet under "
             "gs://<bucket>/metadata_history/<dataset>/, consumed by the "
-            "ingester's instrument_metadata_history path. See "
-            "docs_revamped/05_decisions/0002-playbook-metadata-history-section.md."
+            "ingester's instrument_metadata_history path. "
+            "``event-calendar`` runs the macro-event flow for playbooks "
+            "declaring an ``event_calendar:`` section (economic releases, "
+            "central-bank meetings) — produces wide event parquet under "
+            "gs://<bucket>/events/<dataset>/, consumed by the ingester's "
+            "event_calendar path. See "
+            "docs_revamped/05_decisions/0002-playbook-metadata-history-section.md "
+            "and 0008-event-playbook-contract.md."
         ),
     )
     args = parser.parse_args()
@@ -1875,5 +2505,7 @@ if __name__ == "__main__":
 
     if args.mode == "metadata-history":
         run_metadata_history_extraction(selected_playbooks=selected_playbooks)
+    elif args.mode == "event-calendar":
+        run_event_calendar_extraction(selected_playbooks=selected_playbooks)
     else:
         run_incremental_extraction(selected_playbooks=selected_playbooks)

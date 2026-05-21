@@ -1403,6 +1403,17 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
             with open(pb_path, "r", encoding="utf-8") as f:
                 playbook = yaml.safe_load(f) or {}
 
+            # Event playbooks (ADR 0008) declare an ``event_calendar:`` section
+            # and carry no time-series ``universe``. The event extractor is
+            # incremental-only — the historical extractor never processes them;
+            # skip cleanly so they are not mis-reported as failures.
+            if playbook.get("event_calendar") is not None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: event_calendar playbook — handled "
+                    "by the incremental extractor's --mode event-calendar."
+                )
+                continue
+
             lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
             asset_class = lineage_meta["asset_class"]
             dataset_name = lineage_meta["dataset_name"]

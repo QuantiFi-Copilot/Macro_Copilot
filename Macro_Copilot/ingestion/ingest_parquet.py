@@ -28,6 +28,7 @@ from database.database import (  # noqa: E402
     close_open_metadata_window,
     upsert_otr_history,
     close_open_otr_window,
+    upsert_event_calendar,
 )
 
 # The dedup hash logic lives in its own module so it can be imported
@@ -62,6 +63,14 @@ from ingestion.otr_resolution import (  # noqa: E402
     is_ingestable_observation,
     parquet_to_resolution_records,
     plan_otr_transition,
+)
+
+# Pure-Python helpers for the event-calendar flow (ADR 0004). The parser turns
+# a wide event parquet into clean per-event records; the gate decides which
+# rows carry the natural-key fields a write needs.
+from ingestion.event_calendar import (  # noqa: E402
+    is_ingestable_event,
+    parquet_to_event_records,
 )
 
 # --- CONFIGURATION ---
@@ -955,6 +964,220 @@ def _process_otr_resolution_blob(
 
 
 # ==============================================================================================
+# EVENT-CALENDAR PROCESSING (ADR 0004, work order B2)
+#
+# Parquets under gs://<bucket>/events/<dataset>/ are the output of the event
+# extractor (--mode event-calendar). They carry one row per macro EVENT — an
+# economic release, a central-bank meeting, or a sovereign auction — wide and
+# structured, with columns matching macro_data.event_calendar. Destination is
+# event_calendar via upsert_event_calendar (a full-row upsert: a re-ingest of
+# the calendar is idempotent, and an auction's result columns fill in on a
+# post-auction re-upsert of the same natural key).
+#
+# The flow mirrors the metadata-history / otr-resolution flows: dedup hash,
+# RUNNING audit row, atomic critical section, audit flip, archive. WIRP does
+# NOT come through here — per ADR 0004 it is daily time-series data and rides
+# the ordinary data/ → market_data_daily route (PHASE 2).
+# ==============================================================================================
+
+
+def _process_event_blob(
+    bucket: "storage.Bucket",
+    blob: "storage.Blob",
+    engine,
+    temp_dir: Path,
+) -> bool:
+    """Process one event-calendar parquet end-to-end.
+
+    Returns True on success (ingested or skipped-duplicate); False on any
+    failure path. Mirrors ``_process_metadata_history_blob`` /
+    ``_process_otr_resolution_blob``.
+    """
+    filename = Path(blob.name).name
+    local_path = temp_dir / filename
+    load_id: Optional[int] = None
+
+    try:
+        print(f"\nProcessing (event-calendar): {filename}")
+
+        blob.download_to_filename(str(local_path))
+        df = pd.read_parquet(local_path)
+        normalized_data_hash = _compute_normalized_data_hash(df)
+
+        if df.empty:
+            print(f"  [WARNING] File {filename} is empty. Skipping.")
+            return False
+
+        # --- Lineage / dedup -----------------------------------------------
+        # Event artifacts MUST carry lineage. A missing playbook_name is a
+        # malformed artifact (the extractor always stamps it) and would also
+        # break the playbook-keyed dedup — fail loudly rather than load under a
+        # junk name. No load_audit row is created: there is nothing coherent to
+        # attribute it to; the blob stays in events/ for inspection.
+        playbook_name = _first_non_null(df, "playbook_name")
+        if not playbook_name:
+            print(
+                f"  [ERROR] Event parquet {filename} carries no playbook_name — "
+                "malformed artifact (missing lineage). Not ingested."
+            )
+            return False
+        playbook_version = _first_non_null(df, "playbook_version")
+        dataset_name = _first_non_null(df, "dataset_name")
+        requested_start_date = _first_non_null(df, "requested_start_date")
+        requested_end_date = _first_non_null(df, "requested_end_date")
+        extracted_at = _first_non_null(df, "extracted_at")
+        extraction_mode = str(
+            _first_non_null(df, "extraction_mode") or "event_calendar"
+        ).strip().lower()
+
+        if extraction_mode != "event_calendar":
+            print(
+                f"  [WARNING] File {filename} is under events/ but declares "
+                f"extraction_mode={extraction_mode!r}. Skipping."
+            )
+            return False
+
+        latest_success = get_latest_successful_load_for_playbook(engine, playbook_name)
+        latest_success_hash = latest_success.get("source_file_hash") if latest_success else None
+
+        if latest_success_hash and latest_success_hash == normalized_data_hash:
+            print(
+                f"  [SKIP] Parquet hash matches latest successful event load "
+                f"for '{playbook_name}'. Skipping ingestion."
+            )
+            mark_load_audit_skipped_duplicate(
+                engine=engine,
+                playbook_name=playbook_name,
+                playbook_version=playbook_version,
+                source_file_name=filename,
+                source_file_hash=normalized_data_hash,
+                dataset_name=dataset_name,
+                requested_start_date=requested_start_date,
+                requested_end_date=requested_end_date,
+                extracted_at=extracted_at,
+                notes=(
+                    f"Skipped duplicate event-calendar artifact from GCS object "
+                    f"{blob.name}; source_file_hash matches the latest successful "
+                    f"load for this playbook. (extraction_mode={extraction_mode})"
+                ),
+            )
+            try:
+                new_blob_name = blob.name.replace("events/", "archive/events/", 1)
+                bucket.rename_blob(blob, new_blob_name)
+                print(f"  [SUCCESS] Archived duplicate to gs://{BUCKET_NAME}/{new_blob_name}")
+            except Exception as archive_err:
+                print(
+                    f"  [WARNING] Duplicate correctly skipped but GCS archival "
+                    f"failed: {archive_err}. File remains in events/."
+                )
+            return True
+
+        audit_record = {
+            "playbook_name": playbook_name,
+            "playbook_version": playbook_version,
+            "playbook_hash": _first_non_null(df, "playbook_hash") or normalized_data_hash,
+            "git_commit_hash": _first_non_null(df, "git_commit_hash"),
+            "extractor_version": _first_non_null(df, "extractor_version"),
+            "source_file_name": filename,
+            "source_file_hash": normalized_data_hash,
+            "dataset_name": dataset_name,
+            "requested_start_date": requested_start_date,
+            "requested_end_date": requested_end_date,
+            "extracted_at": extracted_at,
+            "status": "RUNNING",
+            "notes": (
+                f"Processing GCS object {blob.name} | "
+                f"extraction_mode={extraction_mode}"
+            ),
+        }
+
+        print("  [DB] Inserting load_audit record...")
+        load_id = insert_load_audit(engine, audit_record)
+
+        # --- Parse the artifact; FAIL on any malformed row ----------------
+        # Events carry no per-row status field (unlike OTR resolution), so a
+        # row failing the natural-key / closed-category gate is not an expected
+        # outcome — it is a malformed artifact (an extractor bug). Fail the
+        # whole load loudly (P6): upsert_event_calendar is a full-row upsert,
+        # so a half-ingested calendar must never be presented as a clean load.
+        records = parquet_to_event_records(df)
+        ingestable: List[Dict[str, Any]] = []
+        malformed: List[Dict[str, Any]] = []
+        for rec in records:
+            (ingestable if is_ingestable_event(rec) else malformed).append(rec)
+
+        if malformed:
+            preview = "; ".join(
+                f"{r.get('event_type')}/{r.get('country')}/{r.get('release_date')}"
+                for r in malformed[:5]
+            )
+            msg = (
+                f"event-calendar parquet {filename} has {len(malformed)} malformed "
+                f"row(s) — each missing a natural-key field (event_type / country / "
+                f"release_date) or carrying an event_category outside the closed "
+                f"family: {preview}. Aborting; re-extract the artifact clean."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        if not ingestable:
+            msg = f"event-calendar parquet {filename} produced 0 event rows."
+            print(f"  [WARNING] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        print(f"  [INFO] {len(ingestable)} event row(s), all well-formed.")
+
+        # --- Critical destructive section ---------------------------------
+        # The upsert + audit flip commit atomically or roll back together.
+        with engine.begin() as conn:
+            for rec in ingestable:
+                rec["load_id"] = load_id
+            upsert_event_calendar(conn, ingestable)
+            update_load_audit_status(
+                conn,
+                load_id,
+                "SUCCESS",
+                (
+                    f"Successfully loaded event-calendar from GCS object "
+                    f"{blob.name} | extraction_mode={extraction_mode} | "
+                    f"events={len(ingestable)}"
+                ),
+            )
+
+        # --- Archive (best-effort) -----------------------------------------
+        try:
+            new_blob_name = blob.name.replace("events/", "archive/events/", 1)
+            bucket.rename_blob(blob, new_blob_name)
+            print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+        except Exception as archive_err:
+            print(
+                f"  [WARNING] DB load succeeded but GCS archival failed: "
+                f"{archive_err}. File remains in events/; dedup hash will skip "
+                "it on next run."
+            )
+
+        return True
+
+    except Exception as exc:
+        print(f"  [ERROR] Failed to process event-calendar parquet {filename}: {exc}")
+        if load_id is not None:
+            try:
+                update_load_audit_status(
+                    engine, load_id, "FAILED",
+                    f"Processing failed for GCS object {blob.name}: {exc}",
+                )
+            except Exception as audit_err:
+                print(f"  [ERROR] Could not update load_audit status: {audit_err}")
+        return False
+
+    finally:
+        if local_path.exists():
+            local_path.unlink()
+
+
+# ==============================================================================================
 # MAIN PIPELINE
 # ==============================================================================================
 def run_ingestion_pipeline():
@@ -990,16 +1213,26 @@ def run_ingestion_pipeline():
         b for b in bucket.list_blobs(prefix="otr_resolution/")
         if b.name.endswith(".parquet")
     ]
+    event_blobs = [
+        b for b in bucket.list_blobs(prefix="events/")
+        if b.name.endswith(".parquet")
+    ]
     parquet_blobs = timeseries_blobs  # Legacy alias for the time-series loop below.
 
-    if not timeseries_blobs and not metadata_history_blobs and not otr_resolution_blobs:
+    if (
+        not timeseries_blobs
+        and not metadata_history_blobs
+        and not otr_resolution_blobs
+        and not event_blobs
+    ):
         print("[INFO] No new Parquet files found in the inbox. Exiting cleanly.")
         return
 
     print(
         f"[INFO] Found {len(timeseries_blobs)} time-series file(s), "
-        f"{len(metadata_history_blobs)} metadata-history file(s) and "
-        f"{len(otr_resolution_blobs)} otr-resolution file(s) to process."
+        f"{len(metadata_history_blobs)} metadata-history file(s), "
+        f"{len(otr_resolution_blobs)} otr-resolution file(s) and "
+        f"{len(event_blobs)} event-calendar file(s) to process."
     )
 
     temp_dir = current_dir / "temp_processing"
@@ -1302,6 +1535,25 @@ def run_ingestion_pipeline():
         )
         for blob in otr_resolution_blobs:
             ok = _process_otr_resolution_blob(
+                bucket=bucket,
+                blob=blob,
+                engine=engine,
+                temp_dir=temp_dir,
+            )
+            if not ok:
+                any_failures = True
+
+    # --- PHASE 5: EVENT-CALENDAR PROCESSING (ADR 0004) ---
+    # Independent of the loops above. Each parquet is processed via
+    # _process_event_blob, which manages its own dedup check, audit row,
+    # atomic destructive section, and archive — same contract as the other
+    # flows. Destination is macro_data.event_calendar.
+    if event_blobs:
+        print(
+            f"\n[PHASE 5] Processing {len(event_blobs)} event-calendar parquet(s)..."
+        )
+        for blob in event_blobs:
+            ok = _process_event_blob(
                 bucket=bucket,
                 blob=blob,
                 engine=engine,

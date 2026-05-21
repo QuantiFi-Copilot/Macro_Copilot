@@ -115,14 +115,31 @@ services:
     image: macro-project:latest
     container_name: macro-push-playbooks
     restart: "no" # Runs once and exits cleanly
+    depends_on:
+      tsdb:
+        condition: service_healthy
     working_dir: /app
     volumes:
       - .:/app
       - ./.env:/app/.env
     environment:
+      # The render step (step 2 below) expands resolver-enabled playbooks
+      # against macro_data.otr_history, so this service needs the DB.
+      DB_HOST: tsdb
+      DB_PORT: 5432
+      DB_USER: quantuser
+      DB_PASSWORD: myStrongPass
+      DB_NAME: macrodata
       TZ: Europe/London
-    # Executes the push script
-    command: ["micromamba", "run", "-n", "macro-env", "python", "utils/push_playbooks.py"]
+    # Pushes EVERY playbook in one run (ADR 0007):
+    #   1. push_playbooks.py            — static playbooks, uploaded verbatim;
+    #                                     resolver-enabled playbooks are
+    #                                     deliberately skipped here.
+    #   2. render_effective_universe.py — resolver-enabled playbooks, whose
+    #                                     universe is expanded (seed + every
+    #                                     non-matured bond in otr_history)
+    #                                     before upload.
+    command: ["micromamba", "run", "-n", "macro-env", "sh", "-c", "python utils/push_playbooks.py && python utils/render_effective_universe.py"]
     
   ########################################## BI & VISUALIZATION ##########################################
   metabase:

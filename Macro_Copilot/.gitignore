@@ -3,3 +3,4 @@ secure_keys/
 .env
 tmp
 ingestion/temp_processing/
+utils/temp_rendered/

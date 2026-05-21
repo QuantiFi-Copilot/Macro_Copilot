@@ -540,6 +540,52 @@ WHEN: Before any primitive relies on OTR history PRE-DATING the resolver's
       date. NOT needed for forward-looking OTR / off-the-run analytics over the
       resolver-covered window.
 
+### 28. D-auctions (sovereign auction calendar / results) deferred from B2 v1
+
+WHERE: work order B2 (event data); macro_data.event_calendar — the typed
+       auction-result columns `high_yield`, `bid_to_cover`, `tail_bps`,
+       `indirect_pct` (landed empty by B1 / ADR 0004); a future
+       `scripts/` auction-discovery probe + a D-auctions event-playbook
+       increment.
+WHAT: B2 ships THREE of its four event families — economic releases,
+      central-bank meetings, and WIRP. The fourth — sovereign auctions
+      (D-auctions) — is deferred. Two Bloomberg verification rounds
+      (`scripts/event_data_bloomberg_check.py`) confirmed the clean auction
+      fields (`YLD_CNV_FROM_HIGH` = auction high yield, verified by the
+      tenor-ordered curve 4.04/4.55/5.08 across 2Y/10Y/30Y;
+      `MOST_RECENT_BID_COVER_RATIO`; the bidder-amount fields; announcement
+      / issue dates) but left three gaps unresolved:
+        (a) the auction DATE — `PRE_ANNOUNCED_AUCTION_DATE` is NULL on
+            settled auctions; no clean settled-auction-date field found.
+        (b) the TAIL — the only candidate, `MOST_REC_DEBT_AUCTION_STO_YIELD`,
+            returns tail-magnitude values (0.002–0.006, tenor-increasing)
+            but is NAMED "stop yield" — a name/value contradiction; shipping
+            `tail_bps` off it is unsafe (P2).
+        (c) the bidder PERCENTAGES — Bloomberg exposes only absolute dollar
+            amounts (indirect / primary-dealer / total issued); `indirect_pct`
+            would have to be COMPUTED, which is a P12 judgement (total-issued
+            ≠ total-accepted exactly), not a clean ingest.
+IMPACT: The `event_calendar` auction-result columns stay empty — B2 v1 writes
+      no `auction` rows. The sole consumer, the Phase-3 `auction_tail`
+      primitive, does NOT exist yet, and ITS core inputs (`tail_bps` +
+      `indirect_pct`) are exactly the two unresolved fields — so deferring
+      costs nothing today. The three shipped families (economic releases,
+      central-bank meetings, WIRP — feeding cpi_surprise / nfp_surprise /
+      fomc_surprise + the WIRP layer) are unaffected.
+FIX: A focused auction-discovery round — operator FLDS-hunts an unambiguous
+      settled-auction-date field and a literally-named tail field on a settled
+      UST; resolve the `indirect_pct` P12 question (ingest the amounts and
+      compute the % downstream with disclosure, or find a real percentage
+      field). Then a D-auctions increment: an event playbook
+      (`event_category = auction`), the extractor's auction handling, ingest.
+      The `event_calendar` table already carries the typed auction columns
+      (ADR 0004) — no schema change when D-auctions is picked up.
+EFFORT: Medium — one operator discovery round + one event-playbook increment.
+WHEN: Before the Phase-3 `auction_tail` primitive or the auction event-study
+      template is built — best done WITH that primitive, so the exact field
+      needs are concrete. NOT needed for B2's economic-release / central-bank /
+      WIRP families.
+
 
 ## Phase 1 closure punch list (for reference)
 
