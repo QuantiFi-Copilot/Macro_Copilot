@@ -12,11 +12,13 @@
 
 **Branch:** `codex/fx-data-universe-extension` — stacked on `codex/fx-on-latest-build` (PR #178, draft).
 
-**Phase in flight:** **Phase A — Cash forwards depth** (step 1 of 8 — awaiting Bloomberg ticker verification).
+**Phase in flight:** **Phase A — Cash forwards depth** (step 2 of 8 — Bloomberg extraction pending).
 
-**Immediate next action:** Sacha verifies Bloomberg ticker formats and historical depth from the university terminal. See [Open questions / blockers](#open-questions--blockers) for the exact template to return.
+**Immediate next action:** Sacha runs `incremental_extractor.py --playbook fx_forwards` from the university terminal to extract the 30-ticker forwards universe from Bloomberg into GCS, then `ingest_parquet.py` to land it in Postgres, then re-runs the readiness gate in `--strict-metadata` mode.
 
-**Nothing should be coded until that verification is complete.**
+**Step 1 (ticker verification) ✅ complete.** Long format `<PAIR><TENOR> Curncy` verified on Bloomberg for all 6 G10 pairs × 5 tenors = 30 tickers, historical depth uniform from 2000-01-03. Canonical 1Y tenor is `12M`. See [Decision log](#decision-log) for details.
+
+**Step 2 in progress:** the canonical `fx_forwards.yml` v2.0 playbook is now committed (30 tickers, start_date 2000-01-01); the legacy `fx_forwards_curve.yml` scaffold has been deleted. Bloomberg extraction pending.
 
 ---
 
@@ -87,9 +89,9 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 
 **8-step plan (in order):**
 
-1. **Confirm Bloomberg tickers.** Verify exact format (`12M` vs `1Y`) and historical depth for all 6 pairs × 5 tenors = 30 tickers. See [Open questions / blockers](#open-questions--blockers).
-2. **Extend `fx_forwards.yml`** for all G10 forward tenors. From 6 tickers (1M-only) to ~30 tickers.
-3. **Run extraction → ingestion → readiness gate strict mode.** Must pass clean.
+1. ✅ **Confirm Bloomberg tickers.** Done 2026-05-21. Long format `<PAIR><TENOR> Curncy` valid for all 30 combinations, history from 2000-01-03. Canonical 1Y is `12M`.
+2. 🟡 **Extend `fx_forwards.yml`** for all G10 forward tenors. **Done in repo (canonical v2.0, 30 tickers, start 2000-01-01); legacy `fx_forwards_curve.yml` deleted.** Pending: actual Bloomberg extraction from the playbook.
+3. **Run extraction → ingestion → readiness gate strict mode.** Must pass clean. Expected: 21 → 30 forward tickers present, no `warn`, no `fail`.
 4. **Audit `calculate_fx_carry`** for tenor conventions: annualisation by tenor, day-count basis (ACT/360 for USD-funding, ACT/365 for JPY/GBP), JPY divisor still correct (it is — see Conventions).
 5. **Add `get_fx_forward_curve`** primitive: returns the forward curve (all available tenors) for a given pair.
 6. **Add `scan_fx_carry`** primitive: cross-sectional carry ranking at a chosen tenor.
@@ -198,6 +200,32 @@ Each universe entry should include (minimally) for FX:
 
 The readiness gate `tests/test_fx_data_readiness.py` validates these fields. New playbooks must follow the shape.
 
+### Legacy FX DB state (pre-Phase-A audit, 2026-05-21)
+
+The FX data layer had been ingested in several waves before this branch existed, and the load_audit lineage is mixed. Concretely, before the canonical migration:
+
+| Legacy dataset_name | Tickers | Notes |
+|---|---|---|
+| `spot_fx` | 6 G10 majors (EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USDCHF) | Source: `spot_fx.yml` |
+| `fx_forwards_1m` | 3 only (AUDUSD1M, USDCAD1M, USDCHF1M) | Partial — the other 3 majors at 1M lived in `fx_forwards_curve` |
+| `fx_forwards_curve` | 8 (EURUSD 1W/1M/3M/6M, GBPUSD 1M/3M, USDJPY 1M/3M) | Partial scaffold — overlapping scope with `fx_forwards_1m` |
+| `fx_vol` | 6 ATM-1M vol tickers | Scaffold for Phase E |
+| `fx_crosses` | 6 G10 crosses (EURGBP, EURJPY, …) | Scaffold for Phase B |
+| `macro_risk_proxies` | 6 risk indicators (SPX, VIX, MOVE, DXY, CL1, XAU) | Not strictly FX |
+
+**The 1M forwards smoke test passed by accident** — the carry tool fetched its 6 tickers from `instrument_master` without caring about `load_audit.dataset_name`, so the 3-from-`fx_forwards_1m` + 3-from-`fx_forwards_curve` split was invisible to the tool.
+
+**Phase A canonicalises this** by replacing `fx_forwards.yml` (`playbook_name: fx_forwards_1m`) and the partial `fx_forwards_curve.yml` with a single canonical `fx_forwards.yml` v2.0 (`playbook_name: fx_forwards`, 30 tickers, start 2000-01-03).
+
+**Ingester behavior during the canonical migration (Codex correction):** the ingester's destructive section only deletes `market_data_daily` rows whose `load_audit.playbook_name` matches the *current* playbook_name. So:
+
+- Old `load_audit` rows for `fx_forwards_1m` and `fx_forwards_curve` **stay** for audit history.
+- Overlapping `market_data_daily` rows (e.g. EURUSD1M for dates already covered) get their `load_id` superseded by the new canonical load via the (instrument_id, trade_date, field_name) upsert.
+- New rows (the 19 new tickers + the 2000-2005 backfill on existing tickers) are added.
+- No orphan rows are expected because `fx_forwards_curve`'s entire universe is now absorbed by `fx_forwards` v2.0.
+
+**Other scaffolds** (`fx_vol`, `fx_crosses`, `macro_risk_proxies`) are out of Phase A scope and will be audited / canonicalised in their respective phases (B, B, ?, E).
+
 ### Tickers without metadata in DB
 
 If a playbook is updated with new metadata fields after data has already been ingested, run:
@@ -223,47 +251,47 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-21 | ADR 0007 written; `Domain.FX` added to the orchestrator closed family | P11 requires an ADR for new domains |
 | 2026-05-21 | Phase A scope locked at 2 primitives (`get_fx_forward_curve`, `scan_fx_carry`) + 2 widgets, after dropping `calculate_fx_carry_curve` as likely redundant | Codex review — avoid encyclopedic accumulation |
 | 2026-05-21 | This ROADMAP file created | Sreeram suggestion — survive context loss between sessions |
+| 2026-05-21 | Phase A step 1 (Bloomberg ticker verification) complete. Long format `<PAIR><TENOR> Curncy` valid for all 30 (6 G10 pairs × 5 tenors). History from 2000-01-03 uniform. Canonical 1Y is `12M`, not `1Y`. | BBG verification by Sacha + ChatGPT-assisted BDH formula in Excel |
+| 2026-05-21 | Canonical playbook migration: `fx_forwards.yml` (v1, `playbook_name: fx_forwards_1m`) + `fx_forwards_curve.yml` (partial scaffold) → consolidated into `fx_forwards.yml` v2.0 (`playbook_name: fx_forwards`, 30 tickers, start 2000-01-01). Convention now aligns with `runbook.md` rule "playbook_name must match filename stem". | Codex review — naming convention violation + duplicate scaffold |
+| 2026-05-21 | `fx_forwards_curve.yml` deleted from repo (no other references found via `rg fx_forwards_curve`). Its 8 tickers are subsumed by the canonical v2.0 universe. | Discipline: single canonical source of truth per dataset |
 
 ---
 
 ## Open questions / blockers
 
-### 🟡 BLOCKER: Bloomberg ticker verification (Phase A step 1)
+### 🟡 BLOCKER: Bloomberg extraction for canonical `fx_forwards` v2.0 (Phase A step 3)
 
-**Owner:** Sacha (university terminal access).
+**Owner:** Sacha (university terminal with Bloomberg + GCP access).
 
-**What to verify:** for each of the 6 G10 pairs × 5 tenors = 30 candidate tickers, confirm:
-1. The ticker exists on Bloomberg.
-2. The earliest available history date for `PX_LAST`.
-3. Whether `1Y` is the canonical format or `12M` (some pairs alias both).
+**Status:** the canonical playbook `fx_forwards.yml` v2.0 is committed on this branch. Bloomberg extraction has not yet been run for it.
 
-**Tickers to check** (G10 majors):
+**Sequence to execute from the university terminal:**
 
-```
-EURUSD{1W,1M,3M,6M,12M-or-1Y} Curncy
-GBPUSD{1W,1M,3M,6M,12M-or-1Y} Curncy
-USDJPY{1W,1M,3M,6M,12M-or-1Y} Curncy
-AUDUSD{1W,1M,3M,6M,12M-or-1Y} Curncy
-USDCAD{1W,1M,3M,6M,12M-or-1Y} Curncy
-USDCHF{1W,1M,3M,6M,12M-or-1Y} Curncy
-```
+```bash
+# 1. Republish the updated playbook to GCS (the extractor reads from GCS)
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  python utils/push_playbooks.py
 
-**Return format:**
+# 2. Bloomberg → GCS parquet (full historical, 2000-01-03 onwards, 30 tickers)
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  python utils/historical_extractor.py --playbook fx_forwards
 
-```
-Field checked = PX_LAST
-Historical range checked = 2005-01-01 to latest available
+# 3. GCS parquet → Postgres (idempotent upsert)
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  python ingestion/ingest_parquet.py
 
-1Y format = [12M or 1Y]   ← the canonical one
+# 4. Re-sync instrument_master.attributes from the playbook YAML
+#    (in case some new tickers landed without all the metadata fields)
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  python utils/refresh_instrument_metadata.py --playbook fx_forwards --apply
 
-1W   -> all 6 pairs OK [earliest start: YYYY-MM-DD]
-1M   -> all 6 pairs OK [earliest start: YYYY-MM-DD]
-3M   -> all 6 pairs OK [earliest start: YYYY-MM-DD]
-6M   -> all 6 pairs OK [earliest start: YYYY-MM-DD]
-[12M/1Y] -> all 6 pairs OK [earliest start: YYYY-MM-DD]
-
-Missing/weird:
-- [None, or list specific exceptions e.g. "USDCHF12M only from 2008"]
+# 5. Strict readiness gate — must pass clean
+docker compose exec rates-agent-dev micromamba run -n macro-env \
+  python tests/test_fx_data_readiness.py --strict-metadata
 ```
 
-**Why this gate matters:** the alternative (guess the format, run extraction, discover mid-pipeline that 1Y doesn't exist for X pairs) wastes a full Bloomberg extraction cycle. Verifying first is 30 minutes and saves a day.
+**Expected result of the readiness gate:** 30 forward tickers present (was 6/3 + 8 across two datasets pre-migration). All optional metadata fields match playbook. No `warn`, no `fail`.
+
+**If anything in steps 2-3 fails:** investigate before re-running. Common pitfalls: Bloomberg session timeout, GCS auth, Postgres row count sanity gate (it refuses to proceed if incoming count is <80% of previous — irrelevant here since we're growing the universe).
+
+**Past resolved blocker (ticker verification):** see [Decision log](#decision-log) entry "Phase A step 1 complete" — all 30 tickers validated on Bloomberg with uniform 2000-01-03 history, canonical 1Y = `12M`.
