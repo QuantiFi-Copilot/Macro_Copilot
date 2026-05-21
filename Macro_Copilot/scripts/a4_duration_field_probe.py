@@ -2,46 +2,45 @@
 a4_duration_field_probe.py
 ==========================
 
-Operator-side Bloomberg verification — work order A4, focused follow-up probe.
+Operator-side Bloomberg verification — work order A4.  MACHINE-ROBUST,
+SELF-RESOLVING version.
 
-WHY THIS SCRIPT EXISTS
-----------------------
-The real-bond confirmation run (sovereign_bonds_realbond_bloomberg_check.py)
-proved that on an individual cash bond, bdh historises YLD_YTM_MID, RISK_MID
-(DV01), PX_DIRTY_MID, PX_CLEAN_MID and ASSET_SWAP_SPD_MID — but NOT
-DUR_ADJ_MID (modified duration), which came back only as a bdp snapshot.
+WHY THIS VERSION EXISTS
+-----------------------
+An earlier version of this probe hardcoded `/cusip/<cusip>` query strings
+copied from a previous run on a different Bloomberg PC. On another terminal
+that form did not resolve, so every query returned nothing and the report
+falsely read "no duration field". This version removes that brittleness: it
+starts from the plain `GT.. Govt` generic tickers (which resolve on ANY live
+Bloomberg terminal), resolves each to its underlying cash bond, and TRIES
+SEVERAL security-identifier forms (`/isin/…`, `/cusip/…`, `<isin> Govt`, …)
+until one resolves on THIS terminal. It then reports which form worked — that
+is exactly the ticker form A4-4's `sovereign_cash_bonds.yml` must use.
 
-This probe answers one focused question: **is there ANY Bloomberg mnemonic
-that historises modified / adjusted duration via bdh on a cash bond?**
+WHAT THIS RUN ANSWERS (one run, complete picture)
+-------------------------------------------------
+  1. THE OPEN QUESTION — does ANY Bloomberg mnemonic historise modified /
+     adjusted duration via `bdh` on a cash bond? Eight candidates are probed.
+  2. RECONFIRMS, on this machine, the five A4-4 `target_metrics` an earlier
+     run verified: YLD_YTM_MID, RISK_MID (DV01), PX_DIRTY_MID, PX_CLEAN_MID,
+     ASSET_SWAP_SPD_MID.
+  3. REPORTS the bond-identifier form that resolves on this terminal.
 
-It tests a set of candidate duration field names — via bdh AND bdp — on the
-14 real bonds the realbond run already resolved (their /cusip/ query forms are
-known to work, so no re-resolution is needed). Two of the candidates are
-controls: DUR_ADJ_MID (known bdp-only) and RISK_MID (known to historise via
-bdh) — they confirm the probe itself is behaving.
-
-The decisive ticker is the UK 2Y's underlying bond (/cusip/YT0326355, issued
-2024-11, ~393 business days of history): a candidate that historises will
-show ~380+ points there; one that does not will show 0.
-
-OUTCOME -> A4-4
----------------
-  * If a candidate returns a clean bdh series, A4-4's sovereign_cash_bonds.yml
-    adds it as the modified-duration target_metric.
-  * If every candidate fails bdh (duration is snapshot-only), A4-4 ships DV01
-    (RISK_MID) as the risk measure; modified duration is then either derived
-    (ModDur = RISK_MID * 100 / PX_DIRTY_MID — an identity, with full P12
-    disclosure) or deferred. This probe gathers the evidence; it does not
-    decide.
+SAFETY
+------
+RISK_MID is the positive control — it is proven to historise via `bdh`. A
+PREFLIGHT check (a plain-ticker query) aborts the run loudly if the terminal
+is not live, and a control check invalidates the report if RISK_MID comes back
+empty — so the script can never again emit a misleading all-zero verdict.
 
 DEPLOYMENT
 ----------
-Self-contained — stdlib + pandas + xbbg. Copy to the Bloomberg terminal host:
+Self-contained — stdlib + pandas + xbbg. Run on the Bloomberg PC:
 
     python a4_duration_field_probe.py
 
-Outputs land in ./a4_duration_probe_<TIMESTAMP>/ — a text report + one CSV.
-Return both; the FINAL SUMMARY block is the pasteable digest.
+Outputs land in ./a4_duration_probe_<TIMESTAMP>/ — a text report + two CSVs.
+Return all of them; the FINAL SUMMARY block is the pasteable digest.
 """
 
 from __future__ import annotations
@@ -68,46 +67,54 @@ except ImportError as exc:  # pragma: no cover — operator-machine dependency
 # ---------------------------------------------------------------------------
 LOOKBACK_YEARS = 3
 
-# The 14 real bonds resolved by sovereign_bonds_realbond_bloomberg_check.py.
-# These /cusip/ query forms are already confirmed to resolve via bdp/bdh, so
-# this probe needs no re-resolution step. `history_hint` flags the seasoned
-# bond — the decisive test for "does this field historise".
-RESOLVED_BONDS: List[Dict[str, str]] = [
-    {"query": "/cusip/91282CQL8", "source_generic": "GT2 Govt",      "country": "US",        "tenor": "2Y",  "history_hint": "new (~2026-04)"},
-    {"query": "/cusip/91282CQQ7", "source_generic": "GT10 Govt",     "country": "US",        "tenor": "10Y", "history_hint": "new (~2026-05)"},
-    {"query": "/cusip/912810UU0", "source_generic": "GT30 Govt",     "country": "US",        "tenor": "30Y", "history_hint": "new (~2026-05)"},
-    {"query": "/cusip/DI7485532", "source_generic": "GTDEM2Y Govt",  "country": "Germany",   "tenor": "2Y",  "history_hint": "new (~2026-04)"},
-    {"query": "/cusip/DC6244172", "source_generic": "GTDEM10Y Govt", "country": "Germany",   "tenor": "10Y", "history_hint": "~2026-01 (~94d)"},
-    {"query": "/cusip/YT0326355", "source_generic": "GTGBP2Y Govt",  "country": "UK",        "tenor": "2Y",  "history_hint": "SEASONED ~2024-11 (~393d) — decisive test"},
-    {"query": "/cusip/YL1322681", "source_generic": "GTGBP10Y Govt", "country": "UK",        "tenor": "10Y", "history_hint": "~2025-09 (~183d)"},
-    {"query": "/cusip/DJ9500716", "source_generic": "GTJPY2Y Govt",  "country": "Japan",     "tenor": "2Y",  "history_hint": "new (~2026-05)"},
-    {"query": "/cusip/DH8120601", "source_generic": "GTJPY10Y Govt", "country": "Japan",     "tenor": "10Y", "history_hint": "~2026-04 (~33d)"},
-    {"query": "/cusip/YL7489823", "source_generic": "GTFRF10Y Govt", "country": "France",    "tenor": "10Y", "history_hint": "~2025-09 (~185d)"},
-    {"query": "/cusip/YJ6499398", "source_generic": "GTITL10Y Govt", "country": "Italy",     "tenor": "10Y", "history_hint": "~2025-11 (~144d)"},
-    {"query": "/cusip/135087T53", "source_generic": "GTCAD10Y Govt", "country": "Canada",    "tenor": "10Y", "history_hint": "~2025-07 (~219d)"},
-    {"query": "/cusip/YR1520430", "source_generic": "GTAUD10Y Govt", "country": "Australia", "tenor": "10Y", "history_hint": "~2025-02 (~331d)"},
-    {"query": "/cusip/YI1701444", "source_generic": "GTESP10Y Govt", "country": "Spain",     "tenor": "10Y", "history_hint": "~2026-01 (~84d)"},
+# A plain ticker used only for the connectivity preflight — it resolves on any
+# live, logged-in Bloomberg terminal.
+CONNECTIVITY_TICKER = "GT10 Govt"
+
+# The GT-generic benchmark universe — plain tickers, resolve on any terminal.
+# Each is resolved to its current underlying cash bond at run time.
+GENERIC_UNIVERSE: List[Dict[str, str]] = [
+    {"ticker": "GT2 Govt",      "curve_family": "UST",         "country": "US",        "tenor": "2Y"},
+    {"ticker": "GT10 Govt",     "curve_family": "UST",         "country": "US",        "tenor": "10Y"},
+    {"ticker": "GT30 Govt",     "curve_family": "UST",         "country": "US",        "tenor": "30Y"},
+    {"ticker": "GTDEM2Y Govt",  "curve_family": "DE_BUND",     "country": "Germany",   "tenor": "2Y"},
+    {"ticker": "GTDEM10Y Govt", "curve_family": "DE_BUND",     "country": "Germany",   "tenor": "10Y"},
+    {"ticker": "GTGBP2Y Govt",  "curve_family": "UK_GILT",     "country": "UK",        "tenor": "2Y"},
+    {"ticker": "GTGBP10Y Govt", "curve_family": "UK_GILT",     "country": "UK",        "tenor": "10Y"},
+    {"ticker": "GTJPY2Y Govt",  "curve_family": "JGB",         "country": "Japan",     "tenor": "2Y"},
+    {"ticker": "GTJPY10Y Govt", "curve_family": "JGB",         "country": "Japan",     "tenor": "10Y"},
+    {"ticker": "GTFRF10Y Govt", "curve_family": "FR_OAT",      "country": "France",    "tenor": "10Y"},
+    {"ticker": "GTITL10Y Govt", "curve_family": "IT_BTP",      "country": "Italy",     "tenor": "10Y"},
+    {"ticker": "GTCAD10Y Govt", "curve_family": "CANADA_GOVT", "country": "Canada",    "tenor": "10Y"},
+    {"ticker": "GTAUD10Y Govt", "curve_family": "AU_GOVT",     "country": "Australia", "tenor": "10Y"},
+    {"ticker": "GTESP10Y Govt", "curve_family": "ES_BONO",     "country": "Spain",     "tenor": "10Y"},
 ]
 
-# The decisive bond — the longest available history.
-REFERENCE_BOND_QUERY = "/cusip/YT0326355"
-
-# Candidate modified/adjusted-duration mnemonics. DUR_ADJ_MID and RISK_MID are
-# controls (known bdp-only / known bdh-OK respectively).
-DURATION_CANDIDATES: List[str] = [
-    "DUR_ADJ_MID",        # control — known bdp-only on a real bond
-    "DUR_ADJ_BID",
-    "DUR_ADJ_ASK",
-    "DUR_MID",
-    "MOD_DUR",
-    "MODIFIED_DURATION",
-    "MAC_DUR_MID",        # Macaulay duration (convertible to modified)
-    "DUR_ADJ_MTY_MID",
-    "RISK_MID",           # positive control — known to historise via bdh
+# Reference fields read off the generic to identify its underlying cash bond.
+UNDERLYING_ID_FIELDS: List[str] = [
+    "ID_ISIN", "ID_CUSIP", "SECURITY_DES", "NAME", "CPN", "MATURITY", "ISSUE_DT",
 ]
 
-# Plausible band for a modified/Macaulay duration value (years).
-DURATION_BAND = (0.0, 60.0)
+# Fields probed on each resolved real bond. Each row is {field, purpose}.
+# RISK_MID is both an A4-4 field and the positive control.
+PROBE_FIELDS: List[Dict[str, str]] = [
+    {"field": "YLD_YTM_MID",        "purpose": "A4-4 confirm"},
+    {"field": "RISK_MID",           "purpose": "A4-4 confirm + CONTROL"},
+    {"field": "PX_DIRTY_MID",       "purpose": "A4-4 confirm"},
+    {"field": "PX_CLEAN_MID",       "purpose": "A4-4 confirm"},
+    {"field": "ASSET_SWAP_SPD_MID", "purpose": "A4-4 confirm"},
+    {"field": "DUR_ADJ_MID",        "purpose": "duration candidate"},
+    {"field": "DUR_ADJ_BID",        "purpose": "duration candidate"},
+    {"field": "DUR_ADJ_ASK",        "purpose": "duration candidate"},
+    {"field": "DUR_MID",            "purpose": "duration candidate"},
+    {"field": "MOD_DUR",            "purpose": "duration candidate"},
+    {"field": "MODIFIED_DURATION",  "purpose": "duration candidate"},
+    {"field": "MAC_DUR_MID",        "purpose": "duration candidate"},
+    {"field": "DUR_ADJ_MTY_MID",    "purpose": "duration candidate"},
+]
+
+CONTROL_FIELD = "RISK_MID"
+DURATION_FIELDS = [p["field"] for p in PROBE_FIELDS if p["purpose"] == "duration candidate"]
 
 
 # ---------------------------------------------------------------------------
@@ -152,34 +159,101 @@ def clean_scalar(value: Any) -> Any:
     return value
 
 
+def _coerce_to_pandas(obj: Any) -> Any:
+    """Return a pandas DataFrame/Series regardless of which dataframe library
+    xbbg used.
+
+    Older xbbg returns classic pandas. Newer xbbg returns a Narwhals
+    DataFrame wrapping pyarrow/polars. A Narwhals frame and a pyarrow Table
+    both expose ``.to_pandas()``; failing that, ``narwhals.to_native()``
+    unwraps to the underlying frame. On an old-xbbg machine the input is
+    already pandas and this returns immediately — narwhals is never imported.
+    """
+    if obj is None or isinstance(obj, (pd.DataFrame, pd.Series)):
+        return obj
+    to_pandas = getattr(obj, "to_pandas", None)
+    if callable(to_pandas):
+        try:
+            converted = to_pandas()
+            if isinstance(converted, (pd.DataFrame, pd.Series)):
+                return converted
+        except Exception:
+            pass
+    try:
+        import narwhals as nw
+        native = nw.to_native(obj)
+        if isinstance(native, (pd.DataFrame, pd.Series)):
+            return native
+        native_to_pandas = getattr(native, "to_pandas", None)
+        if callable(native_to_pandas):
+            converted = native_to_pandas()
+            if isinstance(converted, (pd.DataFrame, pd.Series)):
+                return converted
+    except Exception:
+        pass
+    return obj
+
+
 def normalize_bdp_output(df: Any, fallback_ticker: str) -> Dict[str, Any]:
+    df = _coerce_to_pandas(df)
     if df is None:
         return {}
     if isinstance(df, pd.Series):
         return {str(k).upper(): clean_scalar(v) for k, v in df.items()}
-    if isinstance(df, pd.DataFrame):
-        if df.empty:
-            return {}
-        if fallback_ticker in df.index:
-            row = df.loc[fallback_ticker]
-            if isinstance(row, pd.DataFrame):
-                row = row.iloc[0]
-            return {str(k).upper(): clean_scalar(v) for k, v in row.items()}
-        if len(df) == 1:
-            row = df.iloc[0]
-            return {str(k).upper(): clean_scalar(v) for k, v in row.items()}
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return {}
+    cols = {str(c).lower(): c for c in df.columns}
+    # Long / tidy shape (newer xbbg): one row per (ticker, field); columns
+    # include 'field' and 'value'.
+    if "field" in cols and "value" in cols:
+        work = df
+        if "ticker" in cols:
+            tmatch = df[df[cols["ticker"]].astype(str).str.upper()
+                        == str(fallback_ticker).upper()]
+            if not tmatch.empty:
+                work = tmatch
+        return {
+            str(f).upper(): clean_scalar(v)
+            for f, v in zip(work[cols["field"]], work[cols["value"]])
+        }
+    # Wide shape (older xbbg): ticker index, Bloomberg fields as columns.
+    if fallback_ticker in df.index:
+        row = df.loc[fallback_ticker]
+        if isinstance(row, pd.DataFrame):
+            row = row.iloc[0]
+        return {str(k).upper(): clean_scalar(v) for k, v in row.items()}
+    if len(df) == 1:
+        row = df.iloc[0]
+        return {str(k).upper(): clean_scalar(v) for k, v in row.items()}
     return {}
 
 
 def normalize_bdh_output(df: Any, requested_field: str) -> pd.DataFrame:
+    empty = pd.DataFrame(columns=["date", "value"])
+    df = _coerce_to_pandas(df)
     if df is None:
-        return pd.DataFrame(columns=["date", "value"])
+        return empty
     if isinstance(df, pd.Series):
         out = df.to_frame(name="value").reset_index()
         out.columns = ["date", "value"]
         return out
     if not isinstance(df, pd.DataFrame) or df.empty:
-        return pd.DataFrame(columns=["date", "value"])
+        return empty
+    cols = {str(c).lower(): c for c in df.columns}
+    # Long / tidy shape (newer xbbg): a 'value' column + a date column,
+    # optionally a 'field' column to filter the requested field on.
+    if "value" in cols and ("date" in cols or "index" in cols):
+        date_col = cols.get("date") or cols.get("index")
+        work = df
+        if "field" in cols:
+            fmatch = df[df[cols["field"]].astype(str).str.upper()
+                        == requested_field.upper()]
+            if not fmatch.empty:
+                work = fmatch
+        return work[[date_col, cols["value"]]].rename(
+            columns={date_col: "date", cols["value"]: "value"}
+        ).reset_index(drop=True)
+    # Wide shape (older xbbg): date index, field (or ticker/field) columns.
     out = df.copy().reset_index()
     if len(out.columns) == 2:
         out.columns = ["date", "value"]
@@ -233,12 +307,114 @@ def history_points(df: pd.DataFrame) -> Tuple[int, Any]:
     return int(len(work)), clean_scalar(work.iloc[-1]["v"])
 
 
-def plausible_duration(value: Any) -> bool:
+# ---------------------------------------------------------------------------
+# Bond-identifier resolution — try several forms, return the one that resolves.
+# blpapi accepts /isin/ and /cusip/ security identifiers; which one a given
+# terminal resolves can vary, so every form is tried and resolve-checked.
+# ---------------------------------------------------------------------------
+def candidate_bond_queries(isin: Optional[str], cusip: Optional[str]) -> List[str]:
+    forms: List[str] = []
+    if isin:
+        forms += [f"/isin/{isin}", f"/isin/{isin} Govt", f"{isin} Govt", f"/bbgid/{isin}"]
+    if cusip:
+        forms += [f"/cusip/{cusip}", f"/cusip/{cusip} Govt", f"{cusip} Govt"]
+    return forms
+
+
+def resolve_underlying_bond(
+    logger: Logger, generic: str
+) -> Dict[str, Any]:
+    """bdp the generic for its underlying-bond identifiers, then find a query
+    form that resolves on THIS terminal (confirmed by SECURITY_DES coming
+    back). Returns a dict with the identifiers + the working query form."""
+    ids, ids_err = safe_bdp_batch(generic, UNDERLYING_ID_FIELDS)
+    isin = ids.get("ID_ISIN")
+    cusip = ids.get("ID_CUSIP")
+    logger.log(f"  identifiers: ISIN={isin} CUSIP={cusip} "
+               f"DES={ids.get('SECURITY_DES')}"
+               + (f"  [bdp error: {ids_err}]" if ids_err else ""))
+
+    resolved_query: Optional[str] = None
+    tried: List[str] = []
+    for form in candidate_bond_queries(isin, cusip):
+        chk, _ = safe_bdp_batch(form, ["SECURITY_DES"])
+        ok = bool(chk.get("SECURITY_DES"))
+        tried.append(f"{form} -> {'OK' if ok else 'no'}")
+        if ok:
+            resolved_query = form
+            break
+    for t in tried:
+        logger.log(f"    query form: {t}")
+    if resolved_query:
+        logger.log(f"  => resolved query form: {resolved_query}")
+    else:
+        logger.log("  => NO query form resolved — bond cannot be probed")
+    return {
+        "id_isin": isin,
+        "id_cusip": cusip,
+        "security_des": ids.get("SECURITY_DES"),
+        "coupon": ids.get("CPN"),
+        "maturity": ids.get("MATURITY"),
+        "issue_date": ids.get("ISSUE_DT"),
+        "resolved_query": resolved_query,
+        "bdp_error": ids_err,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Preflight — refuse to run if not actually reaching live Bloomberg data.
+# Uses a PLAIN ticker (no /cusip//isin/ identifier syntax) so it tests pure
+# terminal connectivity, independent of which bond-query form this terminal
+# happens to support.
+# ---------------------------------------------------------------------------
+def preflight_connectivity_check(logger: Logger, start_str: str, end_str: str) -> None:
+    """Confirm, on a plain ticker, that (a) Bloomberg is live and (b) BOTH the
+    bdp and bdh normalisation paths read this terminal's xbbg output. If a
+    normalisation path fails, the raw dataframe type/columns are logged so the
+    exact xbbg shape is diagnosable from the report alone."""
+    logger.log("")
+    logger.log("PREFLIGHT — Bloomberg connectivity + dataframe-format check:")
+
+    # Raw-shape capture — makes any normalisation miss diagnosable.
     try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return False
-    return DURATION_BAND[0] <= v <= DURATION_BAND[1]
+        raw_bdp = blp.bdp(tickers=CONNECTIVITY_TICKER, flds=["SECURITY_DES"])
+        logger.log(f"  raw bdp -> type={type(raw_bdp).__name__}  "
+                   f"columns={list(getattr(raw_bdp, 'columns', []))[:8]}")
+    except Exception as exc:
+        logger.log(f"  raw bdp call raised: {type(exc).__name__}: {exc}")
+    try:
+        raw_bdh = blp.bdh(tickers=CONNECTIVITY_TICKER, flds=["PX_LAST"],
+                          start_date=start_str, end_date=end_str)
+        logger.log(f"  raw bdh -> type={type(raw_bdh).__name__}  "
+                   f"columns={list(getattr(raw_bdh, 'columns', []))[:8]}")
+    except Exception as exc:
+        logger.log(f"  raw bdh call raised: {type(exc).__name__}: {exc}")
+
+    vals, err = safe_bdp_batch(CONNECTIVITY_TICKER, ["SECURITY_DES", "NAME"])
+    bdp_ok = bool(vals.get("SECURITY_DES") or vals.get("NAME"))
+    logger.log(f"  bdp({CONNECTIVITY_TICKER}) normalised -> "
+               f"SECURITY_DES={vals.get('SECURITY_DES')}"
+               + (f"   [error: {err}]" if err else ""))
+
+    hist, bdh_err = safe_bdh_single(CONNECTIVITY_TICKER, "PX_LAST", start_str, end_str)
+    pts, _ = history_points(hist)
+    logger.log(f"  bdh({CONNECTIVITY_TICKER}, PX_LAST) normalised -> {pts} points"
+               + (f"   [error: {bdh_err}]" if bdh_err else ""))
+
+    if not bdp_ok or pts == 0:
+        logger.log("  *** PREFLIGHT FAILED ***")
+        logger.log("  A plain ticker did not survive the normalisation layer.")
+        logger.log("  Either the Bloomberg terminal is not live, OR this xbbg")
+        logger.log("  returns a dataframe shape the script still cannot read — the")
+        logger.log("  'raw bdp -> type=' / 'raw bdh -> type=' lines above tell the")
+        logger.log("  agent exactly which. Send the report back. Aborting.")
+        logger.save()
+        raise RuntimeError(
+            "Preflight failed: plain-ticker bdp/bdh did not normalise. "
+            "See the report's 'raw bdp/bdh -> type=' lines."
+        )
+    logger.log("  PREFLIGHT OK — live Bloomberg data confirmed and normalised "
+               "(both bdp and bdh).")
 
 
 # ---------------------------------------------------------------------------
@@ -249,9 +425,11 @@ def main() -> None:
     out_dir = Path.cwd() / f"a4_duration_probe_{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
     txt_path = out_dir / "a4_duration_probe_report.txt"
+    resolution_csv = out_dir / "a4_duration_probe_resolution.csv"
     detail_csv = out_dir / "a4_duration_probe_detail.csv"
 
     logger = Logger(txt_path)
+    resolution_rows: List[Dict[str, Any]] = []
     detail_rows: List[Dict[str, Any]] = []
 
     end_date = date.today() - timedelta(days=1)
@@ -260,53 +438,87 @@ def main() -> None:
     end_str = end_date.strftime("%Y-%m-%d")
 
     logger.log("=" * 100)
-    logger.log("A4 — HISTORISED MODIFIED-DURATION FIELD PROBE")
+    logger.log("A4 — DURATION-FIELD PROBE + A4-4 FIELD RECONFIRM (machine-robust)")
     logger.log("=" * 100)
     logger.log(f"Timestamp        : {timestamp}")
     logger.log(f"History window   : {start_str} to {end_str}  ({LOOKBACK_YEARS}y)")
-    logger.log(f"Bonds            : {len(RESOLVED_BONDS)} (resolved by the realbond run)")
-    logger.log(f"Candidate fields : {len(DURATION_CANDIDATES)}")
-    logger.log(f"Decisive bond    : {REFERENCE_BOND_QUERY} (UK 2Y — longest history)")
+    logger.log(f"Generics         : {len(GENERIC_UNIVERSE)} (resolved to bonds at run time)")
+    logger.log(f"Fields probed    : {len(PROBE_FIELDS)} ({len(DURATION_FIELDS)} duration candidates)")
     logger.log(f"Output directory : {out_dir}")
-    logger.log("")
-    logger.log("Each candidate is tested via bdh (does it historise?) and bdp (is it")
-    logger.log("a real field at all?). DUR_ADJ_MID and RISK_MID are controls.")
 
-    for candidate in DURATION_CANDIDATES:
+    # ----------------------------------------------------------------------
+    # PREFLIGHT
+    # ----------------------------------------------------------------------
+    preflight_connectivity_check(logger, start_str, end_str)
+
+    # ----------------------------------------------------------------------
+    # STEP 1 — resolve every generic to its underlying cash bond.
+    # ----------------------------------------------------------------------
+    logger.log("")
+    logger.log("#" * 100)
+    logger.log("STEP 1 — RESOLVE GENERICS TO UNDERLYING BONDS")
+    logger.log("#" * 100)
+    resolved: List[Dict[str, Any]] = []
+    for cfg in GENERIC_UNIVERSE:
         logger.log("")
-        logger.log("-" * 100)
-        logger.log(f"CANDIDATE: {candidate}")
-        logger.log("-" * 100)
-        bdh_hits = 0
-        bdp_hits = 0
-        ref_points = 0
-        for bond in RESOLVED_BONDS:
-            q = bond["query"]
-            hist_df, bdh_err = safe_bdh_single(q, candidate, start_str, end_str)
+        logger.log(f"{cfg['ticker']}  ({cfg['country']} {cfg['tenor']})")
+        res = resolve_underlying_bond(logger, cfg["ticker"])
+        row = {**cfg, **res}
+        resolution_rows.append(row)
+        if res["resolved_query"]:
+            resolved.append(row)
+
+    working_forms = sorted({
+        r["resolved_query"].split("/")[1] if r["resolved_query"].startswith("/")
+        else "bare"
+        for r in resolved
+    }) if resolved else []
+    logger.log("")
+    logger.log(f"STEP 1 result: {len(resolved)}/{len(GENERIC_UNIVERSE)} generics "
+               f"resolved to a bond. Working identifier form(s): {working_forms or '(none)'}")
+
+    if not resolved:
+        logger.log("")
+        logger.log("*** NO bond resolved on this terminal. Cannot probe fields. ***")
+        logger.log("The terminal is live (preflight passed) but none of the tried")
+        logger.log("identifier forms (/isin/, /cusip/, <isin> Govt, …) resolved a")
+        logger.log("bond. Send this report back — the agent will add the form this")
+        logger.log("terminal expects.")
+        _write_csvs(logger, resolution_rows, detail_rows, resolution_csv, detail_csv)
+        logger.log(f"Text report     : {txt_path}")
+        logger.save()
+        return
+
+    # ----------------------------------------------------------------------
+    # STEP 2 — probe every field on every resolved bond (bdh + bdp).
+    # ----------------------------------------------------------------------
+    logger.log("")
+    logger.log("#" * 100)
+    logger.log("STEP 2 — FIELD PROBE ON RESOLVED REAL BONDS")
+    logger.log("#" * 100)
+    for bond in resolved:
+        q = bond["resolved_query"]
+        logger.log("")
+        logger.log(f"{bond['ticker']:<16} -> {q}   ({bond['security_des']})")
+        for spec in PROBE_FIELDS:
+            field = spec["field"]
+            hist_df, bdh_err = safe_bdh_single(q, field, start_str, end_str)
             points, last_val = history_points(hist_df)
-            bdp_vals, bdp_err = safe_bdp_batch(q, [candidate])
-            bdp_val = bdp_vals.get(candidate.upper())
+            bdp_vals, bdp_err = safe_bdp_batch(q, [field])
+            bdp_val = bdp_vals.get(field.upper())
             bdp_has = bdp_val is not None and not (
                 isinstance(bdp_val, str) and bdp_val.strip() == ""
             )
             bdh_has = bdh_err is None and points > 0
-            if bdh_has:
-                bdh_hits += 1
-            if bdp_has:
-                bdp_hits += 1
-            if q == REFERENCE_BOND_QUERY:
-                ref_points = points
-
             detail_rows.append({
-                "candidate_mnemonic": candidate,
-                "bond_query": q,
-                "source_generic": bond["source_generic"],
+                "generic_ticker": bond["ticker"],
                 "country": bond["country"],
                 "tenor": bond["tenor"],
-                "history_hint": bond["history_hint"],
+                "resolved_query": q,
+                "field": field,
+                "purpose": spec["purpose"],
                 "bdh_points": points,
                 "bdh_last_value": last_val,
-                "bdh_value_plausible": plausible_duration(last_val) if last_val is not None else None,
                 "bdh_returned_data": bdh_has,
                 "bdp_value": clean_scalar(bdp_val),
                 "bdp_returned_data": bdp_has,
@@ -314,16 +526,11 @@ def main() -> None:
                 "bdp_error": bdp_err,
             })
             logger.log(
-                f"  {q:<22} {bond['country']:<10} {bond['tenor']:<4} | "
+                f"  {field:<20} {spec['purpose']:<22} | "
                 f"bdh {'DATA' if bdh_has else 'no  '} points={points:<5} "
-                f"last={str(last_val):<12} | bdp {'DATA' if bdp_has else 'no  '}={bdp_val}"
+                f"last={str(last_val):<14} | bdp {'DATA' if bdp_has else 'no '}={bdp_val}"
                 + (f" | bdh err: {bdh_err}" if bdh_err else "")
             )
-        logger.log(
-            f"  => {candidate}: bdh data on {bdh_hits}/{len(RESOLVED_BONDS)} bonds | "
-            f"bdp data on {bdp_hits}/{len(RESOLVED_BONDS)} | "
-            f"decisive bond ({REFERENCE_BOND_QUERY}) bdh points = {ref_points}"
-        )
 
     # ----------------------------------------------------------------------
     # FINAL SUMMARY
@@ -333,26 +540,49 @@ def main() -> None:
     logger.log("FINAL SUMMARY  (paste this block back to the agent)")
     logger.log("=" * 100)
     logger.log("")
+    logger.log(f"Identifier form that resolves on this terminal: {working_forms or '(none)'}")
+    logger.log(f"Bonds resolved + probed: {len(resolved)}/{len(GENERIC_UNIVERSE)}")
+    logger.log("")
+
+    n_bonds = len(resolved)
+    half = max(1, n_bonds // 2)
+
+    def field_hits(field: str) -> Tuple[int, int]:
+        rows = [r for r in detail_rows if r["field"] == field]
+        bdh = sum(1 for r in rows if r["bdh_returned_data"])
+        bdp = sum(1 for r in rows if r["bdp_returned_data"])
+        return bdh, bdp
+
+    control_bdh, _ = field_hits(CONTROL_FIELD)
+    if control_bdh == 0:
+        logger.log("RESULT: *** INVALID RUN — DISREGARD THE RESULTS ABOVE ***")
+        logger.log(f"The {CONTROL_FIELD} positive control returned 0 bdh data on every")
+        logger.log("bond. It is proven to historise. Zero means this run did not reach")
+        logger.log("live Bloomberg data — re-run on the live terminal.")
+        _write_csvs(logger, resolution_rows, detail_rows, resolution_csv, detail_csv)
+        logger.log("")
+        logger.log(f"Text report     : {txt_path}")
+        logger.save()
+        return
+
+    logger.log(f"Positive control {CONTROL_FIELD}: bdh data on {control_bdh}/{n_bonds} "
+               "bonds — run is VALID.")
+    logger.log("")
+    logger.log("A4-4 confirm fields (should all historise via bdh):")
+    for spec in PROBE_FIELDS:
+        if spec["purpose"].startswith("A4-4"):
+            bdh, bdp = field_hits(spec["field"])
+            logger.log(f"  {spec['field']:<20} bdh {bdh}/{n_bonds} | bdp {bdp}/{n_bonds}")
+    logger.log("")
+    logger.log("Duration candidates (does any historise via bdh?):")
     historising: List[str] = []
-    for candidate in DURATION_CANDIDATES:
-        rows = [r for r in detail_rows if r["candidate_mnemonic"] == candidate]
-        bdh_hits = sum(1 for r in rows if r["bdh_returned_data"])
-        bdp_hits = sum(1 for r in rows if r["bdp_returned_data"])
-        ref = next((r for r in rows if r["bond_query"] == REFERENCE_BOND_QUERY), None)
-        ref_points = ref["bdh_points"] if ref else 0
-        ref_plausible = ref["bdh_value_plausible"] if ref else None
-        verdict = (
-            "HISTORISES — usable as a target_metric"
-            if ref_points > 0 and bdh_hits >= len(RESOLVED_BONDS) // 2
-            else ("bdp-snapshot only" if bdp_hits > 0 else "not a usable field")
-        )
-        if verdict.startswith("HISTORISES"):
-            historising.append(candidate)
-        logger.log(
-            f"  {candidate:<20} bdh {bdh_hits}/{len(RESOLVED_BONDS)} | "
-            f"bdp {bdp_hits}/{len(RESOLVED_BONDS)} | "
-            f"decisive-bond points={ref_points} plausible={ref_plausible} | {verdict}"
-        )
+    for field in DURATION_FIELDS:
+        bdh, bdp = field_hits(field)
+        verdict = ("HISTORISES" if bdh >= half
+                   else ("bdp-snapshot only" if bdp > 0 else "not a usable field"))
+        if bdh >= half:
+            historising.append(field)
+        logger.log(f"  {field:<20} bdh {bdh}/{n_bonds} | bdp {bdp}/{n_bonds} | {verdict}")
     logger.log("")
     if historising:
         logger.log(f"RESULT: a historised duration field EXISTS -> {historising}")
@@ -361,19 +591,32 @@ def main() -> None:
     else:
         logger.log("RESULT: NO candidate historises modified duration via bdh.")
         logger.log("A4-4 ships DV01 (RISK_MID) as the risk measure; modified duration")
-        logger.log("is then derived (ModDur = RISK_MID * 100 / PX_DIRTY_MID, an")
-        logger.log("identity, with full P12 disclosure) or deferred — agent + operator")
-        logger.log("decide from this evidence.")
+        logger.log("is derived (ModDur = RISK_MID * 100 / PX_DIRTY_MID, an identity,")
+        logger.log("with full P12 disclosure) or deferred — agent + operator decide.")
 
-    try:
-        pd.DataFrame(detail_rows).to_csv(detail_csv, index=False)
-    except Exception as exc:
-        logger.log(f"[WARNING] failed to write detail CSV ({detail_csv}): {exc}")
-
+    _write_csvs(logger, resolution_rows, detail_rows, resolution_csv, detail_csv)
     logger.log("")
-    logger.log(f"Text report : {txt_path}")
-    logger.log(f"Detail CSV  : {detail_csv}")
+    logger.log(f"Text report     : {txt_path}")
+    logger.log(f"Resolution CSV  : {resolution_csv}")
+    logger.log(f"Detail CSV      : {detail_csv}")
     logger.save()
+
+
+def _write_csvs(
+    logger: Logger,
+    resolution_rows: List[Dict[str, Any]],
+    detail_rows: List[Dict[str, Any]],
+    resolution_csv: Path,
+    detail_csv: Path,
+) -> None:
+    for label, rows, path in (
+        ("resolution", resolution_rows, resolution_csv),
+        ("detail", detail_rows, detail_csv),
+    ):
+        try:
+            pd.DataFrame(rows).to_csv(path, index=False)
+        except Exception as exc:
+            logger.log(f"[WARNING] failed to write {label} CSV ({path}): {exc}")
 
 
 if __name__ == "__main__":

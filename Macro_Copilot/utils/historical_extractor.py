@@ -162,9 +162,80 @@ def _resolve_date_window(playbook: Dict[str, Any]) -> Tuple[str, str]:
     return start_date, end_date
 
 
-def _normalize_bdh_output(df: pd.DataFrame, fallback_ticker: str) -> pd.DataFrame:
-    if df is None or df.empty:
+def _coerce_to_pandas(obj: Any) -> Any:
+    """
+    Return a pandas DataFrame/Series regardless of which dataframe library
+    the installed xbbg used for this call.
+
+    Older xbbg returns classic pandas objects. Newer xbbg returns a Narwhals
+    DataFrame wrapping pyarrow/polars. A Narwhals frame and a pyarrow Table
+    both expose ``.to_pandas()``; failing that ``narwhals.to_native()``
+    unwraps to the underlying frame. When the input is ALREADY a pandas
+    object (or ``None``) this returns it UNCHANGED and never imports
+    narwhals — so on the classic-xbbg setup behaviour is byte-identical to
+    before this helper existed. It only ever does work for the newer-xbbg
+    output shape.
+    """
+    if obj is None or isinstance(obj, (pd.DataFrame, pd.Series)):
+        return obj
+    to_pandas = getattr(obj, "to_pandas", None)
+    if callable(to_pandas):
+        try:
+            converted = to_pandas()
+            if isinstance(converted, (pd.DataFrame, pd.Series)):
+                return converted
+        except Exception:
+            pass
+    try:
+        import narwhals as nw
+        native = nw.to_native(obj)
+        if isinstance(native, (pd.DataFrame, pd.Series)):
+            return native
+        native_to_pandas = getattr(native, "to_pandas", None)
+        if callable(native_to_pandas):
+            converted = native_to_pandas()
+            if isinstance(converted, (pd.DataFrame, pd.Series)):
+                return converted
+    except Exception:
+        pass
+    return obj
+
+
+def _normalize_bdh_output(df: Any, fallback_ticker: str) -> pd.DataFrame:
+    df = _coerce_to_pandas(df)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame(columns=["trade_date", "ticker", "field_name", "field_value"])
+
+    # Newer xbbg returns a LONG / tidy frame — one row per (date, ticker,
+    # field) carrying explicit 'field' and 'value' columns. Map it straight
+    # onto the [trade_date, ticker, field_name, field_value] contract. The
+    # classic WIDE handling below is byte-identical to the pre-narwhals
+    # implementation; this branch only fires for the newer long shape (a
+    # classic wide frame's columns are Bloomberg field names, never the
+    # literal pair 'field' + 'value').
+    _cols = {str(c).lower(): c for c in df.columns}
+    if (not isinstance(df.columns, pd.MultiIndex)
+            and "field" in _cols and "value" in _cols):
+        _date_key = (_cols.get("date") or _cols.get("trade_date")
+                     or _cols.get("index"))
+        if _date_key is None:
+            for _c in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[_c]):
+                    _date_key = _c
+                    break
+        if _date_key is not None:
+            long_df = pd.DataFrame({
+                "trade_date": list(df[_date_key]),
+                "ticker": (list(df[_cols["ticker"]]) if "ticker" in _cols
+                           else fallback_ticker),
+                "field_name": list(df[_cols["field"]]),
+                "field_value": list(df[_cols["value"]]),
+            })
+            long_df["trade_date"] = pd.to_datetime(
+                long_df["trade_date"]).dt.strftime("%Y-%m-%d")
+            long_df["field_name"] = long_df["field_name"].astype(str).str.upper()
+            long_df = long_df.dropna(subset=["field_value"])
+            return long_df
 
     if isinstance(df.columns, pd.MultiIndex):
         long_df = (
@@ -205,9 +276,13 @@ def _normalize_bdp_output(df: Any, fallback_ticker: str) -> Dict[str, Any]:
     """
     Convert xbbg bdp output to a simple field -> scalar mapping.
 
-    Expected common shape:
-    - DataFrame indexed by ticker with columns = Bloomberg fields
+    Handles both xbbg output shapes:
+    - classic WIDE: a DataFrame indexed by ticker with columns = Bloomberg
+      fields;
+    - newer LONG/tidy: one row per (ticker, field) with explicit 'field' and
+      'value' columns (and optionally a 'ticker' column).
     """
+    df = _coerce_to_pandas(df)
     if df is None:
         return {}
 
@@ -218,6 +293,31 @@ def _normalize_bdp_output(df: Any, fallback_ticker: str) -> Dict[str, Any]:
         if df.empty:
             return {}
 
+        _cols = {str(c).lower(): c for c in df.columns}
+        # Newer xbbg LONG/tidy shape — one row per (ticker, field).
+        if "field" in _cols and "value" in _cols:
+            work = df
+            if "ticker" in _cols:
+                _tcol = _cols["ticker"]
+                _tmatch = df[df[_tcol].astype(str).str.upper()
+                             == str(fallback_ticker).upper()]
+                if not _tmatch.empty:
+                    work = _tmatch
+                elif df[_tcol].nunique() > 1:
+                    # No exact match AND the response carries more than one
+                    # distinct ticker — refuse rather than risk attributing
+                    # another ticker's fields to the requested one. A
+                    # single-ticker response with no exact match is just
+                    # Bloomberg canonicalising the requested ticker (e.g.
+                    # /isin/... shown under its displayed name); that case is
+                    # safe and falls through with work = df.
+                    return {}
+            return {
+                str(f).upper(): _clean_scalar(v)
+                for f, v in zip(work[_cols["field"]], work[_cols["value"]])
+            }
+
+        # Classic WIDE shape — UNCHANGED from the pre-narwhals implementation.
         if fallback_ticker in df.index:
             row = df.loc[fallback_ticker]
             if isinstance(row, pd.DataFrame):
@@ -365,6 +465,7 @@ def _extract_underlying_tickers_from_chain(
     """
     if chain_df is None:
         return []
+    chain_df = _coerce_to_pandas(chain_df)
     if not isinstance(chain_df, pd.DataFrame):
         return []
     if chain_df.empty:
@@ -716,6 +817,7 @@ def _normalize_bdp_batch_output(
     out: Dict[str, Dict[str, Any]] = {}
     if df is None:
         return out
+    df = _coerce_to_pandas(df)
     if not isinstance(df, pd.DataFrame):
         # Single-row Series — rare but possible when xbbg flattens a
         # one-ticker batch. Defer to the single-ticker normaliser using
@@ -730,7 +832,20 @@ def _normalize_bdp_batch_output(
     if df.empty:
         return out
 
-    # The canonical multi-ticker shape: DataFrame indexed by ticker.
+    # Newer xbbg LONG/tidy shape — one row per (ticker, field). A classic
+    # wide batch frame is indexed by ticker with Bloomberg-field columns and
+    # never carries the literal 'ticker'/'field'/'value' column triple, so
+    # this branch fires only for the newer long shape.
+    _cols = {str(c).lower(): c for c in df.columns}
+    if "ticker" in _cols and "field" in _cols and "value" in _cols:
+        for _, _r in df.iterrows():
+            _tk = str(_r[_cols["ticker"]])
+            _fld = str(_r[_cols["field"]]).upper()
+            out.setdefault(_tk, {})[_fld] = _clean_scalar(_r[_cols["value"]])
+        return out
+
+    # The canonical multi-ticker WIDE shape: DataFrame indexed by ticker.
+    # UNCHANGED from the pre-narwhals implementation.
     for ticker, row in df.iterrows():
         if isinstance(row, pd.DataFrame):
             # Multi-row index (rare) — take the first row defensively.
