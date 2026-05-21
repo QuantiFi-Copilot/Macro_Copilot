@@ -1332,9 +1332,23 @@ def upsert_event_calendar(
     and :func:`upsert_otr_history` (also full-row upserts) and the natural
     extraction flow (re-pull the whole calendar each run; a vendor's
     post-settlement auction record carries both schedule and results).
-    ``COALESCE(excluded, existing)`` merge was deliberately rejected: it would
-    diverge from the sibling upserts (P3) and would make it impossible to
-    correct a wrongly-set field back to ``NULL``.
+    A blanket ``COALESCE(excluded, existing)`` merge was deliberately rejected:
+    it would diverge from the sibling upserts (P3) and would make it impossible
+    to correct a wrongly-set field back to ``NULL``.
+
+    ONE DOCUMENTED EXCEPTION — ``related_instrument_id`` (ADR 0009 §5). This
+    single column is COALESCE-preserved: on a natural-key conflict it is set to
+    ``COALESCE(EXCLUDED.related_instrument_id,
+    event_calendar.related_instrument_id)`` — the incoming value wins only when
+    it is non-NULL, otherwise the stored link is kept. ``related_instrument_id``
+    is a cross-pipeline FK: the Bloomberg-PC event extractor cannot know a
+    DB-assigned ``instrument_id`` and so ALWAYS emits it NULL, while the WIRP
+    link backfill (``utils/backfill_wirp_links.py``) sets it locally. A plain
+    overwrite would therefore wipe a backfilled WIRP link on every D-cb
+    re-upsert. The "correct a field back to NULL" argument does NOT apply to
+    this column — the event extractor has no non-NULL→NULL correction to make
+    for it, and the backfill (its only writer) can clear it explicitly. Every
+    OTHER column keeps the full-row-overwrite contract unchanged.
 
     Connection contract: accepts either an :class:`Engine` (self-managed
     transaction) or a :class:`Connection` (caller-managed). See :func:`_txn`.
@@ -1355,7 +1369,9 @@ def upsert_event_calendar(
     clean: List[Dict[str, Any]] = [_normalize_event_record(r) for r in records]
 
     stmt = insert(events).values(clean)
-    update_set = {
+    # FULL-ROW UPSERT: every non-key, non-immutable column is overwritten from
+    # the incoming record (``stmt.excluded``).
+    update_set: Dict[str, Any] = {
         c.name: stmt.excluded[c.name]
         for c in events.c
         if c.name
@@ -1367,6 +1383,17 @@ def upsert_event_calendar(
             "created_at",
         }
     }
+    # ONE documented exception (ADR 0009 §5): related_instrument_id is a
+    # cross-pipeline FK the Bloomberg-PC event extractor can only ever emit
+    # NULL, while utils/backfill_wirp_links.py sets it locally. COALESCE-
+    # preserve it so a D-cb re-upsert (which carries it NULL) cannot wipe a
+    # backfilled WIRP link; the incoming value still wins when it is non-NULL.
+    # text() — not func.coalesce() — keeps the clause a plain literal so the
+    # statement builder needs no column objects beyond what reflection gives.
+    update_set["related_instrument_id"] = text(
+        "COALESCE(EXCLUDED.related_instrument_id, "
+        "event_calendar.related_instrument_id)"
+    )
     stmt = stmt.on_conflict_do_update(
         index_elements=["event_type", "country", "release_date"],
         set_=update_set,

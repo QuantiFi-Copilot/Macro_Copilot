@@ -292,12 +292,17 @@ class TestUpsertEventCalendar:
     def test_on_conflict_overwrites_every_non_key_column(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """FULL-ROW UPSERT contract: ON CONFLICT DO UPDATE sets EVERY non-key
-        column from `excluded`. A caller must therefore pass the complete event
-        row on every upsert — an omitted optional field is written NULL, not
-        merge-preserved (ADR 0004; the post-auction results upsert re-sends the
-        schedule fields). This test locks that behaviour."""
+        """FULL-ROW UPSERT contract: ON CONFLICT DO UPDATE covers EVERY non-key
+        column. A caller must therefore pass the complete event row on every
+        upsert — an omitted optional field is written NULL, not merge-preserved
+        (ADR 0004; the post-auction results upsert re-sends the schedule
+        fields). The ONE documented exception is `related_instrument_id`, which
+        is COALESCE-preserved (ADR 0009 §5) — its detailed behaviour is locked
+        by tests/state/test_wirp_link_backfill.py. This test locks that every
+        non-key column is in the update set, and that every column EXCEPT
+        `related_instrument_id` is a plain overwrite from `excluded`."""
         from database import database as db_mod
+        from sqlalchemy.sql.elements import TextClause
 
         conn = _make_connection_stub()
         fake_table = MagicMock()
@@ -322,7 +327,8 @@ class TestUpsertEventCalendar:
         )
 
         _, kwargs = fake_stmt.on_conflict_do_update.call_args
-        update_keys = set(kwargs["set_"].keys())
+        set_ = kwargs["set_"]
+        update_keys = set(set_.keys())
         # The natural key + the immutable identity/audit columns are excluded;
         # EVERY other column must be in the update set.
         key_and_immutable = {
@@ -330,8 +336,17 @@ class TestUpsertEventCalendar:
         }
         expected = set(_EVENT_COLUMN_NAMES) - key_and_immutable
         assert update_keys == expected, (
-            "ON CONFLICT DO UPDATE must overwrite every non-key column — "
+            "ON CONFLICT DO UPDATE must cover every non-key column — "
             "this is the full-row-upsert contract"
+        )
+        # related_instrument_id is the one COALESCE-preserve exception; every
+        # other non-key column is a plain `excluded` overwrite (not a clause).
+        for col in expected - {"related_instrument_id"}:
+            assert not isinstance(set_[col], TextClause), (
+                f"{col} must be a plain `excluded` overwrite, not a COALESCE clause"
+            )
+        assert isinstance(set_["related_instrument_id"], TextClause), (
+            "related_instrument_id must be the COALESCE-preserve exception"
         )
 
     def test_invalid_record_raises_before_any_execute(
