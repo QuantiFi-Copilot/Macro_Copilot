@@ -1,0 +1,572 @@
+# =============================================================================
+# inflation_swap_forward — tool configuration
+# =============================================================================
+# This file is the canonical record of the same-curve ZCIS forward-rate
+# tool's conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Every shared
+# convention (z_score_window_days, z_score_min_periods, z_score_ddof,
+# z_score_buffer_multiplier, ffill_limit_days, period offsets, trailing
+# range window, bps/yield/z-score rounding, window_years_round_decimals)
+# carries the same numeric value as the sibling level primitive
+# (inflation_swap_rate_level), the sibling curve-spread primitive
+# (inflation_swap_curve_spread), the linker forward_breakeven_simple,
+# and the OIS forward_rate tool — the cross-config lint enforces
+# value-agreement across every tool that declares the same convention
+# name.  Drift on any of those is caught.
+#
+# The ZCIS-specific Bloomberg field convention is
+# ``default_zcis_rate_field`` (= 'PX_MID') — distinct from sovereign /
+# linker ``default_field_name`` (= 'YLD_YTM_MID') and OIS
+# ``default_swap_rate_field`` (= 'PX_LAST') — to keep the cross-config
+# lint clean across the four families.  This primitive composes
+# inflation_swap_rate_level, which reads the same convention name from
+# its own bundled config; threading ``config=config`` through to both
+# inner level calls keeps the resolved field consistent end-to-end.
+#
+# Concept honesty
+# ---------------
+# This tool returns the same-curve ZCIS forward rate — i.e. the
+# implied forward zero-coupon inflation swap rate between two pillars
+# on the same ZCIS curve family (e.g. USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y,
+# GBP_ZCIS 2Y3Y).  Cross-curve forward combinations (e.g. USD_ZCIS
+# 5Y vs EUR_ZCIS 10Y) are NOT in scope for V1.  The output is FORWARD
+# INFLATION COMPENSATION, NOT a clean forward expected-inflation
+# read: ZCIS still carries an inflation risk premium and a smaller
+# liquidity premium, and the geometric forward inherits both.  The
+# honesty disclosure lives in ``methodology.what_it_does`` below and
+# is threaded onto the wire via ``current_metrics.methodology_label``
+# — sourced from this YAML at runtime, NOT hardcoded in Python.
+#
+# Forward formula (dual-compounding geometric)
+# --------------------------------------------
+# ZCIS is a true zero-coupon rate (unlike bond-implied breakeven,
+# which is an inflation-compensation differential and uses the
+# year-weighted linear formula in forward_breakeven_simple).  The
+# desk-natural forward is therefore the dual-compounding geometric
+# form:
+#
+#   (1 + r_short)^T_short * (1 + f)^(T_long - T_short) =
+#       (1 + r_long)^T_long
+#
+#   f = ((1 + r_long)^T_long / (1 + r_short)^T_short)
+#           ^ (1 / (T_long - T_short)) - 1
+#
+# where r_short / r_long are the spot ZCIS rates at start_tenor /
+# end_tenor (each computed by ``calculate_inflation_swap_rate_level``)
+# and T_short / T_long are the corresponding year fractions (parsed
+# via ``shared.analytics.curve_bootstrap.tenor_to_years``).
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_inflation_swap_forward_tool
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Same-curve forward zero-coupon inflation swap (ZCIS) rate
+    between two pillars on the same ZCIS curve family — e.g.
+    USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y.  Composes
+    ``inflation_swap_rate_level`` at start and end tenors.
+    Same-curve only — cross-curve forwards are not in scope for V1.
+    Emits both:
+
+      - ``current_metrics``: snapshot of the latest aligned
+        observation (current forward ZCIS rate in pct AND bps,
+        daily/weekly/monthly bps changes, 252-day rolling z-score
+        in bps, trailing 252-day high/low/percentile in bps,
+        observation count) PLUS the two endpoint ZCIS rates
+        (``start_zcis_pct``, ``end_zcis_pct``) and year fractions
+        (``start_years``, ``end_years``) used to form the forward
+        so the desk can sanity-check the dual-compounding
+        decomposition.  Also carries the load-bearing reference
+        metadata ``inflation_index_family`` / ``index_lag`` /
+        ``interpolation`` / ``underlying_index`` (shared by both
+        legs by the same-curve invariant) so a desk reader can
+        interpret the forward honestly.
+
+      - ``time_series_forward``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = PERCENT)
+        carrying the historical forward ZCIS rate over the displayed
+        ``lookback_days`` window.  Forward ZCIS is a *level* (in
+        percent), not a spread — same convention as
+        forward_breakeven_simple and OIS forward_rate.
+
+      - ``time_series_zscore``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = Z_SCORE)
+        carrying the rolling z-score of the forward (in bps) over
+        the same window.
+
+      - ``time_series``: bespoke wire-frozen row list for callers
+        that want forward + z-score in a single per-row shape.
+
+    Composed by calling ``calculate_inflation_swap_rate_level``
+    once for the start tenor and once for the end tenor, then
+    aligning the two PERCENT-units canonical TimeSeries via a
+    strict pandas inner-join on calendar trade_date and applying
+    the per-trade-date dual-compounding geometric forward formula.
+
+    Same-curve invariant
+    --------------------
+    The two legs share a single ``curve_family``.  Cross-curve
+    combinations are not in scope for V1; the input layer accepts
+    a single ``curve_family`` field so cross-curve attempts cannot
+    be expressed.  The compute layer additionally re-asserts that
+    the two endpoint reads share ``inflation_index_family``,
+    ``index_lag``, ``interpolation``, and ``underlying_index``,
+    surfacing a controlled error envelope if they do not (which
+    would indicate a real instrument_master inconsistency, not a
+    methodology choice).
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool, the OIS level/spread/forward tools, the
+      linker real_yield_level / breakeven_inflation_simple /
+      forward_breakeven_simple / breakeven_curve_spread tools, and
+      the inflation_swap_rate_level / inflation_swap_curve_spread
+      tools — the cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches sovereign yield_levels /
+      cross_market_spread / curve_spread / OIS rate_level / linker
+      real_yield_level / breakeven_inflation_simple /
+      forward_breakeven_simple / breakeven_curve_spread / ZCIS
+      rate_level / ZCIS curve_spread.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every other rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The forward ZCIS
+      series is in bps so changes go through
+      period_changes(already_bps=True), i.e. plain subtraction (no
+      *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as forward_breakeven_simple / inflation_swap_curve_spread /
+  # inflation_swap_rate_level / OIS rate_level / OIS forward_rate.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies inside the
+      composed level primitive's clean step at each endpoint; the
+      forward layer itself uses a strict inner join on trade_date
+      to avoid synthesising forward points.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (forward ZCIS rate, period
+  # changes, range)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current forward ZCIS rate, daily/weekly/
+      monthly changes, trailing high/low) to 0.01 bps.  Display
+      precision; matches sovereign curve_spread / cross_market_spread
+      / OIS spread tools / linker breakeven_inflation_simple /
+      forward_breakeven_simple / breakeven_curve_spread / ZCIS
+      curve_spread.  Threaded explicitly into
+      period_changes(decimals=...) so the delta_bps default of 2
+      cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4 is
+      not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct
+  # ---------------------------------------------------------------------------
+  # Used here for the forward_zcis_pct snapshot field AND for the
+  # endpoint start_zcis_pct / end_zcis_pct display fields (sourced
+  # from the inner level primitive's snapshot).  Kept aligned with
+  # the rest of the rates tools so the cross-config lint stays
+  # clean.
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker / ZCIS level tool.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (start_years, end_years)
+  # ---------------------------------------------------------------------------
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the start_years / end_years
+      fields in current_metrics.  4 decimals matches the OIS
+      forward_rate / forward_breakeven_simple /
+      inflation_swap_curve_spread value the cross-config lint
+      enforces.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range high / low rounding precision (passed to the
+  # composed level primitive's compute_level_metrics)
+  # ---------------------------------------------------------------------------
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches the inflation_swap_rate_level /
+      sibling level tools — required because this primitive's
+      ToolConfig is threaded into the level primitive's compute.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for both endpoint legs
+  # ---------------------------------------------------------------------------
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` (``yield_mid`` → ``PX_MID``).  This default
+      is passed unchanged to BOTH the start-tenor and end-tenor
+      inner inflation_swap_rate_level calls.  LLM/HTTP wrappers
+      MUST use the empty/None sentinel so this default flows
+      through.
+
+  # ---------------------------------------------------------------------------
+  # Forward-formula compounding mode (ZCIS-specific) — code-honest
+  # declaration of the math the tool actually runs
+  # ---------------------------------------------------------------------------
+  # ZCIS is a true zero-coupon rate, so the desk-natural forward is
+  # the dual-compounding geometric form:
+  #
+  #   (1 + r_short)^T_short * (1 + f)^(T_long - T_short) =
+  #       (1 + r_long)^T_long
+  #   f = ((1 + r_long)^T_long / (1 + r_short)^T_short)
+  #           ^ (1 / (T_long - T_short)) - 1
+  #
+  # ``dual_compounding`` encodes that choice.  The alternative
+  # ``year_weighted_linear`` mode (the desk shorthand and the
+  # default in forward_breakeven_simple, where breakeven is an
+  # inflation-compensation *differential* rather than a true
+  # zero-coupon rate) is documented in
+  # ``methodology.planned_extensions`` and is NOT yet implemented
+  # for ZCIS forwards; ``compute()`` raises NotImplementedError if
+  # this convention is set to anything other than
+  # ``dual_compounding``.  The methodology_label on the wire
+  # surfaces the chosen formula and moves in lockstep with this
+  # convention so a desk user can never see a label that disagrees
+  # with the math.
+  #
+  # Naming: the convention is ZCIS-specific
+  # (``zcis_forward_compounding_mode``), distinct from
+  # forward_breakeven_simple's ``forward_compounding_mode``
+  # (= ``year_weighted_linear``).  The two objects are different
+  # finance concepts (true zero-coupon rate vs inflation-
+  # compensation differential), so the same convention name with
+  # disagreeing values would be silent drift across tools.  Same
+  # disambiguation pattern as ``default_zcis_rate_field`` vs
+  # sovereign / linker ``default_field_name`` — the cross-config
+  # lint stays clean across the four families.
+  zcis_forward_compounding_mode:
+    value: dual_compounding
+    source: team_judgment_pending_review
+    rationale: >-
+      Dual-compounding geometric forward is the standard desk read
+      for a ZCIS forward (5Y5Y in particular) because ZCIS is a
+      true zero-coupon rate — unlike bond-implied breakeven, which
+      is an inflation-compensation differential and uses
+      year-weighted linear in forward_breakeven_simple.  The
+      geometric formula composes the two endpoint zero-coupon
+      rates exactly, so the snapshot decomposition
+      (start_zcis_pct, end_zcis_pct, start_years, end_years) is
+      auditable directly from the wire.  Tagged as
+      ``team_judgment_pending_review`` because the alternative
+      ``year_weighted_linear`` mode is the desk shorthand many
+      traders see on Bloomberg displays and may ship as a separate
+      convention value once the trade-off has been validated
+      against external desk pricing.  Until then the only legal
+      value is ``dual_compounding``; a YAML edit to anything else
+      fails fast in compute() with a NotImplementedError pointing
+      back to ``methodology.planned_extensions``.  The Convention
+      schema does not accept a ``valid_values`` list for string
+      conventions (only ``valid_range`` for numerics); the
+      closed-set constraint therefore lives in
+      ``compute._conventions_from_config`` and is part of the
+      contract this rationale documents.
+
+methodology:
+  what_it_does: |
+    Same-curve forward zero-coupon inflation swap (ZCIS) rate
+    between two pillars on the same ZCIS curve family — e.g.
+    USD_ZCIS 5Y5Y, EUR_ZCIS 5Y5Y, GBP_ZCIS 2Y3Y.  Computed via
+    the DUAL-COMPOUNDING GEOMETRIC formula:
+
+      (1 + r_short)^T_short * (1 + f)^(T_long - T_short) =
+          (1 + r_long)^T_long
+
+      f = ((1 + r_long)^T_long / (1 + r_short)^T_short)
+              ^ (1 / (T_long - T_short)) - 1
+
+    where ``r_short`` and ``r_long`` are the ZCIS rate levels at
+    ``start_tenor`` and ``end_tenor`` respectively (each computed
+    by ``calculate_inflation_swap_rate_level`` filtered by
+    ``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` AND
+    ``curve_family=?`` AND ``tenor=?`` — the no-proxy guard
+    inherited transitively).  ``T_short`` / ``T_long`` are the
+    calendar year fractions of the two endpoint tenors (parsed via
+    ``shared.analytics.curve_bootstrap.tenor_to_years``).  The two
+    endpoint series are aligned per-trade-date via a strict pandas
+    inner-join on calendar trade_date AFTER each is computed
+    independently; the forward is computed only on dates where
+    BOTH endpoints exist (no synthetic forward points are
+    produced).
+
+    Same-curve construction only: the input layer accepts a single
+    ``curve_family`` field so cross-curve combinations cannot be
+    expressed.  Compute additionally re-asserts that the two
+    endpoint reads share ``inflation_index_family``, ``index_lag``,
+    ``interpolation``, and ``underlying_index`` (load-bearing
+    reference-metadata invariants of the curve), surfacing a
+    controlled error envelope if they do not — that would indicate
+    a real instrument_master inconsistency at the underlying
+    pillars rather than a methodology choice.
+
+    The ``inflation_index_family`` / ``index_lag`` /
+    ``interpolation`` / ``underlying_index`` fields thread to the
+    wire on ``current_metrics`` AND in the canonical TimeSeries
+    description so a desk reader can interpret the forward under
+    the correct ZCIS convention without a second tool call.
+
+    The output is FORWARD INFLATION COMPENSATION, NOT a clean
+    forward expected-inflation read: ZCIS still carries an
+    inflation risk premium and a (smaller, but non-zero) liquidity
+    premium relative to the realised inflation index, and the
+    geometric forward inherits both.  Use as a proxy for forward
+    inflation expectations only with that caveat in mind.
+
+  assumptions:
+    - "Dual-compounding geometric forward formula
+       (``forward_compounding_mode = dual_compounding``).  Chosen
+       because ZCIS is a true zero-coupon rate, so the dual-
+       compounding geometric form composes the two endpoint
+       zero-coupon rates exactly.  The year_weighted_linear
+       alternative is documented in ``planned_extensions`` and is
+       NOT implemented in V1; compute() raises NotImplementedError
+       on any other value of ``forward_compounding_mode`` so the
+       wire-disclosed formula cannot drift from the math."
+    - "Same-curve invariant: both legs share a single
+       ``curve_family``.  Cross-curve ZCIS forwards (e.g.
+       USD_ZCIS 5Y vs EUR_ZCIS 10Y) are not in scope for V1; the
+       input shape exposes a single ``curve_family`` field."
+    - "Reference-metadata equality across the two legs
+       (``inflation_index_family``, ``index_lag``,
+       ``interpolation``, ``underlying_index``) is assumed by the
+       same-curve invariant and re-asserted in code.  A mismatch
+       surfaces a controlled error envelope rather than a silently
+       averaged or papered-over snapshot."
+    - "Each endpoint ZCIS rate is computed by composing
+       ``calculate_inflation_swap_rate_level`` once per endpoint
+       tenor, passing the same ``ToolConfig`` so methodology stays
+       consistent.  This inherits the level primitive's
+       four-conjunct no-proxy guard (instrument_type +
+       pricing_type + curve_family + tenor) for free."
+    - "If either endpoint level returns its own controlled error
+       envelope, this tool surfaces a controlled error envelope of
+       its own that names which endpoint(s) failed (start_tenor /
+       end_tenor) and propagates the inner error context."
+    - "Tenor pair ordering is structural: start_tenor must map to
+       a strictly smaller year fraction than end_tenor, computed
+       via ``shared.analytics.curve_bootstrap.tenor_to_years``.  A
+       caller passing start_tenor=10Y, end_tenor=2Y is rejected
+       at the schema layer; the tool does NOT silently swap them."
+    - "Per-trade-date alignment: the two endpoint ZCIS series are
+       aligned via a strict pandas inner-join on trade_date AFTER
+       each is computed independently from the level primitive.
+       No ffill across the join — dates where ONE endpoint has no
+       data are dropped from the forward series."
+    - "The endpoint ZCIS rates from the inner level primitive
+       arrive in PERCENT; the geometric forward is computed in
+       decimal then converted back to PERCENT for display.  The
+       BPS surface (forward_zcis_bps, daily/weekly/monthly bps
+       changes, rolling z-score in bps, trailing high/low in bps)
+       comes from forward_zcis_pct * 100 and uses
+       period_changes(already_bps=True) (plain subtraction);
+       ``bps_round_decimals`` is threaded through explicitly so
+       the YAML is authoritative."
+    - "The snapshot's ``forward_zcis_bps`` equals
+       ``time_series[-1].forward_zcis_bps`` AND
+       ``time_series_forward.rows[-1].value * 100`` bit-for-bit at
+       the YAML's ``bps_round_decimals``; same boundary-rounding
+       discipline as forward_breakeven_simple / OIS forward_rate."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       inflation_swap_rate_level / inflation_swap_curve_spread /
+       breakeven_curve_spread / OIS rate_level)."
+    - "Forward ZCIS is a *level* (in PERCENT), so the canonical
+       ``time_series_forward`` ships with units = PERCENT.  This
+       mirrors forward_breakeven_simple's wire shape... wait, no:
+       forward_breakeven_simple ships in BPS because breakeven is
+       a *spread* (an inflation-compensation differential).  For
+       ZCIS, the forward IS a rate level, not a spread — so this
+       tool ships in PERCENT, mirroring OIS forward_rate."
+
+  citations:
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_1y_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_sample_std (registered in
+       docs/architecture/methodology_sources.md)."
+    - "bloomberg_field_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "derived_from_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "team_judgment_pending_review (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "Cross-market inflation-swap spread (e.g. USD ZCIS 5Y minus
+       EUR ZCIS 5Y) — same-tenor, cross-curve.  A different
+       concept than this primitive (which is same-curve, two-
+       tenor); ships as a separate primitive
+       (``cross_market_inflation_swap_spread``, build_order 12)
+       subject to the INDEX-FAMILY MISMATCH caveat the cross-
+       country breakeven primitive carries."
+    - "Swap-breakeven basis (ZCIS rate minus same-tenor linker
+       bond-implied breakeven) — the canonical desk read of the
+       relative-value spread between the inflation-swap and the
+       linker-bond inflation-compensation curves
+       (``swap_breakeven_basis_simple``, build_order 13)."
+    - "``forward_compounding_mode = year_weighted_linear``: the
+       alternative desk shorthand many traders see on Bloomberg
+       displays.  Documented but not implemented in V1; compute()
+       raises NotImplementedError on this value with a pointer
+       back to this list.  When implemented, the
+       ``methodology_label`` MUST move in lockstep with the
+       convention so the wire-disclosed formula cannot disagree
+       with the math; the SQL validator must update its
+       independent reproduction at the same time."
+    - "Date-window input mode (``start_date`` / ``end_date``) for
+       ad-hoc forward windows aligned to specific calendar events
+       (e.g. central-bank meeting dates).  Per-trade-date
+       anchoring would re-compute year fractions per day from the
+       curve's day-count basis, mirroring OIS forward_rate's
+       date-window mode.  Deferred from V1 so the wire shape stays
+       minimal — tenor mode is the canonical desk read for
+       5Y5Y-style forwards and covers the catalog's
+       ``concept_summary``."
+    - "``trailing_range_window_days``: configurable.  Currently
+       locked at 252 because the output fields high_252d_bps /
+       low_252d_bps / percentile_252d embed the number.  Path to
+       configurability mirrors sibling level / curve-spread /
+       forward tools' planned_extensions: rename schema fields to
+       high_window_bps / low_window_bps / percentile_window + add
+       trailing_window_days to the output; remove the
+       NotImplementedError guard in compute()."
+    - "Inflation-risk-premium- and liquidity-premium-adjusted
+       forward ZCIS rate.  A desk-grade forward expected-inflation
+       read needs IRP / liquidity adjustments that depend on
+       metadata the repo does not yet ingest.  When that lands,
+       the adjusted variant ships as a separate primitive
+       (different concept), NOT as a config knob on this one."

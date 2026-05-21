@@ -1,0 +1,531 @@
+# =============================================================================
+# inflation_swap_butterfly — tool configuration
+# =============================================================================
+# Canonical record of the same-curve ZCIS butterfly (3-point ZCIS curve
+# curvature) tool's conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Every shared
+# convention (z_score_window_days, z_score_min_periods, z_score_ddof,
+# z_score_buffer_multiplier, ffill_limit_days, period offsets, trailing
+# range window, bps/yield/z-score rounding, window_years_round_decimals,
+# high_low_round_decimals) carries the same numeric value as the sibling
+# inflation_swap_rate_level / inflation_swap_curve_spread /
+# inflation_swap_forward / cross_market_inflation_swap_spread /
+# swap_breakeven_basis_simple tools and the cross-domain sovereign /
+# linker / OIS tools — the cross-config lint enforces value-agreement
+# across every tool that declares the same convention name.  Drift on
+# any of those is caught.
+#
+# The ZCIS-specific Bloomberg field convention is
+# ``default_zcis_rate_field`` (= 'PX_MID') — distinct from sovereign /
+# linker ``default_field_name`` (= 'YLD_YTM_MID') and OIS
+# ``default_swap_rate_field`` (= 'PX_LAST') — to keep the cross-config
+# lint clean across the four families.  This primitive composes
+# inflation_swap_rate_level THREE times (one per endpoint tenor); the
+# threaded ``config=config`` ensures the resolved field is consistent
+# end-to-end.
+#
+# Concept honesty
+# ---------------
+# This tool returns the CURVATURE of the same ZCIS curve family — i.e.
+# the same-curve 3-point butterfly between three pillars of the same
+# ZCIS curve family (e.g. USD_ZCIS 5s10s30s, EUR_ZCIS 2s5s10s,
+# GBP_ZCIS 2s10s30s).  The arithmetic stays in raw inflation-swap-rate
+# space — there is NO subtraction of a model-derived basis, NO
+# inflation-risk-premium adjustment, and NO routing through a fitted
+# curve object.  Each endpoint ZCIS rate is the raw par-rate the
+# zero-coupon inflation swap pays for inflation compensation against
+# the headline index over the swap tenor; the butterfly inherits the
+# index-family / index_lag / interpolation reference metadata of the
+# curve family and is interpretable under THAT curve's convention
+# only.  Cross-curve butterflies (e.g. USD_ZCIS 5Y vs EUR_ZCIS 5Y as
+# part of a butterfly) are out of scope of this primitive (and a
+# different concept).
+#
+# Butterfly formula
+# -----------------
+# Per-trade-date, the displayed inflation-swap butterfly is the FIXED
+# simple-butterfly weighting:
+#
+#   butterfly_bps = (belly_zcis_pct
+#                    - 0.5 * (short_zcis_pct + long_zcis_pct)) * 100
+#
+# Equivalent to 0.5 * (2 * belly - short - long) in PERCENT space,
+# then * 100 to convert to BPS.  Weight tuple (-0.5, +1.0, -0.5)
+# applied to (short, belly, long) in raw inflation-swap-rate space.
+# Sign convention: POSITIVE = belly cheap (i.e. belly ZCIS rate HIGH
+# relative to the half-weighted wings average); NEGATIVE = belly rich.
+# Same sign convention as the sovereign sovereign_bonds/butterfly,
+# inflation_indexed_bonds/real_yield_butterfly, and
+# inflation_indexed_bonds/breakeven_butterfly primitives.  The
+# butterfly is reported in BPS (matching the BPS output convention the
+# inflation_swaps domain established via inflation_swap_curve_spread
+# for curve-shape views), even though the underlying ZCIS rates flow
+# through in PERCENT.  Daily / weekly / monthly changes of the
+# butterfly are also reported in BPS (already-bps subtraction).  The
+# three endpoint ZCIS series are aligned per-trade-date via a strict
+# pandas inner-join AFTER each is computed independently — no
+# synthetic butterfly points are produced on dates where any endpoint
+# has no data.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_inflation_swap_butterfly_tool
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Same-curve zero-coupon inflation swap (ZCIS) butterfly (3-point
+    ZCIS curve curvature) between three pillars of the same ZCIS
+    curve family (e.g. USD_ZCIS 5s10s30s, EUR_ZCIS 2s5s10s, GBP_ZCIS
+    2s10s30s).  Composed by calling
+    ``calculate_inflation_swap_rate_level`` three times (one per
+    endpoint tenor) under the four-conjunct SELECT guard
+    (``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` AND ``curve_family=?``
+    AND ``tenor=?``), then aligning the three PERCENT-units canonical
+    TimeSeries via a strict pandas inner-join on trade_date and
+    applying the per-trade-date FIXED simple-butterfly weighting:
+
+      butterfly_bps = (belly_zcis_pct
+                       - 0.5 * (short_zcis_pct + long_zcis_pct)) * 100
+
+    Sign convention: POSITIVE = belly cheap (belly ZCIS rate HIGH
+    relative to half-weighted wings); NEGATIVE = belly rich.  Matches
+    the sovereign_bonds/butterfly,
+    inflation_indexed_bonds/real_yield_butterfly, and
+    inflation_indexed_bonds/breakeven_butterfly sign convention.
+    Returns the current ZCIS butterfly (in BPS), daily/weekly/monthly
+    bps changes, rolling 252-day z-score (on the bps butterfly),
+    trailing 252-day high/low/percentile (in BPS), the rolling-window
+    length, plus the two component wing spreads (belly - short,
+    long - belly) AND the three endpoint ZCIS rates and year
+    fractions used to form the butterfly so the desk can sanity-check
+    the decomposition.  Emits a bespoke wire-frozen ``time_series``
+    row list of the butterfly (in BPS) over the displayed
+    ``lookback_days`` window AND the canonical
+    ``shared.schemas.time_series.TimeSeries`` payloads (BPS for the
+    butterfly, Z_SCORE for the rolling z-score) so the workflow /
+    operator layer can compose without per-tool custom shapes.
+
+    Same-curve invariant
+    --------------------
+    All three endpoints share a single ``curve_family`` (e.g.
+    ``USD_ZCIS``).  Cross-curve butterflies (e.g. mixing USD_ZCIS
+    and EUR_ZCIS pillars in a 3-point curvature) are not in scope
+    for this primitive and would be a different concept.  This tool
+    exposes a single ``curve_family`` field at the input layer so
+    cross-curve attempts cannot be expressed; the compute layer
+    additionally re-asserts that all three resolved endpoint reads
+    share ``inflation_index_family``, ``index_lag``,
+    ``interpolation``, and ``underlying_index``, surfacing a
+    controlled error envelope on mismatch (which would indicate a
+    real instrument_master inconsistency at the underlying pillars,
+    not a methodology choice).
+
+    Raw-rate-space promise
+    ----------------------
+    The butterfly arithmetic is performed in raw inflation-swap-rate
+    space — there is NO subtraction of a model-derived basis (e.g.
+    swap-vs-linker breakeven basis), NO inflation-risk-premium
+    adjustment, and NO routing through a fitted curve object.  The
+    promise is wire-locked: the ``methodology_label`` field is
+    sourced from ``methodology.what_it_does`` below at runtime so a
+    YAML edit to the disclosure flows through.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool (yield_levels, curve_spread, butterfly,
+      curve_move_classifier, cross_market_spread), the OIS
+      level/spread/forward tools, the linker
+      real_yield_level / real_yield_curve_spread / real_yield_butterfly /
+      breakeven_inflation_simple / forward_breakeven_simple /
+      breakeven_curve_spread / breakeven_butterfly /
+      cross_country_breakeven_spread_simple /
+      cross_country_real_yield_spread_simple tools, and the sibling
+      inflation_swap_rate_level / inflation_swap_curve_spread /
+      inflation_swap_forward / cross_market_inflation_swap_spread /
+      swap_breakeven_basis_simple tools — the cross-config lint
+      enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches every sibling level / spread /
+      forward / butterfly tool.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every other rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The ZCIS butterfly
+      series is in BPS so changes go through
+      period_changes(already_bps=True), i.e. plain subtraction (no
+      *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as breakeven_butterfly / real_yield_butterfly /
+  # sovereign butterfly / inflation_swap_curve_spread.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies inside each
+      composed level primitive's clean step at each endpoint; the
+      butterfly layer itself uses a strict inner join on trade_date
+      to avoid synthesising butterfly points.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (butterfly, period changes, range,
+  # wing spreads)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current ZCIS butterfly, daily/weekly/monthly
+      changes, trailing high/low, wing spreads) to 0.01 bps.  Display
+      precision; matches sovereign curve_spread / cross_market_spread
+      / OIS spread tools / linker breakeven_curve_spread /
+      breakeven_butterfly / real_yield_butterfly / sibling
+      inflation_swap_curve_spread.  Threaded explicitly into
+      period_changes(decimals=...) so the delta_bps default of 2
+      cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4 is
+      not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct
+  # ---------------------------------------------------------------------------
+  # Used here for the endpoint short_zcis_rate_pct /
+  # belly_zcis_rate_pct / long_zcis_rate_pct display fields (sourced
+  # from the inner level primitive's snapshot).  Kept aligned with
+  # the rest of the rates tools so the cross-config lint stays clean.
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker / ZCIS level tool.  Kept here for
+      cross-tool convention agreement; the ZCIS butterfly itself is
+      reported in bps.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (short_years, belly_years,
+  # long_years)
+  # ---------------------------------------------------------------------------
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the short_years / belly_years /
+      long_years fields in current_metrics.  4 decimals matches the
+      sibling inflation_swap_curve_spread / breakeven_butterfly /
+      real_yield_butterfly value the cross-config lint enforces.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range high / low rounding precision (passed to the
+  # composed level primitive's compute_level_metrics)
+  # ---------------------------------------------------------------------------
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches the inflation_swap_rate_level /
+      inflation_swap_curve_spread / sibling level tools — required
+      because this primitive's ToolConfig is threaded into the inner
+      level primitive's compute.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for all three endpoint legs
+  # ---------------------------------------------------------------------------
+  # ZCIS quoted-rate mid is the canonical Bloomberg observation for
+  # inflation swaps.  Reusing the same convention name as the level
+  # primitive (``default_zcis_rate_field``) so the cross-config lint
+  # stays clean and the threaded config flows through to all three
+  # inner level calls.
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` (``yield_mid`` → ``PX_MID``).  This default
+      is passed unchanged to ALL THREE inner
+      inflation_swap_rate_level calls (short / belly / long).
+      LLM/HTTP wrappers MUST use the empty/None sentinel so this
+      default flows through.
+
+methodology:
+  what_it_does: |
+    Same-curve zero-coupon inflation swap (ZCIS) butterfly (3-point
+    ZCIS curve curvature) between three pillars of the same ZCIS
+    curve family (e.g. USD_ZCIS 5s10s30s, EUR_ZCIS 2s5s10s, GBP_ZCIS
+    2s10s30s).  Computed per-trade-date via the FIXED simple-
+    butterfly weighting:
+
+      butterfly_bps = (belly_zcis_pct
+                       - 0.5 * (short_zcis_pct + long_zcis_pct)) * 100
+
+    where ``short_zcis_pct`` / ``belly_zcis_pct`` / ``long_zcis_pct``
+    are the ZCIS rate levels at ``short_tenor`` / ``belly_tenor`` /
+    ``long_tenor`` respectively (each computed by
+    ``calculate_inflation_swap_rate_level`` filtered by
+    ``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` AND
+    ``curve_family=?`` AND ``tenor=?`` — the no-proxy guard
+    inherited transitively).  The three endpoint series are aligned
+    per-trade-date via a strict pandas inner-join on calendar
+    trade_date AFTER each is computed independently; the butterfly
+    is computed only on dates where ALL THREE endpoints exist (no
+    synthetic butterfly points are produced).
+
+    Fixed simple-butterfly weighting: weight tuple
+    ``(-0.5, +1.0, -0.5)`` applied to ``(short, belly, long)``
+    respectively in raw inflation-swap-rate space, then * 100 to
+    convert to BPS.  Equivalent to
+    ``0.5 * (2 * belly - short - long) * 100``.  Sign convention:
+    POSITIVE = belly is CHEAP versus the half-weighted wings (i.e.
+    belly ZCIS rate is HIGH relative to the wings); NEGATIVE =
+    belly is RICH.  Matches sovereign_bonds/butterfly's,
+    inflation_indexed_bonds/real_yield_butterfly's, and
+    inflation_indexed_bonds/breakeven_butterfly's sign convention.
+
+    Raw inflation-swap-rate space: the arithmetic stays in raw
+    inflation-swap-rate space — there is NO subtraction of a
+    model-derived basis (e.g. swap-vs-linker breakeven basis), NO
+    inflation-risk-premium adjustment, and NO routing through a
+    fitted curve object.  Each endpoint is the raw par-rate the
+    zero-coupon inflation swap pays for inflation compensation
+    against the headline index over the swap tenor.
+
+    Same-curve construction only: the input layer accepts a single
+    ``curve_family`` field so cross-curve butterflies cannot be
+    expressed.  Compute additionally re-asserts that the three
+    endpoint reads share ``inflation_index_family``, ``index_lag``,
+    ``interpolation``, and ``underlying_index`` (load-bearing
+    reference-metadata invariants of the curve), surfacing a
+    controlled error envelope if they do not — that would indicate
+    a real instrument_master inconsistency at the underlying
+    pillars rather than a methodology choice.
+
+    The ``inflation_index_family`` / ``index_lag`` /
+    ``interpolation`` / ``underlying_index`` fields thread to the
+    wire on ``current_metrics`` AND in the canonical TimeSeries
+    description so a desk reader can interpret the butterfly under
+    the correct ZCIS convention without a second tool call.  The
+    output is the CURVATURE of the ZCIS curve in raw rate space —
+    distinct from a ZCIS curve spread (2-point difference), from a
+    ZCIS forward (year-weighted forward of two endpoints), and from
+    the linker bond-implied breakeven butterfly (3-point curvature
+    of bond-implied breakevens, a different inflation-compensation
+    object that carries inflation-risk-premium and relative
+    liquidity premia between the nominal sovereign and the linker
+    bond).
+
+  assumptions:
+    - "Same-curve invariant: all three endpoints share a single
+       ``curve_family``.  Cross-curve butterflies (e.g. mixing
+       USD_ZCIS, EUR_ZCIS, and GBP_ZCIS pillars in a 3-point
+       curvature) are forbidden by this primitive's input shape —
+       they would be a different primitive entirely."
+    - "Raw inflation-swap-rate space: the arithmetic is performed on
+       raw ZCIS par rates, NOT on a model-derived basis or
+       inflation-risk-premium-adjusted measure.  The wire-locked
+       promise is surfaced via ``current_metrics.methodology_label``
+       so a downstream operator cannot misread the output as a
+       cleaner expected-inflation curvature."
+    - "Reference-metadata equality across the three legs
+       (``inflation_index_family``, ``index_lag``,
+       ``interpolation``, ``underlying_index``) is assumed by the
+       same-curve invariant and re-asserted in code.  A mismatch
+       surfaces a controlled error envelope rather than a silently
+       averaged or papered-over snapshot."
+    - "Each endpoint ZCIS rate is computed by composing
+       ``calculate_inflation_swap_rate_level`` once per endpoint
+       tenor, passing the same ``ToolConfig`` so methodology stays
+       consistent.  This inherits the level primitive's
+       four-conjunct no-proxy guard (instrument_type +
+       pricing_type + curve_family + tenor) for free."
+    - "If any endpoint level returns its own controlled error
+       envelope, this tool surfaces a controlled error envelope of
+       its own that names which endpoint(s) failed (short_tenor /
+       belly_tenor / long_tenor) and propagates the inner error
+       context."
+    - "Three-tenor ordering is structural: short_tenor must map to
+       a strictly smaller year fraction than belly_tenor, and
+       belly_tenor strictly smaller than long_tenor, computed via
+       ``shared.analytics.curve_bootstrap.tenor_to_years``.  A
+       caller passing inverted or duplicate tenors is rejected at
+       the schema layer; the tool does NOT silently swap them."
+    - "Per-trade-date alignment: the three endpoint ZCIS series are
+       aligned via a strict pandas inner-join on trade_date AFTER
+       each is computed independently from the level primitive.
+       No ffill across the join — dates where ANY endpoint has no
+       data are dropped from the butterfly series."
+    - "ZCIS rates from the inner level primitive arrive in PERCENT;
+       the butterfly is converted to BPS at compute time via the
+       *100 multiplier and rounded to ``bps_round_decimals``.
+       ``daily/weekly/monthly`` changes use
+       ``period_changes(already_bps=True)`` (plain subtraction);
+       ``bps_round_decimals`` is threaded through explicitly so the
+       YAML is authoritative.  This matches the BPS output
+       convention the inflation_swaps domain established via
+       ``inflation_swap_curve_spread`` for curve-shape views."
+    - "The snapshot's ``current_butterfly_bps`` equals
+       ``time_series[-1].butterfly_bps`` and
+       ``time_series_butterfly.rows[-1].value`` bit-for-bit at the
+       YAML's ``bps_round_decimals``; same boundary-rounding
+       discipline as ``inflation_swap_curve_spread`` /
+       ``breakeven_butterfly`` / ``real_yield_butterfly``."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       ``inflation_swap_rate_level`` /
+       ``inflation_swap_curve_spread`` / OIS rate_level)."
+
+  citations:
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_1y_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_sample_std (registered in
+       docs/architecture/methodology_sources.md)."
+    - "bloomberg_field_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "derived_from_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "team_judgment_pending_review (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked
+       at 252 because the output fields high_252d_bps /
+       low_252d_bps / percentile_252d embed the number.  Path to
+       configurability: rename schema fields to high_window_bps /
+       low_window_bps / percentile_window + add
+       trailing_window_days to the output; remove the
+       NotImplementedError guard in compute().  Same wire-freeze
+       as inflation_swap_curve_spread / breakeven_butterfly /
+       real_yield_butterfly / sovereign butterfly."
+    - "Duration-neutral / DV01-weighted butterfly weights.  Today:
+       fixed simple-butterfly weighting (-0.5/+1.0/-0.5 on
+       short/belly/long via the half-wings form).  Some desks
+       prefer 50-50 weights or duration-neutral weights for
+       hedging analysis.  Subjective methodology choice;
+       documented here so future readers know it was considered
+       and deferred — would ship as a separate primitive when the
+       DV01 metadata is wired for inflation swaps."
+    - "Cross-market inflation-swap butterfly (e.g. comparing
+       USD_ZCIS 2s5s10s curvature to EUR_ZCIS 2s5s10s curvature)
+       — a separate primitive when the catalog gets to it.
+       Different concept than this primitive (which is same-curve,
+       three-tenor)."
+    - "Inflation-risk-premium- / liquidity-premium-adjusted ZCIS
+       butterfly.  Like its level / spread / forward counterparts,
+       a desk-grade pure-expected-inflation curvature read needs
+       IRP / liquidity adjustments that depend on metadata the
+       repo does not yet ingest.  When that lands, the adjusted
+       variant ships as a separate primitive (different concept),
+       NOT as a config knob on this one."

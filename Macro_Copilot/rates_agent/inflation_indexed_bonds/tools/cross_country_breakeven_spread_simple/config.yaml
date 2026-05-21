@@ -1,0 +1,529 @@
+# =============================================================================
+# calculate_cross_country_breakeven_spread_simple_tool — tool configuration
+# =============================================================================
+# Canonical record of the cross-country breakeven-spread tool's
+# conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Every shared
+# convention (z_score_window_days, z_score_min_periods, z_score_ddof,
+# z_score_buffer_multiplier, ffill_limit_days, default_field_name,
+# period offsets, trailing range window, bps/yield/z-score rounding)
+# carries the same numeric value as the linker
+# breakeven_inflation_simple, forward_breakeven_simple,
+# breakeven_curve_spread, real_yield_level, and the sovereign yield
+# tools — the cross-config lint enforces value-agreement across every
+# tool that declares the same convention name.  Drift on any of those
+# is caught.
+#
+# Concept honesty
+# ---------------
+# This tool returns the SAME-TENOR CROSS-COUNTRY BREAKEVEN INFLATION
+# DIFFERENTIAL — i.e. country_a's bond-implied breakeven inflation at
+# `tenor` minus country_b's bond-implied breakeven inflation at the
+# same `tenor`.  Each leg is a generic linker-implied breakeven from
+# ``calculate_breakeven_inflation_simple``, and inherits that
+# primitive's "inflation compensation, NOT pure expected inflation"
+# caveat (each leg carries an inflation risk premium and a relative
+# liquidity premium between its nominal sovereign and its linker).
+#
+# Index-family caveat (load-bearing)
+# ----------------------------------
+# Different countries publish breakevens against different inflation
+# indices (USD CPI-U non-seasonally adjusted vs euro-area HICP ex-
+# tobacco vs UK RPI/CPIH vs Canada CPI).  These are NOT identical
+# inflation references — a USD 10Y breakeven minus a EUR-FR 10Y
+# breakeven is a CPI-U-vs-HICP differential, not a pure expected-
+# inflation differential.  The user MUST interpret the output with
+# that index-family mismatch in mind; the methodology disclosure
+# threads this caveat onto the wire via
+# ``current_metrics.methodology_label``.
+#
+# Sign convention
+# ---------------
+# Per-trade-date, the displayed cross-country breakeven spread is:
+#
+#     spread_bps = breakeven_a_bps - breakeven_b_bps
+#
+# i.e. country_a minus country_b at the same tenor.  This sign
+# convention is fixed and surfaced both in this YAML and on the wire
+# (``current_metrics.methodology_label``).  The tool NEVER silently
+# flips the sign; if the caller wants country_b minus country_a, they
+# must swap the input pairs.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_cross_country_breakeven_spread_simple_tool
+  domain: inflation_indexed_bonds
+  description: |
+    Same-tenor cross-country breakeven inflation differential between
+    two countries' generic bond-implied breakevens (e.g. US 10Y
+    breakeven minus EUR-FR 10Y breakeven).  Each leg is computed by
+    composing ``calculate_breakeven_inflation_simple`` once per
+    country, with each call constrained to that country's own
+    (nominal, linker) pair.  The two breakeven series are then
+    aligned per-trade-date via a strict inner-join and differenced:
+
+      spread_bps = breakeven_a_bps - breakeven_b_bps
+
+    Returns the current cross-country breakeven spread (in bps),
+    daily/weekly/monthly bps changes, rolling 252-day z-score (in
+    bps), trailing 252-day high/low/percentile (in bps), the
+    rolling-window length, plus the two underlying country breakevens
+    (``breakeven_a_bps`` / ``breakeven_b_bps``) used to form the
+    spread so the desk can sanity-check the decomposition.  Also
+    emits a bespoke wire-frozen ``time_series`` history of the
+    cross-country breakeven spread (in bps) over the displayed
+    ``lookback_days`` window AND the canonical
+    ``shared.schemas.time_series.TimeSeries`` payloads (BPS for the
+    spread, Z_SCORE for the rolling z-score) so the workflow /
+    operator layer can compose without per-tool custom shapes.
+
+    Cross-country invariant
+    -----------------------
+    This primitive is explicitly a CROSS-COUNTRY object: country_a
+    and country_b MUST be different sovereign issuers.  The
+    Pydantic input validators enforce
+    ``country_a_nominal_pair != country_b_nominal_pair`` AND
+    ``country_a_linker_pair != country_b_linker_pair`` at schema
+    time (no DB lookup needed).  A caller asking for two identical
+    legs is rejected before any market-data SELECT — for same-
+    country breakeven curve work, see
+    ``calculate_breakeven_curve_spread_tool``.
+
+    Per-leg same-country invariant
+    ------------------------------
+    Inside each leg, the (nominal, linker) pair MUST share country
+    AND currency in ``macro_data.instrument_master`` (e.g.
+    UST + USD_TIPS, FR_OAT + EUR_FR_LINKER).  This invariant is NOT
+    re-implemented here — it is enforced by the underlying
+    ``breakeven_inflation_simple`` primitive's
+    ``_enforce_same_country_invariant`` helper, which fires BEFORE
+    any market-data SELECT on each leg.  Leg-internal cross-country
+    pollution (e.g. country_a_nominal=UST + country_a_linker=
+    EUR_FR_LINKER) yields a controlled error envelope from the spot
+    primitive that this tool surfaces with a leg-attributed prefix
+    (``country_a leg failed: ...`` / ``country_b leg failed: ...``).
+
+    Wire honesty: the output's ``methodology_label`` field is sourced
+    from ``methodology.what_it_does`` below — NOT a hardcoded literal
+    — so a YAML edit to the disclosure flows through to runtime.
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches every
+      sovereign rates tool, the OIS level/spread/forward tools, the
+      linker real_yield_level / breakeven_inflation_simple /
+      forward_breakeven_simple / breakeven_curve_spread tools — the
+      cross-config lint enforces the match.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches every other rates tool that
+      declares this convention.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the convention every other rates tool uses.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day window
+      covers weekends + holidays.  Matches every other rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The cross-country
+      breakeven spread series is in bps so changes go through
+      period_changes(already_bps=True), i.e. plain subtraction (no
+      *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as breakeven_inflation_simple / breakeven_curve_spread /
+  # forward_breakeven_simple / cross_market_spread / yield_levels /
+  # real_yield_level / OIS rate_level.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies inside each composed
+      breakeven_inflation_simple call's pivot/align step (per leg);
+      the cross-country layer itself uses a strict inner join on
+      trade_date to avoid synthesising spread points across the
+      country pair.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (cross-country spread, period changes,
+  # range, leg breakevens)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current cross-country breakeven spread,
+      daily/weekly/monthly changes, trailing high/low, leg
+      breakevens) to 0.01 bps.  Display precision; matches sovereign
+      curve_spread / cross_market_spread / OIS spread tools / linker
+      breakeven_inflation_simple / forward_breakeven_simple /
+      breakeven_curve_spread.  Threaded explicitly into
+      period_changes(decimals=...) so the delta_bps default of 2
+      cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above 4 is
+      not silently truncated by safe_float's own default of 4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct
+  # ---------------------------------------------------------------------------
+  # Used here for sanity-check fields converted to pct space if
+  # needed.  Kept aligned with the rest of the rates tools so the
+  # cross-config lint stays clean.
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / linker level tool.  Kept here for cross-tool
+      convention agreement; the cross-country breakeven spread itself
+      is reported in bps.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Tenor display rounding (tenor_years)
+  # ---------------------------------------------------------------------------
+  # The single-tenor year fraction is a display-only field; rounding
+  # keeps display precision uniform with OIS forward_rate /
+  # forward_breakeven_simple / breakeven_curve_spread's year-fraction
+  # display fields.
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the tenor_years field in
+      current_metrics.  4 decimals matches the OIS forward_rate /
+      forward_breakeven_simple / breakeven_curve_spread value the
+      cross-config lint enforces; this tool reuses the same convention
+      name + value.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for both legs (both countries)
+  # ---------------------------------------------------------------------------
+  # Linkers and nominal sovereigns publish their yield-to-maturity
+  # under the same Bloomberg ``YLD_YTM_MID`` mnemonic.  Reusing the
+  # convention name + value keeps the cross-config lint clean.
+  # LLM/HTTP wrappers MUST use the empty/None sentinel so this default
+  # flows through.  This default is passed unchanged to BOTH the
+  # country_a and country_b inner breakeven_inflation_simple calls
+  # (each of which uses it for both of its legs).
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical observation for both
+      nominal sovereigns AND inflation linkers — the difference is the
+      underlying instrument_type, not the field code.  The
+      instrument-type discriminator is enforced in code on the DB
+      read for every leg of every country (inherited from the spot
+      breakeven primitive's no-proxy guard); this default applies to
+      every leg of every country unless the caller explicitly
+      overrides per query.
+
+methodology:
+  what_it_does: |
+    Same-tenor cross-country breakeven inflation differential between
+    two countries' generic bond-implied breakevens at the same tenor
+    (e.g. US 10Y breakeven minus EUR-FR 10Y breakeven, US 5Y
+    breakeven minus UK 5Y breakeven).  Computed per-trade-date via
+    the SPREAD formula:
+
+      spread_bps = breakeven_a_bps - breakeven_b_bps
+
+    where ``breakeven_a_bps`` and ``breakeven_b_bps`` are the spot
+    bond-implied breakevens at ``tenor`` for country_a and country_b
+    respectively (each computed by
+    ``calculate_breakeven_inflation_simple`` constrained to that
+    country's own (nominal, linker) pair).  The two breakeven series
+    are aligned per-trade-date via a strict inner-join AFTER each is
+    computed independently; the spread is computed only on dates
+    where BOTH country legs have data (no synthetic spread points
+    are produced).
+
+    Sign convention is FIXED at country_a minus country_b — the tool
+    NEVER silently flips the sign.  If the caller wants country_b
+    minus country_a, they must swap the input pairs.
+
+    Cross-country construction by design: country_a and country_b
+    MUST be different sovereign issuers (e.g. UST vs FR_OAT,
+    UST vs UK_GILT, DE_BUND vs FR_OAT, FR_OAT vs IT_BTP).  Identical-
+    country pairs (e.g. UST/USD_TIPS for both legs) are rejected at
+    the schema layer — for same-country breakeven curve / spot work,
+    use ``calculate_breakeven_curve_spread_tool`` /
+    ``calculate_breakeven_inflation_simple_tool``.  Inside each leg,
+    the (nominal, linker) pair must STILL share country and currency;
+    that same-country invariant is enforced by the underlying
+    ``breakeven_inflation_simple`` primitive's
+    ``_enforce_same_country_invariant`` helper which fires BEFORE
+    any market-data SELECT.  Leg-internal cross-country pollution
+    (e.g. country_a_nominal=UST + country_a_linker=EUR_FR_LINKER) is
+    refused with a controlled error envelope that this tool surfaces
+    with a leg-attributed prefix (``country_a leg failed: ...`` /
+    ``country_b leg failed: ...``).
+
+    The output is a CROSS-COUNTRY INFLATION-COMPENSATION
+    DIFFERENTIAL, NOT a pure cross-country expected-inflation
+    differential.  Each leg's breakeven carries an inflation risk
+    premium and a relative liquidity premium between its nominal and
+    linker bond, and the cross-country spread inherits both at each
+    leg.
+
+    INDEX-FAMILY MISMATCH (load-bearing): different countries'
+    linkers reference DIFFERENT inflation indices — USD TIPS
+    reference CPI-U non-seasonally adjusted, EUR-area linkers
+    reference HICP ex-tobacco, UK linkers reference RPI (legacy
+    issues) or CPIH (newer issues), Canadian RRBs reference
+    Canada CPI.  These are NOT identical inflation references.
+    This tool does NOT attempt to harmonise indices (no
+    harmonisation is performed) because doing so would require
+    seasonally-adjusted / index-conversion metadata the repo does
+    not yet ingest.  As a direct consequence, a US 10Y breakeven
+    minus EUR-FR 10Y breakeven is therefore a CPI-U-vs-HICP
+    differential, not a pure expected-inflation differential; the
+    user MUST interpret the output with that index-family
+    mismatch in mind.  Use as a proxy for cross-country inflation
+    expectations only with the inflation-compensation caveat AND
+    this index-family caveat in mind.
+
+  assumptions:
+    - "Cross-country invariant: country_a and country_b must be
+       different sovereign issuers — the Pydantic input validators
+       enforce ``country_a_nominal_pair != country_b_nominal_pair``
+       AND ``country_a_linker_pair != country_b_linker_pair`` at
+       schema time (NO DB lookup is needed for this guard).  Same-
+       country pairs (e.g. both legs UST/USD_TIPS) are rejected
+       before any compute work fires; for same-country breakeven
+       curve / spot work, use the dedicated same-country tools."
+    - "Per-leg same-country invariant: inside each country leg, the
+       (nominal, linker) pair MUST share country AND currency in
+       macro_data.instrument_master.  This invariant is NOT
+       re-implemented here — it is enforced by the underlying
+       ``breakeven_inflation_simple`` primitive's
+       ``_enforce_same_country_invariant`` helper which fires BEFORE
+       any market-data SELECT on each leg.  Leg-internal cross-
+       country pollution (e.g. country_a_nominal=UST,
+       country_a_linker=EUR_FR_LINKER) yields a controlled error
+       envelope that this tool surfaces with a leg-attributed
+       prefix."
+    - "INDEX-FAMILY MISMATCH (load-bearing): different countries'
+       linkers reference different inflation indices — USD TIPS
+       reference CPI-U non-seasonally adjusted, EUR-area linkers
+       reference HICP ex-tobacco, UK linkers reference RPI (legacy)
+       or CPIH (newer issues), Canadian RRBs reference CPI.  These
+       are NOT identical inflation references.  A US 10Y breakeven
+       minus EUR-FR 10Y breakeven is therefore a CPI-U-vs-HICP
+       differential, not a pure expected-inflation differential.
+       The user must interpret the output with that index-family
+       mismatch in mind; this tool does NOT attempt to harmonise
+       indices because doing so would require seasonally-adjusted /
+       index-conversion metadata the repo does not yet ingest."
+    - "Inherited generic-breakeven caveat: each leg is a
+       linker-implied breakeven from
+       ``calculate_breakeven_inflation_simple`` and inherits that
+       primitive's 'inflation compensation, NOT pure expected
+       inflation' caveat — each leg carries an inflation risk
+       premium and a relative liquidity premium between its nominal
+       sovereign and its linker.  The cross-country differential
+       inherits both premia at each leg AND the index-family
+       mismatch (see above)."
+    - "Sign convention is country_a minus country_b and is fixed.
+       The tool NEVER silently flips the sign; flipping the inputs
+       (a↔b) flips the displayed sign.  The sign convention is
+       surfaced both in this YAML and on the wire via
+       ``current_metrics.methodology_label``."
+    - "Each leg's breakeven is computed by composing
+       ``calculate_breakeven_inflation_simple`` once per country,
+       passing the same ``ToolConfig`` so methodology stays
+       consistent.  This inherits the spot primitive's no-proxy
+       guard (instrument_type filter on each underlying yield read)
+       AND its same-country invariant (per-leg) for free.  The
+       cross-country guard is enforced HERE in this primitive's
+       input validator (different countries required); the same-
+       country guard continues to live INSIDE
+       ``breakeven_inflation_simple`` per leg — neither is
+       re-implemented in the other."
+    - "If either country leg returns its own controlled error
+       envelope, this tool surfaces a controlled error envelope of
+       its own with a leg-attributed prefix (``country_a leg
+       failed: ...`` / ``country_b leg failed: ...``) and propagates
+       the inner error context."
+    - "Per-trade-date alignment: the two country breakeven series
+       are aligned via inner-join on trade_date AFTER each is
+       computed independently from the spot primitive.  No ffill
+       across the cross-country join — dates where ONE leg has no
+       data are dropped from the spread series, NOT carried forward
+       as synthetic spread points."
+    - "The cross-country breakeven spread series is in BPS
+       throughout — both legs arrive in bps from the spot primitive
+       (which already returns ``breakeven_bps`` per row) and the
+       arithmetic is performed in bps.  ``daily/weekly/monthly``
+       changes use period_changes with already_bps=True (plain
+       subtraction); ``bps_round_decimals`` is threaded through
+       explicitly so the YAML is authoritative."
+    - "The snapshot's ``current_spread_bps`` equals
+       ``time_series[-1].spread_bps`` and
+       ``time_series_spread.rows[-1].value`` bit-for-bit at the
+       YAML's ``bps_round_decimals``; same boundary-rounding
+       discipline as breakeven_curve_spread /
+       forward_breakeven_simple / breakeven_inflation_simple."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       breakeven_curve_spread / breakeven_inflation_simple /
+       forward_breakeven_simple / OIS rate_level / linker
+       real_yield_level)."
+
+  citations:
+    - "bond_implied_breakeven_inflation_v1 (composed primitive — see
+       breakeven_inflation_simple/config.yaml for the per-leg spot
+       methodology this tool inherits)."
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable.  Currently locked
+       at 252 because the output fields high_252d_bps / low_252d_bps
+       / percentile_252d embed the number.  Path to configurability:
+       rename schema fields to high_window_bps / low_window_bps /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute().  Same
+       wire-freeze as breakeven_inflation_simple /
+       breakeven_curve_spread / forward_breakeven_simple /
+       cross_market_spread / yield_levels / real_yield_level."
+    - "Currency-hedged variant.  The current primitive is a raw
+       cross-country breakeven differential — it does NOT FX-adjust
+       either leg.  A currency-hedged variant (e.g. USD-hedged
+       EUR-FR breakeven) requires FX-forward / cross-currency basis
+       metadata the repo does not yet ingest.  When that lands, the
+       hedged variant ships as a separate primitive (different
+       concept), NOT as a config knob on this one."
+    - "Liquidity-premium-adjusted / IRP-adjusted variant.  Like
+       breakeven_inflation_simple's planned IRP / liquidity
+       adjustments, a desk-grade cross-country expected-inflation
+       differential needs IRP and liquidity adjustments at each leg
+       (and a cross-leg adjustment for the relative liquidity
+       difference between the two linker markets) that depend on
+       metadata the repo does not yet ingest.  When that lands, the
+       adjusted variant ships as a separate primitive (different
+       concept), NOT as a config knob on this one."
+    - "Forward cross-country breakeven (e.g. 5Y5Y BE_USD vs 5Y5Y
+       BE_EUR).  Composes ``forward_breakeven_simple`` twice (one
+       per country) into a per-trade-date difference.  Deferred
+       from V1 because the spot cross-country differential is the
+       desk-canonical read; the forward variant ships as a separate
+       primitive when the catalog calls for it."
+    - "Inflation-swap-based cross-country variant.  Inflation
+       swaps are a cleaner expected-inflation reference than
+       bond-implied breakevens (no nominal/linker liquidity
+       premium), so an inflation-swap cross-country differential
+       would be the desk's preferred read where the metadata
+       exists.  Deferred until the inflation-swap primitive lands;
+       at that point the swap-based variant ships as a separate
+       primitive (different concept), NOT as a config knob on this
+       one."
+    - "Index-family harmonisation.  The current primitive does NOT
+       attempt to convert between CPI-U, HICP, RPI, etc. — the
+       index-family mismatch is disclosed but not adjusted for.  A
+       harmonised variant would require seasonally-adjusted /
+       index-conversion metadata (e.g. CPI-U-NSA → SA, HICP →
+       harmonised CPI) that the repo does not yet ingest, and
+       ships as a separate primitive when that metadata lands."
