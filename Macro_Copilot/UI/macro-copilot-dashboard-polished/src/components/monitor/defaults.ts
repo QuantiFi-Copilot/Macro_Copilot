@@ -1,5 +1,5 @@
 // ============================================================================
-// Default layouts — Monitor (Home) and Rates Agent
+// Default layouts — Monitor (Home), Rates Agent, FX Agent
 // ----------------------------------------------------------------------------
 // The first time a user lands on a widget surface, they get a sensible
 // default layout so the page isn't empty.  After that, their custom
@@ -13,6 +13,9 @@
 //   - Rates Agent: rates-deep.  Same backbone + a UST 2s10s spread
 //     chart, a BTP-Bund cross-market spread, and individual yield
 //     levels for the four major curves.
+//   - FX Agent: spot snapshot + scanner + carry monitor.  Pre-
+//     aggregated only in V1; parameterized FX widgets (custom pair,
+//     custom tenor) land alongside the next FX tools.
 //
 // "Reset to default" inside the Customize menu writes one of these back.
 // ============================================================================
@@ -110,5 +113,13 @@ export function defaultRatesAgentLayout(): LayoutState {
         params: { curve_family: 'IT_BTP', tenor: '10Y', lookback_days: '252' },
       },
     ],
+  ]);
+}
+
+export function defaultFxAgentLayout(): LayoutState {
+  return buildLayout([
+    ['fx_spot_snapshot'],
+    ['fx_scanner'],
+    ['fx_carry'],
   ]);
 }
