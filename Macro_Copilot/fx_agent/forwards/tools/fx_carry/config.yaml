@@ -26,8 +26,9 @@ conventions:
     value: 1M
     source: desk_default_pending_review
     rationale: >-
-      One-month forwards are the initial monitor default and match the
-      currently ingested FX forward playbook.
+      One-month forwards are the default monitor tenor. Other supported
+      tenors are 1W, 3M, 6M, 12M — all five are ingested via
+      fx_agent/playbooks/fx_forwards.yml v2.0.
 
   tenor_1w_days:
     value: 5
@@ -56,6 +57,16 @@ conventions:
     rationale: >-
       Approximate six FX trading months.
     valid_range: [90, 180]
+
+  tenor_12m_days:
+    value: 252
+    source: trading_day_convention
+    rationale: >-
+      One FX trading year. Uses the trading-day approximation, NOT a
+      calendar 365, to stay consistent with ``annualization_days``
+      below. With 12M / 252 = 1, the 12M annualised carry equals the
+      raw 12M carry — which is what a trader expects.
+    valid_range: [240, 270]
 
   annualization_days:
     value: 252
@@ -122,5 +133,6 @@ methodology:
     - "The current implementation ranks only pairs with both spot and forward rows present."
   citations: []
   planned_extensions:
-    - "Support multiple forward tenors once the FX forward playbooks ingest more than 1M."
-    - "Add CIP / collateral-currency adjustments once deposit, OIS, or cross-currency basis inputs are ingested."
+    - "Add CIP / collateral-currency adjustments using the OIS substrate (Sreeram's rates_agent/ois universe) and our forwards substrate — see fx_agent/ROADMAP.md Phase C."
+    - "Add NDF-aware carry branch when NDFs land — NDF tickers are quoted as outrights, not points, so the (forward_points / divisor) formula does not apply. See ROADMAP Wave 2 discovery findings."
+    - "Surface methodology_label / day-count convention per tenor so cross-asset tools can sanity-check carry vs OIS differentials at the same horizon."
