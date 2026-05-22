@@ -1,0 +1,344 @@
+# =============================================================================
+# backtest — canonical signal-driven backtest workflow
+# =============================================================================
+# Phase 1 PR 19.  The 5th workflow archetype (after event_study, regime_
+# conditioned_relationship, attribution_decomposition, cross_sectional_screen).
+#
+# Canonical question shape:
+#   "Backtest buying X when signal_Y crosses threshold Z, holding for N
+#   days, shorting W for the relative-value framing, financing at
+#   <method>."
+#
+# Canonical V1 binding (TIPS-vs-Nominal):
+#   signal_tool_name:           calculate_zscore_custom_tool
+#   signal_params:
+#     curve_family:             UST
+#     tenor:                    "2Y"
+#     window_days:              252
+#     lookback_days:            1825
+#   signal_output_field:        time_series_zscore
+#   signal_threshold:           1.0
+#   long_leg_curve_family:      USD_TIPS
+#   long_leg_tenor:             "10Y"
+#   long_leg_weight:            -1.0    # NB: PR 12 yield-change sign:
+#                                       # negative = profit when yield falls
+#                                       # (bond price up) = "long bond"
+#   short_leg_curve_family:     UST
+#   short_leg_tenor:            "2Y"
+#   short_leg_weight:           +1.0    # positive = profit when yield rises
+#                                       # = "short bond"
+#   holding_window_days:        125     # ~6 months business days
+#   start_date:                 "2019-01-01"
+#   end_date:                   "2024-12-31"
+#   financing_method:           overnight_index_proxy
+#   financing_proxy_curve:      USD_SOFR_OIS
+#   financing_basis:            act_360
+#
+# DAG topology (locked)
+# ---------------------
+# 6-node DAG.  Two upstream branches (signal+events → trades; price+
+# financing in parallel) joined at evaluate_trades:
+#
+#   signal ─→ events ─→ trades ─┐
+#                                ├─→ evaluate ─→ summarize (terminal)
+#   price_panel ────────────────┤
+#   financing_rate ─────────────┘
+# =============================================================================
+
+template_id: backtest
+archetype: backtest
+description: >-
+  Signal-driven backtest archetype.  Threshold a signal series (z-score
+  or other normalized indicator), trigger a fixed-horizon long-short
+  trade at each event, fetch the price panel for the trade's legs over
+  the requested date range, compute a financing-rate series via the
+  user-specified method, evaluate per-trade P&L including financing
+  carry, and emit the summary metrics Panel (hit rate, Sharpe,
+  drawdown, distribution percentiles).
+
+archetype_signature:
+  - "backtest buying X when signal exceeds threshold"
+  - "what if I went long X and short Y every time Z spikes"
+  - "long-short trade triggered by a signal threshold"
+  - "fixed-horizon mean-reversion / momentum backtest"
+  - "TIPS vs Nominal breakeven backtest"
+  - "carry-and-financing-included backtest"
+
+slot_schema:
+
+  # -------------------------------------------------------------------------
+  # Signal — the series whose extremes trigger trades.
+  # -------------------------------------------------------------------------
+
+  - name: signal_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive emitting the signal series (e.g.
+      calculate_zscore_custom_tool, calculate_curve_spread_tool,
+      calculate_breakeven_inflation_tool).  Must emit a TimeSeries whose
+      units pair sensibly with the chosen threshold scale.
+
+  - name: signal_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for the signal primitive (e.g.
+      {curve_family: UST, tenor: '2Y', window_days: 252,
+      lookback_days: 1825} for zscore_custom).
+
+  - name: signal_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of the signal primitive's output to
+      lift as the event trigger.  Z_SCORE-typed signals paired with a
+      template-locked threshold_basis=raw_value give the canonical
+      "|z| > N" event extraction.
+
+  - name: signal_threshold
+    type: float
+    required: true
+    description: >-
+      Absolute-value threshold applied to the signal series.  For
+      z-score signals, this is the |z| boundary (e.g. 1.0 = "trade
+      when |z| > 1").
+
+  # -------------------------------------------------------------------------
+  # Trade construction.
+  # -------------------------------------------------------------------------
+
+  # Two slots per leg in PR 20: the curve family + tenor are needed
+  # to drive the ``build_sovereign_yield_panel_tool`` primitive's
+  # ``legs`` param; the resolved instrument-key string is needed by
+  # ``construct_trades``' LegSpecInput.  The slot binder only
+  # supports DIRECT slot refs (``{$slot: name}``), not nested
+  # format-string substitution, so the caller pre-computes the
+  # instrument-key string (e.g. ``"USD_TIPS_10Y"``) and passes both.
+
+  - name: long_leg_curve_family
+    type: str
+    required: true
+    description: >-
+      Curve family for the long leg (e.g. USD_TIPS, UST, DE_BUND).
+      Used to drive the price-panel primitive's ``legs`` param.
+
+  - name: long_leg_tenor
+    type: str
+    required: true
+    description: "Tenor for the long leg (e.g. '2Y', '10Y')."
+
+  - name: long_leg_instrument_key
+    type: str
+    required: true
+    description: >-
+      Pre-computed instrument-key string for the long leg.  Must
+      equal ``<long_leg_curve_family>_<long_leg_tenor>`` (e.g.
+      ``"USD_TIPS_10Y"``) so it matches the price panel's column
+      naming convention.  Caller computes this — the slot binder
+      doesn't do string interpolation.
+
+  - name: long_leg_weight
+    type: float
+    required: false
+    default: -1.0
+    description: >-
+      Per-leg weight in PR 12's yield-change sign convention.
+      Negative weight = profit when yield falls (bond price rises) =
+      "long bond" in conventional finance language.  See methodology
+      card for the sign convention's full disclosure.
+
+  - name: short_leg_curve_family
+    type: str
+    required: true
+    description: "Curve family for the short leg."
+
+  - name: short_leg_tenor
+    type: str
+    required: true
+    description: "Tenor for the short leg."
+
+  - name: short_leg_instrument_key
+    type: str
+    required: true
+    description: >-
+      Pre-computed instrument-key string for the short leg.  Must
+      equal ``<short_leg_curve_family>_<short_leg_tenor>``.
+
+  - name: short_leg_weight
+    type: float
+    required: false
+    default: 1.0
+    description: >-
+      Per-leg weight.  Positive weight = profit when yield rises (bond
+      price falls) = "short bond" in conventional language.
+
+  - name: holding_window_days
+    type: int
+    required: false
+    default: 20
+    description: >-
+      Business days held per trade.  20 = 1 month, 125 = ~6 months.
+
+  # -------------------------------------------------------------------------
+  # Price + financing window.
+  # -------------------------------------------------------------------------
+
+  - name: start_date
+    type: str
+    required: true
+    description: "Earliest trade_date for the price + financing panels (YYYY-MM-DD)."
+
+  - name: end_date
+    type: str
+    required: true
+    description: "Latest trade_date (YYYY-MM-DD)."
+
+  - name: financing_method
+    type: str
+    required: false
+    default: overnight_index_proxy
+    description: >-
+      Financing-rate method.  Allowed:
+        - ``overnight_index_proxy`` (default) — requires
+          ``financing_proxy_curve`` slot.
+        - ``constant_rate`` — requires ``financing_constant_rate_pct``
+          slot.
+        - ``term_repo_curve`` / ``gc_special_blend`` — V1 raises.
+
+  - name: financing_proxy_curve
+    type: str
+    required: false
+    description: >-
+      Required when financing_method=overnight_index_proxy.  One of
+      USD_SOFR_OIS / EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_TONA_OIS /
+      AUD_AONIA_OIS / CAD_CORRA_OIS.
+
+  - name: financing_constant_rate_pct
+    type: float
+    required: false
+    description: >-
+      Required when financing_method=constant_rate.  Annualised rate
+      in PERCENT (e.g. 5.30 for 5.30%).
+
+  - name: financing_basis
+    type: str
+    required: false
+    default: act_360
+    description: >-
+      Day-count basis for the per-day financing accrual.  Allowed:
+      act_360 / act_365 / act_act_isda.
+
+# DAG topology — locked.  Slot values fill node params; the topology
+# itself is fixed (no slot-controlled rewiring).
+nodes:
+
+  # Signal primitive.
+  - kind: primitive
+    node_id: signal
+    tool_name: {$slot: signal_tool_name}
+    output_field: {$slot: signal_output_field}
+    params: {$slot: signal_params}
+
+  # Threshold the signal to extract events.
+  - kind: operator
+    node_id: events
+    operator_name: threshold_events
+    params:
+      threshold: {$slot: signal_threshold}
+      rule: abs_above         # template-locked: |signal| > threshold
+      threshold_basis: raw_value
+
+  # Build the TradeSet from events + leg specs + holding rule.
+  # ``instrument_key`` is pre-computed by the caller (slot binder
+  # doesn't string-interpolate); it must equal
+  # ``<curve_family>_<tenor>`` to match the price-panel columns.
+  - kind: operator
+    node_id: trades
+    operator_name: construct_trades
+    params:
+      holding_rule: fixed_horizon
+      holding_window_days: {$slot: holding_window_days}
+      leg_construction_rule: equal_weight_signed
+      legs:
+        - instrument_key: {$slot: long_leg_instrument_key}
+          weight: {$slot: long_leg_weight}
+        - instrument_key: {$slot: short_leg_instrument_key}
+          weight: {$slot: short_leg_weight}
+
+  # Assemble the price panel for both legs.  Panel columns are named
+  # ``<curve_family>_<tenor>`` per the sovereign_yield_panel
+  # primitive's contract — must match the instrument_key strings
+  # passed to ``trades`` above.
+  - kind: primitive
+    node_id: price_panel
+    tool_name: build_sovereign_yield_panel_tool
+    output_field: panel
+    params:
+      legs:
+        - curve_family: {$slot: long_leg_curve_family}
+          tenor: {$slot: long_leg_tenor}
+        - curve_family: {$slot: short_leg_curve_family}
+          tenor: {$slot: short_leg_tenor}
+      start_date: {$slot: start_date}
+      end_date: {$slot: end_date}
+
+  # Compute the financing-rate Panel.
+  - kind: primitive
+    node_id: financing
+    tool_name: compute_financing_rate_tool
+    output_field: panel
+    params:
+      method: {$slot: financing_method}
+      start_date: {$slot: start_date}
+      end_date: {$slot: end_date}
+      proxy_curve: {$slot: financing_proxy_curve}
+      constant_rate_pct: {$slot: financing_constant_rate_pct}
+
+  # Evaluate per-trade P&L including financing carry.
+  - kind: operator
+    node_id: evaluate
+    operator_name: evaluate_trades
+    params:
+      pricing_convention: mid                # template-locked V1
+      frictionless: true                     # template-locked V1
+      financing_assumption: external_series  # template-locked V1
+      financing_basis: {$slot: financing_basis}
+
+  # Summarise into hit rate / Sharpe / drawdown / percentiles.
+  - kind: operator
+    node_id: summarize
+    operator_name: summarize_trades
+    params:
+      pnl_aggregation_method: final_pnl
+      trading_days_per_year: 252
+      empty_tradeset_policy: nan_metrics
+
+# Edges — locked.  Two upstream branches (signal→events→trades;
+# price+financing in parallel) joined at evaluate.  Each
+# ``target_input_slot`` MUST exactly match the consuming operator's
+# input_slots declaration in shared/workflow/registry.py — the
+# pre-flight validator rejects unknown slot names loudly.
+edges:
+  - source_node_id: signal
+    target_node_id: events
+    target_input_slot: series             # threshold_events.input_slots["series"]
+  - source_node_id: events
+    target_node_id: trades
+    target_input_slot: events             # construct_trades.input_slots["events"]
+  - source_node_id: trades
+    target_node_id: evaluate
+    target_input_slot: trades             # evaluate_trades.input_slots["trades"]
+  - source_node_id: price_panel
+    target_node_id: evaluate
+    target_input_slot: price_panel        # evaluate_trades.input_slots["price_panel"]
+  - source_node_id: financing
+    target_node_id: evaluate
+    target_input_slot: financing_rate_panel  # evaluate_trades.input_slots["financing_rate_panel"]
+  - source_node_id: evaluate
+    target_node_id: summarize
+    target_input_slot: pnl_panel          # summarize_trades.input_slots["pnl_panel"]
+
+literal_bindings: []
+
+terminal_node_id: summarize

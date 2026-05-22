@@ -150,9 +150,9 @@ def _assert_basis_config_passed(call_args) -> None:
         "`config=`"
     )
     assert isinstance(cfg, ToolConfig)
-    assert cfg.tool.name == "swap_breakeven_basis_simple", (
+    assert cfg.tool.name == "calculate_swap_breakeven_basis_simple_tool", (
         f"caller passed config for tool {cfg.tool.name!r}, expected "
-        "'swap_breakeven_basis_simple' (catches imports of the wrong "
+        "'calculate_swap_breakeven_basis_simple_tool' (catches imports of the wrong "
         "tool's CONFIG_PATH)"
     )
     assert "z_score_window_days" in cfg.conventions
@@ -340,7 +340,7 @@ class TestConfigPathPublicSymbol:
 
     def test_load_returns_swap_breakeven_basis_config(self):
         cfg = load_tool_config(SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH)
-        assert cfg.tool.name == "swap_breakeven_basis_simple"
+        assert cfg.tool.name == "calculate_swap_breakeven_basis_simple_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
 

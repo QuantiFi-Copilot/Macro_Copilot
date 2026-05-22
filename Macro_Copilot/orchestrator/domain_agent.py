@@ -26,7 +26,11 @@ Design choices
 - **Verbatim passthrough.**  The child receives the user's exact words as
   a ``HumanMessage``.  The supervisor never paraphrases.
 - **Optional domain boundary.**  In the multi-domain path, the parent
-  appends a "scope" SystemMessage telling the child to stay in its lane.
+  passes a ``domain_boundary`` string that becomes a short prefix on
+  the ``HumanMessage`` ("[scope for this query] ...\n\n<user_message>")
+  telling the child to stay in its lane.  Embedded in the HumanMessage
+  rather than a separate SystemMessage — see PR 16 commentary in
+  ``run()`` for why.
 - **Structured output.**  The LangGraph ReAct loop still produces
   prose + tool_calls.  We parse the tool-call trajectory into structured
   ``FactRow`` entries so the supervisor's synthesis step consumes numbers,
@@ -38,7 +42,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import (
@@ -48,6 +52,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -124,6 +129,7 @@ class DomainAgentSession:
         model_name: str,
         temperature: float = 0.0,
         max_tokens: int = 4096,
+        checkpointer: Optional[BaseCheckpointSaver] = None,
     ):
         self.domain = domain
         self._system_prompt = system_prompt
@@ -131,6 +137,14 @@ class DomainAgentSession:
         self._model_name = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
+        # Phase 0 PR 5: checkpointer is supplied by the parent
+        # CopilotSession.  ``None`` means "use a per-domain MemorySaver"
+        # — preserved as the backward-compat default for tests and
+        # one-shot CLI use that don't want durability.  In the
+        # production WebSocket path, the parent passes an
+        # ``AsyncPostgresSaver`` so conversation state survives server
+        # restarts.
+        self._checkpointer: BaseCheckpointSaver = checkpointer or MemorySaver()
 
         self._mcp_client: MultiServerMCPClient | None = None
         self._graph = None
@@ -183,10 +197,29 @@ class DomainAgentSession:
         model_with_tools = model.bind_tools(tools)
 
         async def agent_node(state: MessagesState) -> dict:
-            # Always prepend the cached system message.  If the caller
-            # added a scope hint (multi-domain path), it's already in
-            # state["messages"] before the HumanMessage.
-            messages_for_model = [self._cached_system_message] + state["messages"]
+            # Always prepend the cached SystemMessage.  Anthropic's API
+            # requires SystemMessages to be CONSECUTIVE at the start of
+            # the message list — any SystemMessage that surfaces later
+            # in the list (separated by Human/AI/Tool messages) trips
+            # ``ValueError: Received multiple non-consecutive system
+            # messages`` inside ``langchain_anthropic``.
+            #
+            # In stateful mode (PR 5), ``state["messages"]`` is restored
+            # from the checkpointer across turns.  If a prior turn added
+            # any SystemMessage to state (the multi-domain ``scope``
+            # SystemMessage was the historical culprit — PR 16 removed
+            # that injection at the input layer, but checkpointers
+            # opened BEFORE this fix still contain old SystemMessages),
+            # we MUST filter them out here.  Filtering is defensive
+            # belt-and-braces: even if the input layer never adds a
+            # SystemMessage, this guarantees correctness against any
+            # historical / future state shape.
+            sanitized_history = [
+                m for m in state["messages"] if not isinstance(m, SystemMessage)
+            ]
+            messages_for_model = (
+                [self._cached_system_message] + sanitized_history
+            )
             response = await model_with_tools.ainvoke(messages_for_model)
             _log_usage(f"{self.domain.value}.agent", response)
             return {"messages": [response]}
@@ -200,11 +233,19 @@ class DomainAgentSession:
         builder.add_conditional_edges("agent", tools_condition)
         builder.add_edge("tools", "agent")
 
-        memory = MemorySaver()
-        self._graph = builder.compile(checkpointer=memory)
+        # The checkpointer was selected by the parent CopilotSession
+        # (see CopilotSession._make_checkpointer).  In stateless / no-pool
+        # paths this is ``MemorySaver``; in the durable path it's an
+        # ``AsyncPostgresSaver`` sharing a pool with all sibling
+        # DomainAgentSessions of this CopilotSession.
+        self._graph = builder.compile(checkpointer=self._checkpointer)
 
         self._is_open = True
-        logger.info("[%s] session ready", self.domain.value)
+        logger.info(
+            "[%s] session ready (checkpointer=%s)",
+            self.domain.value,
+            type(self._checkpointer).__name__,
+        )
 
     async def close(self) -> None:
         """Shut down the MCP subprocess."""
@@ -273,12 +314,30 @@ class DomainAgentSession:
         # LangGraph MessagesState applies reducers; we send the initial
         # messages for this turn (excluding the system, which the agent
         # node prepends).
-        initial_messages: list = []
+        #
+        # PR 16: the scope hint used to be a separate ``SystemMessage``
+        # prepended here.  That worked single-turn but broke
+        # cross-turn in stateful mode (PR 5): the SystemMessage flowed
+        # through the ``add_messages`` reducer into ``state["messages"]``,
+        # then on the NEXT turn ``agent_node`` prepended a fresh cached
+        # SystemMessage in front of state — producing two SystemMessages
+        # separated by Human/AI/Tool messages, which Anthropic's API
+        # rejects as "non-consecutive".  Once tripped, EVERY subsequent
+        # turn for that domain in the same session failed.
+        #
+        # Fix: embed the scope hint as a prefix on the ``HumanMessage``
+        # content.  Functionally equivalent for the LLM (a sentence at
+        # the top of the user message telling it to stay in its lane),
+        # but ``state["messages"]`` never accumulates SystemMessages.
+        # Combined with ``agent_node``'s defensive filter, prior
+        # poisoned state is also recoverable.
         if domain_boundary:
-            initial_messages.append(
-                SystemMessage(content=f"[scope for this query] {domain_boundary}")
+            message_content = (
+                f"[scope for this query] {domain_boundary}\n\n{user_message}"
             )
-        initial_messages.append(HumanMessage(content=user_message))
+        else:
+            message_content = user_message
+        initial_messages: list = [HumanMessage(content=message_content)]
 
         turn_config = {"configurable": {"thread_id": turn_thread_id}}
 
@@ -286,9 +345,33 @@ class DomainAgentSession:
         answer_parts: list[str] = []
         tool_calls_seen: list[ChildToolCallTrace] = []
         raw_tool_outputs: list[tuple[str, dict, str]] = []  # (tool, params, raw_json)
-        current_tool_name: Optional[str] = None
-        current_tool_params: dict = {}
-        current_tool_start: Optional[float] = None
+        # PR-D — per-invocation context for the tool event loop.
+        # Pre-PR-D this code used three SHARED MUTABLE variables
+        # (``current_tool_name`` / ``current_tool_params`` /
+        # ``current_tool_start``) to correlate ``on_tool_start`` ↔
+        # ``on_tool_end`` events.  That assumed strict serial pairing
+        # — but Claude can emit multiple ``tool_use`` blocks in a
+        # single response, and LangGraph's ``ToolNode`` then dispatches
+        # them concurrently.  When events interleave (start-A,
+        # start-B, start-C, end-A, end-B, end-C) every shared
+        # assignment in start-B / start-C clobbered A's params before
+        # end-A could read them, and the post-end reset wiped state
+        # so end-B and end-C saw ``params={}``.  Result on the user
+        # surface: one card with correct params, N-1 cards with all
+        # params missing → PR-B-β's "missing params" tile fires for
+        # genuinely-correct tool invocations.  See the screenshots
+        # attached to PR-D's description.
+        #
+        # PR-D keys per-invocation context by the LangGraph
+        # ``run_id`` (a UUID present on every astream_events v2
+        # event for the same invocation — see LangChain docs).  Each
+        # ``on_tool_end`` looks up ITS OWN start's data by id, so
+        # interleaved events are handled correctly without any
+        # shared mutable state.  The dict is bounded — entries are
+        # ``pop``ped on the matching end, and orphan starts (no end
+        # event before the loop exits) are negligible memory (the
+        # whole turn is short-lived).
+        inflight_tools: Dict[str, Dict[str, Any]] = {}
 
         try:
             async for event in self._graph.astream_events(
@@ -299,42 +382,72 @@ class DomainAgentSession:
                 kind = event.get("event", "")
                 name = event.get("name", "")
                 data = event.get("data", {})
+                # PR-D — the run_id correlator.  Defensive: some
+                # LangChain versions may emit events without it for
+                # synthetic / wrapping nodes; we fall back to
+                # ``f"__no_run_id__:{name}"`` so the inflight lookup
+                # still does something useful for the serial single-
+                # tool case (the bug we're fixing only triggers when
+                # multiple tools fire in parallel, which they only
+                # do under astream_events v2 where ``run_id`` is
+                # always present per the v2 contract).
+                run_id = event.get("run_id") or f"__no_run_id__:{name}"
 
                 if kind == "on_tool_start":
-                    current_tool_name = name
-                    current_tool_start = time.monotonic()
                     tool_input = data.get("input", {})
                     if isinstance(tool_input, str):
                         try:
                             tool_input = json.loads(tool_input)
                         except (json.JSONDecodeError, TypeError):
                             tool_input = {}
-                    current_tool_params = tool_input if isinstance(tool_input, dict) else {}
+                    params = (
+                        tool_input if isinstance(tool_input, dict) else {}
+                    )
+                    inflight_tools[run_id] = {
+                        "name": name,
+                        "params": params,
+                        "start_time": time.monotonic(),
+                    }
 
                     if on_event is not None:
-                        label = make_tool_label(name, current_tool_params)
+                        label = make_tool_label(name, params)
                         await on_event(
                             SessionEvent(
                                 type="tool_call",
                                 data={
                                     "tool": name,
                                     "label": label,
-                                    "params": current_tool_params,
+                                    "params": params,
                                     "domain": self.domain.value,
                                 },
                             )
                         )
 
                 elif kind == "on_tool_end":
-                    duration_ms = None
-                    if current_tool_start is not None:
-                        duration_ms = round((time.monotonic() - current_tool_start) * 1000)
+                    # Look up THIS invocation's context by run_id.
+                    # ``pop`` removes the entry so the dict stays
+                    # bounded; missing entries (orphan end events)
+                    # fall back to the event's ``name`` + empty
+                    # params — same fail-soft contract the pre-PR-D
+                    # code had when ``current_tool_name`` happened
+                    # to be ``None`` (the ``or name`` branch).
+                    ctx = inflight_tools.pop(run_id, None)
+                    tool_name = (ctx["name"] if ctx else None) or name
+                    params: Dict[str, Any] = (
+                        ctx["params"] if ctx else {}
+                    )
+                    start_time = ctx["start_time"] if ctx else None
+                    duration_ms: Optional[int] = (
+                        round((time.monotonic() - start_time) * 1000)
+                        if start_time is not None
+                        else None
+                    )
 
                     # The tool output is a JSON string (per our MCP server
                     # convention).  Save the raw text for fact extraction.
                     tool_output_text = _stringify_tool_output(data.get("output"))
                     raw_tool_outputs.append(
-                        (current_tool_name or name, current_tool_params, tool_output_text)
+                        (tool_name, params, tool_output_text)
                     )
                     # If the tool returned {"error": "..."}, surface it on
                     # the trace so partial same-domain failures are
@@ -343,8 +456,8 @@ class DomainAgentSession:
                     tool_error = _tool_error_from_output(tool_output_text)
                     tool_calls_seen.append(
                         ChildToolCallTrace(
-                            tool=current_tool_name or name,
-                            params=current_tool_params,
+                            tool=tool_name,
+                            params=params,
                             duration_ms=duration_ms,
                             error=tool_error,
                         )
@@ -355,7 +468,7 @@ class DomainAgentSession:
                             SessionEvent(
                                 type="tool_result",
                                 data={
-                                    "tool": current_tool_name or name,
+                                    "tool": tool_name,
                                     "domain": self.domain.value,
                                     "duration_ms": duration_ms,
                                     # Frontend can render an error badge
@@ -365,10 +478,6 @@ class DomainAgentSession:
                                 },
                             )
                         )
-
-                    current_tool_name = None
-                    current_tool_start = None
-                    current_tool_params = {}
 
                 elif kind == "on_chat_model_stream":
                     chunk = data.get("chunk")
@@ -401,8 +510,21 @@ class DomainAgentSession:
         facts = _extract_facts(raw_tool_outputs)
 
         # Build workspace_context from the trace.
+        # PR-B-α — propagate the trace's optional ``error`` +
+        # ``duration_ms`` fields so the workspace_context entries can
+        # carry per-call status metadata.  Build's Ask → Build canvas
+        # consumes this to render an honest "this tool failed" tile
+        # alongside the working cards instead of silently dropping the
+        # entry.  Backward compatible: extract_workspace_context only
+        # emits the optional fields when the source dict has them.
         trace_dicts = [
-            {"tool": t.tool, "params": t.params, "domain": self.domain.value}
+            {
+                "tool": t.tool,
+                "params": t.params,
+                "domain": self.domain.value,
+                "error": t.error,
+                "duration_ms": t.duration_ms,
+            }
             for t in tool_calls_seen
         ]
         workspace_context = extract_workspace_context(trace_dicts)

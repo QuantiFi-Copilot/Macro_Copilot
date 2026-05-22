@@ -64,7 +64,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 # Make sure the project root is on sys.path BEFORE any in-repo imports
 # below.  Mirrors the bootstrap pattern in the per-domain MCP servers.
@@ -79,6 +78,21 @@ from database.database import get_db_engine  # noqa: E402
 # Importing each template's package triggers ``register_template`` via
 # their ``__init__.py``, populating the substrate's process-wide
 # template registry.  Required so ``list_workflows()`` sees them.
+#
+# NOTE: ``rates_agent.workflows.backtest`` is intentionally NOT imported
+# here.  The backtest archetype is paused from the LLM-facing surface
+# until the data substrate carries the fields it needs to produce
+# economically-meaningful trade P&L (MOD_DUR_MID + CUR_CPN + DAY_CNT_DES
+# + PX_DIRTY for DV01 weighting; CPI-U NSA + seasonal factors for TIPS
+# carry; OTR history; true O/N OIS; bid/ask).  Without those, the V1
+# backtest is a yield-change distribution mislabelled as a P&L
+# backtest.  The template, operators (construct_trades / evaluate_trades
+# / summarize_trades), and tests remain in the repo and run under the
+# existing test gauntlet — they just don't reach the LLM router or the
+# MCP catalogue.  Re-enable by uncommenting the import below once the
+# data prerequisites land.
+#
+#   import rates_agent.workflows.backtest  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
 
@@ -440,6 +454,24 @@ def regime_conditioned_relationship_workflow(
     }
     envelope = run_template(template_id, slot_values, engine=engine)
     return json.dumps(envelope, default=str)
+
+
+# NOTE: ``backtest_workflow`` MCP tool intentionally removed from the
+# LLM-facing surface in this PR.  Rationale: the V1 backtest archetype
+# computes a yield-change distribution and labels it as trade P&L
+# (Sharpe / drawdown / hit rate).  That labelling is not defensible
+# without DV01 weighting, TIPS CPI carry, OTR resolution, and true
+# O/N OIS financing — none of which the ingested data layer carries
+# today.  Surfacing it to the LLM produces numbers a PM cannot trust.
+# The template, operators, primitives, and tests remain in the repo
+# under their respective test gauntlets; only the LLM-facing MCP tool
+# wrapper is hidden.  Re-enable by restoring the import above and the
+# tool wrapper below once the data prerequisites land
+# (MOD_DUR_MID + CUR_CPN + DAY_CNT_DES + PX_DIRTY for sovereign/linker
+# legs; CPI-U NSA + seasonal factors for TIPS carry; OTR history;
+# true O/N OIS).  See ``docs/technical_debt.md`` item #24 for the
+# data prerequisites and ``docs/architecture/backtest.md`` for the
+# methodology spec.
 
 
 # ===========================================================================

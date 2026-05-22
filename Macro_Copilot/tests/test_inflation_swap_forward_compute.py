@@ -239,7 +239,7 @@ class TestBundledConfig:
 
     def test_config_loads(self):
         cfg = load_tool_config(CONFIG_PATH)
-        assert cfg.tool.name == "inflation_swap_forward"
+        assert cfg.tool.name == "calculate_inflation_swap_forward_tool"
         assert cfg.tool.domain == "inflation_swaps"
         assert cfg.tool.category == "desk_invariant_primitive"
 

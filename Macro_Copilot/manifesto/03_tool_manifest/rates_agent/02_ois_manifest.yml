@@ -1,0 +1,315 @@
+# =============================================================================
+# OIS (overnight-index swaps) — tool manifest
+# =============================================================================
+# Canonical source of truth for the OIS sub-agent's tool catalogue.
+# Read by the Library page UI alongside 01_sovereign_bonds_manifest.yml.
+# Each entry must mirror what's actually registered in
+# `rates_agent/ois/mcp_server.py` and what lives under
+# `rates_agent/ois/tools/<tool>/`.
+#
+# Same bucket convention as the sovereign manifest:
+#   1A  — strict deterministic arithmetic on stored OIS rates; no
+#         user-facing model inference; conventions YAML-locked.
+#   1B  — statistical model fits on OIS data (none yet in this file).
+#   2   — open-ended / scenario-generating tools (none yet).
+#
+# `swap_spread` is structurally cross-domain (sovereign − OIS) but
+# lives in the OIS sub-agent because it requires knowledge of OIS
+# conventions (par-rate field name, tenor matching).  Surfaced here
+# rather than duplicated.
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # SINGLE-TENOR OIS LEVELS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_ois_rate_level
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_rate_level_tool
+      schema: rates_agent/ois/tools/rate_level/schemas.py::OISRateLevelInput
+      compute: rates_agent/ois/tools/rate_level/compute.py::get_ois_rate_level
+      config: rates_agent/ois/tools/rate_level/config.yaml
+
+    one_liner: >-
+      Single-tenor OIS par-swap-rate snapshot — current rate, daily /
+      weekly / monthly change, rolling 252-day z-score, trailing
+      252-day high / low / percentile, plus full chartable time
+      series.  OIS analogue of get_yield_levels.
+
+    bucket_rationale: >-
+      Deterministic rolling z-score over stored daily OIS par rates.
+      Fixed 252-day window; conventions YAML-locked; no model
+      inference and no LLM-facing override path in V1.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_curve_spread_tool
+      - calculate_ois_cross_market_spread_tool
+      - calculate_ois_forward_rate_tool
+      - get_yield_levels_tool
+
+    workflows:
+      - ois_snapshot_card
+      - ois_yield_workspace
+      - ois_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # OIS CURVE SHAPE / SPREADS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_ois_curve_spread
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_curve_spread_tool
+      schema: rates_agent/ois/tools/curve_spread/schemas.py::OISCurveSpreadInput
+      compute: rates_agent/ois/tools/curve_spread/compute.py::calculate_ois_curve_spread
+      config: rates_agent/ois/tools/curve_spread/config.yaml
+
+    one_liner: >-
+      Basis-point spread between two tenors on the same OIS curve
+      (e.g. SOFR 2s10s) with rolling 252-day z-score, daily change,
+      and both canonical and bespoke wire-frozen time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two OIS rate series.  Same z-score
+      conventions as the sovereign curve_spread tool, applied to swap
+      curves; fixed 1Y rolling window; no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_cross_market_spread_tool
+      - calculate_ois_forward_rate_tool
+      - calculate_curve_spread_tool
+
+    workflows:
+      - ois_curve_shapes_card
+      - ois_spread_detail_workspace
+      - ois_prompt_gauntlet
+
+    references:
+      - "Tuckman & Serrat (2022), Fixed Income Securities."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_ois_cross_market_spread
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_cross_market_spread_tool
+      schema: rates_agent/ois/tools/cross_market_spread/schemas.py::OISCrossMarketSpreadInput
+      compute: rates_agent/ois/tools/cross_market_spread/compute.py::calculate_ois_cross_market_spread
+      config: rates_agent/ois/tools/cross_market_spread/config.yaml
+
+    one_liner: >-
+      Cross-market OIS rate differential between the same tenor on two
+      OIS curves (e.g. SOFR 2Y − ESTR 2Y), with rolling 252-day
+      z-score, daily / weekly / monthly change, trailing range, and
+      both canonical and bespoke time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two OIS rate series from different
+      curve families.  Mirrors the sovereign cross_market_spread
+      methodology and conventions exactly.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_curve_spread_tool
+      - calculate_swap_spread_tool
+      - calculate_cross_market_spread_tool
+
+    workflows:
+      - policy_differential_card
+      - ois_cross_market_workspace
+      - ois_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # IMPLIED FORWARDS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_ois_forward_rate
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_forward_rate_tool
+      schema: rates_agent/ois/tools/forward_rate/schemas.py::OISForwardRateInput
+      compute: rates_agent/ois/tools/forward_rate/compute.py::calculate_ois_forward_rate
+      config: rates_agent/ois/tools/forward_rate/config.yaml
+
+    one_liner: >-
+      Implied forward rate between two points on an OIS curve via a
+      dual-compounding bootstrap (simple interest for T ≤ 1Y, annual
+      compounding for T > 1Y).  Two input modes — tenor-based or
+      date-based — both returning forward rate, daily change, rolling
+      z-score, trailing range, and time series.
+
+    bucket_rationale: >-
+      Deterministic bootstrap math on par OIS rates.  No model fit;
+      year fractions re-anchor per trade date in date-based mode;
+      z-score window and conventions YAML-locked.  OIS-native atomic
+      unit not shared with the sovereign tools.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_curve_spread_tool
+      - calculate_ois_cross_market_spread_tool
+
+    workflows:
+      - ois_forward_workspace
+      - ois_prompt_gauntlet
+
+    references:
+      - "Tuckman & Serrat (2022), Fixed Income Securities."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CROSS-DOMAIN: SOVEREIGN − OIS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_swap_spread
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_swap_spread_tool
+      schema: rates_agent/ois/tools/swap_spread/schemas.py::SwapSpreadInput
+      compute: rates_agent/ois/tools/swap_spread/compute.py::calculate_swap_spread
+      config: rates_agent/ois/tools/swap_spread/config.yaml
+
+    one_liner: >-
+      Cross-domain spread between a sovereign yield and an OIS rate at
+      the same tenor (e.g. UST 10Y − SOFR 10Y) under the convention
+      (sovereign − ois) × 100 bps, with snapshot, daily / weekly /
+      monthly change, rolling z-score, trailing range, and time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on one sovereign + one OIS leg, each
+      with its own field convention (YLD_YTM_MID for sovereign,
+      PX_LAST for OIS).  Lives in the OIS sub-agent because it
+      requires OIS-specific conventions; structurally cross-domain.
+      Fixed 252-day z-score window; no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_cross_market_spread_tool
+      - calculate_ois_cross_market_spread_tool
+      - get_yield_levels_tool
+      - calculate_ois_rate_level_tool
+
+    workflows:
+      - swap_spread_card
+      - asset_swap_workspace
+      - ois_prompt_gauntlet
+
+    references:
+      - "Tuckman & Serrat (2022), Fixed Income Securities."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CROSS-UNIVERSE SCREENING
+  # ---------------------------------------------------------------------------
+
+  - name: scan_ois_extremes
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: scan_ois_extremes_tool
+      schema: rates_agent/ois/tools/schemas/scanner.py::OISScannerInput
+      compute: rates_agent/ois/tools/scanner.py::scan_ois_extremes
+      config: N/A
+      # Scanner has no per-tool config.yaml; conventions (252-day
+      # z-score window, ffill policy) are inherited from
+      # shared.analytics.spreads and the per-instrument
+      # calculate_ois_rate_level primitive it composes.
+
+    one_liner: >-
+      Scans every OIS instrument in the database, ranks the top-N by
+      absolute 252-day z-score and returns rate, daily change,
+      z-score, percentile, and signal label per row.  OIS analogue of
+      scan_extremes.
+
+    bucket_rationale: >-
+      Deterministic batch z-score over the full OIS universe.  Same
+      methodology as calculate_ois_rate_level applied universe-wide;
+      ranking is pure arithmetic; no model state.
+
+    pm_overridable:
+      - curve_families
+      - top_n
+      - min_abs_z_score
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_curve_spread_tool
+      - scan_extremes_tool
+
+    workflows:
+      - ois_scanner_card
+      - extremes_monitor_workspace
+      - ois_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet

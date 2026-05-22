@@ -69,6 +69,15 @@ type UseCopilotResult = {
   connectionStatus: ConnectionStatus;
   isThinking: boolean;
   clearMessages: () => void;
+  /** Edit a previous user message in-place: truncate the message
+   *  buffer to *before* the target message id, then submit a new turn
+   *  with the edited content.  Mirrors the conversational rewind that
+   *  the Ask UI exposes via the in-line "edit" affordance on user
+   *  messages.  V1: the backend has no thread persistence, so this
+   *  is effectively "fork from this point" — when V2 ships persistent
+   *  threads, the same primitive becomes "edit and replay against the
+   *  same thread_id". */
+  editAndResubmit: (messageId: string, newContent: string) => void;
 };
 
 export function useCopilot(): UseCopilotResult {
@@ -82,6 +91,10 @@ export function useCopilot(): UseCopilotResult {
 
   // Ref to the current streaming assistant message id
   const streamingMsgId = useRef<string | null>(null);
+  // R5.4 — remember the workspace_slug from the most recently-sent
+  // user message so the streaming assistant message it produces
+  // inherits it.  Cleared on each ``done`` event.
+  const pendingWorkspaceSlug = useRef<string | null>(null);
 
   const updateStreamingMessage = useCallback(
     (updater: (message: CopilotMessage) => CopilotMessage) => {
@@ -159,7 +172,9 @@ export function useCopilot(): UseCopilotResult {
 
       case 'status':
         if (event.status === 'thinking') {
-          // Create the assistant message placeholder
+          // Create the assistant message placeholder.  R5.4 — inherit
+          // the workspace_slug recorded by the most recent sendMessage
+          // call so the per-workspace chat rail can filter correctly.
           const assistantId = nextId();
           streamingMsgId.current = assistantId;
 
@@ -174,6 +189,7 @@ export function useCopilot(): UseCopilotResult {
               workspaceContext: null,
               isStreaming: true,
               phase: 'thinking' satisfies AssistantPhase,
+              workspaceSlug: pendingWorkspaceSlug.current,
             },
           ]);
         }
@@ -246,6 +262,24 @@ export function useCopilot(): UseCopilotResult {
       }
 
       case 'done': {
+        // Phase 4 — rebrand the wire's snake-case ``proposed_overrides``
+        // to the React message's camelCase ``proposedOverrides``.  Map
+        // each entry's wire fields (``value_label`` / ``node_id`` /
+        // ``previous_value``) to the camelCase equivalents the chip UI
+        // expects.  No-op when the event omits the field, so older
+        // backends that don't emit overrides keep working.
+        const proposedOverrides =
+          event.proposed_overrides && event.proposed_overrides.length > 0
+            ? event.proposed_overrides.map((o) => ({
+                id: o.id,
+                path: o.path,
+                value: o.value,
+                valueLabel: o.value_label,
+                nodeId: o.node_id,
+                previousValue: o.previous_value,
+                rationale: o.rationale,
+              }))
+            : null;
         updateStreamingMessage((msg) => ({
           ...msg,
           isStreaming: false,
@@ -256,8 +290,10 @@ export function useCopilot(): UseCopilotResult {
           ),
           workspaceContext: event.workspace_context,
           totalDurationMs: event.total_duration_ms,
+          proposedOverrides,
         }));
         streamingMsgId.current = null;
+        pendingWorkspaceSlug.current = null;
         setIsThinking(false);
         break;
       }
@@ -273,6 +309,7 @@ export function useCopilot(): UseCopilotResult {
           }));
           streamingMsgId.current = null;
         }
+        pendingWorkspaceSlug.current = null;
         setIsThinking(false);
         break;
       }
@@ -300,6 +337,10 @@ export function useCopilot(): UseCopilotResult {
               isStreaming: true,
               phase: 'running_tools',
               workflow: null,
+              // R5.4 — inherit the pending workspace slug so workflow
+              // turns originating from a workspace-scoped composer
+              // stay filterable.
+              workspaceSlug: pendingWorkspaceSlug.current,
             },
           ]);
         }
@@ -352,6 +393,14 @@ export function useCopilot(): UseCopilotResult {
                 workflow_lineage_summary: event.workflow_lineage_summary,
                 error: event.error,
               },
+              // PR A — surface the persisted workspace handle so
+              // BuildShell can navigate to ``/workspace/:slug``
+              // when the user originated the prompt from Build's
+              // empty state.  Optional everywhere: if the runner
+              // didn't persist (no engine / no object_storage /
+              // persist=False), this stays null and the chat
+              // renders the result inline as before.
+              workspace: event.workspace ?? null,
             },
           };
         });
@@ -365,12 +414,14 @@ export function useCopilot(): UseCopilotResult {
   // ------------------------------------------------------------------
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, options?: { workspaceSlug?: string | null }) => {
       const trimmed = content.trim();
       if (!trimmed) return;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const workspaceSlug = options?.workspaceSlug ?? null;
 
-      // Add user message to state
+      // Add user message to state — stamped with the workspace slug so
+      // the per-workspace chat rail can filter (R5.4).
       setMessages((prev) => [
         ...prev,
         {
@@ -381,15 +432,25 @@ export function useCopilot(): UseCopilotResult {
           traceSteps: [],
           workspaceContext: null,
           isStreaming: false,
+          workspaceSlug,
         },
       ]);
 
       setIsThinking(true);
+      // Remember the slug so the streaming assistant message stamped
+      // from the next ``thinking`` event inherits it.  Cleared in the
+      // ``done`` handler so a subsequent un-scoped turn doesn't pick
+      // up stale state.
+      pendingWorkspaceSlug.current = workspaceSlug;
 
-      // Send to server
-      wsRef.current.send(
-        JSON.stringify({ type: 'user_message', content: trimmed }),
-      );
+      // Send to server.  Include workspace_slug so the backend can
+      // (eventually) scope LangGraph thread state per workspace.
+      const payload: { type: string; content: string; workspace_slug?: string } = {
+        type: 'user_message',
+        content: trimmed,
+      };
+      if (workspaceSlug) payload.workspace_slug = workspaceSlug;
+      wsRef.current.send(JSON.stringify(payload));
     },
     [],
   );
@@ -403,6 +464,65 @@ export function useCopilot(): UseCopilotResult {
     streamingMsgId.current = null;
     setIsThinking(false);
   }, []);
+
+  // ------------------------------------------------------------------
+  // Edit & resubmit
+  // ------------------------------------------------------------------
+  // Truncates the message buffer to *before* the target message id,
+  // then sends `newContent` as a new turn.  Both setMessages calls
+  // are issued in the same React batch, so the user sees a single
+  // smooth update: the old message and everything after disappear,
+  // the new edited message appears, and the assistant re-streams
+  // from there.
+  //
+  // Refusing to edit while a turn is mid-stream avoids the
+  // race where the WS would still be writing into the soon-to-be-
+  // truncated streaming message.
+
+  const editAndResubmit = useCallback(
+    (messageId: string, newContent: string) => {
+      const trimmed = newContent.trim();
+      if (!trimmed) return;
+      if (isThinking) return;
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+      // Step 1: truncate locally to the slice before the edited message.
+      let truncated = false;
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === messageId);
+        if (idx === -1) return prev;
+        truncated = true;
+        return prev.slice(0, idx);
+      });
+
+      // The local truncate above runs synchronously inside the React
+      // batch; if the message wasn't in the buffer (already truncated
+      // or stale id) we silently no-op rather than send a stray turn.
+      if (!truncated) return;
+
+      // Step 2: submit the edited content as a fresh turn.
+      // sendMessage() will append the new user message and dispatch
+      // to the WS.  React batches the two setState calls so the user
+      // sees a single transition.
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'user',
+          content: trimmed,
+          timestamp: new Date(),
+          traceSteps: [],
+          workspaceContext: null,
+          isStreaming: false,
+        },
+      ]);
+      setIsThinking(true);
+      wsRef.current.send(
+        JSON.stringify({ type: 'user_message', content: trimmed }),
+      );
+    },
+    [isThinking],
+  );
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -426,5 +546,6 @@ export function useCopilot(): UseCopilotResult {
     connectionStatus,
     isThinking,
     clearMessages,
+    editAndResubmit,
   };
 }

@@ -72,7 +72,7 @@
 # =============================================================================
 
 tool:
-  name: inflation_swap_butterfly
+  name: calculate_inflation_swap_butterfly_tool
   domain: inflation_swaps
   category: desk_invariant_primitive
   description: |

@@ -7,9 +7,12 @@ env/
 venv/
 ENV/
 *.env
-Business/
-Docs/
-Implementation_Docs/
+# Legacy top-level scratch dirs.  Anchored to the repo root so the
+# pattern does NOT match nested directories (e.g. Macro_Copilot/docs/
+# is the canonical architecture-docs location and must remain tracked).
+/Business/
+/Docs/
+/Implementation_Docs/
 # Jupyter
 .ipynb_checkpoints/
 

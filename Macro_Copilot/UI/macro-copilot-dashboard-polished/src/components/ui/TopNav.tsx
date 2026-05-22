@@ -1,138 +1,174 @@
-import { NavLink } from 'react-router-dom';
-import { Bell, Bookmark, Radio, Search, SlidersHorizontal } from 'lucide-react';
+// ============================================================================
+// TopNav — global navigation, refactored for the Ask-led IA
+// ----------------------------------------------------------------------------
+// Five surfaces: Monitor · Ask · Build · Library · Briefcase.
+//
+// Active-state mapping (pages we keep working pre-revamp):
+//   Monitor    → /, /rates, /fx, /policy, /events, /workflows  (existing
+//                Dashboard / Rates / placeholders; revamp ships in
+//                later PRs)
+//   Ask        → /ask                                          (NEW)
+//   Build      → /workspace                                    (existing)
+//   Library    → /tools, /workflows                            (existing)
+//   Briefcase  → /briefcase                                    (NEW
+//                placeholder — proper surface ships in V2)
+//
+// Drop from previous version:
+//   - The live ticker bar (ornamental, not informational)
+//   - "Save View" / sliders / bell / "Live · NY Open" status
+//   - The "INSTITUTIONAL · v0.1" sub-tagline
+// Keep:
+//   - The ⌘K / search affordance — but routes the user to /ask via
+//     SPA navigation rather than "focus copilot composer".
+// ============================================================================
+
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Search, User } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
-type TabDef = {
+type SurfaceDef = {
   label: string;
-  path: string;
+  /** Primary route the surface anchors to. */
+  to: string;
+  /** Routes that should ALSO mark this surface active.  Used to keep
+   *  the existing /rates, /tools, /workflows pages glowing under their
+   *  proper surface during the IA transition. */
+  alsoActiveOn?: string[];
 };
 
-type TopNavProps = {
-  tabs: TabDef[];
-};
-
-const MARKET_TICKERS = [
-  { label: 'US 10Y', value: '4.287', delta: '+3.2', dir: 'up' as const },
-  { label: 'DXY', value: '104.86', delta: '-0.18', dir: 'down' as const },
-  { label: 'SPX', value: '5,127', delta: '+0.42%', dir: 'up' as const },
-  { label: 'WTI', value: '78.44', delta: '-1.1%', dir: 'down' as const },
+// Order from the revamp brief.  Ask sits in the second slot —
+// product's editorial centerpiece.
+const SURFACES: SurfaceDef[] = [
+  {
+    label: 'Monitor',
+    to: '/',
+    // Agent surfaces (Rates, FX, Credit, etc.) are conceptually
+    // "Monitor zoomed in on a domain" — they share the Monitor tab so
+    // the user has a single mental anchor for "where I'm watching the
+    // markets" regardless of which agent they're zoomed into.
+    alsoActiveOn: [
+      '/rates',
+      '/fx',
+      '/credit',
+      '/macro-equity',
+      '/policy',
+      '/events',
+      '/pm-orchestrator',
+    ],
+  },
+  { label: 'Ask', to: '/ask' },
+  { label: 'Build', to: '/workspace' },
+  {
+    label: 'Library',
+    to: '/library',
+    // /tools is a legacy redirect to /library; /workflows is
+    // conceptually "Library → Templates" and stays here as an
+    // active-on hint until the Workflows tab is built into the
+    // Library page (follow-up PR).
+    alsoActiveOn: ['/tools', '/workflows'],
+  },
+  { label: 'Briefcase', to: '/briefcase' },
 ];
 
-export function TopNav({ tabs }: TopNavProps) {
-  const focusCopilotComposer = () => {
-    window.dispatchEvent(new Event('copilot:focus-input'));
-  };
+export function TopNav() {
+  const location = useLocation();
 
   return (
-    <header className="relative flex flex-col">
-      {/* Top row: tabs + search + utilities */}
-      <div className="flex h-[64px] items-center gap-6 border-b border-line-subtle px-6">
-        <nav className="flex items-center">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.path}
-              to={tab.path}
-              end={tab.path === '/'}
-              className={({ isActive }) =>
-                cn(
-                  'relative -mb-px flex h-[64px] items-center px-3 text-[13px] font-medium tracking-[-0.005em] transition-colors duration-150 ease-sleek',
-                  isActive
-                    ? 'text-fg-primary'
-                    : 'text-fg-muted hover:text-fg-secondary',
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {tab.label}
-                  {isActive ? (
-                    <span className="absolute inset-x-3 bottom-0 h-[2px] rounded-t-full bg-gradient-to-r from-transparent via-ice-400 to-transparent shadow-[0_0_12px_rgba(122,162,255,0.45)]" />
-                  ) : null}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+    <header className="relative flex h-[52px] shrink-0 items-center gap-6 border-b border-line-subtle px-6">
+      {/* Brand — soft inner glow on the glyph, refined typographic
+          tracking on the wordmark. */}
+      <Link
+        to="/"
+        className="group flex shrink-0 items-center gap-2.5"
+      >
+        <span className="relative flex h-6 w-6 items-center justify-center rounded-[6px] border border-line-soft bg-gradient-to-br from-ice-400/35 via-ice-700/30 to-ink-700 transition-all duration-300 group-hover:border-ice-400/60">
+          <span className="h-2.5 w-2.5 rounded-[2px] bg-gradient-to-br from-white via-ice-100 to-ice-300 shadow-[0_0_14px_rgba(122,162,255,0.45)]" />
+        </span>
+        <span className="text-[13.5px] font-medium tracking-[-0.012em] text-fg-primary">
+          macro copilot
+        </span>
+      </Link>
 
-        {/* Global search — command-k style */}
-        <div className="flex flex-1 justify-center">
-          <button
-            type="button"
-            onClick={focusCopilotComposer}
-            className="flex w-full max-w-[520px] items-center gap-2.5 rounded-lg border border-line-soft bg-white/[0.015] px-3.5 py-2 text-[12.5px] text-fg-muted transition-colors duration-150 ease-sleek hover:border-line-strong hover:bg-white/[0.03] hover:text-fg-secondary"
-          >
-            <Search size={13} />
-            <span className="flex-1 text-left">
-              Ask the copilot, or jump to an instrument…
-            </span>
-            <kbd className="hidden rounded border border-line-soft bg-white/[0.025] px-1.5 py-[1px] text-[9px] font-medium text-fg-muted lg:inline-flex">
-              ⌘K
-            </kbd>
-          </button>
-        </div>
+      {/* Spacer */}
+      <span className="h-3 w-px bg-line-soft" />
 
-        <div className="flex items-center gap-1.5">
-          <button className="btn-ghost h-9 px-3">
-            <Bookmark size={13} />
-            <span className="hidden xl:inline">Save View</span>
-          </button>
-          <button className="btn-ghost h-9 w-9 !px-0">
-            <SlidersHorizontal size={13} />
-          </button>
-          <button className="btn-ghost relative h-9 w-9 !px-0">
-            <Bell size={13} />
-            <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(243,183,85,0.6)]" />
-          </button>
-        </div>
-      </div>
+      {/* Surface tabs */}
+      <nav className="flex items-center gap-1">
+        {SURFACES.map((s) => (
+          <SurfaceTab key={s.to} surface={s} pathname={location.pathname} />
+        ))}
+      </nav>
 
-      {/* Status strip: live tickers + session clock */}
-      <div className="flex h-[38px] items-center gap-6 border-b border-line-subtle bg-white/[0.008] px-6">
-        <div className="flex items-center gap-1.5 text-fg-secondary">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-mint-400 opacity-50" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-mint-400" />
-          </span>
-          <Radio size={11} className="text-fg-muted" />
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em]">
-            Live · NY Open
-          </span>
-        </div>
+      {/* Search → routes to /ask, keeping the ⌘K muscle memory.  We
+          intentionally do NOT focus a chat drawer here anymore. */}
+      <div className="ml-auto flex items-center gap-3">
+        <Link
+          to="/ask"
+          className="flex w-[260px] items-center gap-2.5 rounded-md border border-line-soft bg-white/[0.012] px-3 py-1.5 text-[12px] text-fg-muted transition-colors duration-150 ease-sleek hover:border-line-strong hover:bg-white/[0.025] hover:text-fg-secondary"
+        >
+          <Search size={12} />
+          <span className="flex-1 truncate text-left">Ask the copilot…</span>
+          <kbd className="hidden rounded border border-line-soft bg-white/[0.02] px-1 py-px text-[9px] font-medium text-fg-muted lg:inline-flex">
+            ⌘K
+          </kbd>
+        </Link>
 
-        <div className="h-3 w-px bg-line-soft" />
-
-        <div className="flex min-w-0 flex-1 items-center gap-6 overflow-hidden">
-          {MARKET_TICKERS.map((t) => (
-            <div key={t.label} className="flex shrink-0 items-center gap-2 text-[11px]">
-              <span className="font-semibold uppercase tracking-[0.12em] text-fg-muted">
-                {t.label}
-              </span>
-              <span className="mono font-medium text-fg-primary">{t.value}</span>
-              <span
-                className={cn(
-                  'mono text-[10.5px] font-medium',
-                  t.dir === 'up' ? 'text-mint-400' : 'text-coral-400',
-                )}
-              >
-                {t.delta}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3 text-[11px] text-fg-muted">
-          <span className="mono">
-            {new Date().toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-            })}{' '}
-            EST
-          </span>
-          <span className="h-3 w-px bg-line-soft" />
-          <span className="font-medium uppercase tracking-[0.14em]">Session · RTH</span>
-        </div>
+        {/* Profile avatar */}
+        <button
+          type="button"
+          aria-label="Profile"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-line-soft bg-gradient-to-br from-ice-500/30 to-ice-700/40 text-fg-muted transition-colors hover:text-fg-secondary"
+        >
+          <User size={11} />
+        </button>
       </div>
     </header>
+  );
+}
+
+function SurfaceTab({
+  surface,
+  pathname,
+}: {
+  surface: SurfaceDef;
+  pathname: string;
+}) {
+  const isPrimaryActive =
+    surface.to === '/' ? pathname === '/' : pathname.startsWith(surface.to);
+  const isSecondaryActive = surface.alsoActiveOn?.some((p) =>
+    p === '/' ? pathname === '/' : pathname.startsWith(p),
+  );
+  const isActive = isPrimaryActive || isSecondaryActive;
+
+  return (
+    <NavLink
+      to={surface.to}
+      end={surface.to === '/'}
+      className={cn(
+        'relative flex h-[52px] items-center px-3.5 text-[13px] font-medium tracking-[-0.008em] transition-colors duration-200 ease-sleek',
+        isActive
+          ? 'text-fg-primary'
+          : 'text-fg-muted hover:text-fg-secondary',
+      )}
+    >
+      <span>{surface.label}</span>
+      {isActive && (
+        <>
+          {/* Gradient underline sweep — fades in from both edges so
+              the indicator reads as illumination, not a hard rule. */}
+          <span
+            aria-hidden
+            className="absolute inset-x-3 -bottom-px h-[1.5px] rounded-full bg-gradient-to-r from-transparent via-ice-300 to-transparent shadow-[0_0_14px_rgba(122,162,255,0.55)]"
+          />
+          {/* Tiny anchor dot in the center — gives the active state a
+              focal point at small sizes when the underline is barely
+              visible. */}
+          <span
+            aria-hidden
+            className="absolute left-1/2 -bottom-[5px] h-1 w-1 -translate-x-1/2 rounded-full bg-ice-300 shadow-[0_0_8px_rgba(122,162,255,0.7)]"
+          />
+        </>
+      )}
+    </NavLink>
   );
 }

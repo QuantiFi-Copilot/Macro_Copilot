@@ -1,8 +1,82 @@
+# =============================================================================
+# Sovereign Bonds — tool manifest
+# =============================================================================
+# Canonical source of truth for the sovereign-bonds tool catalogue.
+# Read by the Library page UI.  Each entry must mirror what's actually
+# registered in `rates_agent/sovereign_bonds/mcp_server.py` and what
+# lives under `rates_agent/sovereign_bonds/tools/<tool>/`.  Adding a
+# new tool = (1) implementation under tools/, (2) MCP registration,
+# (3) entry here.  The library is rendered from this YAML — no
+# hardcoding tool-by-tool in the frontend.
+#
+# Bucket convention:
+#   1A  — strict deterministic arithmetic on stored market data; no
+#         user-facing model inference; conventions YAML-locked.
+#   1B  — statistical model fits (rolling OLS, PCA, OU/AR(1)) where
+#         the user picks a window or factor count but the solver +
+#         conventions are YAML-locked; bit-stable on same input.
+#   2   — open-ended / scenario-generating / model-state tools.
+#         (Not yet shipped.)
+# =============================================================================
+
 tools:
+  # ---------------------------------------------------------------------------
+  # SINGLE-INSTRUMENT LEVELS
+  # ---------------------------------------------------------------------------
+
+  - name: get_yield_levels
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: get_yield_levels_tool
+      schema: rates_agent/sovereign_bonds/tools/yield_levels/schemas.py::YieldLevelInput
+      compute: rates_agent/sovereign_bonds/tools/yield_levels/compute.py::get_yield_levels
+      config: rates_agent/sovereign_bonds/tools/yield_levels/config.yaml
+
+    one_liner: >-
+      Single-tenor sovereign yield snapshot — current yield, daily / weekly /
+      monthly change in bps, rolling 252-day z-score, trailing 252-day
+      high / low / percentile, observation count, and full chartable
+      time series.
+
+    bucket_rationale: >-
+      Deterministic rolling z-score over stored daily yields.  Fixed
+      252-day window; conventions are YAML-locked; no model inference
+      and no LLM-facing override path in V1.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_curve_spread_tool
+      - calculate_cross_market_spread_tool
+      - calculate_butterfly_tool
+      - scan_extremes_tool
+
+    workflows:
+      - yield_snapshot_card
+      - sovereign_yield_workspace
+      - sovereign_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CURVE SHAPE / SPREADS
+  # ---------------------------------------------------------------------------
+
   - name: calculate_curve_spread
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: curve_shape
     status: built
 
     implementation:
@@ -43,10 +117,102 @@ tools:
     validation_status: >-
       Not validated yet
 
+  - name: calculate_cross_market_spread
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_cross_market_spread_tool
+      schema: rates_agent/sovereign_bonds/tools/cross_market_spread/schemas.py::CrossMarketSpreadInput
+      compute: rates_agent/sovereign_bonds/tools/cross_market_spread/compute.py::calculate_cross_market_spread
+      config: rates_agent/sovereign_bonds/tools/cross_market_spread/config.yaml
+
+    one_liner: >-
+      Yield differential between the same tenor on two sovereign curves
+      (e.g. BTP-Bund 10Y), in basis points, with rolling 252-day
+      z-score, daily / weekly / monthly change, trailing range, and
+      full time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two stored yield series.  Same z-score
+      conventions as get_yield_levels; fixed 1Y rolling window; no
+      model state or LLM-facing override path.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+      - calculate_butterfly_tool
+      - beta_adjusted_spread_tool
+
+    workflows:
+      - cross_market_card
+      - cross_market_detail_workspace
+      - sovereign_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_butterfly
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_butterfly_tool
+      schema: rates_agent/sovereign_bonds/tools/butterfly/schemas.py::ButterflyInput
+      compute: rates_agent/sovereign_bonds/tools/butterfly/compute.py::calculate_butterfly
+      config: rates_agent/sovereign_bonds/tools/butterfly/config.yaml
+
+    one_liner: >-
+      Three-point curvature on a sovereign curve — (2 × belly − short −
+      long) × 100 bps — with rolling z-score, trailing range, wing-spread
+      components, and full time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on three stored yield series.  Fixed
+      252-day z-score window; component decomposition is pure algebra;
+      no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+      - calculate_cross_market_spread_tool
+
+    workflows:
+      - curve_shapes_card
+      - butterfly_detail_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Tuckman & Serrat (2022), Fixed Income Securities."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CURVE-MOVE CLASSIFICATION
+  # ---------------------------------------------------------------------------
+
   - name: classify_curve_move
     domain: rates
     sub_agent: sovereign_bonds
     bucket: 1A
+    category: forwards_classify
     status: built
 
     implementation:
@@ -79,8 +245,347 @@ tools:
       - scan_extremes_tool
 
     workflows:
-      - regime_monitor_card
+      - curve_classifier_card
       - regime_detail_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Litterman & Scheinkman (1991), Common Factors Affecting Bond Returns."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CROSS-UNIVERSE SCREENING
+  # ---------------------------------------------------------------------------
+
+  - name: scan_extremes
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: scan_extremes_tool
+      schema: rates_agent/sovereign_bonds/tools/schemas/scanner.py::ScannerInput
+      compute: rates_agent/sovereign_bonds/tools/scanner.py::scan_extremes
+      config: N/A
+      # Scanner has no per-tool config.yaml; conventions (252-day z-score
+      # window, ffill policy) are inherited from shared.analytics.spreads
+      # and the per-instrument get_yield_levels primitive it composes.
+
+    one_liner: >-
+      Scans every sovereign instrument in the database, ranks the top-N
+      by absolute 252-day z-score and returns yield, daily change,
+      z-score, percentile, and signal label per row.
+
+    bucket_rationale: >-
+      Deterministic batch z-score over the full sovereign universe.  Same
+      methodology as get_yield_levels applied universe-wide; ranking is
+      pure arithmetic; no model state.
+
+    pm_overridable:
+      - curve_families
+      - top_n
+      - min_abs_z_score
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+      - scan_ois_extremes_tool
+
+    workflows:
+      - scanner_card
+      - extremes_monitor_workspace
+      - sovereign_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CUSTOM ANALYTICS
+  # ---------------------------------------------------------------------------
+
+  - name: zscore_custom
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: rolling_analytics
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: zscore_custom_tool
+      schema: rates_agent/sovereign_bonds/tools/zscore_custom/schemas.py::ZscoreCustomInput
+      compute: rates_agent/sovereign_bonds/tools/zscore_custom/compute.py::calculate_zscore_custom
+      config: rates_agent/sovereign_bonds/tools/zscore_custom/config.yaml
+
+    one_liner: >-
+      Rolling z-score of a single sovereign yield with a user-supplied
+      window length (vs the fixed 252-day window in get_yield_levels).
+      Returns current z-score, latest yield, actual window parameters,
+      and full z-score time series.
+
+    bucket_rationale: >-
+      Deterministic windowed mean / stdev calculation.  The user picks
+      the window size; min_periods, ddof, and ffill policies are
+      YAML-locked.  No model fit beyond the window statistics.
+
+    pm_overridable:
+      - z_score_window_days
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+      - rolling_regression_tool
+
+    workflows:
+      - zscore_custom_workspace
+      - sovereign_prompt_gauntlet
+
+    references: []
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # ROLLING REGRESSIONS / RELATIVE VALUE
+  # ---------------------------------------------------------------------------
+
+  - name: rolling_regression
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: rolling_analytics
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: rolling_regression_tool
+      schema: rates_agent/sovereign_bonds/tools/rolling_regression/schemas.py::RollingRegressionInput
+      compute: rates_agent/sovereign_bonds/tools/rolling_regression/compute.py::calculate_rolling_regression
+      config: rates_agent/sovereign_bonds/tools/rolling_regression/config.yaml
+
+    one_liner: >-
+      Rolling OLS regression of one sovereign yield on one or more
+      regressor yields via numpy.linalg.lstsq, returning per-regressor
+      betas, alpha, residual, in-window R², and a condition-number
+      quality flag.
+
+    bucket_rationale: >-
+      Statistical model fit on intra-window data.  Window length is
+      user-specified, but the OLS solver, condition-number detection,
+      and ffill policy are YAML-locked.  Bit-stable deterministic on
+      the same input panel.
+
+    pm_overridable:
+      - regression_window_days
+
+    related_tools:
+      - beta_adjusted_spread_tool
+      - zscore_custom_tool
+      - get_yield_levels_tool
+
+    workflows:
+      - rolling_regression_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Veronesi (2010), Fixed Income Securities, Ch. 18."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: beta_adjusted_spread
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: rolling_analytics
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: beta_adjusted_spread_tool
+      schema: rates_agent/sovereign_bonds/tools/beta_adjusted_spread/schemas.py::BetaAdjustedSpreadInput
+      compute: rates_agent/sovereign_bonds/tools/beta_adjusted_spread/compute.py::calculate_beta_adjusted_spread
+      config: rates_agent/sovereign_bonds/tools/beta_adjusted_spread/config.yaml
+
+    one_liner: >-
+      Bivariate beta-adjusted RV — rolling OLS regresses one sovereign
+      yield (target) on another (regressor); returns hedge ratio (beta),
+      alpha (yield-percent), residual in bps, and a rolling z-score
+      on the residual.
+
+    bucket_rationale: >-
+      Composed of a rolling OLS fit (deterministic given window) plus a
+      fixed-window z-score on the residual.  Same primitives as
+      rolling_regression_tool; window is the user's central knob; all
+      other conventions YAML-locked.
+
+    pm_overridable:
+      - regression_window_days
+
+    related_tools:
+      - rolling_regression_tool
+      - calculate_cross_market_spread_tool
+      - zscore_custom_tool
+
+    workflows:
+      - relative_value_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Veronesi (2010), Fixed Income Securities, Ch. 18."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: half_life
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: half_life_tool
+      schema: rates_agent/sovereign_bonds/tools/half_life/schemas.py::HalfLifeInput
+      compute: rates_agent/sovereign_bonds/tools/half_life/compute.py::calculate_half_life
+      config: rates_agent/sovereign_bonds/tools/half_life/config.yaml
+
+    one_liner: >-
+      Ornstein-Uhlenbeck / AR(1) fit on a supplied series.  Returns
+      half-life of mean reversion (trading days), long-run mean,
+      current deviation, OU β with confidence interval, and a
+      delta-method CI on the half-life itself.
+
+    bucket_rationale: >-
+      Statistical fit on the full supplied series (not rolling).  OLS
+      on the AR(1) form with a β-floor and CI math; deterministic
+      outcome on same input.  Surfaces a single-number diagnostic, not
+      a regime detector.
+
+    pm_overridable: []
+
+    related_tools:
+      - rolling_regression_tool
+      - calculate_cross_market_spread_tool
+      - beta_adjusted_spread_tool
+
+    workflows:
+      - mean_reversion_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Vasicek (1977), An Equilibrium Characterization of the Term Structure."
+      - "Hamilton (1994), Time Series Analysis."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # FACTOR DECOMPOSITION (PCA)
+  # ---------------------------------------------------------------------------
+
+  - name: pca_yield_curve
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: pca_yield_curve_tool
+      schema: rates_agent/sovereign_bonds/tools/pca_yield_curve/schemas.py::PcaYieldCurveInput
+      compute: rates_agent/sovereign_bonds/tools/pca_yield_curve/compute.py::calculate_pca_yield_curve
+      config: rates_agent/sovereign_bonds/tools/pca_yield_curve/config.yaml
+
+    one_liner: >-
+      PCA on the yield-CHANGES panel of one sovereign curve.  Returns
+      per-component loadings, variance shares, factor-score time
+      series, and per-component quality metadata (degenerate +
+      sign-anchor flags).
+
+    bucket_rationale: >-
+      Statistical SVD-based fit on the yield-change covariance matrix.
+      User picks lookback / n_components / change frequency; sign
+      anchor, degenerate threshold, and ffill policy are YAML-locked.
+      Deterministic SVD outcome on the same input panel.
+
+    pm_overridable:
+      - lookback_days
+      - n_components
+      - change_frequency
+      - tenors
+
+    related_tools:
+      - yield_change_attribution_pca_tool
+      - zscore_custom_tool
+      - rolling_regression_tool
+
+    workflows:
+      - curve_decomposition_workspace
+      - sovereign_prompt_gauntlet
+
+    references:
+      - "Litterman & Scheinkman (1991), Common Factors Affecting Bond Returns."
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: yield_change_attribution_pca
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1B
+    category: model_fits
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: yield_change_attribution_pca_tool
+      schema: rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/schemas.py::YieldChangeAttributionPcaInput
+      compute: rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/compute.py::calculate_yield_change_attribution_pca
+      config: rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/config.yaml
+
+    one_liner: >-
+      Decompose a sovereign yield change at a given tenor over a window
+      into per-PCA-component contributions in bps.  Loadings come
+      from an inline PCA fit or a caller-supplied pasted payload.
+
+    bucket_rationale: >-
+      Linear projection of the observed yield change onto pre-estimated
+      (or inline-computed) PCA loadings.  The projection itself is
+      deterministic algebra; provenance and quality flags are fully
+      captured per call.
+
+    pm_overridable:
+      - pca_lookback_days
+      - n_components
+      - change_frequency
+      - tenors
+      - start_date
+      - end_date
+
+    related_tools:
+      - pca_yield_curve_tool
+      - get_yield_levels_tool
+      - rolling_regression_tool
+
+    workflows:
+      - curve_decomposition_workspace
       - sovereign_prompt_gauntlet
 
     references:

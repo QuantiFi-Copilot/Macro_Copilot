@@ -9,7 +9,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { useCopilot } from '@/hooks/useCopilot';
+import { useCopilotContext } from '@/context/CopilotContext';
 import { ChatMessageBubble } from '@/components/copilot/ChatMessage';
 import { cn } from '@/utils/cn';
 
@@ -29,7 +29,7 @@ const STARTER_PROMPTS = [
 
 export function ChatDrawer() {
   const { messages, sendMessage, connectionStatus, isThinking, clearMessages } =
-    useCopilot();
+    useCopilotContext();
 
   const [inputValue, setInputValue] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);

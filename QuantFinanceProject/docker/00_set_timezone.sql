@@ -1,1 +1,0 @@
-ALTER SYSTEM SET timezone = 'Asia/Kolkata';

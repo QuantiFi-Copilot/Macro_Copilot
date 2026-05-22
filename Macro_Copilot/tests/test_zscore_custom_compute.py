@@ -229,6 +229,31 @@ class TestComputeHappyPath:
         out_explicit = _run(params, raw_df, config=load_tool_config(CONFIG_PATH))
         assert out_auto == out_explicit
 
+    def test_time_series_zscore_alias_matches_time_series(self):
+        """``ZscoreCustomOutput`` exposes both ``time_series`` (legacy
+        V1 name) and ``time_series_zscore`` (canonical convention used
+        by every other z-score-emitting primitive).  Both must carry
+        identical payloads — the alias exists solely to close the
+        substrate's naming-convention inconsistency that caused the
+        workflow_router to bind ``time_series_zscore`` for
+        zscore_custom and crash at the bridge lift step.
+        """
+        raw_df = _synthetic_raw_df()
+        params = ZscoreCustomInput(
+            curve_family="UST", tenor="10Y",
+            z_score_window_days=252, lookback_days=365,
+        )
+        out = _run(params, raw_df)
+        assert "error" not in out, out.get("error")
+        # Both keys present.
+        assert "time_series" in out
+        assert "time_series_zscore" in out
+        # Identical payload by construction.
+        assert out["time_series"] == out["time_series_zscore"]
+        # Units carry the canonical z-score tag on both.
+        assert out["time_series"]["units"] == TimeSeriesUnits.Z_SCORE.value
+        assert out["time_series_zscore"]["units"] == TimeSeriesUnits.Z_SCORE.value
+
 
 # ===========================================================================
 # 3. Central knob — z_score_window_days

@@ -234,8 +234,10 @@ def get_real_yield_level_tool(
     Do NOT use this tool for:
     - Nominal sovereign bond yields (UST, Bund, Gilt, etc.) — use the
       sovereign-bond agent's get_yield_levels_tool instead.
-    - Breakevens or inflation swaps (those are separate primitives that
-      will land in subsequent builds in this domain).
+    - Breakevens — use this domain's breakeven primitives instead
+      (calculate_breakeven_inflation_simple_tool and the related
+      breakeven curve / butterfly / forward tools).  ZCIS inflation
+      swaps belong to the inflation_swaps agent.
 
     Parameters
     ----------
@@ -384,8 +386,8 @@ def calculate_breakeven_inflation_simple_tool(
       variant is documented in the tool's
       ``methodology.planned_extensions`` and will ship as a separate
       primitive when the required metadata lands.
-    - Inflation-swap-implied breakevens (different instrument, not yet
-      ingested).
+    - Inflation-swap-implied breakevens (a different instrument — the
+      inflation_swaps agent owns ZCIS-based measures).
     - Real-yield-only or nominal-yield-only questions — call the
       respective single-leg level tools (``get_real_yield_level_tool``
       here, ``get_yield_levels_tool`` on the sovereign-bond agent).
@@ -1652,7 +1654,7 @@ def calculate_real_yield_butterfly_tool(
     - Real-yield curve SPREADS (2-point, 2s10s real-yield) — call
       ``calculate_real_yield_curve_spread_tool``.
     - Breakeven butterflies (3-point breakeven inflation curvature)
-      — not yet a primitive; would ship separately if requested.
+      — call ``calculate_breakeven_butterfly_tool`` instead.
     - Cross-country real-yield comparisons — this primitive accepts
       a single linker ``curve_family`` and refuses any non-linker
       curve_family with a controlled error envelope.

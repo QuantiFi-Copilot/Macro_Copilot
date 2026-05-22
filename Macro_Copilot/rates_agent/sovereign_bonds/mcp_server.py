@@ -85,6 +85,17 @@ from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (  # 
     YieldChangeAttributionPcaInput,
     calculate_yield_change_attribution_pca,
 )
+from rates_agent.sovereign_bonds.tools.sovereign_yield_panel import (  # noqa: E402
+    CONFIG_PATH as SOVEREIGN_YIELD_PANEL_CONFIG_PATH,
+    SovereignYieldPanelInput,
+    SovereignYieldPanelLegSpec,
+    build_sovereign_yield_panel,
+)
+from rates_agent.sovereign_bonds.tools.breakeven_inflation import (  # noqa: E402
+    CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
+    BreakevenInflationInput,
+    calculate_breakeven_inflation,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -1369,6 +1380,181 @@ def yield_change_attribution_pca_tool(
 
     # Snapshot-only tool — no time-series payload to withhold.
     return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
+
+
+# ===========================================================================
+# TOOL: build_sovereign_yield_panel  (Phase 1 PR 19)
+# ===========================================================================
+@mcp.tool()
+def build_sovereign_yield_panel_tool(
+    legs: List[dict],
+    start_date: str,
+    end_date: Optional[str] = None,
+    missing_data_policy: Optional[str] = None,
+) -> str:
+    """Assemble a wide multi-instrument Panel of sovereign yields.
+
+    Use this tool to build the price-Panel input for a backtest
+    workflow or any analysis that needs aligned yields across multiple
+    sovereign legs (e.g. UST 2Y + USD_TIPS 10Y for a TIPS-vs-Nominal
+    trade).
+
+    Parameters
+    ----------
+    legs : list of dict
+        Ordered list of leg specs.  Each dict has keys
+        ``curve_family`` (sovereign family from UST / USD_TIPS /
+        DE_BUND / UK_GILT / FR_OAT / IT_BTP / ES_BONO / JGB /
+        CANADA_GOVT / AU_GOVT), ``tenor`` (e.g. '2Y', '10Y'), and
+        optionally ``field_name`` (default YLD_YTM_MID from config).
+        Column order in the output Panel matches this list.
+    start_date : str
+        Earliest trade_date to include (YYYY-MM-DD).
+    end_date : str, optional
+        Latest trade_date.  None → include up to latest in DB.
+    missing_data_policy : str, optional
+        ``forward_fill_only`` (default) | ``raise`` |
+        ``drop_rows_any_missing``.  Resolved from config.yaml when None.
+    """
+    from datetime import date as _date
+
+    try:
+        leg_specs = [SovereignYieldPanelLegSpec(**leg) for leg in legs]
+        params = SovereignYieldPanelInput(
+            legs=leg_specs,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date) if end_date else None,
+            missing_data_policy=missing_data_policy,
+        )
+    except (ValidationError, ValueError) as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    try:
+        cfg = load_tool_config(SOVEREIGN_YIELD_PANEL_CONFIG_PATH)
+        result = build_sovereign_yield_panel(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in build_sovereign_yield_panel")
+        return json.dumps({"error": f"Compute failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: build_sovereign_yield_panel "
+        "n_legs=%d start=%s end=%s → %s",
+        len(params.legs),
+        params.start_date.isoformat(),
+        params.end_date.isoformat() if params.end_date else "latest",
+        "error" if "error" in result else "OK",
+    )
+
+    # Strip the typed Panel artifact (full per-row data; not LLM-
+    # friendly) and any underscore-prefixed internals before
+    # returning to the orchestrator.  Keeps summary metadata
+    # (columns, n_observations, units_by_column, disclosures).
+    _LLM_DROPPED_KEYS = {"panel"}
+    llm_response = {
+        k: v for k, v in result.items()
+        if not k.startswith("_") and k not in _LLM_DROPPED_KEYS
+    }
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: calculate_breakeven_inflation  (Phase 1 PR 19)
+# ===========================================================================
+@mcp.tool()
+def calculate_breakeven_inflation_tool(
+    nominal_curve_family: str,
+    real_curve_family: str,
+    tenor: str,
+    lookback_days: int = 365,
+    convention: Optional[str] = None,
+    nominal_field_name: str = "YLD_YTM_MID",
+    real_field_name: str = "YLD_YTM_MID",
+) -> str:
+    """Compute matched-tenor breakeven inflation between a sovereign
+    nominal curve and its paired real-yield (inflation-linker) curve.
+
+    Use this tool when the user asks about:
+    - TIPS breakeven inflation     (e.g. "Where is the 10Y breakeven?")
+    - Real vs nominal yield spread (e.g. "What's the 5Y real-nominal?")
+    - Breakeven moves / z-scores   (e.g. "Is the 10Y breakeven stretched?")
+
+    V1 supports the USD pair (UST + USD_TIPS).  Other pairs
+    (UK_GILT+UK_LINKER, DE_BUND+DE_BUND_LINKER, JGB+JPY_LINKER) are
+    declared in the schema enum but raise at execution time until
+    their real-yield data is ingested.
+
+    V1 uses the ``nominal_breakeven`` convention (nominal_yield -
+    real_yield, in bps).  The ``inflation_swap_breakeven`` convention
+    is declared but raises NotImplementedError until inflation-swap
+    data with seasonal CPI adjustments is ingested.
+
+    Parameters
+    ----------
+    nominal_curve_family : str
+        Sovereign nominal family.  V1: UST (USD).
+    real_curve_family : str
+        Sovereign real (inflation-linker) family.  V1: USD_TIPS.
+        Must currency-match nominal_curve_family.
+    tenor : str
+        Matched tenor for both legs (e.g. '5Y', '10Y').
+    lookback_days : int, optional
+        Calendar-day display window (default 365).
+    convention : str, optional
+        ``nominal_breakeven`` (V1) or ``inflation_swap_breakeven`` (V2).
+    """
+    try:
+        params = BreakevenInflationInput(
+            nominal_curve_family=nominal_curve_family,
+            real_curve_family=real_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            convention=convention,
+            nominal_field_name=nominal_field_name,
+            real_field_name=real_field_name,
+        )
+    except (ValidationError, ValueError) as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    try:
+        cfg = load_tool_config(BREAKEVEN_INFLATION_CONFIG_PATH)
+        result = calculate_breakeven_inflation(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_breakeven_inflation")
+        return json.dumps({"error": f"Compute failed: {exc}"}, default=str)
+
+    logger.info(
+        "Tool call complete: breakeven_inflation %s/%s %s → %s",
+        params.nominal_curve_family,
+        params.real_curve_family,
+        params.tenor,
+        "error" if "error" in result else "OK",
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series (frontend-only); LLM gets snapshot + canonicals.
+    llm_response = {
+        "current_metrics": result.get("current_metrics", {}),
+        "methodology_disclosures": result.get("methodology_disclosures", []),
+    }
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

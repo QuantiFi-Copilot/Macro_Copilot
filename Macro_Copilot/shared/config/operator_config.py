@@ -47,6 +47,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Closed set of method families the operator layer knows about.  See
 # docs/architecture/operator_architecture.md for the rationale.
+# Phase 1 PR 12 adds the three trade-lifecycle families used by the
+# backtest archetype: construction (EventSet → TradeSet), evaluation
+# (TradeSet + price Panel → P&L Panel), and summary (P&L Panel →
+# scalar metrics).
 OperatorMethodFamily = Literal[
     "alignment",
     "arithmetic",
@@ -55,6 +59,9 @@ OperatorMethodFamily = Literal[
     "aggregation",
     "ranking",
     "mapping",
+    "trade_construction",
+    "trade_evaluation",
+    "trade_summary",
 ]
 
 

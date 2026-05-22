@@ -188,3 +188,123 @@ If a primitive is mid-loop:
 
 The automation must always resume unfinished work before starting a new
 primitive.
+
+## 10. Codex → Claude reviewer fallback
+
+The primary reviewer engine is Codex (`run_codex_reviewer.sh`). Codex
+quota is the most likely single point of failure for the automation
+because the same engine reviews every primitive. To keep the factory
+running when Codex quota is exhausted, the orchestrator falls back to
+Claude as the reviewer (`run_claude_reviewer.sh`) using the SAME
+`REVIEWER_PROMPT.md`.
+
+### 10.1 Detection — quota-marker scan of the reviewer log
+
+After every reviewer dispatch, the orchestrator runs:
+
+```
+python3 automation/primitive_automation/parse_reviewer_log.py <log_file>
+```
+
+The parser returns:
+
+```json
+{
+  "ok": true,
+  "heading": "APPROVED" | "CHANGES REQUIRED" | "DEFER / DO NOT BUILD" | null,
+  "environment_failure": <bool>,
+  "reviewer_quota_exhausted": <bool>,
+  "log_file": "<path>"
+}
+```
+
+`reviewer_quota_exhausted: true` means the parser found a known
+quota / rate-limit marker in the log AND no valid heading was
+emitted. The marker list is curated inside `parse_reviewer_log.py`
+(`QUOTA_EXHAUSTED_MARKERS`) and includes the Codex CLI's "rate
+limit", "429", "weekly limit", "5-hour limit", "limit reached" style
+strings plus Anthropic's `anthropic-ratelimit-*` and
+`overloaded_error` strings (in case a future build switches the
+primary engine to Claude).
+
+If a valid heading WAS emitted alongside a quota-marker substring,
+the parser returns `reviewer_quota_exhausted: false` — the verdict
+stands, since the worker reached a conclusion despite an
+upstream blip.
+
+### 10.2 State change on fallback trigger
+
+When `reviewer_quota_exhausted: true` AND `heading: null`:
+
+1. Read the current `reviewer_mode` from
+   `primitive_runtime_state.yaml`.
+2. If `reviewer_mode == codex`:
+   - Append to `reviewer_mode_history`:
+     ```yaml
+     - at: <UTC iso>
+       from: codex
+       to: claude_fallback
+       reason: codex_quota_exhausted
+       primitive_id: <current primitive id>
+     ```
+   - Set `reviewer_mode: claude_fallback`.
+   - Leave the *primitive* status untouched (it is still
+     `in_progress`; no review verdict was produced).
+   - Re-dispatch the SAME reviewer prompt for the SAME primitive
+     through `run_claude_reviewer.sh`. Parse the resulting log
+     normally.
+3. If `reviewer_mode == claude_fallback`:
+   - BOTH engines are now in quota-exhausted territory in this wake.
+   - Set `last_stop_reason: all_reviewer_engines_quota_exhausted`.
+   - Set the primitive to `waiting_quota`.
+   - Stop the wake cleanly. The recurring scheduler will retry
+     later.
+   - Do NOT invent a verdict and do NOT downgrade the primitive's
+     status to `blocked`.
+
+### 10.3 State change on fallback recovery
+
+The fallback is sticky on purpose — once swapped to
+`claude_fallback`, the orchestrator does not flip back to `codex`
+based on time alone. It MAY flip back when ALL of the following
+hold at the top of a subsequent wake:
+
+- a fresh quota probe (per §2) returns Codex 5-hour-remaining at or
+  above the §4 "starting a new primitive" threshold, AND
+- the previous primitive completed cleanly under
+  `claude_fallback` (i.e. ended `done`, not `blocked` or
+  `waiting_quota`), AND
+- the orchestrator is between primitives (not mid-review-loop).
+
+When all three hold, append the symmetric history entry
+(`from: claude_fallback, to: codex, reason: codex_quota_recovered`)
+and set `reviewer_mode: codex` for the next primitive.
+
+If the §2 probe is unavailable in non-interactive mode (the §6
+fallback path), stay in `claude_fallback`. Over-using Claude is not
+a correctness problem; flipping back to a still-exhausted Codex is.
+
+### 10.4 What the fallback does NOT change
+
+- The reviewer prompt (`REVIEWER_PROMPT.md`) is byte-identical for
+  both engines. The review bar does not relax in fallback mode.
+- The review-adjudication rules in `ORCHESTRATOR_PROMPT.md` (which
+  findings are mandatory-fix vs dismissable, the 4-round cap) apply
+  unchanged. Verdicts from either engine count toward the cap.
+- The two-layer testing rule, the no-DB-mutation rule, and the
+  pre-flight `load_audit` gate apply unchanged.
+
+### 10.5 Why this rule exists
+
+Halting the factory on Codex quota exhaustion would leave Claude
+quota — which is typically larger and on a different reset clock —
+sitting unused. The fallback path uses available quota to keep
+primitives advancing while staying honest about which engine
+reviewed which build (the `reviewer_mode_history` audit trail is the
+P5 disclosure).
+
+The alternative — running everything through Claude as the primary
+reviewer — gives up the model-independence the Codex primary
+provides (a different lab's model is the most stress-testable second
+opinion). The fallback structure preserves that independence on the
+happy path and degrades gracefully when Codex quota runs dry.

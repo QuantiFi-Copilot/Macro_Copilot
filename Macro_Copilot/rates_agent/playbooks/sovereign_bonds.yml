@@ -1,8 +1,8 @@
 playbook_name: "sovereign_bonds"
-playbook_version: "1.2"
+playbook_version: "1.3"
 asset_class: "rates"
 dataset_name: "sovereign_bonds"
-description: "Daily sovereign benchmark curve points for core liquid macro sovereign markets for PCA, slope/curvature, and z-score monitoring."
+description: "Daily sovereign benchmark curve points for core liquid macro sovereign markets: mid / bid / ask yield for PCA, slope-curvature and z-score monitoring and a benchmark bid/ask spread."
 
 extraction:
   start_date: "2005-01-01"
@@ -11,6 +11,25 @@ extraction:
 target_metrics:
   - metric_id: "yield_mid"
     bloomberg_field: "YLD_YTM_MID"
+
+  # --------------------------------------------------------------------------
+  # A4-1 — benchmark bid/ask yield. VERIFIED 2026-05-20 on the Bloomberg
+  # terminal — 14/14 GT-generic tickers across all 9 curve families — via
+  # scripts/sovereign_bonds_risk_bloomberg_check.py. With yield_mid these
+  # give a benchmark bid/ask spread.
+  #
+  # Bond-level risk analytics (modified duration, DV01, accrued interest,
+  # YAS yield) and the asset-swap spread are deliberately NOT on this
+  # playbook: the A4 verification proved the GT-generic curve tickers return
+  # no data for them (0 points, no error) — they are per-bond fields and
+  # belong on the CUSIP-level A4-4 playbook (sovereign_cash_bonds.yml). FWCV
+  # forward/carry is likewise not a Bloomberg data-API field — a separate
+  # access-pattern investigation, not part of this playbook.
+  # --------------------------------------------------------------------------
+  - metric_id: "yield_bid"
+    bloomberg_field: "YLD_YTM_BID"          # VERIFIED 2026-05-20
+  - metric_id: "yield_ask"
+    bloomberg_field: "YLD_YTM_ASK"          # VERIFIED 2026-05-20
 
 # Static/reference fields are fetched once per ticker and stamped onto each row
 # so instrument_master can be populated without changing ingest_parquet.py.

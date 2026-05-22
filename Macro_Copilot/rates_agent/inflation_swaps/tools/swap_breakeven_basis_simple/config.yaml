@@ -63,7 +63,7 @@
 # =============================================================================
 
 tool:
-  name: swap_breakeven_basis_simple
+  name: calculate_swap_breakeven_basis_simple_tool
   domain: inflation_swaps
   category: desk_invariant_primitive
   description: |

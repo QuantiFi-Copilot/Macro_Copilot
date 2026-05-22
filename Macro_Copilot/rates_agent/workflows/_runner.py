@@ -328,6 +328,11 @@ def run_template_with_resolver(
     *,
     engine: Any = None,
     primitive_resolver: PrimitiveResolver,
+    persist: bool = False,
+    object_storage: Any = None,
+    workspace_name: Optional[str] = None,
+    workspace_created_by: Optional[str] = None,
+    parent_workspace_id: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Resolve a template by id, bind the supplied slot_values,
     pre-flight validate, execute against the supplied resolver +
@@ -349,6 +354,25 @@ def run_template_with_resolver(
     The DB engine is the caller's responsibility — None is acceptable
     for synthetic-fetcher tests; production callers pass a live
     SQLAlchemy engine.
+
+    Persistence
+    -----------
+    When ``persist=True`` and both ``engine`` and ``object_storage``
+    are supplied, a successful execution ALSO writes:
+
+      - every node artifact via ``state.artifact_store.put_artifact``;
+      - the workflow's true DAG topology via
+        ``state.dag_repo.persist_dag_from_workflow_result``;
+      - a workspace row pointing at the new DAG hash.
+
+    The returned envelope is extended with ``terminal_artifact_hash``,
+    ``node_artifact_hashes``, ``dag_hash``, and ``workspace`` (slug +
+    URL + name).  Persistence is best-effort: a failure here does NOT
+    fail the envelope's primary execute path — the envelope reports
+    ``persistence: {ok: false, error: ...}`` and otherwise stays
+    identical.  This keeps the CLI / test paths (which pass
+    ``persist=False``) unchanged while letting the chat path (which
+    passes ``persist=True``) materialise a workspace per run.
     """
     logger.info("[%s] template invoked", template_id)
 
@@ -430,7 +454,156 @@ def run_template_with_resolver(
         "[%s] template execution complete; terminal type=%s",
         template_id, summary.get("type"),
     )
+
+    # --- 6. Optional persistence (chat path only) --------------------
+    if persist:
+        persistence = _persist_executed_workflow(
+            template_id=template_id,
+            workflow=workflow,
+            result=result,
+            engine=engine,
+            object_storage=object_storage,
+            workspace_name=workspace_name,
+            workspace_created_by=workspace_created_by,
+            # PR B — carry the slot_values onto the persisted
+            # workspace row so future variants can re-bind with a
+            # patch.  Copy defensively so mutations through
+            # ``slot_values`` after this point can't reach the
+            # stored snapshot.
+            bound_slot_values=dict(slot_values or {}),
+            parent_workspace_id=parent_workspace_id,
+        )
+        envelope["persistence"] = persistence
+        if persistence.get("ok") is True:
+            envelope["dag_hash"] = persistence["dag_hash"]
+            envelope["terminal_artifact_hash"] = persistence[
+                "terminal_artifact_hash"
+            ]
+            envelope["node_artifact_hashes"] = persistence[
+                "node_artifact_hashes"
+            ]
+            envelope["workspace"] = persistence["workspace"]
+
     return envelope
+
+
+def _persist_executed_workflow(
+    *,
+    template_id: str,
+    workflow,
+    result,
+    engine: Any,
+    object_storage: Any,
+    workspace_name: Optional[str],
+    workspace_created_by: Optional[str],
+    bound_slot_values: Optional[Dict[str, Any]] = None,
+    parent_workspace_id: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Persist node artifacts + DAG + workspace for a successful run.
+
+    Best-effort: every failure mode is caught and returned as
+    ``{"ok": False, "error": str}`` so the caller's primary envelope
+    stays intact.  Logs at WARNING level with the template_id so
+    debugging is straightforward.
+
+    Imports of state-layer modules are deferred to call-time to
+    avoid pulling them into the cold path used by CLI / test
+    fixtures that pass ``persist=False``.
+
+    PR B kwargs
+    -----------
+    ``bound_slot_values`` is the dict the user / LLM passed to
+    ``template.bind()``.  Persisted on the workspace row so the
+    fork-with-overrides endpoint can re-bind with a patch.  When
+    None (legacy / synthetic callers), the workspace is created
+    with NULL ``bound_slot_values`` and the fork affordance stays
+    disabled.
+
+    ``parent_workspace_id`` lets a fork pass through its parent
+    linkage at create time.  ``None`` for top-level workspaces.
+    """
+    if engine is None:
+        return {
+            "ok": False,
+            "error": (
+                "persist=True requires a SQLAlchemy engine; got engine=None"
+            ),
+        }
+    if object_storage is None:
+        return {
+            "ok": False,
+            "error": (
+                "persist=True requires an object_storage backend; "
+                "got object_storage=None"
+            ),
+        }
+
+    try:
+        from state.dag_repo import persist_dag_from_workflow_result
+        from state.workspace_repo import create_workspace, InvalidNameError
+    except Exception as exc:  # defensive: import failure
+        logger.warning(
+            "[%s] persistence import failed: %s", template_id, exc,
+        )
+        return {"ok": False, "error": f"persistence import failed: {exc}"}
+
+    try:
+        with engine.begin() as conn:
+            persisted = persist_dag_from_workflow_result(
+                workflow,
+                result,
+                conn=conn,
+                object_storage=object_storage,
+            )
+            try:
+                workspace = create_workspace(
+                    persisted.dag_hash,
+                    conn=conn,
+                    name=workspace_name,
+                    created_by=workspace_created_by,
+                    focus_node=workflow.terminal_node_id,
+                    template_id=template_id,
+                    bound_slot_values=bound_slot_values,
+                    parent_workspace_id=parent_workspace_id,
+                )
+            except InvalidNameError as exc:
+                # Reserved / oversize names get rejected cleanly.
+                # Retry with no name so the workflow still
+                # materialises as a (slug-only, auto-named) workspace
+                # — Build's sidebar can display it as "Untitled
+                # workspace" until the caller renames it.
+                logger.warning(
+                    "[%s] workspace_name rejected (%s); "
+                    "retrying with name=None",
+                    template_id, exc,
+                )
+                workspace = create_workspace(
+                    persisted.dag_hash,
+                    conn=conn,
+                    name=None,
+                    created_by=workspace_created_by,
+                    focus_node=workflow.terminal_node_id,
+                    template_id=template_id,
+                    bound_slot_values=bound_slot_values,
+                    parent_workspace_id=parent_workspace_id,
+                )
+    except Exception as exc:
+        logger.exception("[%s] persistence failed", template_id)
+        return {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": True,
+        "dag_hash": persisted.dag_hash,
+        "terminal_artifact_hash": persisted.terminal_artifact_hash,
+        "node_artifact_hashes": persisted.node_artifact_hashes,
+        "workspace": {
+            "id": str(workspace.id),
+            "slug": workspace.slug,
+            "name": workspace.name,
+            "dag_hash": workspace.dag_hash,
+            "url": f"/workspace/{workspace.slug}",
+        },
+    }
 
 
 def run_template(
@@ -438,16 +611,31 @@ def run_template(
     slot_values: Dict[str, Any],
     *,
     engine: Any = None,
+    persist: bool = False,
+    object_storage: Any = None,
+    workspace_name: Optional[str] = None,
+    workspace_created_by: Optional[str] = None,
+    parent_workspace_id: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Production wrapper: same as ``run_template_with_resolver`` but
     with the rates_primitive_resolver injected.  This is what the MCP
     server, CLI, and orchestrator-side code call.
+
+    Persistence kwargs are forwarded verbatim — see
+    ``run_template_with_resolver`` for semantics.  ``parent_workspace_id``
+    is the PR B addition that lets the fork endpoint stamp the
+    parent linkage on the child workspace at create time.
     """
     return run_template_with_resolver(
         template_id,
         slot_values,
         engine=engine,
         primitive_resolver=rates_primitive_resolver,
+        persist=persist,
+        object_storage=object_storage,
+        workspace_name=workspace_name,
+        workspace_created_by=workspace_created_by,
+        parent_workspace_id=parent_workspace_id,
     )
 
 

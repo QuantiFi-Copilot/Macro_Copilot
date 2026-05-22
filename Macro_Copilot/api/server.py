@@ -39,9 +39,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.dependencies import init_engine, settings
+from api.dependencies import (
+    dispose_artifact_cache,
+    dispose_checkpointer_pool,
+    dispose_object_storage,
+    init_artifact_cache,
+    init_checkpointer_pool,
+    init_engine,
+    init_object_storage,
+    settings,
+)
 from api.routes.rates import router as rates_router
 from api.routes.workflows import router as workflows_router
+from api.routes.library import router as library_router
+from api.routes.workspace import router as workspace_router
+from api.routes.artifacts import router as artifacts_router
 from api.routes import chat as chat_routes
 
 # ---------------------------------------------------------------------------
@@ -61,13 +73,90 @@ logger = logging.getLogger("api.server")
 async def lifespan(app: FastAPI):
     """Manage application lifecycle.
 
-    - **Startup**: create the SQLAlchemy engine pool.
-    - **Shutdown**: dispose the engine pool (close all DB connections).
+    - **Startup**: create the SQLAlchemy engine pool AND the LangGraph
+      checkpointer's psycopg3 connection pool.  ``AsyncPostgresSaver.setup()``
+      runs during pool init to ensure the framework's tables exist in
+      the ``langgraph_checkpoint`` schema (created by Alembic migration
+      ``0003_langgraph_checkpoint_schema``).
+    - **Shutdown**: dispose both pools.
+
+    Two pools, two Postgres drivers (psycopg2 for SQLAlchemy / ingestion,
+    psycopg3 for the async checkpointer), one Postgres.  This split is
+    documented in ``docs/architecture/state_schema.md``.
+
+    Checkpointer pool init failure logic
+    ------------------------------------
+    If ``init_checkpointer_pool()`` raises (e.g. Postgres is down or
+    the ``langgraph_checkpoint`` schema does not exist because alembic
+    has not been run), the API starts WITHOUT a checkpointer pool.
+    WebSocket sessions will fall back to in-memory state (no durability
+    across restart) and emit a clear warning at handshake time.  This
+    is the right operational contract: an API that can serve REST
+    traffic but has no chat-state durability is more useful than an
+    API that refuses to start.
     """
     logger.info("Initialising database engine...")
     engine = init_engine()
     logger.info("Database engine ready.  Pool size=%s", engine.pool.size())
+
+    try:
+        await init_checkpointer_pool()
+        logger.info("LangGraph checkpointer pool ready")
+    except Exception as exc:
+        # See docstring — degraded operation rather than refuse to start.
+        logger.error(
+            "Failed to initialise checkpointer pool; WebSocket sessions "
+            "will run with in-memory state (lost on restart): %s",
+            exc,
+        )
+
+    # Phase 0 PR 7: artifact-store object-storage backend.  Same
+    # degraded-operation contract as the checkpointer pool —
+    # initialisation failure logs an error and the API keeps
+    # serving; routes that need the artifact store will fail loudly
+    # at request time rather than at startup.
+    try:
+        init_object_storage()
+        logger.info("Artifact-store object-storage backend ready")
+    except Exception as exc:
+        logger.error(
+            "Failed to initialise object-storage backend; "
+            "artifact-store routes will not function: %s",
+            exc,
+        )
+
+    # Phase 0 PR 11: artifact bytes cache (optional Redis).  Unset
+    # ``MACRO_COPILOT_REDIS_URL`` -> NullCache; the no-op cache is
+    # the default.  A Redis init failure also degrades to NullCache
+    # — the cache is performance scaffolding, never load-bearing
+    # for correctness.
+    try:
+        init_artifact_cache()
+        logger.info("Artifact bytes cache ready")
+    except Exception as exc:  # pragma: no cover — defensive only
+        logger.error(
+            "Failed to initialise artifact bytes cache; serving "
+            "with NullCache fallback: %s",
+            exc,
+        )
+
     yield
+
+    logger.info("Shutting down — disposing artifact bytes cache.")
+    try:
+        dispose_artifact_cache()
+    except Exception:
+        logger.exception("Error disposing artifact cache (non-fatal)")
+    logger.info("Shutting down — disposing object-storage backend.")
+    try:
+        dispose_object_storage()
+    except Exception:
+        logger.exception("Error disposing object-storage backend (non-fatal)")
+    logger.info("Shutting down — disposing checkpointer pool.")
+    try:
+        await dispose_checkpointer_pool()
+    except Exception:
+        logger.exception("Error disposing checkpointer pool (non-fatal)")
     logger.info("Shutting down — disposing database engine.")
     engine.dispose()
 
@@ -112,6 +201,35 @@ app.include_router(
     workflows_router,
     prefix="/api/v1",
     tags=["Workflows"],
+)
+
+# Library catalogue surface — reads `manifesto/03_tool_manifest/<agent>/*.yml`
+# and serves the parsed catalogue as JSON.  The Library page is rendered
+# directly from this response (no hardcoded tool entries in the UI).
+app.include_router(
+    library_router,
+    prefix="/api/v1",
+    tags=["Library"],
+)
+
+# PR 10: workspace persistence surface — POST /, GET /{slug},
+# GET /{slug}/replay.  Slug is the stable URL handle; rename
+# updates name only.  See ``api/routes/workspace.py``.
+app.include_router(
+    workspace_router,
+    prefix="/api/v1/workspace",
+    tags=["Workspace"],
+)
+
+# PR 10: artifact-keyed replay surface (relocated from PR 9's
+# ``/api/v1/workspace/{hash}`` — the artifact-keyed lookup is
+# semantically an artifact view, not a workspace view, and the
+# singular ``/workspace`` path is now slug-routed).  Endpoint:
+# ``GET /api/v1/artifacts/{hash}/replay``.
+app.include_router(
+    artifacts_router,
+    prefix="/api/v1/artifacts",
+    tags=["Artifacts"],
 )
 
 app.include_router(

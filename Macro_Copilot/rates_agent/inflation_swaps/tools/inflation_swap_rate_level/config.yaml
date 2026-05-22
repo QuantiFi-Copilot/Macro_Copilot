@@ -23,7 +23,7 @@
 # =============================================================================
 
 tool:
-  name: inflation_swap_rate_level
+  name: calculate_inflation_swap_rate_level_tool
   domain: inflation_swaps
   category: desk_invariant_primitive
   description: |

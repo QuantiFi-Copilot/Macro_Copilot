@@ -125,3 +125,87 @@ a time.
 Do not run overlapping background wakes for this vertical slice.
 
 The primitive factory is intentionally serial for quality reasons.
+
+## 8. Catalog-exhaustion shutdown
+
+When every primitive in `primitive_catalog.yaml` is `done` or
+`blocked`, there is no eligible work left for the factory to do.
+Continuing to wake the orchestrator at that point burns tokens against
+the empty catalog loop with no possible useful output. The shutdown
+rule prevents this.
+
+### 8.1 Setting the exhaustion state
+
+When the orchestrator finishes a wake and observes that no primitive
+is in any of the eligible-work states (`in_progress`,
+`changes_required`, `waiting_quota`, `todo`), it MUST write:
+
+```yaml
+orchestrator_status: catalog_exhausted
+last_stop_reason: catalog_exhausted
+catalog_exhausted_at: <UTC iso timestamp>
+```
+
+into `primitive_runtime_state.yaml` before exiting. Counts
+(`done`, `blocked`, `remaining`) must also be up to date so a human
+inspecting the file can see how the catalog finished.
+
+### 8.2 Cron entry-point short-circuit
+
+The OpenClaw cron job calls the orchestrator entry-point script (see
+`OPENCLAW_CRON_RUNBOOK.md` for the exact path). Before the
+entry-point dispatches the orchestrator prompt to a worker engine, it
+MUST:
+
+1. Read `primitive_runtime_state.yaml`.
+2. If `orchestrator_status == "catalog_exhausted"`:
+   - Log a single line to the orchestrator wake log:
+     `catalog exhausted at <catalog_exhausted_at>; skipping wake`.
+   - Exit 0 immediately. Do NOT dispatch the orchestrator prompt.
+   - Do NOT consume any worker-engine quota.
+3. Otherwise, proceed with the normal dispatch.
+
+The cron entry remains in OpenClaw's schedule — the short-circuit
+happens inside the entry-point script, not by removing the cron job.
+This means the system stays "armed" to resume the moment a human (or
+a future automation step) introduces new work.
+
+### 8.3 How a human re-arms the factory
+
+The catalog-exhausted state clears when EITHER condition is met:
+
+a. **New work appears in the catalog.** If a human (or a follow-on
+   automation step) appends a new entry to `primitive_catalog.yaml`
+   with a non-terminal status (`todo` / `changes_required` /
+   `waiting_quota` / `in_progress`), the next entry-point wake
+   detects the new eligible work, clears
+   `orchestrator_status: catalog_exhausted`, sets it to
+   `processing`, and dispatches the orchestrator normally.
+
+b. **Explicit reset.** A human edits
+   `primitive_runtime_state.yaml` and sets
+   `orchestrator_status: idle` (or removes the field). The next
+   entry-point wake re-evaluates the catalog from scratch.
+
+In both cases, the previous `catalog_exhausted_at` timestamp may be
+preserved in `reviewer_mode_history`-style audit logs but should not
+remain as the current `orchestrator_status`.
+
+### 8.4 Why this rule exists
+
+Without it, the cron would wake the orchestrator on every interval,
+which would:
+
+- spend Claude / Codex tokens reading the catalog and runtime state
+  only to determine there is nothing to do, every single wake,
+  forever;
+- spam the Discord-facing status surface with identical "nothing to
+  do" updates;
+- mask a *real* problem if it ever co-occurs with the catalog being
+  full (e.g. a stuck `in_progress` primitive that genuinely needs
+  attention).
+
+A loud, file-based shutdown is the cheap, honest signal that the
+factory has completed its current scope and is awaiting human
+direction. It is recoverable in one line of YAML and consumes zero
+tokens while idle.

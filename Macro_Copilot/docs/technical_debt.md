@@ -1,24 +1,60 @@
 # MACRO COPILOT — TECHNICAL DEBT REGISTER
-# Last updated: April 2026
+# Last updated: May 2026 (Phase 0 close)
 # Status: All patch-level defects resolved. Items below are architectural
 #         improvements, not bugs in the current code.
+#
+# Phase 0 close (PR 11) — three CRITICAL items resolved:
+#   #1  Non-atomic delete+upsert in ingestion (Phase 0 PR 3)
+#   #6  Persistent LangGraph checkpointer        (Phase 0 PR 5)
+#   #20 Normalized data hash stability           (Phase 0 PR 2)
+# The substrate (artifact store, lineage, methodology pinning,
+# workspace persistence, working set, turn lifecycle) that PR 11
+# ships closes Phase 0.  Remaining items are non-blocking for the
+# Phase 1 backtest archetype.
 
 
 ## CRITICAL — Fix before production traffic
 
-### 1. Non-atomic delete + upsert in ingestion
-WHERE: ingest_parquet.py (lines 493, 529), database.py (all helper functions)
-WHAT: The overlap delete and market_data_daily upsert run in separate
-      transactions. If the insert fails after the delete commits, the DB
-      is left partially refreshed until a retry repairs it.
-MITIGATED BY: RUNNING/FAILED audit trail makes the state visible; the
-      parquet stays in GCS for retry.
-FIX: Refactor database.py functions (upsert_market_data_daily,
-     _delete_existing_playbook_scope, _delete_existing_playbook_window)
-     to accept a connection object instead of an engine, so the caller
-     can wrap delete + upsert + audit update in a single transaction.
-EFFORT: Medium — touches every function signature in database.py and
-        every call site in ingest_parquet.py.
+### 1. Non-atomic delete + upsert in ingestion — [RESOLVED, Phase 0 PR 3]
+WHERE (was): ingest_parquet.py (lines 493, 529), database.py (helpers)
+WHAT (was):  The overlap delete and market_data_daily upsert ran in
+             separate transactions.  If the insert failed after the
+             delete committed, the DB was left partially refreshed
+             until a retry repaired it.
+RESOLUTION:  Four database helpers now accept a ``Connectable`` (either
+             an ``Engine`` for self-managed transactions or a
+             ``Connection`` for caller-managed transactions):
+
+               - ``database.upsert_market_data_daily``
+               - ``database.update_load_audit_status``
+               - ``ingest_parquet._delete_existing_playbook_scope``
+               - ``ingest_parquet._delete_existing_playbook_window``
+
+             ``database._txn`` is the shared dispatch context manager:
+             if handed an Engine it opens ``engine.begin()`` (legacy
+             behavior); if handed a Connection it yields it as-is
+             (caller owns the txn boundary).
+
+             ``ingest_parquet.run_ingestion_pipeline`` now wraps the
+             critical DELETE → UPSERT → audit-flip section in a single
+             ``with engine.begin() as conn:`` block, passing ``conn`` to
+             every helper.  A failure between any two operations rolls
+             back the whole transaction; the outer ``except`` handler
+             then flips the audit row to FAILED on a SEPARATE
+             transaction.
+
+             ``instrument_master`` upsert remains OUTSIDE the critical
+             section because it is idempotent on (vendor, vendor_ticker)
+             and including it would extend the lock window without
+             correctness benefit.
+
+             Test coverage: ``tests/state/test_transactional_ingestion.py``
+             pins the dispatch contract (Engine vs Connection paths),
+             the composition contract (helpers do NOT open
+             sub-transactions when given a Connection), and the
+             rollback contract (an exception in the critical block
+             causes ``__exit__`` to receive the exception, which in
+             production SQLAlchemy issues ROLLBACK).
 
 ### 2. Rolling contract metadata (instrument_master SCD2)
 WHERE: schema.sql (instrument_master), database.py (upsert_instrument_master)
@@ -75,14 +111,37 @@ FIX: Implement three tiers:
 EFFORT: Low — mostly scheduling config, the extractors already support
         configurable windows.
 
-### 6. Persistent LangGraph checkpointer
-WHERE: orchestrator/graph.py (MemorySaver)
-WHAT: Conversation state is in-memory only. Lost on restart. Single
-      hardcoded thread_id.
-FIX: Replace MemorySaver with PostgresSaver or RedisSaver. Add per-user
-     thread IDs. Add message trimming/summarization for long conversations.
-EFFORT: Low-Medium for PostgresSaver swap, Medium for trimming logic.
-WHEN: Before any frontend, multi-user traffic, or supervisor node.
+### 6. Persistent LangGraph checkpointer — [RESOLVED, Phase 0 PR 5]
+WHERE (was): orchestrator/graph.py (MemorySaver)
+WHAT (was):  Conversation state was in-memory only.  Lost on restart.
+             Single hardcoded thread_id.
+RESOLUTION:  Replaced ``MemorySaver`` with ``AsyncPostgresSaver``
+             backed by a dedicated psycopg3 ``AsyncConnectionPool``.
+             The pool's kwargs match LangGraph upstream defaults
+             (``autocommit=True``, ``prepare_threshold=0``,
+             ``row_factory=dict_row``, ``options=-c search_path=
+             langgraph_checkpoint,public``) — pinned in
+             ``api.dependencies.init_checkpointer_pool``.
+
+             Thread ids are now stable per-(session, domain) when
+             ``stateless=False`` (the new default after PR 5):
+             ``{session_id}-{domain.value}`` (vs the legacy per-turn
+             ``{session_id}-{turn_label}-{domain.value}`` retained
+             for tests via ``stateless=True``).  Phase 0 PR 8
+             added the explicit session-level ``copilot_state.sessions``
+             row + ``copilot_state.turns`` lifecycle on top.
+
+             Degraded operation: pool init failure logs an error
+             and the API serves without durability rather than
+             refusing to start; the WebSocket handler surfaces a
+             warning to the client at handshake time.
+
+             Test coverage: ``tests/state/test_postgres_checkpointer.py``
+             (pool setup idempotence, thread isolation, multi-checkpoint
+             history, state survives pool close+reopen),
+             ``tests/state/test_session_restart.py`` (a real LangGraph
+             counter resumes byte-identically after a simulated
+             process restart).
 
 ### 7. Data freshness check in tools
 WHERE: rates_agent/tools/yield_levels.py, curve_spread.py
@@ -213,14 +272,35 @@ FIX: Add columns like `extraction_coverage_ratio` and
      `extraction_expected_ticker_count` to the parquet output.
 EFFORT: Low.
 
-### 20. Normalized data hash stability
-WHERE: ingest_parquet.py (_compute_normalized_data_hash)
-WHAT: The dedup hash is computed from CSV serialization of the DataFrame.
-      Float formatting can vary across Python/Pandas versions, potentially
-      causing false hash mismatches.
-FIX: Pin the float format in the CSV serialization, or hash on a
-     deterministic binary representation.
-EFFORT: Low.
+### 20. Normalized data hash stability — [RESOLVED, Phase 0 PR 2]
+WHERE (was): ingest_parquet.py (_compute_normalized_data_hash)
+              shared/artifacts/lineage.py (_canonical_json + _compute_step_hash)
+WHAT (was):  The dedup hash was computed from CSV serialization of the
+             DataFrame; float formatting could vary across Python/Pandas
+             versions.  The lineage step hash used json.dumps(default=str),
+             which silently called str() on NumPy scalars / Pandas
+             Timestamps with version-dependent output.
+RESOLUTION:  Both hash sites now use an explicit canonicalization pass
+             that converts inputs to a strict allowlist (None / bool /
+             int / float / str / list / tuple / dict / date / datetime /
+             numpy scalar via .item() / .isoformat()-capable) and
+             rejects everything else with a clear TypeError.  NaN /
+             Infinity are rejected explicitly.
+
+             Ingestion: `ingestion/hashing.py` (extracted from
+             `ingest_parquet.py`) hashes a pure-Python `{columns, rows}`
+             JSON of the normalized DataFrame; no CSV, no NumPy in the
+             serialization path.
+
+             Lineage: `shared/artifacts/lineage._canonical_json` uses
+             `_canonicalize_for_hash` upfront and `allow_nan=False` on
+             the JSON encoder.
+
+             Pinned cross-version test vectors live in
+             `tests/state/test_hash_stability.py`, gated by a Python
+             3.11 + 3.12 CI matrix.  Any drift between Python versions
+             flips the pinned-hash assertions on the affected matrix
+             leg.
 
 Now let me address each concern that's still being raised:
 "Per-ticker failures don't set any_failures" (ChatGPT + Codex)
@@ -249,3 +329,273 @@ this should maybe not live under the OIS domain namespace, because it is cross-d
 ### 23. Operator (summarize_series)
 Might not be standard!! 
 Probably just a temporary workaround: It is basically a temporary bridge because the artifact layer is still missing the right scalar output type.
+
+
+### 24. Phase 1 deferred 1B desk-critical tools (data-infrastructure-gated)
+
+The original Phase 1 Week 7-8 plan called for four "desk-critical 1B
+tools" alongside the backtest archetype.  PR 21's stress-test against
+the "no metadata proxies" design principle blocked three of them on
+data infrastructure we do not currently have.  None are hard
+architectural blockers — they're all enabled by specific data
+ingestion work.  Logged here so future PRs can see the exact
+prerequisites.
+
+**`per_meeting_pricing` (OIS)** — DEFERRED to Phase 2
+
+  - **What it would do**: given a central-bank meeting date, decompose
+    the OIS curve to extract the cuts/hikes priced for that specific
+    meeting.
+  - **Why deferred**: per-meeting decomposition requires WIRP-style
+    data (the market's actual implied path step-function), not
+    smooth-curve interpolation.  An earlier implementation that
+    linearly interpolated par OIS rates to derive per-meeting moves
+    drifted visibly from Bloomberg WIRP and was REMOVED (see
+    ``rates_agent/ois/mcp_server.py`` docstring lines 18-23).
+    Rebuilding without WIRP data would commit the same sin.
+  - **Data prerequisite**: Bloomberg WIRP feed (or equivalent
+    market-implied-path data) ingested as a daily snapshot.
+  - **Effort**: medium — adapter to WIRP, output schema, 3-test pattern.
+
+**`policy_path_since_event` (OIS)** — DEFERRED to Phase 2
+
+  - **What it would do**: "How has the implied policy path moved
+    since the SVB event?" — show the change in cumulative implied
+    cuts/hikes between two dates.
+  - **Why deferred**: two viable framings.
+    (a) Meeting-decomposition framing — same WIRP blocker as above.
+    (b) Generic-OIS-metric-change framing — ``(OIS_rate_today −
+        OIS_rate_at_event_date)`` at some tenor.  But this is a thin
+        wrapper over ``get_ois_rate_level`` + arithmetic that the LLM
+        can compose; fails the "defensibly unique" stress test.
+  - **Data prerequisite**: same as ``per_meeting_pricing`` for (a).
+  - **Effort**: dependent on framing — (a) is medium; (b) shouldn't be
+    a separate primitive.
+
+**`carry_and_roll` (sovereign)** — DEFERRED to Phase 2
+
+  - **What it would do**: compute per-bond carry + roll-down P&L over
+    a holding horizon, for RV screens.
+  - **Why deferred**: the carry+roll formula requires per-bond
+    modified duration, coupon, day-count, and accrued interest.  Our
+    sovereign-bonds playbook ingests ONLY yield (``YLD_YTM_MID``) +
+    ``maturity_date`` + ``security_name``.  Computing carry+roll
+    without the rest would force proxies — duration ≈ tenor (20-50%
+    error for non-zero-coupon bonds), coupon ≈ current yield (par-bond
+    assumption, off by 50-200bp for seasoned bonds), etc.  Each proxy
+    violates the "no opinionated proxies for missing metadata"
+    principle the same way the dropped per_meeting_pricing did.
+  - **Data prerequisite**: Bloomberg ``MOD_DUR_MID`` + ``CUR_CPN`` +
+    ``DAY_CNT_DES`` + ``PX_DIRTY`` per instrument added to the
+    sovereign benchmarks playbook + ingestion run.
+  - **Effort**: medium for the analytics; medium for the ingestion
+    extension (adds ~5 fields × ~90 instruments × ~5000 days = ~2M new
+    rows in market_data_daily, plus a small instrument-master
+    extension for the static fields).
+
+**`asset_swap_spread` (sovereign side)** — ALREADY EXISTS in OIS folder
+The cross-domain ``swap_spread`` primitive at
+``rates_agent/ois/tools/swap_spread/`` already computes the sovereign-
+vs-OIS ASW using ``fetch_cross_domain_pair``.  Lives in OIS folder
+per the "owner of the cross-domain concept" convention.  PR 21 adds
+an explicit par-par-approximation disclosure to its config.yaml so
+the workspace methodology card surfaces the true-ASW gap.
+
+### 25. Inflation-linker daily-index interpolation convention not sourced
+
+WHERE: rates_agent/playbooks/inflation_references.yml (work order B3),
+       inflation_indexed_bonds.yml, inflation_swaps.yml — the per-row
+       `interpolation` attribute.
+WHAT: An inflation-linked bond settles against a DAILY reference index
+      interpolated from monthly CPI prints. Two facts govern that daily
+      reference index: (a) the indexation LAG, and (b) the INTERPOLATION
+      RULE that maps the two bracketing monthly prints onto a given
+      settlement date. The lag (a) IS verified — Bloomberg exposes it as
+      the reference field INFLATION_LAG on the linker bond, and B3 encodes
+      it per row. The interpolation rule (b) could NOT be located on
+      Bloomberg: it is exposed as a reference field on neither the CPI
+      index ticker nor the linker bond, and the B3 verification script's
+      terminal run found no mnemonic carrying it.
+IMPACT: index_lag alone is enough to ship inflation_references in B3 (index
+      levels + the verified lag). It is NOT enough to compute an exact
+      daily reference index for an arbitrary settlement date — that needs
+      the interpolation rule. Markets do not share one rule: US TIPS,
+      OATi/OAT€i and new-style UK gilts use the canonical day-count linear
+      interpolation between the two monthly prints; old-style UK RPI
+      linkers use an 8-month lag with NO interpolation (the bare monthly
+      index). Hard-coding a single guessed rule across markets would
+      corrupt any daily-reference-index or cash-flow-projection primitive
+      built on top — the same data-corruption risk that kept index_lag
+      out of the playbook until it was verified.
+FIX: Source the per-market interpolation rule from an authoritative
+      non-Bloomberg reference (each debt office's index-linked-bond
+      prospectus / technical specification — US Treasury, UK DMO, Agence
+      France Trésor, Bank of Canada, Japan MOF) and encode one VERIFIED
+      `interpolation` attribute per playbook row, exactly the way index_lag
+      is encoded from INFLATION_LAG. Until then the attribute is
+      deliberately absent — never guessed.
+EFFORT: Low-Medium — no schema or code change; per-market manual
+      verification (~6 markets) plus a one-line attribute per playbook row.
+WHEN: Before any primitive that computes a daily reference index, projects
+      linker cash flows, or prices an inflation-linked bond off the
+      reference indices. NOT needed for B3's index-level ingestion, nor for
+      primitives that consume the monthly index directly.
+
+### 26. Primitive/fetch-layer outlier filtering for vendor bad prints
+
+WHERE: shared analytics fetchers and rates primitives that consume
+       `macro_data.v_market_data_daily_enriched` / `market_data_daily`
+       directly (for example sovereign yield PCA, z-scores, curve spreads,
+       cross-market spreads, and future bid/ask-spread primitives).
+WHAT: The ingestion layer stores source-of-record Bloomberg values as raw
+      observations. That is the correct lineage behavior, but primitives
+      must not blindly compute over impossible vendor sentinels or bad
+      prints. A4 sovereign-benchmark bid/ask validation found one concrete
+      example in a successful, otherwise-clean load:
+
+        - `GTCAD1Y Govt`, `YLD_YTM_ASK`, `2008-05-09`
+        - stored value: `2147484.00000000`
+        - surrounding fields: `YLD_YTM_MID = 2.662`, `YLD_YTM_BID = 2.662`
+
+      This is not an economically possible sovereign yield. It behaves like
+      a Bloomberg missing/sentinel/bad-print value that passed through the
+      raw data path because the extractor/ingester currently only normalise
+      scalars and drop nulls; they do not apply domain-specific plausibility
+      filters. The same validation found a small number of benign-looking
+      bid/ask and mid-between-bid/ask inconsistencies in older benchmark
+      histories, which should be surfaced as data-quality warnings rather
+      than silently rewritten.
+IMPACT: A single impossible value can dominate downstream analytics:
+      z-scores, PCA, volatility, cross-market spreads, bid/ask-spread
+      statistics, regression inputs, and trade triggers. This is not a
+      schema or ingestion-atomicity problem — the load can be successful
+      and still contain vendor-source anomalies that primitives must guard
+      against.
+POLICY: Preserve raw vendor observations in `market_data_daily` unless a
+      dedicated raw-vs-clean storage model is introduced. Do not hand-edit
+      individual Bloomberg values silently. Primitive/fetch code should
+      apply explicit, documented, field-aware plausibility screens and
+      expose what was filtered in methodology/output metadata (P5), while
+      keeping the source-of-record value auditable (P2/P12).
+FIX: Add a shared data-quality/filtering layer used by rates fetchers before
+      primitives compute. The first rules should cover sovereign benchmark
+      yield fields (`YLD_YTM_MID`, `YLD_YTM_BID`, `YLD_YTM_ASK`):
+
+        - reject or mask yields outside a defensible range (for example
+          `[-50, 100]`, with the exact threshold documented);
+        - flag bid/ask inversions separately from hard outliers;
+        - flag cases where mid is outside the bid/ask range, but treat them
+          as warnings unless the spread/magnitude is impossible;
+        - include filtered-row counts and representative examples in the
+          primitive methodology/output payload.
+
+      The implementation should be configurable by field family rather than
+      hard-coded per primitive, and should have unit tests using the
+      `GTCAD1Y Govt` `2147484` bad-print case as a regression fixture.
+EFFORT: Medium — shared fetch/cleaning helper, primitive wiring, output
+      disclosure, and tests. No schema migration required unless the project
+      later chooses to store clean series alongside raw series.
+WHEN: Before using A4 sovereign bid/ask fields in production PCA/z-score/
+      spread/trade-trigger primitives, and before any future primitive that
+      consumes newly added vendor fields without a manual quality screen.
+
+### 27. OTR resolver is forward-only — no historical backfill, detection-date dating
+
+WHERE: rates_agent/playbooks/sovereign_cash_bonds.yml (the `otr_resolution`
+       block), utils/incremental_extractor.py (`resolve_otr`),
+       ingestion/otr_resolution.py, ingestion/ingest_parquet.py
+       (`_process_otr_resolution_blob`), macro_data.otr_history.
+WHAT: The A4-4 on-the-run resolver (ADR 0007) records OTR rolls FORWARD ONLY —
+      from its first run onward. Two deliberate limitations:
+      (a) NO historical OTR backfill. `otr_history` is empty until the first
+          resolver run; OTR windows that existed before the resolver went live
+          are not reconstructed. The A4-4 probe (`a4_ofr_resolver_probe.py`)
+          proved `bdh` of a reference field does NOT historise the OTR chain —
+          there is no Bloomberg mechanism to recover past OTR windows, and the
+          manual 1st-off-the-run seed was deliberately skipped rather than
+          guessed (P2 — accuracy or refuse).
+      (b) DETECTION-DATE effective dating. A roll's `effective_from` is the
+          resolver's FIRST confirmed observation date, not the bond's true
+          auction / benchmark-roll date. At a daily incremental cadence this is
+          accurate to ~1-2 days; the gap widens if the extractor runs less
+          often. The two-run confirmation gate trades one extra run of latency
+          for false-roll protection.
+IMPACT: Point-in-time OTR queries (`get_otr_at`) are correct from the first
+      resolver run forward. For any date before that, `get_otr_at` returns
+      `None` for every slot — honest absence (P5), not a wrong answer. Any
+      OTR-history-dependent analytic (on-the-run / off-the-run RV, OTR-roll
+      carry) is valid only over the resolver-covered window, and roll dates may
+      sit a day or two after the true auction date.
+FIX: (a) is fixable only with an authoritative non-Bloomberg history of past
+      auctions / benchmark rolls per (country, tenor) — debt-office auction
+      calendars — encoded as VERIFIED `otr_history` rows with verified
+      effective dates. Until verified, do not fabricate historical windows.
+      (b) tighten by running the incremental extractor (hence the resolver)
+      daily, and/or by later cross-referencing the auction calendar to correct
+      `effective_from` to the true roll date.
+EFFORT: (a) Medium — per-market auction-history sourcing + a verified backfill
+      loader. (b) Low — a cadence/ops change, or a calendar cross-reference.
+WHEN: Before any primitive relies on OTR history PRE-DATING the resolver's
+      first run, or needs roll effective dates accurate to the exact auction
+      date. NOT needed for forward-looking OTR / off-the-run analytics over the
+      resolver-covered window.
+
+### 28. D-auctions (sovereign auction calendar / results) deferred from B2 v1
+
+WHERE: work order B2 (event data); macro_data.event_calendar — the typed
+       auction-result columns `high_yield`, `bid_to_cover`, `tail_bps`,
+       `indirect_pct` (landed empty by B1 / ADR 0004); a future
+       `scripts/` auction-discovery probe + a D-auctions event-playbook
+       increment.
+WHAT: B2 ships THREE of its four event families — economic releases,
+      central-bank meetings, and WIRP. The fourth — sovereign auctions
+      (D-auctions) — is deferred. Two Bloomberg verification rounds
+      (`scripts/event_data_bloomberg_check.py`) confirmed the clean auction
+      fields (`YLD_CNV_FROM_HIGH` = auction high yield, verified by the
+      tenor-ordered curve 4.04/4.55/5.08 across 2Y/10Y/30Y;
+      `MOST_RECENT_BID_COVER_RATIO`; the bidder-amount fields; announcement
+      / issue dates) but left three gaps unresolved:
+        (a) the auction DATE — `PRE_ANNOUNCED_AUCTION_DATE` is NULL on
+            settled auctions; no clean settled-auction-date field found.
+        (b) the TAIL — the only candidate, `MOST_REC_DEBT_AUCTION_STO_YIELD`,
+            returns tail-magnitude values (0.002–0.006, tenor-increasing)
+            but is NAMED "stop yield" — a name/value contradiction; shipping
+            `tail_bps` off it is unsafe (P2).
+        (c) the bidder PERCENTAGES — Bloomberg exposes only absolute dollar
+            amounts (indirect / primary-dealer / total issued); `indirect_pct`
+            would have to be COMPUTED, which is a P12 judgement (total-issued
+            ≠ total-accepted exactly), not a clean ingest.
+IMPACT: The `event_calendar` auction-result columns stay empty — B2 v1 writes
+      no `auction` rows. The sole consumer, the Phase-3 `auction_tail`
+      primitive, does NOT exist yet, and ITS core inputs (`tail_bps` +
+      `indirect_pct`) are exactly the two unresolved fields — so deferring
+      costs nothing today. The three shipped families (economic releases,
+      central-bank meetings, WIRP — feeding cpi_surprise / nfp_surprise /
+      fomc_surprise + the WIRP layer) are unaffected.
+FIX: A focused auction-discovery round — operator FLDS-hunts an unambiguous
+      settled-auction-date field and a literally-named tail field on a settled
+      UST; resolve the `indirect_pct` P12 question (ingest the amounts and
+      compute the % downstream with disclosure, or find a real percentage
+      field). Then a D-auctions increment: an event playbook
+      (`event_category = auction`), the extractor's auction handling, ingest.
+      The `event_calendar` table already carries the typed auction columns
+      (ADR 0004) — no schema change when D-auctions is picked up.
+EFFORT: Medium — one operator discovery round + one event-playbook increment.
+WHEN: Before the Phase-3 `auction_tail` primitive or the auction event-study
+      template is built — best done WITH that primitive, so the exact field
+      needs are concrete. NOT needed for B2's economic-release / central-bank /
+      WIRP families.
+
+
+## Phase 1 closure punch list (for reference)
+
+Per the original Phase 1 Week 7-8 plan:
+- ✅ TIPS-vs-2Y thesis runs end-to-end via natural language (PR 19/20)
+- ✅ Workspace persists, URL replays byte-identical (Phase 0 PR 11 pattern)
+- ✅ Methodology card on every node shows assumptions (per-primitive YAML; PR 21 adds the par-par + yield-change + financing-proxy disclosures)
+- ⚠️  4 desk-critical 1B tools — REVISED: 3 of 4 deferred above with explicit data prerequisites; ``asset_swap_spread`` already exists
+- ⏳ External practitioner sign-off — process gate, not engineering
+
+Phase 1 is engineering-complete after PR 21 lands.  External
+practitioner sign-off + UI work (workspace renderer for the
+methodology disclosures) are Phase 3 concerns.

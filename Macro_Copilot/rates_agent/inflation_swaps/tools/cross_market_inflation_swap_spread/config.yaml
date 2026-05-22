@@ -52,7 +52,7 @@
 # =============================================================================
 
 tool:
-  name: cross_market_inflation_swap_spread
+  name: calculate_cross_market_inflation_swap_spread_tool
   domain: inflation_swaps
   category: desk_invariant_primitive
   description: |

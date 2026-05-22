@@ -1,0 +1,94 @@
+# =============================================================================
+# compute_financing_rate_tool — tool configuration
+# =============================================================================
+# Closed-enum method discipline:
+#   method = constant_rate | overnight_index_proxy | term_repo_curve |
+#            gc_special_blend
+# Caller MUST supply the method-specific param (constant_rate_pct or
+# proxy_curve); the Pydantic input validator enforces this.  No
+# opinionated default rate value — only an opinionated default
+# *method* (overnight_index_proxy) backed by data we already have.
+# =============================================================================
+
+tool:
+  name: compute_financing_rate_tool
+  domain: ois
+  description: |
+    Daily Series of financing rates over a date range.  Used by the
+    backtest workflow's evaluate_trades operator to add the carry-
+    of-financing component to P&L.  Method enum is closed; per-method
+    params (constant rate value, proxy curve identifier) are caller-
+    supplied with no Python-side defaults.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default method
+  # ---------------------------------------------------------------------------
+  default_method:
+    value: overnight_index_proxy
+    source: most_defensible_proxy_for_GC_repo
+    rationale: >-
+      Allowed methods:
+        - ``constant_rate`` — caller supplies ``constant_rate_pct``.
+          Useful for sensitivity analyses ("backtest with financing
+          at 4%, then 5%, see how P&L moves").
+        - ``overnight_index_proxy`` (V1 default) — read the shortest-
+          available tenor of the user-specified OIS curve as the
+          financing proxy.  Most defensible default given the data
+          we have: SOFR / ESTR / SONIA / TONA / AONIA / CORRA are
+          publicly observable and closer to repo than any other
+          observable rate.
+        - ``term_repo_curve`` — V1 raises NotImplementedError.  Waits
+          on real repo-data ingestion.
+        - ``gc_special_blend`` — V1 raises NotImplementedError.  Waits
+          on GC-special-data ingestion.
+
+  # ---------------------------------------------------------------------------
+  # Default day-count basis
+  # ---------------------------------------------------------------------------
+  default_day_count_basis:
+    value: act_360
+    source: industry_standard_sovereign_repo_usd_money_market
+    rationale: >-
+      Allowed values:
+        - ``act_360`` (V1 default) — sovereign repo + USD money-
+          market convention.
+        - ``act_365`` — Gilt repo convention.
+        - ``act_act_isda`` — calendar-year aware basis (rare for
+          financing; V1 approximates as 365 and discloses).
+
+  # ---------------------------------------------------------------------------
+  # Default calendar (constant-rate method only)
+  # ---------------------------------------------------------------------------
+  default_calendar:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Used only by ``constant_rate`` method (the proxy method takes
+      its calendar from the DB's observed trading days).  Allowed:
+        - ``business_days`` (V1 default) — Mon-Fri.
+        - ``calendar_days`` — every day, used for ACT/ACT carry.
+
+methodology:
+
+  what_it_does: |
+    Emits a daily Series of financing rates (PERCENT) over
+    [start_date, end_date] using the chosen method.  The downstream
+    consumer (typically evaluate_trades) multiplies each daily rate
+    by the leg's notional + the day-count fraction to get per-day
+    financing carry.
+
+  assumptions:
+    - "Rates in PERCENT (e.g. 5.30 = 5.30%)."
+    - "Overnight-index-proxy method uses the shortest-available OIS tenor (1W per the existing playbook) as the O/N proxy — true O/N OIS quotes not yet ingested."
+    - "Constant-rate method requires caller to supply the rate value; no Python-side default."
+    - "Day-count basis applied as (rate_pct / 100) × (1 / basis_days)."
+
+  citations: []
+
+  planned_extensions:
+    - "True overnight OIS tenor when the playbook ingests it."
+    - "term_repo_curve method (requires real repo-data ingestion)."
+    - "gc_special_blend method (requires GC-special-data ingestion)."
+    - "Per-currency default proxy_curve so the caller can omit it when the trade's currency is unambiguous."

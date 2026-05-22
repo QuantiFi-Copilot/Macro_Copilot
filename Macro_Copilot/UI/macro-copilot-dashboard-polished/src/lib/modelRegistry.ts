@@ -70,6 +70,7 @@ export type ControlKind =
   | 'lookback_slider'    // int slider with lookback presets (calendar days)
   | 'enum'               // generic enum dropdown (uses field's examples)
   | 'date'               // YYYY-MM-DD date input
+  | 'field_name'         // PR5 — Bloomberg observation-field dropdown
   | 'auto';              // fall back to ParameterPanel's schema-driven default
 
 export type ParamHint = {
@@ -396,12 +397,22 @@ const REGISTRY_INDEX: Record<string, ModelMetadata> = Object.fromEntries(
   MODELS.map((m) => [m.toolName, m] as const),
 );
 
+// R6.1 — every public lookup goes through ``normalizeToolName`` so
+// Library manifest shorthand (e.g. ``half_life_tool``) resolves to the
+// same canonical entry as the backend-prefixed form
+// (``calculate_half_life_tool``).  Without this the Library "Open in
+// Build" CTA mis-routes rich-model tools to the ``?context=`` decoder,
+// producing the "Could not decode workspace context" card the user
+// audit flagged.
+
+import { normalizeToolName } from '@/lib/toolNames';
+
 export function getModelMetadata(toolName: string): ModelMetadata | null {
-  return REGISTRY_INDEX[toolName] ?? null;
+  return REGISTRY_INDEX[normalizeToolName(toolName)] ?? null;
 }
 
 export function hasModelMetadata(toolName: string): boolean {
-  return toolName in REGISTRY_INDEX;
+  return normalizeToolName(toolName) in REGISTRY_INDEX;
 }
 
 export function listModels(): ModelMetadata[] {
@@ -409,15 +420,107 @@ export function listModels(): ModelMetadata[] {
 }
 
 /** Resolve the ParamHint for a field, with a sensible default when the
- *  registry entry omits it (or doesn't exist at all). */
+ *  registry entry omits it (or doesn't exist at all).  ``toolName`` is
+ *  normalised so callers can pass either the manifest shorthand or the
+ *  backend-canonical form.
+ *
+ *  Priority (highest to lowest):
+ *    1. Registry-supplied hint (explicit per-tool override).
+ *    2. Field-name inference for canonical rates fields
+ *       (``curve_family``, ``tenor``, ``lookback_days`` …).  Drives
+ *       PR2's generic primitive builder: unregistered runnable
+ *       primitives still get dropdown / slider controls for the
+ *       shared rates vocabulary instead of falling back to plain
+ *       text inputs.  Safe additive change — explicit registry
+ *       hints always win.
+ *    3. ``{control: 'auto'}`` — text/number/boolean fall-through.
+ */
 export function paramHintFor(
   toolName: string,
   fieldName: string,
 ): ParamHint {
-  const meta = REGISTRY_INDEX[toolName];
-  return (
-    (meta?.paramHints && meta.paramHints[fieldName]) ?? {
-      control: 'auto',
-    }
-  );
+  const meta = REGISTRY_INDEX[normalizeToolName(toolName)];
+  const explicit = meta?.paramHints?.[fieldName];
+  if (explicit) return explicit;
+  return inferFieldControl(fieldName);
+}
+
+/** Field-name-based fallback for tools that don't ship a registry
+ *  hint for the field.  Returns ``{control: 'auto'}`` for unknown
+ *  field names so the ``ParametersPanel`` falls through to its
+ *  text/number/boolean auto-renderer.
+ *
+ *  Used directly by the generic primitive builder (PR2) so the
+ *  schema-driven controls rail recognises the shared rates
+ *  vocabulary without the tool having to register a full
+ *  ``ModelMetadata`` entry.  Exposed as a top-level helper so the
+ *  routing-coverage tests can assert it. */
+export function inferFieldControl(fieldName: string): ParamHint {
+  // Curve-family pickers — every typed control set in the codebase
+  // uses ``ALL_CURVES`` for both the sovereign and OIS variants.
+  // Sovereign / OIS curves coexist in that option list; the user
+  // picks whichever applies to the tool they're configuring.
+  if (
+    fieldName === 'curve_family' ||
+    fieldName === 'curve_family_1' ||
+    fieldName === 'curve_family_2' ||
+    fieldName === 'sovereign_curve_family' ||
+    fieldName === 'ois_curve_family' ||
+    fieldName === 'nominal_curve_family' ||
+    fieldName === 'real_curve_family' ||
+    fieldName === 'proxy_curve'
+  ) {
+    return { control: 'curve_family' };
+  }
+  // Tenor pickers — short / long / belly / target / start / end /
+  // forward-window all share the canonical TENORS option set.
+  if (
+    fieldName === 'tenor' ||
+    fieldName === 'short_tenor' ||
+    fieldName === 'long_tenor' ||
+    fieldName === 'belly_tenor' ||
+    fieldName === 'target_tenor' ||
+    fieldName === 'front_tenor' ||
+    fieldName === 'back_tenor' ||
+    fieldName === 'start_tenor' ||
+    fieldName === 'end_tenor' ||
+    fieldName === 'forward_start' ||
+    fieldName === 'forward_length'
+  ) {
+    return { control: 'tenor' };
+  }
+  // Lookback / rolling-window scalars — both surface as a slider
+  // with calendar-day presets.  Different scope (display history
+  // vs analytics window) but the control affordance is identical.
+  if (
+    fieldName === 'lookback_days' ||
+    fieldName === 'rolling_window_days' ||
+    fieldName === 'z_score_window_days' ||
+    fieldName === 'regression_window_days'
+  ) {
+    return { control: 'lookback_slider' };
+  }
+  // Date / datetime fields — the date input is wire-compatible with
+  // the FastAPI ``date`` query parameter.
+  if (
+    fieldName === 'start_date' ||
+    fieldName === 'end_date' ||
+    fieldName === 'as_of_date' ||
+    fieldName === 'prior_date'
+  ) {
+    return { control: 'date' };
+  }
+  // PR5 — Bloomberg observation-field pickers.  Every primitive's
+  // config.yaml ships a ``default_field_name`` (``YLD_YTM_MID`` for
+  // sovereigns, ``PX_LAST`` for OIS), but the override knob was
+  // rendering as a free-text input because the inferer only
+  // recognised the bare ``field_name`` field.  The schema-driven
+  // generic builder hit this gap whenever a tool's input class
+  // declared ``sovereign_field_name`` / ``ois_field_name`` (cross-
+  // domain primitives), ``nominal_field_name`` / ``real_field_name``
+  // (breakeven), or any prefixed Bloomberg-mnemonic field name.
+  if (fieldName === 'field_name' || fieldName.endsWith('_field_name')) {
+    return { control: 'field_name' };
+  }
+  return { control: 'auto' };
 }

@@ -99,9 +99,9 @@ def _assert_zcis_config_passed(call_args) -> None:
         "calculate_inflation_swap_rate_level called without `config=`"
     )
     assert isinstance(cfg, ToolConfig)
-    assert cfg.tool.name == "inflation_swap_rate_level", (
+    assert cfg.tool.name == "calculate_inflation_swap_rate_level_tool", (
         f"caller passed config for tool {cfg.tool.name!r}, expected "
-        "'inflation_swap_rate_level' (catches imports of the wrong "
+        "'calculate_inflation_swap_rate_level_tool' (catches imports of the wrong "
         "tool's CONFIG_PATH)"
     )
     assert "z_score_window_days" in cfg.conventions
@@ -267,7 +267,7 @@ class TestConfigPathPublicSymbol:
 
     def test_load_returns_inflation_swap_rate_level_config(self):
         cfg = load_tool_config(INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH)
-        assert cfg.tool.name == "inflation_swap_rate_level"
+        assert cfg.tool.name == "calculate_inflation_swap_rate_level_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
 

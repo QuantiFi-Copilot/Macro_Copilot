@@ -1,0 +1,392 @@
+# =============================================================================
+# Macro Copilot — Continuous Integration
+# =============================================================================
+#
+# Two jobs run on every PR and on every push to main:
+#
+#   1. lint   — ruff check (lint).  Always required.
+#   2. test-substrate — pytest over the substrate-level test surface
+#                       (artifacts, lineage, tool/operator config,
+#                        bridge adapters).  These tests have no external
+#                        dependencies (no DB, no MCP servers, no LLM
+#                        calls), so they run cleanly with a minimal
+#                        pip install.
+#
+# What CI deliberately does NOT do in PR 1:
+#
+#   - It does not run `ruff format --check`.  Existing code has not been
+#     formatter-passed; tightening to format-check is a follow-up once
+#     the format pass has landed.
+#   - It does not run the wiring / SQL-validation tests.  Those require
+#     a running Postgres + TimescaleDB instance and MCP subprocesses;
+#     they belong to a future integration-test job (Phase 0, week 3+).
+#   - It does not run the multi-agent prompt gauntlet.  That calls the
+#     real Anthropic API and is gauntlet-marked; it runs by hand.
+#
+# Cross-version hash-stability testing on Python 3.11 + 3.12 lives in
+# the test-substrate matrix below.  The new
+# `tests/state/test_hash_stability.py` file pins specific hash values
+# for both the lineage layer (`shared.artifacts.lineage._compute_step_hash`)
+# and the ingestion layer (`ingestion.hashing.compute_normalized_data_hash`).
+# If either recipe drifts between Python versions, the pinned values
+# stop matching on the affected matrix leg and CI fails.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs for the same branch when a new commit arrives —
+# saves CI minutes and gives faster feedback on rapid pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint — ruff over the whole Python tree
+  # ---------------------------------------------------------------------------
+  lint:
+    name: ruff lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "ruff>=0.5"
+
+      - name: ruff version
+        run: ruff --version
+
+      - name: ruff check
+        run: ruff check .
+
+  # ---------------------------------------------------------------------------
+  # Test — pytest over the substrate-level subset (no external deps),
+  # matrixed on Python 3.11 and 3.12 to enforce cross-version determinism
+  # for the new tests/state/test_hash_stability.py pinned hashes.
+  # ---------------------------------------------------------------------------
+  test-substrate:
+    name: pytest (substrate, py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install test dependencies
+        # Minimal set sufficient for the substrate-level tests.  The
+        # runtime stack (langchain, fastapi, mcp, prefect, google-cloud,
+        # xbbg/blpapi) is not needed here because these tests exercise
+        # pure-Python data structures (typed artifacts, lineage steps,
+        # YAML config, the bridge adapter, the ingestion hash module).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "pytest>=8.0" \
+            "pytest-asyncio>=0.23" \
+            "pydantic>=2.5" \
+            "pandas>=2.0" \
+            "numpy>=1.26" \
+            "pyarrow>=14.0" \
+            "scipy>=1.11" \
+            "sqlalchemy>=2.0" \
+            "pyyaml>=6.0"
+
+      - name: pytest collection sanity
+        # Verify the full test tree collects without import errors.  This
+        # catches stale imports / missing modules before we try to run
+        # the actual subset.
+        run: pytest --collect-only -q
+
+      - name: pytest (substrate subset)
+        # The subset below is pure-substrate: typed artifacts, lineage
+        # steps, tool / operator config validators, the primitive ->
+        # operator bridge adapter, and the cross-version hash-stability
+        # gate (PR 2: pinned hashes for both lineage and ingestion).
+        # None of these reach the DB, the MCP layer, or the LLM.  As we
+        # mark tests with @pytest.mark.integration in subsequent PRs,
+        # this list expands toward `-m "not integration"` over the full
+        # suite.
+        run: |
+          pytest \
+            Macro_Copilot/tests/test_artifacts.py \
+            Macro_Copilot/tests/test_tool_config.py \
+            Macro_Copilot/tests/test_tool_config_lint.py \
+            Macro_Copilot/tests/test_operator_config.py \
+            Macro_Copilot/tests/test_adapter_from_time_series.py \
+            Macro_Copilot/tests/state/test_hash_stability.py \
+            Macro_Copilot/tests/state/test_transactional_ingestion.py \
+            Macro_Copilot/tests/test_trades.py \
+            Macro_Copilot/tests/test_operator_construct_trades.py \
+            Macro_Copilot/tests/test_operator_evaluate_trades.py \
+            Macro_Copilot/tests/test_operator_summarize_trades.py
+
+  # ---------------------------------------------------------------------------
+  # State-layer — alembic migrations + LangGraph checkpointer durability
+  # against a real Postgres service.
+  #
+  # Phase 0 PR 4 introduced this job for the Alembic round-trip.
+  # Phase 0 PR 5 extended it to also exercise the durable
+  # `AsyncPostgresSaver` (the Postgres-backed LangGraph checkpointer)
+  # using the same Postgres service.  The full job now verifies:
+  #
+  #   1. `alembic upgrade head` creates all expected tables in
+  #      `copilot_state` AND creates the `langgraph_checkpoint`
+  #      schema namespace.
+  #   2. `alembic downgrade base` / re-upgrade is idempotent.
+  #   3. Migration round-trip + schema invariants test suite passes.
+  #   4. AsyncPostgresSaver setup + multi-thread isolation + multi-
+  #      checkpoint history + state survives pool close/reopen
+  #      (i.e. simulated process restart).
+  #   5. A real LangGraph driven by AsyncPostgresSaver resumes state
+  #      after a simulated restart.
+  #
+  # Postgres 14 is sufficient for both: the copilot_state schema uses
+  # no TimescaleDB features, and the checkpointer's tables are
+  # framework-internal (CREATE TABLE + CREATE INDEX CONCURRENTLY).
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: state-layer (alembic + checkpointer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        # Health check ensures the service is accepting connections
+        # before the job's steps start.
+        options: >-
+          --health-cmd "pg_isready -U test_user -d test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_USER: test_user
+      DB_PASSWORD: test_password
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: test_db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install state-layer dependencies
+        # alembic + sqlalchemy + psycopg2-binary for the migrations
+        # path; langgraph + langgraph-checkpoint-postgres + psycopg3
+        # (with binary + pool extras) for the AsyncPostgresSaver path.
+        # pandas + numpy + pydantic for the artifact-store path
+        # (Phase 0 PR 7) — the state/ package imports them via
+        # artifact_store.py for the typed-artifact serializers.
+        # pyyaml is required by the methodology-versions registry
+        # (Phase 0 PR 9) — register_yaml parses the YAML before
+        # canonicalising.
+        # fastapi + httpx are required by the workspace replay route
+        # tests (Phase 0 PR 9) — TestClient runs the route in-process.
+        # psycopg2 (sync) and psycopg3 (async) coexist; the SQLAlchemy
+        # ingestion path uses psycopg2 and the LangGraph checkpointer
+        # uses psycopg3.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "alembic>=1.13" \
+            "sqlalchemy>=2.0" \
+            "psycopg2-binary>=2.9" \
+            "psycopg[binary,pool]>=3.1" \
+            "langgraph>=0.2" \
+            "langgraph-checkpoint-postgres>=2.0" \
+            "pytest>=8.0" \
+            "pytest-asyncio>=0.23" \
+            "pandas>=2.0" \
+            "numpy>=1.26" \
+            "pydantic>=2.5" \
+            "pyyaml>=6.0" \
+            "fastapi>=0.100" \
+            "httpx>=0.25" \
+            "redis>=5" \
+            "fakeredis>=2"
+
+      - name: alembic upgrade head (forward)
+        run: alembic upgrade head
+
+      - name: alembic downgrade base (backward)
+        run: alembic downgrade base
+
+      - name: alembic upgrade head (idempotence)
+        run: alembic upgrade head
+
+      - name: pytest migration round-trip + schema invariants
+        run: pytest Macro_Copilot/tests/state/test_migrations.py -v
+
+      - name: pytest AsyncPostgresSaver durability (Phase 0 PR 5)
+        # Two real-Postgres test files, both module-skipped when the
+        # DB env vars are unset.  Each wipes the langgraph_checkpoint
+        # schema on a per-test basis so runs are isolated.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_postgres_checkpointer.py \
+            Macro_Copilot/tests/state/test_session_restart.py \
+            -v
+
+      - name: pytest artifact store (Phase 0 PR 7)
+        # ``test_object_storage.py``  — unit tests for LocalFSBackend
+        #   + stubbed GCSBackend; no Postgres needed but runs here for
+        #   colocation with the other state-layer tests.
+        # ``test_artifact_store.py``  — round-trip persistence for all
+        #   5 artifact types, inline-vs-blob path, idempotency,
+        #   summary endpoint, GC sweep.  Uses the same Postgres
+        #   service container as the migration / checkpointer tests.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_object_storage.py \
+            Macro_Copilot/tests/state/test_artifact_store.py \
+            -v
+
+      - name: pytest working set + turn state machine + resolver (Phase 0 PR 8)
+        # ``test_working_set.py``           — name binding / retirement /
+        #   historical resolution against the real ``working_set`` table.
+        # ``test_turn_state_machine.py``    — begin_turn / commit_turn /
+        #   fail_turn lifecycle and FK enforcement.
+        # ``test_reference_resolver.py``    — sanitisation + LLM-stub
+        #   resolver behaviour (no real model call).
+        # ``test_multi_turn_reference.py``  — 3-turn end-to-end exercise
+        #   of working set + turns + resolver with a scripted resolver.
+        # ``test_recent_conversation_context.py`` — PR 13 routing-
+        #   memory fix: load_recent_turns SQL contract + prompt
+        #   rendering + the screenshot regression case.
+        # The reference-resolver tests stub langchain via sys.modules
+        # so we don't strictly need langchain-anthropic installed for
+        # the resolver tests; the multi-turn test imports the resolver
+        # but only the ReferenceResolution Pydantic class.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_working_set.py \
+            Macro_Copilot/tests/state/test_turn_state_machine.py \
+            Macro_Copilot/tests/state/test_reference_resolver.py \
+            Macro_Copilot/tests/state/test_multi_turn_reference.py \
+            Macro_Copilot/tests/state/test_recent_conversation_context.py \
+            -v
+
+      - name: pytest methodology version pinning (Phase 0 PR 9)
+        # ``test_methodology_versions.py``      — YAML registry +
+        #   application_version idempotency, content canonicalisation
+        #   (whitespace / key-order invariance), SHA validation.
+        # ``test_tool_config_round_trip.py``    — parameterised across
+        #   every tool YAML in rates_agent/.  Asserts ToolConfig
+        #   round-trips through both Pydantic AND the registry's JSONB
+        #   storage without losing the identity hash.
+        # ``test_methodology_pinning.py``       — end-to-end spec test:
+        #   build artifact under YAML v1, mutate YAML to v2, assert
+        #   hash divergence under "current" and byte-identical hash
+        #   reconstruction under "original".  Plus TestClient
+        #   coverage of the /api/v1/artifacts/{hash}/replay route
+        #   (relocated from PR 9's /api/v1/workspace/{hash} URL in
+        #   Phase 0 PR 10 — the workspace path is now slug-routed).
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_methodology_versions.py \
+            Macro_Copilot/tests/state/test_tool_config_round_trip.py \
+            Macro_Copilot/tests/state/test_methodology_pinning.py \
+            -v
+
+      - name: pytest workspace persistence + URL routing (Phase 0 PR 10)
+        # ``test_dag_repo.py``               — DAG persistence round-
+        #   trip, idempotency, content-addressing, FK enforcement.
+        # ``test_workspace_repo.py``         — slugify resilience to
+        #   adversarial input, partial-unique index enforcement,
+        #   rename-preserves-slug invariant, fork lineage.
+        # ``test_workspace_replay.py``       — end-to-end acceptance:
+        #   build artifact + DAG + workspace, simulate restart,
+        #   assert node-artifact hashes byte-identical.  Plus the
+        #   full HTTP round-trip through POST/GET/replay routes.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_dag_repo.py \
+            Macro_Copilot/tests/state/test_workspace_repo.py \
+            Macro_Copilot/tests/integration/test_workspace_replay.py \
+            -v
+
+      - name: pytest routing-layer recent-context diagnostic (PR 14)
+        # ``test_routing_layer_sees_recent_context.py`` — drives two
+        # turns through CopilotSession._run_turn with stubbed
+        # supervisor + workflow router; captures the exact message
+        # each router receives on turn 2 and asserts the RECENT
+        # CONVERSATION block is present.  Pins the live-path
+        # invariant that PR 13 + PR 14 together restored.
+        run: |
+          pytest \
+            Macro_Copilot/tests/integration/test_routing_layer_sees_recent_context.py \
+            -v
+
+      - name: pytest acceptance, cache, migration-framework (Phase 0 PR 11)
+        # ``test_cache.py``                  — NullCache + RedisBytesCache
+        #   round-trip via fakeredis + failure-mode resilience +
+        #   correctness invariant (cache vs no-cache produces
+        #   byte-identical artifacts).
+        # ``test_migration_framework.py``    — forward migration 0006
+        #   round-trip: upgrade -> INSERT -> downgrade -> re-upgrade,
+        #   workspace data intact across the cycle.
+        # ``test_phase0_demo.py``            — the Phase 0 acceptance
+        #   narrative end-to-end: 3-turn conversation with working-set
+        #   reference, simulated restart, URL stability, 30-day
+        #   simulated replay, YAML override diff.
+        run: |
+          pytest \
+            Macro_Copilot/tests/state/test_cache.py \
+            Macro_Copilot/tests/integration/test_migration_framework.py \
+            Macro_Copilot/tests/integration/test_phase0_demo.py \
+            -v
+
+      - name: pytest performance baseline (slow guardrails, Phase 0 PR 11)
+        # ``test_performance_baseline.py`` is marked ``@pytest.mark.slow``
+        # so the default test run skips it.  The targets (working-set <
+        # 50 ms, inline fetch < 10 ms, blob cold < 300 ms, workspace
+        # open < 500 ms p95) are documented in
+        # ``docs/architecture/state.md``; the CI alarm bounds are
+        # generous (4-8x the target) so flaky-runner variance doesn't
+        # false-positive but a 5x+ regression trips loudly.
+        run: |
+          pytest \
+            Macro_Copilot/tests/integration/test_performance_baseline.py \
+            -m slow -v -s

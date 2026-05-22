@@ -1,0 +1,1342 @@
+"""state.artifact_store — content-addressed persistence for typed artifacts.
+
+Phase 0 PR 7.  Wraps the ``copilot_state.artifact_metadata`` table
+and the configured ``ObjectStorageBackend`` to provide three
+operations:
+
+  - ``put_artifact(artifact, *, conn, object_storage) -> hash``
+      Persist a typed artifact.  Idempotent: a hash that already
+      exists in the metadata table short-circuits (no object-storage
+      write, no metadata insert).  Returns the artifact's hash
+      (which equals ``artifact.lineage.head_hash``).
+
+  - ``get_artifact(hash, *, conn, object_storage) -> Artifact``
+      Rehydrate the typed artifact.  Fast path for inline-stored
+      artifacts (no object-storage fetch); blob-stored artifacts
+      pull the payload bytes from object storage.
+
+  - ``get_artifact_summary(hash, *, conn) -> ArtifactSummary``
+      Pure metadata read.  Does NOT touch object storage.  Used by
+      the Workspace renderer to populate per-node cards without
+      paying for the payload deserialization cost.
+
+Determinism + content-addressing
+--------------------------------
+The artifact's hash IS its ``lineage.head_hash`` — the hash recipe
+from PR 2 (``shared.artifacts.lineage._compute_step_hash``).  We do
+NOT recompute or supplement it here.  This means:
+
+  - Two artifacts with identical lineage chains share a hash.  Put
+    one, the next put-of-the-same is a no-op.
+  - The hash is independent of serialization format.  A future PR
+    that migrates from JSON-inline to a different inline encoding
+    does NOT change any hashes; only the row's ``inline_payload``
+    representation changes.
+
+Inline-vs-blob decision
+-----------------------
+Default thresholds:
+
+  - ``INLINE_PAYLOAD_ROW_LIMIT = 100``  — > this, blob.
+  - ``INLINE_PAYLOAD_SIZE_LIMIT_BYTES = 8192``  — > this, blob.
+
+Both overridable via env var (``ARTIFACT_INLINE_ROW_LIMIT`` /
+``ARTIFACT_INLINE_SIZE_LIMIT_BYTES``).  The "blob if EITHER cap is
+exceeded" disjunction biases toward smaller Postgres rows.
+
+Connection management
+---------------------
+``put_artifact`` / ``get_artifact`` / ``get_artifact_summary`` all
+take ``conn`` as a keyword-only argument.  This is the
+``Connection``-injection pattern established in PR 3:
+
+  with engine.begin() as conn:
+      h = put_artifact(art, conn=conn, object_storage=os)
+      ...
+
+The caller manages transaction boundaries.  In particular, a caller
+that wants the metadata insert atomic with some other row (e.g. a
+working_set entry that references the new artifact) can wrap both
+in a single ``engine.begin()``.
+
+Orphan blobs
+------------
+If the metadata-insert phase of ``put_artifact`` rolls back after
+the object-storage write completed, the blob is orphaned in object
+storage.  These orphans are benign:
+
+  - Content-addressed, so a future re-put of the same artifact
+    produces the same URI and either no-ops (LocalFS overwrite) or
+    re-uploads (idempotent at the object-storage Protocol level).
+  - The GC sweep in ``state.gc`` includes an orphan-finder pass
+    that lists blobs without metadata rows (deferred enablement;
+    see ``state/gc.py``).
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import logging
+import os
+from datetime import datetime, timezone
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    # Lazy via TYPE_CHECKING so the cache module is not imported on
+    # the no-cache path.  Runtime imports lazily inside helpers that
+    # actually need the type.
+    from state.cache import ArtifactBytesCache
+
+import numpy as np
+import pandas as pd
+from pydantic import TypeAdapter
+from sqlalchemy import text
+from sqlalchemy.engine import Connection
+
+from shared.artifacts.lineage import Lineage
+from shared.artifacts.missingness import MissingnessPolicy
+from shared.artifacts.trades import LegSpec, Trade, TradeSet
+from shared.artifacts.types import (
+    EventSet,
+    Panel,
+    Series,
+    SeriesSet,
+    WindowedPanel,
+)
+from shared.artifacts.units import TimeSeriesUnits
+
+# MissingnessPolicy is a discriminated union (CleanSingleSeriesV1 |
+# RawNoCleaning | AlignSeriesFFillV1).  TypeAdapter handles the
+# discriminator-based dispatch on deserialization.
+_MISSINGNESS_ADAPTER: TypeAdapter = TypeAdapter(MissingnessPolicy)
+
+
+def _dump_missingness(policy) -> Dict[str, Any]:
+    return policy.model_dump(mode="json")
+
+
+def _load_missingness(d: Dict[str, Any]):
+    return _MISSINGNESS_ADAPTER.validate_python(d)
+from state.object_storage import HASH_LEN, ObjectStorageBackend, _validate_hash
+from state.schemas import ArtifactSummary, StoredArtifact
+
+logger = logging.getLogger("state.artifact_store")
+
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+# Closed-family of supported artifact types.  Mirrors
+# ``shared.artifacts.types`` and the ``ArtifactTypeLiteral`` in
+# ``state.schemas``.  Maintained as a tuple of (name, class) so the
+# discriminator-based serializer can iterate it.
+_ARTIFACT_CLASSES: Tuple[Tuple[str, type], ...] = (
+    ("Series", Series),
+    ("SeriesSet", SeriesSet),
+    ("EventSet", EventSet),
+    ("Panel", Panel),
+    ("WindowedPanel", WindowedPanel),
+    # Phase 1 PR 12 — backtest archetype substrate.
+    ("TradeSet", TradeSet),
+)
+_NAME_TO_CLASS: Dict[str, type] = {name: cls for name, cls in _ARTIFACT_CLASSES}
+_CLASS_TO_NAME: Dict[type, str] = {cls: name for name, cls in _ARTIFACT_CLASSES}
+
+# Default schema namespace.  Copies the constant from the migration
+# rather than importing the migration module (Alembic revisions are
+# not normal Python packages).
+_COPILOT_STATE_SCHEMA = "copilot_state"
+
+# Inline-vs-blob thresholds.  Overridable via env vars.
+DEFAULT_INLINE_ROW_LIMIT = 100
+DEFAULT_INLINE_SIZE_LIMIT_BYTES = 8192
+
+# Sparkline preview size used by ``get_artifact_summary``.  Bounded
+# so the summary stays cheap even for very large artifacts.
+_PREVIEW_POINTS = 16
+
+
+# A typed-artifact union — what put_artifact accepts and what
+# get_artifact returns.  Phase 1 PR 12 adds TradeSet.
+Artifact = Union[
+    Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet,
+]
+
+
+# ============================================================================
+# Public API — put / get / summary
+# ============================================================================
+
+
+def put_artifact(
+    artifact: Artifact,
+    *,
+    conn: Connection,
+    object_storage: ObjectStorageBackend,
+    inline_row_limit: Optional[int] = None,
+    inline_size_limit_bytes: Optional[int] = None,
+) -> str:
+    """Persist a typed artifact.  Returns the artifact's hash.
+
+    Idempotent: if an ``artifact_metadata`` row with the same hash
+    already exists, this is a no-op (no object-storage write, no
+    metadata insert).
+
+    Phase 0 PR 7.  See module docstring for the inline-vs-blob
+    decision tree, orphan-blob policy, and connection conventions.
+    """
+    artifact_type = _artifact_type_name(artifact)
+    artifact_hash = artifact.lineage.head_hash
+    _validate_hash(artifact_hash)
+
+    # Idempotency gate: cheap Postgres-only check before we spend
+    # any cycles on serialization / object-storage I/O.
+    if _hash_exists(conn, artifact_hash):
+        logger.debug(
+            "put_artifact: hash %s... already present, no-op", artifact_hash[:12]
+        )
+        return artifact_hash
+
+    # Resolve thresholds.  Env-var overrides win over defaults; explicit
+    # arg overrides win over env vars.
+    row_limit = (
+        inline_row_limit
+        if inline_row_limit is not None
+        else int(os.getenv("ARTIFACT_INLINE_ROW_LIMIT", DEFAULT_INLINE_ROW_LIMIT))
+    )
+    size_limit = (
+        inline_size_limit_bytes
+        if inline_size_limit_bytes is not None
+        else int(
+            os.getenv(
+                "ARTIFACT_INLINE_SIZE_LIMIT_BYTES",
+                DEFAULT_INLINE_SIZE_LIMIT_BYTES,
+            )
+        )
+    )
+
+    # Serialize the artifact into the on-disk shape.  This is the same
+    # JSON-safe dict regardless of inline vs blob; the only difference
+    # is where the bytes land.
+    stored = _artifact_to_stored(artifact)
+    serialized_bytes = _stored_to_bytes(stored)
+    row_count = _artifact_row_count(artifact)
+
+    inline = row_count <= row_limit and len(serialized_bytes) <= size_limit
+
+    if inline:
+        payload_uri: Optional[str] = None
+        inline_payload: Optional[Dict[str, Any]] = stored.model_dump(mode="json")
+    else:
+        payload_uri = object_storage.put_bytes(artifact_hash, serialized_bytes)
+        inline_payload = None
+
+    # Extract the column-level metadata that artifact_metadata stores
+    # separately from the full payload.  Useful for queries that
+    # filter by type / units / row_count without paying for the
+    # JSONB scan.
+    units = _artifact_units(artifact)
+    frequency = _artifact_frequency(artifact)
+    lineage_json: Dict[str, Any] = artifact.lineage.model_dump(mode="json")
+
+    # Phase 0 PR 9.  Collect every methodology_version_id that
+    # contributed to this artifact (walk PrimitiveSteps), and pin
+    # the current process's application_version (idempotent +
+    # cached so this is cheap).
+    methodology_version_ids = _collect_methodology_version_ids(artifact)
+    application_version_id = _resolve_application_version_id(conn)
+
+    _insert_metadata_row(
+        conn,
+        hash=artifact_hash,
+        artifact_type=artifact_type,
+        units=units,
+        frequency=frequency,
+        row_count=row_count,
+        byte_size=len(serialized_bytes),
+        payload_uri=payload_uri,
+        inline_payload=inline_payload,
+        lineage=lineage_json,
+        methodology_version_ids=methodology_version_ids,
+        application_version_id=application_version_id,
+    )
+    logger.debug(
+        "put_artifact: stored %s (type=%s, %d rows, %d bytes, inline=%s)",
+        artifact_hash[:12], artifact_type, row_count, len(serialized_bytes), inline,
+    )
+    return artifact_hash
+
+
+def get_artifact_payload_dict(
+    hash: str,
+    *,
+    conn: Connection,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"] = None,
+) -> Dict[str, Any]:
+    """Return the raw ``StoredArtifact`` dict for ``hash`` (no Pydantic
+    class hydration).  R5.2 — used by ``GET /api/v1/artifacts/{hash}/
+    payload`` to surface the full payload to UI consumers (e.g.
+    RichModelWidget for PCA / RollingRegression / Attribution
+    renderers) without paying the cost of rehydrating into a typed
+    Artifact instance.
+
+    The returned dict matches the ``StoredArtifact`` wire shape:
+
+      {"artifact_type": "...", "metadata": {...}, "payload": {...}}
+
+    Inline-stored artifacts read from Postgres JSONB; blob-stored ones
+    fetch from object storage (through the same cache as
+    ``get_artifact``).
+
+    Raises:
+        KeyError: no artifact_metadata row for ``hash``.
+        FileNotFoundError: orphaned metadata pointing at a missing
+            object-storage URI.
+    """
+    _validate_hash(hash)
+    row = _fetch_full_row(conn, hash)
+    if row is None:
+        raise KeyError(f"No artifact with hash {hash!r}")
+
+    if row["inline_payload"] is not None:
+        stored_dict = row["inline_payload"]
+    else:
+        if row["payload_uri"] is None:
+            raise RuntimeError(
+                f"Artifact {hash} has neither inline_payload nor "
+                "payload_uri set.  This violates the CHECK constraint "
+                "ck_artifact_metadata_payload_exactly_one — data "
+                "corruption?"
+            )
+        payload_bytes = _fetch_payload_bytes_with_cache(
+            hash=hash,
+            payload_uri=row["payload_uri"],
+            object_storage=object_storage,
+            cache=cache,
+        )
+        stored_dict = _bytes_to_stored_dict(payload_bytes)
+
+    # Validate the shape so callers always see a well-formed
+    # StoredArtifact dict.  We don't return the validated Pydantic
+    # object — callers want the raw dict — but the validation catches
+    # corrupted rows here rather than at the wire boundary.
+    StoredArtifact.model_validate(stored_dict)
+    return stored_dict
+
+
+def get_artifact(
+    hash: str,
+    *,
+    conn: Connection,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"] = None,
+) -> Artifact:
+    """Rehydrate a typed artifact from its hash.
+
+    Phase 0 PR 7.  Fast path for inline-stored artifacts (no
+    object-storage fetch); blob-stored artifacts pull payload bytes
+    from object storage.
+
+    Phase 0 PR 11.  When a ``cache`` is supplied, blob-stored
+    artifacts consult the cache BEFORE the object-storage fetch.
+    Inline-stored artifacts skip the cache entirely (their bytes are
+    already inline in Postgres — the cache adds no value).
+
+    Cache semantics are read-through, not write-through.  ``put_artifact``
+    does NOT populate the cache; the first ``get`` after a put pays
+    the warmup.  See ``state.cache`` for the rationale.
+
+    A cache failure (Redis outage, parse error) NEVER affects
+    correctness: the helper logs + falls through to the object-
+    storage path.  Tests assert that disabling the cache mid-flight
+    produces byte-identical results to enabling it.
+
+    Raises:
+        KeyError: no artifact_metadata row for ``hash``.
+        FileNotFoundError: the metadata row points at a payload URI
+            that the object storage backend cannot find (orphaned
+            metadata).
+    """
+    _validate_hash(hash)
+    row = _fetch_full_row(conn, hash)
+    if row is None:
+        raise KeyError(f"No artifact with hash {hash!r}")
+
+    artifact_type = row["artifact_type"]
+    if artifact_type not in _NAME_TO_CLASS:
+        raise ValueError(
+            f"Unknown artifact_type {artifact_type!r} for hash {hash}.  "
+            "Closed-family set is "
+            f"{sorted(_NAME_TO_CLASS.keys())}."
+        )
+
+    if row["inline_payload"] is not None:
+        stored_dict = row["inline_payload"]
+    else:
+        if row["payload_uri"] is None:
+            raise RuntimeError(
+                f"Artifact {hash} has neither inline_payload nor "
+                "payload_uri set.  This violates the CHECK constraint "
+                "ck_artifact_metadata_payload_exactly_one — data "
+                "corruption?"
+            )
+        payload_bytes = _fetch_payload_bytes_with_cache(
+            hash=hash,
+            payload_uri=row["payload_uri"],
+            object_storage=object_storage,
+            cache=cache,
+        )
+        stored_dict = _bytes_to_stored_dict(payload_bytes)
+
+    stored = StoredArtifact.model_validate(stored_dict)
+    return _stored_to_artifact(stored)
+
+
+def _fetch_payload_bytes_with_cache(
+    *,
+    hash: str,
+    payload_uri: str,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"],
+) -> bytes:
+    """Cache lookup + object-storage fallthrough.
+
+    Separated so the cache-hit fast path is unit-testable without
+    spinning up the whole ``get_artifact`` machinery, and so a
+    future cache-miss-metrics hook has one obvious place to land.
+    """
+    if cache is not None:
+        cached = cache.get(hash)
+        if cached is not None:
+            logger.debug("cache hit for %s (%d bytes)", hash[:12], len(cached))
+            return cached
+
+    payload_bytes = object_storage.get_bytes(payload_uri)
+
+    if cache is not None:
+        # Populate on miss so the next read hits warm.  Errors are
+        # swallowed by the cache impl itself.
+        cache.put(hash, payload_bytes)
+    return payload_bytes
+
+
+def get_artifact_summary(
+    hash: str,
+    *,
+    conn: Connection,
+) -> ArtifactSummary:
+    """Return a lightweight ``ArtifactSummary`` without touching
+    object storage or fully deserializing the payload.
+
+    Used by the Workspace renderer to populate per-node cards
+    quickly.  Reads only ``copilot_state.artifact_metadata``;
+    for inline-stored artifacts it pulls a small sparkline preview
+    from ``inline_payload``, for blob-stored artifacts the preview
+    is empty (the caller can call ``get_artifact(...)`` for the full
+    payload if a richer preview is needed).
+    """
+    _validate_hash(hash)
+    row = _fetch_summary_row(conn, hash)
+    if row is None:
+        raise KeyError(f"No artifact with hash {hash!r}")
+
+    inline = row["inline_payload"] is not None
+    preview_index: List[str] = []
+    preview_values: List[Optional[float]] = []
+
+    if inline:
+        # Sparkline-extract from the inline JSON without going
+        # through full Pydantic validation.  Best-effort: a malformed
+        # inline_payload falls back to empty preview rather than
+        # raising — the summary's purpose is fast rendering, not
+        # data-integrity enforcement (that's get_artifact's job).
+        try:
+            preview_index, preview_values = _extract_preview(
+                row["inline_payload"], _PREVIEW_POINTS
+            )
+        except Exception:
+            logger.warning(
+                "preview extraction failed for hash %s; returning empty",
+                hash[:12],
+            )
+
+    return ArtifactSummary(
+        hash=row["hash"],
+        artifact_type=row["artifact_type"],
+        units=row["units"],
+        frequency=row["frequency"],
+        row_count=row["row_count"],
+        byte_size=row["byte_size"],
+        payload_uri=row["payload_uri"],
+        inline=inline,
+        created_at=row["created_at"],
+        preview_index=preview_index,
+        preview_values=preview_values,
+    )
+
+
+# ============================================================================
+# Postgres helpers
+# ============================================================================
+
+
+def _hash_exists(conn: Connection, hash: str) -> bool:
+    """Idempotency gate.  Cheap PK lookup."""
+    row = conn.execute(
+        text(
+            f"SELECT 1 FROM {_COPILOT_STATE_SCHEMA}.artifact_metadata "
+            "WHERE hash = :hash LIMIT 1"
+        ),
+        {"hash": hash},
+    ).fetchone()
+    return row is not None
+
+
+def _insert_metadata_row(
+    conn: Connection,
+    *,
+    hash: str,
+    artifact_type: str,
+    units: Optional[str],
+    frequency: Optional[str],
+    row_count: Optional[int],
+    byte_size: int,
+    payload_uri: Optional[str],
+    inline_payload: Optional[Dict[str, Any]],
+    lineage: Dict[str, Any],
+    methodology_version_ids: Optional[List[int]] = None,
+    application_version_id: Optional[int] = None,
+) -> None:
+    """Insert one ``artifact_metadata`` row.  Caller has already
+    confirmed the hash does not exist.
+
+    Phase 0 PR 9 added ``methodology_version_ids`` (BIGINT[]) and
+    ``application_version_id`` (BIGINT FK).  Both are nullable —
+    legacy callers that don't supply them continue to work and write
+    NULLs.  Production callers via ``put_artifact`` always supply
+    them.
+    """
+    stmt = text(
+        f"""
+        INSERT INTO {_COPILOT_STATE_SCHEMA}.artifact_metadata (
+            hash, artifact_type, units, frequency, row_count,
+            byte_size, payload_uri, inline_payload, lineage,
+            methodology_version_ids, application_version_id
+        )
+        VALUES (
+            :hash, :artifact_type, :units, :frequency, :row_count,
+            :byte_size, :payload_uri,
+            CAST(:inline_payload AS JSONB),
+            CAST(:lineage AS JSONB),
+            :methodology_version_ids,
+            :application_version_id
+        )
+        """
+    )
+    conn.execute(
+        stmt,
+        {
+            "hash": hash,
+            "artifact_type": artifact_type,
+            "units": units,
+            "frequency": frequency,
+            "row_count": row_count,
+            "byte_size": byte_size,
+            "payload_uri": payload_uri,
+            "inline_payload": (
+                json.dumps(inline_payload) if inline_payload is not None else None
+            ),
+            "lineage": json.dumps(lineage),
+            "methodology_version_ids": (
+                methodology_version_ids
+                if methodology_version_ids
+                else None
+            ),
+            "application_version_id": application_version_id,
+        },
+    )
+
+
+def _fetch_full_row(conn: Connection, hash: str) -> Optional[Dict[str, Any]]:
+    row = conn.execute(
+        text(
+            f"""
+            SELECT
+                hash, artifact_type, units, frequency, row_count,
+                byte_size, payload_uri, inline_payload, lineage,
+                methodology_version_ids, application_version_id,
+                created_at
+            FROM {_COPILOT_STATE_SCHEMA}.artifact_metadata
+            WHERE hash = :hash
+            """
+        ),
+        {"hash": hash},
+    ).mappings().first()
+    return dict(row) if row is not None else None
+
+
+# ============================================================================
+# Phase 0 PR 9 — methodology / application version collection helpers
+# ============================================================================
+
+
+def _collect_methodology_version_ids(artifact: Artifact) -> List[int]:
+    """Walk ``artifact.lineage`` and return the sorted-deduped list of
+    ``PrimitiveStep.methodology_version_id`` values that contributed
+    to it.
+
+    Sorting is for byte-stability of the persisted JSONB array: two
+    artifacts whose lineages contain the same primitive ids in
+    different orders produce the same array (and therefore the same
+    audit query result downstream).
+
+    Only ``PrimitiveStep`` carries a ``methodology_version_id`` —
+    Fetch / Clean / Adapter / Operator steps do not load YAMLs.  We
+    walk only the primary chain; auxiliary lineages on
+    ``OperatorStep`` are NOT recursed here because Phase 0 PR 9's
+    main use case (replay-under-original-methodology) tracks the
+    primitive that produced the head artifact, not the operator
+    branches.  Phase 4 may extend this to recurse if a replay needs
+    the auxiliary YAMLs too.
+    """
+    # Local import to avoid the ``state`` package importing ``shared``
+    # at module load (we have an established lazy-import boundary).
+    from shared.artifacts.lineage import PrimitiveStep
+
+    seen: set = set()
+    for step in artifact.lineage.steps:
+        if isinstance(step, PrimitiveStep) and step.methodology_version_id is not None:
+            seen.add(int(step.methodology_version_id))
+    return sorted(seen)
+
+
+def _resolve_application_version_id(conn: Connection) -> Optional[int]:
+    """Register the current process's git commit (idempotent +
+    cached) and return the ``application_version.id``.
+
+    Cache-staleness self-healing: ``current_application_version_id``
+    has an in-process cache.  If the cached id points at a row
+    that was deleted out-of-band (e.g. a test fixture wiped the
+    table after the cache populated), the SELECT in this helper
+    returns None and we force a re-registration.  Steady-state
+    cost stays zero round-trips; the re-resolution path runs at
+    most once per per-process delete.
+
+    On unrecoverable failure (registry module can't import,
+    Postgres unreachable) returns None — the column is nullable,
+    so an artifact still persists; the workspace replay route
+    surfaces "application version unknown".
+    """
+    try:
+        from state.methodology_versions import (
+            clear_caches,
+            current_application_version_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "could not import state.methodology_versions; leaving NULL "
+            "application_version_id on this artifact: %s",
+            exc,
+        )
+        return None
+
+    for attempt in range(2):
+        try:
+            vid = current_application_version_id(conn=conn)
+        except Exception as exc:
+            logger.warning(
+                "current_application_version_id raised; leaving NULL "
+                "on this artifact: %s",
+                exc,
+            )
+            return None
+
+        # Verify the cached id still resolves to a real row.  If
+        # someone wiped application_version out-of-band, the cache
+        # is stale; clear it and retry once.
+        exists = conn.execute(
+            text(
+                f"SELECT 1 FROM {_COPILOT_STATE_SCHEMA}.application_version "
+                "WHERE id = :id"
+            ),
+            {"id": vid},
+        ).first()
+        if exists is not None:
+            return vid
+        if attempt == 0:
+            logger.info(
+                "application_version cache stale (id=%d not in DB); "
+                "clearing + retrying",
+                vid,
+            )
+            clear_caches()
+            continue
+        # Second miss after refresh — give up and leave NULL.
+        logger.warning(
+            "application_version_id %d still missing after cache "
+            "refresh; leaving NULL on this artifact",
+            vid,
+        )
+        return None
+    return None
+
+
+def _fetch_summary_row(conn: Connection, hash: str) -> Optional[Dict[str, Any]]:
+    """Same as ``_fetch_full_row`` but explicit about pulling
+    ``inline_payload`` only for the preview path; blob-stored
+    artifacts skip the JSONB column from the SELECT.
+
+    For now we pull inline_payload unconditionally because Postgres
+    JSONB read cost is dominated by row + TOAST overhead, not by
+    selecting the column.  Splitting would be premature
+    optimization."""
+    return _fetch_full_row(conn, hash)
+
+
+# ============================================================================
+# Artifact → stored dict (serialization)
+# ============================================================================
+
+
+def _artifact_type_name(artifact: Artifact) -> str:
+    cls = type(artifact)
+    if cls not in _CLASS_TO_NAME:
+        raise TypeError(
+            f"Unsupported artifact type {cls.__name__!r}.  Supported: "
+            f"{sorted(_NAME_TO_CLASS.keys())}."
+        )
+    return _CLASS_TO_NAME[cls]
+
+
+def _artifact_to_stored(artifact: Artifact) -> StoredArtifact:
+    type_name = _artifact_type_name(artifact)
+    if isinstance(artifact, Series):
+        meta, payload = _series_to_stored(artifact)
+    elif isinstance(artifact, SeriesSet):
+        meta, payload = _series_set_to_stored(artifact)
+    elif isinstance(artifact, EventSet):
+        meta, payload = _event_set_to_stored(artifact)
+    elif isinstance(artifact, Panel):
+        meta, payload = _panel_to_stored(artifact)
+    elif isinstance(artifact, WindowedPanel):
+        meta, payload = _windowed_panel_to_stored(artifact)
+    elif isinstance(artifact, TradeSet):
+        meta, payload = _trade_set_to_stored(artifact)
+    else:
+        raise TypeError(f"Unsupported artifact type {type(artifact).__name__}")
+    return StoredArtifact(
+        artifact_type=type_name,
+        metadata=meta,
+        payload=payload,
+    )
+
+
+def _stored_to_artifact(stored: StoredArtifact) -> Artifact:
+    type_name = stored.artifact_type
+    cls = _NAME_TO_CLASS[type_name]
+    if cls is Series:
+        return _series_from_stored(stored)
+    if cls is SeriesSet:
+        return _series_set_from_stored(stored)
+    if cls is EventSet:
+        return _event_set_from_stored(stored)
+    if cls is Panel:
+        return _panel_from_stored(stored)
+    if cls is WindowedPanel:
+        return _windowed_panel_from_stored(stored)
+    if cls is TradeSet:
+        return _trade_set_from_stored(stored)
+    raise TypeError(f"Unsupported artifact type {type_name!r}")
+
+
+# ----- Series ----------------------------------------------------------------
+
+
+def _series_to_stored(art: Series) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "series_key": art.series_key,
+        # TimeSeriesUnits is a string Enum; serialize its .value.
+        "units": art.units.value,
+        "frequency": art.frequency,
+        "missingness_policy": _dump_missingness(art.missingness_policy),
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = _pd_series_to_jsonable(art.payload)
+    # R5.1 — when the Series was emitted by ``conditional_aggregate``,
+    # the index uses ``1970-01-01 + Timedelta(days=offset)`` as a
+    # synthetic anchor for event-relative offsets (see
+    # ``shared/operators/conditional_aggregate/operator.py``).  The
+    # raw ISO dates are useless to UI consumers — they read as
+    # "1970-01-01 .. 1970-01-06", which the user audit flagged as
+    # garbage data.  Promote the encoding declared in the operator's
+    # step params onto the stored payload so preview extraction +
+    # widget rendering can label the index as event offsets instead.
+    encoding = _detect_event_offset_encoding(art)
+    if encoding is not None:
+        payload["index_encoding"] = encoding
+    return meta, payload
+
+
+def _detect_event_offset_encoding(
+    art: Series,
+) -> Optional[Dict[str, Any]]:
+    """If the Series was produced by an operator that records event-
+    relative offsets on its lineage step, return a JSON-safe
+    ``index_encoding`` blob.  Returns ``None`` for any other Series
+    so the normal date-index preview keeps working.
+
+    Allowed operator names (closed list):
+      - ``conditional_aggregate`` — the SOURCE of the encoding.  It
+        synthesises the ``1970-01-01 + Timedelta(days=offset)``
+        index and records ``offset_anchor`` + ``event_relative_offsets``
+        on its lineage step's params so consumers can recover the
+        event-relative interpretation.
+      - ``series_arithmetic`` (PR-C) — when both operands of a binary
+        op carry consistent event-offset metadata (or a unary /
+        scalar op with a single operand that carries it), the
+        operator propagates the same two fields onto its step.
+        That keeps the encoding alive through the event-study
+        workflow's terminal ``compare`` Series (which subtracts the
+        unconditional aggregate from the conditional aggregate).
+
+    Other operators MUST NOT be added to this list without an
+    explicit propagation contract — walking past an unknown operator
+    risks the encoding being false if that operator changed the
+    index semantics.
+
+    Defensive on every shape check: missing / wrong-type params
+    return ``None`` rather than producing a malformed encoding.  A
+    wrong encoding mislabels the user-facing chart x-axis with
+    synthetic offsets that don't correspond to real days — strictly
+    worse than no encoding at all.
+    """
+    try:
+        steps = list(art.lineage.steps)
+    except AttributeError:
+        return None
+    if not steps:
+        return None
+    last = steps[-1]
+    if getattr(last, "name", None) not in (
+        "conditional_aggregate",
+        "series_arithmetic",
+    ):
+        return None
+    params = getattr(last, "params", None) or {}
+    offsets = params.get("event_relative_offsets")
+    anchor = params.get("offset_anchor")
+    if not isinstance(offsets, list) or not isinstance(anchor, str):
+        return None
+    return {
+        "kind": "event_offset",
+        "anchor": anchor,
+        "offsets": [int(o) for o in offsets],
+    }
+
+
+def _series_from_stored(stored: StoredArtifact) -> Series:
+    payload = _pd_series_from_jsonable(stored.payload)
+    return Series(
+        series_key=stored.metadata["series_key"],
+        payload=payload,
+        units=TimeSeriesUnits(stored.metadata["units"]),
+        frequency=stored.metadata.get("frequency"),
+        missingness_policy=_load_missingness(stored.metadata["missingness_policy"]),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- SeriesSet -------------------------------------------------------------
+
+
+def _series_set_to_stored(art: SeriesSet) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        # TimeSeriesUnits is a string Enum; serialize each value.
+        "units_by_key": {k: v.value for k, v in art.units_by_key.items()},
+        "missingness_by_key": {
+            k: _dump_missingness(v) for k, v in art.missingness_by_key.items()
+        },
+        "upstream_lineage_by_key": {
+            k: v.model_dump(mode="json") for k, v in art.upstream_lineage_by_key.items()
+        },
+        "frequency": art.frequency,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        "common_index": _datetime_index_to_iso(art.common_index),
+        "series_by_key": {
+            k: list(v.values.tolist()) for k, v in art.series_by_key.items()
+        },
+    }
+    return meta, payload
+
+
+def _series_set_from_stored(stored: StoredArtifact) -> SeriesSet:
+    common_index = _datetime_index_from_iso(stored.payload["common_index"])
+    series_by_key = {
+        k: pd.Series(v, index=common_index, dtype=float)
+        for k, v in stored.payload["series_by_key"].items()
+    }
+    return SeriesSet(
+        series_by_key=series_by_key,
+        units_by_key={
+            k: TimeSeriesUnits(v)
+            for k, v in stored.metadata["units_by_key"].items()
+        },
+        missingness_by_key={
+            k: _load_missingness(v)
+            for k, v in stored.metadata["missingness_by_key"].items()
+        },
+        upstream_lineage_by_key={
+            k: Lineage.model_validate(v)
+            for k, v in stored.metadata["upstream_lineage_by_key"].items()
+        },
+        common_index=common_index,
+        frequency=stored.metadata.get("frequency"),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- EventSet --------------------------------------------------------------
+
+
+def _event_set_to_stored(art: EventSet) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "source_series_key": art.source_series_key,
+        "frequency": art.frequency,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        "mask_index": _datetime_index_to_iso(art.mask.index),
+        "mask_values": [bool(v) for v in art.mask.values],
+        "event_dates": [_iso(ts) for ts in art.event_dates],
+        "per_event_metadata": art.per_event_metadata,
+    }
+    return meta, payload
+
+
+def _event_set_from_stored(stored: StoredArtifact) -> EventSet:
+    mask_index = _datetime_index_from_iso(stored.payload["mask_index"])
+    mask = pd.Series(
+        stored.payload["mask_values"], index=mask_index, dtype=bool
+    )
+    event_dates = [pd.Timestamp(s) for s in stored.payload["event_dates"]]
+    return EventSet(
+        mask=mask,
+        event_dates=event_dates,
+        per_event_metadata=stored.payload["per_event_metadata"],
+        source_series_key=stored.metadata["source_series_key"],
+        frequency=stored.metadata.get("frequency"),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- Panel -----------------------------------------------------------------
+
+
+def _panel_to_stored(art: Panel) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "units_by_column": {k: v.value for k, v in art.units_by_column.items()},
+        "missingness_policy": _dump_missingness(art.missingness_policy),
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        "index": _datetime_index_to_iso(art.payload.index),
+        "columns": list(art.payload.columns),
+        "data": [list(row) for row in art.payload.values.tolist()],
+    }
+    return meta, payload
+
+
+def _panel_from_stored(stored: StoredArtifact) -> Panel:
+    idx = _datetime_index_from_iso(stored.payload["index"])
+    columns = stored.payload["columns"]
+    data = stored.payload["data"]
+    df = pd.DataFrame(data, index=idx, columns=columns)
+    return Panel(
+        payload=df,
+        units_by_column={
+            k: TimeSeriesUnits(v)
+            for k, v in stored.metadata["units_by_column"].items()
+        },
+        missingness_policy=_load_missingness(stored.metadata["missingness_policy"]),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- WindowedPanel ---------------------------------------------------------
+
+
+def _windowed_panel_to_stored(
+    art: WindowedPanel,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "offsets": art.offsets,
+        "target_series_key": art.target_series_key,
+        "units": art.units.value,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        "data": [list(row) for row in art.payload.tolist()],
+        "event_dates": [_iso(ts) for ts in art.event_dates],
+        "per_event_metadata": art.per_event_metadata,
+    }
+    return meta, payload
+
+
+def _windowed_panel_from_stored(stored: StoredArtifact) -> WindowedPanel:
+    return WindowedPanel(
+        payload=np.asarray(stored.payload["data"], dtype=float),
+        offsets=stored.metadata["offsets"],
+        event_dates=[pd.Timestamp(s) for s in stored.payload["event_dates"]],
+        per_event_metadata=stored.payload["per_event_metadata"],
+        target_series_key=stored.metadata["target_series_key"],
+        units=TimeSeriesUnits(stored.metadata["units"]),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- TradeSet (Phase 1 PR 12) ---------------------------------------------
+# A TradeSet's payload is the flattened trade-record list (via
+# ``TradeSet.to_records``).  Metadata carries the non-payload Pydantic
+# fields (source_event_key, methodology_policy, lineage).
+
+
+def _trade_set_to_stored(art: TradeSet) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "source_event_key": art.source_event_key,
+        "methodology_policy": art.methodology_policy,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {
+        # ``to_records`` produces ISO timestamps + JSON-safe scalars
+        # in a stable order; the round-trip is byte-identical
+        # because ``TradeSet`` enforces entry-date ordering as an
+        # invariant on construction.
+        "trades": art.to_records(),
+    }
+    return meta, payload
+
+
+def _trade_set_from_stored(stored: StoredArtifact) -> TradeSet:
+    return TradeSet.from_records(
+        stored.payload["trades"],
+        source_event_key=stored.metadata.get("source_event_key"),
+        methodology_policy=stored.metadata["methodology_policy"],
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ============================================================================
+# pandas / numpy helpers
+# ============================================================================
+
+
+def _iso(ts: pd.Timestamp) -> str:
+    return pd.Timestamp(ts).isoformat()
+
+
+def _format_event_offset(offset: int) -> str:
+    """Render an event-relative offset as a human label.  ``0`` → "Day 0",
+    positive offsets get a leading ``+`` ("Day +3"), negatives keep their
+    natural sign ("Day -5").  Used by the preview path so widgets show
+    event-offset Series with clear labels instead of synthetic 1970 dates.
+    """
+    if offset == 0:
+        return "Day 0"
+    if offset > 0:
+        return f"Day +{offset}"
+    return f"Day {offset}"
+
+
+def _datetime_index_to_iso(idx: pd.DatetimeIndex) -> List[str]:
+    return [_iso(ts) for ts in idx]
+
+
+def _datetime_index_from_iso(values: List[str]) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex([pd.Timestamp(s) for s in values])
+
+
+def _pd_series_to_jsonable(series: pd.Series) -> Dict[str, Any]:
+    # Convert NaN to None for JSON-safety.  pandas NaN serializes as
+    # ``NaN`` which is not valid JSON under ``allow_nan=False``.
+    values: List[Optional[float]] = []
+    for v in series.values:
+        if pd.isna(v):
+            values.append(None)
+        else:
+            values.append(float(v))
+    return {
+        "index": _datetime_index_to_iso(series.index),
+        "values": values,
+    }
+
+
+def _pd_series_from_jsonable(payload: Dict[str, Any]) -> pd.Series:
+    idx = _datetime_index_from_iso(payload["index"])
+    raw_values = payload["values"]
+    # Convert back: None → NaN.  We use float dtype throughout for
+    # numerical artifacts (the Series._validate_payload check enforces
+    # this on construction).
+    coerced = [float("nan") if v is None else float(v) for v in raw_values]
+    return pd.Series(coerced, index=idx, dtype=float)
+
+
+def _artifact_row_count(artifact: Artifact) -> int:
+    """How many rows the artifact contains.  Used for the
+    inline-vs-blob decision and for the metadata column."""
+    if isinstance(artifact, Series):
+        return len(artifact.payload)
+    if isinstance(artifact, SeriesSet):
+        return len(artifact.common_index)
+    if isinstance(artifact, EventSet):
+        return len(artifact.mask)
+    if isinstance(artifact, Panel):
+        return len(artifact.payload)
+    if isinstance(artifact, WindowedPanel):
+        return artifact.payload.shape[0]
+    if isinstance(artifact, TradeSet):
+        # Row count semantics: one row per trade.  Used by the
+        # inline-vs-blob gate the same way as Series — a TradeSet
+        # with >100 trades goes to blob storage.
+        return artifact.n_trades
+    raise TypeError(f"Unsupported artifact type {type(artifact).__name__}")
+
+
+def _artifact_units(artifact: Artifact) -> Optional[str]:
+    """Best-effort units string for the queryable metadata column.
+
+    Single-unit artifacts (Series, WindowedPanel) emit their unit's
+    string value (e.g. ``"bps"`` / ``"percent"``).  Multi-unit
+    artifacts (SeriesSet, Panel with per-column units, EventSet
+    which has no units) emit NULL — the per-column / per-key units
+    live inside the JSONB payload, queryable but not promoted to a
+    column.
+    """
+    if isinstance(artifact, Series):
+        return artifact.units.value
+    if isinstance(artifact, WindowedPanel):
+        return artifact.units.value
+    return None
+
+
+def _artifact_frequency(artifact: Artifact) -> Optional[str]:
+    if isinstance(artifact, Series):
+        return artifact.frequency
+    if isinstance(artifact, SeriesSet):
+        return artifact.frequency
+    if isinstance(artifact, EventSet):
+        return artifact.frequency
+    return None
+
+
+# ============================================================================
+# StoredArtifact ↔ bytes (for blob storage)
+# ============================================================================
+
+
+def _stored_to_bytes(stored: StoredArtifact) -> bytes:
+    """Canonical bytes encoding for blob storage.
+
+    JSON via Pydantic, UTF-8 encoded, sorted keys.  The same shape
+    that ``inline_payload`` stores in Postgres; for blob mode it's
+    just stored externally instead of in-row.  No special framing or
+    headers — the bytes are pure JSON, suitable for ``jq`` inspection
+    if an operator needs to debug a corrupted artifact.
+
+    We deliberately do NOT use Parquet here for the blob bytes:
+    parquet's reader / writer state can drift across pyarrow versions
+    in subtle ways (column statistics, page metadata), and the
+    inline / blob shapes diverging would complicate get_artifact's
+    fast path.  Same JSON shape everywhere.
+    """
+    return stored.model_dump_json(by_alias=False).encode("utf-8")
+
+
+def _bytes_to_stored_dict(content: bytes) -> Dict[str, Any]:
+    """Reverse of ``_stored_to_bytes``.  Returns the parsed dict;
+    Pydantic validation happens at the caller (``get_artifact``)."""
+    return json.loads(content.decode("utf-8"))
+
+
+# ============================================================================
+# Sparkline preview extraction (summary endpoint)
+# ============================================================================
+
+
+def _extract_preview(
+    inline_payload: Any, max_points: int
+) -> Tuple[List[str], List[Optional[float]]]:
+    """Best-effort sparkline preview from an inline JSONB payload.
+
+    Inspects the discriminator ``artifact_type`` (carried inside the
+    StoredArtifact dict) and pulls a bounded slice of the payload.
+    Empty preview for artifact types without a natural single-series
+    representation (SeriesSet, Panel, WindowedPanel) — callers can
+    fetch the full artifact for richer previews.
+    """
+    if not isinstance(inline_payload, dict):
+        return [], []
+    artifact_type = inline_payload.get("artifact_type")
+    payload = inline_payload.get("payload", {})
+    metadata = inline_payload.get("metadata", {}) or {}
+
+    if artifact_type == "Series":
+        vals = payload.get("values", [])
+        # R5.1 — event-offset-encoded Series (output of
+        # ``conditional_aggregate``) carries an ``index_encoding`` blob
+        # declaring its index as event-relative offsets.  Render the
+        # preview index as "Day -5" / "Day +5" / "Day 0" labels instead
+        # of the synthetic 1970 anchor dates.  Path A: explicit encoding
+        # written by newer writes; path B (R6.4): read-time lineage
+        # inspection so older artifacts (persisted before R5.1) benefit
+        # too without a backfill migration.  Both paths converge on the
+        # same label list.
+        encoding = payload.get("index_encoding")
+        if (
+            isinstance(encoding, dict)
+            and encoding.get("kind") == "event_offset"
+            and isinstance(encoding.get("offsets"), list)
+        ):
+            offsets = encoding["offsets"]
+            labels = [_format_event_offset(int(o)) for o in offsets]
+            return labels[:max_points], vals[:max_points]
+
+        # R6.4 — fall through to lineage-driven detection for older
+        # artifacts that don't carry ``index_encoding`` in the payload.
+        # The detector reads ``metadata.lineage.steps[-1]`` and matches
+        # against the synthetic-index operator registry.
+        synth_labels = _synthetic_index_labels_from_lineage(
+            metadata, payload, max_points,
+        )
+        if synth_labels is not None:
+            return synth_labels, vals[:max_points]
+
+        idx = payload.get("index", [])
+        return idx[:max_points], vals[:max_points]
+
+    if artifact_type == "EventSet":
+        # Render the mask as 0 / 1 sparkline — useful for showing
+        # event density at a glance.
+        idx = payload.get("mask_index", [])
+        bools = payload.get("mask_values", [])
+        return idx[:max_points], [1.0 if b else 0.0 for b in bools[:max_points]]
+
+    # SeriesSet, Panel, WindowedPanel: no canonical "single series" for
+    # the preview.  Callers can request the full artifact and pick a
+    # column to render.
+    return [], []
+
+
+# ----------------------------------------------------------------------------
+# R6.4 — synthetic-index detector registry
+# ----------------------------------------------------------------------------
+#
+# Some operators emit Series whose pd.DatetimeIndex doesn't carry real
+# calendar dates — instead they use a synthetic anchor + offset
+# (``conditional_aggregate``: 1970-01-01 + Timedelta(days=offset)) or
+# a single sentinel (``summarize_series``: 1900-01-01).  When the
+# preview path serialises the index as ISO dates the UI surfaces those
+# synthetic dates verbatim — "1970-01-01..06" / "1900-01-01" — which
+# reads as garbage data to the user.
+#
+# Each registered detector inspects the LAST step of the lineage and
+# returns a list of labels to substitute for the raw ISO dates.
+# Returns ``None`` when the operator name doesn't match — the preview
+# falls through to the normal ISO-date path.
+
+_SyntheticIndexDetector = Callable[
+    [Dict[str, Any], Dict[str, Any], int],
+    Optional[List[str]],
+]
+
+
+def _detect_conditional_aggregate_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """conditional_aggregate's index encodes event-relative offsets via
+    ``1970-01-01 + Timedelta(days=offset)``.  Step params carry the
+    integer offset list directly."""
+    del payload  # not needed; step_params has the offsets verbatim
+    offsets = step_params.get("event_relative_offsets")
+    if not isinstance(offsets, list):
+        return None
+    return [_format_event_offset(int(o)) for o in offsets[:max_points]]
+
+
+def _detect_summarize_series_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """summarize_series emits a 1-row Series with a ``1900-01-01``
+    sentinel.  Substitute a meaningful label that names the statistic
+    rather than the synthetic date."""
+    del max_points  # always at most one row
+    stat = step_params.get("statistic")
+    n = len(payload.get("values", []) or [])
+    if n == 0:
+        return []
+    label = f"Summary · {stat}" if isinstance(stat, str) and stat else "Summary"
+    # The operator's output is a 1-row series; defensive against
+    # future versions that might add rows.
+    return [label] * max(1, min(n, 1))
+
+
+_SYNTHETIC_INDEX_DETECTORS: Dict[str, _SyntheticIndexDetector] = {
+    "conditional_aggregate": _detect_conditional_aggregate_labels,
+    "summarize_series": _detect_summarize_series_labels,
+}
+
+
+def _synthetic_index_labels_from_lineage(
+    metadata: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """Walk ``metadata.lineage.steps`` to the last step + dispatch via
+    the synthetic-index registry.  Returns a list of preview-index
+    labels OR ``None`` when no detector matches.
+
+    Defensive: any malformed lineage shape (missing keys, wrong types)
+    returns ``None`` so the preview falls back to the raw ISO-date
+    path.  This is fast-path code on every artifact-summary read; we
+    don't raise. """
+    lineage = metadata.get("lineage")
+    if not isinstance(lineage, dict):
+        return None
+    steps = lineage.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return None
+    last = steps[-1]
+    if not isinstance(last, dict):
+        return None
+    name = last.get("name")
+    if not isinstance(name, str):
+        return None
+    detector = _SYNTHETIC_INDEX_DETECTORS.get(name)
+    if detector is None:
+        return None
+    step_params = last.get("params") or {}
+    if not isinstance(step_params, dict):
+        return None
+    try:
+        return detector(step_params, payload, max_points)
+    except Exception:
+        # Detectors are best-effort; never let an internal error
+        # prevent preview rendering.
+        return None

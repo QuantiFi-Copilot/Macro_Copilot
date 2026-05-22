@@ -1,5 +1,5 @@
 playbook_name: "bond_futures"
-playbook_version: "1.3"
+playbook_version: "1.5"
 asset_class: "rates"
 dataset_name: "bond_futures"
 description: "Daily rolling government bond futures data across core macro markets for liquid expression, activity monitoring, and positioning proxies."
@@ -28,6 +28,89 @@ reference_metrics:
     bloomberg_field: "FUT_CONT_SIZE"
   - column_name: "quote_units"
     bloomberg_field: "QUOTE_UNITS"
+
+# ----------------------------------------------------------------------------
+# VERIFIED metadata_history section (ADR 0002, playbook contract v1.2).
+#
+# Drives `--mode metadata-history` extraction. Reads only universe rows whose
+# `is_rolling_contract: true` (all 19 rows below).
+#
+# All Bloomberg mnemonics below were verified on 2026-05-19 via
+#   scripts/futures_metadata_history_check.py
+# against a live Bloomberg terminal. The verification report exercised:
+#   * bds(FUT_CHAIN, INCLUDE_EXPIRED_CONTRACTS="Y") for every generic
+#     (chain enumeration validated; INCLUDE_EXPIRED_CONTRACTS override
+#     extends history substantially — e.g. TY1: 3 -> 179, US1: 3 -> 197)
+#   * bdp() for every static field on a representative sample of 5
+#     contracts per chain (oldest, latest, 3 evenly spaced)
+#   * full-chain bdp() of FUT_NOTICE_FIRST and FUT_FIRST_TRADE_DT
+#     (returned valid dates for every contract in every chain)
+#   * validate_no_overlaps over every generic's window set
+#     (zero overlap conflicts across ~2,000 windows total)
+#
+# Roll-convention rationale for bond futures:
+#   * Market convention rolls BEFORE last-tradeable. FUT_NOTICE_FIRST is the
+#     short-side first-notice date (~1 wk before delivery), which is when
+#     the market actually rolls. Verified non-null and consistent across
+#     all 19 bond generics including UST, DE, UK, JP, FR, IT, ES, CA, AU.
+#   * LAST_TRADEABLE_DT was tested as the fallback and produced identical
+#     window counts with zero overlap conflicts — usable as a swap if
+#     ever needed for a market that drops FUT_NOTICE_FIRST.
+#
+# Mnemonic-level notes from verification:
+#   * UNDL_SPOT_TICKER was tested and returned NULL across every
+#     bond-futures contract sampled (UST/DE/UK/JP). Dropped from this
+#     section — not the right mnemonic for listed bond futures.
+#   * FUT_TICK_VAL is populated by Bloomberg only for the currently-listed
+#     Australian YM/XM contract; older AU history returns NULL. Kept in
+#     the playbook (the typed column will land NULL in DB for old AU
+#     contracts, which the schema allows).
+#   * RX1 chain has 1 contract out of 145 with an internal date-ordering
+#     anomaly. The window-validation gate still passes for RX1 (145/145
+#     non-overlapping windows). Follow-up to identify the specific
+#     contract is tracked separately.
+# ----------------------------------------------------------------------------
+metadata_history:
+  enabled: true
+  chain_field: "FUT_CHAIN"                       # VERIFIED 2026-05-19
+  chain_overrides:
+    INCLUDE_EXPIRED_CONTRACTS: "Y"               # VERIFIED 2026-05-19 — override
+                                                 # extends chain to full history
+  roll_convention:
+    type: "expiry_roll"                          # only value supported in PR A1
+    roll_field: "FUT_NOTICE_FIRST"               # VERIFIED 2026-05-19 — non-null
+                                                 # across every bond-futures
+                                                 # contract in every chain tested
+    first_trade_field: "FUT_FIRST_TRADE_DT"      # VERIFIED 2026-05-19 — non-null
+                                                 # across every chain tested
+  static_fields:
+    - column_name: "contract_code"
+      bloomberg_field: "TICKER"                  # VERIFIED 2026-05-19 (returns stem,
+                                                 # e.g. "TUU90"; yellow-key-stripped form)
+    - column_name: "expiry_date"
+      bloomberg_field: "LAST_TRADEABLE_DT"       # VERIFIED 2026-05-19
+    - column_name: "maturity_date"
+      bloomberg_field: "FUT_DLV_DT_LAST"         # VERIFIED 2026-05-19
+    - column_name: "security_name"
+      bloomberg_field: "SECURITY_DES"            # VERIFIED 2026-05-19
+    - column_name: "settlement_date"
+      bloomberg_field: "FUT_DLV_DT_FIRST"        # VERIFIED 2026-05-19 (equal to
+                                                 # FUT_DLV_DT_LAST for single-day-
+                                                 # delivery markets: Eurex, OSE,
+                                                 # SFE — by design)
+    - column_name: "tick_size"
+      bloomberg_field: "FUT_TICK_SIZE"           # VERIFIED 2026-05-19
+    - column_name: "tick_value"
+      bloomberg_field: "FUT_TICK_VAL"            # VERIFIED 2026-05-19 (partial for
+                                                 # historical AU contracts — typed
+                                                 # col will be NULL pre-2026 for YM/XM,
+                                                 # schema allows it)
+    - column_name: "contract_size"
+      bloomberg_field: "FUT_CONT_SIZE"           # VERIFIED 2026-05-19
+    - column_name: "exchange_code"
+      bloomberg_field: "FUT_EXCH_NAME_SHRT"      # VERIFIED 2026-05-19 — returns
+                                                 # CBT/EUX/ICF/OSE/MSE/SFE/CME
+                                                 # consistently across all markets
 
 universe:
   # United States Treasury futures

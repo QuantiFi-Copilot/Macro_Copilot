@@ -103,6 +103,20 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
+    "policy_futures_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.policy_futures.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
+    "bond_futures_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.bond_futures.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
     # PR 9: workflow-template MCP server.  Distinct from the per-domain
     # primitive servers above — exposes DAG-shaped analyses
     # (event_study, regime_conditioned_relationship, ...) plus the
@@ -159,7 +173,62 @@ DOMAIN_MCP_SERVERS: dict = {
     Domain.INFLATION_SWAPS: {
         "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
     },
+    Domain.POLICY_FUTURES: {
+        "policy_futures": MCP_SERVERS["policy_futures_agent"],
+    },
+    Domain.BOND_FUTURES: {
+        "bond_futures": MCP_SERVERS["bond_futures_agent"],
+    },
 }
+
+
+# ===========================================================================
+# CHECKPOINTER (PostgresSaver) DSN
+# ===========================================================================
+# Phase 0 PR 5: the LangGraph checkpointer migrates from in-memory to
+# Postgres-backed.  ``AsyncPostgresSaver`` runs on psycopg3
+# (``psycopg[binary,pool]``) which coexists with the existing
+# psycopg2-based SQLAlchemy ingestion path.  Two drivers, two connection
+# layers, one Postgres.
+#
+# This helper builds the psycopg3-style DSN from the same ``DB_*`` env
+# vars as ``database.database.get_db_engine`` and ``migrations/env.py``,
+# so dev / staging / prod all use one consistent connection convention.
+
+
+def build_checkpointer_dsn() -> str:
+    """Return the psycopg3 DSN for the LangGraph checkpointer pool.
+
+    Uses the same ``DB_USER`` / ``DB_PASSWORD`` / ``DB_HOST`` / ``DB_PORT``
+    / ``DB_NAME`` env vars as the rest of the project (so a dev
+    environment configured for the ingestion pipeline gets the
+    checkpointer for free).
+
+    Defaults match the docker-compose ``tsdb`` service and are
+    **deliberately** unsafe outside the local Docker network — they
+    must be overridden in CI / staging / prod.
+
+    Returns a libpq-style URI (``postgresql://...``) without the
+    ``+psycopg2`` driver hint that SQLAlchemy uses, because the
+    checkpointer pool talks to psycopg3 directly, not through
+    SQLAlchemy.
+    """
+    user = os.getenv("DB_USER", "quantuser")
+    password = os.getenv("DB_PASSWORD", "myStrongPass")
+    host = os.getenv("DB_HOST", "localhost")
+    port = os.getenv("DB_PORT", "5433")
+    db_name = os.getenv("DB_NAME", "macrodata")
+    # psycopg3 accepts URI-style DSNs.  Empty password is rendered as
+    # ``user:@host`` which is valid for trust-auth dev setups.
+    return f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
+
+
+# Schema name that LangGraph's checkpoint tables live in.  Set on the
+# pool's connection options as ``search_path=<this>,public`` so
+# ``AsyncPostgresSaver.setup()`` creates its tables in this namespace
+# rather than ``public``.  Created by Alembic migration
+# ``0003_langgraph_checkpoint_schema``.
+LANGGRAPH_CHECKPOINT_SCHEMA: str = "langgraph_checkpoint"
 
 
 # ===========================================================================

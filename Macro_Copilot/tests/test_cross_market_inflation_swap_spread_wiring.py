@@ -143,9 +143,9 @@ def _assert_cross_market_config_passed(call_args) -> None:
         "`config=`"
     )
     assert isinstance(cfg, ToolConfig)
-    assert cfg.tool.name == "cross_market_inflation_swap_spread", (
+    assert cfg.tool.name == "calculate_cross_market_inflation_swap_spread_tool", (
         f"caller passed config for tool {cfg.tool.name!r}, expected "
-        "'cross_market_inflation_swap_spread' (catches imports of the "
+        "'calculate_cross_market_inflation_swap_spread_tool' (catches imports of the "
         "wrong tool's CONFIG_PATH)"
     )
     assert "z_score_window_days" in cfg.conventions
@@ -318,7 +318,7 @@ class TestConfigPathPublicSymbol:
         cfg = load_tool_config(
             CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
         )
-        assert cfg.tool.name == "cross_market_inflation_swap_spread"
+        assert cfg.tool.name == "calculate_cross_market_inflation_swap_spread_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
 
