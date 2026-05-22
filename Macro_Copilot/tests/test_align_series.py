@@ -847,6 +847,61 @@ class TestFetchSingleTenorContract:
         bind_params = mock_conn.execute.call_args.args[1]
         assert bind_params.get("instrument_type") == "inflation_linker"
 
+    def test_contract_code_and_instrument_type_combinations(self):
+        """All four (contract_code, instrument_type) combinations must
+        thread exactly the expected bind parameters — and no others.
+
+        ``contract_code`` and ``instrument_type`` are independent
+        optional filters.  Passing neither must reproduce the original
+        bind set (the byte-for-byte-unchanged path every pre-existing
+        sovereign / OIS caller relies on); either one alone, or both
+        together, must add exactly its own bind key and nothing else.
+        This pins the reconciled ``fetch_single_tenor`` that carries
+        BOTH disambiguators (build's ``contract_code`` + the linker
+        domain's ``instrument_type``)."""
+        base_keys = {"curve_family", "tenor", "field_name", "start_date"}
+        cases = [
+            # (contract_code, instrument_type, expected_extra_bind_keys)
+            (None, None, set()),
+            ("TY1", None, {"contract_code"}),
+            (None, "inflation_linker", {"instrument_type"}),
+            ("TY1", "inflation_linker", {"contract_code", "instrument_type"}),
+        ]
+        for contract_code, instrument_type, extra in cases:
+            mock_engine = MagicMock(name="engine")
+            mock_conn = MagicMock(name="conn")
+            mock_engine.connect.return_value.__enter__.return_value = mock_conn
+            mock_result = MagicMock(name="result")
+            mock_result.fetchall.return_value = []
+            mock_result.keys.return_value = ["trade_date", "field_value"]
+            mock_conn.execute.return_value = mock_result
+
+            kwargs: dict = {}
+            if contract_code is not None:
+                kwargs["contract_code"] = contract_code
+            if instrument_type is not None:
+                kwargs["instrument_type"] = instrument_type
+
+            fetch_single_tenor(
+                engine=mock_engine,
+                curve_family="UST",
+                tenor="10Y",
+                field_name="YLD_YTM_MID",
+                start_date=date(2026, 1, 1),
+                **kwargs,
+            )
+            bind_params = mock_conn.execute.call_args.args[1]
+            assert set(bind_params.keys()) == base_keys | extra, (
+                f"contract_code={contract_code!r}, "
+                f"instrument_type={instrument_type!r}: expected bind keys "
+                f"{sorted(base_keys | extra)}, got "
+                f"{sorted(bind_params.keys())}"
+            )
+            if contract_code is not None:
+                assert bind_params["contract_code"] == contract_code
+            if instrument_type is not None:
+                assert bind_params["instrument_type"] == instrument_type
+
     def test_full_fetch_clean_adapt_align_chain_with_mocked_engine(self):
         """Full Q1 source path with the real fetch_single_tenor +
         clean_single_series (no DB; engine mocked to return a

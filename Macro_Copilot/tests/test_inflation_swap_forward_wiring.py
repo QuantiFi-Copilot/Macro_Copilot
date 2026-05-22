@@ -129,9 +129,9 @@ def _assert_forward_config_passed(call_args) -> None:
         "`config=`"
     )
     assert isinstance(cfg, ToolConfig)
-    assert cfg.tool.name == "inflation_swap_forward", (
+    assert cfg.tool.name == "calculate_inflation_swap_forward_tool", (
         f"caller passed config for tool {cfg.tool.name!r}, expected "
-        "'inflation_swap_forward' (catches imports of the wrong "
+        "'calculate_inflation_swap_forward_tool' (catches imports of the wrong "
         "tool's CONFIG_PATH)"
     )
     assert "z_score_window_days" in cfg.conventions
@@ -280,7 +280,7 @@ class TestConfigPathPublicSymbol:
 
     def test_load_returns_forward_config(self):
         cfg = load_tool_config(INFLATION_SWAP_FORWARD_CONFIG_PATH)
-        assert cfg.tool.name == "inflation_swap_forward"
+        assert cfg.tool.name == "calculate_inflation_swap_forward_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
 

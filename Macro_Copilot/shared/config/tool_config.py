@@ -70,15 +70,34 @@ Subsequent calls for the same file return the same ``ToolConfig``
 instance; mutations are not supported (the model is frozen).  Tests
 that load tweaked-and-rewritten YAMLs should call
 ``clear_tool_config_cache()`` between cases.
+
+Methodology-version pinning (Phase 0 PR 9)
+------------------------------------------
+When called with a ``conn`` argument, ``load_tool_config`` also
+registers the YAML's parsed content in
+``copilot_state.methodology_versions`` (idempotent by
+``yaml_content_hash``) and attaches the resulting
+``methodology_version_id`` to the returned ``ToolConfig``.
+
+The DB-less path (``conn=None``) is the default for unit tests
+and the CLI REPL; the returned config has
+``methodology_version_id=None`` and behaves exactly as it did
+before PR 9.  Production callers that produce artifacts (the
+primitive→operator adapter) pass a connection so the id makes
+it onto each ``PrimitiveStep`` and ultimately into
+``artifact_metadata.methodology_version_ids``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Connection
 
 
 # Recognised tool categories.  This is the honesty mechanism for the
@@ -278,6 +297,15 @@ class ToolConfig(BaseModel):
     conventions: Dict[str, Convention] = Field(default_factory=dict)
     methodology: MethodologyMeta
 
+    # Phase 0 PR 9.  Populated by ``load_tool_config`` when a DB
+    # connection is supplied; None on the test / CLI path.
+    #
+    # NOT part of ``conventions_hash`` — the hash recipe captures
+    # CONTENT, this field carries a REGISTRY POINTER.  See
+    # ``PrimitiveStep`` docstring for the same invariant on the
+    # lineage side.
+    methodology_version_id: Optional[int] = Field(default=None)
+
     # ------------------------------------------------------------------
     # Convenience accessors
     # ------------------------------------------------------------------
@@ -353,7 +381,11 @@ class ToolConfigError(Exception):
     """
 
 
-def load_tool_config(path: Union[str, Path]) -> ToolConfig:
+def load_tool_config(
+    path: Union[str, Path],
+    *,
+    conn: Optional["Connection"] = None,
+) -> ToolConfig:
     """Load and validate a tool's ``config.yaml``.
 
     Cached process-wide by absolute path.  Subsequent calls for the
@@ -364,6 +396,14 @@ def load_tool_config(path: Union[str, Path]) -> ToolConfig:
     path : str or Path
         Path to the tool's ``config.yaml``.  Relative paths are
         resolved against the current working directory.
+    conn : Optional[Connection]
+        When supplied, the YAML's parsed content is registered in
+        ``copilot_state.methodology_versions`` (idempotent by
+        ``yaml_content_hash``) and the resulting id is attached to
+        the returned ``ToolConfig``.  When ``None`` (the default
+        for tests + the CLI REPL), the returned config has
+        ``methodology_version_id=None`` and behaves as before
+        Phase 0 PR 9.
 
     Returns
     -------
@@ -376,11 +416,24 @@ def load_tool_config(path: Union[str, Path]) -> ToolConfig:
         If the file is missing, malformed, or fails schema validation.
         Wraps the underlying error and prefixes the file path for
         easier debugging.
+
+    Cache + DB-registration interaction
+    -----------------------------------
+    The path-keyed cache stores the version of the config that was
+    FIRST loaded.  If the FIRST load passed ``conn``, the cached
+    config carries a ``methodology_version_id``; subsequent loads
+    (with or without ``conn``) return the cached object as-is.
+    If the FIRST load was without ``conn`` and a later caller
+    passes one, we re-register the YAML to attach the id and store
+    the new (otherwise byte-identical) config in cache.  This
+    keeps the contract simple: once a process has registered a
+    YAML, the cached config always has the id.
     """
     p = Path(path).resolve()
 
-    if p in _CACHE:
-        return _CACHE[p]
+    cached = _CACHE.get(p)
+    if cached is not None and (conn is None or cached.methodology_version_id is not None):
+        return cached
 
     if not p.is_file():
         raise ToolConfigError(
@@ -390,7 +443,8 @@ def load_tool_config(path: Union[str, Path]) -> ToolConfig:
 
     try:
         with p.open("r") as f:
-            raw = yaml.safe_load(f)
+            raw_text = f.read()
+        raw = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
         raise ToolConfigError(f"YAML parse error in {p}: {exc}") from exc
 
@@ -408,6 +462,22 @@ def load_tool_config(path: Union[str, Path]) -> ToolConfig:
         raise ToolConfigError(
             f"Schema validation failed for {p}:\n{exc}"
         ) from exc
+
+    if conn is not None:
+        # Lazy import — ``state.methodology_versions`` imports
+        # ``shared.artifacts.lineage`` which has heavyweight
+        # dependencies (pandas).  Keeping it lazy means tests / CLI
+        # paths that never touch the DB don't pay for the import
+        # graph.
+        from state.methodology_versions import register_yaml
+
+        version_id = register_yaml(
+            raw_text, yaml_path=str(p), conn=conn,
+        )
+        # Rebuild the frozen model with the id attached.  Pydantic's
+        # ``model_copy`` is the supported way to mutate a frozen
+        # model into a new instance.
+        cfg = cfg.model_copy(update={"methodology_version_id": version_id})
 
     _CACHE[p] = cfg
     return cfg

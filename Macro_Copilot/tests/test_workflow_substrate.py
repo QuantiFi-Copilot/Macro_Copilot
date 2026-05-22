@@ -635,6 +635,91 @@ class TestValidate:
         with pytest.raises(WorkflowValidationError, match="cannot resolve"):
             validate_workflow(wf, primitive_resolver=synthetic_resolver)
 
+    def test_unknown_output_field_rejected_when_units_declared(
+        self, synthetic_config_path,
+    ):
+        """When a resolver declares a non-empty ``output_field_units``
+        map, the workflow's ``PrimitiveNode.output_field`` MUST be
+        one of the declared keys.  Catching this at validate-time
+        turns a runtime bridge-lift ``ValueError`` (the
+        ``output_field='X' is not declared on <SchemaClass>`` that
+        crashed the screenshotted workflow) into a clean validation
+        refusal — the router's normaliser can then demote the bind
+        to CLARIFY rather than crash mid-execute.
+        """
+        # Build a resolver whose spec declares a closed set of legal
+        # output fields.  Pick a field name NOT in the declared set
+        # for the workflow node — validate must refuse before any
+        # primitive runs.
+        spec = PrimitiveSpec(
+            tool_name="synthetic_primitive_tool",
+            callable=_synthetic_primitive_callable,
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=synthetic_config_path,
+            output_field_units={
+                "time_series": "z_score",
+                "time_series_zscore": "z_score",
+            },
+        )
+        resolver: PrimitiveResolver = lambda name: spec  # noqa: E731
+
+        wf = Workflow(
+            workflow_id="bad-field",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="bogus_field_name",
+                    params={},
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        with pytest.raises(
+            WorkflowValidationError,
+            match=r"declares output_field='bogus_field_name'",
+        ):
+            validate_workflow(wf, primitive_resolver=resolver)
+
+    def test_empty_output_field_units_defers_to_runtime(
+        self, synthetic_config_path,
+    ):
+        """Resolvers that explicitly declare ``output_field_units={}``
+        (e.g. snapshot-only primitives like ``calculate_half_life_tool``)
+        keep the legacy "best-effort, defer to runtime" behaviour.
+        Empty means "unknown set", not "no fields allowed" — so the
+        strict check does NOT fire and the workflow validates cleanly.
+        """
+        spec = PrimitiveSpec(
+            tool_name="synthetic_primitive_tool",
+            callable=_synthetic_primitive_callable,
+            input_class=_SyntheticInput,
+            output_class=_SyntheticOutput,
+            config_path=synthetic_config_path,
+            output_field_units={},  # explicit empty declaration
+        )
+        resolver: PrimitiveResolver = lambda name: spec  # noqa: E731
+
+        wf = Workflow(
+            workflow_id="empty-units",
+            nodes=[
+                PrimitiveNode(
+                    node_id="p",
+                    tool_name="synthetic_primitive_tool",
+                    output_field="anything_at_all",
+                    params={},
+                ),
+            ],
+            edges=[],
+            terminal_node_id="p",
+        )
+        # Must not raise — empty output_field_units means "unknown
+        # set, defer".  Operator runtime refusals remain the
+        # authoritative gate for these primitives.
+        validate_workflow(wf, primitive_resolver=resolver)
+
 
 # ===========================================================================
 # 3. Topological order

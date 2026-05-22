@@ -38,6 +38,7 @@ discriminator union below — same closed-family discipline as
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
@@ -49,15 +50,128 @@ from pydantic import BaseModel, ConfigDict, Field
 LineageHash = str
 
 
+def _canonicalize_for_hash(obj: Any) -> Any:
+    """Recursively convert ``obj`` to a strictly JSON-serializable form with
+    stable representations across Python / NumPy / Pandas versions.
+
+    The original implementation relied on ``json.dumps(..., default=str)``,
+    which silently called ``str()`` on any non-JSON-native value.  That
+    fallback is the source of cross-version drift: ``str(np.float64(0.1))``
+    can differ between NumPy versions, ``str(pd.Timestamp(...))`` can
+    differ between Pandas versions, and a user-defined ``__str__`` makes
+    the hash a function of code that has nothing to do with identity.
+
+    This function replaces that silent fallback with an explicit allowlist:
+
+      - ``None``, ``bool``, ``int``, ``str``                — passed through
+      - ``float``                                            — passed through;
+        ``NaN`` / ``Infinity`` are rejected (no canonical JSON form anyway)
+      - ``list`` / ``tuple``                                 — recursively
+        canonicalized; tuples become lists for JSON purposes (order
+        preserved)
+      - ``dict``                                             — keys must be
+        ``str``; values recursively canonicalized
+      - ``datetime.date`` / ``datetime.datetime``            — ISO 8601 string
+      - NumPy scalar (anything with ``.item()`` returning a Python native)
+                                                             — unwrapped via
+        ``.item()`` and re-canonicalized
+      - ``.isoformat()``-capable (e.g. ``pd.Timestamp``)     — ISO 8601 string
+        via ``.isoformat()`` (Pandas-stable representation)
+
+    Anything else raises ``TypeError`` with a clear message.  This is the
+    "fail loudly" half of the determinism contract: silent fallbacks are
+    what create drift, so we don't have them.
+
+    Closes ``docs/technical_debt.md`` item #20 for the lineage layer.
+    """
+    if obj is None or isinstance(obj, (bool, str)):
+        return obj
+    if isinstance(obj, int) and not isinstance(obj, bool):
+        # bool is a subclass of int; the bool branch above catches it first.
+        return obj
+    if isinstance(obj, float):
+        # Reject IEEE-754 non-finite values.  ``allow_nan=False`` on
+        # ``json.dumps`` below would also raise, but raising here keeps the
+        # error message specific to the offending key/value.
+        if obj != obj:  # NaN; NaN != NaN is True.
+            raise ValueError(
+                "NaN is not allowed in hashable params (no canonical JSON form)"
+            )
+        if obj in (float("inf"), float("-inf")):
+            raise ValueError(
+                "Infinity is not allowed in hashable params (no canonical JSON form)"
+            )
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return [_canonicalize_for_hash(x) for x in obj]
+    if isinstance(obj, dict):
+        out: Dict[str, Any] = {}
+        for k, v in obj.items():
+            if not isinstance(k, str):
+                raise TypeError(
+                    f"dict keys must be strings for hashing, got "
+                    f"{type(k).__name__}: {k!r}"
+                )
+            out[k] = _canonicalize_for_hash(v)
+        return out
+    # ``datetime.datetime`` is a subclass of ``datetime.date``; this branch
+    # catches both.  ``isoformat()`` is well-defined and stable.
+    if isinstance(obj, _dt.date):
+        return obj.isoformat()
+
+    # NumPy scalars (np.int64, np.float64, np.bool_) expose ``.item()`` and
+    # return a Python native that we can re-canonicalize.  Use ``getattr``
+    # so the lineage module does not import numpy unconditionally.
+    item = getattr(obj, "item", None)
+    if callable(item):
+        try:
+            return _canonicalize_for_hash(item())
+        except (ValueError, TypeError):
+            # Fall through to the .isoformat() path and the final raise.
+            pass
+
+    # pd.Timestamp and other isoformat-capable types.
+    iso = getattr(obj, "isoformat", None)
+    if callable(iso):
+        try:
+            result = iso()
+            if isinstance(result, str):
+                return result
+        except Exception:
+            pass
+
+    raise TypeError(
+        f"Cannot canonicalize {type(obj).__name__} for hashing: {obj!r}. "
+        "Allowed inputs: None, bool, int, float (finite), str, list, tuple, "
+        "dict (str keys), datetime.date, datetime.datetime, numpy scalar "
+        "(via .item()), pandas.Timestamp (via .isoformat())."
+    )
+
+
 def _canonical_json(obj: Any) -> str:
     """Stable JSON serialization for hashing.
 
-    Sorted keys, no whitespace, default=str so dates/Pydantic models
-    serialize deterministically.  Two equivalent ``params`` dicts
-    produce the same string regardless of insertion order — that is
-    what makes the hash content-addressed.
+    Two equivalent ``params`` dicts produce the same string regardless of:
+
+      - key insertion order (``sort_keys=True``),
+      - whitespace formatting (compact separators, no spaces),
+      - Python / NumPy / Pandas version differences (explicit
+        canonicalization upfront in :func:`_canonicalize_for_hash`
+        rejects types whose ``str()`` output may drift).
+
+    ``allow_nan=False`` is a belt-and-braces defense — the
+    canonicalization step already rejects ``NaN`` / ``Infinity``, but
+    pinning the JSON encoder here means a future canonicalize bug cannot
+    silently produce non-strict JSON.
     """
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
+    canon = _canonicalize_for_hash(obj)
+    return json.dumps(
+        canon,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+        ensure_ascii=False,
+    )
 
 
 def _compute_step_hash(
@@ -243,11 +357,23 @@ class PrimitiveStep(BaseModel):
           that ever accept an artifact input.
 
       Bookkeeping-only (NOT in the hash):
-        - ``tool_config_path``   — the path the YAML was loaded
+        - ``tool_config_path``        — the path the YAML was loaded
           from.  Two callers loading the same YAML from different
           paths (test fixture vs prod) MUST produce the same hash
           if the content is identical.  So path is metadata for
           human debugging, not identity.
+        - ``methodology_version_id``  — Phase 0 PR 9.  Pointer into
+          ``copilot_state.methodology_versions`` letting the metadata
+          layer answer "which stored YAML version produced this
+          step" without re-hashing.  NOT in the hash because the
+          YAML CONTENT is already folded in via
+          ``tool_config_hash``: two YAMLs whose content is byte-
+          identical have the same ``methodology_version_id`` AND
+          the same ``tool_config_hash``, so adding the registry
+          id to the hash would be redundant.  Pinning it as
+          hash-excluded keeps PR 2's pinned-hash invariant intact
+          AND lets a future YAML rename (path change, content
+          unchanged) NOT invalidate any cached lineage.
 
     Why the four identity bits ride inside the hash via a derived
     dict instead of through an extended ``_compute_step_hash``
@@ -267,6 +393,10 @@ class PrimitiveStep(BaseModel):
     params: Dict[str, Any]  # primitive's *Input.model_dump()
     tool_config_hash: str
     tool_config_path: Optional[str] = None  # NOT in hash
+    # Phase 0 PR 9.  NOT in hash — pointer into the
+    # ``methodology_versions`` registry.  See class docstring under
+    # "Bookkeeping-only (NOT in the hash)" for the invariant.
+    methodology_version_id: Optional[int] = None
     output_field: str  # e.g., "time_series_spread"
     as_of_date: str  # ISO YYYY-MM-DD from the primitive snapshot
     input_hashes: Tuple[LineageHash, ...] = ()  # always () in v1
@@ -283,12 +413,22 @@ class PrimitiveStep(BaseModel):
         output_field: str,
         as_of_date: str,
         tool_config_path: Optional[str] = None,
+        methodology_version_id: Optional[int] = None,
         input_hashes: Tuple[LineageHash, ...] = (),
     ) -> "PrimitiveStep":
         # Fold the primitive identity bits into a derived dict so
         # the existing _compute_step_hash recipe applies unchanged.
         # Keys are alphabetized by _canonical_json (sort_keys=True),
         # so the order they're added here is irrelevant.
+        #
+        # IMPORTANT: ``methodology_version_id`` is NOT folded into
+        # this dict.  The YAML content it points at is already
+        # captured in ``tool_config_hash``; adding the registry id
+        # would couple the hash to per-DB auto-increment values
+        # (which are NOT stable across deploys / restores) and
+        # break PR 2's pinned-hash invariant.  This omission is
+        # the invariant the test
+        # ``tests/state/test_hash_stability.py`` enforces.
         hashed_params: Dict[str, Any] = {
             "input_params": params,
             "tool_config_hash": tool_config_hash,
@@ -308,6 +448,7 @@ class PrimitiveStep(BaseModel):
             params=params,
             tool_config_hash=tool_config_hash,
             tool_config_path=tool_config_path,
+            methodology_version_id=methodology_version_id,
             output_field=output_field,
             as_of_date=as_of_date,
             input_hashes=input_hashes,

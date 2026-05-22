@@ -83,6 +83,11 @@ WorkflowArchetype = Literal[
     "regime_conditioned_relationship",
     "attribution_decomposition",
     "cross_sectional_screen",
+    # Phase 1 PR 19.  The backtest archetype: signal → threshold →
+    # construct trades → fetch panel → financing → evaluate → summarise.
+    # Closed-family extension; adding it here ALSO requires the
+    # template registry's ``known_archetypes()`` test to be regenerated.
+    "backtest",
 ]
 
 
@@ -91,6 +96,7 @@ WORKFLOW_ARCHETYPES: tuple[str, ...] = (
     "regime_conditioned_relationship",
     "attribution_decomposition",
     "cross_sectional_screen",
+    "backtest",
 )
 
 

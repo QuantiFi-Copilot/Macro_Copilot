@@ -34,6 +34,7 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shared.artifacts.trades import TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
@@ -46,6 +47,14 @@ from shared.operators.apply_mask import apply_mask, ApplyMaskParams
 from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
+)
+from shared.operators.construct_trades import (
+    construct_trades,
+    ConstructTradesParams,
+)
+from shared.operators.evaluate_trades import (
+    evaluate_trades,
+    EvaluateTradesParams,
 )
 from shared.operators.event_windows import event_windows, EventWindowsParams
 from shared.operators.rolling_regression import (
@@ -63,6 +72,10 @@ from shared.operators.series_arithmetic import (
 from shared.operators.summarize_series import (
     summarize_series,
     SummarizeSeriesParams,
+)
+from shared.operators.summarize_trades import (
+    summarize_trades,
+    SummarizeTradesParams,
 )
 from shared.operators.threshold_events import (
     threshold_events,
@@ -84,6 +97,11 @@ ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
     "EventSet",
     "Panel",
     "WindowedPanel",
+    # Phase 1 PR 12 added the TradeSet artifact for the backtest
+    # archetype; PR 20 wires it into the substrate's closed-family
+    # discriminator so the workflow executor can label TradeSet
+    # outputs from ``construct_trades`` correctly.
+    "TradeSet",
 )
 
 
@@ -104,6 +122,7 @@ def artifact_type_name(artifact: Any) -> str:
         EventSet: "EventSet",
         Panel: "Panel",
         WindowedPanel: "WindowedPanel",
+        TradeSet: "TradeSet",
     }
     for cls, name in type_map.items():
         if isinstance(artifact, cls):
@@ -375,6 +394,58 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         input_slots={"series": "Series"},
         output_type="Series",
     ),
+    # Phase 1 backtest operators (registered in PR 20; PR 12 omitted
+    # them from the substrate registry — the operators existed and
+    # were unit-tested but were not dispatchable through the workflow
+    # executor).
+    "construct_trades": OperatorSpec(
+        operator_name="construct_trades",
+        callable=construct_trades,
+        params_class=ConstructTradesParams,
+        # EventSet of entry dates → TradeSet (one Trade per True date).
+        input_slots={"events": "EventSet"},
+        output_type="TradeSet",
+    ),
+    "evaluate_trades": OperatorSpec(
+        operator_name="evaluate_trades",
+        callable=evaluate_trades,
+        params_class=EvaluateTradesParams,
+        # TradeSet + price Panel → per-trade P&L Panel.  Optional
+        # ``financing_rate_panel`` is bound separately on the params
+        # struct, not as a graph edge — the financing Panel is fetched
+        # by a primitive node upstream and threaded through params.
+        # ``accepts_scalar_input`` is empty: both required slots must
+        # be artifact edges.
+        input_slots={
+            "trades": "TradeSet",
+            "price_panel": "Panel",
+            "financing_rate_panel": "Panel",
+        },
+        # ``financing_rate_panel`` is optional — only required when
+        # ``params.financing_assumption == 'external_series'``.  The
+        # arity validator below enforces that pairing so an unbound
+        # financing slot doesn't crash a no-financing run.
+        accepts_scalar_input=("financing_rate_panel",),
+        output_type="Panel",
+        arity_validator=lambda node_params, bound_edge_slots, bound_literal_slots: (
+            "evaluate_trades: financing_rate_panel is REQUIRED when "
+            "financing_assumption='external_series'; pass it via an "
+            "edge from the financing primitive."
+            if (
+                node_params.get("financing_assumption") == "external_series"
+                and "financing_rate_panel" not in bound_edge_slots
+            )
+            else None
+        ),
+    ),
+    "summarize_trades": OperatorSpec(
+        operator_name="summarize_trades",
+        callable=summarize_trades,
+        params_class=SummarizeTradesParams,
+        # P&L Panel (from evaluate_trades) → single-row summary Panel.
+        input_slots={"pnl_panel": "Panel"},
+        output_type="Panel",
+    ),
 }
 
 
@@ -455,6 +526,22 @@ class PrimitiveSpec(BaseModel):
     output_class: Type[BaseModel]
     config_path: Path
     output_field_units: Dict[str, str] = Field(default_factory=dict)
+    # PR 20: executor uses this hint to pick the right bridge
+    # (Series vs Panel).  Defaults to "Series" so every PR-12-era
+    # primitive registration keeps working unchanged.  New
+    # Panel-producing primitives (build_sovereign_yield_panel_tool,
+    # compute_financing_rate_tool) set this to "Panel".  The bridge
+    # function lives at
+    # ``shared/artifacts/adapters/from_time_series.py:tool_output_to_artifact_panel``.
+    output_artifact_type: str = Field(
+        default="Series",
+        description=(
+            "Artifact-type hint the executor uses to pick the bridge "
+            "(Series → tool_output_to_artifact_series, "
+            "Panel → tool_output_to_artifact_panel).  Closed-enum "
+            "values from ``ARTIFACT_TYPE_NAMES``."
+        ),
+    )
 
 
 class PrimitiveResolver(Protocol):

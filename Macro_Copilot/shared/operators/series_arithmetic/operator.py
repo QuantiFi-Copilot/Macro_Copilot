@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -255,22 +255,78 @@ def series_arithmetic(
         right_kind = "scalar"
         right_units = None
 
+    step_params: Dict[str, Any] = {
+        "op": op,
+        "period": params.period,
+        "right_kind": right_kind,
+        "right_scalar": (
+            float(right) if (right_kind == "scalar") else None
+        ),
+        "left_units": left.units.value,
+        "right_units": right_units,
+        "output_units": output_units.value,
+        "require_matching_frequency": require_matching_frequency,
+        "require_matching_missingness": require_matching_missingness,
+    }
+
+    # ------------------------------------------------------------------
+    # PR-C — event-relative-offset metadata propagation.
+    # ------------------------------------------------------------------
+    # ``series_arithmetic`` does not change index semantics; it does
+    # elementwise math on a SHARED DatetimeIndex (the operator refuses
+    # to align — that's ``align_series``'s job).  So when BOTH
+    # operands carry the event-offset encoding the
+    # ``conditional_aggregate`` operator declares (``offset_anchor`` +
+    # ``event_relative_offsets`` on its lineage step's params), the
+    # output Series's index has the SAME event-relative semantics.
+    #
+    # Pre-PR-C the operator dropped this metadata silently, which
+    # meant the event-study workflow's terminal ``compare`` Series
+    # rendered its index as literal ``1970-01-NN`` dates (the
+    # synthetic anchor ``conditional_aggregate`` writes).  The
+    # ``state.artifact_store._detect_event_offset_encoding`` detector
+    # only recognised the metadata when the LAST step was
+    # ``conditional_aggregate`` — for the ``compare`` Series the
+    # last step is ``series_arithmetic``, so the encoding was lost.
+    #
+    # PR-C closes the gap by recording the encoding on THIS step's
+    # params (the same shape ``conditional_aggregate`` uses) when:
+    #
+    #   - unary ops (``diff`` / ``pct_change``): inherit left's
+    #     encoding when present.
+    #   - scalar ops (``Series * scalar``): inherit left's encoding
+    #     when present (multiplying by a scalar doesn't change the
+    #     index).
+    #   - binary Series ops: propagate ONLY when both operands have
+    #     the encoding AND they agree on anchor + offsets.  When
+    #     they disagree (or only one has it), we omit the encoding
+    #     — the index could still be event-offset-shaped, but we
+    #     can't safely assert it without false positives.  Wrong
+    #     encoding is worse than no encoding.
+    #
+    # The detector in ``state.artifact_store`` is extended to look
+    # for the same two params on ``series_arithmetic`` steps in
+    # addition to ``conditional_aggregate``.  Net effect: only the
+    # event-study compare case (and any other ``series_arithmetic``
+    # on event-offset Series) gets the new metadata; the 99% case
+    # of calendar-date arithmetic is unaffected, so the
+    # ``OperatorStep`` hash is stable for those calls.
+
+    propagated_offset_meta = _propagate_offset_metadata(
+        left=left,
+        right=right,
+        is_unary=is_unary,
+        right_kind=right_kind,
+    )
+    if propagated_offset_meta is not None:
+        anchor, offsets = propagated_offset_meta
+        step_params["offset_anchor"] = anchor
+        step_params["event_relative_offsets"] = offsets
+
     op_step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
-        params={
-            "op": op,
-            "period": params.period,
-            "right_kind": right_kind,
-            "right_scalar": (
-                float(right) if (right_kind == "scalar") else None
-            ),
-            "left_units": left.units.value,
-            "right_units": right_units,
-            "output_units": output_units.value,
-            "require_matching_frequency": require_matching_frequency,
-            "require_matching_missingness": require_matching_missingness,
-        },
+        params=step_params,
         input_hashes=input_hashes,
         auxiliary_lineages=auxiliary_lineages,
     )
@@ -459,6 +515,104 @@ def _compose_series_key(
         return f"{left.series_key}__{op}__{right}"
     # Unary
     return f"{left.series_key}__{op}"
+
+
+# ============================================================================
+# PR-C — event-relative-offset metadata helpers
+# ============================================================================
+#
+# Small, file-local helpers — see the propagation block in
+# ``series_arithmetic`` above for the design rationale.  Kept here
+# (rather than as a shared utility) because the read shape is also
+# inlined in ``state.artifact_store._detect_event_offset_encoding``
+# and we'd rather not introduce a cross-module dependency between
+# operators and the persistence layer for two-field decode logic.
+
+
+def _read_offset_metadata_from_lineage(
+    lineage: Lineage,
+) -> Optional[Tuple[str, List[int]]]:
+    """Return ``(offset_anchor, event_relative_offsets)`` when the
+    last step of ``lineage`` is a ``conditional_aggregate`` OR
+    ``series_arithmetic`` step that recorded the event-offset
+    metadata.
+
+    Why these two operator names + nothing else:
+      - ``conditional_aggregate`` is the SOURCE of the encoding (it
+        synthesises the ``1970-01-01 + Timedelta(days=offset)``
+        index and records the metadata so the encoding can be
+        recovered downstream).
+      - ``series_arithmetic`` is the only operator we KNOW preserves
+        the index without resampling, AND (post-PR-C) it propagates
+        the metadata explicitly.  Walking PAST an unknown operator
+        in the chain is unsafe — that operator might have changed
+        the index semantics in a way we can't see from outside.
+
+    Returns ``None`` whenever the shape doesn't match — including
+    empty lineage, non-operator step, wrong operator name, or
+    malformed params.  Defensive: a wrong encoding is worse than
+    no encoding (it would mislabel a chart's x-axis with synthetic
+    offsets that don't correspond to real days).
+    """
+    try:
+        steps = list(lineage.steps)
+    except AttributeError:
+        return None
+    if not steps:
+        return None
+    last = steps[-1]
+    if getattr(last, "kind", None) != "operator":
+        return None
+    if getattr(last, "name", None) not in (
+        "conditional_aggregate",
+        _OPERATOR_NAME,  # "series_arithmetic"
+    ):
+        return None
+    params: Dict[str, Any] = getattr(last, "params", None) or {}
+    anchor = params.get("offset_anchor")
+    offsets = params.get("event_relative_offsets")
+    if not isinstance(anchor, str) or not isinstance(offsets, list):
+        return None
+    try:
+        return (anchor, [int(o) for o in offsets])
+    except (TypeError, ValueError):
+        return None
+
+
+def _propagate_offset_metadata(
+    *,
+    left: Series,
+    right: Union[Series, int, float, None],
+    is_unary: bool,
+    right_kind: str,
+) -> Optional[Tuple[str, List[int]]]:
+    """Decide whether THIS series_arithmetic call should record the
+    event-offset metadata on its lineage step's params.
+
+    Decision matrix:
+      - is_unary               → inherit left's metadata if present.
+      - right_kind == 'scalar' → inherit left's metadata if present.
+      - right is a Series      → propagate ONLY when both operands
+                                  carry the metadata AND the anchor +
+                                  offsets MATCH exactly.  Mismatch is
+                                  treated as "no encoding" — wrong
+                                  encoding is worse than none.
+      - any other shape        → None.
+
+    Pure function — does not mutate inputs.  Tested explicitly in
+    ``tests/test_series_arithmetic_offset_propagation.py``.
+    """
+    left_meta = _read_offset_metadata_from_lineage(left.lineage)
+    if is_unary or right_kind == "scalar":
+        return left_meta
+    if right_kind == "series" and isinstance(right, Series):
+        right_meta = _read_offset_metadata_from_lineage(right.lineage)
+        if left_meta is None or right_meta is None:
+            return None
+        if left_meta != right_meta:
+            return None
+        return left_meta
+    return None
 
 
 __all__ = [

@@ -1,0 +1,100 @@
+operator:
+  name: evaluate_trades
+  method_family: trade_evaluation
+  version: "1.0.0"
+  description: >-
+    Compute per-trade P&L over each trade's holding window from a
+    TradeSet plus a price/yield Panel.  Frictionless V1: mid prices
+    only, no transaction costs, no financing.
+
+defaults:
+  pricing_convention:
+    value: mid
+    source: operator_v1_default
+    rationale: >-
+      Phase 1 V1 prices every leg at mid.  bid/ask spreads and
+      slippage are deferred — raising ``NotImplementedError`` if
+      the caller tries to override.  The mid-price disclosure
+      surfaces on the workspace methodology card so a reader
+      knows V1's P&L is upper-bound vs a real-world execution.
+    valid_values: [mid, bid, ask]
+
+  frictionless:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      No transaction costs, no bid/ask, no borrow availability.
+      Hard-coded ``true`` in V1; the operator raises if a caller
+      tries ``frictionless=false`` because the friction model is
+      not yet built.  The disclosure surfaces on the workspace
+      methodology card.
+
+  financing_assumption:
+    value: none
+    source: operator_v1_default
+    rationale: >-
+      PR 12 default ``none``.  PR 19 (financing_rate primitive)
+      adds ``external_series`` — caller passes a financing-rate
+      Panel produced by ``compute_financing_rate_tool`` and the
+      per-trade P&L includes the per-day financing accrual.
+      ``constant_rate`` + ``overnight_repo_curve`` were declared
+      placeholders in PR 12 and still raise NotImplementedError
+      (the proper path is to build the rate Series upstream via
+      the primitive and pass it through ``external_series``).
+    valid_values: [none, constant_rate, overnight_repo_curve, external_series]
+
+  financing_basis:
+    value: act_360
+    source: industry_standard_sovereign_repo_usd_money_market
+    rationale: >-
+      Day-count basis for the per-day accrual fraction.  Allowed:
+      act_360 (sovereign repo + USD money-market default), act_365
+      (Gilt repo), act_act_isda (ISDA accrual; V1 approximates as
+      365.0 and discloses).  Used only when financing_assumption
+      = ``external_series``; ignored otherwise.
+
+methodology:
+  what_it_does: |
+    For each Trade in the input TradeSet, the operator looks up
+    each leg's instrument_key in the price/yield Panel, computes
+    per-date P&L contributions as ``leg.weight * (price[t] -
+    price[entry])``, and aggregates leg contributions into a
+    per-trade total.  The output Panel has one row per date in
+    the union of trade-holding windows (intersected with the
+    price Panel's calendar) and one column per trade named
+    ``trade_<i>_pnl``.  P&L is denominated in the asset's native
+    units (e.g. yield-change bps for a yield series; price-
+    change for a price series).
+
+    PR 21 DISCLOSURE — YIELD-CHANGE vs DOLLAR P&L.  When the
+    input ``price_panel`` contains YIELDS (e.g. UST/TIPS
+    benchmarks fetched via ``build_sovereign_yield_panel_tool``),
+    the output P&L is in YIELD-CHANGE space (basis points), NOT
+    DOLLAR space.  A 1bp move on a 10Y bond and a 1bp move on a
+    2Y bond contribute equally to the output P&L — even though
+    in DOLLAR terms the 10Y move is ~4x more impactful (because
+    modified duration scales linearly with tenor).  Cross-tenor
+    long-short P&L summaries are therefore NOT DV01-weighted
+    dollar P&L.  Dollar-P&L conversion requires modified
+    duration and price (PX_LAST / PX_DIRTY) data not yet ingested
+    for sovereign benchmarks (planned-extension list below).
+
+    Yield-change-P&L is a defined accounting convention used by
+    desks for relative-value comparisons where the absolute
+    notional is not the focus (spread trades, basis trades,
+    relative-yield screens).  It is NOT appropriate for
+    trade-sizing decisions or capital-at-risk calculations.
+
+    The financing-carry extension (financing_assumption =
+    ``external_series``) operates in the same yield-PCT space:
+    per-leg daily accrual = ``-leg.weight × rate_pct /
+    basis_days``, accumulated through the holding window.  Sign
+    convention: positive leg.weight = "long bond" position that
+    PAYS financing (negative accrual); negative weight = "short
+    bond" that RECEIVES financing (positive accrual).
+  planned_extensions:
+    - "DV01-weighted dollar P&L mode.  Requires ingestion of modified duration (Bloomberg MOD_DUR_MID) + dirty price (PX_DIRTY) per instrument.  Adds ``pnl_units: [yield_change_bps, dollar_pnl]`` knob with the dollar path raising NotImplementedError until the data lands."
+    - "Multi-component P&L decomposition (carry vs price vs financing) with columns ``trade_<i>__carry``, ``trade_<i>__price``, ``trade_<i>__financing``"
+    - "bid/ask pricing (requires per-instrument bid/ask data in the price Panel)"
+    - "Transaction costs (basis points per leg, asymmetric by side)"
+    - "Borrow-availability constraints for short legs"

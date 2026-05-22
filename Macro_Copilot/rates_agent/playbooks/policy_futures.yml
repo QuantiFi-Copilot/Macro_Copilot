@@ -1,5 +1,5 @@
 playbook_name: "policy_futures"
-playbook_version: "1.0"
+playbook_version: "1.2"
 asset_class: "rates"
 dataset_name: "policy_futures"
 description: "Daily rolling short-rate / policy futures (SOFR, Euribor, SONIA) across the first 8 listed contracts for central bank pricing and positioning proxies."
@@ -31,6 +31,75 @@ reference_metrics:
     bloomberg_field: "FUT_TICK_VAL"
   - column_name: "underlying_spot"
     bloomberg_field: "UNDL_SPOT_TICKER"
+
+# ----------------------------------------------------------------------------
+# VERIFIED metadata_history section (ADR 0002, playbook contract v1.2).
+#
+# Drives `--mode metadata-history` extraction. Reads only universe rows whose
+# `is_rolling_contract: true` (all 24 STIR rows below).
+#
+# All Bloomberg mnemonics below were verified on 2026-05-19 via
+#   scripts/futures_metadata_history_check.py
+# against a live Bloomberg terminal. The verification report exercised:
+#   * bds(FUT_CHAIN, INCLUDE_EXPIRED_CONTRACTS="Y") for every generic
+#     (override expands chain: SFR 46->107, ER 28->357, SFI 25->56)
+#   * bdp() for every static field on 5 representative contracts per chain
+#   * full-chain bdp() of LAST_TRADEABLE_DT and FUT_FIRST_TRADE_DT for
+#     window math (returned valid dates for every contract in every chain)
+#   * validate_no_overlaps over every generic's window set
+#     (zero overlap conflicts across all 24 generics, including the
+#     357-contract serial+quarterly Euribor chains where interleaved
+#     expiry cadences were a concern)
+#
+# Roll-convention rationale for policy / STIR futures:
+#   * STIR contracts (SOFR, Euribor, SONIA) cash-settle on LAST_TRADEABLE_DT —
+#     there is no notice / delivery cycle, so the "roll" coincides with the
+#     contract going off the board. LAST_TRADEABLE_DT is canonically correct
+#     and verified clean across all 24 STIR generics.
+#
+# `underlying_ticker` (UNDL_SPOT_TICKER) is INTENTIONALLY OMITTED:
+#   STIR futures cash-settle to an index fixing (e.g., SOFR daily index)
+#   and do not carry a spot ticker. Verification on bond futures confirmed
+#   the mnemonic returns NULL even for instruments where a spot underlying
+#   does exist, so its omission for STIR is not a loss of data.
+# ----------------------------------------------------------------------------
+metadata_history:
+  enabled: true
+  chain_field: "FUT_CHAIN"                       # VERIFIED 2026-05-19
+  chain_overrides:
+    INCLUDE_EXPIRED_CONTRACTS: "Y"               # VERIFIED 2026-05-19
+  roll_convention:
+    type: "expiry_roll"                          # only value supported in PR A1
+    roll_field: "LAST_TRADEABLE_DT"              # VERIFIED 2026-05-19 (STIR
+                                                 # cash-settle on this date)
+    first_trade_field: "FUT_FIRST_TRADE_DT"      # VERIFIED 2026-05-19
+  static_fields:
+    - column_name: "contract_code"
+      bloomberg_field: "TICKER"                  # VERIFIED 2026-05-19 (returns stem,
+                                                 # e.g. "SFRM18"; yellow-key-stripped)
+    - column_name: "expiry_date"
+      bloomberg_field: "LAST_TRADEABLE_DT"       # VERIFIED 2026-05-19
+    - column_name: "maturity_date"
+      bloomberg_field: "FUT_DLV_DT_LAST"         # VERIFIED 2026-05-19 (equal to
+                                                 # LAST_TRADEABLE_DT for STIR
+                                                 # cash-settle, by design)
+    - column_name: "security_name"
+      bloomberg_field: "SECURITY_DES"            # VERIFIED 2026-05-19
+    - column_name: "settlement_date"
+      bloomberg_field: "FUT_DLV_DT_FIRST"        # VERIFIED 2026-05-19 (equal to
+                                                 # LAST_TRADEABLE_DT for STIR
+                                                 # cash-settle, by design)
+    - column_name: "tick_size"
+      bloomberg_field: "FUT_TICK_SIZE"           # VERIFIED 2026-05-19
+    - column_name: "tick_value"
+      bloomberg_field: "FUT_TICK_VAL"            # VERIFIED 2026-05-19
+    - column_name: "contract_size"
+      bloomberg_field: "FUT_CONT_SIZE"           # VERIFIED 2026-05-19
+    - column_name: "exchange_code"
+      bloomberg_field: "FUT_EXCH_NAME_SHRT"      # VERIFIED 2026-05-19 — returns
+                                                 # CME/ICF consistently for SOFR
+                                                 # (CME), Euribor (ICE/ICF),
+                                                 # SONIA (ICE/ICF)
 
 universe:
   # --------------------------------------------------------

@@ -55,8 +55,9 @@ new ones without breaking the chat UI.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 # ============================================================================
@@ -83,33 +84,121 @@ class SessionEvent:
 # When one of these tools is called, the session emits a workspace_context
 # block in the ``done`` event so the UI can render a "See more in workspace"
 # button for the user to open a dedicated analytical surface.
+#
+# PR-B-α — the set is now COMPUTED from the backend's authoritative
+# primitive registry (``rates_agent.workflows._PRIMITIVE_SPECS``).  Adding
+# a new ``PrimitiveSpec`` entry to that registry automatically opts the
+# tool into Ask → Build hand-off — no second hand-maintained list to
+# keep in sync.  Pre-PR-B-α this file owned a small hard-coded subset
+# that drifted from the registry, leaving real tools (``get_yield_levels_tool``,
+# ``calculate_swap_spread_tool``, ``calculate_breakeven_inflation_tool``,
+# ``calculate_zscore_custom_tool``, ``build_sovereign_yield_panel_tool``,
+# ``compute_financing_rate_tool``, ``get_ois_rate_level_tool``) silently
+# excluded.  Symptom: "Open in Build" appeared disabled on every Ask
+# answer that used only these tools — see the screenshots attached to
+# PR-B-α's description.
+#
+# The frontend ``src/components/ask/messages/__tests__/buildHandoffContract.test.ts``
+# (PR-B-α) snapshots this set and asserts every frontend-routeable tool
+# is included, so the contract stays honest as new primitives ship.
 
-_WORKSPACE_TOOLS: set[str] = {
-    # Sovereign bonds
-    "calculate_curve_spread_tool",
-    "calculate_cross_market_spread_tool",
-    "calculate_butterfly_tool",
-    "scan_extremes_tool",
-    # OIS
-    "calculate_ois_curve_spread_tool",
-    "calculate_ois_cross_market_spread_tool",
-    "calculate_ois_forward_rate_tool",
-    "scan_ois_extremes_tool",
-    # Analytical model primitives — the chat surfaces a "See more in
-    # workspace" CTA that routes into the rich ModelWorkspacePage
-    # (controls rail + bespoke output renderer + presets + comparison).
-    # The frontend's decodeWorkspaceContext recognises these tool names
-    # and rewrites ?context= into ?tool=model&name=<tool_name>.
-    "calculate_rolling_regression_tool",
-    "calculate_pca_yield_curve_tool",
-    "calculate_yield_change_attribution_pca_tool",
-    "calculate_half_life_tool",
-    "calculate_beta_adjusted_spread_tool",
-    # rate_level is intentionally NOT in the workspace set — a single-
-    # point yield/rate is better viewed inline in the chat than in a
-    # dedicated analytical workspace (same decision as get_yield_levels
-    # on the sovereign side).
+# Manifest-only typed-view tools — declared in the rates manifest but
+# with NO ``PrimitiveSpec`` entry (no ``POST /api/v1/tools/{name}/run``
+# endpoint).  Build still has rendering for each of these:
+#   - ``calculate_butterfly_tool``   → typed butterfly chart
+#   - ``scan_extremes_tool``         → typed scanner table
+#   - ``classify_curve_move_tool``   → typed regime classification
+#   - ``scan_ois_extremes_tool``     → honest unsupported-known card
+# We include them explicitly so Ask traces using these tools still
+# emit a workspace_context that the frontend can decode into the right
+# read-only surface.
+_MANIFEST_ONLY_BUILD_TOOLS: frozenset[str] = frozenset(
+    {
+        "calculate_butterfly_tool",
+        "scan_extremes_tool",
+        "classify_curve_move_tool",
+        "scan_ois_extremes_tool",
+    }
+)
+
+# MCP-exposed name → registry-canonical name aliases.  Some tools are
+# defined under one name on the MCP server (``@mcp.tool()`` decorator)
+# but registered in ``_PRIMITIVE_SPECS`` under a different name — the
+# rates ``calculate_ois_rate_level_tool`` MCP tool maps to the
+# ``get_ois_rate_level_tool`` primitive spec.  When the LLM invokes
+# the tool via MCP the trace records the MCP name; we accept BOTH
+# names in the workspace gate so the route fires regardless of which
+# entry point the tool came through (the frontend's
+# ``normalizeToolName`` then canonicalises before lookup).  Tested
+# explicitly in ``tests/test_workspace_handoff_completeness.py``.
+_MCP_ALIAS_TO_CANONICAL: Mapping[str, str] = {
+    "calculate_ois_rate_level_tool": "get_ois_rate_level_tool",
 }
+
+
+def _compute_workspace_tools() -> frozenset[str]:
+    """Build the canonical workspace-tools set.
+
+    Composition:
+      1. Every key in ``rates_agent.workflows._PRIMITIVE_SPECS`` (via
+         ``known_rates_primitives``).  This is the BACKEND's
+         authoritative list of runnable primitives — every entry has a
+         working ``POST /api/v1/tools/{name}/run`` endpoint.
+      2. Plus ``_MANIFEST_ONLY_BUILD_TOOLS`` for typed-view manifest
+         entries.
+      3. Plus the keys of ``_MCP_ALIAS_TO_CANONICAL`` so an Ask trace
+         recorded under the MCP-exposed name still passes the gate.
+
+    Lazy import + memoisation:
+      - ``known_rates_primitives`` transitively imports the rates
+        analytics stack (pandas / numpy / etc.).  Importing
+        ``orchestrator.events`` at module load time should NOT require
+        that heavy chain — pre-PR-B-α it did not.  We defer the import
+        until the function is first called and memoise the result in
+        ``_workspace_tools_cache`` so subsequent calls are O(1).
+      - The cache is reset by ``_reset_workspace_tools_for_test`` so
+        tests that monkeypatch ``known_rates_primitives`` see fresh
+        values.
+    """
+    from rates_agent.workflows import known_rates_primitives
+
+    out: set[str] = set(known_rates_primitives())
+    out.update(_MANIFEST_ONLY_BUILD_TOOLS)
+    out.update(_MCP_ALIAS_TO_CANONICAL.keys())
+    return frozenset(out)
+
+
+# Lazy memoisation — see ``_compute_workspace_tools`` docstring.
+_workspace_tools_cache: Optional[frozenset[str]] = None
+
+
+def _get_workspace_tools() -> frozenset[str]:
+    """Module-private accessor.  Computes the set on first access and
+    memoises it.  Use this internally; downstream code should call
+    ``is_workspace_tool`` or read ``workspace_tools_snapshot`` instead. """
+    global _workspace_tools_cache
+    if _workspace_tools_cache is None:
+        _workspace_tools_cache = _compute_workspace_tools()
+    return _workspace_tools_cache
+
+
+def _reset_workspace_tools_for_test() -> None:
+    """Test hook — clears the memoised set so tests that monkeypatch
+    ``rates_agent.workflows.known_rates_primitives`` get a fresh
+    computation on the next call.  No production code path should
+    ever call this."""
+    global _workspace_tools_cache
+    _workspace_tools_cache = None
+
+
+# Module-level proxy for the legacy ``_WORKSPACE_TOOLS`` symbol that a
+# few existing call sites still reference directly (string-membership
+# checks).  We can't make this a property on a module, so we expose a
+# ``__getattr__`` that resolves the symbol on first access.
+def __getattr__(name: str) -> Any:
+    if name == "_WORKSPACE_TOOLS":
+        return _get_workspace_tools()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ============================================================================
@@ -142,7 +231,19 @@ _TOOL_LABEL_TEMPLATES: dict = {
         f"Fetching {p.get('curve_family', '?')} {p.get('tenor', '?')} yield"
     ),
     # OIS
+    # PR-B-α — OIS rate-level has a known MCP/registry name asymmetry
+    # (see ``_MCP_ALIAS_TO_CANONICAL``: ``rates_agent/ois/mcp_server.py``
+    # exposes ``calculate_ois_rate_level_tool``; the workflow registry's
+    # ``_PRIMITIVE_SPECS`` uses ``get_ois_rate_level_tool``).  Pre-PR-B-α
+    # only the MCP name had a label entry; a workflow-driven call landed
+    # under the registry name and fell through to the generic
+    # ``f"Running {tool_name}"`` fallback.  We register the same label
+    # under both names so the chat trace renders the same friendly
+    # string regardless of which entry point invoked the tool.
     "calculate_ois_rate_level_tool": lambda p: (
+        f"Fetching OIS {p.get('curve_family', '?')} {p.get('tenor', '?')} rate"
+    ),
+    "get_ois_rate_level_tool": lambda p: (
         f"Fetching OIS {p.get('curve_family', '?')} {p.get('tenor', '?')} rate"
     ),
     "calculate_ois_curve_spread_tool": lambda p: (
@@ -219,17 +320,71 @@ def make_tool_label(tool_name: str, params: dict) -> str:
 
 def is_workspace_tool(tool_name: str) -> bool:
     """Whether this tool's output should surface a workspace button."""
-    return tool_name in _WORKSPACE_TOOLS
+    return tool_name in _get_workspace_tools()
+
+
+def workspace_tools_snapshot() -> list[str]:
+    """Return the canonical workspace-tools set as a sorted list of
+    names.  Exposed for the frontend contract test + diagnostics —
+    snapshot consumers compare this list against the set of tools the
+    Build canvas knows how to route.  See
+    ``tests/test_workspace_handoff_completeness.py`` and the matching
+    TypeScript snapshot at
+    ``UI/macro-copilot-dashboard-polished/src/components/ask/messages/__tests__/buildHandoffContract.test.ts``.
+    """
+    return sorted(_get_workspace_tools())
 
 
 def extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
     """Given the list of tool calls seen in a turn, return the workspace
-    context dict (or None if nothing qualifies)."""
-    workspace_items = [
-        {"tool": tc["tool"], "params": tc.get("params", {}), "domain": tc.get("domain")}
-        for tc in tool_calls
-        if tc["tool"] in _WORKSPACE_TOOLS
-    ]
+    context dict (or None if nothing qualifies).
+
+    PR-B-α — preserves invocation order, params, AND optional
+    ``status`` / ``error`` fields when the source trace recorded them.
+    Per-entry shape:
+
+        {
+            "tool": str,
+            "params": dict,
+            "domain": str | None,
+            # Optional, only present when the source trace carried it:
+            "status": "ok" | "error",
+            "error": str,           # the tool's error string when status == "error"
+            "duration_ms": int,
+        }
+
+    All optional fields are added without changing the wire shape of
+    existing entries — pre-PR-B-α consumers only read ``tool`` /
+    ``params`` and ignore the rest.  The frontend's
+    ``WorkspaceContext`` TypeScript type was widened to declare the
+    optional fields so future surfaces (e.g. an honest "this tool
+    failed" tile next to the working cards) can consume them safely.
+    """
+    ws_tools = _get_workspace_tools()
+    workspace_items: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        if tc["tool"] not in ws_tools:
+            continue
+        item: dict[str, Any] = {
+            "tool": tc["tool"],
+            "params": tc.get("params", {}),
+            "domain": tc.get("domain"),
+        }
+        # Optional propagations — only emit when the source trace had
+        # them.  Avoids polluting the JSON envelope with null fields
+        # that would force every consumer to handle them.
+        err = tc.get("error")
+        if err is not None:
+            item["status"] = "error"
+            item["error"] = err
+        elif "status" in tc:
+            # An explicit ``status`` from upstream (e.g. "ok") — pass
+            # through verbatim so future statuses (e.g. "timeout")
+            # surface without an events.py change.
+            item["status"] = tc["status"]
+        if "duration_ms" in tc and tc["duration_ms"] is not None:
+            item["duration_ms"] = tc["duration_ms"]
+        workspace_items.append(item)
     if not workspace_items:
         return None
     return {"tools": workspace_items, "tool_count": len(workspace_items)}

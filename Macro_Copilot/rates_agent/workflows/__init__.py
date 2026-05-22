@@ -88,6 +88,72 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     YieldLevelOutput,
     get_yield_levels,
 )
+
+# Analytical model primitives — registered so the workspace UI's
+# model-playground can surface + run them via the same /tools catalogue
+# + /tools/{name}/run REST surface used for the desk primitives.
+# Registration is purely additive — no behaviour change to any of
+# these primitives.
+from rates_agent.sovereign_bonds.tools.rolling_regression import (
+    CONFIG_PATH as ROLLING_REGRESSION_CONFIG_PATH,
+    RollingRegressionInput,
+    RollingRegressionOutput,
+    calculate_rolling_regression,
+)
+from rates_agent.sovereign_bonds.tools.pca_yield_curve import (
+    CONFIG_PATH as PCA_YIELD_CURVE_CONFIG_PATH,
+    PcaYieldCurveInput,
+    PcaYieldCurveOutput,
+    calculate_pca_yield_curve,
+)
+from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (
+    CONFIG_PATH as YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+    YieldChangeAttributionPcaInput,
+    YieldChangeAttributionPcaOutput,
+    calculate_yield_change_attribution_pca,
+)
+from rates_agent.sovereign_bonds.tools.half_life import (
+    CONFIG_PATH as HALF_LIFE_CONFIG_PATH,
+    HalfLifeInput,
+    HalfLifeOutput,
+    calculate_half_life,
+)
+from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
+    CONFIG_PATH as BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+    BetaAdjustedSpreadInput,
+    BetaAdjustedSpreadOutput,
+    calculate_beta_adjusted_spread,
+)
+from rates_agent.sovereign_bonds.tools.zscore_custom import (
+    CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
+    ZscoreCustomInput,
+    ZscoreCustomOutput,
+    calculate_zscore_custom,
+)
+
+# PR 19 / PR 20 — Panel-emitting primitives + the TIPS-Nominal
+# breakeven spread primitive.  Registered here so the workflow
+# executor's primitive resolver can dispatch to them; the
+# Panel-shaped primitives also declare ``output_artifact_type="Panel"``
+# so the executor picks the Panel bridge over the default Series bridge.
+from rates_agent.sovereign_bonds.tools.sovereign_yield_panel import (
+    CONFIG_PATH as SOV_YIELD_PANEL_CONFIG_PATH,
+    SovereignYieldPanelInput,
+    SovereignYieldPanelOutput,
+    build_sovereign_yield_panel,
+)
+from rates_agent.sovereign_bonds.tools.breakeven_inflation import (
+    CONFIG_PATH as BREAKEVEN_INFLATION_CONFIG_PATH,
+    BreakevenInflationInput,
+    BreakevenInflationOutput,
+    calculate_breakeven_inflation,
+)
+from rates_agent.ois.tools.financing_rate import (
+    CONFIG_PATH as FINANCING_RATE_CONFIG_PATH,
+    FinancingRateInput,
+    FinancingRateOutput,
+    compute_financing_rate,
+)
 from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (
     CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
     RealYieldLevelInput,
@@ -177,42 +243,6 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
     InflationSwapButterflyInput,
     InflationSwapButterflyOutput,
     calculate_inflation_swap_butterfly,
-)
-
-# Analytical model primitives — registered so the workspace UI's
-# model-playground can surface + run them via the same /tools catalogue
-# + /tools/{name}/run REST surface used for the desk primitives.
-# Registration is purely additive — no behaviour change to any of
-# these primitives.
-from rates_agent.sovereign_bonds.tools.rolling_regression import (
-    CONFIG_PATH as ROLLING_REGRESSION_CONFIG_PATH,
-    RollingRegressionInput,
-    RollingRegressionOutput,
-    calculate_rolling_regression,
-)
-from rates_agent.sovereign_bonds.tools.pca_yield_curve import (
-    CONFIG_PATH as PCA_YIELD_CURVE_CONFIG_PATH,
-    PcaYieldCurveInput,
-    PcaYieldCurveOutput,
-    calculate_pca_yield_curve,
-)
-from rates_agent.sovereign_bonds.tools.yield_change_attribution_pca import (
-    CONFIG_PATH as YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
-    YieldChangeAttributionPcaInput,
-    YieldChangeAttributionPcaOutput,
-    calculate_yield_change_attribution_pca,
-)
-from rates_agent.sovereign_bonds.tools.half_life import (
-    CONFIG_PATH as HALF_LIFE_CONFIG_PATH,
-    HalfLifeInput,
-    HalfLifeOutput,
-    calculate_half_life,
-)
-from rates_agent.sovereign_bonds.tools.beta_adjusted_spread import (
-    CONFIG_PATH as BETA_ADJUSTED_SPREAD_CONFIG_PATH,
-    BetaAdjustedSpreadInput,
-    BetaAdjustedSpreadOutput,
-    calculate_beta_adjusted_spread,
 )
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
@@ -330,6 +360,141 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=YIELD_LEVELS_CONFIG_PATH,
         output_field_units={
             "time_series": "percent",
+        },
+    ),
+
+    # ---- Analytical models (workspace model-playground surface) ----
+    #
+    # These are the same per-tool-folder primitives the v6 sprint
+    # built; registration here exposes them through the
+    # rates_primitive_resolver so the /tools catalogue endpoint and
+    # the /tools/{name}/run endpoint surface them uniformly with the
+    # desk primitives above.  Output unit declarations follow each
+    # primitive's schemas.py field documentation.
+    "calculate_rolling_regression_tool": PrimitiveSpec(
+        tool_name="calculate_rolling_regression_tool",
+        callable=calculate_rolling_regression,
+        input_class=RollingRegressionInput,
+        output_class=RollingRegressionOutput,
+        config_path=ROLLING_REGRESSION_CONFIG_PATH,
+        output_field_units={
+            # betas / r-squared are unitless ratios; alpha + residual
+            # live in yield-percent space.
+            "time_series_betas": "ratio",
+            "time_series_alpha": "percent",
+            "time_series_residual": "percent",
+            "time_series_r_squared": "ratio",
+            "time_series_condition_flag": "count",
+        },
+    ),
+    "calculate_pca_yield_curve_tool": PrimitiveSpec(
+        tool_name="calculate_pca_yield_curve_tool",
+        callable=calculate_pca_yield_curve,
+        input_class=PcaYieldCurveInput,
+        output_class=PcaYieldCurveOutput,
+        config_path=PCA_YIELD_CURVE_CONFIG_PATH,
+        output_field_units={
+            # Factor scores are unitless eigen-coordinates.
+            "time_series_factors": "factor_level",
+        },
+    ),
+    "calculate_yield_change_attribution_pca_tool": PrimitiveSpec(
+        tool_name="calculate_yield_change_attribution_pca_tool",
+        callable=calculate_yield_change_attribution_pca,
+        input_class=YieldChangeAttributionPcaInput,
+        output_class=YieldChangeAttributionPcaOutput,
+        config_path=YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
+        # Pure-snapshot primitive (no time_series_* fields).
+        output_field_units={},
+    ),
+    "calculate_half_life_tool": PrimitiveSpec(
+        tool_name="calculate_half_life_tool",
+        callable=calculate_half_life,
+        input_class=HalfLifeInput,
+        output_class=HalfLifeOutput,
+        config_path=HALF_LIFE_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "calculate_beta_adjusted_spread_tool": PrimitiveSpec(
+        tool_name="calculate_beta_adjusted_spread_tool",
+        callable=calculate_beta_adjusted_spread,
+        input_class=BetaAdjustedSpreadInput,
+        output_class=BetaAdjustedSpreadOutput,
+        config_path=BETA_ADJUSTED_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Beta is unitless; residual is bps; z-score is z_score.
+            "time_series_beta": "ratio",
+            "time_series_residual": "bps",
+            "time_series_residual_z_score": "z_score",
+        },
+    ),
+
+    # ---- PR 19 / PR 20: Panel-emitting + breakeven primitives ----
+    #
+    # ``build_sovereign_yield_panel_tool`` and
+    # ``compute_financing_rate_tool`` BOTH emit Panel artifacts (rows
+    # = dates, columns = instrument keys / single rate column).  They
+    # declare ``output_artifact_type="Panel"`` so the executor picks
+    # ``tool_output_to_artifact_panel`` over the default Series
+    # bridge.  ``calculate_breakeven_inflation_tool`` emits canonical
+    # TimeSeries fields (matching the existing swap_spread pattern)
+    # so its output_artifact_type defaults to "Series".
+    "build_sovereign_yield_panel_tool": PrimitiveSpec(
+        tool_name="build_sovereign_yield_panel_tool",
+        callable=build_sovereign_yield_panel,
+        input_class=SovereignYieldPanelInput,
+        output_class=SovereignYieldPanelOutput,
+        config_path=SOV_YIELD_PANEL_CONFIG_PATH,
+        output_field_units={
+            # All columns in the panel are yields (PERCENT); the
+            # per-column units_by_column dict on the Panel itself
+            # carries the authoritative per-leg unit tags.
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "compute_financing_rate_tool": PrimitiveSpec(
+        tool_name="compute_financing_rate_tool",
+        callable=compute_financing_rate,
+        input_class=FinancingRateInput,
+        output_class=FinancingRateOutput,
+        config_path=FINANCING_RATE_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "calculate_breakeven_inflation_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_inflation_tool",
+        callable=calculate_breakeven_inflation,
+        input_class=BreakevenInflationInput,
+        output_class=BreakevenInflationOutput,
+        config_path=BREAKEVEN_INFLATION_CONFIG_PATH,
+        output_field_units={
+            "time_series_breakeven": "bps",
+            "time_series_zscore": "z_score",
+        },
+        # Defaults to "Series"; explicit for clarity.
+        output_artifact_type="Series",
+    ),
+    # ---- Custom-window z-score signal primitive ----
+    # ``calculate_zscore_custom_tool`` emits a TimeSeries with Z_SCORE
+    # units (rolling z-score on a single yield series).  Both field
+    # names are declared:
+    #   - ``time_series`` (legacy V1 name)
+    #   - ``time_series_zscore`` (canonical convention used by every
+    #     other z-score-emitting primitive in the codebase)
+    # The two fields carry identical payloads — see
+    # ZscoreCustomOutput's docstring for the naming reconciliation.
+    "calculate_zscore_custom_tool": PrimitiveSpec(
+        tool_name="calculate_zscore_custom_tool",
+        callable=calculate_zscore_custom,
+        input_class=ZscoreCustomInput,
+        output_class=ZscoreCustomOutput,
+        config_path=ZSCORE_CUSTOM_CONFIG_PATH,
+        output_field_units={
+            "time_series": "z_score",
+            "time_series_zscore": "z_score",
         },
     ),
 
@@ -634,72 +799,6 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # unit-compat checks rely on these declarations.
             "time_series_butterfly": "bps",
             "time_series_zscore": "z_score",
-        },
-    ),
-
-    # ---- Analytical models (workspace model-playground surface) ----
-    #
-    # These are the same per-tool-folder primitives the v6 sprint
-    # built; registration here exposes them through the
-    # rates_primitive_resolver so the /tools catalogue endpoint and
-    # the /tools/{name}/run endpoint surface them uniformly with the
-    # desk primitives above.  Output unit declarations follow each
-    # primitive's schemas.py field documentation.
-    "calculate_rolling_regression_tool": PrimitiveSpec(
-        tool_name="calculate_rolling_regression_tool",
-        callable=calculate_rolling_regression,
-        input_class=RollingRegressionInput,
-        output_class=RollingRegressionOutput,
-        config_path=ROLLING_REGRESSION_CONFIG_PATH,
-        output_field_units={
-            # betas / r-squared are unitless ratios; alpha + residual
-            # live in yield-percent space.
-            "time_series_betas": "ratio",
-            "time_series_alpha": "percent",
-            "time_series_residual": "percent",
-            "time_series_r_squared": "ratio",
-            "time_series_condition_flag": "count",
-        },
-    ),
-    "calculate_pca_yield_curve_tool": PrimitiveSpec(
-        tool_name="calculate_pca_yield_curve_tool",
-        callable=calculate_pca_yield_curve,
-        input_class=PcaYieldCurveInput,
-        output_class=PcaYieldCurveOutput,
-        config_path=PCA_YIELD_CURVE_CONFIG_PATH,
-        output_field_units={
-            # Factor scores are unitless eigen-coordinates.
-            "time_series_factors": "factor_level",
-        },
-    ),
-    "calculate_yield_change_attribution_pca_tool": PrimitiveSpec(
-        tool_name="calculate_yield_change_attribution_pca_tool",
-        callable=calculate_yield_change_attribution_pca,
-        input_class=YieldChangeAttributionPcaInput,
-        output_class=YieldChangeAttributionPcaOutput,
-        config_path=YIELD_CHANGE_ATTRIBUTION_PCA_CONFIG_PATH,
-        # Pure-snapshot primitive (no time_series_* fields).
-        output_field_units={},
-    ),
-    "calculate_half_life_tool": PrimitiveSpec(
-        tool_name="calculate_half_life_tool",
-        callable=calculate_half_life,
-        input_class=HalfLifeInput,
-        output_class=HalfLifeOutput,
-        config_path=HALF_LIFE_CONFIG_PATH,
-        output_field_units={},
-    ),
-    "calculate_beta_adjusted_spread_tool": PrimitiveSpec(
-        tool_name="calculate_beta_adjusted_spread_tool",
-        callable=calculate_beta_adjusted_spread,
-        input_class=BetaAdjustedSpreadInput,
-        output_class=BetaAdjustedSpreadOutput,
-        config_path=BETA_ADJUSTED_SPREAD_CONFIG_PATH,
-        output_field_units={
-            # Beta is unitless; residual is bps; z-score is z_score.
-            "time_series_beta": "ratio",
-            "time_series_residual": "bps",
-            "time_series_residual_z_score": "z_score",
         },
     ),
 }

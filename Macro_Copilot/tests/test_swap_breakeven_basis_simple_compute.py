@@ -349,7 +349,7 @@ class TestBundledConfig:
 
     def test_config_loads(self):
         cfg = load_tool_config(CONFIG_PATH)
-        assert cfg.tool.name == "swap_breakeven_basis_simple"
+        assert cfg.tool.name == "calculate_swap_breakeven_basis_simple_tool"
         assert cfg.tool.domain == "inflation_swaps"
         assert cfg.tool.category == "desk_invariant_primitive"
 

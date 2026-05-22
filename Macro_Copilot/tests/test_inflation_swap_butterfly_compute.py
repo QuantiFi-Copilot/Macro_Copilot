@@ -255,7 +255,7 @@ class TestBundledConfig:
 
     def test_config_loads(self):
         cfg = load_tool_config(CONFIG_PATH)
-        assert cfg.tool.name == "inflation_swap_butterfly"
+        assert cfg.tool.name == "calculate_inflation_swap_butterfly_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
     def test_category_is_desk_invariant_primitive(self):

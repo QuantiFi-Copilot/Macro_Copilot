@@ -265,6 +265,23 @@ methodology:
        =PX_LAST.  This is why we cannot reuse the same-domain
        cross_market_spread primitive (which assumes a single
        field_name across both legs)."
+    - "PR 21 disclosure (par-par approximation).  This primitive
+       computes the ``par-par`` asset-swap-spread approximation:
+       (sovereign_yield − ois_rate) × 100 in bps at MATCHED tenor.
+       This is the standard desk quick-and-dirty ASW used for
+       relative-value screens.  The TRUE asset-swap-spread (the
+       present-value-equivalent spread that prices the bond as a
+       floating-rate note) requires bond-level metadata not yet
+       ingested: coupon rate, accrued interest schedule, day-count
+       convention, dirty-price.  The error magnitude between par-par
+       and true ASW is typically 1-3 bps for liquid sovereigns but
+       can grow to 10+ bps for off-the-run / high-coupon bonds.
+       Workspace methodology cards MUST surface this disclosure
+       (the lineage step's params include the convention so the
+       methodology renderer reads it).  V2 work: ingest the
+       bond-level metadata, add a ``convention: [par_par,
+       present_value_asw]`` knob with PV_ASW computed when caller
+       opts in."
 
   citations: []
 

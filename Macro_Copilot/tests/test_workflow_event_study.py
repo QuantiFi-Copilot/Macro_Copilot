@@ -1103,12 +1103,62 @@ class TestResolverCompleteness:
         assert spec.output_field_units["time_series_forward"] == "percent"
         assert spec.output_field_units["time_series_zscore"] == "z_score"
 
-    def test_known_primitives_includes_all_seven(self):
-        # 4 OIS primitives (curve_spread, cross_market_spread,
-        # rate_level, swap_spread, forward_rate) + 3 sovereign
-        # primitives (curve_spread, cross_market_spread, yield_levels)
-        # = 8.
-        assert len(known_rates_primitives()) == 8
+    def test_known_primitives_includes_all_canonical(self):
+        # Registry has grown across Phase 0 + Phase 1 PRs (PR 20 adds
+        # the panel-emitting + breakeven-inflation primitives).  We
+        # assert the FULL canonical set is present — the test exists
+        # to catch accidental deregistration AND to gate the
+        # workflow router's catalogue against silent regressions.
+        registered = set(known_rates_primitives())
+        canonical_set = {
+            # OIS family
+            "calculate_ois_curve_spread_tool",
+            "calculate_ois_cross_market_spread_tool",
+            "get_ois_rate_level_tool",
+            "calculate_swap_spread_tool",
+            "calculate_ois_forward_rate_tool",
+            "compute_financing_rate_tool",
+            # Sovereign family
+            "calculate_curve_spread_tool",
+            "calculate_cross_market_spread_tool",
+            "get_yield_levels_tool",
+            "build_sovereign_yield_panel_tool",
+            "calculate_breakeven_inflation_tool",
+            "calculate_zscore_custom_tool",
+            # Analytical models (workspace surface)
+            "calculate_rolling_regression_tool",
+            "calculate_pca_yield_curve_tool",
+            "calculate_yield_change_attribution_pca_tool",
+            "calculate_half_life_tool",
+            "calculate_beta_adjusted_spread_tool",
+            # Inflation-indexed-bonds (linker) family
+            "get_real_yield_level_tool",
+            "calculate_breakeven_inflation_simple_tool",
+            "calculate_forward_breakeven_simple_tool",
+            "calculate_breakeven_curve_spread_tool",
+            "calculate_cross_country_breakeven_spread_simple_tool",
+            "calculate_real_yield_curve_spread_tool",
+            "calculate_cross_country_real_yield_spread_simple_tool",
+            "calculate_real_yield_butterfly_tool",
+            "calculate_breakeven_butterfly_tool",
+            # Inflation-swaps family
+            "calculate_inflation_swap_rate_level_tool",
+            "calculate_inflation_swap_curve_spread_tool",
+            "calculate_inflation_swap_forward_tool",
+            "calculate_cross_market_inflation_swap_spread_tool",
+            "calculate_swap_breakeven_basis_simple_tool",
+            "calculate_inflation_swap_butterfly_tool",
+        }
+        missing = canonical_set - registered
+        assert not missing, (
+            f"Canonical primitives missing from registry: {sorted(missing)}.  "
+            f"Registered today: {sorted(registered)}."
+        )
+        assert len(registered) == len(canonical_set), (
+            f"Registered primitive count drifted from canonical.\n"
+            f"  Expected ({len(canonical_set)}): {sorted(canonical_set)}\n"
+            f"  Got ({len(registered)}): {sorted(registered)}"
+        )
 
     def test_swap_spread_change_zscore_registered(self):
         """The canonical Q1 binding lifts

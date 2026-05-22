@@ -1,0 +1,1 @@
+{"nodes": [{"id": "workflow_prompts_render_router_system_prompt", "label": "render_router_system_prompt", "file_type": "code", "source_file": "Macro_Copilot/orchestrator/workflow_prompts.py", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}

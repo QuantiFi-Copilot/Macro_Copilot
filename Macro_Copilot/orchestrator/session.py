@@ -56,7 +56,10 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, Optional
+
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 
 from orchestrator.config import (
     DOMAIN_MCP_SERVERS,
@@ -64,6 +67,16 @@ from orchestrator.config import (
     LLM_MODEL,
     LLM_TEMPERATURE,
 )
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+    from sqlalchemy.engine import Engine
+
+    from orchestrator.reference_resolver import (
+        ReferenceResolution,
+        ReferenceResolver,
+    )
+    from orchestrator.state import TurnContext
 from orchestrator.contracts import (
     ChildResponse,
     ChildStatus,
@@ -78,6 +91,7 @@ from orchestrator.prompts import (
     INFLATION_SWAPS_SYSTEM_PROMPT,
     OIS_SYSTEM_PROMPT,
     SOVEREIGN_BONDS_SYSTEM_PROMPT,
+    render_routing_prefix,
 )
 from orchestrator.supervisor import Supervisor
 from orchestrator.workflow_contracts import (
@@ -119,16 +133,65 @@ class CopilotSession:
     ----------
     thread_id : Optional[str]
         Session id.  Auto-generated if omitted.
-    stateless : bool, default True
+    stateless : bool, default False
         When True, each user turn gets a unique checkpointer thread_id
-        per child so prior history doesn't accumulate in context.  Set
-        False only for future "intelligence mode" multi-turn work.
+        per child (legacy behavior preserved for tests + CLI) AND the
+        session uses an in-memory ``MemorySaver`` regardless of
+        ``checkpointer_pool``.  When False (the new default after
+        Phase 0 PR 5), conversation state persists across turns within
+        a session — and if a ``checkpointer_pool`` is provided, it
+        persists across server restarts as well.
+    checkpointer_pool : Optional[AsyncConnectionPool]
+        psycopg3 async connection pool to back the LangGraph
+        checkpointer.  When provided AND ``stateless=False``, the
+        session uses ``AsyncPostgresSaver(pool)`` so conversation
+        state lives in the ``langgraph_checkpoint`` Postgres schema
+        and survives Python process restarts.  When ``None``, the
+        session uses ``MemorySaver`` (in-process; lost on restart).
+        Tests that don't need durability omit this; the production
+        WebSocket path injects it from
+        ``api.dependencies.get_checkpointer_pool()``.
+
+    Checkpointer matrix
+    -------------------
+    +-----------+--------------+--------------+------------------+----------------+
+    | stateless | pool         | thread_id    | checkpointer     | survives       |
+    |           |              |              |                  | restart?       |
+    +===========+==============+==============+==================+================+
+    | True      | any          | per-turn     | MemorySaver      | no             |
+    +-----------+--------------+--------------+------------------+----------------+
+    | False     | None         | per-session  | MemorySaver      | no (in-proc    |
+    |           |              | stable       |                  | only)          |
+    +-----------+--------------+--------------+------------------+----------------+
+    | False     | provided     | per-session  | AsyncPostgres-   | YES            |
+    |           |              | stable       | Saver(pool)      |                |
+    +-----------+--------------+--------------+------------------+----------------+
     """
 
-    def __init__(self, thread_id: Optional[str] = None, stateless: bool = True):
+    def __init__(
+        self,
+        thread_id: Optional[str] = None,
+        stateless: bool = False,
+        checkpointer_pool: Optional["AsyncConnectionPool"] = None,
+        session_id: Optional[uuid.UUID] = None,
+        engine: Optional["Engine"] = None,
+    ):
         self.thread_id = thread_id or f"ws-{uuid.uuid4().hex[:12]}"
         self.stateless = stateless
+        self._checkpointer_pool = checkpointer_pool
         self._turn_counter = 0
+
+        # Phase 0 PR 8: persistent turn lifecycle.  When ``engine`` is
+        # provided AND ``stateless`` is False, every turn is bracketed
+        # by ``begin_turn`` / ``commit_turn`` against the
+        # ``copilot_state.turns`` table; the resolver runs at the top
+        # of each turn against the visible working-set names.  When
+        # ``engine`` is None (the test / CLI path) we skip the DB
+        # lifecycle entirely — tests that don't spin up Postgres can
+        # still construct a CopilotSession.
+        self._session_id: Optional[uuid.UUID] = session_id
+        self._engine: Optional["Engine"] = engine
+        self._resolver: Optional["ReferenceResolver"] = None
 
         self._supervisor: Supervisor | None = None
         # PR 10: workflow router parallel to the supervisor.  Built at
@@ -187,6 +250,27 @@ class CopilotSession:
             max_tokens=LLM_MAX_TOKENS,
         )
 
+        # Phase 0 PR 8: reference resolver.  Same model / cache prefix
+        # as the supervisor; small max_tokens because the output is a
+        # two-field structured record.  Created unconditionally so the
+        # resolver-failure path stays simple — if there's no engine,
+        # we just never call it.
+        try:
+            from orchestrator.reference_resolver import ReferenceResolver
+
+            self._resolver = ReferenceResolver(
+                model_name=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=256,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[%s] failed to build reference resolver; turns will "
+                "skip working-set NL resolution: %s",
+                self.thread_id, exc,
+            )
+            self._resolver = None
+
         # PR 10: workflow router.  Constructing it triggers the rendered
         # template-catalogue + primitive-shape system prompt build (one
         # static prefix, cache-eligible).  Importing the registered
@@ -242,6 +326,12 @@ class CopilotSession:
                 model_name=LLM_MODEL,
                 temperature=LLM_TEMPERATURE,
                 max_tokens=LLM_MAX_TOKENS,
+                # Phase 0 PR 5: every domain child shares the same
+                # checkpointer.  Per-domain thread isolation is achieved
+                # by ``_child_thread_id`` returning a domain-suffixed
+                # thread id, NOT by giving each child its own
+                # checkpointer object.
+                checkpointer=self._make_checkpointer(),
             )
             self._child_open_locks[domain] = asyncio.Lock()
 
@@ -426,6 +516,20 @@ class CopilotSession:
                 await emit(
                     SessionEvent(type="error", data={"message": str(exc)})
                 )
+                # Safety net: error events alone don't render as
+                # assistant text in the UI, so the chat would go
+                # silent.  Always emit a user-visible token too.
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "Something went wrong processing your "
+                                f"request: {exc}"
+                            ),
+                        },
+                    )
+                )
             finally:
                 total_ms = round((time.monotonic() - total_start) * 1000)
                 logger.info(
@@ -582,9 +686,22 @@ class CopilotSession:
         # 'connect'`` deep inside the first primitive, which is the bug
         # the chat path showed.  We swallow init errors and degrade
         # gracefully so a missing DB doesn't take down the chat.
+        #
+        # PR A also resolves the object-storage backend here so the
+        # runner can persist each executed workflow as a workspace
+        # (the Build UI's read surface).  Object-storage init failure
+        # is non-fatal: the runner sees ``object_storage=None`` and
+        # short-circuits persistence with ``persistence.ok=False``;
+        # the chat response itself is unaffected.
         engine = None
+        object_storage = None
         try:
-            from api.dependencies import get_engine, init_engine
+            from api.dependencies import (
+                get_engine,
+                get_object_storage,
+                init_engine,
+                init_object_storage,
+            )
             try:
                 engine = get_engine()
             except RuntimeError:
@@ -592,20 +709,36 @@ class CopilotSession:
                 # outside FastAPI) — initialise the singleton on first
                 # use.
                 engine = init_engine()
+            try:
+                object_storage = get_object_storage()
+            except RuntimeError:
+                object_storage = init_object_storage()
         except Exception as exc:
             logger.warning(
-                "[%s] %s could not acquire DB engine for workflow run: %s",
+                "[%s] %s could not acquire persistence dependencies "
+                "for workflow run: %s",
                 self.thread_id, turn_label, exc,
             )
 
         # The substrate's executor is synchronous; offload to a thread
-        # so the WebSocket event loop isn't blocked.
+        # so the WebSocket event loop isn't blocked.  ``persist=True``
+        # opts the chat path into materialising every workflow result
+        # as a slug-routed workspace.  When persistence init failed
+        # above (engine / object_storage is None), the runner's
+        # internal guard short-circuits with a benign error envelope
+        # under ``persistence`` — chat keeps streaming.
         try:
             envelope = await asyncio.to_thread(
                 run_template,
                 decision.template_id,
                 dict(decision.slot_values or {}),
                 engine=engine,
+                persist=True,
+                object_storage=object_storage,
+                workspace_name=_workspace_name_for(decision),
+                workspace_created_by=(
+                    str(self._session_id) if self._session_id else None
+                ),
             )
         except Exception as exc:
             logger.exception(
@@ -645,6 +778,22 @@ class CopilotSession:
                         "workflow_lineage_summary"
                     ),
                     "error": envelope.get("error"),
+                    # PR A: persistence handles so the chat's "Open
+                    # in Build" affordance can deep-link to the
+                    # slug-routed workspace.  ``None``-friendly when
+                    # persistence is disabled or failed; the
+                    # frontend renders the result inline either way
+                    # and only surfaces the handoff when
+                    # ``workspace.slug`` is present.
+                    "terminal_artifact_hash": envelope.get(
+                        "terminal_artifact_hash"
+                    ),
+                    "node_artifact_hashes": envelope.get(
+                        "node_artifact_hashes"
+                    ),
+                    "dag_hash": envelope.get("dag_hash"),
+                    "workspace": envelope.get("workspace"),
+                    "persistence": envelope.get("persistence"),
                     "route": {
                         "template_id": decision.template_id,
                         "slot_values": dict(decision.slot_values or {}),
@@ -674,6 +823,204 @@ class CopilotSession:
         )
         return True
 
+    # ------------------------------------------------------------------
+    # PR 8 — persistent turn lifecycle + reference resolver
+    # ------------------------------------------------------------------
+
+    def _persistent_turn_enabled(self) -> bool:
+        """True iff this session should bracket turns with the
+        ``copilot_state.turns`` lifecycle.
+
+        Requires:
+          - an SQLAlchemy engine (so we can write)
+          - a session_id UUID (so the turn knows what session it
+            belongs to)
+          - stateless=False (stateless sessions are deliberately
+            ephemeral — no DB writes)
+
+        When False, ``_run_turn`` skips ``begin_turn`` / ``commit_turn``
+        entirely.  Tests and the CLI REPL hit this branch.
+        """
+        return (
+            not self.stateless
+            and self._engine is not None
+            and self._session_id is not None
+        )
+
+    def _begin_turn_if_possible(
+        self, user_message: str
+    ) -> Optional["TurnContext"]:
+        """Open a ``copilot_state.turns`` row.  Returns None on failure
+        or when persistent lifecycle is disabled.
+
+        Failures are LOGGED but never propagate — a DB outage should
+        not break the chat (degraded operation, same contract as
+        the checkpointer pool).
+        """
+        if not self._persistent_turn_enabled():
+            return None
+        try:
+            from orchestrator.state import begin_turn as _begin_turn
+
+            with self._engine.begin() as conn:
+                return _begin_turn(
+                    user_message,
+                    session_id=self._session_id,
+                    conn=conn,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[%s] begin_turn failed; running turn without "
+                "persistence: %s",
+                self.thread_id, exc,
+            )
+            return None
+
+    def _commit_turn_if_possible(
+        self,
+        turn_ctx: Optional["TurnContext"],
+        *,
+        status: str,
+        assistant_response: Optional[str],
+        save_as: Optional[str],
+    ) -> None:
+        """Finalize the turn row, if one was opened.  Best-effort:
+        commit-time failures are LOGGED, not raised.
+
+        ``terminal_artifact_hash`` is None in PR 8 — the chat path
+        does not yet produce a content-addressed terminal artifact
+        per turn (workflow turns produce envelopes; the artifact
+        store wiring lives in the workflow runner, not here).  Once
+        a future PR wires terminal artifacts back through the chat
+        path, this method gains a ``terminal_artifact_hash`` arg.
+        """
+        if turn_ctx is None:
+            return
+        try:
+            from orchestrator.state import commit_turn as _commit_turn
+
+            with self._engine.begin() as conn:
+                _commit_turn(
+                    turn_ctx,
+                    conn=conn,
+                    status=status,
+                    assistant_response=assistant_response,
+                    terminal_artifact_hash=None,
+                    save_as=save_as,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[%s] commit_turn failed (status=%s); turn row left "
+                "in 'running' state: %s",
+                self.thread_id, status, exc,
+            )
+
+    async def _resolve_references(
+        self, user_message: str
+    ) -> Optional["ReferenceResolution"]:
+        """Run the reference resolver against ``user_message``.
+
+        Returns None when:
+          - persistent lifecycle is disabled (no engine / no session
+            id / stateless),
+          - the resolver wasn't built at open() time,
+          - the LLM call failed (the resolver itself swallows + logs).
+
+        Pulls visible names from ``state.working_set.list_visible``
+        in a fresh transaction so the resolver sees the latest set.
+        """
+        if not self._persistent_turn_enabled() or self._resolver is None:
+            return None
+        try:
+            from state.working_set import list_visible
+
+            with self._engine.connect() as conn:
+                names = [n.name for n in list_visible(
+                    session_id=self._session_id, conn=conn,
+                )]
+        except Exception as exc:
+            logger.warning(
+                "[%s] could not load visible working-set names for "
+                "resolver; skipping: %s",
+                self.thread_id, exc,
+            )
+            return None
+
+        try:
+            return await self._resolver.resolve(
+                user_message, visible_names=names,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[%s] resolver raised; continuing without it: %s",
+                self.thread_id, exc,
+            )
+            return None
+
+    def _load_recent_turns_if_possible(
+        self,
+        exclude_turn_id,
+        limit: int = 5,
+    ) -> list:
+        """Read the last N completed turns for this session.  Returns
+        an empty list when persistent lifecycle is disabled or the
+        SELECT fails — routing then proceeds without prior-turn
+        context (same degraded-operation contract as the rest of
+        the persistence layer).
+
+        ``exclude_turn_id`` is typically the CURRENT turn's id so
+        the in-flight user message does not appear in its own
+        "recent" context.
+        """
+        if not self._persistent_turn_enabled():
+            return []
+        try:
+            from orchestrator.state import load_recent_turns
+
+            with self._engine.connect() as conn:
+                return load_recent_turns(
+                    self._session_id,
+                    conn=conn,
+                    exclude_turn_id=exclude_turn_id,
+                    limit=limit,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[%s] could not load recent turns; routing layer will "
+                "see no prior context: %s",
+                self.thread_id, exc,
+            )
+            return []
+
+    def _augment_user_message(
+        self,
+        user_message: str,
+        visible_names: list[str],
+        recent_turns: list,
+    ) -> str:
+        """Prepend the routing prefix (recent conversation + working
+        set) to the user message.
+
+        The supervisor + workflow router + each domain child see the
+        augmented text; the raw user_message lands unchanged in
+        ``copilot_state.turns.user_message`` because that's stored
+        BEFORE this augmentation runs (in ``begin_turn``).
+
+        Empty session + empty working set → prefix collapses to the
+        empty string and ``user_message`` is returned verbatim.  No
+        "USER MESSAGE:" boilerplate when there's nothing to prefix
+        — keeps the cold-session prompt clean.
+
+        PR 13: ``recent_turns`` is the new piece.  Phase 0 PR 8 only
+        included the working-set block; the supervisor + workflow
+        router could not resolve "the Bund one" follow-ups because
+        they had no prior-turn context.
+        """
+        prefix = render_routing_prefix(recent_turns, visible_names)
+        if not prefix:
+            return user_message
+        return f"{prefix}\n\nUSER MESSAGE:\n{user_message}"
+
     async def _run_turn(
         self,
         user_message: str,
@@ -693,145 +1040,293 @@ class CopilotSession:
         the turn falls through to the existing supervisor flow
         unchanged.
 
+        Phase 0 PR 8 adds persistent turn lifecycle around this flow:
+
+          - begin_turn at entry (when engine + session_id are set);
+            failures log a warning and the turn runs without
+            persistence rather than failing the user-visible path.
+          - resolver runs once at entry to extract save_as +
+            referenced_names from the natural-language message.  Its
+            output is captured and used by commit_turn (save_as) and
+            by the prompt augmentation (visible-name block injection).
+          - commit_turn at exit, with status / assistant_response /
+            save_as bound from the run.
+
         Steps:
-          0. (PR 10) workflow router pre-gate.  ROUTE → run workflow +
+          0. (PR 8) begin_turn + resolver + visible-name block injection.
+          1. (PR 10) workflow router pre-gate.  ROUTE → run workflow +
              return; OUT_OF_SCOPE → fall through; CLARIFY → emit
              question + return (same shape as supervisor's clarify).
-          1. emit ``status=routing`` and get the RouteDecision from the
+          2. emit ``status=routing`` and get the RouteDecision from the
              supervisor.
-          2. emit ``route_decision`` with action/domains/rationale.
-          3. Branch: clarify, single_domain, or multi_domain.
-          4. emit ``done`` with workspace_context and tool_calls from
+          3. emit ``route_decision`` with action/domains/rationale.
+          4. Branch: clarify, single_domain, or multi_domain.
+          5. emit ``done`` with workspace_context and tool_calls from
              whichever children ran.
+          6. (PR 8) commit_turn finalises the turn row.
         """
         turn_start = time.monotonic()
 
         # ------------------------------------------------------------------
-        # 0. WORKFLOW ROUTER PRE-GATE (PR 10)
+        # 0. PR 8 — persistent turn lifecycle: begin_turn + resolver
         # ------------------------------------------------------------------
-        if self._workflow_router is not None:
-            workflow_handled = await self._maybe_run_workflow(
-                user_message, turn_label, emit, turn_start,
-            )
-            if workflow_handled:
-                return
-
-        # ------------------------------------------------------------------
-        # 1. Supervisor routing
-        # ------------------------------------------------------------------
-        await emit(SessionEvent(type="status", data={"status": "routing"}))
-
-        try:
-            decision: RouteDecision = await self._supervisor.route(user_message)
-        except Exception as exc:
-            logger.exception(
-                "[%s] %s supervisor route failed", self.thread_id, turn_label
-            )
-            await emit(
-                SessionEvent(
-                    type="error",
-                    data={"message": f"Routing failed: {exc}"},
-                )
-            )
-            await emit(
-                SessionEvent(
-                    type="done",
-                    data={
-                        "workspace_context": None,
-                        "tool_calls": [],
-                        "total_duration_ms": round(
-                            (time.monotonic() - turn_start) * 1000
-                        ),
-                    },
-                )
-            )
-            return
-
-        await emit(
-            SessionEvent(
-                type="route_decision",
-                data={
-                    "action": decision.action.value,
-                    "domains": [d.value for d in decision.domains],
-                    "rationale": decision.rationale,
-                    # ``adjustments`` is populated by _normalise_route_decision
-                    # when the raw LLM output had to be repaired.  Empty list
-                    # = clean JSON from the supervisor.  Consistently
-                    # non-empty across turns = supervisor prompt needs work.
-                    "adjustments": list(decision.adjustments),
-                },
-            )
+        turn_ctx = self._begin_turn_if_possible(user_message)
+        resolution = await self._resolve_references(user_message)
+        save_as: Optional[str] = (
+            resolution.save_as if resolution is not None else None
         )
 
+        # Capture assistant-visible token stream so commit_turn can
+        # persist it as ``assistant_response``.  This is the text the
+        # user actually saw; wraps emit to tee the token events.
+        emitted_text_parts: list[str] = []
+        original_emit = emit
+
+        async def teeing_emit(event: SessionEvent) -> None:
+            if event.type == "token":
+                piece = event.data.get("content", "")
+                if piece:
+                    emitted_text_parts.append(piece)
+            await original_emit(event)
+
+        emit = teeing_emit
+
         # ------------------------------------------------------------------
-        # 2. Branch by action
+        # Build the routing prefix injected before user_message:
+        #   - recent conversation transcript (PR 13) for follow-up
+        #     reference resolution
+        #   - working-set names (PR 8) for explicit named-handle refs
+        # Both blocks render to empty when their inputs are empty,
+        # and the composed prefix collapses to the empty string when
+        # both are — keeping a cold-session prompt clean.
         # ------------------------------------------------------------------
-        if decision.action == RouteAction.CLARIFY:
-            question = (
-                decision.clarification_question
-                or "Could you clarify which market you're asking about?"
-            )
+        visible: list[str] = []
+        if self._persistent_turn_enabled():
+            try:
+                from state.working_set import list_visible
+
+                with self._engine.connect() as conn:
+                    visible = [
+                        n.name
+                        for n in list_visible(
+                            session_id=self._session_id, conn=conn,
+                        )
+                    ]
+            except Exception as exc:
+                logger.warning(
+                    "[%s] could not load working-set names for routing "
+                    "prefix; continuing without them: %s",
+                    self.thread_id, exc,
+                )
+                visible = []
+
+        recent_turns = self._load_recent_turns_if_possible(
+            exclude_turn_id=(turn_ctx.turn_id if turn_ctx is not None else None),
+        )
+        augmented_message = self._augment_user_message(
+            user_message, visible, recent_turns,
+        )
+
+        turn_status: str = "completed"
+        try:
+            # --------------------------------------------------------------
+            # 0. WORKFLOW ROUTER PRE-GATE (PR 10 + PR 13)
+            # --------------------------------------------------------------
+            # PR 10 fed the workflow router the RAW user_message,
+            # arguing that "it routes on prompt shape, not
+            # conversational context".  In practice that broke the
+            # follow-up case: a user asking "what about the Bund
+            # one?" after a UST 2s10s turn hit the workflow router
+            # with no context and got a CLARIFY response.
+            #
+            # PR 13: pass the augmented message so the workflow
+            # router can resolve follow-up references the same way
+            # the supervisor + children do.  The routing-prefix
+            # composer renders to empty string on a cold session,
+            # so this is additive — sessions with no prior context
+            # behave exactly as PR 10 did.
+            if self._workflow_router is not None:
+                workflow_handled = await self._maybe_run_workflow(
+                    augmented_message, turn_label, emit, turn_start,
+                )
+                if workflow_handled:
+                    return
+
+            # --------------------------------------------------------------
+            # 1. Supervisor routing — sees augmented message so it can
+            #    route on "compare that with tips_2y_v1"-style refs.
+            # --------------------------------------------------------------
             await emit(
-                SessionEvent(type="clarification", data={"question": question})
+                SessionEvent(type="status", data={"status": "routing"})
             )
-            # Also stream the question as tokens so the chat UI renders it
-            # as a normal assistant reply.
-            await emit(SessionEvent(type="token", data={"content": question}))
+
+            try:
+                decision: RouteDecision = await self._supervisor.route(
+                    augmented_message
+                )
+            except Exception as exc:
+                logger.exception(
+                    "[%s] %s supervisor route failed",
+                    self.thread_id, turn_label,
+                )
+                await emit(
+                    SessionEvent(
+                        type="error",
+                        data={"message": f"Routing failed: {exc}"},
+                    )
+                )
+                # Safety net: surface a user-visible token so the
+                # chat doesn't go silent on supervisor failures
+                # (e.g. structured-output schema validation errors).
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I couldn't route this request to a "
+                                f"specialist (routing layer error: {exc}). "
+                                "Please try rephrasing or ask again."
+                            ),
+                        },
+                    )
+                )
+                await emit(
+                    SessionEvent(
+                        type="done",
+                        data={
+                            "workspace_context": None,
+                            "tool_calls": [],
+                            "total_duration_ms": round(
+                                (time.monotonic() - turn_start) * 1000
+                            ),
+                        },
+                    )
+                )
+                turn_status = "failed"
+                return
+
             await emit(
                 SessionEvent(
-                    type="done",
+                    type="route_decision",
                     data={
-                        "workspace_context": None,
-                        "tool_calls": [],
-                        "total_duration_ms": round(
-                            (time.monotonic() - turn_start) * 1000
-                        ),
+                        "action": decision.action.value,
+                        "domains": [d.value for d in decision.domains],
+                        "rationale": decision.rationale,
+                        "adjustments": list(decision.adjustments),
                     },
                 )
             )
-            return
 
-        # Validate that every routed domain has an open child.
-        missing = [d for d in decision.domains if d not in self._children]
-        if missing:
-            msg = (
-                f"Routing selected domain(s) with no open child: "
-                f"{[d.value for d in missing]}"
-            )
-            logger.error("[%s] %s %s", self.thread_id, turn_label, msg)
-            await emit(SessionEvent(type="error", data={"message": msg}))
-            await emit(
-                SessionEvent(
-                    type="done",
-                    data={
-                        "workspace_context": None,
-                        "tool_calls": [],
-                        "total_duration_ms": round(
-                            (time.monotonic() - turn_start) * 1000
-                        ),
-                    },
+            # --------------------------------------------------------------
+            # 2. Branch by action
+            # --------------------------------------------------------------
+            if decision.action == RouteAction.CLARIFY:
+                question = (
+                    decision.clarification_question
+                    or "Could you clarify which market you're asking about?"
                 )
-            )
-            return
+                await emit(
+                    SessionEvent(
+                        type="clarification", data={"question": question}
+                    )
+                )
+                await emit(
+                    SessionEvent(type="token", data={"content": question})
+                )
+                await emit(
+                    SessionEvent(
+                        type="done",
+                        data={
+                            "workspace_context": None,
+                            "tool_calls": [],
+                            "total_duration_ms": round(
+                                (time.monotonic() - turn_start) * 1000
+                            ),
+                        },
+                    )
+                )
+                return
 
-        if decision.action == RouteAction.SINGLE_DOMAIN:
-            await self._run_single_domain(
-                user_message=user_message,
-                domain=decision.domains[0],
+            missing = [
+                d for d in decision.domains if d not in self._children
+            ]
+            if missing:
+                msg = (
+                    f"Routing selected domain(s) with no open child: "
+                    f"{[d.value for d in missing]}"
+                )
+                logger.error(
+                    "[%s] %s %s", self.thread_id, turn_label, msg
+                )
+                await emit(
+                    SessionEvent(type="error", data={"message": msg})
+                )
+                # Safety net: user-visible token so the chat doesn't
+                # go silent on this internal misroute.
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I tried to route this to a specialist that "
+                                "isn't currently available.  Please try again."
+                            ),
+                        },
+                    )
+                )
+                await emit(
+                    SessionEvent(
+                        type="done",
+                        data={
+                            "workspace_context": None,
+                            "tool_calls": [],
+                            "total_duration_ms": round(
+                                (time.monotonic() - turn_start) * 1000
+                            ),
+                        },
+                    )
+                )
+                turn_status = "failed"
+                return
+
+            if decision.action == RouteAction.SINGLE_DOMAIN:
+                await self._run_single_domain(
+                    user_message=augmented_message,
+                    domain=decision.domains[0],
+                    turn_label=turn_label,
+                    turn_start=turn_start,
+                    emit=emit,
+                )
+                return
+
+            # MULTI_DOMAIN
+            await self._run_multi_domain(
+                user_message=augmented_message,
+                domains=decision.domains,
                 turn_label=turn_label,
                 turn_start=turn_start,
                 emit=emit,
             )
-            return
-
-        # MULTI_DOMAIN
-        await self._run_multi_domain(
-            user_message=user_message,
-            domains=decision.domains,
-            turn_label=turn_label,
-            turn_start=turn_start,
-            emit=emit,
-        )
+        except asyncio.CancelledError:
+            # Cancellation isn't a "failed" turn — the user closed the
+            # WebSocket / explicitly cancelled.  Record as cancelled
+            # so the audit trail is honest, then re-raise so the
+            # outer pipeline task observes the cancellation.
+            turn_status = "cancelled"
+            raise
+        except Exception:
+            turn_status = "failed"
+            raise
+        finally:
+            assistant_response = (
+                "".join(emitted_text_parts).strip() or None
+            )
+            self._commit_turn_if_possible(
+                turn_ctx,
+                status=turn_status,
+                assistant_response=assistant_response,
+                save_as=save_as,
+            )
 
     # ------------------------------------------------------------------
     # Single-domain branch
@@ -872,6 +1367,19 @@ class CopilotSession:
                         "message": (
                             f"Could not start the {domain.value} "
                             f"specialist: {exc}"
+                        ),
+                    },
+                )
+            )
+            # Safety net: user-visible token so the chat doesn't
+            # go silent on child-spawn failures.
+            await emit(
+                SessionEvent(
+                    type="token",
+                    data={
+                        "content": (
+                            f"I couldn't start the {domain.value} specialist "
+                            f"to answer this ({exc}).  Please try again."
                         ),
                     },
                 )
@@ -1008,25 +1516,85 @@ class CopilotSession:
             )
         )
 
+        # R5.3 — Supervisor workspace persistence.
+        #
+        # When the supervisor turn called exactly one workspace-eligible
+        # primitive tool, we'd like to persist a workspace for it so the
+        # frontend's "Open in Build" CTA navigates to /workspace/{slug}
+        # instead of the empty shell.  The persistence helper lives at
+        # ``orchestrator/supervisor_persistence.py`` and is fully wired
+        # — it accepts (tool_name, params, tool_output, conn, …) and
+        # returns the workspace envelope.
+        #
+        # Wiring the call from here requires plumbing the raw tool
+        # output dict through:
+        #
+        #   ToolTraceEntry (capture output)
+        #     → ChildResponse.tool_trace
+        #       → child_response (read here)
+        #         → persist_supervisor_workspace_from_tool_call(...)
+        #           → workspace envelope appended to the done event
+        #
+        # Today ``ToolTraceEntry`` only carries ``tool``, ``duration_ms``,
+        # and ``error`` — the raw output isn't retained.  That capture
+        # is a hot-path change (the domain agent's ReAct loop) and is
+        # tracked as a follow-up.  Until then the supervisor done event
+        # below carries only ``workspace_context`` (metadata, no slug)
+        # and the frontend renders an inline answer card.
+        supervisor_workspace: Optional[dict] = None
+
+        # R5.5 — classify the user's prose for parameter-override intent
+        # and surface any matches as ``proposed_overrides`` on the done
+        # event.  The frontend (PR #141) renders them as click-to-queue
+        # chips that dispatch into the shared workspace overrides queue.
+        # The classifier is heuristic-first (regex patterns for "change
+        # X to Y" / "use ACT/365" / etc.); the LLM-structured-output
+        # fallback is env-gated.  Returns [] when no overrides are
+        # detected — we drop the wire key in that case to keep the
+        # payload compact.
+        try:
+            from orchestrator.override_classifier import classify_overrides
+            proposed = classify_overrides(
+                user_message,
+                workspace_context=child_response.workspace_context,
+            )
+        except Exception:
+            logger.exception("override_classifier: skipped due to error")
+            proposed = []
+        proposed_wire = [p.to_wire() for p in proposed] if proposed else None
+
+        done_data: Dict[str, Any] = {
+            "workspace_context": child_response.workspace_context,
+            # When the R5.3 follow-up plumbs ``tool_output``
+            # into ``ChildResponse.tool_trace`` and the
+            # supervisor calls ``persist_supervisor_workspace_
+            # from_tool_call`` above, this key carries the
+            # persisted workspace handle (id/slug/name/url/
+            # dag_hash).  The frontend reads ``done.workspace
+            # .slug`` to populate ``message.workflow.workspace
+            # .slug`` so "Open in Build" navigates directly.
+            "workspace": supervisor_workspace,
+            "tool_calls": [
+                {
+                    "tool": t.tool,
+                    "domain": domain.value,
+                    "duration_ms": t.duration_ms,
+                    "error": t.error,
+                }
+                for t in child_response.tool_trace
+            ],
+            "total_duration_ms": round(
+                (time.monotonic() - turn_start) * 1000
+            ),
+        }
+        if proposed_wire is not None:
+            done_data["proposed_overrides"] = proposed_wire
+
         # Done
         await emit(
             SessionEvent(
                 type="done",
-                data={
-                    "workspace_context": child_response.workspace_context,
-                    "tool_calls": [
-                        {
-                            "tool": t.tool,
-                            "domain": domain.value,
-                            "duration_ms": t.duration_ms,
-                            "error": t.error,
-                        }
-                        for t in child_response.tool_trace
-                    ],
-                    "total_duration_ms": round(
-                        (time.monotonic() - turn_start) * 1000
-                    ),
-                },
+                data=done_data,
             )
         )
 
@@ -1213,12 +1781,14 @@ class CopilotSession:
         await emit(SessionEvent(type="synthesis_started", data={}))
         await emit(SessionEvent(type="status", data={"status": "synthesising"}))
 
+        synthesis_tokens_emitted = False
         try:
             async for piece in self._supervisor.synthesize_stream(
                 user_message=user_message,
                 child_responses=child_responses,
             ):
                 if piece:
+                    synthesis_tokens_emitted = True
                     await emit(
                         SessionEvent(type="token", data={"content": piece})
                     )
@@ -1232,6 +1802,21 @@ class CopilotSession:
                     data={"message": f"Synthesis failed: {exc}"},
                 )
             )
+            # Safety net: if synthesis crashed before streaming
+            # any token, the chat would go silent.  Emit a
+            # user-visible fallback summarizing what we have.
+            if not synthesis_tokens_emitted:
+                await emit(
+                    SessionEvent(
+                        type="token",
+                        data={
+                            "content": (
+                                "I had trouble combining the specialists' "
+                                f"answers ({exc}).  Please try asking again."
+                            ),
+                        },
+                    )
+                )
 
         # Done
         workspace_context = _merge_workspace_contexts(workspace_parts)
@@ -1256,12 +1841,49 @@ class CopilotSession:
     # ------------------------------------------------------------------
 
     def _child_thread_id(self, turn_label: str, domain: Domain) -> str:
-        """Generate a per-(turn, domain) thread id for the child's
-        LangGraph checkpointer.  In stateless mode this is unique per
-        turn; otherwise it's shared per domain across turns."""
+        """Generate the child's LangGraph checkpointer thread id.
+
+        In stateless mode the id includes ``turn_label`` so each turn
+        writes to a fresh thread; the legacy V0 behavior used by tests
+        and the CLI REPL that explicitly opt out of durability.
+
+        In stateful mode (the new Phase 0 PR 5 default) the id is
+        stable per-(session, domain), so multiple turns of the same
+        session share the same thread and the checkpointer accumulates
+        conversation state.  When ``self._checkpointer_pool`` is
+        provided, that state lives in Postgres and survives Python
+        process restart — opening a fresh CopilotSession against the
+        same ``thread_id`` resumes the conversation.
+        """
         if self.stateless:
             return f"{self.thread_id}-{turn_label}-{domain.value}"
         return f"{self.thread_id}-{domain.value}"
+
+    def _make_checkpointer(self) -> BaseCheckpointSaver:
+        """Build the checkpointer this session's domain children share.
+
+        Selection matrix (see class docstring):
+
+          - stateless=True            → MemorySaver (in-memory; per-turn
+                                        fresh thread defeats persistence)
+          - stateless=False, pool=None → MemorySaver (in-memory;
+                                        in-process persistence only;
+                                        suitable for unit tests that
+                                        don't spin up Postgres)
+          - stateless=False, pool=set  → AsyncPostgresSaver(pool); durable
+                                        across process restart; this is
+                                        the production WebSocket path.
+
+        Called once per child at session ``open()`` time, NOT per turn.
+        """
+        if self.stateless:
+            return MemorySaver()
+        if self._checkpointer_pool is None:
+            return MemorySaver()
+        # Lazy import keeps the load-time cost off the no-pool path.
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        return AsyncPostgresSaver(self._checkpointer_pool)
 
 
 # ============================================================================
@@ -1367,6 +1989,29 @@ def _format_scalar(value) -> str:
 # ===========================================================================
 # PR 10 — workflow-result prose formatter
 # ===========================================================================
+
+
+def _workspace_name_for(decision) -> str:
+    """Build a human-readable workspace name from a routing decision.
+
+    The name surfaces in the Build sidebar's "Recent workspaces"
+    list.  We compose it from the template_id (lower-snake →
+    Title Case) plus a short time-of-day stamp so multiple runs
+    of the same template stay distinguishable in the sidebar
+    without having to deep-read the slot values.
+
+    Workspace names accept up to 256 chars; we stay well under
+    that.  ``state.workspace_repo.create_workspace`` validates +
+    falls back gracefully if the name is rejected.
+    """
+    from datetime import datetime, timezone
+
+    template_id = getattr(decision, "template_id", None) or "workflow"
+    pretty = " ".join(
+        word.capitalize() for word in template_id.replace("_", " ").split()
+    )
+    stamp = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    return f"{pretty} · {stamp}"
 
 
 def _format_workflow_prose(envelope: dict) -> str:

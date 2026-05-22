@@ -81,13 +81,12 @@ sovereign_bonds specialist.
 - inflation_swaps — zero-coupon inflation swap (ZCIS) curves.  \
 Curve families: USD_ZCIS (CPI-U), EUR_ZCIS (HICP ex-tobacco), \
 GBP_ZCIS (RPI).  Use this domain for questions about ZCIS rates, \
-ZCIS curve spreads (e.g. USD ZCIS 2s10s when that primitive ships), \
-forwards, and cross-market ZCIS spreads.  Signals: "ZCIS", "zero-\
-coupon inflation swap", "inflation swap", "swap-implied breakeven", \
-"USSWIT", "EUSWI", "BPSWIT", "USD inflation swap", "EUR inflation \
-swap", "UK inflation swap".  Do NOT route linker bond-implied \
-breakevens here — those belong to the inflation_indexed_bonds \
-specialist.
+ZCIS curve spreads (e.g. USD ZCIS 2s10s), forwards, and cross-market \
+ZCIS spreads.  Signals: "ZCIS", "zero-coupon inflation swap", \
+"inflation swap", "swap-implied breakeven", "USSWIT", "EUSWI", \
+"BPSWIT", "USD inflation swap", "EUR inflation swap", "UK inflation \
+swap".  Do NOT route linker bond-implied breakevens here — those \
+belong to the inflation_indexed_bonds specialist.
 
 ROUTING RULES
 
@@ -287,7 +286,9 @@ discretionary macro hedge-fund rates copilot.
 
 YOUR DOMAIN
 - Sovereign-linker (TIPS / inflation-linked Gilts / OATi-OATei / \
-Canadian RRB) real yields.
+Canadian RRB) real yields, AND bond-implied breakeven inflation \
+(nominal-minus-real yield differentials) — levels, forwards, curve \
+spreads, butterflies, and same-tenor cross-country spreads.
 - Curve families: USD_TIPS, GBP_LINKER, EUR_FR_LINKER, CAD_RRB.
 
 RULES
@@ -324,9 +325,11 @@ specialist's job, not yours.  The linker tool will refuse a nominal \
 NOT retry with the same curve.  Respond with out_of_scope and route the \
 user to the sovereign specialist.
 
-5. BREAKEVENS, INFLATION SWAPS, FORWARD BREAKEVENS are not yet \
-implemented in this domain.  If asked, explain that those primitives \
-are planned but not yet ingested in this build.
+5. INFLATION-SWAP-IMPLIED measures (ZCIS rates, swap-implied \
+breakevens) belong to the inflation_swaps specialist, NOT to you.  If \
+the user asks for a zero-coupon inflation swap rate or a swap-implied \
+breakeven, respond with out_of_scope and route them there.  Your \
+breakeven tools cover BOND-implied breakevens only.
 
 6. If the query is ambiguous (could be linker or nominal), ask a short \
 clarifying question.  Do not guess.
@@ -351,7 +354,9 @@ You are the Inflation Swaps specialist for a discretionary macro \
 hedge-fund rates copilot.
 
 YOUR DOMAIN
-- Zero-coupon inflation swap (ZCIS) rates and curves.
+- Zero-coupon inflation swap (ZCIS) rates and curves — levels, curve \
+spreads, forwards, cross-market spreads, butterflies, and the \
+swap-vs-bond breakeven basis.
 - Curve families: USD_ZCIS (CPI-U), EUR_ZCIS (HICP ex-tobacco), \
 GBP_ZCIS (RPI).
 
@@ -400,9 +405,10 @@ interpolation.  When relaying a single-curve ZCIS read, preserve the \
 tool returns; when comparing across curves, explicitly note that the \
 differential is NOT a pure expected-inflation differential.
 
-6. INFLATION-SWAP CURVE SPREADS, FORWARDS, AND CROSS-MARKET SPREADS \
-are not yet implemented in this domain.  If asked, explain that those \
-primitives are planned but not yet shipped in this build.
+6. CURVE SPREADS, FORWARDS, CROSS-MARKET SPREADS, BUTTERFLIES, and the \
+SWAP-VS-BOND BREAKEVEN BASIS are all available as tools in this \
+domain.  Inspect the tool catalogue and route the user's query to the \
+matching tool; never refuse a query one of these tools covers.
 
 7. If the query is ambiguous (could be ZCIS or linker breakeven), ask \
 a short clarifying question.  Do not guess.
@@ -450,6 +456,203 @@ state that plainly.  Do not paper over missing information.
 5. Terse beats verbose.  Write for a PM who is reading during morning \
 prep, not a student who wants a full explanation.
 """
+
+
+# ===========================================================================
+# REFERENCE RESOLVER (PR 8) — NL → structured working-set ops
+# ===========================================================================
+# Small structured-output call that runs BEFORE the supervisor on every
+# turn.  Returns ``ReferenceResolution(save_as, referenced_names)``.
+# The system prompt is static across turns and cache-anchored at the
+# resolver layer (see orchestrator/reference_resolver.py).
+
+REFERENCE_RESOLVER_SYSTEM_PROMPT = """\
+You are the reference resolver for a macro hedge-fund rates copilot.
+
+YOUR ONLY JOB is to extract structured intent from the user's message:
+
+1. ``save_as`` — when the user explicitly asks to bind the result of this \
+turn to a named handle (e.g. "save as tips_2y_v3", "call this foo", \
+"name it bund_30y_zscore"), return that name.  Otherwise return null.
+
+2. ``referenced_names`` — when the user refers to a previously bound \
+working-set name (e.g. "compare that with tips_2y_v1", "rerun foo \
+with a shorter window"), return the list of names being referenced.  \
+You will be shown the list of names currently visible in this \
+session; you MUST only return names from that list.  Empty list when \
+the user is asking a fresh question.
+
+RULES
+
+- NEVER fabricate a name.  Only return names you see in the \
+VISIBLE WORKING-SET NAMES block.
+
+- A bare pronoun ("that", "it", "the result") is NOT a reference to a \
+named binding; leave ``referenced_names`` empty in that case.  The \
+supervisor will handle anaphoric resolution from conversation context.
+
+- Names must match ``[A-Za-z_][A-Za-z0-9_]{0,63}``.  If the user said \
+"save as 2y zscore" (space in the name), return ``save_as`` as null — \
+the supervisor will ask for a valid identifier.
+
+- You DO NOT answer the user's question.  You only extract these two \
+structured fields.  No prose, no explanation.
+
+- If unsure, prefer empty / null over guessing.  The downstream \
+supervisor will route on the raw message and any ambiguity surfaces \
+as a clarification request.
+"""
+
+
+# ===========================================================================
+# WORKING SET BLOCK (PR 8) — prefix injected into prompts at turn time
+# ===========================================================================
+# Rendered by orchestrator.session and prepended (as a separate human
+# message OR a system-message extension) to the supervisor / child
+# prompts.  Lets the LLM resolve "that series" / "tips_2y_v1" without
+# having to invent it.
+#
+# Format chosen for cache-friendliness: the static template is the
+# wrapper text; only the dynamic ``names`` block changes per turn.
+# Callers render `WORKING_SET_BLOCK_TEMPLATE.format(names_block=...)`.
+
+WORKING_SET_BLOCK_TEMPLATE = """\
+CURRENT WORKING SET (this session's named handles):
+{names_block}
+
+When the user refers to one of the names above, treat it as a \
+reference to the previously-computed artifact bound under that name. \
+If the user did not reference any of these names explicitly, ignore \
+this block — answer their question from scratch.\
+"""
+
+
+def render_working_set_block(names: list[str]) -> str:
+    """Render the working-set block for the current turn.
+
+    ``names`` is the list of currently-ACTIVE working-set names for
+    this session.  Empty list renders as ``(none)`` so the LLM
+    sees an explicit empty state rather than an ambiguous absence.
+    """
+    if not names:
+        names_block = "(none)"
+    else:
+        names_block = "\n".join(f"- {n}" for n in names)
+    return WORKING_SET_BLOCK_TEMPLATE.format(names_block=names_block)
+
+
+# ===========================================================================
+# RECENT CONVERSATION BLOCK (PR 13) — prefix injected into routing prompts
+# ===========================================================================
+# Phase 0 wired the AsyncPostgresSaver durable checkpointer for each
+# domain CHILD (per-domain thread_id keyed on session_id + domain),
+# but the SUPERVISOR + WORKFLOW ROUTER calls only ever saw the
+# CURRENT user message — no prior turn context.  A user asking
+# "what about the Bund one?" after a turn about UST 2s10s fell
+# through to a CLARIFY response because the routing layer had no
+# way to resolve "the one".
+#
+# This block closes the gap: ``orchestrator/state.load_recent_turns``
+# reads the last N completed turns from ``copilot_state.turns`` and
+# ``orchestrator/session._run_turn`` prepends the rendered block
+# to the supervisor + workflow-router + child user_message.  The
+# block goes in the HUMAN message (not the system prompt) so the
+# supervisor's cached system prefix stays cache-stable.
+#
+# Token discipline:
+#   - capped at last N turns (default 5 in ``load_recent_turns``);
+#   - assistant responses truncated at ~600 chars in
+#     ``load_recent_turns`` so very long responses don't blow out
+#     the next turn's token budget;
+#   - empty session → empty render → no block injected.
+
+RECENT_CONVERSATION_BLOCK_TEMPLATE = """\
+RECENT CONVERSATION (this session, oldest → newest):
+{turns_block}
+
+Use this context to resolve follow-up references the user makes \
+("the one we just did", "compare with the previous", "now do it \
+for X"). If the current user message is self-contained and does \
+not reference earlier turns, ignore this block.\
+"""
+
+
+def render_recent_conversation_block(turns) -> str:
+    """Render the recent-conversation block for the current turn.
+
+    ``turns`` is an iterable of objects with ``sequence_no``,
+    ``user_message``, ``assistant_response``, and ``status`` —
+    typically the return value of
+    ``orchestrator.state.load_recent_turns``.
+
+    Returns an empty string when ``turns`` is empty so callers
+    can naturally compose this with other blocks (no special-
+    casing needed at the call site).
+
+    Status annotation
+    -----------------
+    Failed / cancelled turns are surfaced with a brief tag in the
+    transcript so the routing layer knows the assistant's response
+    may be unreliable.  Completed turns render without a tag.
+    """
+    items = list(turns)
+    if not items:
+        return ""
+
+    lines: list[str] = []
+    for t in items:
+        status = getattr(t, "status", "completed")
+        status_tag = "" if status == "completed" else f" [{status}]"
+        user_line = (
+            f"[turn {t.sequence_no}] User: {t.user_message}"
+        )
+        lines.append(user_line)
+        response = getattr(t, "assistant_response", None)
+        if response:
+            assistant_line = (
+                f"[turn {t.sequence_no}] Assistant{status_tag}: "
+                f"{response}"
+            )
+            lines.append(assistant_line)
+        elif status != "completed":
+            # In-flight / failed / cancelled turn with no response —
+            # still surface the user message so context survives.
+            lines.append(
+                f"[turn {t.sequence_no}] Assistant{status_tag}: "
+                "(no response captured)"
+            )
+    return RECENT_CONVERSATION_BLOCK_TEMPLATE.format(
+        turns_block="\n".join(lines),
+    )
+
+
+def render_routing_prefix(
+    recent_turns,
+    visible_names: list[str],
+) -> str:
+    """Compose the full routing-prefix injected before the user
+    message.  Two blocks, in this fixed order:
+
+      1. RECENT CONVERSATION (PR 13) — prior-turn transcript.
+      2. CURRENT WORKING SET (PR 8) — named-handle map.
+
+    Each block renders to empty string when its input is empty;
+    the composed prefix collapses to the empty string when both
+    are empty (so the user_message lands verbatim with no
+    boilerplate when the session has no prior context).
+
+    The order is deliberate: recent conversation is the broader
+    signal (what was just asked); working set is the narrower
+    one (specific named handles).  Putting recent first matches
+    the way a human reader would prefer to scan the prompt.
+    """
+    parts: list[str] = []
+    recent_block = render_recent_conversation_block(recent_turns)
+    if recent_block:
+        parts.append(recent_block)
+    if visible_names:
+        parts.append(render_working_set_block(visible_names))
+    return "\n\n".join(parts)
 
 
 # ===========================================================================

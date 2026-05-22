@@ -118,9 +118,9 @@ def _assert_curve_spread_config_passed(call_args) -> None:
         "`config=`"
     )
     assert isinstance(cfg, ToolConfig)
-    assert cfg.tool.name == "inflation_swap_curve_spread", (
+    assert cfg.tool.name == "calculate_inflation_swap_curve_spread_tool", (
         f"caller passed config for tool {cfg.tool.name!r}, expected "
-        "'inflation_swap_curve_spread' (catches imports of the wrong "
+        "'calculate_inflation_swap_curve_spread_tool' (catches imports of the wrong "
         "tool's CONFIG_PATH)"
     )
     assert "z_score_window_days" in cfg.conventions
@@ -268,7 +268,7 @@ class TestConfigPathPublicSymbol:
 
     def test_load_returns_curve_spread_config(self):
         cfg = load_tool_config(INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH)
-        assert cfg.tool.name == "inflation_swap_curve_spread"
+        assert cfg.tool.name == "calculate_inflation_swap_curve_spread_tool"
         assert cfg.tool.domain == "inflation_swaps"
 
 

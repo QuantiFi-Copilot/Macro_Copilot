@@ -122,7 +122,8 @@ slot values — guessing produces silently-wrong workflow results.
 5. If NO template in the catalogue fits the user's question, return \
 action=``out_of_scope``.  ``out_of_scope`` is for questions a \
 workflow template cannot answer (free-form chat, primitive-only \
-questions like "what's SOFR 2Y trading at?", out-of-domain prompts).
+questions like "what's SOFR 2Y trading at?", curve-spread / yield- \
+level / regime-snapshot lookups, out-of-domain prompts).
 
 6. NEVER invent a template_id that is not in the catalogue.  NEVER \
 invent slot names that are not in the chosen template's slot_schema.  \
