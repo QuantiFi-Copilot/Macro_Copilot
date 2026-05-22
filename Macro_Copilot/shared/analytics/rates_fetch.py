@@ -530,3 +530,192 @@ def fetch_scan_universe(
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
+# ONE CURVE, ONE / N STRIP POSITION(S) — futures-keyed analogs
+# ============================================================================
+#
+# Policy futures (SOFR_FUT, EUR_SHORT_RATE_FUT, SONIA_FUT) are keyed by
+# ``(curve_family, strip_position)`` — NOT ``(curve_family, tenor)`` —
+# because the desk instrument identity is the position on the strip
+# (SFR1 = front; SFR2..SFR8 = quarterly forwards), not a calendar tenor.
+# ``strip_position`` lives in ``instrument_master.attributes`` JSONB as an
+# integer; the enriched view exposes the whole JSONB so we extract it via
+# ``(attributes->>'strip_position')::int`` in the WHERE clause.
+#
+# These helpers mirror the tenor-keyed helpers above 1:1 in shape and return
+# the same long-format DataFrame columns, so callers downstream of the fetch
+# (pivot, align, compute_level_metrics, etc.) work without per-fetcher
+# branching. The single difference is the key: ``strip_position: int``
+# replaces ``tenor: str``.
+#
+# Bond futures are NOT strip-position-keyed in the same way — they are
+# keyed by ``(curve_family, contract_code)`` (TY1 vs UXY1 share UST_FUT 10Y;
+# US1 vs WN1 share UST_FUT 30Y) — so bond-futures monitors use the existing
+# ``fetch_single_tenor(..., contract_code=)`` path. The strip-aware helpers
+# below are for the policy_futures domain specifically.
+
+
+_FETCH_STRIP_POSITION_SQL = text("""
+    SELECT
+        trade_date,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family = :curve_family
+      AND (attributes->>'strip_position')::int = :strip_position
+      AND field_name   = :field_name
+      AND trade_date  >= :start_date
+    ORDER BY trade_date
+""")
+
+
+def fetch_strip_position(
+    engine: Engine,
+    curve_family: str,
+    strip_position: int,
+    field_name: str,
+    start_date: date,
+) -> pd.DataFrame:
+    """Fetch a single strip-position series on one futures curve.
+
+    For strip-position-keyed instruments — today: policy futures
+    (SOFR_FUT, EUR_SHORT_RATE_FUT, SONIA_FUT) — where the desk
+    instrument is identified by ``(curve_family, strip_position)``
+    rather than ``(curve_family, tenor)``. ``strip_position`` lives
+    in ``instrument_master.attributes`` JSONB as an integer; this
+    helper extracts it via ``(attributes->>'strip_position')::int``
+    in the WHERE clause.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'field_value']``.
+
+    Examples
+    --------
+    - ``futures_price_level`` for SFR1 (front SOFR):
+      ``field_name='last_price'``, ``curve_family='SOFR_FUT'``,
+      ``strip_position=1``.
+    - ``volume_open_interest_snapshot`` for SFR2:
+      ``field_name='open_interest'``, ``strip_position=2``.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_STRIP_POSITION_SQL,
+            {
+                "curve_family": curve_family,
+                "strip_position": strip_position,
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+_FETCH_STRIP_GROUP_SQL = text("""
+    SELECT
+        trade_date,
+        (attributes->>'strip_position')::int AS strip_position,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family = :curve_family
+      AND (attributes->>'strip_position')::int = ANY(:strip_positions)
+      AND field_name   = :field_name
+      AND trade_date  >= :start_date
+    ORDER BY trade_date, strip_position
+""")
+
+
+def fetch_strip_group(
+    engine: Engine,
+    curve_family: str,
+    strip_positions: Sequence[int],
+    field_name: str,
+    start_date: date,
+) -> pd.DataFrame:
+    """Fetch a set of strip positions on one futures curve.
+
+    Multi-position analogue of :func:`fetch_strip_position`. Used by
+    every policy-futures primitive that consumes ≥ 2 strip positions
+    on one curve — ``futures_calendar_spread`` (2 positions),
+    ``futures_butterfly_simple`` (3 positions),
+    ``futures_pack_average_simple`` (whites = positions 1-4 or reds =
+    positions 5-8), and ``futures_strip_snapshot`` (all 8).
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'strip_position', 'field_value']``. Callers pivot
+    on ``strip_position`` (via ``pivot_and_align_tenors(key_col='strip_position')``)
+    to align across positions.
+    """
+    if not strip_positions:
+        raise ValueError(
+            "fetch_strip_group requires at least one strip_position."
+        )
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_STRIP_GROUP_SQL,
+            {
+                "curve_family": curve_family,
+                "strip_positions": list(strip_positions),
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+_FETCH_CROSS_MARKET_STRIP_SQL = text("""
+    SELECT
+        trade_date,
+        curve_family,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family IN (:curve_family_1, :curve_family_2)
+      AND (attributes->>'strip_position')::int = :strip_position
+      AND field_name   = :field_name
+      AND trade_date  >= :start_date
+    ORDER BY trade_date, curve_family
+""")
+
+
+def fetch_cross_market_strip(
+    engine: Engine,
+    curve_family_1: str,
+    curve_family_2: str,
+    strip_position: int,
+    field_name: str,
+    start_date: date,
+) -> pd.DataFrame:
+    """Fetch the same strip position on two different futures curves.
+
+    Used by ``futures_cross_market_spread`` for matched-strip cross-CB
+    implied-rate differentials (e.g. SOFR_FUT SFR2 vs SONIA_FUT SFI2).
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'curve_family', 'field_value']``. Callers pivot
+    on ``curve_family`` to align the two legs.
+
+    P5 caveat (benchmark-family mismatch). SOFR / SONIA futures reference
+    a compounded RFR (3-month look-back at expiry); Euribor
+    (``EUR_SHORT_RATE_FUT``) references unsecured 3M term-Euribor —
+    structurally different rate objects. Cross-CB spreads computed off
+    this fetcher ALWAYS ship with a methodology-card disclosure naming
+    the two underlyings explicitly.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_CROSS_MARKET_STRIP_SQL,
+            {
+                "curve_family_1": curve_family_1,
+                "curve_family_2": curve_family_2,
+                "strip_position": strip_position,
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
