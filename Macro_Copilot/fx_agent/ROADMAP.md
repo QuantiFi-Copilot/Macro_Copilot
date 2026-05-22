@@ -12,20 +12,23 @@
 
 **Branch:** `codex/fx-data-universe-extension` — stacked on `codex/fx-on-latest-build` (PR #178, draft).
 
-**Phase in flight:** **Phase A — Cash forwards depth** (step 3 of 8 — Bloomberg extraction COMPLETE for Wave 1, ingestion to Postgres pending on Mac).
+**Phase in flight:** **Phase A — Cash forwards depth** (step 3 ✅ complete, step 4 next — audit `calculate_fx_carry` across tenors).
 
-**Immediate next action:** Sacha goes home, runs `ingest_parquet.py` via Docker with `GCP_BUCKET_NAME=quantifi-fx-data-sacha`, then `refresh_instrument_metadata.py` per playbook, then `tests/test_fx_data_readiness.py --strict-metadata` to validate the new universe.
+**Immediate next action:** audit `fx_agent/forwards/tools/fx_carry/compute.py` to confirm the carry calculation works correctly across all 5 tenors (1W, 1M, 3M, 6M, 12M) now that the data substrate is in place. The tool was written when only 1M data existed and may have semantic 1M-only assumptions in annualisation, day-count, or output labels.
 
-**Steps 1 and 2 ✅ complete** (Bloomberg ticker verification + canonical playbook in repo). **Step 3 partially complete:** Wave 1 Bloomberg extraction ran in ~7 minutes from the university terminal (much faster than the 30-40 min estimate — batched upsert PRs landing in the rebase paid off). 548,609 rows across 4 playbooks landed in `gs://quantifi-fx-data-sacha`. Postgres ingestion pending.
+**Steps 1–3 ✅ complete.** Wave 1 production ingestion landed cleanly:
 
-| Playbook | Rows extracted |
-|---|---|
-| `fx_forwards` | 206,399 |
-| `fx_vol` | 204,533 |
-| `fx_crosses` | 75,713 |
-| `spot_fx` | 61,964 |
+| Playbook | Tickers | Rows ingested | Date range | Load ID |
+|---|---|---|---|---|
+| `fx_forwards` | 30 (6 G10 × 5 tenors) | 206,399 | 2000-01-03 → 2026-05-22 | 18 |
+| `fx_vol` | 30 (6 G10 × 5 tenors, ATM) | 204,533 | 2000-01-03 → 2026-05-22 | 19 |
+| `fx_crosses` | 11 G10 crosses | 75,713 | 2000-01-03 → 2026-05-22 | 17 |
+| `spot_fx` | 9 G10 majors | 61,964 | 2000-01-03 → 2026-05-22 | 20 |
+| **Total** | **80 instruments** | **548,609 rows** | **2000-01-03 → 2026-05-22** | |
 
-**Wave 2 discovery findings recorded below** ([Wave 2 — Bloomberg discovery findings](#wave-2--bloomberg-discovery-findings-not-yet-ingested)) — not yet ingested, but the conventions are now documented for Phase B/C/D/E planning.
+Readiness gate `--strict-metadata` passes 21/0/0. Three env-level fixes required during Wave 1 ingestion are documented in the "Local env fixes" section below — most importantly, `max_locks_per_transaction=16384` is now baked into `docker-compose.yml` so future ingestions don't hit the same OOM.
+
+**Wave 2 discovery findings** ([Wave 2 — Bloomberg discovery findings](#wave-2--bloomberg-discovery-findings-not-yet-ingested)) — not yet ingested, but the conventions are now documented for Phase B/C/D/E planning. In particular: NDFs are quoted as outright (not points), vol smile (RR/BF at 25-delta and 10-delta) is available for G10 pairs, and CIP basis should be derived from OIS+forwards rather than from the fragile direct basis-swap tickers.
 
 ---
 
@@ -123,7 +126,7 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 
 1. ✅ **Confirm Bloomberg tickers.** Done 2026-05-21. Long format `<PAIR><TENOR> Curncy` valid for all 30 combinations, history from 2000-01-03. Canonical 1Y is `12M`.
 2. 🟡 **Extend `fx_forwards.yml`** for all G10 forward tenors. **Done in repo (canonical v2.0, 30 tickers, start 2000-01-01); legacy `fx_forwards_curve.yml` deleted.** Pending: actual Bloomberg extraction from the playbook.
-3. **Run extraction → ingestion → readiness gate strict mode.** Must pass clean. Expected: 21 → 30 forward tickers present, no `warn`, no `fail`.
+3. ✅ **Run extraction → ingestion → readiness gate strict mode.** Done 2026-05-22. Extraction ran in ~7 min from university BBG terminal; ingestion landed 548,609 rows across 4 playbooks (loads 17-20, all SUCCESS); readiness gate strict mode passes 21/0/0; 30 forward tickers / 9 spot / 11 crosses / 30 vol present in DB with uniform 2000-01-03 → 2026-05-22 coverage.
 4. **Audit `calculate_fx_carry`** for tenor conventions: annualisation by tenor, day-count basis (ACT/360 for USD-funding, ACT/365 for JPY/GBP), JPY divisor still correct (it is — see Conventions).
 5. **Add `get_fx_forward_curve`** primitive: returns the forward curve (all available tenors) for a given pair.
 6. **Add `scan_fx_carry`** primitive: cross-sectional carry ranking at a chosen tenor.
@@ -232,6 +235,42 @@ Each universe entry should include (minimally) for FX:
 - `region` (`Global`, `EMEA`, `APAC`, `LATAM`)
 
 The readiness gate `tests/test_fx_data_readiness.py` validates these fields. New playbooks must follow the shape.
+
+### Local env fixes for Wave 1 ingestion
+
+While running Wave 1's first Postgres ingestion, three environmental issues surfaced. All three need to be present (or applied at fresh-clone time) for any large FX ingestion to complete cleanly. Documented here so future contributors don't re-discover them.
+
+**Fix 1 — ADR 0003 schema migration on existing DB volumes.**
+
+The `database/schema.sql` file is mounted to `/docker-entrypoint-initdb.d/` and only runs on the **first** Postgres cluster initialisation. The `cusip` and `isin` columns (ADR 0003) were added to `schema.sql` after the local volume was created, so existing volumes don't have them. Ingestion fails with `AttributeError: cusip` inside `upsert_instrument_master`.
+
+Apply the delta migration once per existing volume:
+
+```bash
+docker exec -i macro-tsdb psql -U quantuser -d macrodata \
+    < Macro_Copilot/database/migrations/2026-05-20_a3_b1_schema_sync.sql
+```
+
+The migration is idempotent (`IF NOT EXISTS` everywhere) so it's safe to re-run.
+
+**Fix 2 — `max_locks_per_transaction` raised from 128 to 16384 (PERSISTENT via docker-compose).**
+
+Large `market_data_daily` upserts run in a single atomic transaction by design (delete + every batch + audit flip — see `ingest_parquet.py`). A 206k-row payload exceeds Postgres's default lock-table footprint, surfacing as `out of shared memory — increase max_locks_per_transaction`.
+
+This fix is now baked into `docker-compose.yml` via the tsdb service `command:` override:
+
+```yaml
+command:
+  - postgres
+  - -c
+  - max_locks_per_transaction=16384
+```
+
+A fresh `docker compose up` will start Postgres with the bumped value, so this fix survives volume recreation. No manual action needed at clone time beyond `docker compose up`.
+
+**Fix 3 — `GCP_BUCKET_NAME` env var for the FX bucket.**
+
+While we maintain two GCS buckets (FX = `gs://quantifi-fx-data-sacha`, rates = `gs://macro-storage-bucket`), set the bucket env var explicitly when running FX extractions or ingestions. The default in all scripts is `macro-storage-bucket`. See "Wave 1 bucket override" section above for the full sequence and the future migration plan.
 
 ### Wave 2 — Bloomberg discovery findings (not yet ingested)
 
@@ -423,6 +462,8 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-22 | Wave 1 Bloomberg extraction ✅ — 548,609 rows across 4 playbooks pushed to `gs://quantifi-fx-data-sacha` in ~7 minutes. Postgres ingestion pending. | Sacha at university Bloomberg terminal |
 | 2026-05-22 | Wave 2 discovery complete — findings recorded under "Wave 2 — Bloomberg discovery findings". Key conventions: NDFs are quoted as outright (not forward points), vol smile (RR/BF, 25-delta and 10-delta) is available across G10 pairs, CIP basis swap direct tickers are fragile (stale/invalid for many pairs) — Phase C should derive CIP from OIS + forwards instead. | BBG verification in Excel from university terminal |
 | 2026-05-22 | Wave 2 follow-up (same session) — USDCNY NDF ticker resolved (`CCN+1M Curncy`, outright, full 2010-2026 history). AUD basis ticker resolved (`ADBS3 Curncy`). **Bigger discovery: the `EUBSn` convention is maturity-in-YEARS, not tenor-in-months** — `EUBS3` is a 3-year basis swap, `EUBS12` is 12-year, etc. This re-explains the patchy data coverage and reinforces the derived-from-OIS approach for Phase C CIP. | Decoded NAME field `EURUSD BS (3M VS 3M) 3Y` of `EUBS3 BGN Curncy` |
+| 2026-05-22 | Wave 1 Postgres ingestion ✅ — 548,609 rows ingested into `macro_data.market_data_daily` (loads 17–20). All 4 playbooks SUCCESS. Readiness gate `--strict-metadata` passes 21/0/0. DB sanity snapshot confirmed: 30 forwards / 9 spot / 11 crosses / 30 vol with uniform 2000-01-03 → 2026-05-22 coverage and full 5-tenor × 6-pair matrix on forwards and vol. | After fixing ADR 0003 schema delta, max_locks_per_transaction bump, and `GCP_BUCKET_NAME` env var |
+| 2026-05-22 | `docker-compose.yml` tsdb service gained a `command:` override setting `max_locks_per_transaction=16384`. Persistent across volume recreation; future devs won't hit the "out of shared memory" OOM that blocked the first ingestion attempt. | Local fix during Wave 1 ingestion, now infrastructure |
 
 ---
 
