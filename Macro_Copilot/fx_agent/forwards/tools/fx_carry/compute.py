@@ -7,6 +7,10 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from fx_agent.forwards._shared import (
+    points_to_spot_units,
+    tenor_days_from_config,
+)
 from fx_agent.forwards.tools.fx_carry.schemas import (
     FXCarryInput,
     FXCarryOutput,
@@ -16,32 +20,6 @@ from shared.config import ToolConfig, load_tool_config
 
 
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
-
-
-def _tenor_days_from_config(config: ToolConfig) -> dict[str, int]:
-    """Trading-day count per supported tenor, read from the YAML conventions."""
-    return {
-        "1W": int(config.convention_value("tenor_1w_days")),
-        "1M": int(config.convention_value("tenor_1m_days")),
-        "3M": int(config.convention_value("tenor_3m_days")),
-        "6M": int(config.convention_value("tenor_6m_days")),
-        "12M": int(config.convention_value("tenor_12m_days")),
-    }
-
-
-def _points_to_spot_units(
-    pair: str,
-    forward_points: float,
-    *,
-    jpy_divisor: float,
-    default_divisor: float,
-) -> float:
-    """Convert Bloomberg FX forward points into spot units."""
-    return (
-        forward_points / jpy_divisor
-        if "JPY" in pair
-        else forward_points / default_divisor
-    )
 
 
 def _carry_query() -> Any:
@@ -108,7 +86,7 @@ def get_fx_carry(
         config = load_tool_config(CONFIG_PATH)
 
     tenor = (params.tenor or config.convention_value("default_tenor")).upper().strip()
-    tenor_days_by_tenor = _tenor_days_from_config(config)
+    tenor_days_by_tenor = tenor_days_from_config(config)
     if tenor not in tenor_days_by_tenor:
         # Fail loud. Silently falling back to a default tenor (the v1
         # behaviour) produced massively inflated annualised carry when
@@ -144,7 +122,7 @@ def get_fx_carry(
         return FXCarryOutput(tenor=tenor, rows=[]).model_dump()
 
     df["forward_points_spot_units"] = df.apply(
-        lambda row: _points_to_spot_units(
+        lambda row: points_to_spot_units(
             row["pair"],
             row["forward_points"],
             jpy_divisor=jpy_divisor,
