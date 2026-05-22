@@ -470,14 +470,18 @@ universe until they enter it (P5 — disclosed, not silently dropped).
    docstring; `utils/backfill_wirp_links.py`; tests. *(Independent of B–D.)*
 3. **Stage B** — `utils/render_wirp_universe.py` + the initial `wirp.yml` seed
    (ticker grammar, metrics, region prefixes; no horizons → unbounded render);
-   the full-calendar WIRP coverage probe. The renderer and seed are built here
-   because the probe consumes the rendered `wirp.yml` (§6). Operator: render
-   locally → copy the rendered `wirp.yml` + probe to the Bloomberg PC → run the
-   probe → report coverage, series spans, and observed value ranges.
+   `push_playbooks.py` skips `wirp:` playbooks; the full-calendar WIRP coverage
+   probe (`scripts/wirp_coverage_check.py`). The renderer and seed are built
+   here because the probe consumes the rendered `wirp.yml` (§6); the
+   `push_playbooks.py` skip is built here too — not deferred to Stage C — since
+   the skip must exist the moment the seed file does, else a `push_playbooks`
+   run would upload the empty-universe seed and clobber the rendered universe.
+   Operator: render locally → copy the rendered `wirp.yml` + probe to the
+   Bloomberg PC → run the probe → report coverage, series spans, and observed
+   value ranges.
 4. **Stage C** — the WIRP extractor branch in `incremental_extractor.py`;
-   `historical_extractor.py` skips `wirp:` playbooks; `push_playbooks.py` skips
-   `wirp:` playbooks; `docker-compose.yml` wires `render_wirp_universe.py` into
-   the `push-playbooks` service; tests.
+   `historical_extractor.py` skips `wirp:` playbooks; `docker-compose.yml`
+   wires `render_wirp_universe.py` into the `push-playbooks` service; tests.
 5. **Stage D** — finalise `wirp.yml` (verified horizons + unit comments + any
    `available: false` from Stage B); operator render → extract → ingest →
    backfill → SQL-verify.
@@ -488,3 +492,4 @@ universe until they enter it (P5 — disclosed, not silently dropped).
 |---|---|---|
 | v1 | 2026-05-22 | Initial decision. Proposed. |
 | v2 | 2026-05-22 | Amended per Codex review (all 7 findings, verified valid): fixed the §5 backfill join to the real `instrument_master` schema (no `central_bank`/`meeting_date` typed columns — join `maturity_date` + `attributes->>'central_bank'`); renamed `WIRP_BP_CHANGE`→`WIRP_RATE_CHANGE` (no unverified unit in the name, no conversion); strict per-meeting 4/4 coverage gate with an `available: false` opt-out; source Bloomberg tickers stored in `instrument_master.attributes`; the Stage-B probe consumes the rendered `wirp.yml` (the Bloomberg PC has no Postgres); the backfill links only WIRP instruments with `market_data_daily` rows (`instrument_master` upsert commits outside the critical txn); `wirp.yml`'s missing `target_metrics` documented as a sanctioned contract exception. |
+| v3 | 2026-05-22 | Rollout refinement during the Stage-B build: the `push_playbooks.py` `wirp:` skip moved from Stage C to Stage B — the skip must exist the moment the `wirp.yml` seed file does, or a `push_playbooks` run would upload the empty-universe seed and clobber the rendered universe. |

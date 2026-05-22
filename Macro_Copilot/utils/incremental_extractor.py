@@ -1529,6 +1529,232 @@ def resolve_otr(
     return True
 
 
+# ============================================================================
+# WIRP TIME-SERIES EXTRACTION  (work order B2, D-wirp, ADR 0009)
+#
+# A WIRP playbook declares a ``wirp:`` section: a time-series playbook whose
+# four per-meeting metrics (FR/PR/NM/CH) are TICKER-borne — each metric is a
+# different Bloomberg ticker, not a different field on one ticker — so it
+# carries no ``target_metrics`` and is extracted by this dedicated branch into
+# the standard ``data/`` → ``market_data_daily`` route (ADR 0009 §1, §4).
+# Synthetic-instrument model: one instrument per central-bank meeting, the four
+# metrics its four ``field`` values.
+# ============================================================================
+
+
+def _wirp_real_ticker(item: Dict[str, Any], code: str) -> Optional[str]:
+    """The real Bloomberg ticker for one WIRP metric of one meeting — the
+    rendered ``wirp_ticker_<code>`` key, else reconstructed from the region
+    prefix + meeting token (the verified ``{prefix}{code} {token} Index``
+    grammar)."""
+    explicit = item.get(f"wirp_ticker_{code.lower()}")
+    if explicit:
+        return str(explicit)
+    prefix = item.get("wirp_region_prefix")
+    token = item.get("wirp_meeting_token")
+    if prefix and token:
+        return f"{prefix}{code} {token} Index"
+    return None
+
+
+def _extract_one_wirp_meeting(
+    item: Dict[str, Any],
+    metrics: List[Dict[str, Any]],
+    bloomberg_field: str,
+    start_date: str,
+    end_date: str,
+    bdh_kwargs: Dict[str, Any],
+) -> Optional[pd.DataFrame]:
+    """Pull every WIRP metric series for ONE meeting and fold them onto the
+    synthetic per-meeting instrument.
+
+    Returns a long-format frame (``trade_date, ticker, field_name,
+    field_value``) where ``ticker`` is the meeting's synthetic vendor_ticker
+    and ``field_name`` is the WIRP metric's ``field`` — or ``None`` if ANY
+    required metric returns no data. STRICT 4/4 (ADR 0009 §4): a meeting
+    missing any metric is dropped WHOLE, never partially emitted.
+    """
+    meeting_ticker = item["ticker"]
+    frames: List[pd.DataFrame] = []
+    for metric in metrics:
+        code = str(metric["code"])
+        field = str(metric["field"])
+        real_ticker = _wirp_real_ticker(item, code)
+        if not real_ticker:
+            print(
+                f"    [!] {meeting_ticker}: cannot build the {code} ticker "
+                "(missing wirp_ticker_* / wirp_region_prefix / wirp_meeting_token)"
+            )
+            return None
+        raw = blp.bdh(
+            tickers=real_ticker,
+            flds=[bloomberg_field],
+            start_date=start_date,
+            end_date=end_date,
+            **bdh_kwargs,
+        )
+        normalized = _normalize_bdh_output(raw, fallback_ticker=real_ticker)
+        if normalized.empty:
+            print(
+                f"    [!] {meeting_ticker}: metric {code} ({real_ticker}) "
+                "returned no data — meeting dropped (strict 4/4 coverage)"
+            )
+            return None
+        # Fold onto the synthetic per-meeting instrument: the row's ``ticker``
+        # is the meeting, the ``field_name`` is the WIRP metric (ADR 0009 §1).
+        normalized["ticker"] = meeting_ticker
+        normalized["field_name"] = field
+        frames.append(normalized)
+
+    long_df = pd.concat(frames, ignore_index=True).drop_duplicates(
+        subset=["trade_date", "ticker", "field_name"], keep="last"
+    )
+    return long_df if not long_df.empty else None
+
+
+def _extract_wirp_playbook(
+    playbook: Dict[str, Any],
+    lineage_meta: Dict[str, Any],
+    bucket: Any,
+    temp_data_dir: Path,
+) -> bool:
+    """Extract a WIRP playbook (ADR 0009 §4) — the ``wirp:``-section-gated
+    branch of the incremental time-series flow.
+
+    Builds the STANDARD time-series parquet (``trade_date, ticker, field_name,
+    field_value`` + lineage/identity columns) and uploads it to
+    ``gs://<bucket>/data/<dataset>/`` — PHASE 2 ingestion is then byte-identical
+    to any other time-series playbook.
+
+    Coverage (ADR 0009 §4): each meeting is extracted only if ALL its required
+    metrics return data (strict 4/4 — a partial meeting is dropped whole by
+    :func:`_extract_one_wirp_meeting`); the playbook-level 90% coverage gate
+    then guards against too many meetings failing. Returns True on success,
+    False on any failure — and uploads NOTHING on failure, so a partial WIRP
+    artifact can never ingest as a clean SUCCESS.
+    """
+    dataset_name = lineage_meta["dataset_name"]
+    asset_class = lineage_meta["asset_class"]
+    wirp_cfg = playbook.get("wirp") or {}
+    bloomberg_field = str(wirp_cfg.get("bloomberg_field") or "PX_LAST")
+    metrics = [
+        m
+        for m in (wirp_cfg.get("metrics") or [])
+        if isinstance(m, dict)
+        and m.get("code")
+        and m.get("field")
+        and m.get("available", True)
+    ]
+    universe_items = [
+        it
+        for it in (playbook.get("universe") or [])
+        if isinstance(it, dict) and "ticker" in it
+    ]
+    bdh_kwargs = _build_historical_request_kwargs(playbook)
+    start_date, end_date = _resolve_date_window(playbook)
+
+    print(f"\nProcessing WIRP Playbook: {lineage_meta['playbook_name']}")
+    print(f"  Playbook version: {lineage_meta['playbook_version']}")
+    print(f"  Dataset name: {dataset_name}")
+    print(f"  Meetings (universe): {len(universe_items)}")
+    print(f"  Metrics: {[m['code'] for m in metrics]} -> {[m['field'] for m in metrics]}")
+    print(f"  Date range: {start_date} -> {end_date}")
+
+    if not metrics:
+        print(f"  [WARNING] WIRP playbook {dataset_name} declares no usable metrics. Skipping.")
+        return False
+    if not universe_items:
+        print(
+            f"  [WARNING] WIRP playbook {dataset_name} has an empty universe — "
+            "render it with utils/render_wirp_universe.py first. Skipping."
+        )
+        return False
+
+    default_item_meta = {
+        "vendor": playbook.get("vendor", DEFAULT_VENDOR),
+        "asset_class": asset_class,
+        "instrument_type": playbook.get("instrument_type") or playbook.get("default_instrument_type"),
+        "curve_family": playbook.get("curve_family"),
+        "is_active": playbook.get("is_active", True),
+    }
+    extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    all_data_frames: List[pd.DataFrame] = []
+
+    for item in universe_items:
+        meeting_ticker = item["ticker"]
+        asset_metadata = {
+            k: v for k, v in {**default_item_meta, **item}.items() if k != "ticker"
+        }
+        asset_metadata.setdefault("vendor", DEFAULT_VENDOR)
+        asset_metadata.setdefault("asset_class", asset_class)
+        try:
+            long_df = _extract_one_wirp_meeting(
+                item, metrics, bloomberg_field, start_date, end_date, bdh_kwargs
+            )
+            if long_df is None:
+                continue  # strict 4/4 — meeting dropped, counts against the gate
+
+            for meta_key, meta_val in asset_metadata.items():
+                long_df[meta_key] = _clean_scalar(meta_val)
+            for meta_key, meta_val in lineage_meta.items():
+                long_df[meta_key] = meta_val
+            long_df["requested_start_date"] = start_date
+            long_df["requested_end_date"] = end_date
+            long_df["extracted_at"] = extracted_at
+            long_df["extraction_mode"] = "incremental"
+
+            all_data_frames.append(long_df)
+            print(f"    [OK] {meeting_ticker}: {len(long_df)} row(s), {len(metrics)} metric(s)")
+        except Exception as exc:
+            print(f"    [ERROR] WIRP extraction failed on {meeting_ticker}: {exc}")
+
+    if not all_data_frames:
+        print(f"  [WARNING] No WIRP data extracted for {dataset_name}. Nothing uploaded.")
+        return False
+
+    # Coverage gate. Every frame in all_data_frames is already a full 4/4
+    # meeting (a partial meeting returned None above and was dropped). The 90%
+    # gate guards against too many meetings failing — a partial WIRP artifact
+    # must never ingest as a clean SUCCESS.
+    extracted_count = len(all_data_frames)
+    expected_count = len(universe_items)
+    coverage = extracted_count / expected_count
+    if coverage < 0.9:
+        print(
+            f"\n  [ABORT] WIRP coverage gate: only {extracted_count}/{expected_count} "
+            f"meeting(s) extracted full 4/4 ({coverage:.0%}). Refusing to upload "
+            f"partial data for {dataset_name}. Threshold is 90%."
+        )
+        return False
+
+    print(
+        f"\n[PHASE 3] Compiling and pushing WIRP data for {dataset_name} "
+        f"({extracted_count}/{expected_count} meetings)..."
+    )
+    final_df = pd.concat(all_data_frames, ignore_index=True)
+    final_df = final_df.dropna(subset=["field_value"])
+    if final_df.empty:
+        print(f"  [WARNING] WIRP final dataframe for {dataset_name} is empty after cleaning.")
+        return False
+
+    lead_cols = ["trade_date", "ticker", "field_name", "field_value"]
+    ordered = [c for c in lead_cols if c in final_df.columns]
+    final_df = final_df[ordered + [c for c in final_df.columns if c not in ordered]]
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    parquet_filename = f"{dataset_name}_timeseries_{timestamp}.parquet"
+    local_parquet_path = temp_data_dir / parquet_filename
+    final_df.to_parquet(local_parquet_path, engine="pyarrow", index=False)
+
+    blob_name = f"data/{dataset_name}/{parquet_filename}"
+    bucket.blob(blob_name).upload_from_filename(str(local_parquet_path))
+    local_parquet_path.unlink(missing_ok=True)
+
+    print(f"  [SUCCESS] WIRP parquet uploaded to gs://{BUCKET_NAME}/{blob_name}")
+    print(f"  [INFO] Total rows uploaded: {len(final_df)}")
+    return True
+
+
 def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
     """
     Pull playbooks from GCP, extract Bloomberg historical data, enrich with optional
@@ -1597,6 +1823,23 @@ def run_incremental_extraction(selected_playbooks: Optional[Set[str]] = None):
                     f"\n[SKIP] {pb_path.name}: event_calendar playbook — handled "
                     "by --mode event-calendar, not the time-series flow."
                 )
+                continue
+
+            # WIRP playbooks (ADR 0009) declare a ``wirp:`` section — a
+            # time-series playbook whose four per-meeting metrics are
+            # ticker-borne, so it carries no ``target_metrics`` and is
+            # extracted by the dedicated WIRP branch into the standard data/ ->
+            # market_data_daily route. WIRP declares no otr_resolution; dispatch
+            # here, before the resolver step, and skip the vanilla flow.
+            if playbook.get("wirp") is not None:
+                wirp_lineage = _get_playbook_metadata(playbook, pb_path, script_path)
+                if not _extract_wirp_playbook(
+                    playbook=playbook,
+                    lineage_meta=wirp_lineage,
+                    bucket=bucket,
+                    temp_data_dir=temp_data_dir,
+                ):
+                    any_failures = True
                 continue
 
             lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)

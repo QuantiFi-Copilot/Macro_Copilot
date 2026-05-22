@@ -1414,6 +1414,18 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
                 )
                 continue
 
+            # WIRP playbooks (ADR 0009) declare a ``wirp:`` section. WIRP
+            # extraction is incremental-only — a deep ``incremental_window_days``
+            # spans every meeting's run-up in one pass — so the historical
+            # extractor never processes them; skip cleanly so they are not
+            # mis-reported as failures.
+            if playbook.get("wirp") is not None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: wirp playbook — WIRP extraction is "
+                    "incremental-only (utils/incremental_extractor.py)."
+                )
+                continue
+
             lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
             asset_class = lineage_meta["asset_class"]
             dataset_name = lineage_meta["dataset_name"]

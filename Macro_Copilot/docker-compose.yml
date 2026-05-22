@@ -131,15 +131,19 @@ services:
       DB_PASSWORD: myStrongPass
       DB_NAME: macrodata
       TZ: Europe/London
-    # Pushes EVERY playbook in one run (ADR 0007):
+    # Pushes EVERY playbook in one run (ADR 0007, ADR 0009):
     #   1. push_playbooks.py            — static playbooks, uploaded verbatim;
-    #                                     resolver-enabled playbooks are
-    #                                     deliberately skipped here.
+    #                                     resolver-enabled and wirp: playbooks
+    #                                     are deliberately skipped here.
     #   2. render_effective_universe.py — resolver-enabled playbooks, whose
     #                                     universe is expanded (seed + every
     #                                     non-matured bond in otr_history)
     #                                     before upload.
-    command: ["micromamba", "run", "-n", "macro-env", "sh", "-c", "python utils/push_playbooks.py && python utils/render_effective_universe.py"]
+    #   3. render_wirp_universe.py      — the wirp playbook, whose universe is
+    #                                     generated from the event_calendar
+    #                                     central-bank-meeting calendar before
+    #                                     upload.
+    command: ["micromamba", "run", "-n", "macro-env", "sh", "-c", "python utils/push_playbooks.py && python utils/render_effective_universe.py && python utils/render_wirp_universe.py"]
     
   ########################################## BI & VISUALIZATION ##########################################
   metabase:

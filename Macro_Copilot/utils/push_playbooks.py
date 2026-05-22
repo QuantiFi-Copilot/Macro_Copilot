@@ -24,6 +24,23 @@ def _has_enabled_resolver(file_path: Path) -> bool:
     block = playbook.get("otr_resolution")
     return isinstance(block, dict) and bool(block.get("enabled", False))
 
+
+def _has_wirp_section(file_path: Path) -> bool:
+    """True iff the playbook declares a ``wirp:`` section (ADR 0009).
+
+    A WIRP playbook's universe is GENERATED from the central-bank-meeting
+    calendar and uploaded by ``utils/render_wirp_universe.py``, which expands
+    the empty seed against ``event_calendar`` first. Pushing the raw seed here
+    would clobber that rendered effective universe in the bucket (ADR 0009 §3),
+    so — exactly as for resolver-enabled playbooks — this syncer skips it.
+    """
+    try:
+        playbook = yaml.safe_load(file_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 — a parse failure is not this script's job to surface
+        return False
+    return isinstance(playbook.get("wirp"), dict)
+
+
 def push_playbooks_to_gcp():
     """Syncs local YAML playbooks to the GCP bucket."""
 
@@ -73,6 +90,13 @@ def push_playbooks_to_gcp():
             print(
                 f"  [SKIP] {file_path.name} declares an enabled otr_resolution "
                 "block — push it via utils/render_effective_universe.py."
+            )
+            skipped_count += 1
+            continue
+        if _has_wirp_section(file_path):
+            print(
+                f"  [SKIP] {file_path.name} declares a wirp: section — "
+                "push it via utils/render_wirp_universe.py."
             )
             skipped_count += 1
             continue
