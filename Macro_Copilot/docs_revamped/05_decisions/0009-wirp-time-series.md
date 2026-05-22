@@ -356,6 +356,15 @@ It runs each operator cycle (cheap, idempotent) so newly-created WIRP
 instruments — new future meetings — get linked as the calendar extends, and so
 a link wiped by a D-cb re-run earlier in the same cycle is re-established.
 
+It is wired into the **`parquet-ingestion` docker service**, chained after
+`ingest_parquet` with `&&` — so it runs once per ingestion cycle, only after a
+successful ingest, once the WIRP `market_data_daily` rows its `EXISTS` gate
+checks are committed. It is chained at the service `command` level, **not**
+called from inside `ingest_parquet.py`: the ingester is a generic,
+playbook-agnostic pipeline (it ingests bonds, OIS, events, OTR — it knows
+nothing of "WIRP") and must not couple to a WIRP-specific step. On a cycle that
+ingests no WIRP data the backfill is a clean no-op.
+
 **(b) `upsert_event_calendar` preserves a set `related_instrument_id`.** The
 backfill alone is not enough: the D-cb event extractor re-pulls the whole
 calendar every run and re-upserts the central-bank-meeting rows with
@@ -504,3 +513,4 @@ universe until they enter it (P5 — disclosed, not silently dropped).
 | v2 | 2026-05-22 | Amended per Codex review (all 7 findings, verified valid): fixed the §5 backfill join to the real `instrument_master` schema (no `central_bank`/`meeting_date` typed columns — join `maturity_date` + `attributes->>'central_bank'`); renamed `WIRP_BP_CHANGE`→`WIRP_RATE_CHANGE` (no unverified unit in the name, no conversion); strict per-meeting 4/4 coverage gate with an `available: false` opt-out; source Bloomberg tickers stored in `instrument_master.attributes`; the Stage-B probe consumes the rendered `wirp.yml` (the Bloomberg PC has no Postgres); the backfill links only WIRP instruments with `market_data_daily` rows (`instrument_master` upsert commits outside the critical txn); `wirp.yml`'s missing `target_metrics` documented as a sanctioned contract exception. |
 | v3 | 2026-05-22 | Rollout refinement during the Stage-B build: the `push_playbooks.py` `wirp:` skip moved from Stage C to Stage B — the skip must exist the moment the `wirp.yml` seed file does, or a `push_playbooks` run would upload the empty-universe seed and clobber the rendered universe. |
 | v4 | 2026-05-22 | Amended per Codex review of the built Stages C/D (finding verified valid): the WIRP playbook coverage gate is **all-or-nothing** (`extracted_count == expected_count`), not the vanilla 90%. WIRP's universe is the horizon-bounded verified-coverage band, so any failed meeting is an error — a transient Bloomberg fault, or horizon drift — never a legitimate absence; it must abort and upload nothing, matching the event extractor (ADR 0008 §4). §4 amended; the v2 "90% gate still applies" line was itself the flaw. |
+| v5 | 2026-05-22 | `backfill_wirp_links.py` wired into the `parquet-ingestion` docker service — chained after `ingest_parquet` with `&&` (the same command-level chaining the `push-playbooks` service uses), so the link backfill runs automatically once per ingestion cycle rather than as a separate manual step. Chained at the `command` level, not embedded in the generic ingester. §5 updated. |

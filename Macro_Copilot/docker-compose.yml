@@ -108,8 +108,18 @@ services:
       DB_PASSWORD: myStrongPass
       DB_NAME: macrodata
       TZ: Europe/London
-    # Executes the ingestion module
-    command: ["micromamba", "run", "-n", "macro-env", "python", "-m", "ingestion.ingest_parquet"]
+    # Runs the ingestion cycle (ADR 0009):
+    #   1. ingest_parquet      — folds every GCS parquet (data/, metadata_history/,
+    #                            otr_resolution/, events/) into the macro_data tables.
+    #   2. backfill_wirp_links — post-ingestion cross-table reconciliation: links
+    #                            event_calendar central-bank-meeting rows to their
+    #                            WIRP instrument (ADR 0009 §5). Idempotent and a
+    #                            clean no-op on cycles with no WIRP data. The `&&`
+    #                            runs it only after a SUCCESSFUL ingest, once the
+    #                            WIRP market data its EXISTS-gate checks is committed.
+    #                            Chained at the command level — NOT called from
+    #                            inside the generic, playbook-agnostic ingester.
+    command: ["micromamba", "run", "-n", "macro-env", "sh", "-c", "python -m ingestion.ingest_parquet && python utils/backfill_wirp_links.py"]
 
   push-playbooks:
     image: macro-project:latest
