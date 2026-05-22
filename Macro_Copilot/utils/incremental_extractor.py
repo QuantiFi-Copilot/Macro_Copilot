@@ -1628,10 +1628,13 @@ def _extract_wirp_playbook(
 
     Coverage (ADR 0009 §4): each meeting is extracted only if ALL its required
     metrics return data (strict 4/4 — a partial meeting is dropped whole by
-    :func:`_extract_one_wirp_meeting`); the playbook-level 90% coverage gate
-    then guards against too many meetings failing. Returns True on success,
-    False on any failure — and uploads NOTHING on failure, so a partial WIRP
-    artifact can never ingest as a clean SUCCESS.
+    :func:`_extract_one_wirp_meeting`); then the playbook gate requires ALL
+    meetings — ``extracted_count == expected_count`` — because the WIRP
+    universe is the horizon-bounded verified-coverage band, not a broad
+    discovery set (a missing meeting is always an error, never a legitimate
+    absence). Returns True on success, False on any failure — and uploads
+    NOTHING on failure, so a partial WIRP artifact can never ingest as a clean
+    SUCCESS.
     """
     dataset_name = lineage_meta["dataset_name"]
     asset_class = lineage_meta["asset_class"]
@@ -1712,18 +1715,27 @@ def _extract_wirp_playbook(
         print(f"  [WARNING] No WIRP data extracted for {dataset_name}. Nothing uploaded.")
         return False
 
-    # Coverage gate. Every frame in all_data_frames is already a full 4/4
-    # meeting (a partial meeting returned None above and was dropped). The 90%
-    # gate guards against too many meetings failing — a partial WIRP artifact
-    # must never ingest as a clean SUCCESS.
+    # Coverage gate — WIRP requires ALL meetings (ADR 0009 §4). The WIRP
+    # universe is NOT a broad discovery set: the horizon (§3) bounds it to
+    # EXACTLY the meetings the Stage-B probe verified have full 4/4 WIRP data.
+    # Within that curated universe a meeting failing extraction is never a
+    # legitimate absence — it is a transient Bloomberg error, or horizon drift
+    # (an empty meeting that entered range and must trigger a re-probe). Either
+    # way it must abort loudly and upload nothing, never ingest as a degraded
+    # SUCCESS. This all-or-nothing rule matches the event extractor
+    # (ADR 0008 §4), whose event list has the same verified-curated property;
+    # the vanilla 90% gate is for broad-discovery time-series universes — which
+    # WIRP, by construction, is not.
     extracted_count = len(all_data_frames)
     expected_count = len(universe_items)
-    coverage = extracted_count / expected_count
-    if coverage < 0.9:
+    if extracted_count != expected_count:
         print(
             f"\n  [ABORT] WIRP coverage gate: only {extracted_count}/{expected_count} "
-            f"meeting(s) extracted full 4/4 ({coverage:.0%}). Refusing to upload "
-            f"partial data for {dataset_name}. Threshold is 90%."
+            f"meeting(s) extracted full 4/4. WIRP requires ALL meetings in the "
+            f"verified-coverage universe — refusing to upload partial data for "
+            f"{dataset_name}. Re-run; if a meeting is genuinely empty, re-run the "
+            f"Stage-B probe (scripts/wirp_coverage_check.py) and re-set the "
+            f"wirp.yml horizon."
         )
         return False
 

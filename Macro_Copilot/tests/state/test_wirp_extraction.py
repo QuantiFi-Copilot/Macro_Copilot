@@ -265,28 +265,51 @@ class TestExtractWirpPlaybook:
         assert set(df["instrument_type"].unique()) == {"wirp_meeting"}
         assert set(df["wirp_ticker_fr"].unique()) == {"US0BFR JUN2026 Index"}
 
-    def test_coverage_gate_aborts_below_90pct(
+    def test_one_failed_meeting_aborts_even_above_90pct(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """One failed meeting out of four = 75% < 90% — refuse to upload a
-        partial WIRP artifact."""
+        """WIRP requires ALL meetings (ADR 0009 §4): 11/12 extracting — 92%,
+        comfortably above the vanilla 90% gate — must STILL abort and upload
+        nothing. The WIRP universe is the horizon-bounded verified-coverage
+        band, so a single missing meeting is an error (transient fault /
+        horizon drift), never a legitimate absence."""
         monkeypatch.setattr(
-            _incr, "_normalize_bdh_output", _fake_normalize(empty_for=("BAD2099",))
+            _incr, "_normalize_bdh_output", _fake_normalize(empty_for=("BADTOK",))
         )
         universe = [
-            _wirp_item("FOMC", "US0B", "JAN2026", "2026-01-28"),
-            _wirp_item("FOMC", "US0B", "MAR2026", "2026-03-18"),
-            _wirp_item("FOMC", "US0B", "APR2026", "2026-04-29"),
-            _wirp_item("FOMC", "US0B", "BAD2099", "2099-12-31"),  # fails
+            _wirp_item("FOMC", "US0B", f"M{i:02d}2026", f"2026-{i:02d}-15")
+            for i in range(1, 12)  # 11 good meetings
         ]
+        universe.append(  # the 12th fails — its tickers carry the BADTOK token
+            _wirp_item("FOMC", "US0B", "BADTOK", "2026-12-15")
+        )
         bucket, _ = _capturing_bucket()
 
         ok = _incr._extract_wirp_playbook(
             _wirp_playbook(universe), _LINEAGE, bucket, tmp_path
         )
 
-        assert ok is False
+        assert ok is False  # 11/12 = 92% — still aborts under all-or-nothing
         bucket.blob.assert_not_called()  # nothing uploaded
+
+    def test_full_universe_uploads(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The mirror case: when ALL meetings extract (100%), the gate passes
+        and the parquet uploads."""
+        monkeypatch.setattr(_incr, "_normalize_bdh_output", _fake_normalize())
+        universe = [
+            _wirp_item("FOMC", "US0B", f"M{i:02d}2026", f"2026-{i:02d}-15")
+            for i in range(1, 13)  # all 12 good
+        ]
+        bucket, captured = _capturing_bucket()
+
+        ok = _incr._extract_wirp_playbook(
+            _wirp_playbook(universe), _LINEAGE, bucket, tmp_path
+        )
+
+        assert ok is True
+        assert captured["df"]["ticker"].nunique() == 12
 
     def test_all_meetings_failing_returns_false(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

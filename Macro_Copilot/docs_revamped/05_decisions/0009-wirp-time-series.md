@@ -285,10 +285,20 @@ marks unavailable. A metric may carry `available: false` for a region the
 Stage-B probe (§6) confirmed has no such WIRP series — the same documented
 opt-out shape as D-econ's `survey: false` (ADR 0008 §2); its column is then
 deliberately absent and the playbook records the absence rather than the
-extractor silently dropping it. On top of the per-meeting rule the existing
-per-playbook 90% coverage gate still applies across meetings, and — because the
-§3 horizon keeps the universe inside the verified band — a known-empty
-far-horizon meeting is simply not in the universe rather than failing the gate.
+extractor silently dropping it.
+
+On top of the per-meeting rule the playbook gate requires **all** meetings —
+`extracted_count == expected_count`, not the vanilla 90%. WIRP's universe is
+**not a broad discovery set**: the §3 horizon bounds it to *exactly* the
+meetings the Stage-B probe verified have full 4/4 data, so a meeting failing
+extraction is never a legitimate absence — it is a transient Bloomberg error,
+or horizon drift (an empty meeting that entered range and must trigger a
+re-probe). Either way the run aborts and uploads nothing — never a degraded
+`SUCCESS`. This all-or-nothing rule matches the **event extractor** (ADR 0008
+§4 — "every configured event must yield rows"), whose event list has the same
+verified-curated property; the vanilla 90% gate is for broad-discovery
+time-series universes (sovereign bonds, OIS — where some tickers are
+legitimately illiquid), which WIRP, by construction, is not.
 
 **Incremental-only (no historical extractor change).** WIRP extraction is added
 to `incremental_extractor.py` **only**. `historical_extractor.py` is left
@@ -493,3 +503,4 @@ universe until they enter it (P5 — disclosed, not silently dropped).
 | v1 | 2026-05-22 | Initial decision. Proposed. |
 | v2 | 2026-05-22 | Amended per Codex review (all 7 findings, verified valid): fixed the §5 backfill join to the real `instrument_master` schema (no `central_bank`/`meeting_date` typed columns — join `maturity_date` + `attributes->>'central_bank'`); renamed `WIRP_BP_CHANGE`→`WIRP_RATE_CHANGE` (no unverified unit in the name, no conversion); strict per-meeting 4/4 coverage gate with an `available: false` opt-out; source Bloomberg tickers stored in `instrument_master.attributes`; the Stage-B probe consumes the rendered `wirp.yml` (the Bloomberg PC has no Postgres); the backfill links only WIRP instruments with `market_data_daily` rows (`instrument_master` upsert commits outside the critical txn); `wirp.yml`'s missing `target_metrics` documented as a sanctioned contract exception. |
 | v3 | 2026-05-22 | Rollout refinement during the Stage-B build: the `push_playbooks.py` `wirp:` skip moved from Stage C to Stage B — the skip must exist the moment the `wirp.yml` seed file does, or a `push_playbooks` run would upload the empty-universe seed and clobber the rendered universe. |
+| v4 | 2026-05-22 | Amended per Codex review of the built Stages C/D (finding verified valid): the WIRP playbook coverage gate is **all-or-nothing** (`extracted_count == expected_count`), not the vanilla 90%. WIRP's universe is the horizon-bounded verified-coverage band, so any failed meeting is an error — a transient Bloomberg fault, or horizon drift — never a legitimate absence; it must abort and upload nothing, matching the event extractor (ADR 0008 §4). §4 amended; the v2 "90% gate still applies" line was itself the flaw. |
