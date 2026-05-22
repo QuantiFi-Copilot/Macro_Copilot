@@ -1,5 +1,5 @@
 catalog_name: primitive_automation_initial_remaining_instruments
-catalog_version: "1.0"
+catalog_version: "2.0"
 branch: primitive_automation
 execution_mode: one_primitive_at_a_time
 status_policy:
@@ -23,26 +23,29 @@ selection_principles:
   - Include only primitives whose required market data and reference metadata already exist in the current repo playbooks or already-built upstream tool surfaces.
   - Exclude anything that would require proxies, hidden assumptions, or missing CTD / conversion-factor / repo inputs.
   - Keep the initial batch biased toward desk-recognizable standard primitives rather than Bucket 2 research models.
+  - Every entry names its substrate playbook(s) in `pre_flight_load_audit` so the orchestrator's pre-flight gate (PRE_FLIGHT_LOAD_AUDIT.md) can verify `load_audit` SUCCESS before any builder dispatch.
 notes:
-  - Bond futures contributes only three buildable entries from the earlier top-five shortlist because current playbook data do not support CTD or implied-repo primitives honestly.
-  - The repo currently contains an explicit technical-debt blocker that says futures-specific analytics tools must wait until the rolling-contract metadata issue is fixed, so the three bond_futures entries are catalog-blocked until that repo contradiction is resolved deliberately.
-  - Inflation swap basis is included because the required inflation swap, linker, and nominal data already exist in the repo, but it depends on earlier linker primitives being built first.
+  - v2.0 — bond_futures and policy_futures entries unblocked. Bond_futures now reflects ADR 0011 V1 scope (monitors only — price level, volume/OI, morning extremes scan). The Phase-4 RV stack (CTD basis, implied repo, DV01-weighted spreads) remains gated on D-repo + D-deliverable ingestion and is intentionally NOT in this catalog. Policy_futures uses the new strip-aware fetchers in shared/analytics/rates_fetch.py.
+  - Inflation linker and inflation swap primitives are already shipped on this branch; their `status: done` reflects the actual on-disk state of `rates_agent/inflation_indexed_bonds/tools/` and `rates_agent/inflation_swaps/tools/`. The orchestrator must NOT re-build them.
+  - The 8 remaining buildable primitives (3 bond_futures + 5 policy_futures) are what the factory will work through this run.
   - The orchestrator must resume unfinished work before starting new `todo` items.
-  - The orchestrator may continue through the whole catalog in one run, stopping only for quota, blocker, hard error, or catalog exhaustion.
+  - The orchestrator may continue through the whole catalog in one run, stopping only for quota, blocker, hard error, pre-flight load_audit miss (per-primitive, not whole-loop), or catalog exhaustion.
+  - When every entry is `done` or `blocked`, the orchestrator sets `orchestrator_status: catalog_exhausted` and the cron entry-point short-circuits subsequent wakes (BACKGROUND_EXECUTION_POLICY.md §8).
 
 primitives:
   - id: bond_futures__futures_price_level
-    status: blocked
+    status: todo
     build_order: 1
     instrument_family: bond_futures
     tool_name: futures_price_level
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md currently says futures-specific analytics tools must wait until the rolling-contract metadata history issue is fixed.
+    ready_to_build: true
     depends_on: []
-    concept_summary: Front-month bond-futures price level, historical range, and z-score.
+    pre_flight_load_audit:
+      - bond_futures
+    concept_summary: Front-month bond-futures price level, 252-day historical range, and z-score. CTD-of-rolling-generic price (NOT a clean tenor-anchored yield).
     why_new_concept: Futures price level is a futures-native object with its own quote units and activity context; it is not a sovereign yield-level clone.
-    why_standard: A rates PM immediately recognizes TY/RX/Gilt futures level as a standard desk object.
+    why_standard: A rates PM immediately recognizes TY/RX/Gilt futures level as a standard desk object — even in the V1 monitors-only form.
     required_playbooks:
       - rates_agent/playbooks/bond_futures.yml
     required_metrics:
@@ -55,23 +58,27 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/03_bond_futures.md:337
     reference_tools:
       - rates_agent/sovereign_bonds/tools/yield_levels
+    methodology_guardrails:
+      - Output methodology card must disclose "rolling-generic price; CTD-implied yield is not yet a primitive in this build" per ADR 0011 and P5 (honest disclosure).
+      - Must use the `contract_code` disambiguator (TY1 / UXY1 / US1 / WN1 / RX1 / JB1 / ...) as the canonical instrument identifier per TD#11.
     no_go_if_missing:
       - last_price history
       - quote_units
       - contract_size
 
   - id: bond_futures__futures_volume_oi
-    status: blocked
+    status: todo
     build_order: 2
     instrument_family: bond_futures
     tool_name: futures_volume_oi
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md currently says futures-specific analytics tools must wait until the rolling-contract metadata history issue is fixed.
+    ready_to_build: true
     depends_on: []
-    concept_summary: Daily bond-futures volume, open interest, changes, and activity z-scores.
+    pre_flight_load_audit:
+      - bond_futures
+    concept_summary: Daily bond-futures volume, open interest, Δ-OI, and OI z-score. Front-back OI migration is the positioning signal.
     why_new_concept: Volume and open interest are first-class futures-specific monitoring objects absent from cash sovereign tools.
-    why_standard: Futures desks and macro PMs treat volume/OI as standard positioning-flow diagnostics.
+    why_standard: Futures desks and macro PMs treat volume/OI as standard positioning-flow diagnostics — desk-recognizable on day one.
     required_playbooks:
       - rates_agent/playbooks/bond_futures.yml
     required_metrics:
@@ -83,39 +90,44 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/03_bond_futures.md:339
     reference_tools:
       - rates_agent/sovereign_bonds/tools/yield_levels
+    methodology_guardrails:
+      - Methodology card must state the OI z-score lookback window explicitly.
     no_go_if_missing:
       - volume history
       - open_interest history
 
-  - id: bond_futures__inter_commodity_spread
-    status: blocked
+  - id: bond_futures__scan_bond_futures_extremes
+    status: todo
     build_order: 3
     instrument_family: bond_futures
-    tool_name: inter_commodity_spread
+    tool_name: scan_bond_futures_extremes
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md currently says futures-specific analytics tools must wait until the rolling-contract metadata history issue is fixed.
+    ready_to_build: true
     depends_on:
       - bond_futures__futures_price_level
-    concept_summary: Raw 1:1 price differential between two contracts in the same bond-futures complex.
-    why_new_concept: Futures curve spreads are desk-native objects distinct from sovereign yield-curve spreads because they live in price space, not yield space.
-    why_standard: Inter-commodity spreads are standard futures expressions, provided the output is explicitly labeled raw 1:1 and non-DV01-neutral.
+    pre_flight_load_audit:
+      - bond_futures
+    concept_summary: Morning bond-futures sweep across the universe, ranked by absolute z-score (price, Δ, volume, OI). Returns top-N extremes per metric.
+    why_new_concept: An across-universe extremes scan is a distinct desk-screen object, not reducible to a single per-contract level or spread. It is the V1 third monitor per ADR 0011 (replacing the Phase-4 inter-commodity DV01-spread stack).
+    why_standard: Morning "where is the universe stretched today?" sweeps are standard desk practice on STIR, bond-futures, and FX-futures desks alike.
     required_playbooks:
       - rates_agent/playbooks/bond_futures.yml
     required_metrics:
       - last_price
+      - volume
+      - open_interest
     required_reference_metrics:
       - contract_code
-      - bucket_label
+      - curve_family
       - quote_units
     reference_manifest: manifesto/01_instruments/rates_agent/03_bond_futures.md:345
     reference_tools:
-      - rates_agent/sovereign_bonds/tools/curve_spread
+      - rates_agent/sovereign_bonds/tools/yield_levels
     methodology_guardrails:
-      - Must explicitly disclose that the spread is raw 1:1 and not DV01-neutral.
-      - Must not present the output as the canonical hedge-ratio trade object.
+      - Methodology card must label the scan as a universe-wide front-month sweep, NOT an inter-commodity DV01-weighted spread (Phase-4 — gated on D-repo + D-deliverable per ADR 0011).
+      - Output rows must include the methodology disclosure tag so downstream consumers cannot mistake the read for a tenor-anchored yield call.
     no_go_if_missing:
-      - synchronized last_price history for both legs
+      - synchronized last_price history across the bond-futures universe
 
   - id: inflation_linkers__real_yield_level
     status: done
@@ -125,6 +137,8 @@ primitives:
     category: desk_invariant_primitive
     ready_to_build: true
     depends_on: []
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
     concept_summary: Real-yield level and z-score for a linker curve point.
     why_new_concept: Real yields are not nominal sovereign yields; the instrument family, terminology, and downstream interpretation are linker-specific.
     why_standard: TIPS/linker real-yield level is a canonical desk object.
@@ -150,6 +164,9 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: Generic bond-implied breakeven inflation from nominal minus real yields at the same tenor.
     why_new_concept: Breakeven inflation is a cross-instrument linker object, not a nominal-yield or real-yield point in isolation.
     why_standard: Breakevens are one of the most recognizable inflation-market objects on a macro desk.
@@ -180,6 +197,9 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__breakeven_inflation_simple
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: Forward breakeven inflation between two curve points, such as 5Y5Y.
     why_new_concept: Forward breakevens are a distinct inflation-expectations object, not just another level/spread view.
     why_standard: 5Y5Y-style breakeven forwards are standard macro inflation-monitoring objects.
@@ -208,6 +228,9 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__breakeven_inflation_simple
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: Same-country spread between two breakeven tenors.
     why_new_concept: This is the inflation-compensation term-structure object, not a nominal or real curve spread.
     why_standard: Desk users immediately recognize steep/flat breakeven-curve discussions.
@@ -232,6 +255,9 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__breakeven_inflation_simple
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: Same-tenor cross-country breakeven differential.
     why_new_concept: Cross-country inflation-compensation divergence is its own macro RV object.
     why_standard: Cross-market breakeven spreads are a standard way to discuss relative inflation compensation.
@@ -257,6 +283,8 @@ primitives:
     category: desk_invariant_primitive
     ready_to_build: true
     depends_on: []
+    pre_flight_load_audit:
+      - inflation_swaps
     concept_summary: ZCIS level, historical range, and z-score for a curve pillar.
     why_new_concept: Inflation-swap levels are inflation-derivatives objects with their own index-lag and interpolation conventions.
     why_standard: USD/EUR/GBP ZCIS levels are standard inflation-desk objects.
@@ -283,6 +311,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
     concept_summary: Same-curve ZCIS tenor spread and z-score.
     why_new_concept: This is the curve-shape object for inflation swaps, distinct from outright swap levels.
     why_standard: Front-end vs long-end inflation-swap repricing is a standard desk read.
@@ -305,6 +335,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
     concept_summary: Forward inflation swap rate, such as 5Y5Y.
     why_new_concept: Forward inflation compensation is a distinct inflation expectations object.
     why_standard: 5Y5Y inflation swap is a standard market shorthand on inflation desks.
@@ -331,6 +363,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
     concept_summary: Same-tenor or same-forward-window spread between two inflation swap curves.
     why_new_concept: Cross-market inflation swap divergence is a core macro RV object across USD, EUR, and GBP inflation markets.
     why_standard: Cross-market inflation swap spreads are widely recognized desk objects.
@@ -358,6 +392,10 @@ primitives:
     depends_on:
       - inflation_linkers__breakeven_inflation_simple
       - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: ZCIS minus generic linker-implied breakeven basis.
     why_new_concept: This is the canonical bridge object between inflation swaps and linker breakevens.
     why_standard: Swap-breakeven basis is a standard inflation RV object, especially in stress and liquidity episodes.
@@ -383,16 +421,17 @@ primitives:
       - linker breakeven inputs
 
   - id: policy_futures__futures_price_level
-    status: blocked
+    status: todo
     build_order: 14
     instrument_family: policy_futures
     tool_name: futures_price_level
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md item #2 (rolling contract metadata, instrument_master SCD2) explicitly lists SFR1-8 and ER1-8 in the affected ticker examples and gates "any futures-specific analytics tools" until the rolling-contract metadata history issue is fixed; policy_futures.yml uses exactly those rolling SFR/ER tickers, so this primitive is blocked on the same item that gates the three bond_futures entries.
+    ready_to_build: true
     depends_on: []
-    concept_summary: Price-level, change, range, and z-score view for a policy-futures strip point.
-    why_new_concept: Policy-futures price level is its own strip object, not a sovereign yield level or an OIS forward point.
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: Price-level, change, range, and z-score view for a policy-futures strip position. Must expose both raw futures price and rate-equivalent interpretation when inverse pricing applies.
+    why_new_concept: Policy-futures price level is its own strip object, not a sovereign yield level or an OIS forward point. Strip position is the keying axis (not contract code).
     why_standard: Front contract price / implied-rate level is a canonical desk screen for STIR and policy futures.
     required_playbooks:
       - rates_agent/playbooks/policy_futures.yml
@@ -408,22 +447,27 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md:351
     reference_tools:
       - rates_agent/sovereign_bonds/tools/yield_levels
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_position
     methodology_guardrails:
-      - Must expose both raw futures price and rate-equivalent interpretation when inverse pricing applies.
+      - Must expose both raw futures price and rate-equivalent interpretation when inverse pricing applies (SFR / ER inverse-priced; SFI / TIIE direct).
+      - Must NOT auto-collapse EUR Euribor (Buba-curve flag) and SOFR (RFR flag) into a pack-average per ADR 0011 — refuse the pack-average and surface the user-required choice if the requested curve_family mixes regimes.
+      - Methodology card must disclose the underlying short-rate regime (RFR vs IBOR) per P5 honest disclosure.
     no_go_if_missing:
       - policy futures last_price history
       - contract metadata needed for price-to-rate interpretation
 
   - id: policy_futures__volume_open_interest_snapshot
-    status: blocked
+    status: todo
     build_order: 15
     instrument_family: policy_futures
     tool_name: volume_open_interest_snapshot
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md item #2 (rolling contract metadata, instrument_master SCD2) explicitly lists SFR1-8 and ER1-8 in the affected ticker examples and gates "any futures-specific analytics tools" until the rolling-contract metadata history issue is fixed; policy_futures.yml uses exactly those rolling SFR/ER tickers, so this primitive is blocked on the same item that gates the three bond_futures entries.
+    ready_to_build: true
     depends_on: []
-    concept_summary: Daily volume and open-interest snapshot for policy futures contracts.
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: Daily volume and open-interest snapshot for policy futures contracts at a given strip position.
     why_new_concept: Positioning and flow are a distinct futures object, not just an annotation on outright price level.
     why_standard: Volume/open-interest snapshots are standard futures-desk monitoring objects.
     required_playbooks:
@@ -438,20 +482,23 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md:365
     reference_tools:
       - rates_agent/sovereign_bonds/tools/yield_levels
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_position
     no_go_if_missing:
       - policy futures volume history
       - policy futures open_interest history
 
   - id: policy_futures__futures_calendar_spread
-    status: blocked
+    status: todo
     build_order: 16
     instrument_family: policy_futures
     tool_name: futures_calendar_spread
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md item #2 (rolling contract metadata, instrument_master SCD2) explicitly lists SFR1-8 and ER1-8 in the affected ticker examples and gates "any futures-specific analytics tools" until the rolling-contract metadata history issue is fixed; policy_futures.yml uses exactly those rolling SFR/ER tickers, so this primitive is blocked on the same item that gates the three bond_futures entries.
+    ready_to_build: true
     depends_on:
       - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
     concept_summary: Same-curve implied-rate spread between two policy-futures strip positions.
     why_new_concept: Calendar spread is the strip-slope object for policy futures, not just two standalone price levels.
     why_standard: Adjacent and non-adjacent strip spreads are standard front-end futures objects.
@@ -466,6 +513,8 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md:357
     reference_tools:
       - rates_agent/sovereign_bonds/tools/curve_spread
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_group
     methodology_guardrails:
       - Must compute in implied-rate space with explicit inverse-pricing handling.
       - Must not frame the output as a meeting-by-meeting policy-path decomposition.
@@ -474,15 +523,16 @@ primitives:
       - price-to-rate conversion metadata for the selected contracts
 
   - id: policy_futures__futures_butterfly_simple
-    status: blocked
+    status: todo
     build_order: 17
     instrument_family: policy_futures
     tool_name: futures_butterfly_simple
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md item #2 (rolling contract metadata, instrument_master SCD2) explicitly lists SFR1-8 and ER1-8 in the affected ticker examples and gates "any futures-specific analytics tools" until the rolling-contract metadata history issue is fixed; policy_futures.yml uses exactly those rolling SFR/ER tickers, so this primitive is blocked on the same item that gates the three bond_futures entries.
+    ready_to_build: true
     depends_on:
       - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
     concept_summary: Three-point policy-futures strip curvature using a fixed simple butterfly construction.
     why_new_concept: Futures strip curvature is a distinct shape object, not reducible to one outright or one calendar spread.
     why_standard: Front-end futures butterflies are standard curve-shape tools on policy and STIR desks.
@@ -497,6 +547,8 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md:359
     reference_tools:
       - rates_agent/sovereign_bonds/tools/butterfly
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_group
     methodology_guardrails:
       - Must use the standard fixed simple-butterfly weighting and state it explicitly.
       - Must compute in implied-rate space with explicit inverse-pricing handling.
@@ -505,15 +557,16 @@ primitives:
       - price-to-rate conversion metadata for the selected contracts
 
   - id: policy_futures__futures_cross_market_spread
-    status: blocked
+    status: todo
     build_order: 18
     instrument_family: policy_futures
     tool_name: futures_cross_market_spread
     category: desk_invariant_primitive
-    ready_to_build: false
-    block_reason: docs/technical_debt.md item #2 (rolling contract metadata, instrument_master SCD2) explicitly lists SFR1-8 and ER1-8 in the affected ticker examples and gates "any futures-specific analytics tools" until the rolling-contract metadata history issue is fixed; policy_futures.yml uses exactly those rolling SFR/ER tickers, so this primitive is blocked on the same item that gates the three bond_futures entries.
+    ready_to_build: true
     depends_on:
       - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
     concept_summary: Matched-strip cross-market implied-rate differential between two policy-futures curves.
     why_new_concept: Cross-central-bank divergence in futures pricing is its own macro RV object, not just two separate outrights.
     why_standard: Cross-market STIR/policy-futures spreads are standard desk expressions of relative policy pricing.
@@ -528,9 +581,12 @@ primitives:
     reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md:363
     reference_tools:
       - rates_agent/sovereign_bonds/tools/cross_market_spread
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_cross_market_strip
     methodology_guardrails:
       - Must label output as a raw cross-market implied-rate differential, not a basis-adjusted or beta-adjusted spread.
-      - Must surface benchmark-family caveats explicitly.
+      - Must surface benchmark-family caveats explicitly (RFR vs IBOR per ADR 0011).
+      - Must NOT auto-collapse mixed RFR/IBOR curves into a pack-average — refuse and surface the choice.
     no_go_if_missing:
       - matched strip positions across both curve families
       - price-to-rate conversion metadata for both markets
@@ -544,6 +600,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
     concept_summary: Same-country spread between two linker real-yield tenors.
     why_new_concept: This is the real-yield curve-shape object, distinct from breakeven shape and outright real-yield level.
     why_standard: Real-yield curve spreads are standard linker-desk and macro-PM objects.
@@ -569,6 +627,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
     concept_summary: Same-tenor cross-country differential between two linker real-yield curves.
     why_new_concept: Cross-country real-rate divergence is a distinct RV object, not the same thing as breakeven differentials.
     why_standard: Cross-market real-yield differentials are a standard way to discuss linker-relative value and macro real-rate divergence.
@@ -596,6 +656,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
     concept_summary: Three-point real-yield curve curvature for one linker market using a fixed simple butterfly.
     why_new_concept: Real-yield curvature is a distinct curve-shape object, not reducible to one spread or one level.
     why_standard: Real-yield butterflies are standard curve-shape tools once a linker curve is tradable across tenors.
@@ -623,6 +685,9 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_linkers__breakeven_inflation_simple
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+      - sovereign_bonds
     concept_summary: Three-point breakeven curve curvature using a fixed simple butterfly construction.
     why_new_concept: Breakeven curvature is a distinct inflation-compensation shape object, not just another spread view.
     why_standard: Breakeven butterflies are standard curve-shape tools for inflation-compensation monitoring and RV.
@@ -659,6 +724,8 @@ primitives:
     ready_to_build: true
     depends_on:
       - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
     concept_summary: Three-point ZCIS curve curvature for one inflation-swap market using a fixed simple butterfly.
     why_new_concept: Inflation-swap curvature is a distinct swap-curve shape object, not reducible to one level or one tenor spread.
     why_standard: Inflation-swap butterflies are standard curve-shape tools once the desk already watches ZCIS levels and spreads.

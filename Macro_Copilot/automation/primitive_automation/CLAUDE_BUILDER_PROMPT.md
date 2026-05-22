@@ -13,13 +13,37 @@ Read these files first:
 - `automation/primitive_automation/STANDARD_TOOL_AND_YAML_RULES.md`
 - `automation/primitive_automation/PRIMITIVE_BUILD_RULES.md`
 - `automation/primitive_automation/TESTING_AND_DB_VALIDATION_POLICY.md`
+- `automation/primitive_automation/PRE_FLIGHT_LOAD_AUDIT.md`
 - `automation/primitive_automation/NO_GO_RULES.md`
 - `automation/primitive_automation/DONE_DEFINITION.md`
 - `automation/primitive_automation/REPO_REFERENCE_MAP.md`
 - the primitive catalog entry
 
+`REPO_REFERENCE_MAP.md` indexes the authoritative repo docs under
+`docs_revamped/` — P1–P12 non-negotiables, PR1–PR16 primitive
+contract, lateral standards (naming, file & folder layout, methodology
+disclosure, error handling, test patterns, closed-family discipline,
+hash determinism, typed-boundary discipline), and the ADR catalogue.
+Read what the map points to *before* you start writing code; do not
+skim. The PR1–PR16 numbered rules in
+`docs_revamped/02_components/primitive/README.md` are how the reviewer
+will score the build, so it is also how you should write it.
+
 Then inspect the live repo files relevant to the primitive and the
-reference tools named in the catalog entry.
+reference tools named in the catalog entry. Especially:
+
+- `rates_agent/<domain>/tools/<reference_tool>/` — the closest already-
+  shipped primitive shape.
+- `rates_agent/<domain>/mcp_server.py` — the wiring pattern your tool
+  registration must mirror.
+- `tests/test_<reference_tool>_compute.py`,
+  `tests/test_<reference_tool>_wiring.py`, and
+  `tests/test_<reference_tool>_sql_validation.py` — the PR16 three-
+  test triplet you must replicate for the new tool.
+- `shared/analytics/rates_fetch.py` and
+  `shared/analytics/event_calendar_fetch.py` — the canonical fetcher
+  surfaces; reach the DB through these helpers rather than inlining
+  raw SQL in `compute.py`.
 
 Do not build from memory or from generic prior habits.
 
@@ -147,19 +171,47 @@ If the primitive cannot be built honestly because of:
 - a concept mismatch
 - inability to classify it honestly as standard
 - inability to run the required DB-backed validation honestly
+- the pre-flight `load_audit` check did not pass and you nevertheless
+  observe missing rows in the substrate
 
 stop and explain the blocker clearly.
 
+The orchestrator runs the pre-flight `load_audit` check *before*
+dispatching you, so in normal operation you should never be invoked
+on a primitive whose substrate is empty. If you somehow are
+(orchestrator bug, manual dispatch, stale catalog), refuse the build
+and surface the missing-data condition rather than working around
+it.
+
 Do not force a build.
 
-## When Codex returns findings
+## When the reviewer returns findings
+
+The reviewer engine is held in `primitive_runtime_state.yaml` as
+`reviewer_mode`:
+
+- `reviewer_mode: codex` (default; primary engine)
+- `reviewer_mode: claude_fallback` (used when Codex quota is
+  exhausted; same `REVIEWER_PROMPT.md`)
+
+Both engines use the SAME `REVIEWER_PROMPT.md` and the SAME review
+bar. From your perspective as the builder, findings from either
+engine carry equal weight — treat them by *content*, not by which
+engine emitted them.
 
 Fix only the valid findings.
 
 If a finding is not valid, explain why using:
 
-- the repo docs
+- the repo docs (`docs_revamped/` — start at
+  `00_thesis/01_non_negotiables.md` and
+  `02_components/primitive/README.md`)
 - the actual code
 - the live architecture contract
 
 Do not blindly conform to incorrect review comments.
+
+The orchestrator is responsible for classifying findings as
+mandatory-fix vs dismissable before forwarding them to you; if you
+receive a finding through the orchestrator, treat it as
+mandatory-fix unless you have a documented reason to push back.

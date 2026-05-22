@@ -97,10 +97,14 @@ like:
 
 ## 10. Reviewer not satisfied
 
-If Codex has not clearly approved the primitive, do not commit it as
-done.
+If the active reviewer (Codex primary OR Claude fallback per
+`QUOTA_AND_RESUME_POLICY.md` §10) has not clearly approved the
+primitive, do not commit it as done.
 
-Valid findings must be fixed.
+Valid findings must be fixed. The review bar does not relax when the
+orchestrator swaps from Codex to Claude — a `CHANGES REQUIRED`
+verdict from either engine is binding under the Review-adjudication
+rule.
 
 If the reviewer is uncertain or the process cannot tell whether a
 finding is valid, stop and ask for human input rather than guessing.
@@ -152,3 +156,29 @@ Default behavior:
 
 Only preserve blocked scaffold in-tree if a human explicitly instructs
 that it should be preserved.
+
+## 15. Pre-flight load_audit miss
+
+If the orchestrator's pre-flight `load_audit` check (see
+`PRE_FLIGHT_LOAD_AUDIT.md`) shows that any of the primitive's
+`required_playbooks` does not have a `SUCCESS` row in
+`macro_data.load_audit`, the primitive must NOT be built in this
+wake.
+
+The primitive is `blocked` (not failed). Re-running the ingestion
+playbook to populate `load_audit` is a human decision; the
+automation must not seed, ingest, or otherwise mutate the DB to
+satisfy the check (that would violate rule §12).
+
+The wake continues to the next eligible primitive; the catalog loop
+is not halted by a single primitive's pre-flight miss.
+
+## 16. Catalog exhausted
+
+If `orchestrator_status` is already `catalog_exhausted`, do NOT
+re-enter the catalog loop. The cron entry-point short-circuits and
+the wake exits 0 without consuming worker quota. See
+`BACKGROUND_EXECUTION_POLICY.md` §8 and
+`OPENCLAW_CRON_RUNBOOK.md` §7. A human re-arms the factory by either
+appending new catalog entries or by clearing `orchestrator_status`
+explicitly.

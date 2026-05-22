@@ -73,26 +73,43 @@ It intentionally excludes:
   What "finished" means for a primitive in this repo.
 - `REPO_REFERENCE_MAP.md`
   Exact files the automation must consult before building/reviewing.
+- `PRE_FLIGHT_LOAD_AUDIT.md`
+  Mandatory pre-flight gate. Before any builder dispatch, the
+  orchestrator verifies the primitive's required playbook has a
+  `SUCCESS` row in `macro_data.load_audit`. Read-only check; no
+  fix-up. On a miss, the primitive is `blocked` and the loop
+  advances to the next eligible entry.
 - `ORCHESTRATOR_PROMPT.md`
   Prompt for the OpenClaw orchestrator.
 - `CLAUDE_BUILDER_PROMPT.md`
   Prompt for the Claude Code builder.
-- `CODEX_REVIEWER_PROMPT.md`
-  Prompt for the Codex reviewer.
+- `REVIEWER_PROMPT.md`
+  Engine-agnostic reviewer prompt. Fed to BOTH `run_codex_reviewer.sh`
+  (primary) and `run_claude_reviewer.sh` (fallback) — the prompt does
+  not change when the orchestrator swaps engines.
 - `primitive_catalog.yaml`
   The ordered primitive backlog for this automation slice.
 - `primitive_runtime_state.yaml`
   Durable runtime/state surface for quota state, current primitive,
-  current step, counts, and Discord-readable progress reporting.
+  current step, counts, reviewer-engine mode + history, and
+  Discord-readable progress reporting.
 - `run_claude_builder.sh`
   Canonical VM wrapper for Claude Code builder runs with explicit
   model, effort, branch check, and log capture.
 - `run_codex_reviewer.sh`
-  Canonical VM wrapper for Codex reviewer runs with explicit model,
-  reasoning effort, sandbox mode, branch check, and log capture.
-- `parse_codex_reviewer_log.py`
-  Helper that extracts the reviewer heading and flags environment
-  failures from the reviewer log.
+  Canonical VM wrapper for Codex reviewer (primary) runs with
+  explicit model, reasoning effort, sandbox mode, branch check, and
+  log capture.
+- `run_claude_reviewer.sh`
+  Canonical VM wrapper for Claude reviewer (fallback) runs with
+  explicit model, effort, permission mode, branch check, and log
+  capture. Used when Codex quota is exhausted; the orchestrator
+  swaps engines and re-dispatches the same `REVIEWER_PROMPT.md`.
+- `parse_reviewer_log.py`
+  Helper that extracts the reviewer heading, flags environment
+  failures, AND flags `reviewer_quota_exhausted` from the reviewer
+  log. The quota flag is the trigger that switches the active
+  reviewer engine — see `QUOTA_AND_RESUME_POLICY.md` §10.
 - `QUOTA_AND_RESUME_POLICY.md`
   Limit checks, thresholds, stop conditions, and resume rules.
 - `BACKGROUND_EXECUTION_POLICY.md`
@@ -126,6 +143,7 @@ It intentionally excludes:
    - `STANDARD_TOOL_AND_YAML_RULES.md`
    - `PRIMITIVE_BUILD_RULES.md`
    - `TESTING_AND_DB_VALIDATION_POLICY.md`
+   - `PRE_FLIGHT_LOAD_AUDIT.md`
    - `NO_GO_RULES.md`
    - `DONE_DEFINITION.md`
    - `REPO_REFERENCE_MAP.md`
@@ -134,20 +152,36 @@ It intentionally excludes:
    - `DISCORD_STATUS_POLICY.md`
 4. Check Claude and Codex limits and normalize them into the required
    JSON contract before starting new work.
-5. The orchestrator writes the builder prompt to a temp file and runs
+5. **Run the pre-flight `load_audit` check** for the selected
+   primitive's `required_playbooks`. On a miss, block that primitive,
+   record `last_stop_reason: pre_flight_load_audit_missing`, and
+   advance to the next eligible entry.
+6. The orchestrator writes the builder prompt to a temp file and runs
    `run_claude_builder.sh` for the current primitive.
-6. The orchestrator writes the reviewer prompt to a temp file and runs
-   `run_codex_reviewer.sh` for an independent review.
-7. Claude fixes valid findings only.
-8. Codex re-reviews.
-9. When a primitive is approved, the orchestrator immediately advances
-   to the next eligible primitive in the same run.
-10. The run stops only when:
-   - the catalog is exhausted
-   - a primitive is honestly blocked
-   - quota is too low to continue safely
-   - a hard platform/runtime error occurs
-   - or human input is genuinely required
+7. The orchestrator writes the reviewer prompt to a temp file and
+   runs the active reviewer wrapper:
+   - `reviewer_mode: codex` → `run_codex_reviewer.sh` (default).
+   - `reviewer_mode: claude_fallback` → `run_claude_reviewer.sh`.
+   Both wrappers consume the SAME `REVIEWER_PROMPT.md`.
+8. Parse the resulting log with `parse_reviewer_log.py`. If it
+   reports `reviewer_quota_exhausted: true` and no valid heading,
+   switch `reviewer_mode` per `QUOTA_AND_RESUME_POLICY.md` §10 and
+   re-dispatch the same primitive to the other engine.
+9. Apply the review-adjudication rule: mandatory-fix findings go back
+   to the builder; dismissable findings are logged and the primitive
+   advances.
+10. The builder fixes valid findings only; the reviewer re-reviews.
+11. When a primitive is approved (or approved-with-dismissals), the
+    orchestrator immediately advances to the next eligible primitive
+    in the same run.
+12. The run stops only when:
+    - the catalog is exhausted (→ catalog-exhaustion shutdown per
+      `BACKGROUND_EXECUTION_POLICY.md` §8)
+    - a primitive is honestly blocked
+    - quota is too low to continue safely
+    - both reviewer engines are quota-exhausted in the same wake
+    - a hard platform/runtime error occurs
+    - or human input is genuinely required
 
 If a primitive is blocked after scaffold has already been generated:
 
@@ -224,5 +258,17 @@ This package exists to preserve that exact discipline while making the
 loop automatable.
 
 On the VM, the preferred worker path is now explicit wrapper scripts
-rather than looser ad hoc worker invocations, so model, effort, sandbox,
-and log behavior stay deterministic.
+rather than looser ad hoc worker invocations, so model, effort,
+sandbox, and log behavior stay deterministic. The two automation-only
+behavioral additions on top of the original manual loop are:
+
+1. **Reviewer-engine fallback** — Codex primary, Claude on quota
+   exhaustion. The two-lab independence is preserved on the happy
+   path; the factory keeps moving when Codex resets. The
+   `reviewer_mode_history` field in `primitive_runtime_state.yaml`
+   is the audit trail (P5 honest disclosure).
+2. **Catalog-exhaustion shutdown** — when every primitive is `done`
+   or `blocked`, the cron entry-point short-circuits without
+   dispatching the orchestrator. This stops the factory from burning
+   tokens on empty loops and lets a human re-arm it with a single
+   YAML edit (or by appending new catalog entries).
