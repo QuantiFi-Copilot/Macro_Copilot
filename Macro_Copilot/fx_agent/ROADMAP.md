@@ -292,11 +292,36 @@ Discovery wave run from the university Bloomberg terminal on 2026-05-22 in paral
 
 → **The direct-ticker path for CIP basis is too fragile for production**. Phase C should derive CIP deviation from **OIS differential − forward-implied carry** using the OIS substrate (Sreeram's domain) and the forwards substrate (ours) — both already in DB. No new playbook needed for Phase C in this path. The basis-swap ticker formats can be re-verified in a future session if direct quotes are ever needed.
 
-**Outstanding items for future verification sessions:**
-- USDCNY NDF correct ticker format (not `USDCNH+1M`)
-- BRL NDF aliasing (`BCN+` vs `BRL+`)
-- CIP basis ticker formats post-2020 (BBG taxonomy may have changed)
-- Whether AUD basis swap has a different ticker convention (perhaps `ADBS<n>`)
+**Wave 2 follow-up (also 2026-05-22, same university session) — 3 of the 4 outstanding items resolved:**
+
+| Item | Status | Finding |
+|---|---|---|
+| USDCNY NDF ticker | ✅ Resolved | `CCN+1M Curncy` (NAME = "CCY NDF OUTRIGHT 1MO"). Tested formats `CNN+1M`, `IRC+1M` are invalid. Clean history 2010-2026 (e.g. 6.78 in 2010, 6.83 in 2026). |
+| AUD basis swap ticker | ✅ Resolved | `ADBS3 Curncy` (NAME = "AUD-USD BS 3M (BvL/B) 3Y"). `AUBSC` invalid. |
+| CIP basis pricing source quirk | ❌ Not the issue | `EUBS3 BGN Curncy` has the same 2010+2026 `#N/A` pattern as plain `EUBS3`. Pricing source override doesn't help. `EUBS3 ICAP` is invalid. |
+
+**Critical convention re-read on basis swap tickers:** the NAME of `EUBS3 BGN Curncy` is **"EURUSD BS (3M VS 3M) 3Y"** — decoded:
+- `BS` = basis swap
+- `3M VS 3M` = both legs reset at 3-month frequency (swap convention, fixed)
+- **`3Y` = the SWAP MATURITY is 3 YEARS, not 3 months**
+
+So the suffix `n` in `EUBSn Curncy` denotes maturity in YEARS, not tenor in months. `EUBS3` is a **3-year** basis swap, not a 3-month basis swap. `EUBS12` is 12-year (same data-coverage issue). `EUBS24` invalid = likely a 24-year maturity is not quoted. `ADBS3` follows the same "3-year maturity AUD basis swap" convention.
+
+The 2010-and-2026 `#N/A` pattern is now explained: specific multi-year maturities aren't continuously quoted across all calendar dates; quotes appear when there's a primary book / dealer activity at that maturity.
+
+**Updated implication for Phase C:** the **derived path is now even more clearly correct**. To get a clean CIP deviation series at standard short tenors (3M, 6M, 1Y), the answer is:
+
+```
+implied_carry = forward_points / divisor / spot * (365 / days_to_tenor)
+ois_differential = ois_funding_ccy - ois_base_ccy
+cip_deviation_bps = (implied_carry - ois_differential) * 10000
+```
+
+Both inputs are in DB after Wave 1 (forwards) and from Sreeram's OIS substrate (OIS curves). No new playbook, no new extraction.
+
+**Still outstanding (very-future-work):**
+- BRL NDF aliasing — `BCN+` works (confirmed earlier), `BRL+` is stale; document the convention. No action needed.
+- Whether short-tenor CIP basis swap tickers exist (e.g. `EUBS3M Curncy` for a 3M-maturity basis swap rather than 3Y) — not needed for Phase C since the derived path works, but useful if a future tool wants the direct quote for comparison / validation.
 
 ### Wave 1 bucket override — temporary FX bucket via env var
 
@@ -397,6 +422,7 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-22 | Bucket override: `push_playbooks.py` and `ingest_parquet.py` gained `GCP_BUCKET_NAME` env-var support (matching the extractors' existing convention). FX Wave 1 runs against `gs://quantifi-fx-data-sacha` via `export GCP_BUCKET_NAME=quantifi-fx-data-sacha`; rates / Sreeram's flow unchanged (default still `macro-storage-bucket`). Long-term plan: consolidate into one bucket once IAM is sorted. | Permission denied on `macro-storage-bucket` for `fx-agent@quantifi-fx-agent.iam` SA during Wave 1 prep |
 | 2026-05-22 | Wave 1 Bloomberg extraction ✅ — 548,609 rows across 4 playbooks pushed to `gs://quantifi-fx-data-sacha` in ~7 minutes. Postgres ingestion pending. | Sacha at university Bloomberg terminal |
 | 2026-05-22 | Wave 2 discovery complete — findings recorded under "Wave 2 — Bloomberg discovery findings". Key conventions: NDFs are quoted as outright (not forward points), vol smile (RR/BF, 25-delta and 10-delta) is available across G10 pairs, CIP basis swap direct tickers are fragile (stale/invalid for many pairs) — Phase C should derive CIP from OIS + forwards instead. | BBG verification in Excel from university terminal |
+| 2026-05-22 | Wave 2 follow-up (same session) — USDCNY NDF ticker resolved (`CCN+1M Curncy`, outright, full 2010-2026 history). AUD basis ticker resolved (`ADBS3 Curncy`). **Bigger discovery: the `EUBSn` convention is maturity-in-YEARS, not tenor-in-months** — `EUBS3` is a 3-year basis swap, `EUBS12` is 12-year, etc. This re-explains the patchy data coverage and reinforces the derived-from-OIS approach for Phase C CIP. | Decoded NAME field `EURUSD BS (3M VS 3M) 3Y` of `EUBS3 BGN Curncy` |
 
 ---
 
