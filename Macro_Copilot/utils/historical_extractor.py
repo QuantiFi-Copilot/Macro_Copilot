@@ -1791,6 +1791,31 @@ def _resolve_deliverables_section(playbook: Dict[str, Any]) -> Optional[Dict[str
                 "deliverables: `include_tickers` entries must be non-blank "
                 "strings"
             )
+    # ADR 0011 v6.1: per-ticker chain-depth cap. SYNC INVARIANT with
+    # utils/incremental_extractor.py.
+    chain_max_length = section.get("chain_max_length")
+    if chain_max_length is not None:
+        if not isinstance(chain_max_length, dict) or not chain_max_length:
+            raise ValueError(
+                "deliverables: `chain_max_length` must be a non-empty "
+                "mapping of vendor_ticker -> positive int when present "
+                "(omit the key to disable per-ticker chain capping)"
+            )
+        for ticker_key, cap_val in chain_max_length.items():
+            if not isinstance(ticker_key, str) or not ticker_key.strip():
+                raise ValueError(
+                    f"deliverables: `chain_max_length` keys must be non-blank "
+                    f"strings; got {ticker_key!r}"
+                )
+            if (
+                isinstance(cap_val, bool)
+                or not isinstance(cap_val, int)
+                or cap_val <= 0
+            ):
+                raise ValueError(
+                    f"deliverables: `chain_max_length[{ticker_key!r}]` must be "
+                    f"a positive int; got {cap_val!r}"
+                )
     return section
 
 
@@ -1869,6 +1894,28 @@ def _stamp_deliverables_audit_suffix(
         lineage_meta,
         playbook_name=f"{lineage_meta['playbook_name']}__deliverables",
     )
+
+
+def _apply_chain_max_length(
+    contracts: List[str], chain_max_length: Optional[int],
+) -> List[str]:
+    """Cap a chain to the newest N entries (ADR 0011 v6.1). SYNC INVARIANT
+    with utils/incremental_extractor.py -- see the canonical docstring
+    there for the full rationale."""
+    if chain_max_length is None:
+        return contracts
+    if isinstance(chain_max_length, bool) or not isinstance(chain_max_length, int):
+        raise ValueError(
+            f"chain_max_length must be a positive int or None; got "
+            f"{type(chain_max_length).__name__}={chain_max_length!r}"
+        )
+    if chain_max_length <= 0:
+        raise ValueError(
+            f"chain_max_length must be a positive int; got {chain_max_length!r}"
+        )
+    if len(contracts) <= chain_max_length:
+        return list(contracts)
+    return list(contracts[-chain_max_length:])
 
 
 _BLOOMBERG_YELLOW_KEYS: tuple = (
@@ -2200,6 +2247,9 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
             total_contracts_with_basket = 0
             # Per-contract miss tracking (ADR 0011 v3, Codex finding 1).
             missed_contracts: List[str] = []
+            # ADR 0011 v6.1: per-ticker chain-depth cap (Bloomberg basket-data
+            # historical cutoff workaround). SYNC INVARIANT.
+            chain_caps: Dict[str, int] = section.get("chain_max_length") or {}
 
             for item in universe_items:
                 generic_ticker = item["ticker"]
@@ -2213,7 +2263,16 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
                 if not contracts:
                     print(f"    [!] No underlying contracts returned for {generic_ticker}")
                     continue
-                print(f"    [OK] chain length = {len(contracts)}")
+                full_chain_len = len(contracts)
+                cap = chain_caps.get(generic_ticker)
+                contracts = _apply_chain_max_length(contracts, cap)
+                if cap is not None and len(contracts) < full_chain_len:
+                    print(
+                        f"    [INFO] chain_max_length={cap} applied for "
+                        f"{generic_ticker}: trimmed {full_chain_len} -> "
+                        f"{len(contracts)} contracts (newest kept)"
+                    )
+                print(f"    [OK] chain length (after cap) = {len(contracts)}")
 
                 generic_emitted_any = False
                 for contract_ticker in contracts:

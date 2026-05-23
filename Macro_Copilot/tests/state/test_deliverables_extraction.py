@@ -854,6 +854,167 @@ class TestStageContractRowsParseValidationV5:
 
 
 # ============================================================================
+# v6.1 — chain_max_length per-ticker cap (ADR 0011 v6.1 / C4 Phase A.4).
+# Workaround for Bloomberg's empirical historical-data cutoff on
+# FUT_DLVRBLE_BNDS_CUSIPS: each UST generic's chain extends years before
+# Bloomberg starts serving basket reference data, so without a cap the v3
+# strict contract-level coverage gate would abort the load.
+# ============================================================================
+
+
+class TestApplyChainMaxLength:
+    def test_none_cap_passes_chain_through_unchanged(self) -> None:
+        chain = [f"c{i}" for i in range(50)]
+        assert _incr._apply_chain_max_length(chain, None) == chain
+
+    def test_cap_larger_than_chain_returns_full_chain(self) -> None:
+        chain = [f"c{i}" for i in range(50)]
+        out = _incr._apply_chain_max_length(chain, 200)
+        assert out == chain
+        # New list (defensive copy), not the same object.
+        assert out is not chain
+
+    def test_cap_equal_to_chain_length_returns_full_chain(self) -> None:
+        chain = [f"c{i}" for i in range(50)]
+        assert _incr._apply_chain_max_length(chain, 50) == chain
+
+    def test_cap_smaller_than_chain_keeps_newest_n(self) -> None:
+        """Bloomberg's FUT_CHAIN is chronological oldest-first; the cap
+        keeps the LAST N entries (newest)."""
+        chain = [f"c{i}" for i in range(10)]  # c0 = oldest, c9 = newest
+        out = _incr._apply_chain_max_length(chain, 3)
+        assert out == ["c7", "c8", "c9"]
+
+    def test_real_us1_chain_simulation(self) -> None:
+        """End-to-end: US1 has 197 contracts (1977-2027); cap=140 should
+        trim the oldest 57 and keep newest 140 (corresponds to ~1991+)."""
+        chain = [f"USc{i}" for i in range(197)]
+        out = _incr._apply_chain_max_length(chain, 140)
+        assert len(out) == 140
+        assert out[0] == "USc57"   # oldest kept
+        assert out[-1] == "USc196"  # newest kept
+
+    def test_negative_cap_raises(self) -> None:
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._apply_chain_max_length(["a", "b"], -1)
+
+    def test_zero_cap_raises(self) -> None:
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._apply_chain_max_length(["a", "b"], 0)
+
+    def test_non_int_cap_raises(self) -> None:
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._apply_chain_max_length(["a", "b"], 10.5)
+
+    def test_bool_cap_raises(self) -> None:
+        """True is `isinstance(_, int)` in Python; reject explicitly because
+        ``True`` as a length cap is almost certainly a YAML deserialisation
+        mistake."""
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._apply_chain_max_length(["a", "b"], True)
+
+    def test_empty_chain_returns_empty(self) -> None:
+        assert _incr._apply_chain_max_length([], 5) == []
+
+
+class TestResolveDeliverablesSectionChainMaxLengthV6_1:
+    """Validator accepts an optional `chain_max_length: dict[str, positive int]`;
+    raises on every malformed shape."""
+
+    def test_absent_chain_max_length_passes(self) -> None:
+        sec = _valid_section()
+        assert "chain_max_length" not in sec
+        assert _incr._resolve_deliverables_section({"deliverables": sec}) is sec
+
+    def test_well_formed_chain_max_length_passes(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": 130, "US1 Comdty": 140})
+        assert _incr._resolve_deliverables_section({"deliverables": sec}) is sec
+
+    def test_empty_chain_max_length_dict_raises(self) -> None:
+        """An empty mapping is a misconfiguration -- omit the key for the
+        'no cap' case."""
+        sec = _valid_section(chain_max_length={})
+        with pytest.raises(ValueError, match="chain_max_length"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_non_dict_chain_max_length_raises(self) -> None:
+        sec = _valid_section(chain_max_length=[100, 130])
+        with pytest.raises(ValueError, match="chain_max_length"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_blank_ticker_key_raises(self) -> None:
+        sec = _valid_section(chain_max_length={"  ": 100})
+        with pytest.raises(ValueError, match="non-blank"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_non_string_ticker_key_raises(self) -> None:
+        sec = _valid_section(chain_max_length={42: 100})
+        with pytest.raises(ValueError, match="non-blank"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_negative_cap_value_raises(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": -10})
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_zero_cap_value_raises(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": 0})
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_non_int_cap_value_raises(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": 130.0})
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_bool_cap_value_raises(self) -> None:
+        """True is `isinstance(_, int)` in Python; reject explicitly so a
+        YAML `chain_max_length: {"TY1 Comdty": true}` typo fails loudly."""
+        sec = _valid_section(chain_max_length={"TY1 Comdty": True})
+        with pytest.raises(ValueError, match="positive int"):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+
+    def test_chain_max_length_only_for_some_tickers_is_valid(self) -> None:
+        """It is the operator's prerogative to cap only a subset of
+        generics; tickers omitted from the map have no cap."""
+        sec = _valid_section(chain_max_length={"US1 Comdty": 140})
+        out = _incr._resolve_deliverables_section({"deliverables": sec})
+        assert out["chain_max_length"] == {"US1 Comdty": 140}
+
+
+class TestChainMaxLengthHistoricalParity:
+    """SYNC INVARIANT: historical_extractor's copies behave byte-equivalently."""
+
+    def test_helper_matches(self) -> None:
+        chain = [f"c{i}" for i in range(100)]
+        for cap in (None, 50, 200, 1):
+            assert (
+                _incr._apply_chain_max_length(chain, cap)
+                == _hist._apply_chain_max_length(chain, cap)
+            )
+
+    def test_helper_raises_match(self) -> None:
+        for bad in (-1, 0, 10.5, True):
+            with pytest.raises(ValueError):
+                _incr._apply_chain_max_length(["a"], bad)
+            with pytest.raises(ValueError):
+                _hist._apply_chain_max_length(["a"], bad)
+
+    def test_validator_chain_max_length_matches(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": 130})
+        a = _incr._resolve_deliverables_section({"deliverables": sec})
+        b = _hist._resolve_deliverables_section({"deliverables": sec})
+        assert a["chain_max_length"] == b["chain_max_length"]
+
+    def test_validator_chain_max_length_raises_match(self) -> None:
+        sec = _valid_section(chain_max_length={"TY1 Comdty": 0})
+        with pytest.raises(ValueError):
+            _incr._resolve_deliverables_section({"deliverables": sec})
+        with pytest.raises(ValueError):
+            _hist._resolve_deliverables_section({"deliverables": sec})
+
+
+# ============================================================================
 # v6 — _canonicalize_deliverable_cusip (ADR 0011 v6 / C4 Phase A.3, Codex
 # fifth-round finding 3). Bloomberg's FUT_DLVRBLE_BNDS_CUSIPS bulk-data
 # returns "{8-char CUSIP stem} Govt" with the check digit truncated;

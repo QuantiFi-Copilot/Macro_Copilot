@@ -2880,6 +2880,35 @@ def _resolve_deliverables_section(playbook: Dict[str, Any]) -> Optional[Dict[str
                 "deliverables: `include_tickers` entries must be non-blank "
                 "strings"
             )
+    # ADR 0011 v6.1: optional per-ticker chain-depth cap (mapping of
+    # vendor_ticker -> positive int). Workaround for Bloomberg's
+    # historical-data cutoff on FUT_DLVRBLE_BNDS_CUSIPS. When present,
+    # the extractor slices each capped chain to its newest N entries
+    # before probing baskets, so the v3 strict contract-level coverage
+    # gate applies only to the in-coverage portion of each chain.
+    chain_max_length = section.get("chain_max_length")
+    if chain_max_length is not None:
+        if not isinstance(chain_max_length, dict) or not chain_max_length:
+            raise ValueError(
+                "deliverables: `chain_max_length` must be a non-empty "
+                "mapping of vendor_ticker -> positive int when present "
+                "(omit the key to disable per-ticker chain capping)"
+            )
+        for ticker_key, cap_val in chain_max_length.items():
+            if not isinstance(ticker_key, str) or not ticker_key.strip():
+                raise ValueError(
+                    f"deliverables: `chain_max_length` keys must be non-blank "
+                    f"strings; got {ticker_key!r}"
+                )
+            if (
+                isinstance(cap_val, bool)
+                or not isinstance(cap_val, int)
+                or cap_val <= 0
+            ):
+                raise ValueError(
+                    f"deliverables: `chain_max_length[{ticker_key!r}]` must be "
+                    f"a positive int; got {cap_val!r}"
+                )
     return section
 
 
@@ -2988,6 +3017,44 @@ def _stamp_deliverables_audit_suffix(
         lineage_meta,
         playbook_name=f"{lineage_meta['playbook_name']}__deliverables",
     )
+
+
+def _apply_chain_max_length(
+    contracts: List[str], chain_max_length: Optional[int],
+) -> List[str]:
+    """Cap a chain to the newest N entries (ADR 0011 v6.1).
+
+    Bloomberg's ``FUT_CHAIN`` returns contracts in chronological
+    (oldest-first) order. When ``chain_max_length`` is set, the extractor
+    keeps only the most-recent N contracts — a workaround for Bloomberg's
+    empirical historical-data cutoff on basket reference data
+    (``FUT_DLVRBLE_BNDS_CUSIPS`` drops basket data for the oldest ~7-10
+    years of each UST generic's chain; the v3 strict contract-level
+    coverage gate would otherwise abort the load on those documented gaps).
+
+    Returns the original list when ``chain_max_length`` is None or when the
+    chain is already shorter than the cap. Returns the last
+    ``chain_max_length`` entries (Python negative indexing) otherwise.
+
+    Raises ``ValueError`` on non-positive or non-int cap (the validator
+    should catch this earlier; this is defence-in-depth).
+
+    SYNC INVARIANT with ``utils/historical_extractor.py``.
+    """
+    if chain_max_length is None:
+        return contracts
+    if isinstance(chain_max_length, bool) or not isinstance(chain_max_length, int):
+        raise ValueError(
+            f"chain_max_length must be a positive int or None; got "
+            f"{type(chain_max_length).__name__}={chain_max_length!r}"
+        )
+    if chain_max_length <= 0:
+        raise ValueError(
+            f"chain_max_length must be a positive int; got {chain_max_length!r}"
+        )
+    if len(contracts) <= chain_max_length:
+        return list(contracts)
+    return list(contracts[-chain_max_length:])
 
 
 # Bloomberg yellow-key suffixes that may appear on bds-returned identifier
@@ -3431,6 +3498,14 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
             # so the coverage-gate error message can name them.
             missed_contracts: List[str] = []
 
+            # ADR 0011 v6.1: per-ticker chain-depth cap. Bloomberg's basket
+            # reference data has an empirical historical cutoff (FUT_DLVRBLE_
+            # BNDS_CUSIPS drops baskets for the oldest ~7-10 years of each
+            # UST generic's chain). The cap trims each chain to its newest
+            # N entries so the v3 strict contract-level gate applies only
+            # to the in-coverage portion.
+            chain_caps: Dict[str, int] = section.get("chain_max_length") or {}
+
             for item in universe_items:
                 generic_ticker = item["ticker"]
                 print(f"  Enumerating chain for {generic_ticker}...")
@@ -3443,7 +3518,18 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
                 if not contracts:
                     print(f"    [!] No underlying contracts returned for {generic_ticker}")
                     continue
-                print(f"    [OK] chain length = {len(contracts)}")
+                full_chain_len = len(contracts)
+                cap = chain_caps.get(generic_ticker)
+                contracts = _apply_chain_max_length(contracts, cap)
+                if cap is not None and len(contracts) < full_chain_len:
+                    print(
+                        f"    [INFO] chain_max_length={cap} applied for "
+                        f"{generic_ticker}: trimmed {full_chain_len} -> "
+                        f"{len(contracts)} contracts (newest kept; older "
+                        "contracts excluded per Bloomberg's basket-data "
+                        "historical cutoff, ADR 0011 v6.1)"
+                    )
+                print(f"    [OK] chain length (after cap) = {len(contracts)}")
 
                 generic_emitted_any = False
                 for contract_ticker in contracts:

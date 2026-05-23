@@ -303,6 +303,30 @@ deliverables:
     - "UXY1 Comdty"  # UST Ultra 10Y T-Note futures
     - "US1 Comdty"   # UST Classic Long Bond (30Y) futures
     - "WN1 Comdty"   # UST Ultra Bond futures
+  # ADR 0011 v6.1: per-ticker chain-depth cap. Bloomberg's basket
+  # reference data (FUT_DLVRBLE_BNDS_CUSIPS) has an empirical historical
+  # cutoff that varies by generic; the operator script-probe 2026-05-23
+  # established the following per-generic cutoffs:
+  #   TU1   chain 1990-2027 (146)   baskets from ~1997   ~7y gap
+  #   FV1   chain 1988-2027 (155)   baskets from ~1996   ~8y gap
+  #   TY1   chain 1982-2027 (179)   baskets from ~1991   ~9y gap
+  #   US1   chain 1977-2027 (197)   baskets from ~1987   ~10y gap
+  #   UXY1  chain 2016-2027  (44)   full coverage         no gap
+  #   WN1   chain 2010-2027  (68)   full coverage         no gap
+  # The caps below trim each chain to its newest N entries (Python
+  # negative-indexed slice `contracts[-N:]`, FUT_CHAIN returns
+  # chronological oldest-first order) so the v3 strict contract-level
+  # coverage gate applies only to the in-coverage portion. Values chosen
+  # conservatively per the probe with ~5y safety margin past each
+  # cutoff; the operator can tune them up (more history) or down (more
+  # safety) in subsequent runs based on production-extractor results.
+  # Tickers omitted from this mapping have NO cap (full chain processed):
+  # UXY1 and WN1 have full Bloomberg basket coverage and need no cap.
+  chain_max_length:
+    "TU1 Comdty":  108           # newest 108 of 146  ->  oldest ~ 1999.5
+    "FV1 Comdty":  110           # newest 110 of 155  ->  oldest ~ 2000.75
+    "TY1 Comdty":  128           # newest 128 of 179  ->  oldest ~ 1994.75
+    "US1 Comdty":  140           # newest 140 of 197  ->  oldest ~ 1991.25
 
 universe:
   # United States Treasury futures
