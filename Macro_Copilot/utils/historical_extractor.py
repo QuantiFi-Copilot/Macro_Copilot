@@ -1666,6 +1666,610 @@ def run_autonomous_extraction(selected_playbooks: Optional[Set[str]] = None):
         print("\n*** EXTRACTION PIPELINE COMPLETE ***")
 
 
+# ============================================================================
+# DELIVERABLES EXTRACTION  (work order C3, ADR 0011)
+#
+# ``--mode deliverables`` extracts per-bond-future-contract deliverable
+# baskets + conversion factors + delivery / notice dates. SYNC INVARIANT with
+# ``utils/incremental_extractor.py`` — the function body below is byte-
+# identical to the matching block there. See that file's section header for
+# the design notes. The extractor stays self-contained (no project-internal
+# imports), so each script carries its own copy of ``_DELIVERABLES_TYPED_COLUMNS``,
+# ``_resolve_deliverables_section``, ``_fetch_contract_deliverable_basket``, and
+# ``run_deliverables_extraction``.
+# ============================================================================
+DELIVERABLES_EXTRACTION_MODE = "deliverables"
+
+_DELIVERABLES_TYPED_COLUMNS: tuple = (
+    "deliverable_isin",
+    "conversion_factor",
+    "first_delivery_date",
+    "last_delivery_date",
+    "first_notice_date",
+    "last_notice_date",
+)
+
+
+# ADR 0011 v4: allowed `static_fields[*].column_name` values — only the four
+# typed per-contract date columns on macro_data.futures_deliverables. SYNC
+# INVARIANT with utils/incremental_extractor.py.
+_ALLOWED_DELIVERABLES_STATIC_COLUMNS: frozenset = frozenset({
+    "first_delivery_date",
+    "last_delivery_date",
+    "first_notice_date",
+    "last_notice_date",
+})
+
+
+def _resolve_deliverables_section(playbook: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Validate and return the playbook's ``deliverables:`` section. SYNC
+    INVARIANT with ``utils/incremental_extractor.py``.
+
+    Returns None when the section is **legitimately absent or disabled**.
+    **Raises ValueError when the section is enabled but malformed** (ADR 0011
+    v3 / Codex finding 3). v4 (Codex findings 1 & 2, third round) adds two
+    new required-when-enabled invariants:
+
+      * ``basket_factor_column`` — required. Conversion factor is core
+        source data, never optional.
+      * Each ``static_fields`` entry must be a mapping with ``column_name``
+        in :data:`_ALLOWED_DELIVERABLES_STATIC_COLUMNS` and a non-blank
+        ``bloomberg_field``.
+    """
+    section = playbook.get("deliverables")
+    if not isinstance(section, dict):
+        return None
+    if not section.get("enabled"):
+        return None
+    if not section.get("chain_field"):
+        raise ValueError(
+            "deliverables: section is enabled but `chain_field` is missing"
+        )
+    if not section.get("basket_field"):
+        raise ValueError(
+            "deliverables: section is enabled but `basket_field` is missing"
+        )
+    if not section.get("basket_cusip_column"):
+        raise ValueError(
+            "deliverables: section is enabled but `basket_cusip_column` is missing"
+        )
+    if not section.get("basket_factor_column"):
+        raise ValueError(
+            "deliverables: section is enabled but `basket_factor_column` is "
+            "missing. Conversion factor is core source data; the playbook MUST "
+            "name the basket-frame column carrying it (ADR 0011 v4)."
+        )
+    static_fields = section.get("static_fields")
+    if not isinstance(static_fields, list) or not static_fields:
+        raise ValueError(
+            "deliverables: section is enabled but `static_fields` is missing or "
+            "not a non-empty list"
+        )
+    seen_column_names: set = set()
+    for i, entry in enumerate(static_fields):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"deliverables: static_fields[{i}] must be a mapping with "
+                f"`column_name` and `bloomberg_field` keys"
+            )
+        col = entry.get("column_name")
+        fld = entry.get("bloomberg_field")
+        if not isinstance(col, str) or not col.strip():
+            raise ValueError(
+                f"deliverables: static_fields[{i}] is missing or has a blank "
+                f"`column_name`"
+            )
+        if col not in _ALLOWED_DELIVERABLES_STATIC_COLUMNS:
+            raise ValueError(
+                f"deliverables: static_fields[{i}].column_name={col!r} is not "
+                f"in the allowed set "
+                f"{sorted(_ALLOWED_DELIVERABLES_STATIC_COLUMNS)}. These are "
+                "the only typed per-contract date columns on "
+                "macro_data.futures_deliverables."
+            )
+        if col in seen_column_names:
+            raise ValueError(
+                f"deliverables: static_fields[{i}].column_name={col!r} is "
+                "duplicated; each per-contract date column may be configured "
+                "only once."
+            )
+        seen_column_names.add(col)
+        if not isinstance(fld, str) or not fld.strip():
+            raise ValueError(
+                f"deliverables: static_fields[{i}] (column_name={col!r}) is "
+                "missing or has a blank `bloomberg_field`"
+            )
+    include_tickers = section.get("include_tickers")
+    if include_tickers is not None:
+        if not isinstance(include_tickers, list) or not include_tickers:
+            raise ValueError(
+                "deliverables: `include_tickers` must be a non-empty list when "
+                "present (omit the key to scope to the full rolling universe)"
+            )
+        if not all(isinstance(t, str) and t.strip() for t in include_tickers):
+            raise ValueError(
+                "deliverables: `include_tickers` entries must be non-blank "
+                "strings"
+            )
+    return section
+
+
+# ============================================================================
+# Pure helpers extracted from run_deliverables_extraction (ADR 0011 v3, Codex
+# finding 4). SYNC INVARIANT with utils/incremental_extractor.py.
+# ============================================================================
+def _filter_universe_by_include_tickers(
+    universe_items: List[Dict[str, Any]],
+    include_tickers: Optional[List[str]],
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """ADR 0011 v3 (Codex finding 2): EVERY whitelist entry must exactly match
+    a rolling-contract universe ticker. Returns ``(filtered_items,
+    unmatched_whitelist_entries)``; the caller MUST abort on non-empty
+    ``unmatched``. SYNC INVARIANT with utils/incremental_extractor.py."""
+    if not include_tickers:
+        return list(universe_items), []
+    allow = [str(t) for t in include_tickers]
+    universe_tickers = {it["ticker"] for it in universe_items}
+    unmatched = sorted(t for t in allow if t not in universe_tickers)
+    allow_set = set(allow)
+    filtered = [it for it in universe_items if it["ticker"] in allow_set]
+    return filtered, unmatched
+
+
+def _evaluate_deliverables_coverage(
+    generics_with_data: int,
+    expected_generics: int,
+    total_contracts_probed: int,
+    total_contracts_with_basket: int,
+    missed_contracts: Optional[List[str]] = None,
+) -> Optional[str]:
+    """ADR 0011 v3 §4 strict all-or-nothing coverage. Two gates: generic-level
+    (v2 / Codex finding 2) and contract-level (v3 / Codex finding 1). Returns
+    an error message on either gap; None on clean coverage. SYNC INVARIANT
+    with utils/incremental_extractor.py."""
+    if expected_generics and generics_with_data < expected_generics:
+        return (
+            f"Strict generic coverage gate: only {generics_with_data}/"
+            f"{expected_generics} configured generic(s) produced a deliverable "
+            f"basket. All-or-nothing rule (ADR 0011 §4)."
+        )
+    if total_contracts_probed and total_contracts_with_basket < total_contracts_probed:
+        shortfall = total_contracts_probed - total_contracts_with_basket
+        sample = ""
+        if missed_contracts:
+            head = ", ".join(missed_contracts[:5])
+            extra = (
+                f" (+{len(missed_contracts) - 5} more)"
+                if len(missed_contracts) > 5 else ""
+            )
+            sample = f" Missed: {head}{extra}."
+        return (
+            f"Strict contract coverage gate: only "
+            f"{total_contracts_with_basket}/{total_contracts_probed} probed "
+            f"contract(s) produced a basket ({shortfall} short).{sample} "
+            "Curated reference data is all-or-nothing (ADR 0011 v3 §4). "
+            "If a contract is genuinely out of scope, restrict the chain via "
+            "the playbook's `chain_overrides` and document the deferral."
+        )
+    return None
+
+
+def _stamp_deliverables_audit_suffix(
+    lineage_meta: Dict[str, Any],
+) -> Dict[str, Any]:
+    """ADR 0011 v2 audit-key isolation. Suffix ``playbook_name`` with
+    ``__deliverables``. Raises ValueError if ``playbook_name`` is missing.
+    SYNC INVARIANT with utils/incremental_extractor.py."""
+    if not lineage_meta.get("playbook_name"):
+        raise ValueError(
+            "lineage_meta is missing `playbook_name`; cannot stamp the "
+            "deliverables audit-key suffix"
+        )
+    return dict(
+        lineage_meta,
+        playbook_name=f"{lineage_meta['playbook_name']}__deliverables",
+    )
+
+
+def _stage_contract_rows(
+    basket_df: "pd.DataFrame",
+    dates_raw: Dict[str, Any],
+    generic_ticker: str,
+    contract_code: str,
+    basket_cusip_column: str,
+    basket_factor_column: str,
+    basket_isin_column: Optional[str],
+    date_field_to_column: Dict[str, str],
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Stage one contract's basket rows for emission, or return a miss reason.
+    Pure function. SYNC INVARIANT with utils/incremental_extractor.py.
+
+    Returns ``(rows, None)`` on a fully well-formed contract, or
+    ``([], miss_reason)`` when the contract MUST be counted as missed by the
+    ADR 0011 v4 strict gate. See the canonical docstring in
+    utils/incremental_extractor.py for the full miss-reason vocabulary."""
+    lower_cols = {str(c).lower(): c for c in basket_df.columns}
+    cusip_col_actual = lower_cols.get(basket_cusip_column.lower())
+    if cusip_col_actual is None:
+        return [], f"missing_basket_column:{basket_cusip_column}"
+    factor_col_actual = lower_cols.get(basket_factor_column.lower())
+    if factor_col_actual is None:
+        return [], f"missing_basket_column:{basket_factor_column}"
+    isin_col_actual = (
+        lower_cols.get(basket_isin_column.lower())
+        if basket_isin_column else None
+    )
+
+    # ADR 0011 v5: presence + parseability. SYNC INVARIANT with the canonical
+    # comments in utils/incremental_extractor.py.
+    parsed_static_values: Dict[str, str] = {}
+    for fld_upper, col_name in date_field_to_column.items():
+        cleaned = _clean_scalar(dates_raw.get(fld_upper))
+        if cleaned is None or (isinstance(cleaned, str) and not cleaned.strip()):
+            return [], f"missing_static_field:{col_name}"
+        try:
+            ts = pd.to_datetime(cleaned, errors="raise")
+        except (ValueError, TypeError):
+            return [], f"invalid_static_field:{col_name}"
+        if pd.isna(ts):
+            return [], f"invalid_static_field:{col_name}"
+        parsed_static_values[col_name] = ts.date().isoformat()
+
+    contract_rows: List[Dict[str, Any]] = []
+    for _, basket_row in basket_df.iterrows():
+        cusip = _clean_scalar(basket_row[cusip_col_actual])
+        if not cusip:
+            continue
+        factor_val = _clean_scalar(basket_row[factor_col_actual])
+        if factor_val is None or (
+            isinstance(factor_val, str) and not factor_val.strip()
+        ):
+            return [], f"missing_factor_for_cusip:{cusip}"
+        try:
+            factor_num = float(factor_val)
+        except (TypeError, ValueError):
+            return [], f"invalid_factor_for_cusip:{cusip}"
+        if factor_num != factor_num:  # NaN
+            return [], f"invalid_factor_for_cusip:{cusip}"
+        isin_val = (
+            _clean_scalar(basket_row[isin_col_actual])
+            if isin_col_actual else None
+        )
+        row: Dict[str, Any] = {
+            "vendor_ticker": generic_ticker,
+            "contract_code": contract_code,
+            "deliverable_cusip": str(cusip),
+            "deliverable_isin": str(isin_val) if isin_val else None,
+            "conversion_factor": factor_num,
+        }
+        for col_name, iso in parsed_static_values.items():
+            row[col_name] = iso
+        contract_rows.append(row)
+
+    if not contract_rows:
+        return [], "empty_basket"
+    return contract_rows, None
+
+
+def _fetch_contract_deliverable_basket(
+    contract_ticker: str,
+    basket_field: str,
+    request_kwargs: Dict[str, Any],
+) -> Optional[pd.DataFrame]:
+    """Thin wrapper around ``bds(contract, basket_field)`` returning the
+    deliverable-basket frame. SYNC INVARIANT with
+    ``utils/incremental_extractor.py``."""
+    try:
+        df = blp.bds(
+            tickers=contract_ticker,
+            flds=basket_field,
+            **(request_kwargs or {}),
+        )
+    except Exception as exc:
+        print(
+            f"      [WARNING] bds() basket failed for {contract_ticker} "
+            f"{basket_field}: {exc}"
+        )
+        return None
+    df = _coerce_to_pandas(df)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return None
+    return df
+
+
+def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -> None:
+    """``--mode deliverables`` — extract per-bond-future-contract deliverable
+    baskets + conversion factors + delivery / notice dates (ADR 0011).
+
+    SYNC INVARIANT with ``utils/incremental_extractor.py``. See that file's
+    matching function for the full design notes; the body below is the
+    byte-identical mirror.
+    """
+    print("Initializing Library Extraction Agent (mode: deliverables)...")
+
+    base_dir = Path(__file__).resolve().parent
+    script_path = Path(__file__).resolve()
+    gcp_key_path = _resolve_gcp_key_path(base_dir)
+
+    temp_playbooks_dir = base_dir / "temp_playbooks"
+    temp_data_dir = base_dir / "temp_data"
+    temp_playbooks_dir.mkdir(exist_ok=True)
+    temp_data_dir.mkdir(exist_ok=True)
+
+    any_failures = False
+
+    try:
+        if not gcp_key_path:
+            print(f"[FATAL] Cannot find GCP Key '{GCP_KEY_FILENAME}' in expected locations.")
+            any_failures = True
+            return
+
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(gcp_key_path)
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+
+        print("\n[PHASE 1] Pulling playbooks from GCP...")
+        blobs = bucket.list_blobs(prefix="playbooks/")
+        playbook_files: List[Path] = []
+        for blob in blobs:
+            if blob.name.endswith(".yml") or blob.name.endswith(".yaml"):
+                local_path = temp_playbooks_dir / Path(blob.name).name
+                blob.download_to_filename(str(local_path))
+                playbook_files.append(local_path)
+                print(f"  -> Downloaded: {Path(blob.name).name}")
+
+        if selected_playbooks:
+            playbook_files = [
+                p for p in playbook_files
+                if p.name in selected_playbooks or p.stem in selected_playbooks
+            ]
+            print(f"\n[INFO] Playbook filter active: {sorted(selected_playbooks)}")
+            print(f"[INFO] Matched {len(playbook_files)} playbook file(s) after filtering.")
+
+        if not playbook_files:
+            print("[ABORT] No playbooks found in the GCP bucket. Exiting.")
+            any_failures = True
+            return
+
+        print("\n[PHASE 2] Executing deliverables extraction...")
+
+        for pb_path in playbook_files:
+            with open(pb_path, "r", encoding="utf-8") as f:
+                playbook = yaml.safe_load(f) or {}
+
+            try:
+                section = _resolve_deliverables_section(playbook)
+            except ValueError as cfg_err:
+                # ADR 0011 v3 (Codex finding 3): enabled-but-malformed section
+                # is a configuration error, not a silent skip.
+                print(
+                    f"\n[ABORT] {pb_path.name}: malformed `deliverables:` "
+                    f"section -- {cfg_err}"
+                )
+                any_failures = True
+                continue
+            if section is None:
+                print(
+                    f"\n[SKIP] {pb_path.name}: no enabled deliverables section. "
+                    "(Expected for any playbook other than bond_futures.yml.)"
+                )
+                continue
+
+            lineage_meta = _get_playbook_metadata(playbook, pb_path, script_path)
+            # AUDIT-KEY ISOLATION (ADR 0011 v2, Codex finding 3): stamp the
+            # `__deliverables` suffix (extracted helper, ADR 0011 v3, Codex
+            # finding 4).
+            lineage_meta = _stamp_deliverables_audit_suffix(lineage_meta)
+            dataset_name = lineage_meta["dataset_name"]
+            universe_items = [
+                item for item in (playbook.get("universe") or [])
+                if isinstance(item, dict)
+                and item.get("ticker")
+                and item.get("is_rolling_contract")
+            ]
+            # `include_tickers` whitelist (ADR 0011 v3, Codex finding 2):
+            # EVERY entry must exactly match a rolling-contract universe ticker.
+            universe_items, unmatched_include = _filter_universe_by_include_tickers(
+                universe_items, section.get("include_tickers"),
+            )
+            if unmatched_include:
+                print(
+                    f"\n[ABORT] {pb_path.name}: deliverables `include_tickers` "
+                    f"references {len(unmatched_include)} ticker(s) not in the "
+                    f"rolling-contract universe: {unmatched_include}. Fix the "
+                    "typo or extend the playbook universe; never silently scope."
+                )
+                any_failures = True
+                continue
+
+            reference_request_kwargs = _build_reference_request_kwargs(playbook)
+            start_date, end_date = _resolve_date_window(playbook)
+
+            chain_field          = section["chain_field"]
+            chain_overrides      = section.get("chain_overrides") or {}
+            chain_fallback_col   = section.get("chain_column_name")
+            basket_field         = section["basket_field"]
+            basket_cusip_column  = section["basket_cusip_column"]
+            basket_factor_column = section.get("basket_factor_column")
+            basket_isin_column   = section.get("basket_isin_column")
+            static_fields        = section["static_fields"]
+
+            date_bbg_fields: List[str] = []
+            seen_fields: Set[str] = set()
+            for entry in static_fields:
+                if isinstance(entry, dict):
+                    f = entry.get("bloomberg_field")
+                    if f and f not in seen_fields:
+                        date_bbg_fields.append(f)
+                        seen_fields.add(f)
+
+            date_field_to_column: Dict[str, str] = {}
+            for entry in static_fields:
+                if isinstance(entry, dict):
+                    col = entry.get("column_name")
+                    fld = entry.get("bloomberg_field")
+                    if col and fld:
+                        date_field_to_column[fld.upper()] = col
+
+            if not universe_items:
+                print(
+                    f"\n[WARNING] {pb_path.name}: no rolling-contract tickers in "
+                    "universe. Skipping."
+                )
+                continue
+
+            print(f"\nProcessing Playbook: {pb_path.name}")
+            print(f"  Playbook name: {lineage_meta['playbook_name']}")
+            print(f"  Playbook version: {lineage_meta['playbook_version']}")
+            print(f"  Rolling tickers: {len(universe_items)}")
+            print(f"  Chain field: {chain_field}")
+            print(f"  Basket field: {basket_field}")
+            print(f"  Per-contract date fields: {date_bbg_fields}")
+
+            extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            all_rows: List[Dict[str, Any]] = []
+            generics_with_data = 0
+            total_contracts_probed = 0
+            total_contracts_with_basket = 0
+            # Per-contract miss tracking (ADR 0011 v3, Codex finding 1).
+            missed_contracts: List[str] = []
+
+            for item in universe_items:
+                generic_ticker = item["ticker"]
+                print(f"  Enumerating chain for {generic_ticker}...")
+                contracts = _fetch_chain_underlyings(
+                    generic_ticker=generic_ticker,
+                    chain_field=chain_field,
+                    chain_overrides=chain_overrides,
+                    fallback_column=chain_fallback_col,
+                )
+                if not contracts:
+                    print(f"    [!] No underlying contracts returned for {generic_ticker}")
+                    continue
+                print(f"    [OK] chain length = {len(contracts)}")
+
+                generic_emitted_any = False
+                for contract_ticker in contracts:
+                    total_contracts_probed += 1
+                    basket_df = _fetch_contract_deliverable_basket(
+                        contract_ticker=contract_ticker,
+                        basket_field=basket_field,
+                        request_kwargs=reference_request_kwargs,
+                    )
+                    if basket_df is None:
+                        missed_contracts.append(contract_ticker)
+                        continue
+
+                    dates_raw = _fetch_underlying_contract_static(
+                        underlying_ticker=contract_ticker,
+                        bloomberg_fields=date_bbg_fields,
+                        request_kwargs=reference_request_kwargs,
+                    )
+
+                    contract_code = (
+                        contract_ticker.split()[0] if contract_ticker else ""
+                    )
+
+                    # Stage rows via the pure helper (ADR 0011 v4).
+                    rows, miss_reason = _stage_contract_rows(
+                        basket_df=basket_df,
+                        dates_raw=dates_raw or {},
+                        generic_ticker=generic_ticker,
+                        contract_code=contract_code,
+                        basket_cusip_column=basket_cusip_column,
+                        basket_factor_column=basket_factor_column,
+                        basket_isin_column=basket_isin_column,
+                        date_field_to_column=date_field_to_column,
+                    )
+                    if miss_reason is not None:
+                        print(
+                            f"      [WARNING] {contract_ticker}: {miss_reason}; "
+                            "counting contract as missed."
+                        )
+                        missed_contracts.append(contract_ticker)
+                        continue
+
+                    all_rows.extend(rows)
+                    total_contracts_with_basket += 1
+                    generic_emitted_any = True
+
+                if generic_emitted_any:
+                    generics_with_data += 1
+
+            if not all_rows:
+                print(
+                    f"  [WARNING] {pb_path.name}: no deliverable rows produced "
+                    "across any generic / contract. Nothing uploaded."
+                )
+                any_failures = True
+                continue
+
+            # STRICT all-or-nothing coverage gate (ADR 0011 v3, §4) — closes
+            # Codex findings 1 (contract-level) and 2 (generic-level). Helper
+            # returns an error message on either gap; None on clean coverage.
+            expected_generics = len(universe_items)
+            coverage_error = _evaluate_deliverables_coverage(
+                generics_with_data=generics_with_data,
+                expected_generics=expected_generics,
+                total_contracts_probed=total_contracts_probed,
+                total_contracts_with_basket=total_contracts_with_basket,
+                missed_contracts=missed_contracts,
+            )
+            if coverage_error:
+                print(f"  [ABORT] {coverage_error}")
+                any_failures = True
+                continue
+
+            print(
+                f"  [INFO] Emitted {len(all_rows)} deliverable row(s) across "
+                f"{generics_with_data}/{expected_generics} generic(s); "
+                f"{total_contracts_with_basket}/{total_contracts_probed} "
+                "contract(s) had a basket."
+            )
+
+            df_out = pd.DataFrame(all_rows)
+            for meta_key, meta_val in lineage_meta.items():
+                df_out[meta_key] = meta_val
+            df_out["requested_start_date"] = start_date
+            df_out["requested_end_date"] = end_date
+            df_out["extracted_at"] = extracted_at
+            df_out["extraction_mode"] = DELIVERABLES_EXTRACTION_MODE
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            parquet_filename = f"{dataset_name}_deliverables_{timestamp}.parquet"
+            local_parquet_path = temp_data_dir / parquet_filename
+            df_out.to_parquet(local_parquet_path, engine="pyarrow", index=False)
+
+            blob_name = f"deliverables/{dataset_name}/{parquet_filename}"
+            bucket.blob(blob_name).upload_from_filename(str(local_parquet_path))
+            print(
+                f"  [SUCCESS] Deliverables parquet uploaded to "
+                f"gs://{BUCKET_NAME}/{blob_name}"
+            )
+            local_parquet_path.unlink(missing_ok=True)
+
+    except Exception as exc:
+        any_failures = True
+        print(f"[FATAL] Deliverables extraction pipeline failed: {exc}")
+
+    finally:
+        print("\nCleaning up temporary files...")
+        for d in (temp_playbooks_dir, temp_data_dir):
+            if d.exists():
+                for f in d.glob("*"):
+                    if f.is_file():
+                        f.unlink()
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+
+        if any_failures:
+            print("\n*** DELIVERABLES EXTRACTION COMPLETE (WITH FAILURES) ***")
+            sys.exit(1)
+        print("\n*** DELIVERABLES EXTRACTION COMPLETE ***")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Run the historical Bloomberg extractor for selected playbooks."
@@ -1677,7 +2281,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mode",
-        choices=["time-series", "metadata-history"],
+        choices=["time-series", "metadata-history", "deliverables"],
         default="time-series",
         help=(
             "Extraction mode. ``time-series`` (default) is the canonical "
@@ -1688,8 +2292,14 @@ if __name__ == "__main__":
             "declaring an enabled ``metadata_history:`` section — produces "
             "wide effective-dated parquet under "
             "gs://<bucket>/metadata_history/<dataset>/, consumed by the "
-            "ingester's instrument_metadata_history path. See "
-            "docs_revamped/05_decisions/0002-playbook-metadata-history-section.md."
+            "ingester's instrument_metadata_history path. "
+            "``deliverables`` runs the per-contract deliverable-basket flow "
+            "for playbooks declaring an enabled ``deliverables:`` section "
+            "(bond_futures.yml) — produces wide parquet under "
+            "gs://<bucket>/deliverables/<dataset>/, consumed by the "
+            "ingester's futures_deliverables path. See "
+            "docs_revamped/05_decisions/0002-playbook-metadata-history-section.md "
+            "and 0011-futures-deliverables-substrate.md."
         ),
     )
     args = parser.parse_args()
@@ -1697,5 +2307,7 @@ if __name__ == "__main__":
 
     if args.mode == "metadata-history":
         run_metadata_history_extraction(selected_playbooks=selected_playbooks)
+    elif args.mode == "deliverables":
+        run_deliverables_extraction(selected_playbooks=selected_playbooks)
     else:
         run_autonomous_extraction(selected_playbooks=selected_playbooks)
