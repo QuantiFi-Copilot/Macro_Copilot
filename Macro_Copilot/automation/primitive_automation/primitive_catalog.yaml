@@ -827,8 +827,13 @@ primitives:
   # =========================================================================
 
   - id: inflation_linkers__scan_inflation_linkers_extremes
-    status: todo
+    status: done
     build_order: 24
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: inflation_indexed_bonds
     tool_name: scan_inflation_linkers_extremes
     category: desk_invariant_primitive

@@ -130,6 +130,23 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly.schemas impo
     RealYieldButterflyTimeSeriesRow,
 )
 
+# Universe-wide linker real-yield extremes scan — re-exported from
+# the per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/``).
+# Ranks every linker (curve_family, tenor) in the inflation_indexed_bonds
+# universe by absolute 252-day z-score of real-yield LEVEL.  Single-
+# metric ranking per the catalog's literal wording.  Inherits the
+# upstream ``real_yield_level`` primitive's no-proxy guard
+# (instrument_type='inflation_linker') transitively at the fetcher
+# layer.  Catalog id
+# ``inflation_linkers__scan_inflation_linkers_extremes``
+# (build_order 24).
+from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes.schemas import (
+    ScanInflationLinkersExtremesInput,
+    ScanInflationLinkersExtremesOutput,
+    ScanInflationLinkersExtremesResultRow,
+)
+
 # Breakeven butterfly (same-country, three-tenor curvature on a
 # single nominal/linker pair) — re-exported from the per-tool-folder
 # package
@@ -194,4 +211,8 @@ __all__ = [
     "BreakevenButterflyCurrentMetrics",
     "BreakevenButterflyOutput",
     "BreakevenButterflyTimeSeriesRow",
+    # scan_inflation_linkers_extremes
+    "ScanInflationLinkersExtremesInput",
+    "ScanInflationLinkersExtremesOutput",
+    "ScanInflationLinkersExtremesResultRow",
 ]

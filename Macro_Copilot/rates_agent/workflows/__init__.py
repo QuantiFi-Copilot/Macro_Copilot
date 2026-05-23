@@ -256,6 +256,12 @@ from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_s
     CrossCountryRealYieldSpreadSimpleOutput,
     calculate_cross_country_real_yield_spread_simple,
 )
+from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+    ScanInflationLinkersExtremesInput,
+    ScanInflationLinkersExtremesOutput,
+    calculate_scan_inflation_linkers_extremes,
+)
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
     InflationSwapRateLevelInput,
@@ -843,6 +849,30 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_spread": "percent",
             "time_series_zscore": "z_score",
         },
+    ),
+    # ``output_field_units`` is intentionally empty by design — same
+    # exempt pattern the sibling scan_bond_futures_extremes_tool /
+    # futures_price_level_tool / futures_volume_oi_tool use.  This is
+    # a SNAPSHOT primitive (no canonical TimeSeries on the wire);
+    # per-row context columns mix PERCENT (real_yield_pct), BPS
+    # (daily_change_bps / monthly_change_bps), unit-less z-score, and
+    # plain-string reference columns (maturity_date / country /
+    # vendor_ticker).  Declaring a single unit would silently lie
+    # about the mixed-shape row payload under P8 (closed-family
+    # discipline) + P5 (honest disclosure); the validator's empty-
+    # dict exemption (see shared/workflow/validate.py) defers the
+    # unit check to the operator's runtime refusal — the honest path
+    # until a future ADR extends ``TimeSeriesUnits``.  Per-bond /
+    # cross-tenor history lives on the sibling per-bond
+    # real_yield_level / real_yield_curve_spread / etc. primitives;
+    # composing those is the honest path for time-series consumers.
+    "scan_inflation_linkers_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_linkers_extremes_tool",
+        callable=calculate_scan_inflation_linkers_extremes,
+        input_class=ScanInflationLinkersExtremesInput,
+        output_class=ScanInflationLinkersExtremesOutput,
+        config_path=SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
     ),
     "calculate_real_yield_butterfly_tool": PrimitiveSpec(
         tool_name="calculate_real_yield_butterfly_tool",

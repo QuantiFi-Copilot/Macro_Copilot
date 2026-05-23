@@ -26,6 +26,10 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
        kept for compat with the original curve_spread refactor)
      - ``fetch_cross_market_pair``
      - ``fetch_scan_universe``
+     - ``fetch_scan_universe_reference``  (per-(curve_family, tenor)
+       reference metadata — maturity_date / country / vendor_ticker
+       — joined sibling of ``fetch_scan_universe`` for scanners that
+       need per-row instrument context alongside the market data)
      - ``fetch_strip_position``           (policy futures, strip-keyed)
      - ``fetch_strip_position_max_date``  (policy futures, strip-keyed
        MAX(trade_date) probe used as the future-anchor guard)
@@ -82,6 +86,8 @@ The currently-shipped fetch shapes are:
                                               curve_spread refactor)
   - two curves, one tenor                 → fetch_cross_market_pair
   - entire universe of one type           → fetch_scan_universe
+  - per-instrument reference metadata
+    across a universe scan                → fetch_scan_universe_reference
   - one curve, one strip position         → fetch_strip_position
   - one curve, one strip position,
     MAX(trade_date) probe                 → fetch_strip_position_max_date
@@ -602,6 +608,125 @@ def fetch_scan_universe(
         sql = _FETCH_SCAN_FILTERED_SQL
     else:
         sql = _FETCH_SCAN_ALL_SQL
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, bind_params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
+# PER-INSTRUMENT REFERENCE METADATA ALONGSIDE A UNIVERSE SCAN
+# ============================================================================
+#
+# ``fetch_scan_universe`` returns only the five market-data columns
+# every scanner needs (trade_date / curve_family / tenor /
+# contract_code / field_value). Some scanners also want per-row
+# instrument context — maturity_date, country, vendor_ticker — so
+# the desk reading the output does not need a second tool call to
+# identify which bond ranked extreme. The enriched view
+# (``macro_data.v_market_data_daily_enriched``) already exposes
+# those columns natively; this helper returns them per-(curve_family,
+# tenor, contract_code) tuple within a universe scan.
+#
+# Why a separate helper rather than widen ``fetch_scan_universe``:
+# the existing scanners (sovereign / OIS) ship a wire shape that does
+# NOT carry these columns — widening the fetcher would either force
+# every scanner to dedupe the extra columns or change every scanner's
+# row-shape downstream. A separate helper keeps the existing scanners
+# unchanged and lets the new linker scanner (and any future scanner
+# that wants per-row context) attach reference columns via a single
+# extra DB round-trip — one query, deduped by ``(curve_family, tenor,
+# contract_code)``.
+#
+# Read-only; pure SELECT.
+
+_FETCH_SCAN_UNIVERSE_REFERENCE_ALL_SQL = text("""
+    SELECT DISTINCT
+        curve_family,
+        tenor,
+        contract_code,
+        maturity_date,
+        country,
+        vendor_ticker
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND tenor          IS NOT NULL
+""")
+
+_FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL = text("""
+    SELECT DISTINCT
+        curve_family,
+        tenor,
+        contract_code,
+        maturity_date,
+        country,
+        vendor_ticker
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND tenor          IS NOT NULL
+      AND curve_family    = ANY(:curve_families)
+""")
+
+
+def fetch_scan_universe_reference(
+    engine: Engine,
+    instrument_type: str,
+    curve_families: Optional[Iterable[str]] = None,
+) -> pd.DataFrame:
+    """Fetch per-instrument reference metadata for a universe scan.
+
+    Returns one row per ``(curve_family, tenor, contract_code)`` tuple
+    in the scan's universe, with the per-instrument reference columns
+    the enriched view exposes natively:
+
+      - ``maturity_date`` — instrument maturity (date; may be NULL for
+        instruments without a fixed maturity).
+      - ``country`` — country identifier (e.g. ``'US'``, ``'UK'``,
+        ``'France'``, ``'Canada'``).
+      - ``vendor_ticker`` — Bloomberg-grade desk identifier
+        (e.g. ``'GTII10 Govt'`` for the US 10Y TIPS generic).
+
+    Parameters
+    ----------
+    instrument_type : str
+        Enriched-view instrument type — e.g. ``'inflation_linker'``
+        for the linker scanner. Same closed-family field
+        ``fetch_scan_universe`` filters on.
+    curve_families : Optional[Iterable[str]]
+        If None, return reference rows for every curve_family of the
+        given instrument_type. If provided, scope to the named
+        curves only — mirrors ``fetch_scan_universe``'s scope kwarg.
+
+    Returns
+    -------
+    pd.DataFrame with columns
+    ``['curve_family', 'tenor', 'contract_code', 'maturity_date',
+       'country', 'vendor_ticker']``.
+
+    DISTINCT collapses repeated rows in the enriched view to one row
+    per instrument. The view's underlying join (instrument_master →
+    market_data_daily) already returns one row per (instrument_id,
+    trade_date, field_name), so a stable per-instrument view of the
+    reference columns is preserved by selecting only the columns that
+    are stable per instrument and applying DISTINCT.
+
+    Notes on missing fields
+    -----------------------
+    ``security_name`` is intentionally NOT returned by this helper:
+    the linker universe's ``instrument_metadata_history.security_name``
+    is universally NULL on the current DB snapshot, so returning it
+    here would be a column-of-Nones. Consumers wanting a security
+    identifier should use ``vendor_ticker`` (a Bloomberg-grade
+    identifier that IS populated for linkers).
+    """
+    bind_params: dict = {"instrument_type": instrument_type}
+    if curve_families:
+        bind_params["curve_families"] = list(curve_families)
+        sql = _FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL
+    else:
+        sql = _FETCH_SCAN_UNIVERSE_REFERENCE_ALL_SQL
 
     with engine.connect() as conn:
         result = conn.execute(sql, bind_params)
