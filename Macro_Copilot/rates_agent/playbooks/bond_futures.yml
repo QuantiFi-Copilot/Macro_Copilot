@@ -185,18 +185,43 @@ metadata_history:
 #     cross-identifier column not present in FO066. Substrate column
 #     deliverable_isin remains nullable; v1 every row lands NULL.
 #
-# What is STILL CANDIDATE (probed by scripts/deliverables_bloomberg_check.py):
-#   * basket_cusip_column / basket_factor_column — the EXACT pandas
-#     DataFrame column names xbbg produces from
-#     bds(contract, FUT_DLVRBLE_BNDS_CUSIPS). Casing handled
-#     case-insensitively; word-spacing must match exactly.
-#   * Per-contract basket coverage rate across the deep historical chain
-#     (does Bloomberg still serve baskets for TY contracts from the 1980s?).
-#   * Exact CUSIP string format — bulk-data viewer shows "91282CGM Govt"
-#     visibly 8 chars + yellow-key suffix; xbbg may return the full
-#     9-char CUSIP or may truncate. The extractor strips the " Govt"
-#     yellow-key suffix automatically if present (see
-#     ingestion/deliverables.py _str_or_none on deliverable_cusip).
+# Operator script-probe results 2026-05-23
+# (scripts/deliverables_bloomberg_check.py @ timestamp 20260523_230531):
+#
+#   * COLUMN NAMES verified: every basket frame across all 6 UST generics
+#     returns exactly two columns -- "deliverable_bond_cusip_and_yellow_key"
+#     and "conversion_factor" (snake_case; xbbg narwhals/long backend
+#     defaults). Both fields finalised above to VERIFIED.
+#
+#   * CUSIP FORMAT confirmed: every value is "{8-char CUSIP stem} Govt"
+#     -- the check digit is truncated for display. The extractor
+#     canonicalises to the 9-char CUSIP via the published CUSIP Global
+#     Services Modulus-10-Double-Add-Double check-digit algorithm at
+#     staging time (_canonicalize_deliverable_cusip, ADR 0011 v6). The
+#     raw 8-char + yellow-key string is preserved per row in attributes
+#     JSONB (column raw_deliverable_bond_cusip_and_yellow_key) for audit.
+#
+#   * STATIC DATES verified: 100% per-contract coverage for FUT_DLV_DT_FIRST,
+#     FUT_DLV_DT_LAST, FUT_NOTICE_FIRST across all 48 sampled contracts
+#     (8 per generic). last_notice_date remains out of v1 (P5 deferral
+#     -- FUT_NOTICE_LAST mnemonic confirmed non-existent via FLDS, Phase A.1).
+#
+#   * HISTORICAL DATA CUTOFF (the structural finding): Bloomberg drops
+#     deliverable-basket reference data for the OLDEST contracts of each
+#     generic. The pattern is clustered, not random:
+#         US1 chain 1977-, baskets only from ~1987 (USU87)  -- 10y gap
+#         TY1 chain 1982-, baskets only from ~1991 (TYH91)  --  9y gap
+#         FV1 chain 1988-, baskets only from ~1996 (FVH96)  --  8y gap
+#         TU1 chain 1990-, baskets only from ~1997 (TUZ97)  --  7y gap
+#         UXY1 chain 2016-, baskets cover entire chain (no gap)
+#         WN1  chain 2010-, baskets cover entire chain (no gap)
+#     C3's strict contract-level coverage gate (v3 §4) requires every probed
+#     contract to produce a basket; with INCLUDE_EXPIRED_CONTRACTS="Y" the
+#     production extractor would fail on ~136 missed contracts across the
+#     four older generics. Mitigation pending operator verification of a
+#     Bloomberg chain-side-date override (DT_OVERRIDE_START on FUT_CHAIN).
+#     If honored -- pure playbook config (zero code). If not -- ADR 0011
+#     v6 amendment adds a chain_max_length operator-controlled cap.
 # ----------------------------------------------------------------------------
 deliverables:
   enabled: true
@@ -210,28 +235,37 @@ deliverables:
   # "Deliverable Bonds CUSIP", a Bulk Data field. Populated on the explicit
   # contract cycle (TYM6 etc.); the generic (TY1) returns empty by design.
   basket_field: "FUT_DLVRBLE_BNDS_CUSIPS"           # VERIFIED 2026-05-23 (FLDS)
-  basket_cusip_column: "CUSIP"                      # CANDIDATE — exact
-                                                    # xbbg-pandas column
-                                                    # name still pending;
-                                                    # the check script
-                                                    # reports what bds
-                                                    # actually returns
-                                                    # (internal BBG
-                                                    # mnemonic per BH406:
-                                                    # BC_FUT_DLVRBLE_BNDS_CUSIP_YK).
+  basket_cusip_column: "deliverable_bond_cusip_and_yellow_key"
+                                                    # VERIFIED 2026-05-23 via
+                                                    # scripts/deliverables_bloomberg_check.py
+                                                    # against all 6 UST
+                                                    # generics. xbbg
+                                                    # (narwhals/long
+                                                    # backend) returns this
+                                                    # snake_case column
+                                                    # name. The raw values
+                                                    # are 8-char CUSIP
+                                                    # stems + " Govt"
+                                                    # yellow-key suffix
+                                                    # (e.g. "9128273H Govt");
+                                                    # extractor canonicalises
+                                                    # to 9-char CUSIP via
+                                                    # _canonicalize_deliverable_cusip
+                                                    # (ADR 0011 v6).
                                                     # Case-insensitive in
                                                     # the extractor.
-  basket_factor_column: "Conversion Factor"         # CANDIDATE — exact
-                                                    # xbbg-pandas column
-                                                    # name still pending
-                                                    # (internal BBG mnemonic
-                                                    # per BH406:
-                                                    # BC_FUT_DELIVERABLE_CF).
-                                                    # Conversion factor is
-                                                    # core source data
-                                                    # (ADR 0011 v4); the
-                                                    # extractor aborts the
-                                                    # contract if missing.
+  basket_factor_column: "conversion_factor"         # VERIFIED 2026-05-23 via
+                                                    # scripts/deliverables_bloomberg_check.py
+                                                    # against all 6 UST
+                                                    # generics. Same
+                                                    # narwhals/long
+                                                    # snake_case
+                                                    # convention. Conversion
+                                                    # factor is core source
+                                                    # data (ADR 0011 v4);
+                                                    # the extractor aborts
+                                                    # the contract if
+                                                    # missing or non-numeric.
   # basket_isin_column intentionally OMITTED — UST FUT_DLVRBLE_BNDS_CUSIPS
   # frame carries CUSIPs only (confirmed via FLDS, operator 2026-05-23).
   # Substrate column macro_data.futures_deliverables.deliverable_isin stays

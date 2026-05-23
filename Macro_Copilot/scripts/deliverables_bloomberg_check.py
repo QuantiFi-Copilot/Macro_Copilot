@@ -550,11 +550,12 @@ def probe_generic(
     recommended_factor = recommend_column(columns_by_freq, _LIKELY_FACTOR_COL_NAMES)
     recommended_isin   = recommend_column(columns_by_freq, _LIKELY_ISIN_COL_NAMES)
 
+    n_static = len(date_field_to_column)
     if basket_rate >= BASKET_SUCCESS_PASS_RATIO and dates_rate >= DATE_COVERAGE_PASS_RATIO:
         verdict = "PASS"
         note = (
             f"basket {basket_hits}/{len(per_contract)}; "
-            f"all-4-dates {all_dates_hits}/{len(per_contract)}; "
+            f"all-{n_static}-dates {all_dates_hits}/{len(per_contract)}; "
             "ready to scope into VERIFIED."
         )
     elif basket_hits == 0:
@@ -568,7 +569,7 @@ def probe_generic(
         verdict = "WARN"
         note = (
             f"basket {basket_hits}/{len(per_contract)}; "
-            f"all-4-dates {all_dates_hits}/{len(per_contract)}; "
+            f"all-{n_static}-dates {all_dates_hits}/{len(per_contract)}; "
             "partial coverage — review per-contract rows before scoping in."
         )
 
@@ -628,7 +629,7 @@ def main() -> None:
         )
     logger.log(f"Sample/generic   : {SAMPLE_PER_GENERIC}")
     logger.log(f"Pass thresholds  : basket>={BASKET_SUCCESS_PASS_RATIO:.0%}  "
-               f"all-4-dates>={DATE_COVERAGE_PASS_RATIO:.0%}")
+               f"all-{len(STATIC_FIELDS)}-dates>={DATE_COVERAGE_PASS_RATIO:.0%}")
     logger.log(f"Output directory : {out_dir}")
     logger.log("")
 
@@ -743,7 +744,7 @@ def main() -> None:
             f"  {r['generic_ticker']:<12} ({r['label']:<26})  -> "
             f"{r['verdict']:<4}  "
             f"basket_rate={r['basket_success_rate']:.0%} | "
-            f"all_4_dates_rate={r['all_dates_rate']:.0%} | "
+            f"all_{len(STATIC_FIELDS)}_dates_rate={r['all_dates_rate']:.0%} | "
             f"chain_len={r['chain_length']}"
         )
         logger.log(

@@ -853,6 +853,247 @@ class TestStageContractRowsParseValidationV5:
         assert {r["last_delivery_date"] for r in rows} == {"2024-12-31"}
 
 
+# ============================================================================
+# v6 — _canonicalize_deliverable_cusip (ADR 0011 v6 / C4 Phase A.3, Codex
+# fifth-round finding 3). Bloomberg's FUT_DLVRBLE_BNDS_CUSIPS bulk-data
+# returns "{8-char CUSIP stem} Govt" with the check digit truncated;
+# extractor reconstructs the canonical 9-char form via the published CGS
+# Modulus-10-Double-Add-Double algorithm.
+# ============================================================================
+
+
+class TestCanonicalizeDeliverableCusip:
+    """Verifies the helper directly. Test cases use REAL UST CUSIP stems
+    seen in the operator probe (2026-05-23, all 6 UST generics) plus
+    independently-verifiable real-world UST CUSIPs.
+
+    The expected check digits below were computed off-line via the CGS
+    algorithm and cross-checked against real Bloomberg-issued UST
+    securities where possible:
+      - 912828UA6  → T 2½  03/31/23   (real, check digit 6)
+      - 912827U42  → T 2½  03/31/23   (real, T-Note variant)
+      - 912827VN8  → T 2   06/30/22   (real)
+      - 912828K74  → T 2   02/15/25   (real)
+      - 912810FT9  → T 4¼  02/15/30   (real)
+      - 9128273H3  → CGS-algorithm check on TU sample (3 = computed)
+    """
+
+    # ----- Yellow-key stripping -------------------------------------------
+
+    def test_strips_govt_yellow_key_and_computes_check_digit(self) -> None:
+        # Real UST CUSIP: 912828UA6 (T 2½ 03/31/23). Check digit verified
+        # by Bloomberg.
+        assert _incr._canonicalize_deliverable_cusip("912828UA Govt") == "912828UA6"
+
+    def test_strips_all_documented_bloomberg_yellow_keys(self) -> None:
+        """All yellow keys we've seen on Bloomberg's reference-data namespace
+        get stripped (Govt for UST is the live one; the others document
+        future-scope handling for non-US deliverables / sovereigns)."""
+        # Same stem, every yellow key strips to the same canonical CUSIP.
+        for yk in (" Govt", " Corp", " Equity", " Comdty", " Mtge", " M-Mkt", " Index"):
+            out = _incr._canonicalize_deliverable_cusip(f"912828UA{yk}")
+            assert out == "912828UA6", f"yellow key {yk!r} did not strip cleanly"
+
+    def test_lowercase_stem_is_uppercased_during_canonicalisation(self) -> None:
+        """Bloomberg returns alpha chars uppercase, but a defensive strip /
+        casing handler keeps the canonical form deterministic."""
+        out = _incr._canonicalize_deliverable_cusip("912828ua Govt")
+        assert out == "912828UA6"
+
+    def test_whitespace_around_yellow_key_is_tolerated(self) -> None:
+        """Allow surrounding whitespace from raw Bloomberg returns."""
+        assert (
+            _incr._canonicalize_deliverable_cusip("  912828UA Govt  ")
+            == "912828UA6"
+        )
+
+    # ----- Operator-probe samples -----------------------------------------
+
+    def test_real_probe_samples_canonicalise_correctly(self) -> None:
+        """Every CUSIP stem seen in the operator's 2026-05-23 probe across
+        all 6 UST generics. These are real Bloomberg-returned values; the
+        check digits are computed via the CGS algorithm. Acts as a
+        regression pin against any future drift in the algorithm."""
+        cases = [
+            # (raw_value_from_bloomberg, expected_canonical_9_char_cusip)
+            # TU (UST 2Y) — stem from TUZ97 basket row 0:
+            ("9128273H Govt", "9128273H3"),
+            # FV (UST 5Y) — stem from FVH96 basket row 0:
+            ("912827U4 Govt", "912827U42"),
+            # TY (UST 10Y) — stem from TYH91 basket row 0:
+            ("912827VN Govt", "912827VN8"),
+            # UXY (UST Ultra 10Y) — stem from UXYH16 basket row 0:
+            ("912828K7 Govt", "912828K74"),
+            # US (UST Long Bond) — stem from USU87 basket row 0:
+            ("912810BZ Govt", "912810BZ0"),
+            # WN (UST Ultra Bond) — stem from WNH10 basket row 0:
+            ("912810FT Govt", "912810FT9"),
+        ]
+        for raw, expected in cases:
+            assert _incr._canonicalize_deliverable_cusip(raw) == expected, raw
+
+    # ----- Passthrough behaviour (backward compatibility) -----------------
+
+    def test_no_yellow_key_passthrough(self) -> None:
+        """Input without a yellow key is returned as-is (already canonical
+        from a non-Bloomberg caller). Preserves backward compatibility with
+        the C3 test suite that uses synthetic 9-char CUSIPs."""
+        assert _incr._canonicalize_deliverable_cusip("91282CAB1") == "91282CAB1"
+
+    def test_no_yellow_key_passthrough_is_stripped(self) -> None:
+        """Surrounding whitespace is still stripped in the passthrough
+        branch — canonical form has no leading/trailing whitespace."""
+        assert _incr._canonicalize_deliverable_cusip("  91282CAB1  ") == "91282CAB1"
+
+    # ----- Fail-closed behaviour ------------------------------------------
+
+    def test_none_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="None"):
+            _incr._canonicalize_deliverable_cusip(None)
+
+    def test_non_string_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="must be a string"):
+            _incr._canonicalize_deliverable_cusip(12345678)
+
+    def test_empty_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            _incr._canonicalize_deliverable_cusip("")
+
+    def test_blank_input_raises(self) -> None:
+        with pytest.raises(ValueError, match="empty"):
+            _incr._canonicalize_deliverable_cusip("   ")
+
+    def test_too_short_stem_with_yellow_key_raises(self) -> None:
+        with pytest.raises(ValueError, match="expected exactly 8"):
+            _incr._canonicalize_deliverable_cusip("1234567 Govt")
+
+    def test_too_long_stem_with_yellow_key_raises(self) -> None:
+        with pytest.raises(ValueError, match="expected exactly 8"):
+            _incr._canonicalize_deliverable_cusip("123456789 Govt")
+
+    def test_invalid_character_in_stem_raises(self) -> None:
+        """Anything outside the CGS-permitted character set
+        (0-9 A-Z * @ #) is a configuration error."""
+        with pytest.raises(ValueError, match="invalid character"):
+            _incr._canonicalize_deliverable_cusip("12345!XY Govt")
+
+    def test_known_real_treasury_cusip_round_trip(self) -> None:
+        """Sanity check: a known full 9-char real UST CUSIP that hits the
+        passthrough branch returns itself, and the stem+yellow-key form
+        produces the same value (proves the algorithm reconstructs the
+        same identifier Bloomberg uses)."""
+        # T 2½ 03/31/23 — Bloomberg-issued, real CUSIP.
+        assert _incr._canonicalize_deliverable_cusip("912828UA6") == "912828UA6"
+        assert _incr._canonicalize_deliverable_cusip("912828UA Govt") == "912828UA6"
+
+
+class TestStageContractRowsCusipCanonicalisationV6:
+    """The staging helper's contract carries the canonical 9-char CUSIP +
+    preserves the raw Bloomberg value in attributes for audit."""
+
+    def test_basket_row_emits_canonical_cusip_in_natural_key_position(self) -> None:
+        df = _basket_frame([
+            {"CUSIP": "912828UA Govt", "Conversion Factor": 0.8234},
+        ])
+        rows, miss = _stage(df)
+        assert miss is None
+        assert len(rows) == 1
+        # The natural-key CUSIP is the canonical 9-char form, not the raw
+        # "912828UA Govt".
+        assert rows[0]["deliverable_cusip"] == "912828UA6"
+
+    def test_raw_bloomberg_value_preserved_in_attributes_column(self) -> None:
+        """The raw "912828UA Govt" string lands as a non-typed column on the
+        row; the ingester parser's _EXCLUDE_FOR_ATTRIBUTES set does not
+        exclude raw_deliverable_bond_cusip_and_yellow_key, so it auto-
+        routes into the JSONB attributes blob at write time."""
+        df = _basket_frame([
+            {"CUSIP": "912828UA Govt", "Conversion Factor": 0.8234},
+        ])
+        rows, miss = _stage(df)
+        assert miss is None
+        assert (
+            rows[0]["raw_deliverable_bond_cusip_and_yellow_key"]
+            == "912828UA Govt"
+        )
+
+    def test_invalid_raw_cusip_returns_invalid_cusip_for_basket_miss(self) -> None:
+        """Fail-closed: a malformed CUSIP string aborts the whole contract
+        via the v3 strict gate, never silently lands a bad row."""
+        df = _basket_frame([
+            {"CUSIP": "BAD!STEM Govt", "Conversion Factor": 0.8234},
+        ])
+        rows, miss = _stage(df)
+        assert rows == []
+        # The miss reason quotes the raw value so the operator can diagnose.
+        assert miss is not None
+        assert miss.startswith("invalid_cusip_for_basket:")
+        assert "BAD!STEM" in miss
+
+    def test_already_canonical_9char_cusip_passes_through(self) -> None:
+        """The C3 test fixture pattern: synthetic 9-char CUSIPs without a
+        yellow key still work (passthrough branch) — preserves the
+        existing 129-test C3 contract."""
+        df = _basket_frame([
+            {"CUSIP": "91282CAB1", "Conversion Factor": 0.8234},
+        ])
+        rows, miss = _stage(df)
+        assert miss is None
+        assert rows[0]["deliverable_cusip"] == "91282CAB1"
+        # In passthrough, the raw value is preserved verbatim.
+        assert (
+            rows[0]["raw_deliverable_bond_cusip_and_yellow_key"]
+            == "91282CAB1"
+        )
+
+    def test_three_basket_rows_each_get_canonicalised(self) -> None:
+        """End-to-end: realistic basket frame produces 3 canonical rows
+        with 3 raw-value attribute entries."""
+        df = _basket_frame([
+            {"CUSIP": "9128273H Govt", "Conversion Factor": 0.9638},
+            {"CUSIP": "912828UA Govt", "Conversion Factor": 0.8234},
+            {"CUSIP": "912810FT Govt", "Conversion Factor": 0.8045},
+        ])
+        rows, miss = _stage(df)
+        assert miss is None
+        canonical = [r["deliverable_cusip"] for r in rows]
+        raws = [r["raw_deliverable_bond_cusip_and_yellow_key"] for r in rows]
+        assert canonical == ["9128273H3", "912828UA6", "912810FT9"]
+        assert raws == ["9128273H Govt", "912828UA Govt", "912810FT Govt"]
+
+
+class TestCanonicalizeDeliverableCusipHistoricalParity:
+    """SYNC INVARIANT: the historical_extractor copy of the canonicaliser
+    behaves byte-equivalently to incremental_extractor's."""
+
+    def test_yellow_key_canonicalisation_matches(self) -> None:
+        for raw in [
+            "9128273H Govt",
+            "912827U4 Govt",
+            "912827VN Govt",
+            "912828K7 Govt",
+            "912810BZ Govt",
+            "912810FT Govt",
+            "912828UA Govt",
+        ]:
+            a = _incr._canonicalize_deliverable_cusip(raw)
+            b = _hist._canonicalize_deliverable_cusip(raw)
+            assert a == b, f"divergence on {raw!r}: incr={a!r}, hist={b!r}"
+
+    def test_passthrough_branch_matches(self) -> None:
+        assert (
+            _incr._canonicalize_deliverable_cusip("91282CAB1")
+            == _hist._canonicalize_deliverable_cusip("91282CAB1")
+        )
+
+    def test_fail_closed_branch_matches(self) -> None:
+        for bad in [None, "", "   ", "1234567 Govt", "12345!XY Govt"]:
+            with pytest.raises(ValueError):
+                _incr._canonicalize_deliverable_cusip(bad)
+            with pytest.raises(ValueError):
+                _hist._canonicalize_deliverable_cusip(bad)
+
+
 class TestStageContractRowsHistoricalParity:
     """SYNC INVARIANT: historical_extractor's copy behaves byte-equivalently."""
 

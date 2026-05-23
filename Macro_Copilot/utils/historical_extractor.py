@@ -1871,6 +1871,66 @@ def _stamp_deliverables_audit_suffix(
     )
 
 
+_BLOOMBERG_YELLOW_KEYS: tuple = (
+    " Govt", " Corp", " Equity", " Comdty", " Mtge", " M-Mkt", " Index",
+)
+
+
+def _canonicalize_deliverable_cusip(raw_value: Any) -> str:
+    """Canonicalise a Bloomberg deliverable-basket CUSIP value to its
+    standard 9-character form (ADR 0011 v6 / C4 Phase A.3). SYNC INVARIANT
+    with utils/incremental_extractor.py — see that file for the canonical
+    docstring + P12 justification."""
+    if raw_value is None:
+        raise ValueError("deliverable CUSIP is None")
+    if not isinstance(raw_value, str):
+        raise ValueError(
+            f"deliverable CUSIP must be a string, got "
+            f"{type(raw_value).__name__}={raw_value!r}"
+        )
+    s = raw_value.strip()
+    if not s:
+        raise ValueError("deliverable CUSIP is empty after stripping")
+    stem: Optional[str] = None
+    for yk in _BLOOMBERG_YELLOW_KEYS:
+        if s.endswith(yk):
+            stem = s[: -len(yk)].rstrip()
+            break
+    if stem is None:
+        # No yellow-key — passthrough (already-canonical caller input).
+        return s
+    if len(stem) != 8:
+        raise ValueError(
+            f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) is "
+            f"{len(stem)} chars after stripping yellow-key; expected exactly 8"
+        )
+    stem = stem.upper()
+    total = 0
+    for i, ch in enumerate(stem, start=1):
+        if ch.isdigit():
+            v = int(ch)
+        elif ch.isalpha():
+            v = ord(ch.upper()) - ord("A") + 10
+        elif ch == "*":
+            v = 36
+        elif ch == "@":
+            v = 37
+        elif ch == "#":
+            v = 38
+        else:
+            raise ValueError(
+                f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) has "
+                f"invalid character {ch!r} at position {i}"
+            )
+        if i % 2 == 0:
+            v *= 2
+        while v > 9:
+            v = v // 10 + v % 10
+        total += v
+    check_digit = (10 - total % 10) % 10
+    return stem + str(check_digit)
+
+
 def _stage_contract_rows(
     basket_df: "pd.DataFrame",
     dates_raw: Dict[str, Any],
@@ -1917,20 +1977,26 @@ def _stage_contract_rows(
 
     contract_rows: List[Dict[str, Any]] = []
     for _, basket_row in basket_df.iterrows():
-        cusip = _clean_scalar(basket_row[cusip_col_actual])
-        if not cusip:
+        raw_cusip = _clean_scalar(basket_row[cusip_col_actual])
+        if not raw_cusip:
             continue
+        # ADR 0011 v6: canonicalise the deliverable CUSIP. SYNC INVARIANT
+        # with utils/incremental_extractor.py.
+        try:
+            canonical_cusip = _canonicalize_deliverable_cusip(raw_cusip)
+        except ValueError:
+            return [], f"invalid_cusip_for_basket:{raw_cusip!r}"
         factor_val = _clean_scalar(basket_row[factor_col_actual])
         if factor_val is None or (
             isinstance(factor_val, str) and not factor_val.strip()
         ):
-            return [], f"missing_factor_for_cusip:{cusip}"
+            return [], f"missing_factor_for_cusip:{canonical_cusip}"
         try:
             factor_num = float(factor_val)
         except (TypeError, ValueError):
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         if factor_num != factor_num:  # NaN
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         isin_val = (
             _clean_scalar(basket_row[isin_col_actual])
             if isin_col_actual else None
@@ -1938,9 +2004,10 @@ def _stage_contract_rows(
         row: Dict[str, Any] = {
             "vendor_ticker": generic_ticker,
             "contract_code": contract_code,
-            "deliverable_cusip": str(cusip),
+            "deliverable_cusip": canonical_cusip,
             "deliverable_isin": str(isin_val) if isin_val else None,
             "conversion_factor": factor_num,
+            "raw_deliverable_bond_cusip_and_yellow_key": str(raw_cusip),
         }
         for col_name, iso in parsed_static_values.items():
             row[col_name] = iso
