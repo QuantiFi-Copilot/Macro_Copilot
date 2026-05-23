@@ -75,6 +75,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from rates_agent.policy_futures.tools.futures_calendar_spread import (  # noqa: E402
+    CONFIG_PATH as FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+    FuturesCalendarSpreadInput,
+    calculate_futures_calendar_spread,
+)
 from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
     CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
     FuturesPriceLevelInput,
@@ -528,6 +533,224 @@ def get_volume_open_interest_snapshot_tool(
     if ts_rows:
         logger.info(
             "[get_volume_open_interest_snapshot_tool] withheld %d "
+            "time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 3: get_futures_calendar_spread
+#         (policy_futures strip-position-keyed)
+# ===========================================================================
+@mcp.tool()
+def get_futures_calendar_spread_tool(
+    curve_family: str,
+    strip_position_short: int,
+    strip_position_long: int,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+    field_name: str = "",
+) -> str:
+    """Get the current policy-futures same-curve calendar spread on
+    the implied-rate axis (PERCENT POINTS) between two strip-position
+    slots, plus the parallel raw-price spread, 1-day deltas on each
+    axis, rolling 252-day z-score of the implied-rate-spread series,
+    trailing 252-day high / low / mid range on the implied-rate-spread
+    axis, and percentile rank of the current spread. The snapshot
+    carries the as_of-bounded SCD2 per-leg disclosure
+    (contract_code_short / contract_code_long /
+    underlying_contract_code_short / underlying_contract_code_long /
+    security_name_short / security_name_long / expiry_date_short /
+    expiry_date_long, inverse_priced flag, short_rate_regime label).
+    Sign convention: short_leg minus long_leg (fronter minus backer).
+
+    Use this tool when the user asks about:
+    - STIR calendar / strip spreads     (e.g. "Where's SFR1-SFR2?",
+                                         "ER1-ER4 spread?",
+                                         "front-back SOFR strip
+                                         slope?")
+    - Calendar-spread extremes         (e.g. "Is the SFR1-SFR2
+                                         spread at a 1-year high in
+                                         implied rate?",
+                                         "Z-score on the ER1-ER2
+                                         calendar?")
+    - Calendar-spread day-on-day moves (e.g. "How much did SFR2-SFR3
+                                         move yesterday?")
+
+    Do NOT use this tool for:
+    - Bond futures calendar spreads (TY1-TY2 / RX1-RX2 / ...) →
+      bond_futures domain, separate primitive.
+    - Cross-CB STIR spreads (SOFR vs SONIA / SOFR vs Euribor) → that
+      is the sibling ``futures_cross_market_spread`` primitive
+      (separate; matched-strip cross-family differentials with the
+      benchmark-family-mismatch disclosure).
+    - Three-point STIR butterflies (e.g. SFR1-2*SFR2+SFR3) → that is
+      the sibling ``futures_butterfly_simple`` primitive (separate;
+      same-curve curvature).
+    - Single-leg outright price / implied rate / range / z-score on
+      one strip slot — that is the sibling
+      ``get_futures_price_level_tool`` (price + implied-rate axis on
+      ONE strip position).
+    - Meeting-by-meeting policy-path decomposition (FOMC / ECB / BOE
+      per-meeting implied-step view) → NOT a primitive in this build.
+      This tool is the calendar-spread (strip-slope) read on rolling-
+      generic strip-slot series, NOT the per-meeting decomposition.
+
+    ALWAYS preserve the methodology_disclosure field when relaying the
+    snapshot to the user — P5 (honest disclosure) requires the sign
+    convention, the regime label, the inverse-pricing rule, the
+    z-score lookback window, and the rolling-generic-strip-spread
+    scope-limit caveats to be carried forward.
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip, RFR regime), 'EUR_SHORT_RATE_FUT' (ECB Euribor
+        strip, IBOR regime), 'SONIA_FUT' (BOE SONIA strip, RFR
+        regime).
+    strip_position_short : int
+        1-based strip position of the SHORT (fronter) leg. 1 = front
+        contract; 2..8 = quarterly forwards down the strip in the V1
+        universe. Must be strictly less than ``strip_position_long``.
+    strip_position_long : int
+        1-based strip position of the LONG (backer) leg. Must be
+        strictly greater than ``strip_position_short``.
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the rolling z-score window
+        (config-locked at 252) or the trailing range window (locked
+        at 252).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot to a
+        specific trading day. Empty (default ``""``) = anchor at the
+        universe's last observed ``trade_date`` where BOTH legs are
+        observed (post-fetch data-max anchor). An as_of_date BEYOND
+        the universe's last observed ``trade_date`` on EITHER leg
+        returns the documented controlled-error envelope; an
+        as_of_date WITHIN the universe range produces a DETERMINISTIC
+        snapshot (same as_of + same DB state ⇒ same numbers).
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ``""`` to use the bundled ``default_price_field`` convention
+        from futures_calendar_spread/config.yaml (currently
+        'PX_LAST'). Pass an explicit field name to override per call.
+        Mirrors the empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / policy_futures
+        get_futures_price_level_tool so the YAML default actually
+        flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's ``default_price_field``.
+    field_name_arg = field_name if field_name else None
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent universe trade_date for
+    # the legs). Malformed value raises a ValidationError envelope
+    # below — LLM sees a clean error rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_calendar_spread_tool] as_of_date parse "
+                "failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesCalendarSpreadInput(
+            curve_family=curve_family,
+            strip_position_short=strip_position_short,
+            strip_position_long=strip_position_long,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_calendar_spread_tool] input validation "
+            "failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_calendar_spread_tool] failed to connect to "
+            "TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors get_futures_price_level_tool /
+    # get_volume_open_interest_snapshot_tool exactly.
+    try:
+        fcs_config = load_tool_config(FUTURES_CALENDAR_SPREAD_CONFIG_PATH)
+        result = calculate_futures_calendar_spread(
+            engine=engine, params=params, config=fcs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_calendar_spread_tool] unhandled error for "
+            "%s (%d, %d)",
+            params.curve_family,
+            params.strip_position_short, params.strip_position_long,
+        )
+        return json.dumps(
+            {"error": f"get_futures_calendar_spread_tool failed for "
+             f"{params.curve_family} "
+             f"({params.strip_position_short},"
+             f"{params.strip_position_long}): {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_calendar_spread_tool] tool call complete: %s "
+        "(%d, %d) → %s",
+        params.curve_family,
+        params.strip_position_short, params.strip_position_long, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload). The LLM doesn't need every
+    # historical row to answer "where's SFR1-SFR2?" — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveats (sign convention,
+    # regime label, scope-limits) are propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_calendar_spread_tool] withheld %d "
             "time_series rows from LLM context.",
             ts_rows,
         )

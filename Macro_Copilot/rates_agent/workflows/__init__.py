@@ -118,6 +118,12 @@ from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (
     VolumeOpenInterestSnapshotOutput,
     calculate_volume_open_interest_snapshot,
 )
+from rates_agent.policy_futures.tools.futures_calendar_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+    FuturesCalendarSpreadInput,
+    FuturesCalendarSpreadOutput,
+    calculate_futures_calendar_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -491,6 +497,26 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=VolumeOpenInterestSnapshotInput,
         output_class=VolumeOpenInterestSnapshotOutput,
         config_path=POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
+    ),
+    # ``output_field_units`` is intentionally empty for the same P8 +
+    # P5 reason as the sibling policy_futures_get_futures_price_level_tool
+    # entry: the calendar-spread's ``time_series`` carries TWO unit
+    # spaces per row (raw_price_spread in the contract's price-spread
+    # space, AND spread_implied_rate_pct in PERCENT POINTS). The
+    # closed-enum ``TimeSeriesUnits`` family has no PRICE member;
+    # declaring ``percent`` would only cover the implied-rate-spread
+    # axis and silently mis-label the raw-price-spread axis. The
+    # validator's empty-dict exemption (see
+    # shared/workflow/validate.py:368) defers the unit check to the
+    # operator's runtime refusal — that is the honest path until a
+    # future ADR extends ``TimeSeriesUnits``.
+    "policy_futures_get_futures_calendar_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_calendar_spread_tool",
+        callable=calculate_futures_calendar_spread,
+        input_class=FuturesCalendarSpreadInput,
+        output_class=FuturesCalendarSpreadOutput,
+        config_path=POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
         output_field_units={},
     ),
 

@@ -546,8 +546,13 @@ primitives:
       - policy futures open_interest history
 
   - id: policy_futures__futures_calendar_spread
-    status: todo
+    status: done
     build_order: 16
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: futures_calendar_spread
     category: desk_invariant_primitive
