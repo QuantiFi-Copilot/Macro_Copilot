@@ -1,5 +1,5 @@
 playbook_name: "bond_futures"
-playbook_version: "1.5"
+playbook_version: "1.6"
 asset_class: "rates"
 dataset_name: "bond_futures"
 description: "Daily rolling government bond futures data across core macro markets for liquid expression, activity monitoring, and positioning proxies."
@@ -111,6 +111,135 @@ metadata_history:
       bloomberg_field: "FUT_EXCH_NAME_SHRT"      # VERIFIED 2026-05-19 — returns
                                                  # CBT/EUX/ICF/OSE/MSE/SFE/CME
                                                  # consistently across all markets
+
+# ----------------------------------------------------------------------------
+# CANDIDATE deliverables section (ADR 0011, work order C4).
+#
+# Drives ``--mode deliverables`` extraction. Reads ONLY the universe rows
+# whose ticker is in ``include_tickers`` (a strict whitelist exact-match
+# against the universe — ADR 0011 v3, Codex finding 2). v1 scopes to the
+# six UST bond-future generics (TU/FV/TY/UXY/US/WN); non-US deliverable
+# baskets (DE/UK/JP/FR/IT/ES/CA/AU) are explicitly DEFERRED per P2/P5 —
+# their basket schemas may not be CUSIP-shaped under FUT_DLVRBL_BNDS_CUSIPS
+# and a separate operator probe per-market is required before scope-in.
+# A follow-up data PR will probe and finalise non-US in v2.
+#
+# CANDIDATE state — every Bloomberg mnemonic and every basket-frame column
+# name below is UNVERIFIED until ``scripts/deliverables_bloomberg_check.py``
+# returns a clean per-generic report against a live Bloomberg terminal.
+# Operator runs the check, returns the FINAL SUMMARY + per-contract CSV;
+# this section is then finalised to VERIFIED (or any field that does not
+# verify is documented as a deferral).
+#
+# What IS already VERIFIED via the metadata_history flow on this same
+# playbook (2026-05-19, see the section above):
+#   * chain_field = "FUT_CHAIN"                — chain enumeration works
+#   * chain_overrides INCLUDE_EXPIRED_CONTRACTS="Y"
+#                                              — extends history to the
+#                                                full chain (e.g. TY1:
+#                                                3 → 179 contracts)
+#   * FUT_DLV_DT_FIRST / FUT_DLV_DT_LAST       — non-null per-contract
+#                                                across every bond-future
+#                                                in the universe; used as
+#                                                metadata_history's
+#                                                settlement_date /
+#                                                maturity_date
+#   * FUT_NOTICE_FIRST                         — non-null per-contract
+#                                                across every chain
+#                                                tested; used as
+#                                                metadata_history's
+#                                                roll_field
+#
+# What is STILL CANDIDATE (probed by deliverables_bloomberg_check.py):
+#   * basket_field = "FUT_DLVRBL_BNDS_CUSIPS"  — does bds return a frame
+#                                                of CUSIP + factor rows
+#                                                per contract? UST-only
+#                                                in v1.
+#   * basket_cusip_column / basket_factor_column
+#                                              — the EXACT column names
+#                                                Bloomberg returns inside
+#                                                that frame. Casing and
+#                                                spelling unverified.
+#   * basket_isin_column                       — present in UST baskets?
+#                                                Or omit and rely on
+#                                                deliverable_cusip only?
+#   * FUT_NOTICE_LAST                          — symmetric companion to
+#                                                FUT_NOTICE_FIRST;
+#                                                spelling unverified;
+#                                                non-null per-contract
+#                                                rate unverified.
+# ----------------------------------------------------------------------------
+deliverables:
+  enabled: true
+  # Chain enumeration — VERIFIED 2026-05-19 via the metadata_history flow on
+  # this same playbook (re-used identically, deliberate; ADR 0011 §Design).
+  chain_field: "FUT_CHAIN"                          # VERIFIED 2026-05-19
+  chain_overrides:
+    INCLUDE_EXPIRED_CONTRACTS: "Y"                  # VERIFIED 2026-05-19
+  # Deliverable basket — CANDIDATE. The check script probes
+  # FUT_DLVRBL_BNDS_CUSIPS as the primary candidate; if Bloomberg returns a
+  # frame the operator reports its actual columns and we finalise the
+  # column-name fields below.
+  basket_field: "FUT_DLVRBL_BNDS_CUSIPS"            # CANDIDATE — verify via
+                                                    # scripts/deliverables_bloomberg_check.py
+  basket_cusip_column: "CUSIP"                      # CANDIDATE — exact column
+                                                    # name unverified; the
+                                                    # check script reports
+                                                    # what bds actually
+                                                    # returns. Casing is
+                                                    # matched case-insensitively
+                                                    # by the extractor.
+  basket_factor_column: "Conversion Factor"         # CANDIDATE — exact column
+                                                    # name unverified.
+                                                    # Conversion factor is
+                                                    # core source data
+                                                    # (ADR 0011 v4); a
+                                                    # missing column or
+                                                    # missing per-row value
+                                                    # aborts the contract.
+  basket_isin_column: "ISIN"                        # CANDIDATE — operator
+                                                    # decides whether to
+                                                    # keep this key or omit
+                                                    # it based on what bds
+                                                    # actually returns for
+                                                    # UST. Omitting → all
+                                                    # rows get
+                                                    # deliverable_isin NULL.
+  # Per-contract static date fields (denormalised across every row of the
+  # basket — ADR 0011 §Alternatives). Every entry's column_name MUST be in
+  # the allowed set {first_delivery_date, last_delivery_date,
+  # first_notice_date, last_notice_date} — these are the only typed
+  # per-contract date columns on macro_data.futures_deliverables (ADR 0011
+  # v4 §_ALLOWED_DELIVERABLES_STATIC_COLUMNS).
+  static_fields:
+    - column_name: "first_delivery_date"
+      bloomberg_field: "FUT_DLV_DT_FIRST"           # VERIFIED 2026-05-19 via
+                                                    # metadata_history.settlement_date
+    - column_name: "last_delivery_date"
+      bloomberg_field: "FUT_DLV_DT_LAST"            # VERIFIED 2026-05-19 via
+                                                    # metadata_history.maturity_date
+    - column_name: "first_notice_date"
+      bloomberg_field: "FUT_NOTICE_FIRST"           # VERIFIED 2026-05-19 via
+                                                    # metadata_history.roll_field
+    - column_name: "last_notice_date"
+      bloomberg_field: "FUT_NOTICE_LAST"            # CANDIDATE — spelling
+                                                    # symmetric with
+                                                    # FUT_NOTICE_FIRST but
+                                                    # not yet probed; the
+                                                    # check script confirms
+                                                    # per-contract presence.
+  # Scope: v1 UST only (ADR 0011 v2/v3 explicit deferral pattern). Every
+  # entry MUST exactly match a rolling-contract ticker in the universe
+  # below; the extractor aborts on any unmatched entry (ADR 0011 v3, Codex
+  # finding 2). Non-US bond-future deliverable baskets (DE/UK/JP/FR/IT/
+  # ES/CA/AU) are deferred to a follow-up data PR.
+  include_tickers:
+    - "TU1 Comdty"   # UST 2Y T-Note futures
+    - "FV1 Comdty"   # UST 5Y T-Note futures
+    - "TY1 Comdty"   # UST 10Y T-Note futures
+    - "UXY1 Comdty"  # UST Ultra 10Y T-Note futures
+    - "US1 Comdty"   # UST Classic Long Bond (30Y) futures
+    - "WN1 Comdty"   # UST Ultra Bond futures
 
 universe:
   # United States Treasury futures
