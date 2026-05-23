@@ -13,6 +13,12 @@ from rates_agent.policy_futures.tools.futures_price_level.schemas import (
     FuturesPriceLevelOutput,
     FuturesPriceLevelTimeSeriesRow,
 )
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot.schemas import (
+    VolumeOpenInterestSnapshotCurrentMetrics,
+    VolumeOpenInterestSnapshotInput,
+    VolumeOpenInterestSnapshotOutput,
+    VolumeOpenInterestSnapshotTimeSeriesRow,
+)
 
 
 __all__ = [
@@ -20,4 +26,8 @@ __all__ = [
     "FuturesPriceLevelCurrentMetrics",
     "FuturesPriceLevelTimeSeriesRow",
     "FuturesPriceLevelOutput",
+    "VolumeOpenInterestSnapshotInput",
+    "VolumeOpenInterestSnapshotCurrentMetrics",
+    "VolumeOpenInterestSnapshotTimeSeriesRow",
+    "VolumeOpenInterestSnapshotOutput",
 ]

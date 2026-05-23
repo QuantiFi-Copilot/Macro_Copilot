@@ -112,6 +112,12 @@ from rates_agent.policy_futures.tools.futures_price_level import (
     FuturesPriceLevelOutput as PolicyFuturesPriceLevelOutput,
     calculate_futures_price_level as calculate_policy_futures_price_level,
 )
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+    VolumeOpenInterestSnapshotInput,
+    VolumeOpenInterestSnapshotOutput,
+    calculate_volume_open_interest_snapshot,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -466,6 +472,25 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=PolicyFuturesPriceLevelInput,
         output_class=PolicyFuturesPriceLevelOutput,
         config_path=POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    # ``output_field_units`` is intentionally empty for the same P8 +
+    # P5 reason as bond_futures get_futures_volume_oi_tool: policy-
+    # futures volume + OI live in CONTRACT-COUNT space (volume =
+    # contracts traded; open_interest = contracts outstanding), which
+    # has no honest member of the closed-enum ``TimeSeriesUnits``
+    # family in V1. Declaring ``percent`` / ``bps`` / ``count`` would
+    # silently lie under P8 (closed-family discipline) + P5 (honest
+    # disclosure). The validator's empty-dict exemption (see
+    # shared/workflow/validate.py:368) defers the unit check to the
+    # operator's runtime refusal — the honest path until a future ADR
+    # extends ``TimeSeriesUnits`` with a CONTRACTS member.
+    "policy_futures_get_volume_open_interest_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_volume_open_interest_snapshot_tool",
+        callable=calculate_volume_open_interest_snapshot,
+        input_class=VolumeOpenInterestSnapshotInput,
+        output_class=VolumeOpenInterestSnapshotOutput,
+        config_path=POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
         output_field_units={},
     ),
 

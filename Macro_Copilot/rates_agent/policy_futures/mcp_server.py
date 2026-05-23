@@ -80,6 +80,11 @@ from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
     FuturesPriceLevelInput,
     calculate_futures_price_level,
 )
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (  # noqa: E402
+    CONFIG_PATH as VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+    VolumeOpenInterestSnapshotInput,
+    calculate_volume_open_interest_snapshot,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -342,6 +347,188 @@ def get_futures_price_level_tool(
         logger.info(
             "[get_futures_price_level_tool] withheld %d time_series "
             "rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 2: get_volume_open_interest_snapshot
+#         (policy_futures strip-position-keyed)
+# ===========================================================================
+@mcp.tool()
+def get_volume_open_interest_snapshot_tool(
+    curve_family: str,
+    strip_position: int,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+) -> str:
+    """Get the current policy-futures strip-position daily volume +
+    end-of-day open interest, plus 1-day ΔOI, rolling 252-day OI
+    z-score, trailing 252-day OI range (high / low / percentile), and
+    rolling 22-day volume mean / max. The snapshot carries the as_of-
+    bounded SCD2 per-strip disclosure (underlying_contract_code,
+    security_name, expiry_date, contract_size) so consumers can
+    convert contract counts to notional.
+
+    Use this tool when the user asks about:
+    - Policy-futures STIR strip volume     (e.g. "Where's SFR1 volume?",
+                                            "ER2 volume vs trend?")
+    - Policy-futures STIR strip open interest (e.g. "Is SFR1 OI
+                                            elevated?",
+                                            "SFI strip positioning?")
+    - 1-day open-interest moves            (e.g. "ΔOI on SFR1
+                                            yesterday?")
+    - OI extremes on the STIR strip        (e.g. "Is ER3 OI at a
+                                            1-year high?")
+
+    Do NOT use this tool for:
+    - Bond futures (TY1 / RX1 / JB1 / ...) → use the bond_futures
+      agent's get_futures_volume_oi_tool.
+    - Cash sovereign positioning → cash sovereigns do not have a
+      desk-recognised open-interest object; this tool is futures-
+      specific.
+    - Implied-rate level / range / z-score on the strip — that is the
+      sibling policy_futures get_futures_price_level_tool (price +
+      implied-rate axis). This tool is positioning + flow only.
+    - Front-back OI migration as a positioning signal: that is a
+      cross-strip concept and is NOT a single-strip primitive
+      (future work per ADR 0011 V1 scope).
+
+    ALWAYS preserve the methodology_disclosure field when relaying the
+    snapshot to the user — P5 (honest disclosure) requires both the
+    rolling-generic-strip OI caveat AND the explicit OI z-score
+    lookback window to be carried forward (per the catalog's
+    standardness guardrail on this primitive).
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip), 'EUR_SHORT_RATE_FUT' (ECB Euribor strip),
+        'SONIA_FUT' (BOE SONIA strip).
+    strip_position : int
+        1-based strip position. 1 = front contract; 2..8 = quarterly
+        forwards down the strip in the V1 universe (whites = 1-4,
+        reds = 5-8).
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the OI z-score window
+        (config-locked at 252), the OI trailing range window (locked
+        at 252), or the volume short-context window (locked at 22).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot to a
+        specific trading day. Empty (default ``""``) = anchor at the
+        universe's last observed ``trade_date`` for the requested
+        strip (post-fetch data-max anchor). An as_of_date BEYOND the
+        universe's last observed ``trade_date`` returns the
+        documented controlled-error envelope; an as_of_date WITHIN
+        the universe range produces a DETERMINISTIC snapshot (same
+        as_of + same DB state ⇒ same numbers).
+    """
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent universe trade_date for
+    # the strip). Malformed value raises a ValidationError envelope
+    # below — LLM sees a clean error rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_volume_open_interest_snapshot_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = VolumeOpenInterestSnapshotInput(
+            curve_family=curve_family,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_volume_open_interest_snapshot_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_volume_open_interest_snapshot_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors get_futures_price_level_tool exactly.
+    try:
+        vois_config = load_tool_config(
+            VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+        )
+        result = calculate_volume_open_interest_snapshot(
+            engine=engine, params=params, config=vois_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_volume_open_interest_snapshot_tool] unhandled error "
+            "for %s strip_position=%d",
+            params.curve_family, params.strip_position,
+        )
+        return json.dumps(
+            {"error": f"get_volume_open_interest_snapshot_tool failed "
+             f"for {params.curve_family} strip_position="
+             f"{params.strip_position}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_volume_open_interest_snapshot_tool] tool call complete: "
+        "%s strip_position=%d → %s",
+        params.curve_family, params.strip_position, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload). The LLM doesn't need every
+    # historical row to answer "where's SFR1 OI?" — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveat + OI-z-score-window
+    # disclosure is propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_volume_open_interest_snapshot_tool] withheld %d "
+            "time_series rows from LLM context.",
             ts_rows,
         )
     return json.dumps(llm_response, default=str)

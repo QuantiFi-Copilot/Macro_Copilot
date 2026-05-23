@@ -510,8 +510,13 @@ primitives:
       - contract metadata needed for price-to-rate interpretation
 
   - id: policy_futures__volume_open_interest_snapshot
-    status: todo
+    status: done
     build_order: 15
+    active_step: completed
+    builder_round: 3
+    review_round: 3
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: volume_open_interest_snapshot
     category: desk_invariant_primitive
