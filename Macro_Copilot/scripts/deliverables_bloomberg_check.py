@@ -18,26 +18,47 @@ mnemonic; this probe empirically validates each via real ``bds`` / ``bdp``
 calls and emits a final summary the operator pastes back to the agent for the
 playbook to be finalised to ``# VERIFIED <date>``.
 
-What is **already VERIFIED** via the metadata_history flow on the same
-playbook (2026-05-19, ``scripts/futures_metadata_history_check.py``) — this
-script DOES NOT re-verify the four below, only checks they are still present:
+What is **already VERIFIED** (this script DOES NOT re-verify, only smoke-
+checks they are still present):
 
   * ``FUT_CHAIN`` + ``INCLUDE_EXPIRED_CONTRACTS="Y"`` — chain enumeration.
-  * ``FUT_DLV_DT_FIRST``  — first delivery date per contract.
-  * ``FUT_DLV_DT_LAST``   — last delivery date per contract.
-  * ``FUT_NOTICE_FIRST``  — first notice date per contract.
+    VERIFIED 2026-05-19 via the metadata_history flow on this playbook.
+  * ``FUT_DLV_DT_FIRST``  — first delivery date per contract.  Same source.
+  * ``FUT_DLV_DT_LAST``   — last delivery date per contract.   Same source.
+  * ``FUT_NOTICE_FIRST``  — first notice date per contract.    Same source.
+  * ``FUT_DLVRBLE_BNDS_CUSIPS`` — basket field. VERIFIED via FLDS
+    (operator manual probe 2026-05-23): BBG field ID FO066,
+    "Deliverable Bonds CUSIP", Bulk Data field. Empty on the generic
+    (TY1), populated on the explicit contract (TYM6 etc.) — the
+    extractor enumerates the chain and probes explicit contracts.
 
 What this script empirically VERIFIES (or fails for) per UST generic:
 
-  1. ``bds(contract, FUT_DLVRBL_BNDS_CUSIPS)`` — the deliverable-basket field.
-     Does it return a non-empty frame for sampled contracts? What columns
-     are in that frame (operator needs the EXACT column names so we can
-     finalise ``basket_cusip_column`` / ``basket_factor_column`` /
-     ``basket_isin_column`` in the playbook).
-  2. ``FUT_NOTICE_LAST`` — symmetric companion to ``FUT_NOTICE_FIRST``.
-     Spelling unverified; per-contract non-null rate unverified.
-  3. Per-contract date-coverage: across the four required static fields,
-     how often does bdp return all four valid dates for sampled contracts?
+  1. ``bds(contract, FUT_DLVRBLE_BNDS_CUSIPS)`` returns a non-empty frame
+     across deeply historical contracts (does Bloomberg still serve
+     baskets for TY contracts from the 1980s? — drives the historical
+     extractor's INCLUDE_EXPIRED_CONTRACTS sweep).
+  2. **EXACT pandas-DataFrame column names** the xbbg call produces for
+     the basket frame. The internal Bloomberg mnemonics behind the two
+     columns (per BH406, the "Bulk Header" companion) are
+     ``BC_FUT_DLVRBLE_BNDS_CUSIP_YK`` and ``BC_FUT_DELIVERABLE_CF`` — but
+     xbbg may rename to display labels. The agent uses the script's
+     schema-sample output to finalise ``basket_cusip_column`` /
+     ``basket_factor_column`` in the playbook.
+  3. **CUSIP string format** as xbbg returns it. The FLDS bulk-data viewer
+     shows "91282CGM Govt"-shaped strings — visible 8 chars + " Govt"
+     yellow-key suffix, but the FLDS view may truncate the 9th
+     check digit; xbbg may return the full 9-char form. The extractor's
+     ``_clean_scalar`` strips trailing whitespace; the script's per-
+     contract sample-rows block reports the literal string so the agent
+     can decide whether the ingester needs additional yellow-key stripping.
+  4. Per-contract date coverage: across the three required static fields,
+     how often does bdp return all three valid dates for sampled
+     contracts? (``FUT_NOTICE_LAST`` was DROPPED from v1 — operator
+     manual FLDS probe 2026-05-23 confirmed the mnemonic does not exist
+     for UST bond futures; substrate column
+     ``futures_deliverables.last_notice_date`` stays nullable, v1 every
+     row lands NULL.)
 
 UST scope (v1):
 
@@ -120,16 +141,21 @@ GENERICS: List[Dict[str, str]] = [
 CHAIN_FIELD = "FUT_CHAIN"
 CHAIN_OVERRIDES = {"INCLUDE_EXPIRED_CONTRACTS": "Y"}
 
-# Candidate basket field (primary). If Bloomberg returns nothing for any
-# contract of every generic, the operator should try a fallback such as
-# "FUT_DLVRBL_BNDS_ISINS" by editing this list.
+# Basket field. VERIFIED via FLDS (operator manual probe, 2026-05-23): the
+# correct Bloomberg mnemonic is FUT_DLVRBLE_BNDS_CUSIPS (with the 'E' in
+# DLVRBLE; ID FO066, "Deliverable Bonds CUSIP", Bulk Data field).
+# Populated only on the explicit cycle contract (e.g. TYM6 Comdty), empty
+# on the front-month-rolling generic (TY1) — by Bloomberg's design.
 CANDIDATE_BASKET_FIELDS: List[str] = [
-    "FUT_DLVRBL_BNDS_CUSIPS",
+    "FUT_DLVRBLE_BNDS_CUSIPS",
 ]
 
-# Per-contract static date fields. Three of four are VERIFIED via the
-# metadata_history flow already (we re-check presence as a smoke); the fourth
-# (FUT_NOTICE_LAST) is the new CANDIDATE this script must validate.
+# Per-contract static date fields. v1 ships THREE — every one VERIFIED via
+# the metadata_history flow on bond_futures.yml (2026-05-19). The script
+# re-checks per-contract presence as smoke. FUT_NOTICE_LAST was DROPPED
+# from v1 (FLDS confirmed the mnemonic does not exist for UST bond
+# futures; only FUT_NOTICE_FIRST has a "first" form — there is no
+# symmetric "last").
 STATIC_FIELDS: List[Dict[str, str]] = [
     {"column_name": "first_delivery_date", "bloomberg_field": "FUT_DLV_DT_FIRST",
      "status": "VERIFIED via metadata_history (2026-05-19)"},
@@ -137,8 +163,6 @@ STATIC_FIELDS: List[Dict[str, str]] = [
      "status": "VERIFIED via metadata_history (2026-05-19)"},
     {"column_name": "first_notice_date",   "bloomberg_field": "FUT_NOTICE_FIRST",
      "status": "VERIFIED via metadata_history (2026-05-19)"},
-    {"column_name": "last_notice_date",    "bloomberg_field": "FUT_NOTICE_LAST",
-     "status": "CANDIDATE — this script verifies"},
 ]
 
 # Sampling: ~8 contracts per generic = bounded Bloomberg load.

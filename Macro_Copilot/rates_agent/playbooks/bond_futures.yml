@@ -150,24 +150,53 @@ metadata_history:
 #                                                metadata_history's
 #                                                roll_field
 #
-# What is STILL CANDIDATE (probed by deliverables_bloomberg_check.py):
-#   * basket_field = "FUT_DLVRBL_BNDS_CUSIPS"  — does bds return a frame
-#                                                of CUSIP + factor rows
-#                                                per contract? UST-only
-#                                                in v1.
-#   * basket_cusip_column / basket_factor_column
-#                                              — the EXACT column names
-#                                                Bloomberg returns inside
-#                                                that frame. Casing and
-#                                                spelling unverified.
-#   * basket_isin_column                       — present in UST baskets?
-#                                                Or omit and rely on
-#                                                deliverable_cusip only?
-#   * FUT_NOTICE_LAST                          — symmetric companion to
-#                                                FUT_NOTICE_FIRST;
-#                                                spelling unverified;
-#                                                non-null per-contract
-#                                                rate unverified.
+# Operator manual-probe results 2026-05-23 (FLDS on TYM6 Comdty + US1 Comdty):
+#
+#   * MNEMONIC SPELLING — the deliverable-basket field is
+#     `FUT_DLVRBLE_BNDS_CUSIPS` (with the trailing 'E' in DLVRBLE), Bloomberg
+#     field ID FO066 — "Deliverable Bonds CUSIP". The prior CANDIDATE
+#     spelling `FUT_DLVRBL_BNDS_CUSIPS` (no E) was wrong.
+#
+#   * GENERIC vs EXPLICIT CONTRACT — the bulk data is empty when queried
+#     against the front-month-rolling generic (TY1 / US1), populated only
+#     on the explicit cycle contract (TYM6, USM6, etc.). The extractor
+#     enumerates the chain via FUT_CHAIN and probes EXPLICIT contracts, so
+#     this is the expected behaviour and requires no playbook change.
+#
+#   * `FUT_NOTICE_LAST` DOES NOT EXIST on UST bond-future contracts (FLDS
+#     "Notice" filter on TYM6 returns only FUT_NOTICE_FIRST,
+#     FIRST_NOTICE_RT, PS_FIRST_NOTICE_DATE — no symmetric "last" variant).
+#     The CANDIDATE has been DROPPED. v1 leaves
+#     macro_data.futures_deliverables.last_notice_date NULL across every
+#     row (nullable schema, P5 deferral). For UST the cycle has a single
+#     notice date (the day the short declares delivery intent); the end
+#     of the delivery WINDOW is captured by FUT_DLV_DT_LAST.
+#
+#   * BASKET-FRAME COLUMN NAMES — the FO066 bulk-data viewer shows
+#     CUSIP-with-yellow-key strings (e.g. "91282CGM Govt") plus numeric
+#     conversion factors (e.g. .8671), no ISIN column. The internal
+#     Bloomberg mnemonics behind those two columns (per BH406 — the
+#     "Bulk Header" companion) are BC_FUT_DLVRBLE_BNDS_CUSIP_YK and
+#     BC_FUT_DELIVERABLE_CF. The xbbg pandas-DataFrame column NAMES,
+#     however, depend on xbbg's display-label conversion and remain
+#     CANDIDATE — the check script reports the exact strings.
+#
+#   * `basket_isin_column` REMOVED — UST baskets carry CUSIPs only; ISIN
+#     cross-identifier column not present in FO066. Substrate column
+#     deliverable_isin remains nullable; v1 every row lands NULL.
+#
+# What is STILL CANDIDATE (probed by scripts/deliverables_bloomberg_check.py):
+#   * basket_cusip_column / basket_factor_column — the EXACT pandas
+#     DataFrame column names xbbg produces from
+#     bds(contract, FUT_DLVRBLE_BNDS_CUSIPS). Casing handled
+#     case-insensitively; word-spacing must match exactly.
+#   * Per-contract basket coverage rate across the deep historical chain
+#     (does Bloomberg still serve baskets for TY contracts from the 1980s?).
+#   * Exact CUSIP string format — bulk-data viewer shows "91282CGM Govt"
+#     visibly 8 chars + yellow-key suffix; xbbg may return the full
+#     9-char CUSIP or may truncate. The extractor strips the " Govt"
+#     yellow-key suffix automatically if present (see
+#     ingestion/deliverables.py _str_or_none on deliverable_cusip).
 # ----------------------------------------------------------------------------
 deliverables:
   enabled: true
@@ -176,41 +205,45 @@ deliverables:
   chain_field: "FUT_CHAIN"                          # VERIFIED 2026-05-19
   chain_overrides:
     INCLUDE_EXPIRED_CONTRACTS: "Y"                  # VERIFIED 2026-05-19
-  # Deliverable basket — CANDIDATE. The check script probes
-  # FUT_DLVRBL_BNDS_CUSIPS as the primary candidate; if Bloomberg returns a
-  # frame the operator reports its actual columns and we finalise the
-  # column-name fields below.
-  basket_field: "FUT_DLVRBL_BNDS_CUSIPS"            # CANDIDATE — verify via
-                                                    # scripts/deliverables_bloomberg_check.py
-  basket_cusip_column: "CUSIP"                      # CANDIDATE — exact column
-                                                    # name unverified; the
-                                                    # check script reports
-                                                    # what bds actually
-                                                    # returns. Casing is
-                                                    # matched case-insensitively
-                                                    # by the extractor.
-  basket_factor_column: "Conversion Factor"         # CANDIDATE — exact column
-                                                    # name unverified.
+  # Deliverable basket — basket_field VERIFIED via FLDS (operator,
+  # 2026-05-23): "FUT_DLVRBLE_BNDS_CUSIPS" is BBG field ID FO066,
+  # "Deliverable Bonds CUSIP", a Bulk Data field. Populated on the explicit
+  # contract cycle (TYM6 etc.); the generic (TY1) returns empty by design.
+  basket_field: "FUT_DLVRBLE_BNDS_CUSIPS"           # VERIFIED 2026-05-23 (FLDS)
+  basket_cusip_column: "CUSIP"                      # CANDIDATE — exact
+                                                    # xbbg-pandas column
+                                                    # name still pending;
+                                                    # the check script
+                                                    # reports what bds
+                                                    # actually returns
+                                                    # (internal BBG
+                                                    # mnemonic per BH406:
+                                                    # BC_FUT_DLVRBLE_BNDS_CUSIP_YK).
+                                                    # Case-insensitive in
+                                                    # the extractor.
+  basket_factor_column: "Conversion Factor"         # CANDIDATE — exact
+                                                    # xbbg-pandas column
+                                                    # name still pending
+                                                    # (internal BBG mnemonic
+                                                    # per BH406:
+                                                    # BC_FUT_DELIVERABLE_CF).
                                                     # Conversion factor is
                                                     # core source data
-                                                    # (ADR 0011 v4); a
-                                                    # missing column or
-                                                    # missing per-row value
-                                                    # aborts the contract.
-  basket_isin_column: "ISIN"                        # CANDIDATE — operator
-                                                    # decides whether to
-                                                    # keep this key or omit
-                                                    # it based on what bds
-                                                    # actually returns for
-                                                    # UST. Omitting → all
-                                                    # rows get
-                                                    # deliverable_isin NULL.
+                                                    # (ADR 0011 v4); the
+                                                    # extractor aborts the
+                                                    # contract if missing.
+  # basket_isin_column intentionally OMITTED — UST FUT_DLVRBLE_BNDS_CUSIPS
+  # frame carries CUSIPs only (confirmed via FLDS, operator 2026-05-23).
+  # Substrate column macro_data.futures_deliverables.deliverable_isin stays
+  # nullable; v1 every row lands NULL. Downstream consumers can join via
+  # instrument_master.isin on the optional FK when the deliverable bond is
+  # registered.
   # Per-contract static date fields (denormalised across every row of the
-  # basket — ADR 0011 §Alternatives). Every entry's column_name MUST be in
-  # the allowed set {first_delivery_date, last_delivery_date,
-  # first_notice_date, last_notice_date} — these are the only typed
-  # per-contract date columns on macro_data.futures_deliverables (ADR 0011
-  # v4 §_ALLOWED_DELIVERABLES_STATIC_COLUMNS).
+  # basket — ADR 0011 §Alternatives). Every column_name MUST be in the
+  # allowed set {first_delivery_date, last_delivery_date, first_notice_date,
+  # last_notice_date} — the only typed per-contract date columns on
+  # macro_data.futures_deliverables. v1 ships THREE of the four; the
+  # fourth (last_notice_date) is DEFERRED — see header comment above.
   static_fields:
     - column_name: "first_delivery_date"
       bloomberg_field: "FUT_DLV_DT_FIRST"           # VERIFIED 2026-05-19 via
@@ -221,13 +254,9 @@ deliverables:
     - column_name: "first_notice_date"
       bloomberg_field: "FUT_NOTICE_FIRST"           # VERIFIED 2026-05-19 via
                                                     # metadata_history.roll_field
-    - column_name: "last_notice_date"
-      bloomberg_field: "FUT_NOTICE_LAST"            # CANDIDATE — spelling
-                                                    # symmetric with
-                                                    # FUT_NOTICE_FIRST but
-                                                    # not yet probed; the
-                                                    # check script confirms
-                                                    # per-contract presence.
+    # last_notice_date intentionally OMITTED — FUT_NOTICE_LAST mnemonic
+    # does not exist (FLDS operator probe 2026-05-23 on TYM6 Comdty).
+    # P5 deferral; futures_deliverables.last_notice_date stays NULL.
   # Scope: v1 UST only (ADR 0011 v2/v3 explicit deferral pattern). Every
   # entry MUST exactly match a rolling-contract ticker in the universe
   # below; the extractor aborts on any unmatched entry (ADR 0011 v3, Codex
