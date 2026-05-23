@@ -7,6 +7,12 @@ hub. Mirrors ``rates_agent/bond_futures/tools/schemas/__init__.py``'s
 pattern.
 """
 
+from rates_agent.policy_futures.tools.futures_butterfly_simple.schemas import (
+    FuturesButterflySimpleCurrentMetrics,
+    FuturesButterflySimpleInput,
+    FuturesButterflySimpleOutput,
+    FuturesButterflySimpleTimeSeriesRow,
+)
 from rates_agent.policy_futures.tools.futures_calendar_spread.schemas import (
     FuturesCalendarSpreadCurrentMetrics,
     FuturesCalendarSpreadInput,
@@ -40,4 +46,8 @@ __all__ = [
     "FuturesCalendarSpreadCurrentMetrics",
     "FuturesCalendarSpreadTimeSeriesRow",
     "FuturesCalendarSpreadOutput",
+    "FuturesButterflySimpleInput",
+    "FuturesButterflySimpleCurrentMetrics",
+    "FuturesButterflySimpleTimeSeriesRow",
+    "FuturesButterflySimpleOutput",
 ]

@@ -80,4 +80,5 @@ collect_ignore = [
     "test_policy_futures_futures_price_level_sql_validation.py",
     "test_policy_futures_volume_open_interest_snapshot_sql_validation.py",
     "test_policy_futures_futures_calendar_spread_sql_validation.py",
+    "test_policy_futures_futures_butterfly_simple_sql_validation.py",
 ]

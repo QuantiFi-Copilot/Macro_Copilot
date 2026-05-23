@@ -585,8 +585,13 @@ primitives:
       - price-to-rate conversion metadata for the selected contracts
 
   - id: policy_futures__futures_butterfly_simple
-    status: todo
+    status: done
     build_order: 17
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: futures_butterfly_simple
     category: desk_invariant_primitive

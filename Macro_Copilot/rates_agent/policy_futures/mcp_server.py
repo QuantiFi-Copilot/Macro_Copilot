@@ -75,6 +75,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from rates_agent.policy_futures.tools.futures_butterfly_simple import (  # noqa: E402
+    CONFIG_PATH as FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+    FuturesButterflySimpleInput,
+    calculate_futures_butterfly_simple,
+)
 from rates_agent.policy_futures.tools.futures_calendar_spread import (  # noqa: E402
     CONFIG_PATH as FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
     FuturesCalendarSpreadInput,
@@ -751,6 +756,219 @@ def get_futures_calendar_spread_tool(
     if ts_rows:
         logger.info(
             "[get_futures_calendar_spread_tool] withheld %d "
+            "time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4: get_futures_butterfly_simple
+#         (policy_futures strip-position-keyed)
+# ===========================================================================
+@mcp.tool()
+def get_futures_butterfly_simple_tool(
+    curve_family: str,
+    strip_position_wing_short: int,
+    strip_position_body: int,
+    strip_position_wing_long: int,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+    field_name: str = "",
+) -> str:
+    """Get the current policy-futures same-curve simple butterfly on
+    the implied-rate axis (PERCENT POINTS) for a three-leg
+    (wing_short, body, wing_long) strip-position triple, using the
+    FIXED 50-50 simple-butterfly weighting
+    (``body − 0.5 * (wing_short + wing_long)``). Plus the three
+    per-leg current implied rates, 1-day raw-subtraction change on
+    the butterfly axis, rolling 252-day z-score of the butterfly
+    series, trailing 252-day high / low / mid range, and percentile
+    rank of the current butterfly. The snapshot carries the
+    as_of-bounded SCD2 per-leg disclosure (contract_code_* /
+    underlying_contract_code_* / security_name_* / expiry_date_*,
+    inverse_priced flag, short_rate_regime label). Sign convention:
+    body rate minus wing-rate average; positive = belly cheap.
+
+    Use this tool when the user asks about:
+    - STIR / policy-futures butterflies   (e.g. "Where's
+                                           SFR1-SFR2-SFR3?",
+                                           "ER1-ER2-ER4 butterfly?")
+    - Butterfly extremes                  (e.g. "Is the
+                                           SFR1-SFR2-SFR3 butterfly
+                                           at a 1-year high?",
+                                           "Z-score on the
+                                           SFR1-SFR4-SFR8 butterfly?")
+    - Butterfly day-on-day moves          (e.g. "How much did the
+                                           ER1-ER2-ER4 butterfly move
+                                           yesterday?")
+
+    Do NOT use this tool for:
+    - Bond futures butterflies → bond_futures domain, separate
+      primitive.
+    - Cross-CB STIR butterflies (mixing SOFR / SONIA / Euribor) →
+      not a V1 primitive.
+    - DV01-neutral / regression-fitted butterflies → those weighting
+      variants ship as separate primitives in a future build (this
+      tool refuses them via the methodology card).
+    - Meeting-by-meeting policy-path butterflies (FOMC / ECB / BOE
+      per-meeting implied-step view) → NOT a primitive in this
+      build. This tool is the simple butterfly on rolling-generic
+      strip-slot series.
+    - Calendar spreads on the strip (2-leg) → the sibling
+      ``get_futures_calendar_spread_tool``.
+    - Single-leg outright price / implied rate → the sibling
+      ``get_futures_price_level_tool``.
+
+    ALWAYS preserve the methodology_disclosure field when relaying
+    the snapshot to the user — P5 (honest disclosure) requires the
+    sign convention, the fixed 50-50 weighting, the regime label,
+    the inverse-pricing rule, the z-score lookback window, AND the
+    DV01-neutral / meeting-path scope-limit refusals to be carried
+    forward.
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip, RFR regime), 'EUR_SHORT_RATE_FUT' (ECB Euribor
+        strip, IBOR regime), 'SONIA_FUT' (BOE SONIA strip, RFR
+        regime).
+    strip_position_wing_short : int
+        1-based strip position of the SHORT wing (fronter wing).
+        Must be strictly less than ``strip_position_body``.
+    strip_position_body : int
+        1-based strip position of the BODY (belly). Must be strictly
+        greater than ``strip_position_wing_short`` AND strictly less
+        than ``strip_position_wing_long``.
+    strip_position_wing_long : int
+        1-based strip position of the LONG wing (backer wing). Must
+        be strictly greater than ``strip_position_body``.
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the rolling z-score window
+        (config-locked at 252) or the trailing range window (locked
+        at 252).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot. Empty
+        (default ``""``) = anchor at the universe's last observed
+        ``trade_date`` where ALL THREE legs are observed. An
+        as_of_date BEYOND the universe's last observed ``trade_date``
+        on ANY leg returns the documented controlled-error envelope.
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ``""`` to use the bundled ``default_price_field`` convention
+        from futures_butterfly_simple/config.yaml (currently
+        'PX_LAST'). Pass an explicit field name to override per call.
+    """
+    field_name_arg = field_name if field_name else None
+
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_butterfly_simple_tool] as_of_date parse "
+                "failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesButterflySimpleInput(
+            curve_family=curve_family,
+            strip_position_wing_short=strip_position_wing_short,
+            strip_position_body=strip_position_body,
+            strip_position_wing_long=strip_position_wing_long,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_butterfly_simple_tool] input validation "
+            "failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_butterfly_simple_tool] failed to connect to "
+            "TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). Mirrors the sibling
+    # get_futures_calendar_spread_tool exactly.
+    try:
+        fbs_config = load_tool_config(FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH)
+        result = calculate_futures_butterfly_simple(
+            engine=engine, params=params, config=fbs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_butterfly_simple_tool] unhandled error for "
+            "%s (%d, %d, %d)",
+            params.curve_family,
+            params.strip_position_wing_short,
+            params.strip_position_body,
+            params.strip_position_wing_long,
+        )
+        return json.dumps(
+            {"error": f"get_futures_butterfly_simple_tool failed for "
+             f"{params.curve_family} "
+             f"({params.strip_position_wing_short},"
+             f"{params.strip_position_body},"
+             f"{params.strip_position_wing_long}): {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_butterfly_simple_tool] tool call complete: %s "
+        "(%d, %d, %d) → %s",
+        params.curve_family,
+        params.strip_position_wing_short,
+        params.strip_position_body,
+        params.strip_position_wing_long, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload). The LLM
+    # doesn't need every historical row — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveats are propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_butterfly", "time_series_zscore")
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_butterfly_simple_tool] withheld %d "
             "time_series rows from LLM context.",
             ts_rows,
         )

@@ -124,6 +124,12 @@ from rates_agent.policy_futures.tools.futures_calendar_spread import (
     FuturesCalendarSpreadOutput,
     calculate_futures_calendar_spread,
 )
+from rates_agent.policy_futures.tools.futures_butterfly_simple import (
+    CONFIG_PATH as POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+    FuturesButterflySimpleInput,
+    FuturesButterflySimpleOutput,
+    calculate_futures_butterfly_simple,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -518,6 +524,27 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_class=FuturesCalendarSpreadOutput,
         config_path=POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
         output_field_units={},
+    ),
+    # The simple-butterfly primitive's butterfly series IS single-unit
+    # (PERCENT POINTS — the body's implied rate minus the wing-rate
+    # average). Unlike the siblings ``futures_price_level`` and
+    # ``futures_calendar_spread`` (which carry two unit spaces per row),
+    # this primitive emits canonical ``TimeSeries`` with
+    # ``TimeSeriesUnits.PERCENT`` (butterfly) +
+    # ``TimeSeriesUnits.Z_SCORE`` (z-score) — so we declare them here.
+    # The bespoke ``time_series`` shares the same PERCENT-POINTS unit
+    # on its ``butterfly_value_pct`` field.
+    "policy_futures_get_futures_butterfly_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_butterfly_simple_tool",
+        callable=calculate_futures_butterfly_simple,
+        input_class=FuturesButterflySimpleInput,
+        output_class=FuturesButterflySimpleOutput,
+        config_path=POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
     ),
 
     # ---- Analytical models (workspace model-playground surface) ----
