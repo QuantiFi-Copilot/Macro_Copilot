@@ -89,36 +89,41 @@ SANE_RATE_HI = 10.0
 
 
 # market -> {currency, candidate_tickers, note}.
-# Each ``candidate_tickers`` list is ordered by my prior — the most-likely
-# Bloomberg ticker first, alternatives after. ALL are CANDIDATE; the operator
-# report decides which wins.
+# Tickers below were OPERATOR-CONFIRMED via Bloomberg FLDS (2026-05-22) — the
+# correct mnemonic for each market resolves and exposes the expected NAME
+# field. This probe's remaining job is therefore the DATA verification: does
+# each ticker's bdh PX_LAST return a clean daily series with a sane rate
+# range, and does bdp return real metadata? Only one ticker per market — the
+# operator-confirmed one — is tested; we are no longer searching candidates.
 CANDIDATE_RFRS: Dict[str, Dict[str, Any]] = {
     "SOFR": {
         "country": "US", "currency": "USD",
-        "candidate_tickers": ["SOFRRATE Index", "SOFRINDX Index"],
+        "candidate_tickers": ["SOFRRATE Index"],
         "note": ("USD Secured Overnight Financing Rate (Federal Reserve). "
-                 "SOFRRATE is the daily fixing rate; SOFRINDX is the "
-                 "compounded index — the playbook wants the DAILY RATE."),
+                 "Operator-confirmed 2026-05-22; FLDS NAME = "
+                 "'United States SOFR Secured Overnight Financing Rate'."),
     },
     "ESTR": {
         "country": "EU", "currency": "EUR",
-        "candidate_tickers": ["ESTRON Index", "ESTR Index"],
-        "note": ("EUR Euro Short-Term Rate (ECB). ESTR launched 2019-10-02 "
-                 "— series before that is empty (acceptable)."),
+        "candidate_tickers": ["ESTRON Index"],
+        "note": ("EUR Euro Short-Term Rate (ECB). Operator-confirmed "
+                 "2026-05-22. ESTR launched 2019-10-02 — pre-launch history "
+                 "is empty (acceptable)."),
     },
     "SONIA": {
         "country": "UK", "currency": "GBP",
-        "candidate_tickers": ["SONIO/N Index", "SONIA Index"],
+        "candidate_tickers": ["SONIO/N Index"],
         "note": ("GBP Sterling Overnight Index Average (Bank of England). "
-                 "Methodology reformed 2018-04-23 — pre-reform values are "
-                 "the same ticker family per Bloomberg convention."),
+                 "Operator-confirmed 2026-05-22. Methodology reformed "
+                 "2018-04-23; pre-reform values ride the same ticker per "
+                 "Bloomberg convention."),
     },
     "TONA": {
         "country": "JP", "currency": "JPY",
-        "candidate_tickers": ["TONAR Index", "MUTSCALM Index"],
-        "note": ("JPY Tokyo Overnight Average Rate (Bank of Japan). "
-                 "MUTSCALM (Mutan overnight) is a historical alternative "
-                 "if TONAR does not verify."),
+        "candidate_tickers": ["MUTKCALM Index"],
+        "note": ("JPY overnight rate (Bank of Japan). Operator-confirmed "
+                 "2026-05-22: MUTKCALM Index is the resolving Bloomberg "
+                 "ticker (NOT 'TONAR Index'; NOT 'MUTSCALM Index')."),
     },
 }
 

@@ -1,5 +1,5 @@
 playbook_name: "bond_futures"
-playbook_version: "1.5"
+playbook_version: "1.6"
 asset_class: "rates"
 dataset_name: "bond_futures"
 description: "Daily rolling government bond futures data across core macro markets for liquid expression, activity monitoring, and positioning proxies."
@@ -111,6 +111,222 @@ metadata_history:
       bloomberg_field: "FUT_EXCH_NAME_SHRT"      # VERIFIED 2026-05-19 — returns
                                                  # CBT/EUX/ICF/OSE/MSE/SFE/CME
                                                  # consistently across all markets
+
+# ----------------------------------------------------------------------------
+# CANDIDATE deliverables section (ADR 0011, work order C4).
+#
+# Drives ``--mode deliverables`` extraction. Reads ONLY the universe rows
+# whose ticker is in ``include_tickers`` (a strict whitelist exact-match
+# against the universe — ADR 0011 v3, Codex finding 2). v1 scopes to the
+# six UST bond-future generics (TU/FV/TY/UXY/US/WN); non-US deliverable
+# baskets (DE/UK/JP/FR/IT/ES/CA/AU) are explicitly DEFERRED per P2/P5 —
+# their basket schemas may not be CUSIP-shaped under FUT_DLVRBL_BNDS_CUSIPS
+# and a separate operator probe per-market is required before scope-in.
+# A follow-up data PR will probe and finalise non-US in v2.
+#
+# CANDIDATE state — every Bloomberg mnemonic and every basket-frame column
+# name below is UNVERIFIED until ``scripts/deliverables_bloomberg_check.py``
+# returns a clean per-generic report against a live Bloomberg terminal.
+# Operator runs the check, returns the FINAL SUMMARY + per-contract CSV;
+# this section is then finalised to VERIFIED (or any field that does not
+# verify is documented as a deferral).
+#
+# What IS already VERIFIED via the metadata_history flow on this same
+# playbook (2026-05-19, see the section above):
+#   * chain_field = "FUT_CHAIN"                — chain enumeration works
+#   * chain_overrides INCLUDE_EXPIRED_CONTRACTS="Y"
+#                                              — extends history to the
+#                                                full chain (e.g. TY1:
+#                                                3 → 179 contracts)
+#   * FUT_DLV_DT_FIRST / FUT_DLV_DT_LAST       — non-null per-contract
+#                                                across every bond-future
+#                                                in the universe; used as
+#                                                metadata_history's
+#                                                settlement_date /
+#                                                maturity_date
+#   * FUT_NOTICE_FIRST                         — non-null per-contract
+#                                                across every chain
+#                                                tested; used as
+#                                                metadata_history's
+#                                                roll_field
+#
+# Operator manual-probe results 2026-05-23 (FLDS on TYM6 Comdty + US1 Comdty):
+#
+#   * MNEMONIC SPELLING — the deliverable-basket field is
+#     `FUT_DLVRBLE_BNDS_CUSIPS` (with the trailing 'E' in DLVRBLE), Bloomberg
+#     field ID FO066 — "Deliverable Bonds CUSIP". The prior CANDIDATE
+#     spelling `FUT_DLVRBL_BNDS_CUSIPS` (no E) was wrong.
+#
+#   * GENERIC vs EXPLICIT CONTRACT — the bulk data is empty when queried
+#     against the front-month-rolling generic (TY1 / US1), populated only
+#     on the explicit cycle contract (TYM6, USM6, etc.). The extractor
+#     enumerates the chain via FUT_CHAIN and probes EXPLICIT contracts, so
+#     this is the expected behaviour and requires no playbook change.
+#
+#   * `FUT_NOTICE_LAST` DOES NOT EXIST on UST bond-future contracts (FLDS
+#     "Notice" filter on TYM6 returns only FUT_NOTICE_FIRST,
+#     FIRST_NOTICE_RT, PS_FIRST_NOTICE_DATE — no symmetric "last" variant).
+#     The CANDIDATE has been DROPPED. v1 leaves
+#     macro_data.futures_deliverables.last_notice_date NULL across every
+#     row (nullable schema, P5 deferral). For UST the cycle has a single
+#     notice date (the day the short declares delivery intent); the end
+#     of the delivery WINDOW is captured by FUT_DLV_DT_LAST.
+#
+#   * BASKET-FRAME COLUMN NAMES — the FO066 bulk-data viewer shows
+#     CUSIP-with-yellow-key strings (e.g. "91282CGM Govt") plus numeric
+#     conversion factors (e.g. .8671), no ISIN column. The internal
+#     Bloomberg mnemonics behind those two columns (per BH406 — the
+#     "Bulk Header" companion) are BC_FUT_DLVRBLE_BNDS_CUSIP_YK and
+#     BC_FUT_DELIVERABLE_CF. The xbbg pandas-DataFrame column NAMES,
+#     however, depend on xbbg's display-label conversion and remain
+#     CANDIDATE — the check script reports the exact strings.
+#
+#   * `basket_isin_column` REMOVED — UST baskets carry CUSIPs only; ISIN
+#     cross-identifier column not present in FO066. Substrate column
+#     deliverable_isin remains nullable; v1 every row lands NULL.
+#
+# Operator script-probe results 2026-05-23
+# (scripts/deliverables_bloomberg_check.py @ timestamp 20260523_230531):
+#
+#   * COLUMN NAMES verified: every basket frame across all 6 UST generics
+#     returns exactly two columns -- "deliverable_bond_cusip_and_yellow_key"
+#     and "conversion_factor" (snake_case; xbbg narwhals/long backend
+#     defaults). Both fields finalised above to VERIFIED.
+#
+#   * CUSIP FORMAT confirmed: every value is "{8-char CUSIP stem} Govt"
+#     -- the check digit is truncated for display. The extractor
+#     canonicalises to the 9-char CUSIP via the published CUSIP Global
+#     Services Modulus-10-Double-Add-Double check-digit algorithm at
+#     staging time (_canonicalize_deliverable_cusip, ADR 0011 v6). The
+#     raw 8-char + yellow-key string is preserved per row in attributes
+#     JSONB (column raw_deliverable_bond_cusip_and_yellow_key) for audit.
+#
+#   * STATIC DATES verified: 100% per-contract coverage for FUT_DLV_DT_FIRST,
+#     FUT_DLV_DT_LAST, FUT_NOTICE_FIRST across all 48 sampled contracts
+#     (8 per generic). last_notice_date remains out of v1 (P5 deferral
+#     -- FUT_NOTICE_LAST mnemonic confirmed non-existent via FLDS, Phase A.1).
+#
+#   * HISTORICAL DATA CUTOFF (the structural finding): Bloomberg drops
+#     deliverable-basket reference data for the OLDEST contracts of each
+#     generic. The pattern is clustered, not random:
+#         US1 chain 1977-, baskets only from ~1987 (USU87)  -- 10y gap
+#         TY1 chain 1982-, baskets only from ~1991 (TYH91)  --  9y gap
+#         FV1 chain 1988-, baskets only from ~1996 (FVH96)  --  8y gap
+#         TU1 chain 1990-, baskets only from ~1997 (TUZ97)  --  7y gap
+#         UXY1 chain 2016-, baskets cover entire chain (no gap)
+#         WN1  chain 2010-, baskets cover entire chain (no gap)
+#     C3's strict contract-level coverage gate (v3 §4) requires every probed
+#     contract to produce a basket; with INCLUDE_EXPIRED_CONTRACTS="Y" the
+#     production extractor would fail on ~136 missed contracts across the
+#     four older generics. Mitigation pending operator verification of a
+#     Bloomberg chain-side-date override (DT_OVERRIDE_START on FUT_CHAIN).
+#     If honored -- pure playbook config (zero code). If not -- ADR 0011
+#     v6 amendment adds a chain_max_length operator-controlled cap.
+# ----------------------------------------------------------------------------
+deliverables:
+  enabled: true
+  # Chain enumeration — VERIFIED 2026-05-19 via the metadata_history flow on
+  # this same playbook (re-used identically, deliberate; ADR 0011 §Design).
+  chain_field: "FUT_CHAIN"                          # VERIFIED 2026-05-19
+  chain_overrides:
+    INCLUDE_EXPIRED_CONTRACTS: "Y"                  # VERIFIED 2026-05-19
+  # Deliverable basket — basket_field VERIFIED via FLDS (operator,
+  # 2026-05-23): "FUT_DLVRBLE_BNDS_CUSIPS" is BBG field ID FO066,
+  # "Deliverable Bonds CUSIP", a Bulk Data field. Populated on the explicit
+  # contract cycle (TYM6 etc.); the generic (TY1) returns empty by design.
+  basket_field: "FUT_DLVRBLE_BNDS_CUSIPS"           # VERIFIED 2026-05-23 (FLDS)
+  basket_cusip_column: "deliverable_bond_cusip_and_yellow_key"
+                                                    # VERIFIED 2026-05-23 via
+                                                    # scripts/deliverables_bloomberg_check.py
+                                                    # against all 6 UST
+                                                    # generics. xbbg
+                                                    # (narwhals/long
+                                                    # backend) returns this
+                                                    # snake_case column
+                                                    # name. The raw values
+                                                    # are 8-char CUSIP
+                                                    # stems + " Govt"
+                                                    # yellow-key suffix
+                                                    # (e.g. "9128273H Govt");
+                                                    # extractor canonicalises
+                                                    # to 9-char CUSIP via
+                                                    # _canonicalize_deliverable_cusip
+                                                    # (ADR 0011 v6).
+                                                    # Case-insensitive in
+                                                    # the extractor.
+  basket_factor_column: "conversion_factor"         # VERIFIED 2026-05-23 via
+                                                    # scripts/deliverables_bloomberg_check.py
+                                                    # against all 6 UST
+                                                    # generics. Same
+                                                    # narwhals/long
+                                                    # snake_case
+                                                    # convention. Conversion
+                                                    # factor is core source
+                                                    # data (ADR 0011 v4);
+                                                    # the extractor aborts
+                                                    # the contract if
+                                                    # missing or non-numeric.
+  # basket_isin_column intentionally OMITTED — UST FUT_DLVRBLE_BNDS_CUSIPS
+  # frame carries CUSIPs only (confirmed via FLDS, operator 2026-05-23).
+  # Substrate column macro_data.futures_deliverables.deliverable_isin stays
+  # nullable; v1 every row lands NULL. Downstream consumers can join via
+  # instrument_master.isin on the optional FK when the deliverable bond is
+  # registered.
+  # Per-contract static date fields (denormalised across every row of the
+  # basket — ADR 0011 §Alternatives). Every column_name MUST be in the
+  # allowed set {first_delivery_date, last_delivery_date, first_notice_date,
+  # last_notice_date} — the only typed per-contract date columns on
+  # macro_data.futures_deliverables. v1 ships THREE of the four; the
+  # fourth (last_notice_date) is DEFERRED — see header comment above.
+  static_fields:
+    - column_name: "first_delivery_date"
+      bloomberg_field: "FUT_DLV_DT_FIRST"           # VERIFIED 2026-05-19 via
+                                                    # metadata_history.settlement_date
+    - column_name: "last_delivery_date"
+      bloomberg_field: "FUT_DLV_DT_LAST"            # VERIFIED 2026-05-19 via
+                                                    # metadata_history.maturity_date
+    - column_name: "first_notice_date"
+      bloomberg_field: "FUT_NOTICE_FIRST"           # VERIFIED 2026-05-19 via
+                                                    # metadata_history.roll_field
+    # last_notice_date intentionally OMITTED — FUT_NOTICE_LAST mnemonic
+    # does not exist (FLDS operator probe 2026-05-23 on TYM6 Comdty).
+    # P5 deferral; futures_deliverables.last_notice_date stays NULL.
+  # Scope: v1 UST only (ADR 0011 v2/v3 explicit deferral pattern). Every
+  # entry MUST exactly match a rolling-contract ticker in the universe
+  # below; the extractor aborts on any unmatched entry (ADR 0011 v3, Codex
+  # finding 2). Non-US bond-future deliverable baskets (DE/UK/JP/FR/IT/
+  # ES/CA/AU) are deferred to a follow-up data PR.
+  include_tickers:
+    - "TU1 Comdty"   # UST 2Y T-Note futures
+    - "FV1 Comdty"   # UST 5Y T-Note futures
+    - "TY1 Comdty"   # UST 10Y T-Note futures
+    - "UXY1 Comdty"  # UST Ultra 10Y T-Note futures
+    - "US1 Comdty"   # UST Classic Long Bond (30Y) futures
+    - "WN1 Comdty"   # UST Ultra Bond futures
+  # ADR 0011 v6.1: per-ticker chain-depth cap. Bloomberg's basket
+  # reference data (FUT_DLVRBLE_BNDS_CUSIPS) has an empirical historical
+  # cutoff that varies by generic; the operator script-probe 2026-05-23
+  # established the following per-generic cutoffs:
+  #   TU1   chain 1990-2027 (146)   baskets from ~1997   ~7y gap
+  #   FV1   chain 1988-2027 (155)   baskets from ~1996   ~8y gap
+  #   TY1   chain 1982-2027 (179)   baskets from ~1991   ~9y gap
+  #   US1   chain 1977-2027 (197)   baskets from ~1987   ~10y gap
+  #   UXY1  chain 2016-2027  (44)   full coverage         no gap
+  #   WN1   chain 2010-2027  (68)   full coverage         no gap
+  # The caps below trim each chain to its newest N entries (Python
+  # negative-indexed slice `contracts[-N:]`, FUT_CHAIN returns
+  # chronological oldest-first order) so the v3 strict contract-level
+  # coverage gate applies only to the in-coverage portion. Values chosen
+  # conservatively per the probe with ~5y safety margin past each
+  # cutoff; the operator can tune them up (more history) or down (more
+  # safety) in subsequent runs based on production-extractor results.
+  # Tickers omitted from this mapping have NO cap (full chain processed):
+  # UXY1 and WN1 have full Bloomberg basket coverage and need no cap.
+  chain_max_length:
+    "TU1 Comdty":  108           # newest 108 of 146  ->  oldest ~ 1999.5
+    "FV1 Comdty":  110           # newest 110 of 155  ->  oldest ~ 2000.75
+    "TY1 Comdty":  128           # newest 128 of 179  ->  oldest ~ 1994.75
+    "US1 Comdty":  140           # newest 140 of 197  ->  oldest ~ 1991.25
 
 universe:
   # United States Treasury futures

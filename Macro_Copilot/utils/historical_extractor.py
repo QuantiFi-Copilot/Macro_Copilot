@@ -1791,6 +1791,31 @@ def _resolve_deliverables_section(playbook: Dict[str, Any]) -> Optional[Dict[str
                 "deliverables: `include_tickers` entries must be non-blank "
                 "strings"
             )
+    # ADR 0011 v6.1: per-ticker chain-depth cap. SYNC INVARIANT with
+    # utils/incremental_extractor.py.
+    chain_max_length = section.get("chain_max_length")
+    if chain_max_length is not None:
+        if not isinstance(chain_max_length, dict) or not chain_max_length:
+            raise ValueError(
+                "deliverables: `chain_max_length` must be a non-empty "
+                "mapping of vendor_ticker -> positive int when present "
+                "(omit the key to disable per-ticker chain capping)"
+            )
+        for ticker_key, cap_val in chain_max_length.items():
+            if not isinstance(ticker_key, str) or not ticker_key.strip():
+                raise ValueError(
+                    f"deliverables: `chain_max_length` keys must be non-blank "
+                    f"strings; got {ticker_key!r}"
+                )
+            if (
+                isinstance(cap_val, bool)
+                or not isinstance(cap_val, int)
+                or cap_val <= 0
+            ):
+                raise ValueError(
+                    f"deliverables: `chain_max_length[{ticker_key!r}]` must be "
+                    f"a positive int; got {cap_val!r}"
+                )
     return section
 
 
@@ -1871,6 +1896,88 @@ def _stamp_deliverables_audit_suffix(
     )
 
 
+def _apply_chain_max_length(
+    contracts: List[str], chain_max_length: Optional[int],
+) -> List[str]:
+    """Cap a chain to the newest N entries (ADR 0011 v6.1). SYNC INVARIANT
+    with utils/incremental_extractor.py -- see the canonical docstring
+    there for the full rationale."""
+    if chain_max_length is None:
+        return contracts
+    if isinstance(chain_max_length, bool) or not isinstance(chain_max_length, int):
+        raise ValueError(
+            f"chain_max_length must be a positive int or None; got "
+            f"{type(chain_max_length).__name__}={chain_max_length!r}"
+        )
+    if chain_max_length <= 0:
+        raise ValueError(
+            f"chain_max_length must be a positive int; got {chain_max_length!r}"
+        )
+    if len(contracts) <= chain_max_length:
+        return list(contracts)
+    return list(contracts[-chain_max_length:])
+
+
+_BLOOMBERG_YELLOW_KEYS: tuple = (
+    " Govt", " Corp", " Equity", " Comdty", " Mtge", " M-Mkt", " Index",
+)
+
+
+def _canonicalize_deliverable_cusip(raw_value: Any) -> str:
+    """Canonicalise a Bloomberg deliverable-basket CUSIP value to its
+    standard 9-character form (ADR 0011 v6 / C4 Phase A.3). SYNC INVARIANT
+    with utils/incremental_extractor.py — see that file for the canonical
+    docstring + P12 justification."""
+    if raw_value is None:
+        raise ValueError("deliverable CUSIP is None")
+    if not isinstance(raw_value, str):
+        raise ValueError(
+            f"deliverable CUSIP must be a string, got "
+            f"{type(raw_value).__name__}={raw_value!r}"
+        )
+    s = raw_value.strip()
+    if not s:
+        raise ValueError("deliverable CUSIP is empty after stripping")
+    stem: Optional[str] = None
+    for yk in _BLOOMBERG_YELLOW_KEYS:
+        if s.endswith(yk):
+            stem = s[: -len(yk)].rstrip()
+            break
+    if stem is None:
+        # No yellow-key — passthrough (already-canonical caller input).
+        return s
+    if len(stem) != 8:
+        raise ValueError(
+            f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) is "
+            f"{len(stem)} chars after stripping yellow-key; expected exactly 8"
+        )
+    stem = stem.upper()
+    total = 0
+    for i, ch in enumerate(stem, start=1):
+        if ch.isdigit():
+            v = int(ch)
+        elif ch.isalpha():
+            v = ord(ch.upper()) - ord("A") + 10
+        elif ch == "*":
+            v = 36
+        elif ch == "@":
+            v = 37
+        elif ch == "#":
+            v = 38
+        else:
+            raise ValueError(
+                f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) has "
+                f"invalid character {ch!r} at position {i}"
+            )
+        if i % 2 == 0:
+            v *= 2
+        while v > 9:
+            v = v // 10 + v % 10
+        total += v
+    check_digit = (10 - total % 10) % 10
+    return stem + str(check_digit)
+
+
 def _stage_contract_rows(
     basket_df: "pd.DataFrame",
     dates_raw: Dict[str, Any],
@@ -1917,20 +2024,26 @@ def _stage_contract_rows(
 
     contract_rows: List[Dict[str, Any]] = []
     for _, basket_row in basket_df.iterrows():
-        cusip = _clean_scalar(basket_row[cusip_col_actual])
-        if not cusip:
+        raw_cusip = _clean_scalar(basket_row[cusip_col_actual])
+        if not raw_cusip:
             continue
+        # ADR 0011 v6: canonicalise the deliverable CUSIP. SYNC INVARIANT
+        # with utils/incremental_extractor.py.
+        try:
+            canonical_cusip = _canonicalize_deliverable_cusip(raw_cusip)
+        except ValueError:
+            return [], f"invalid_cusip_for_basket:{raw_cusip!r}"
         factor_val = _clean_scalar(basket_row[factor_col_actual])
         if factor_val is None or (
             isinstance(factor_val, str) and not factor_val.strip()
         ):
-            return [], f"missing_factor_for_cusip:{cusip}"
+            return [], f"missing_factor_for_cusip:{canonical_cusip}"
         try:
             factor_num = float(factor_val)
         except (TypeError, ValueError):
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         if factor_num != factor_num:  # NaN
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         isin_val = (
             _clean_scalar(basket_row[isin_col_actual])
             if isin_col_actual else None
@@ -1938,9 +2051,10 @@ def _stage_contract_rows(
         row: Dict[str, Any] = {
             "vendor_ticker": generic_ticker,
             "contract_code": contract_code,
-            "deliverable_cusip": str(cusip),
+            "deliverable_cusip": canonical_cusip,
             "deliverable_isin": str(isin_val) if isin_val else None,
             "conversion_factor": factor_num,
+            "raw_deliverable_bond_cusip_and_yellow_key": str(raw_cusip),
         }
         for col_name, iso in parsed_static_values.items():
             row[col_name] = iso
@@ -2133,6 +2247,9 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
             total_contracts_with_basket = 0
             # Per-contract miss tracking (ADR 0011 v3, Codex finding 1).
             missed_contracts: List[str] = []
+            # ADR 0011 v6.1: per-ticker chain-depth cap (Bloomberg basket-data
+            # historical cutoff workaround). SYNC INVARIANT.
+            chain_caps: Dict[str, int] = section.get("chain_max_length") or {}
 
             for item in universe_items:
                 generic_ticker = item["ticker"]
@@ -2146,7 +2263,16 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
                 if not contracts:
                     print(f"    [!] No underlying contracts returned for {generic_ticker}")
                     continue
-                print(f"    [OK] chain length = {len(contracts)}")
+                full_chain_len = len(contracts)
+                cap = chain_caps.get(generic_ticker)
+                contracts = _apply_chain_max_length(contracts, cap)
+                if cap is not None and len(contracts) < full_chain_len:
+                    print(
+                        f"    [INFO] chain_max_length={cap} applied for "
+                        f"{generic_ticker}: trimmed {full_chain_len} -> "
+                        f"{len(contracts)} contracts (newest kept)"
+                    )
+                print(f"    [OK] chain length (after cap) = {len(contracts)}")
 
                 generic_emitted_any = False
                 for contract_ticker in contracts:

@@ -2880,6 +2880,35 @@ def _resolve_deliverables_section(playbook: Dict[str, Any]) -> Optional[Dict[str
                 "deliverables: `include_tickers` entries must be non-blank "
                 "strings"
             )
+    # ADR 0011 v6.1: optional per-ticker chain-depth cap (mapping of
+    # vendor_ticker -> positive int). Workaround for Bloomberg's
+    # historical-data cutoff on FUT_DLVRBLE_BNDS_CUSIPS. When present,
+    # the extractor slices each capped chain to its newest N entries
+    # before probing baskets, so the v3 strict contract-level coverage
+    # gate applies only to the in-coverage portion of each chain.
+    chain_max_length = section.get("chain_max_length")
+    if chain_max_length is not None:
+        if not isinstance(chain_max_length, dict) or not chain_max_length:
+            raise ValueError(
+                "deliverables: `chain_max_length` must be a non-empty "
+                "mapping of vendor_ticker -> positive int when present "
+                "(omit the key to disable per-ticker chain capping)"
+            )
+        for ticker_key, cap_val in chain_max_length.items():
+            if not isinstance(ticker_key, str) or not ticker_key.strip():
+                raise ValueError(
+                    f"deliverables: `chain_max_length` keys must be non-blank "
+                    f"strings; got {ticker_key!r}"
+                )
+            if (
+                isinstance(cap_val, bool)
+                or not isinstance(cap_val, int)
+                or cap_val <= 0
+            ):
+                raise ValueError(
+                    f"deliverables: `chain_max_length[{ticker_key!r}]` must be "
+                    f"a positive int; got {cap_val!r}"
+                )
     return section
 
 
@@ -2990,6 +3019,158 @@ def _stamp_deliverables_audit_suffix(
     )
 
 
+def _apply_chain_max_length(
+    contracts: List[str], chain_max_length: Optional[int],
+) -> List[str]:
+    """Cap a chain to the newest N entries (ADR 0011 v6.1).
+
+    Bloomberg's ``FUT_CHAIN`` returns contracts in chronological
+    (oldest-first) order. When ``chain_max_length`` is set, the extractor
+    keeps only the most-recent N contracts — a workaround for Bloomberg's
+    empirical historical-data cutoff on basket reference data
+    (``FUT_DLVRBLE_BNDS_CUSIPS`` drops basket data for the oldest ~7-10
+    years of each UST generic's chain; the v3 strict contract-level
+    coverage gate would otherwise abort the load on those documented gaps).
+
+    Returns the original list when ``chain_max_length`` is None or when the
+    chain is already shorter than the cap. Returns the last
+    ``chain_max_length`` entries (Python negative indexing) otherwise.
+
+    Raises ``ValueError`` on non-positive or non-int cap (the validator
+    should catch this earlier; this is defence-in-depth).
+
+    SYNC INVARIANT with ``utils/historical_extractor.py``.
+    """
+    if chain_max_length is None:
+        return contracts
+    if isinstance(chain_max_length, bool) or not isinstance(chain_max_length, int):
+        raise ValueError(
+            f"chain_max_length must be a positive int or None; got "
+            f"{type(chain_max_length).__name__}={chain_max_length!r}"
+        )
+    if chain_max_length <= 0:
+        raise ValueError(
+            f"chain_max_length must be a positive int; got {chain_max_length!r}"
+        )
+    if len(contracts) <= chain_max_length:
+        return list(contracts)
+    return list(contracts[-chain_max_length:])
+
+
+# Bloomberg yellow-key suffixes that may appear on bds-returned identifier
+# strings. " Govt" is the only one observed on UST FUT_DLVRBLE_BNDS_CUSIPS
+# (operator probe 2026-05-23); the others are listed for future scope.
+_BLOOMBERG_YELLOW_KEYS: tuple = (
+    " Govt", " Corp", " Equity", " Comdty", " Mtge", " M-Mkt", " Index",
+)
+
+
+def _canonicalize_deliverable_cusip(raw_value: Any) -> str:
+    """Canonicalise a Bloomberg deliverable-basket CUSIP value to its
+    standard 9-character form (ADR 0011 v6 / C4 Phase A.3).
+
+    Bloomberg's ``FUT_DLVRBLE_BNDS_CUSIPS`` bulk-data field returns
+    deliverable bonds in the form ``"{8-char CUSIP stem} {yellow-key}"``
+    (e.g. ``"9128273H Govt"`` for a UST). The 9th character (the check
+    digit) is truncated for display because the stem + yellow-key tuple
+    already resolves unambiguously to one Bloomberg security; the
+    canonical 9-char CUSIP is reconstructed by computing the standard
+    CUSIP Global Services Modulus-10-Double-Add-Double check digit.
+
+    Behaviour:
+      * If the value carries a recognised Bloomberg yellow-key suffix
+        (``" Govt"``, etc.): strip the suffix, verify the remaining stem
+        is exactly 8 alphanumeric characters, compute the check digit,
+        and return ``stem + str(check_digit)``.
+      * If the value carries NO yellow-key suffix: return it stripped
+        of leading/trailing whitespace as-is (already-canonical input
+        from a non-Bloomberg source; trust the caller). This preserves
+        backward compatibility with the C3 tests that pass synthetic
+        9-character CUSIPs.
+
+    Raises ``ValueError`` (fail-closed) on:
+      * non-string input,
+      * blank / empty input,
+      * yellow-key-present-but-stem-not-8-chars,
+      * stem with invalid character (anything outside ``0-9 A-Z * @ #``).
+
+    **P12 justification** — this is *identifier canonicalisation*, not
+    market-data recomputation. Bloomberg stores the full 9-char CUSIP
+    internally; the bulk-data viewer truncates the check digit purely as
+    a display convention (the stem + yellow-key resolves identically).
+    The check-digit algorithm is the public CGS standard, deterministic,
+    and reconstructs the identifier Bloomberg itself uses. Analogous to
+    normalising a returned date string to ISO YYYY-MM-DD form — not
+    analogous to deriving a price or yield (which P12 forbids).
+
+    SYNC INVARIANT with ``utils/historical_extractor.py``.
+    """
+    if raw_value is None:
+        raise ValueError("deliverable CUSIP is None")
+    if not isinstance(raw_value, str):
+        raise ValueError(
+            f"deliverable CUSIP must be a string, got "
+            f"{type(raw_value).__name__}={raw_value!r}"
+        )
+    s = raw_value.strip()
+    if not s:
+        raise ValueError("deliverable CUSIP is empty after stripping")
+
+    # Detect a Bloomberg yellow-key suffix (defines whether we're in the
+    # canonicalisation branch or the passthrough branch).
+    stem: Optional[str] = None
+    for yk in _BLOOMBERG_YELLOW_KEYS:
+        if s.endswith(yk):
+            stem = s[: -len(yk)].rstrip()
+            break
+    if stem is None:
+        # No yellow-key — passthrough (already-canonical caller input).
+        return s
+
+    if len(stem) != 8:
+        raise ValueError(
+            f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) is "
+            f"{len(stem)} chars after stripping yellow-key; expected exactly 8"
+        )
+
+    # Canonical CUSIPs are upper-case (CGS convention). Bloomberg returns
+    # upper-case in practice; uppercasing here ensures the emitted natural
+    # key is deterministic regardless of caller-side input casing.
+    stem = stem.upper()
+
+    # CUSIP Global Services Modulus-10-Double-Add-Double.
+    #   For each character at position i (1-indexed, i = 1..8):
+    #     numeric value: 0-9 -> 0-9; A-Z -> 10-35; * -> 36; @ -> 37; # -> 38;
+    #     if position i is EVEN, multiply value by 2;
+    #     sum the decimal digits of the (possibly doubled) value;
+    #     add to running total.
+    #   check_digit = (10 - (total mod 10)) mod 10.
+    total = 0
+    for i, ch in enumerate(stem, start=1):
+        if ch.isdigit():
+            v = int(ch)
+        elif ch.isalpha():
+            v = ord(ch.upper()) - ord("A") + 10
+        elif ch == "*":
+            v = 36
+        elif ch == "@":
+            v = 37
+        elif ch == "#":
+            v = 38
+        else:
+            raise ValueError(
+                f"deliverable CUSIP stem {stem!r} (from {raw_value!r}) has "
+                f"invalid character {ch!r} at position {i}"
+            )
+        if i % 2 == 0:
+            v *= 2
+        while v > 9:
+            v = v // 10 + v % 10
+        total += v
+    check_digit = (10 - total % 10) % 10
+    return stem + str(check_digit)
+
+
 def _stage_contract_rows(
     basket_df: "pd.DataFrame",
     dates_raw: Dict[str, Any],
@@ -3059,11 +3240,21 @@ def _stage_contract_rows(
 
     contract_rows: List[Dict[str, Any]] = []
     for _, basket_row in basket_df.iterrows():
-        cusip = _clean_scalar(basket_row[cusip_col_actual])
-        if not cusip:
+        raw_cusip = _clean_scalar(basket_row[cusip_col_actual])
+        if not raw_cusip:
             # Blank CUSIPs are basket-frame padding from Bloomberg — skip the
             # row rather than fail (the basket may still be valid overall).
             continue
+        # ADR 0011 v6 / C4: canonicalise the deliverable CUSIP to its 9-char
+        # standard form. Bloomberg's FUT_DLVRBLE_BNDS_CUSIPS bulk-data returns
+        # "{8-char stem} Govt"; the natural key needs the canonical 9-char form
+        # so the ingester's optional FK lookup `deliverable_cusip =
+        # instrument_master.cusip` resolves. Fail-closed on any input the
+        # canonicaliser cannot validate.
+        try:
+            canonical_cusip = _canonicalize_deliverable_cusip(raw_cusip)
+        except ValueError:
+            return [], f"invalid_cusip_for_basket:{raw_cusip!r}"
         factor_val = _clean_scalar(basket_row[factor_col_actual])
         # v4: None / blank → missing. v5: also parse-validate to a finite
         # float so "N/A" / "  " / "NaN"-as-string become explicit misses,
@@ -3071,14 +3262,14 @@ def _stage_contract_rows(
         if factor_val is None or (
             isinstance(factor_val, str) and not factor_val.strip()
         ):
-            return [], f"missing_factor_for_cusip:{cusip}"
+            return [], f"missing_factor_for_cusip:{canonical_cusip}"
         try:
             factor_num = float(factor_val)
         except (TypeError, ValueError):
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         # NaN is the only float not equal to itself; reject it.
         if factor_num != factor_num:
-            return [], f"invalid_factor_for_cusip:{cusip}"
+            return [], f"invalid_factor_for_cusip:{canonical_cusip}"
         isin_val = (
             _clean_scalar(basket_row[isin_col_actual])
             if isin_col_actual else None
@@ -3086,9 +3277,16 @@ def _stage_contract_rows(
         row: Dict[str, Any] = {
             "vendor_ticker": generic_ticker,
             "contract_code": contract_code,
-            "deliverable_cusip": str(cusip),
+            "deliverable_cusip": canonical_cusip,
             "deliverable_isin": str(isin_val) if isin_val else None,
             "conversion_factor": factor_num,
+            # ADR 0011 v6: preserve the raw Bloomberg identifier per row for
+            # audit. The ingester's parser auto-routes any column not in the
+            # typed-column set / not in _EXCLUDE_FOR_ATTRIBUTES into the
+            # JSONB attributes blob, so this lands at
+            # macro_data.futures_deliverables.attributes
+            # ->> 'raw_deliverable_bond_cusip_and_yellow_key'.
+            "raw_deliverable_bond_cusip_and_yellow_key": str(raw_cusip),
         }
         # Emit the pre-parsed canonical ISO strings — one value per
         # configured static field, identical across every row of the basket
@@ -3300,6 +3498,14 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
             # so the coverage-gate error message can name them.
             missed_contracts: List[str] = []
 
+            # ADR 0011 v6.1: per-ticker chain-depth cap. Bloomberg's basket
+            # reference data has an empirical historical cutoff (FUT_DLVRBLE_
+            # BNDS_CUSIPS drops baskets for the oldest ~7-10 years of each
+            # UST generic's chain). The cap trims each chain to its newest
+            # N entries so the v3 strict contract-level gate applies only
+            # to the in-coverage portion.
+            chain_caps: Dict[str, int] = section.get("chain_max_length") or {}
+
             for item in universe_items:
                 generic_ticker = item["ticker"]
                 print(f"  Enumerating chain for {generic_ticker}...")
@@ -3312,7 +3518,18 @@ def run_deliverables_extraction(selected_playbooks: Optional[Set[str]] = None) -
                 if not contracts:
                     print(f"    [!] No underlying contracts returned for {generic_ticker}")
                     continue
-                print(f"    [OK] chain length = {len(contracts)}")
+                full_chain_len = len(contracts)
+                cap = chain_caps.get(generic_ticker)
+                contracts = _apply_chain_max_length(contracts, cap)
+                if cap is not None and len(contracts) < full_chain_len:
+                    print(
+                        f"    [INFO] chain_max_length={cap} applied for "
+                        f"{generic_ticker}: trimmed {full_chain_len} -> "
+                        f"{len(contracts)} contracts (newest kept; older "
+                        "contracts excluded per Bloomberg's basket-data "
+                        "historical cutoff, ADR 0011 v6.1)"
+                    )
+                print(f"    [OK] chain length (after cap) = {len(contracts)}")
 
                 generic_emitted_any = False
                 for contract_ticker in contracts:
