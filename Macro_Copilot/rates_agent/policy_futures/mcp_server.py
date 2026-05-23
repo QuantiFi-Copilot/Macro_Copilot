@@ -95,6 +95,11 @@ from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
     FuturesPriceLevelInput,
     calculate_futures_price_level,
 )
+from rates_agent.policy_futures.tools.futures_strip_snapshot import (  # noqa: E402
+    CONFIG_PATH as FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+    FuturesStripSnapshotInput,
+    calculate_futures_strip_snapshot,
+)
 from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (  # noqa: E402
     CONFIG_PATH as VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
     VolumeOpenInterestSnapshotInput,
@@ -1201,6 +1206,212 @@ def get_futures_cross_market_spread_tool(
             ts_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 6: get_futures_strip_snapshot
+#         (policy_futures whole-strip snapshot across all 8 positions)
+# ===========================================================================
+@mcp.tool()
+def get_futures_strip_snapshot_tool(
+    curve_family: str,
+    as_of_date: str = "",
+    last_price_field_name: str = "",
+    open_interest_field_name: str = "",
+) -> str:
+    """Get the current policy-futures whole-strip snapshot for ONE
+    curve_family — one row per configured strip position (V1 default:
+    positions 1..8). Each row carries the per-leg raw_price (in the
+    contract's quote space), desk-recognised IMPLIED RATE in PERCENT,
+    1-day raw-subtraction change on the implied-rate axis, rolling
+    252-day z-score of the per-leg implied-rate level, open_interest
+    in CONTRACTS, the as_of-bounded SCD2 disclosure block
+    (underlying_contract_code, security_name, expiry_date,
+    contract_size), AND a per-row methodology card disclosing the
+    short-rate regime (RFR / IBOR) + implied-rate conversion rule.
+    The snapshot also carries an output-level methodology_disclosure
+    naming the curve_family, regime label, z-score lookback, and
+    rolling-generic-strip scope-limit caveat.
+
+    Use this tool when the user asks about:
+    - STIR strip shape / slope        (e.g. "Where's the SOFR strip?",
+                                        "Is the SOFR strip steep?",
+                                        "What does the Euribor strip
+                                        look like?")
+    - All-strip positioning summary   (e.g. "Show me SFR1..SFR8 with
+                                        OI", "Whole SONIA strip
+                                        snapshot")
+    - Strip-wide screen + comparison  (e.g. "Where are the SOFR strip
+                                        z-scores?", "Which Euribor
+                                        position has the biggest
+                                        1-day move?")
+
+    Do NOT use this tool for:
+    - A SINGLE strip slot's price + implied rate + 252d range +
+      percentile — that is the sibling ``get_futures_price_level_tool``
+      (single-strip-position read with the full range + percentile
+      output).
+    - A 2-leg same-curve calendar spread (e.g. SFR1-SFR2) → use the
+      sibling ``get_futures_calendar_spread_tool``.
+    - A 3-leg simple butterfly → use the sibling
+      ``get_futures_butterfly_simple_tool``.
+    - A cross-CB matched-strip spread (e.g. SOFR vs Euribor on one
+      strip position) → use the sibling
+      ``get_futures_cross_market_spread_tool``.
+    - Per-strip volume + OI history with z-scores → use the sibling
+      ``get_volume_open_interest_snapshot_tool``.
+    - Bond futures (TY1 / RX1 / JB1 / ...) → bond_futures domain has
+      its own snapshot scanner; this tool is policy-futures (STIR)
+      only.
+    - Cash sovereign yield curves → use the sovereign_bonds agent's
+      yield_levels / curve_spread tools.
+
+    ALWAYS preserve the methodology_disclosure field when relaying
+    the snapshot to the user — P5 (honest disclosure) requires the
+    rolling-generic-strip-snapshot scope-limit + regime label +
+    inverse-pricing rule caveats to be carried forward. Each row
+    also carries its OWN ``row_methodology_card``; do NOT strip the
+    per-row card when relaying a single row from the snapshot.
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip, RFR regime), 'EUR_SHORT_RATE_FUT' (ECB Euribor
+        strip, IBOR regime), 'SONIA_FUT' (BOE SONIA strip, RFR
+        regime). The closed Literal in the input schema rejects
+        anything else with a clean validation error.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot to a
+        specific trading day. Empty (default ``""``) = anchor at the
+        universe's last observed ``trade_date`` where ALL configured
+        strip positions have a value after cleaning + intersection
+        (post-fetch data-max anchor). An as_of_date BEYOND the
+        universe's last observed ``trade_date`` on ANY configured
+        strip position returns the documented controlled-error
+        envelope; an as_of_date WITHIN the universe range produces a
+        DETERMINISTIC snapshot (same as_of + same DB state ⇒ same
+        numbers).
+    last_price_field_name : str, optional
+        Bloomberg field mnemonic for the per-leg price series. Leave
+        as the default empty string ``""`` to use the bundled
+        ``default_price_field`` convention from
+        futures_strip_snapshot/config.yaml (currently 'PX_LAST').
+        Mirrors the empty-string sentinel pattern used by the
+        sibling tools so the YAML default actually flows through.
+    open_interest_field_name : str, optional
+        Bloomberg field mnemonic for the per-leg open-interest
+        series. Leave as the default empty string ``""`` to use the
+        bundled ``default_open_interest_field`` convention from
+        futures_strip_snapshot/config.yaml (currently 'OPEN_INT').
+    """
+    # Translate the empty-string sentinels into None so the schema +
+    # compute layers resolve against the YAML's defaults. Without
+    # this, the LLM omitting field_name would always hit a hardcoded
+    # default regardless of what the YAML says — same shadowing
+    # pattern fixed for sovereign curve_move_classifier in commit
+    # b2605ee.
+    last_price_field_arg = (
+        last_price_field_name if last_price_field_name else None
+    )
+    open_interest_field_arg = (
+        open_interest_field_name if open_interest_field_name else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent universe trade_date across
+    # all configured strip positions). Malformed value raises a
+    # ValidationError envelope below — LLM sees a clean error.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_strip_snapshot_tool] as_of_date parse "
+                "failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesStripSnapshotInput(
+            curve_family=curve_family,
+            as_of_date=as_of_date_arg,
+            last_price_field_name=last_price_field_arg,
+            open_interest_field_name=open_interest_field_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_strip_snapshot_tool] input validation "
+            "failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_strip_snapshot_tool] failed to connect to "
+            "TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors the sibling tools exactly.
+    try:
+        fss_config = load_tool_config(FUTURES_STRIP_SNAPSHOT_CONFIG_PATH)
+        result = calculate_futures_strip_snapshot(
+            engine=engine, params=params, config=fss_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_strip_snapshot_tool] unhandled error for "
+            "%s",
+            params.curve_family,
+        )
+        return json.dumps(
+            {"error": f"get_futures_strip_snapshot_tool failed for "
+             f"{params.curve_family}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_strip_snapshot_tool] tool call complete: %s "
+        "→ %s",
+        params.curve_family, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # The snapshot list is small (1 row per strip position; V1 = 8
+    # rows max) so we DO surface it to the LLM verbatim. The LLM
+    # needs the per-row payload to answer "where is the SOFR strip?"
+    # style questions, AND it MUST see ``methodology_disclosure`` so
+    # the P5 caveats are propagated. No history series to withhold
+    # here — the snapshot is by design a single-anchor read.
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

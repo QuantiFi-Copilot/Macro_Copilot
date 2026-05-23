@@ -142,6 +142,12 @@ from rates_agent.policy_futures.tools.futures_cross_market_spread import (
     FuturesCrossMarketSpreadOutput,
     calculate_futures_cross_market_spread,
 )
+from rates_agent.policy_futures.tools.futures_strip_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+    FuturesStripSnapshotInput,
+    FuturesStripSnapshotOutput,
+    calculate_futures_strip_snapshot,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -614,6 +620,35 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_spread": "percent",
             "time_series_zscore": "z_score",
         },
+    ),
+    # ``output_field_units`` is intentionally empty by design — same
+    # exempt-snapshot pattern the sibling scan_bond_futures_extremes_tool
+    # / scan_inflation_linkers_extremes_tool / sovereign_yield_panel
+    # (with output_artifact_type) use.  This is a SNAPSHOT primitive
+    # (no canonical TimeSeries on the wire); per-row context columns
+    # mix the contract's native price units (``100 - rate`` for
+    # inverse-priced strips), PERCENT (implied_rate_pct), PERCENT
+    # POINTS (daily_change_implied_rate_pct), unit-less z-score,
+    # CONTRACTS (open_interest), and plain-string reference columns
+    # (contract_code / security_name / expiry_date).  Declaring a
+    # single unit would silently lie about the mixed-shape row
+    # payload under P8 (closed-family discipline) + P5 (honest
+    # disclosure); the validator's empty-dict exemption (see
+    # shared/workflow/validate.py:368) defers the unit check to the
+    # operator's runtime refusal — the honest path until a future ADR
+    # extends ``TimeSeriesUnits`` with PRICE + CONTRACTS members.
+    # Per-strip-position history with the full range / percentile /
+    # canonical TimeSeries lives on the sibling
+    # policy_futures_get_futures_price_level_tool /
+    # policy_futures_get_volume_open_interest_snapshot_tool primitives;
+    # composing those is the honest path for time-series consumers.
+    "policy_futures_get_futures_strip_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_strip_snapshot_tool",
+        callable=calculate_futures_strip_snapshot,
+        input_class=FuturesStripSnapshotInput,
+        output_class=FuturesStripSnapshotOutput,
+        config_path=POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
     ),
 
     # ---- Analytical models (workspace model-playground surface) ----
