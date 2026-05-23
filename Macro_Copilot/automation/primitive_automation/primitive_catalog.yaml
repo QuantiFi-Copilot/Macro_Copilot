@@ -624,8 +624,13 @@ primitives:
       - price-to-rate conversion metadata for the selected contracts
 
   - id: policy_futures__futures_cross_market_spread
-    status: todo
+    status: done
     build_order: 18
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: futures_cross_market_spread
     category: desk_invariant_primitive

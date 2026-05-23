@@ -21,15 +21,15 @@ backend: coding-agent
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
 orchestrator_status: processing
-current_primitive: policy_futures__futures_butterfly_simple
-current_primitive_tool_name: futures_butterfly_simple
+current_primitive: policy_futures__futures_cross_market_spread
+current_primitive_tool_name: futures_cross_market_spread
 current_step: committing
-last_successful_primitive: policy_futures__futures_calendar_spread
-last_successful_commit: 104630c
+last_successful_primitive: policy_futures__futures_butterfly_simple
+last_successful_commit: 04cdba0
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-23T10:00Z_claude_fallback_reviewer_round_1_approved_for_futures_butterfly_simple
+last_stop_reason: wake_2026-05-23T10:45Z_claude_fallback_reviewer_round_1_approved_for_futures_cross_market_spread
 last_error: null
-last_updated: "2026-05-23T10:00:00Z"
+last_updated: "2026-05-23T10:45:00Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
@@ -85,6 +85,413 @@ human_required: null
 # Audit log — append-only
 # ---------------------------------------------------------------------------
 status_notes:
+  - at: "2026-05-23T10:45:00Z"
+    kind: wake_2026-05-23T10:45Z_claude_fallback_reviewer_round_1_approved_for_futures_cross_market_spread_committing
+    text: |
+      Cron wake 2026-05-23T10:45Z (current wake). Branch guard passed
+      (on primitive_automation; check_branch.sh OK from
+      /home/sreeramandra/projects/QFin/Macro_Copilot).
+
+      Picked up in-progress primitive policy_futures__futures_cross_market_spread
+      from the previous wake (10:30Z dispatched claude_fallback reviewer
+      round 1). Reviewer process exited cleanly (log mtime 10:40Z;
+      wrapper PIDs gone at probe).
+
+      parse_reviewer_log.py
+        /tmp/claude_reviewer_run_policy_futures__futures_cross_market_spread_round1.log
+        -> {"ok": true, "heading": "APPROVED",
+            "environment_failure": false,
+            "reviewer_quota_exhausted": false}
+
+      Reviewer rendered a clean APPROVED across all 17 mandatory angles
+      on round 1; no findings, no dismissals:
+        - Angle 1 PR3 four-file pattern at
+          rates_agent/policy_futures/tools/futures_cross_market_spread/
+        - Angle 2 PR9/PR10 YAML-vs-code split with wire-frozen
+          cross_market_pair_orientation block (config.yaml:113-126,
+          disclosure-only; compute.py never reads it) and
+          trailing-window NotImplementedError guard at compute.py:321-341
+        - Angle 3 PR8 input-schema discipline (curve_family_a/b,
+          strip_position, lookback_days, optional as_of_date/field_name)
+          with cross-field invariant curve_family_a != curve_family_b
+          as Pydantic @model_validator(mode='after') at
+          schemas.py:264-276
+        - Angle 4 typed boundary: all four models frozen=True,
+          extra='forbid'
+        - Angle 5 PR14 frozen field-name discipline (spread_value_pct,
+          z_score_spread, high/low/mid_252d_spread_value_pct,
+          implied_rate_pct_a/b)
+        - Angle 6 PR15 parity: README + _capture + sofr_sonia_strip1.json
+          (same-regime RFR/RFR) + tamper-detect negative control at
+          parity test:324-348 mirroring the sibling pattern
+        - Angle 7 single-source-of-truth fetchers
+          (shared/analytics/rates_fetch.py UNCHANGED; ONE
+          fetch_cross_market_strip call at compute.py:580; in-process
+          trade_date <= as_of_date clip at compute.py:603-618 BEFORE
+          rolling computations; pivot_and_align_tenors(key_col='curve_family',
+          ffill_limit=5) matches sovereign sibling)
+        - Angle 8 future-anchor guard per leg (compute.py:464-486)
+        - Angle 9 P5 honest disclosure
+          (_build_methodology_disclosure compute.py:209-296 with per-leg
+          RFR/IBOR regime labels, wire-frozen spread = rate_A - rate_B,
+          RAW differential label, explicit refusal of basis-/beta-adjusted
+          variants, MIXED-REGIME marker, pack-average refusal)
+        - Angle 10 ADR 0011 V1 scope (no CTD/repo/DV01/beta/basis logic;
+          explicit disowning of CTD-of-futures-of-OIS and meeting-by-meeting
+          policy-path framings)
+        - Angle 11 inverse-pricing per leg
+          (compute.py:666-673 with per-leg one-liner 100.0 - raw;
+          byte-equivalent with futures_price_level /
+          futures_calendar_spread / futures_butterfly_simple)
+        - Angle 12 mixed-regime handling (no NotImplementedError on
+          mixed-regime pairs; per-leg conversion respects each leg's
+          regime independently; disclosure surfaces MIXED-REGIME +
+          pack-average tokens; SQL validator's mixed-regime label
+          cross-check at runner:701-722 asserts both tokens)
+        - Angle 13 wiring surfaces (MCP get_futures_cross_market_spread_tool
+          +228 lines uses empty-string sentinels, ISO date.fromisoformat,
+          explicit config=fxms_config, controlled {"error": …} envelope,
+          structured logging; schemas/__init__.py re-exports four classes;
+          workflows/__init__.py registers PrimitiveSpec with honest
+          output_field_units (time_series=percent, time_series_spread=percent,
+          time_series_zscore=z_score); conftest.py collect_ignore updated)
+        - Angle 14 PR16 two-layer testing:
+            Layer A: 45 compute + 16 wiring + 2 parity PASS (cross-field
+              invariant test, z-score window override test, per-leg
+              future-anchor tests, missing-inverse-flag tests for both
+              legs, inverse-pricing branch test, mixed-regime test
+              asserting BOTH disclosure tokens, orientation-swap
+              sign-flip test all present)
+            Layer B: 8/8 SQL cases PASS across SOFR_FUT vs SONIA_FUT
+              (strips 1/3/4 — RFR/RFR), EUR_SHORT_RATE_FUT vs SONIA_FUT
+              (strips 2/7/8 — IBOR/RFR mixed) and EUR_SHORT_RATE_FUT
+              vs SOFR_FUT (strips 1/4 — IBOR/RFR mixed); SQL validator
+              independently reproduces per-leg implied-rate conversion,
+              spread, daily delta, 252d z-score, range, percentile,
+              and observation_count; cross-calendar alignment uses the
+              same ffill window-function pattern verified on disk at
+              tests/test_cross_market_sql_validation.py:142
+              (validates the builder's honest-disclosure resolution of
+              the initial 259-vs-251 observation_count and ~0.01-0.05
+              z-score deltas on mixed-calendar cross-CB pairs)
+        - Angle 15 read-only DB (only SELECT / SELECT MAX(trade_date)
+          in compute, tests, _capture, and runner; no INSERT/UPDATE/
+          DELETE/DDL)
+        - Angle 16 scope discipline (git diff --stat confirms
+          shared/analytics/rates_fetch.py, futures_price_level/,
+          volume_open_interest_snapshot/, futures_calendar_spread/,
+          futures_butterfly_simple/ and sovereign_bonds/tools/
+          cross_market_spread/ all UNTOUCHED; only orchestrator-owned
+          catalog + runtime YAML and the four required wiring files
+          modified)
+        - Angle 17 branch + no DB mutation (working tree on
+          primitive_automation; builder report shows only check_branch.sh
+          line as wrapper evidence)
+
+      DONE_DEFINITION.md gate check:
+        1. genuinely new primitive concept (cross-market RFR/IBOR
+           implied-rate differential, distinct from sovereign
+           cross_market_spread which operates on yield-mid) — PASS
+        2. standardness honest (P5 disclosure, no proxies) — PASS
+        3. four-file tool package coherent — PASS
+        4. YAML owns conventions — PASS
+        5. code owns invariants (curve_family_a != curve_family_b
+           Pydantic model_validator) — PASS
+        6. production callers wired (MCP, config=, controlled errors) — PASS
+        7. repo integration complete (schema re-export, workflow
+           PrimitiveSpec, output_field_units, conftest) — PASS
+        8. tests exist & meaningful (compute/wiring/parity/sql_validation) — PASS
+        9. offline tests + DB-backed validation both PASS (Layer A 63/63;
+           Layer B 8/8) — PASS
+        10. config lint PASS (per builder report) — PASS
+        11. reviewer APPROVED — PASS
+        12. branch rule intact (primitive_automation throughout) — PASS
+        13. DB not mutated (SELECT-only throughout) — PASS
+        14. no unresolved honesty debt (mixed-regime non-collapse,
+            RAW-not-basis-adjusted labelling, ADR 0011 V1 scope) — PASS
+
+      Review adjudication: no findings to classify; no dismissals to log;
+      proceed straight to commit. No mandatory-fix items, no dismissable
+      items.
+
+      Reviewer engine for this primitive: claude_fallback (Codex remains
+      quota-exhausted per reviewer_mode_history; sticky per
+      QUOTA_AND_RESUME_POLICY.md §10.3 because non-interactive cron
+      cannot run /status to probe Codex recovery).
+
+      Commit pending in this same wake. Files staged for commit:
+        catalog: automation/primitive_automation/primitive_catalog.yaml
+                 (status: in_progress -> done; active_step: completed;
+                  last_review_heading: APPROVED;
+                  reviewer_engine: claude_fallback)
+        runtime: automation/primitive_automation/primitive_runtime_state.yaml
+                 (current_step: reviewing -> committing; status_notes
+                  10:45Z entry appended; last_updated -> 10:45Z)
+        tool dir: rates_agent/policy_futures/tools/futures_cross_market_spread/
+                  (__init__.py / config.yaml / schemas.py / compute.py)
+        wiring:   rates_agent/policy_futures/mcp_server.py
+                  rates_agent/policy_futures/tools/schemas/__init__.py
+                  rates_agent/workflows/__init__.py
+                  tests/conftest.py
+        fixture:  tests/fixtures/policy_futures_futures_cross_market_spread_v1/
+                  (README.md / _capture.py / sofr_sonia_strip1.json)
+        tests:    tests/test_policy_futures_futures_cross_market_spread_compute.py
+                  tests/test_policy_futures_futures_cross_market_spread_parity.py
+                  tests/test_policy_futures_futures_cross_market_spread_sql_validation.py
+                  tests/test_policy_futures_futures_cross_market_spread_wiring.py
+
+      Top-level state transitions this wake (pre-commit):
+        current_step:    reviewing -> committing
+        last_updated:    -> 2026-05-23T10:45:00Z
+        last_stop_reason: -> wake_2026-05-23T10:45Z_claude_fallback_reviewer_round_1_approved_for_futures_cross_market_spread
+        (orchestrator_status / current_primitive / reviewer_mode /
+         quota_state / done / blocked / remaining all unchanged; this
+         commit's tree records the pre-bump counts (done=22, remaining=12)
+         per the established pattern. Post-commit the same wake bumps
+         done=23 / remaining=11, selects the next eligible primitive
+         (build_order 24 inflation_linkers__scan_inflation_linkers_extremes),
+         re-runs pre-flight load_audit, and dispatches builder round 1.)
+
+  - at: "2026-05-23T10:30:00Z"
+    kind: wake_2026-05-23T10:30Z_builder_round_1_complete_dispatched_claude_fallback_reviewer_round_1_for_futures_cross_market_spread
+    text: |
+      Cron wake 2026-05-23T10:30Z (current wake). Branch guard passed
+      (on primitive_automation; check_branch.sh OK from
+      /home/sreeramandra/projects/QFin/Macro_Copilot).
+
+      Builder round-1 for policy_futures__futures_cross_market_spread
+      (dispatched in the 10:00Z wake; observed still in-flight at the
+      10:15Z wake) has now EXITED CLEANLY:
+        wrapper PID 1784636 — gone
+        claude PID   1784645 — gone
+        log: /tmp/claude_builder_run_policy_futures__futures_cross_market_spread_round1.log
+             — 4430 bytes (full BUILDER REPORT present)
+        wrapper out: /tmp/claude_builder_wrapper_policy_futures__futures_cross_market_spread_round1.out
+             — 4476 bytes (branch-guard line + builder report)
+
+      BUILDER REPORT summary (all gates clean):
+        files added: 4 tool files (__init__/config/schemas/compute),
+          4 test files (compute/wiring/parity/sql_validation),
+          3 fixture files (README/_capture.py/sofr_sonia_strip1.json)
+        files modified: 4 wiring surfaces (mcp_server.py,
+          tools/schemas/__init__.py, workflows/__init__.py, conftest.py)
+        Layer A: python -m shared.config.lint exit 0;
+          pytest compute 45/45; pytest wiring 16/16; pytest parity 2/2
+        Layer B: sql_validation runner exit 0 — 8/8 cases PASS:
+          SOFR_FUT vs SONIA_FUT × strips 1/3/4 (homogeneous RFR/RFR)
+          EUR_SHORT_RATE_FUT vs SONIA_FUT × strips 2/7/8 (mixed RFR/IBOR)
+          EUR_SHORT_RATE_FUT vs SOFR_FUT × strips 1/4 (mixed IBOR/RFR)
+        Branch guard: OK; on primitive_automation throughout.
+        Honest disclosure noted in report: SQL baseline initially
+          diverged from Python on observation_count (259 vs 251)
+          + z_score (~0.01-0.05 delta) for cross-CB pairs due to
+          mismatched trading calendars (US/UK/Euro). Builder adopted
+          the same ffill window-function pattern the sovereign
+          cross_market_spread SQL validator uses
+          (tests/test_cross_market_sql_validation.py:142) so the
+          baseline now reproduces the tool's
+          pivot_and_align_tenors(ffill_limit=5) alignment exactly —
+          all 8 cases PASS within tolerance after the fix. Reviewer
+          must verify this idiom on disk in the new validator.
+
+      Reviewer dispatch — round 1, claude_fallback engine (sticky per
+      QUOTA_AND_RESUME_POLICY.md §10.3 since the prior Codex quota
+      exhaustion at 04:18Z and no automation-safe Codex /status probe
+      available in non-interactive mode):
+        wrapper:    automation/primitive_automation/run_claude_reviewer.sh
+        prompt:     /tmp/claude_reviewer_policy_futures__futures_cross_market_spread_round1.prompt
+                    (modelled on the round-1 prompt for
+                    futures_butterfly_simple; adapted for the
+                    cross-market-spread concept — TWO curve_families
+                    A and B, ONE matched strip_position, raw
+                    rate_A - rate_B differential with mixed-regime
+                    honest disclosure rather than refusal, references
+                    sovereign cross_market_spread + just-shipped
+                    policy_futures siblings, calls out the cross-
+                    calendar pivot_and_align_tenors(ffill_limit=5)
+                    alignment subtlety the builder report flagged)
+        log:        /tmp/claude_reviewer_run_policy_futures__futures_cross_market_spread_round1.log
+        invocation: nohup bash run_claude_reviewer.sh <prompt> <log> &
+
+      Dispatch-and-exit pattern per BACKGROUND_EXECUTION_POLICY: this
+      wake exits cleanly leaving the reviewer running in the
+      background. The next cron wake observes the reviewer process
+      either still running or exited, parses the log with
+      parse_reviewer_log.py, and applies the Reviewer fallback rule
+      (re-swap engines on quota_exhausted/heading=null) and the
+      Reviewer result rule (record heading; route findings via
+      Review adjudication rule). reviewer_mode remains
+      claude_fallback because the orchestrator has no automation-
+      safe Codex /status probe (§10.3 keeps the engine sticky).
+
+      Quota: probe_unavailable / runtime-enforced mode (unchanged).
+      The successful ~30-min Claude builder run plus the immediate
+      Claude reviewer dispatch confirms Claude is responsive; real
+      provider 429 / rate-limit responses (if they occur) will be
+      detected by parse_reviewer_log.py on the next wake.
+
+      Catalog progress at end of this wake (unchanged from prior
+      wake):
+        done=22, blocked=0, remaining=12 (= 11 todo + 1 in_progress)
+        in_progress: policy_futures__futures_cross_market_spread
+        todo backlog (11): futures_strip_snapshot,
+          futures_pack_average_simple, scan_policy_futures_extremes,
+          build_policy_futures_strip_panel,
+          scan_inflation_linkers_extremes,
+          scan_inflation_swaps_extremes, calculate_ois_butterfly,
+          build_zcis_panel, build_linker_panel, asset_swap_spread,
+          realized_vs_implied_inflation.
+
+      Top-level state transitions this wake:
+        current_step:    building -> reviewing
+        last_updated:    -> 2026-05-23T10:30:00Z
+        last_stop_reason: -> wake_2026-05-23T10:30Z_dispatched_claude_fallback_reviewer_round_1_for_futures_cross_market_spread
+        (orchestrator_status / current_primitive / reviewer_mode /
+         quota_state all unchanged)
+
+  - at: "2026-05-23T10:16:00Z"
+    kind: wake_2026-05-23T10:15Z_observed_builder_round_1_still_in_flight_for_futures_cross_market_spread
+    text: |
+      Cron wake 2026-05-23T10:15Z (current wake). Branch guard passed
+      (on primitive_automation; check_branch.sh OK from
+      /home/sreeramandra/projects/QFin/Macro_Copilot).
+
+      Builder round-1 dispatched in the previous wake (10:07Z) for
+      policy_futures__futures_cross_market_spread is still in-flight at
+      observation time:
+        wrapper PID 1784636 — alive (etime 09:42 at probe 10:15:48Z)
+        claude PID   1784645 — alive (`claude --print --model opus
+                                       --effort xhigh
+                                       --permission-mode bypassPermissions`)
+        log: /tmp/claude_builder_run_policy_futures__futures_cross_market_spread_round1.log
+             — 0 bytes (builder still reasoning; no output yet)
+        wrapper out: /tmp/claude_builder_wrapper_policy_futures__futures_cross_market_spread_round1.out
+             — 46 bytes ("OK: on allowed branch 'primitive_automation'.")
+
+      No-overlap rule (BACKGROUND_EXECUTION_POLICY.md §7) + serial
+      one-primitive-at-a-time rule (DESIGN_PRINCIPLES.md §11) apply:
+      the in-progress primitive owns the factory until it reaches a
+      terminal review checkpoint. This wake cannot dispatch any other
+      builder (factory is serial by design) and cannot dispatch the
+      reviewer (builder has not finished; no BUILDER REPORT to parse).
+
+      Therefore this wake exits cleanly with NO state transitions:
+        orchestrator_status: processing  (unchanged)
+        current_primitive:   policy_futures__futures_cross_market_spread (unchanged)
+        current_step:        building (unchanged)
+        reviewer_mode:       claude_fallback (sticky per QUOTA_AND_RESUME_POLICY §10.3;
+                              no automation-safe /status path to probe Codex recovery)
+        quota_state:         probe_unavailable (unchanged; runtime-enforced mode)
+
+      The next cron wake (scheduled +15 min per OPENCLAW_CRON_RUNBOOK.md)
+      will re-check the builder process; if exited cleanly with a parseable
+      BUILDER REPORT, it dispatches the claude_fallback reviewer for round 1.
+      If the builder is still alive at the next wake, this same observe-
+      and-exit pattern repeats — no token waste, no state corruption,
+      no concurrent builder.
+
+      Catalog progress (unchanged from prior wake):
+        done=22, blocked=0, remaining=12
+          in_progress: policy_futures__futures_cross_market_spread
+          todo backlog (11): futures_strip_snapshot, futures_pack_average_simple,
+            scan_policy_futures_extremes, build_policy_futures_strip_panel,
+            scan_inflation_linkers_extremes, scan_inflation_swaps_extremes,
+            calculate_ois_butterfly, build_zcis_panel, build_linker_panel,
+            asset_swap_spread, realized_vs_implied_inflation.
+
+  - at: "2026-05-23T10:07:00Z"
+    kind: wake_2026-05-23T10:00Z_dispatched_builder_round_1_for_futures_cross_market_spread
+    text: |
+      Same cron wake 2026-05-23T10:00Z continued. After committing
+      futures_butterfly_simple as commit 04cdba0 on
+      primitive_automation, selected next eligible primitive per the
+      selection order in ORCHESTRATOR_PROMPT.md:
+        - in_progress: (none after the close)
+        - changes_required: (none)
+        - waiting_quota: (none)
+        - todo: policy_futures__futures_cross_market_spread
+          (build_order 18; first by build_order among the 12
+          remaining todos).
+
+      Pre-flight load_audit re-verified for futures_cross_market_spread
+      at 10:01Z (required_playbooks: ['rates_agent/playbooks/policy_futures.yml']):
+        SELECT playbook_name, status, ingested_at
+          FROM macro_data.load_audit
+         WHERE playbook_name = 'policy_futures'
+           AND status = 'SUCCESS'
+         ORDER BY ingested_at DESC LIMIT 1;
+        -> policy_futures | SUCCESS | 2026-05-20 08:14:28.129099+01
+        PASS — proceeding to builder dispatch.
+
+      Quota: probe_unavailable / runtime-enforced mode per
+      QUOTA_AND_RESUME_POLICY.md §6 (non-interactive cron, no
+      automation-safe /status path). Reviewer engine stays
+      claude_fallback (sticky per §10.3; no Codex probe available
+      non-interactively).
+
+      Builder round-1 dispatch (claude_fallback per the same
+      orchestrator-wide engine state):
+        wrapper:    automation/primitive_automation/run_claude_builder.sh
+        prompt:     /tmp/claude_builder_policy_futures__futures_cross_market_spread_round1.prompt
+                    (built from the round-1 prompt for
+                    futures_butterfly_simple, adapted for the
+                    cross-market-spread concept: TWO curve_families
+                    A and B, ONE matched strip_position, raw
+                    implied-rate differential rate_A - rate_B, with
+                    explicit RFR/IBOR mixed-regime refusal and
+                    raw-not-basis-adjusted labelling per the catalog
+                    guardrails)
+        log:        /tmp/claude_builder_run_policy_futures__futures_cross_market_spread_round1.log
+        wrapper out:/tmp/claude_builder_wrapper_policy_futures__futures_cross_market_spread_round1.out
+        invocation: nohup bash run_claude_builder.sh <prompt> <log> &
+        PIDs at dispatch: wrapper=1784636, claude=1784645
+          (both alive immediately after launch; branch-guard "OK"
+          line written by the wrapper script before exec)
+
+      Prompt scope (all guardrails from the catalog entry encoded):
+        - desk_invariant_primitive category;
+        - inputs limited to (curve_family_a, curve_family_b,
+          strip_position, as_of_date, lookback_days, optional
+          field_name) with cross-field validator
+          curve_family_a != curve_family_b;
+        - wire-frozen orientation spread = rate_A - rate_B
+          documented as an invariant in YAML conventions, NOT a knob;
+        - per-leg inverse-pricing handling identical to the three
+          sibling tools (futures_price_level / futures_calendar_spread
+          / futures_butterfly_simple); cross-leg metadata refusal;
+        - methodology disclosure stating regimes for BOTH curve
+          families, explicit "RAW differential, NOT basis-adjusted
+          or beta-adjusted", explicit mixed-regime non-collapse
+          refusal (catalog guardrails 1, 2, 3);
+        - per-leg future-anchor guard on binding min;
+        - PR15 parity fixture (live-DB capture with SHA-256
+          tamper-detect mirroring the sibling pattern);
+        - PR16 two-layer testing covering same-regime,
+          mixed-regime (if live data permits), wider strip_position,
+          orientation swap, invariant rejection, per-leg metadata
+          envelopes;
+        - SQL validation runner read-only, mirroring the sibling
+          runners' shape;
+        - scope discipline (no touches to fetchers, sibling tools,
+          sovereign cross_market_spread, orchestrator-owned YAMLs).
+
+      Dispatch-and-exit pattern per the BACKGROUND_EXECUTION_POLICY:
+      this wake exits cleanly leaving the builder running in the
+      background. The next cron wake observes the builder process
+      either still running or exited, parses the builder report, and
+      proceeds to dispatch the reviewer.
+
+      Catalog progress at end of this wake:
+        done=22, blocked=0, remaining=12 (= 11 todo + 1 in_progress)
+        in_progress: policy_futures__futures_cross_market_spread
+        todo backlog (11): futures_strip_snapshot,
+          futures_pack_average_simple, scan_policy_futures_extremes,
+          build_policy_futures_strip_panel,
+          scan_inflation_linkers_extremes,
+          scan_inflation_swaps_extremes, calculate_ois_butterfly,
+          build_zcis_panel, build_linker_panel, asset_swap_spread,
+          realized_vs_implied_inflation.
+
   - at: "2026-05-23T10:00:00Z"
     kind: wake_2026-05-23T10:00Z_claude_fallback_reviewer_round_1_approved_for_futures_butterfly_simple
     text: |

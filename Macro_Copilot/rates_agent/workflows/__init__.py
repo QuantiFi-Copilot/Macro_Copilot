@@ -130,6 +130,12 @@ from rates_agent.policy_futures.tools.futures_butterfly_simple import (
     FuturesButterflySimpleOutput,
     calculate_futures_butterfly_simple,
 )
+from rates_agent.policy_futures.tools.futures_cross_market_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+    FuturesCrossMarketSpreadInput,
+    FuturesCrossMarketSpreadOutput,
+    calculate_futures_cross_market_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -543,6 +549,30 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             "time_series": "percent",
             "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    # The cross-market-spread primitive's spread series IS single-
+    # unit (PERCENT POINTS — the per-leg implied rate differential).
+    # Unlike the siblings ``futures_price_level`` and
+    # ``futures_calendar_spread`` (which carry two unit spaces per
+    # row), this primitive emits canonical ``TimeSeries`` with
+    # ``TimeSeriesUnits.PERCENT`` (spread) +
+    # ``TimeSeriesUnits.Z_SCORE`` (z-score) — so we declare them
+    # here. The bespoke ``time_series`` shares the same PERCENT-
+    # POINTS unit on its ``spread_value_pct`` field. Mirrors the
+    # sibling ``futures_butterfly_simple`` single-axis output_field_units
+    # shape (the butterfly tool's series is also single-unit PERCENT
+    # POINTS).
+    "policy_futures_get_futures_cross_market_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_cross_market_spread_tool",
+        callable=calculate_futures_cross_market_spread,
+        input_class=FuturesCrossMarketSpreadInput,
+        output_class=FuturesCrossMarketSpreadOutput,
+        config_path=POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_spread": "percent",
             "time_series_zscore": "z_score",
         },
     ),

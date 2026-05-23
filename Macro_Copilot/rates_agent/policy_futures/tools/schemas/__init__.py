@@ -19,6 +19,12 @@ from rates_agent.policy_futures.tools.futures_calendar_spread.schemas import (
     FuturesCalendarSpreadOutput,
     FuturesCalendarSpreadTimeSeriesRow,
 )
+from rates_agent.policy_futures.tools.futures_cross_market_spread.schemas import (
+    FuturesCrossMarketSpreadCurrentMetrics,
+    FuturesCrossMarketSpreadInput,
+    FuturesCrossMarketSpreadOutput,
+    FuturesCrossMarketSpreadTimeSeriesRow,
+)
 from rates_agent.policy_futures.tools.futures_price_level.schemas import (
     FuturesPriceLevelCurrentMetrics,
     FuturesPriceLevelInput,
@@ -50,4 +56,8 @@ __all__ = [
     "FuturesButterflySimpleCurrentMetrics",
     "FuturesButterflySimpleTimeSeriesRow",
     "FuturesButterflySimpleOutput",
+    "FuturesCrossMarketSpreadInput",
+    "FuturesCrossMarketSpreadCurrentMetrics",
+    "FuturesCrossMarketSpreadTimeSeriesRow",
+    "FuturesCrossMarketSpreadOutput",
 ]

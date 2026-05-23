@@ -1,0 +1,487 @@
+# =============================================================================
+# policy_futures.get_futures_cross_market_spread_tool — tool configuration
+# =============================================================================
+# Matched-strip cross-market implied-rate differential between TWO
+# policy-futures curve_families (SOFR_FUT / EUR_SHORT_RATE_FUT /
+# SONIA_FUT) at ONE strip position. E.g. SOFR_FUT vs SONIA_FUT strip 1
+# (SFR1 − SFI1) or SOFR_FUT vs EUR_SHORT_RATE_FUT strip 4 (SFR4 − ER4).
+#
+# V1 cross-market-spread primitive (per ADR 0011 — ``policy_futures``
+# ships strip-position-keyed monitors). The output card disclosure
+# makes the scope-limited reading explicit (P5):
+#
+#   "Matched-strip cross-market implied-rate differential at strip
+#    position N — RAW differential, NOT a basis-adjusted or
+#    beta-adjusted spread. Sign convention: rate_A − rate_B where A
+#    is the requested curve_family_a, B is curve_family_b. Mixed
+#    RFR/IBOR pairs are surfaced with regime labels on BOTH legs;
+#    this primitive does NOT collapse mixed-regime pairs into a pack-
+#    average."
+#
+# The catalog's methodology guardrails for this primitive REQUIRE:
+#   1. Label the output as a RAW cross-market implied-rate differential
+#      (NOT basis-adjusted; NOT beta-adjusted).
+#   2. Surface benchmark-family caveats explicitly (RFR vs IBOR per
+#      ADR 0011).
+#   3. Refuse to auto-collapse mixed RFR/IBOR curves into a pack-
+#      average — surface the choice via per-leg regime labels.
+#
+# Basis-adjusted / beta-adjusted variants are PR11 planned-extension
+# territory and are explicitly refused by this primitive's methodology
+# card.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions. The LLM cannot ask for non-standard windows / thresholds
+# / sign conventions / regime overrides. The implied-rate conversion
+# rule (raw_price → implied_rate_pct, per leg) is driven OFF METADATA
+# (the per-strip ``instrument_master.attributes->>'inverse_pricing'``
+# flag read via fetch_strip_position_reference) — NOT off a hardcoded
+# list in compute.py. Same convention pattern the sibling
+# futures_price_level / futures_calendar_spread / futures_butterfly_simple
+# tools use; the cross-market spread re-uses the per-leg conversion
+# path verbatim.
+# =============================================================================
+
+tool:
+  name: policy_futures_get_futures_cross_market_spread_tool
+  domain: policy_futures
+  description: |
+    Matched-strip cross-market implied-rate differential on the policy-
+    futures strip — emits a ``current_metrics`` snapshot for the
+    latest aligned bar:
+
+      - ``spread_value_pct``: the desk-recognised RAW cross-market
+        implied-rate differential in PERCENT POINTS, computed as
+        ``implied_rate_pct(curve_family_a) -
+        implied_rate_pct(curve_family_b)`` on the aligned
+        (intersection) trading-day series. Sign convention: A − B
+        where A is the requested ``curve_family_a`` and B is
+        ``curve_family_b`` — wire-frozen orientation; swapping the
+        inputs flips the sign.
+
+      - per-leg ``implied_rate_pct_a`` / ``implied_rate_pct_b`` —
+        the latest implied rate on each of the two legs in PERCENT.
+
+      - 1-day raw-subtraction change in the spread (NOT bps
+        multiplication; both axes are in PERCENT POINTS).
+
+      - rolling 252-day z-score of the SPREAD series.
+
+      - trailing 252-day high / low / mid range on the spread series.
+
+      - percentile rank of the current spread within the trailing
+        252-day range (0-100).
+
+      - the as_of-bounded SCD2 per-leg disclosure block
+        (``contract_code_*``, ``underlying_contract_code_*``,
+        ``security_name_*``, ``expiry_date_*``) plus the per-leg
+        ``inverse_priced`` flag and ``short_rate_regime`` labels
+        (RFR vs IBOR) — both surfaced even when the pair mixes
+        regimes (the methodology guardrail forbids silent pack-
+        average collapse).
+
+      - ``time_series``: per-row ``{date, spread_value_pct, z_score}``
+        history over the displayed window (bespoke list shape mirroring
+        the sovereign cross_market_spread tool's frontend-friendly
+        export).
+
+      - ``time_series_spread`` + ``time_series_zscore``: canonical
+        ``shared.schemas.TimeSeries`` with closed-enum
+        ``TimeSeriesUnits.PERCENT`` (spread) and
+        ``TimeSeriesUnits.Z_SCORE`` (z-score). Values match the
+        bespoke ``time_series`` row-for-row.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Cross-market pair orientation — WIRE-FROZEN sign convention.
+  # ---------------------------------------------------------------------------
+  # Catalog methodology guardrail: "Must label output as a raw cross-
+  # market implied-rate differential, not a basis-adjusted or beta-
+  # adjusted spread." The orientation is documented here as an
+  # invariant disclosure (not a knob): spread_value_pct =
+  # implied_rate_pct(curve_family_a) - implied_rate_pct(curve_family_b)
+  # where A is the requested ``curve_family_a`` and B is
+  # ``curve_family_b``. Swapping the inputs flips the sign by
+  # construction; the methodology card echoes the specific A and B
+  # labels back to the consumer so the direction is unambiguous on the
+  # wire. Mirrors the sovereign cross_market_spread tool's documented
+  # "spread direction convention" (cf1 - cf2) — that tool ships the
+  # same orientation note under planned_extensions; we surface it as a
+  # first-class disclosure-only convention block here so the methodology
+  # card can name the convention by source tag.
+  cross_market_pair_orientation:
+    value: "A_minus_B"
+    source: team_judgment_pending_review
+    rationale: >-
+      Wire-frozen orientation: spread_value_pct =
+      implied_rate_pct(curve_family_a) -
+      implied_rate_pct(curve_family_b). NOT a knob — the orientation
+      is a documented INVARIANT and the methodology card echoes the
+      specific A and B curve_family labels back to the consumer.
+      Swapping the inputs flips the sign by construction. The
+      sovereign cross_market_spread tool documents the same desk-style
+      direction-of-spread choice under its planned_extensions (cf1 -
+      cf2); we surface it as a first-class disclosure block here so
+      the methodology card can name the convention by source tag.
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days) — applied to the SPREAD series
+  # (not the per-leg series; the z lives on the cross-market axis).
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window. Same convention
+      as the sibling futures_price_level / volume_open_interest_snapshot
+      / futures_calendar_spread / futures_butterfly_simple / sovereign
+      cross_market_spread so cross-tool z-score reads are comparable.
+      Disclosed verbatim on every methodology card per P5 + ADR 0011.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches futures_price_level /
+      futures_calendar_spread / futures_butterfly_simple / sovereign
+      cross_market_spread.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading
+      day. 1.5x trading-day window covers weekends + holidays.
+      Matches every other rates level primitive in this codebase.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Daily-change offset (in trading-day rows after ffill + alignment)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back. Matches the daily-
+      change convention used by every rates level primitive.
+    valid_range: [2, 5]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_spread_value_pct,
+  # low_252d_spread_value_pct, mid_252d_spread_value_pct,
+  # percentile_252d) are wire-frozen and embed the 252 number.
+  # compute() raises NotImplementedError if this is set to anything
+  # other than 252; see methodology.planned_extensions for the path
+  # to making it configurable. Mirrors the same guard in
+  # futures_price_level / futures_calendar_spread /
+  # futures_butterfly_simple.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high / low / mid / percentile on the spread
+      series. Locked at 252 in V1 because the wire field names embed
+      the number. Mirrors the same wire-freeze in the sibling
+      futures_calendar_spread / futures_butterfly_simple /
+      futures_price_level tools.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps on each leg. Same as every other rates level primitive in
+      this codebase. Applied independently to each leg's series
+      before the intersection-alignment step — important here because
+      the two legs are on DIFFERENT trading calendars (US vs UK vs
+      Euro area) and holiday-gap patterns differ.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_price_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Last-traded price is the canonical front-month price
+      observation. Maps onto the playbook's ``last_price`` metric
+      (bloomberg_field PX_LAST). LLM/HTTP wrappers MUST use the
+      empty-string / None sentinel so this default flows through —
+      same shadowing-fix pattern as sovereign curve_move_classifier
+      (commit b2605ee) / yield_levels / futures_price_level.
+
+  # ---------------------------------------------------------------------------
+  # Short-rate regime map per curve_family — methodology disclosure (P5).
+  # ---------------------------------------------------------------------------
+  # RFR = compounded risk-free rate (SOFR daily compounding for
+  # SOFR_FUT; SONIA daily compounding for SONIA_FUT). IBOR = unsecured
+  # term IBOR (3M Euribor for EUR_SHORT_RATE_FUT). The regime labels
+  # for BOTH legs are carried on the methodology disclosure string so a
+  # desk reader knows the underlying rate object behind EACH leg's
+  # implied rate — load-bearing on the catalog guardrail "Must surface
+  # benchmark-family caveats explicitly (RFR vs IBOR per ADR 0011)".
+  # NOT a load-bearing computation choice (the implied-rate conversion
+  # is driven off ``inverse_priced``; the regime labels are disclosure-
+  # only) — but P5 (honest disclosure) requires them on every response
+  # AND the catalog guardrail requires the primitive to REFUSE
+  # collapsing mixed RFR/IBOR pairs into a pack-average (handled in
+  # compute by surfacing BOTH regime labels even when they differ).
+  # Storing in YAML keeps a future curve_family addition (e.g.
+  # TIIE_FUT direct-priced) a YAML edit rather than a code change.
+  # Mirrors the sibling futures_calendar_spread / futures_butterfly_simple
+  # / futures_price_level / volume_open_interest_snapshot entries
+  # verbatim so the cross-tool disclosure reads the same across the
+  # policy_futures domain.
+  short_rate_regime_map:
+    value: "SOFR_FUT=RFR,SONIA_FUT=RFR,EUR_SHORT_RATE_FUT=IBOR"
+    source: team_judgment_pending_review
+    rationale: >-
+      Disclosure-only mapping (P5 — does NOT alter computation). RFR
+      vs IBOR labels the underlying short-rate object so a desk
+      reader knows what each leg's implied rate means: a compounded
+      daily RFR (SOFR / SONIA) vs an unsecured 3M term IBOR
+      (Euribor). Stored as a CSV of ``KEY=VALUE`` pairs because
+      ``Convention.value`` is scalar; compute parses it into a dict
+      at load time. New families added to the playbook are added
+      here in the same PR — no hidden defaults.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to spread_value_pct, each time_series
+  # row, high/low/mid, percentile, and z-score. Per-leg
+  # implied_rate_pct uses the same precision as the sibling tools'
+  # ``implied_rate_round_decimals`` for consistency across the
+  # policy_futures domain.
+  # ---------------------------------------------------------------------------
+  spread_value_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for the cross-market spread in PERCENT POINTS
+      (≈ 0.01 bp precision). Matches the precision desks use to read
+      cross-CB STIR spreads without losing tick-derived resolution.
+      Threaded through both the snapshot's ``spread_value_pct`` and
+      every row of the bespoke ``time_series`` output so the snapshot
+      equals ``time_series[-1].spread_value_pct`` strictly at the
+      latest row. Same precision the sibling futures_calendar_spread
+      uses on its ``spread_implied_rate_pct`` snapshot field and the
+      sibling futures_butterfly_simple uses on its
+      ``butterfly_value_pct`` snapshot field.
+    valid_range: [0, 8]
+
+  implied_rate_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for per-leg implied rates in PERCENT. Matches
+      futures_price_level / futures_calendar_spread /
+      futures_butterfly_simple.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches yield_levels / curve_spread /
+      futures_price_level / futures_calendar_spread /
+      futures_butterfly_simple / volume_open_interest_snapshot.
+    valid_range: [0, 8]
+
+  spread_value_high_low_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for trailing high / low / mid on the spread axis
+      so they round at the same precision as ``spread_value_pct``
+      (avoids the snapshot's spread equalling neither high nor low
+      because of rounding asymmetry on a single observation).
+    valid_range: [0, 8]
+
+  percentile_round_decimals:
+    value: 1
+    source: team_judgment_pending_review
+    rationale: >-
+      One decimal on percentile (0.0 - 100.0). Matches yield_levels /
+      futures_price_level / futures_calendar_spread /
+      futures_butterfly_simple.
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    Fetches two cross-market policy-futures strip-slot price series
+    (the ``A`` and ``B`` legs of the cross-market pair, at the SAME
+    strip position) via the shared cross-market-strip fetcher,
+    converts each to implied-rate space using the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes``,
+    aligns the two on the intersection of trading days (intra-leg
+    ffill bridges holidays up to 5 trading days; the two markets'
+    trading calendars differ, so the intersection step is load-
+    bearing), computes the RAW cross-market spread on the implied-
+    rate axis (``spread_value_pct = rate_A - rate_B`` where A is the
+    requested ``curve_family_a``), and returns a snapshot: current
+    spread, 1-day delta, rolling 252-day z-score of the spread
+    series, trailing 252-day high / low / mid on the spread axis,
+    percentile rank of the current spread, observation count over
+    the lookback_days window, per-leg current implied rates, plus
+    the as_of-bounded SCD2 per-leg disclosure block with the
+    PER-LEG short-rate regime labels surfaced even when the pair
+    mixes RFR and IBOR.
+
+    The implied-rate conversion rule is driven off the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes`` —
+    NOT a hardcoded list in compute.py — and is read INDEPENDENTLY
+    per leg (the two markets may not share the flag; in V1 they all
+    happen to be inverse-priced, but the conversion is metadata-
+    driven so a future direct-priced family integrates cleanly). The
+    methodology card discloses the underlying short-rate regime
+    (RFR / IBOR) for BOTH curve_families, explicitly labels mixed-
+    regime pairs as such, declares the wire-frozen A − B sign
+    convention with the specific A and B labels echoed back, and
+    documents the inverse-pricing handling per leg.
+
+    The catalog's methodology guardrails are honoured verbatim:
+      (a) Output labelled as a RAW cross-market implied-rate
+          differential — NOT basis-adjusted; NOT beta-adjusted.
+      (b) Benchmark-family caveats surfaced explicitly per leg.
+      (c) NO auto-collapse of mixed RFR/IBOR pairs into a pack-
+          average — the methodology card and the per-leg
+          ``short_rate_regime`` snapshot fields preserve both labels.
+
+  assumptions:
+    - "Policy-futures strip slots are keyed by
+       ``(curve_family, strip_position)``; this cross-market spread
+       is keyed by ``(curve_family_a, curve_family_b, strip_position)``
+       with the code-level invariant ``curve_family_a !=
+       curve_family_b``. Same keying axis the sibling
+       futures_price_level / futures_calendar_spread /
+       futures_butterfly_simple use for their per-leg reads."
+    - "The two legs are read from DIFFERENT ``curve_family`` values
+       at the SAME ``strip_position``. This is a MATCHED-STRIP
+       cross-CB / cross-family differential, NOT a calendar spread
+       (which is same-curve, two strip positions — that is the
+       sibling ``futures_calendar_spread`` primitive)."
+    - "The per-strip ``inverse_priced`` flag drives the per-leg
+       raw_price → implied_rate_pct conversion. The two legs are
+       read INDEPENDENTLY; same-strip-position cross-market pairs
+       in the V1 universe happen to agree on the flag (SOFR /
+       Euribor / SONIA are all inverse-priced) but the conversion
+       is metadata-driven so a future direct-priced family is a
+       YAML / playbook edit, not a code change. Both legs must
+       carry the flag — a missing flag on EITHER leg surfaces as
+       the controlled-error envelope."
+    - "Wire-frozen sign convention: ``spread_value_pct = rate_A -
+       rate_B`` where A is the requested ``curve_family_a`` and B
+       is ``curve_family_b``. Swapping the inputs flips the sign by
+       construction; the methodology card echoes the specific A and
+       B labels back to the consumer so the direction is
+       unambiguous on the wire. This is a desk-style direction-of-
+       spread choice (same shape the sovereign cross_market_spread
+       tool documents under its planned_extensions for cf1 - cf2)."
+    - "Output is labelled as a RAW cross-market implied-rate
+       differential. Basis-adjusted (cross-currency basis netted)
+       and beta-adjusted (regression-residual) variants are
+       SEPARATE primitives in a future build (PR11 planned-
+       extension territory); this primitive's methodology card
+       refuses to mix them under the ``cross_market_spread`` name."
+    - "Mixed RFR/IBOR pairs (e.g. SOFR_FUT vs EUR_SHORT_RATE_FUT)
+       are explicitly SUPPORTED but NOT silently collapsed into a
+       single regime label. The methodology card carries BOTH
+       per-leg regime labels (RFR vs IBOR); the snapshot fields
+       ``short_rate_regime_a`` / ``short_rate_regime_b`` carry the
+       per-leg labels side-by-side. Pack-average collapse is
+       explicitly refused per the catalog guardrail."
+    - "The short-rate regime (RFR vs IBOR) is METHODOLOGY
+       DISCLOSURE — NOT a load-bearing computation choice. The
+       implied-rate conversion is the same one-line transform per
+       leg regardless of the regime; what differs is what the
+       implied rate MEANS to a desk reader (compounded daily RFR
+       vs unsecured 3M term IBOR). The catalog guardrail requires
+       this distinction be surfaced; the methodology card and the
+       per-leg regime fields do so."
+    - "The z-score lives on the SPREAD axis (not the per-leg
+       implied-rate axis). The desk-recognised level IS the cross-
+       market differential; the z follows."
+    - "The output is NOT a meeting-by-meeting policy-path cross-CB
+       decomposition. This is a cross-market spread on rolling-
+       generic strip-slot series; the FOMC vs ECB / FOMC vs BOE
+       per-meeting implied-step view is a different concept and is
+       NOT a primitive in this build (would require a per-meeting
+       contract calendar mapping + the WIRP-time-series substrate
+       that is deferred per ADR 0009)."
+    - "ADR 0011 V1 scope: this primitive is the rolling-generic
+       cross-market spread at the requested matched strip position.
+       The CTD-of-futures-of-OIS cross-market spread (mapping the
+       strip differential onto the OIS-forward-rate differential)
+       is NOT yet a primitive in this build — that requires the
+       CTD identification + OIS-curve interpolation stack (Phase-4
+       per ADR 0011)."
+    - "lookback_days controls the fetch window and the
+       observation_count cutoff. The rolling z-score window
+       (z_score_window_days) and trailing range window
+       (trailing_range_window_days) are independent conventions
+       fixed in this YAML."
+
+  citations:
+    - "ADR 0011 (docs_revamped/05_decisions/0011-futures-domain-agents.md)"
+    - "Catalog v2.1 PR14 (frozen field-name discipline: implied_rate_pct, spread_value_pct)"
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable. Currently locked at
+       252 because the output fields
+       high_252d_spread_value_pct / low_252d_spread_value_pct /
+       mid_252d_spread_value_pct / percentile_252d embed the
+       number. Path to configurability: rename schema fields to
+       high_window_* / low_window_* / mid_window_* /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute()."
+    - "Basis-adjusted cross-market spread primitive (separate tool).
+       Today's primitive is the RAW cross-market differential; the
+       basis-adjusted variant subtracts the cross-currency basis
+       swap to compare like-for-like funding-adjusted implied
+       rates. Distinct desk object and ships as its own primitive
+       (gated on a cross-currency basis-swap substrate that is not
+       yet in V1). The methodology card refuses to mix the two
+       under the ``cross_market_spread`` name."
+    - "Beta-adjusted cross-market spread primitive (separate tool).
+       Regression-residual variant: spread = rate_A - beta *
+       rate_B where beta is fit on a rolling window. Distinct desk
+       object; ships as its own primitive (gated on the rolling-
+       regression substrate already in place for sovereign rates —
+       just needs the policy-futures wiring). The methodology card
+       refuses to mix the two under the ``cross_market_spread``
+       name."
+    - "Meeting-by-meeting policy-path cross-CB spread. The FOMC vs
+       ECB / FOMC vs BOE per-meeting implied-step decomposition is
+       a separate concept that requires a per-meeting contract
+       calendar mapping + the WIRP-time-series substrate (ADR
+       0009). NOT a V1 primitive."
+    - "CTD-of-futures-of-OIS cross-market spread (Phase-4 per ADR
+       0011). Maps the strip differential onto a calibrated OIS
+       forward-rate differential. Gated on the CTD identification
+       + OIS-curve interpolation stack landing as primitives."

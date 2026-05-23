@@ -85,6 +85,11 @@ from rates_agent.policy_futures.tools.futures_calendar_spread import (  # noqa: 
     FuturesCalendarSpreadInput,
     calculate_futures_calendar_spread,
 )
+from rates_agent.policy_futures.tools.futures_cross_market_spread import (  # noqa: E402
+    CONFIG_PATH as FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+    FuturesCrossMarketSpreadInput,
+    calculate_futures_cross_market_spread,
+)
 from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
     CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
     FuturesPriceLevelInput,
@@ -969,6 +974,229 @@ def get_futures_butterfly_simple_tool(
     if ts_rows:
         logger.info(
             "[get_futures_butterfly_simple_tool] withheld %d "
+            "time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 5: get_futures_cross_market_spread
+#         (policy_futures matched-strip cross-market differential)
+# ===========================================================================
+@mcp.tool()
+def get_futures_cross_market_spread_tool(
+    curve_family_a: str,
+    curve_family_b: str,
+    strip_position: int,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+    field_name: str = "",
+) -> str:
+    """Get the current policy-futures matched-strip cross-market
+    implied-rate differential on the implied-rate axis (PERCENT
+    POINTS) for a single strip position across TWO different curve
+    families (e.g. SOFR_FUT vs SONIA_FUT strip 1 → SFR1 − SFI1, or
+    SOFR_FUT vs EUR_SHORT_RATE_FUT strip 4 → SFR4 − ER4). Sign
+    convention (wire-frozen): rate_A − rate_B where A is the
+    requested ``curve_family_a``; swapping the inputs flips the sign
+    by construction.
+
+    Plus the two per-leg current implied rates, 1-day raw-subtraction
+    change on the spread axis, rolling 252-day z-score of the spread
+    series, trailing 252-day high / low / mid range, and percentile
+    rank of the current spread. The snapshot carries the as_of-
+    bounded SCD2 per-leg disclosure (contract_code_a /
+    contract_code_b / underlying_contract_code_* / security_name_* /
+    expiry_date_* / inverse_priced_* / short_rate_regime_*) with
+    BOTH per-leg regime labels surfaced even for mixed RFR/IBOR
+    pairs (catalog guardrail — no pack-average collapse).
+
+    Output is a RAW cross-market implied-rate differential — NOT
+    basis-adjusted (cross-currency basis NOT netted) and NOT beta-
+    adjusted (regression residual NOT computed). Basis-adjusted and
+    beta-adjusted variants are planned-extension territory per PR11
+    and ship as separate primitives.
+
+    Use this tool when the user asks about:
+    - Cross-CB STIR spreads             (e.g. "Where's SFR1-SFI1?",
+                                          "SFR4-ER4 spread?",
+                                          "SOFR vs Euribor matched
+                                          strip 2?")
+    - Cross-CB STIR spread extremes    (e.g. "Is the SFR1-SFI1
+                                          spread at a 1-year high?",
+                                          "Z-score on the SFR2-ER2
+                                          cross-CB spread?")
+    - Cross-CB STIR day-on-day moves   (e.g. "How much did the
+                                          SOFR-Euribor matched-strip
+                                          spread move yesterday?")
+
+    Do NOT use this tool for:
+    - Same-curve calendar spreads (e.g. SFR1-SFR2) → that is the
+      sibling ``get_futures_calendar_spread_tool``.
+    - Three-leg butterflies on one curve → that is the sibling
+      ``get_futures_butterfly_simple_tool``.
+    - Single-leg outright price / implied rate → the sibling
+      ``get_futures_price_level_tool``.
+    - Bond-futures cross-market spreads (TY1 vs RX1 / TY1 vs JB1 /
+      ...) → bond_futures domain, separate primitive.
+    - Cash-sovereign / OIS cross-market spreads → sovereign_bonds /
+      ois agents have their own cross_market_spread primitives.
+    - Basis-adjusted / beta-adjusted cross-market spreads → those
+      weighting variants ship as separate primitives in a future
+      build (this tool refuses them via the methodology card).
+    - Meeting-by-meeting policy-path cross-CB decomposition (FOMC
+      vs ECB / FOMC vs BOE per-meeting implied-step view) → NOT a
+      primitive in this build. This tool is the cross-market spread
+      on rolling-generic strip-slot series.
+
+    ALWAYS preserve the methodology_disclosure field when relaying
+    the snapshot to the user — P5 (honest disclosure) requires the
+    wire-frozen A − B sign convention with specific labels, the
+    per-leg short-rate regime labels (with explicit mixed-regime
+    labelling), the inverse-pricing rule per leg, the z-score
+    lookback window, the RAW-differential label, AND the explicit
+    refusal of pack-average collapse to be carried forward.
+
+    Parameters
+    ----------
+    curve_family_a : str
+        First (numerator / 'A') policy-futures curve family. V1
+        universe: 'SOFR_FUT' (US Fed SOFR strip, RFR regime),
+        'EUR_SHORT_RATE_FUT' (ECB Euribor strip, IBOR regime),
+        'SONIA_FUT' (BOE SONIA strip, RFR regime).
+    curve_family_b : str
+        Second (denominator / 'B') policy-futures curve family. Must
+        differ from ``curve_family_a``. Same closed enum.
+    strip_position : int
+        1-based strip position on BOTH legs (matched-strip read).
+        1 = front contract on each market; 2..8 = quarterly forwards
+        down each strip in the V1 universe (whites = 1-4,
+        reds = 5-8).
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the rolling z-score window
+        (config-locked at 252) or the trailing range window (locked
+        at 252).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot. Empty
+        (default ``""``) = anchor at the universe's last observed
+        ``trade_date`` where BOTH legs are observed. An as_of_date
+        BEYOND the universe's last observed ``trade_date`` on EITHER
+        leg returns the documented controlled-error envelope; an
+        as_of_date WITHIN the universe range produces a DETERMINISTIC
+        snapshot (same as_of + same DB state ⇒ same numbers).
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ``""`` to use the bundled ``default_price_field`` convention
+        from futures_cross_market_spread/config.yaml (currently
+        'PX_LAST'). Pass an explicit field name to override per call.
+    """
+    field_name_arg = field_name if field_name else None
+
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_cross_market_spread_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesCrossMarketSpreadInput(
+            curve_family_a=curve_family_a,
+            curve_family_b=curve_family_b,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_cross_market_spread_tool] input validation "
+            "failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_cross_market_spread_tool] failed to connect "
+            "to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). Mirrors the sibling
+    # get_futures_calendar_spread_tool / get_futures_butterfly_simple_tool
+    # exactly.
+    try:
+        fxms_config = load_tool_config(
+            FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+        )
+        result = calculate_futures_cross_market_spread(
+            engine=engine, params=params, config=fxms_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_cross_market_spread_tool] unhandled error "
+            "for %s vs %s strip_position=%d",
+            params.curve_family_a, params.curve_family_b,
+            params.strip_position,
+        )
+        return json.dumps(
+            {"error": f"get_futures_cross_market_spread_tool failed "
+             f"for {params.curve_family_a} vs "
+             f"{params.curve_family_b} strip_position="
+             f"{params.strip_position}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_cross_market_spread_tool] tool call complete: "
+        "%s vs %s strip_position=%d → %s",
+        params.curve_family_a, params.curve_family_b,
+        params.strip_position, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload). The LLM
+    # doesn't need every historical row — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveats are propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_spread", "time_series_zscore")
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_cross_market_spread_tool] withheld %d "
             "time_series rows from LLM context.",
             ts_rows,
         )
