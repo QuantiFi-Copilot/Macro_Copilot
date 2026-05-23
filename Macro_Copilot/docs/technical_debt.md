@@ -587,6 +587,137 @@ WHEN: Before the Phase-3 `auction_tail` primitive or the auction event-study
       WIRP families.
 
 
+### 29. C2b — Term GC repo curves data PR deferred from Track C v1
+
+WHERE: ADR 0010 §Rollout item 3 (the repo-financing substrate ADR); a future
+       `rates_agent/playbooks/repo_term_gc.yml` (`ois.yml`-shaped: curve
+       points at ON / 1W / 1M / 3M per currency); a future
+       `scripts/repo_term_gc_bloomberg_check.py` operator-side verification
+       script; the `financing_rate.term_repo_curve()` method on
+       `rates_agent/ois/tools/financing_rate/` (currently `NotImplementedError`).
+WHAT: ADR 0010 (C1, substrate-only) ships the substrate decision: term GC
+      repo is time-series, lands in `macro_data.market_data_daily` under
+      the existing `data/` route, registered with `instrument_type: gc_repo`
+      — NO new table / extractor mode / ingester route / DB helper. The
+      substrate is in place after the ADR landed and no further C2b code is
+      required to unblock the data PR.
+
+      C2b is the data PR that would: write `repo_term_gc.yml` listing the
+      term-GC tickers per currency (the ADR predicts Bloomberg coverage
+      will be "partial"), run the operator-side Bloomberg verification
+      script to pin VERIFIED / DEFERRED per ticker per market under the
+      project's two-phase data-PR cycle, ingest the verified subset to
+      `market_data_daily`, and disclose the per-market coverage in the
+      PR's results section. NONE of this work has been done — no playbook
+      drafted, no verification script written, no Bloomberg probe run, no
+      data ingested. The downstream consumer `financing_rate.term_repo_curve()`
+      remains `NotImplementedError`.
+
+      The deferral is by PRIORITY, not by empirical coverage failure (no
+      probe has been run; Bloomberg coverage is unknown beyond ADR 0010's
+      a-priori "partial" prediction). Track C just shipped four PRs in
+      sequence (ADR 0010 / C2a overnight-RFR / C3 deliverables substrate /
+      C4 deliverables data) with substantial Codex-iteration cost across
+      five rounds; deferring C2b/C2c lets the project move on to higher-
+      priority work without leaving partial substrate or half-finished
+      verification artifacts.
+IMPACT: Zero downstream breakage. `financing_rate.term_repo_curve()` was
+      already `NotImplementedError` before Track C started and remains so
+      — Track C's promise was to LAND THE DATA, not to implement the
+      primitive. No Phase-3 / Phase-4 work currently in flight depends on
+      term-GC data. The bond-futures RV stack's `implied_repo_rate`
+      primitive (a future Phase-4 candidate) would benefit from term-GC
+      data but is not yet scheduled.
+
+      Substrate is unaffected: `market_data_daily` accepts `gc_repo`-typed
+      instruments today with zero schema change required when C2b is
+      picked up.
+FIX: When picked up — (a) write `rates_agent/playbooks/repo_term_gc.yml`
+      with CANDIDATE Bloomberg tickers per market (likely starting with
+      USD GC ON / 1W / 1M / 3M; major-market expansion as Bloomberg
+      coverage permits); (b) build `scripts/repo_term_gc_bloomberg_check.py`
+      mirroring `scripts/overnight_rfr_bloomberg_check.py` from C2a;
+      (c) operator runs the verification probe on the BBG PC; (d) agent
+      finalises the playbook to VERIFIED markers and documents per-market
+      DEFERRED entries here for any ticker without clean Bloomberg
+      coverage; (e) operator pushes the playbook to the GCS bucket and
+      runs the `--mode time-series` extractor against it; (f) ingester's
+      existing `data/` route handles the rest; (g) open the data PR with
+      the operator-run coverage report.
+EFFORT: Small to medium — the substrate, extractor mode, ingester route,
+      and ingestion-side helpers all exist and are battle-tested by C2a.
+      The new work is one YAML playbook + one verification script + one
+      operator probe round + one ingest. Mirrors C2a's effort profile
+      exactly. Estimated 1-2 working sessions assuming Bloomberg coverage
+      doesn't surface surprises.
+WHEN: When a Phase-3 / Phase-4 primitive that genuinely needs term-GC
+      repo data is scheduled — best done WITH that primitive's design so
+      the curve-point granularity matches the primitive's joins. Until
+      then, no value in landing partial term-GC reference data that has
+      no consumer.
+
+### 30. C2c — CUSIP-level repo specials data PR deferred from Track C v1
+
+WHERE: ADR 0010 §Rollout item 4 + §Decision 4 (the `otr_history`-bounded
+       universe); a future `rates_agent/playbooks/repo_cusip_specials.yml`
+       (per-CUSIP, bounded to `macro_data.otr_history`); a future
+       `scripts/repo_cusip_specials_bloomberg_check.py`; the
+       `financing_rate.gc_special_blend()` method on
+       `rates_agent/ois/tools/financing_rate/` (currently
+       `NotImplementedError`).
+WHAT: ADR 0010 §Decision 4 explicitly anticipated this entry: "if clean
+      CUSIP-specials data is not available from Bloomberg for even that
+      bounded universe, C2c is deferred and documented rather than
+      shipped partial or guessed." ADR 0010 v1 named C2c "the most at
+      risk of a documented deferral" before any probe.
+
+      Deferred by PRIORITY (not yet by empirical Bloomberg-coverage
+      failure — no probe has been run). The substrate (ADR 0010 +
+      `market_data_daily` + `instrument_type: repo_special` +
+      `otr_history`-bounded universe rule) is in place; C2c is a pure
+      data PR when picked up.
+
+      Same rationale as #29 (Track C just shipped four PRs across the
+      C1 / C2a / C3 / C4 sequence with substantial Codex-iteration cost
+      across five rounds; the project is moving on to higher-priority
+      work). C2c-specific risk: the ADR a-priori expects this is the
+      shape most likely to need a non-Bloomberg vendor (DTCC GCF / ICAP),
+      which would mean a second L1 adapter — a P7-governed major
+      architectural workstream explicitly out of Track C scope. The
+      probe round will resolve this empirically when scheduled.
+IMPACT: Zero downstream breakage. `financing_rate.gc_special_blend()` was
+      `NotImplementedError` before Track C and remains so. No Phase-3 /
+      Phase-4 work in flight depends on CUSIP-specials data. The
+      bond-futures RV stack's `implied_repo_rate` primitive (future
+      Phase-4 candidate) is partially blocked by both C2b and C2c when
+      it is eventually scheduled.
+
+      Substrate is unaffected: `market_data_daily` accepts `repo_special`-
+      typed instruments today; `otr_history` (ADR 0007) is current and
+      provides the universe bounds when C2c is picked up.
+FIX: When picked up — (a) operator FLDS-hunts the CUSIP-specials field on
+      Bloomberg for a representative `otr_history` CUSIP; if the field
+      exists and is populated, build the standard data-PR artifacts
+      (playbook + verification script + operator probe + ingest, mirroring
+      C2a's flow); (b) if Bloomberg does NOT carry clean CUSIP-specials
+      data even for the bounded universe — close C2c as a permanent
+      DEFERRED entry here citing the empirical failure, and the
+      `financing_rate.gc_special_blend()` method stays `NotImplementedError`
+      pending either (i) a separate ADR opening the second-L1-adapter
+      question (DTCC GCF or ICAP — P7-governed, out of Track C scope) or
+      (ii) accepting that CUSIP-specials data is structurally unavailable
+      to this project and re-scoping any primitive that needs it.
+EFFORT: One operator FLDS-discovery round to resolve the empirical
+      coverage question, then either a small data PR (if Bloomberg
+      covers) or a permanent-deferral update to this entry (if not).
+      Total worst case: similar to C2a / C2b effort profile if coverage
+      exists.
+WHEN: Same trigger as #29 — when a Phase-3 / Phase-4 primitive that
+      genuinely needs CUSIP-specials data is scheduled. Sensible to bundle
+      the C2b discovery round with C2c since both are repo-financing data
+      and both unblock the same `financing_rate` primitive methods.
+
+
 ## Phase 1 closure punch list (for reference)
 
 Per the original Phase 1 Week 7-8 plan:
