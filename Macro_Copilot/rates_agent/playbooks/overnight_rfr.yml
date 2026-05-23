@@ -2,12 +2,27 @@
 # overnight_rfr playbook — overnight risk-free-rate fixings
 # (work order C2a, Track C, Step 1 sub-phase 4A; substrate decision: ADR 0010)
 #
-# CANDIDATE — every Bloomberg mnemonic below is marked `# CANDIDATE — verify
-# via scripts/overnight_rfr_bloomberg_check.py`.  Nothing is "verified" until
-# the operator's terminal run of that script returns a clean PASS and this
-# file is updated to `# VERIFIED <date>` per the data-PR discipline.  A market
-# whose candidate does not verify is DEFERRED and documented (P2/P5) — never
-# shipped guessed.
+# VERIFIED 2026-05-23 — every Bloomberg mnemonic below was confirmed on a live
+# Bloomberg terminal via scripts/overnight_rfr_bloomberg_check.py (5-year
+# window 2021-05-24..2026-05-21): 4/4 markets PASS, with clean PX_LAST series,
+# sane rate ranges, and matching bdp metadata.  Per-market evidence:
+#
+#   SOFR   SOFRRATE Index   1247 pts  last=3.51    range [0.01, 5.40]
+#                           NAME='United States SOFR Secured Overnight Financing Rate'
+#   ESTR   ESTRON Index     1280 pts  last=1.932   range [-0.593, 3.913]
+#                           NAME='ESTR Volume Weighted Trimmed Mean'
+#   SONIA  SONIO/N Index    1261 pts  last=3.7309  range [0.045, 5.2001]
+#                           NAME='SONIA Interest Rate Benchmark'
+#   TONA   MUTKCALM Index   1221 pts  last=0.727   range [-0.079, 0.736]
+#                           NAME='Bank of Japan Final Result: Uncollateralized
+#                                 Overnight Call Rate'
+#
+# JPY-NAMING NOTE: the modern Tokyo Overnight Average Rate (TONA) IS the
+# uncollateralized overnight call rate Bloomberg historically tickers as
+# MUTKCALM (the legacy "Mutan call" name).  Operator-confirmed 2026-05-22;
+# the SECURITY_DES "Bank of Japan Final Result: Uncollateralized Overnight
+# Call Rate" is TONA.  The playbook's curve_family JPY_TONA_RFR reflects the
+# modern (post-reform) rate identity.
 #
 # WHAT THIS SHIPS
 #   One daily PX_LAST observation per market per day — the overnight RFR
@@ -62,18 +77,21 @@ extraction:
 
 target_metrics:
   - metric_id: "last_price"
-    bloomberg_field: "PX_LAST"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+    bloomberg_field: "PX_LAST"   # VERIFIED 2026-05-23 — clean daily series, 4/4 markets
 
 reference_metrics:
   - column_name: "security_name"
-    bloomberg_field: "SECURITY_DES"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+    bloomberg_field: "SECURITY_DES"   # VERIFIED 2026-05-23 — populated on all 4 tickers
 
 universe:
+  # All four tickers VERIFIED 2026-05-23 via scripts/overnight_rfr_bloomberg_check.py
+  # — full per-market evidence (points, span, last value, range, NAME) is in the
+  # header block above.
+
   # --------------------------------------------------------------------------
   # United States — SOFR (Federal Reserve)
   # --------------------------------------------------------------------------
-  - ticker: "SOFRRATE Index"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
-                                # (alt: SOFRINDX Index = compounded index, not the daily rate)
+  - ticker: "SOFRRATE Index"   # VERIFIED 2026-05-23 (1247 pts; last 3.51%; 5y span)
     instrument_type: "overnight_rfr"
     curve_family: "USD_SOFR_RFR"
     country: "US"
@@ -83,8 +101,7 @@ universe:
   # --------------------------------------------------------------------------
   # Euro area — ESTR (European Central Bank)
   # --------------------------------------------------------------------------
-  - ticker: "ESTRON Index"     # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
-                                # (alt: ESTR Index)
+  - ticker: "ESTRON Index"     # VERIFIED 2026-05-23 (1280 pts; last 1.932%; 5y span)
     instrument_type: "overnight_rfr"
     curve_family: "EUR_ESTR_RFR"
     country: "EU"
@@ -94,8 +111,7 @@ universe:
   # --------------------------------------------------------------------------
   # United Kingdom — SONIA (Bank of England)
   # --------------------------------------------------------------------------
-  - ticker: "SONIO/N Index"    # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
-                                # (alt: SONIA Index)
+  - ticker: "SONIO/N Index"    # VERIFIED 2026-05-23 (1261 pts; last 3.7309%; 5y span)
     instrument_type: "overnight_rfr"
     curve_family: "GBP_SONIA_RFR"
     country: "UK"
@@ -103,10 +119,11 @@ universe:
     tenor: "ON"
 
   # --------------------------------------------------------------------------
-  # Japan — TONA (Bank of Japan, Tokyo Overnight Average Rate)
+  # Japan — TONA (Bank of Japan; uncollateralized overnight call rate)
+  # Bloomberg's legacy MUTKCALM ticker carries the modern TONA fixing — see
+  # the JPY-NAMING NOTE in the header block above.
   # --------------------------------------------------------------------------
-  - ticker: "TONAR Index"      # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
-                                # (alt: MUTSCALM Index = historical Mutan overnight)
+  - ticker: "MUTKCALM Index"   # VERIFIED 2026-05-23 (1221 pts; last 0.727%; 5y span)
     instrument_type: "overnight_rfr"
     curve_family: "JPY_TONA_RFR"
     country: "JP"
