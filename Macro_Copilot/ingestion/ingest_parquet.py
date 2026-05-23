@@ -29,6 +29,7 @@ from database.database import (  # noqa: E402
     upsert_otr_history,
     close_open_otr_window,
     upsert_event_calendar,
+    upsert_futures_deliverables,
 )
 
 # The dedup hash logic lives in its own module so it can be imported
@@ -71,6 +72,17 @@ from ingestion.otr_resolution import (  # noqa: E402
 from ingestion.event_calendar import (  # noqa: E402
     is_ingestable_event,
     parquet_to_event_records,
+)
+
+# Pure-Python helpers for the futures-deliverables flow (ADR 0011). The parser
+# turns a wide deliverables parquet into clean per-(generic, contract, deliverable
+# bond) records; the gate decides which rows carry the natural-key triple a
+# write needs. The optional CUSIP -> instrument_master FK lookup is done by the
+# route function (this module needs a DB query), not by the parser.
+from ingestion.deliverables import (  # noqa: E402
+    is_ingestable_deliverable,
+    parquet_to_deliverables_records,
+    validate_per_contract_dates,
 )
 
 # --- CONFIGURATION ---
@@ -1178,6 +1190,319 @@ def _process_event_blob(
 
 
 # ==============================================================================================
+# DELIVERABLES ROUTE (ADR 0011)
+# ==============================================================================================
+# Per-bond-future-contract deliverable basket + conversion factor + delivery /
+# notice dates. Wide parquet (one row per (generic, contract_code, deliverable_
+# cusip)) -> macro_data.futures_deliverables via upsert_futures_deliverables
+# (a full-row upsert: a re-ingest of the same basket safely overwrites every
+# non-key column). The vendor_ticker (the GENERIC, e.g. 'TY1 Comdty') is
+# resolved against instrument_master like the metadata-history route does; the
+# OPTIONAL deliverable_instrument_id FK is resolved by a separate CUSIP lookup
+# against instrument_master.cusip (NULL when the deliverable bond is not
+# registered — ADR 0011 Decision 2).
+# ==============================================================================================
+def _process_deliverables_blob(
+    bucket: "storage.Bucket",
+    blob: "storage.Blob",
+    engine,
+    temp_dir: Path,
+) -> bool:
+    """Process one deliverables parquet end-to-end.
+
+    Returns True on success (ingested or skipped-duplicate); False on any
+    failure path. Mirrors ``_process_metadata_history_blob``.
+    """
+    filename = Path(blob.name).name
+    local_path = temp_dir / filename
+    load_id: Optional[int] = None
+
+    try:
+        print(f"\nProcessing (deliverables): {filename}")
+
+        blob.download_to_filename(str(local_path))
+        df = pd.read_parquet(local_path)
+        normalized_data_hash = _compute_normalized_data_hash(df)
+
+        if df.empty:
+            print(f"  [WARNING] File {filename} is empty. Skipping.")
+            return False
+
+        # --- Lineage / dedup -----------------------------------------------
+        # Deliverables artifacts MUST carry lineage. A missing playbook_name is
+        # a malformed artifact (the extractor always stamps it) and would also
+        # break the playbook-keyed dedup -- fail loudly rather than load under
+        # a junk name.
+        playbook_name = _first_non_null(df, "playbook_name")
+        if not playbook_name:
+            print(
+                f"  [ERROR] Deliverables parquet {filename} carries no "
+                "playbook_name -- malformed artifact (missing lineage). "
+                "Not ingested."
+            )
+            return False
+        playbook_version = _first_non_null(df, "playbook_version")
+        dataset_name = _first_non_null(df, "dataset_name")
+        requested_start_date = _first_non_null(df, "requested_start_date")
+        requested_end_date = _first_non_null(df, "requested_end_date")
+        extracted_at = _first_non_null(df, "extracted_at")
+        extraction_mode = str(
+            _first_non_null(df, "extraction_mode") or "deliverables"
+        ).strip().lower()
+
+        if extraction_mode != "deliverables":
+            print(
+                f"  [WARNING] File {filename} is under deliverables/ but declares "
+                f"extraction_mode={extraction_mode!r}. Skipping."
+            )
+            return False
+
+        latest_success = get_latest_successful_load_for_playbook(engine, playbook_name)
+        latest_success_hash = latest_success.get("source_file_hash") if latest_success else None
+
+        if latest_success_hash and latest_success_hash == normalized_data_hash:
+            print(
+                f"  [SKIP] Parquet hash matches latest successful deliverables load "
+                f"for '{playbook_name}'. Skipping ingestion."
+            )
+            mark_load_audit_skipped_duplicate(
+                engine=engine,
+                playbook_name=playbook_name,
+                playbook_version=playbook_version,
+                source_file_name=filename,
+                source_file_hash=normalized_data_hash,
+                dataset_name=dataset_name,
+                requested_start_date=requested_start_date,
+                requested_end_date=requested_end_date,
+                extracted_at=extracted_at,
+                notes=(
+                    f"Skipped duplicate deliverables artifact from GCS object "
+                    f"{blob.name}; source_file_hash matches the latest successful "
+                    f"load for this playbook. (extraction_mode={extraction_mode})"
+                ),
+            )
+            try:
+                new_blob_name = blob.name.replace(
+                    "deliverables/", "archive/deliverables/", 1
+                )
+                bucket.rename_blob(blob, new_blob_name)
+                print(f"  [SUCCESS] Archived duplicate to gs://{BUCKET_NAME}/{new_blob_name}")
+            except Exception as archive_err:
+                print(
+                    f"  [WARNING] Duplicate correctly skipped but GCS archival "
+                    f"failed: {archive_err}. File remains in deliverables/."
+                )
+            return True
+
+        audit_record = {
+            "playbook_name": playbook_name,
+            "playbook_version": playbook_version,
+            "playbook_hash": _first_non_null(df, "playbook_hash") or normalized_data_hash,
+            "git_commit_hash": _first_non_null(df, "git_commit_hash"),
+            "extractor_version": _first_non_null(df, "extractor_version"),
+            "source_file_name": filename,
+            "source_file_hash": normalized_data_hash,
+            "dataset_name": dataset_name,
+            "requested_start_date": requested_start_date,
+            "requested_end_date": requested_end_date,
+            "extracted_at": extracted_at,
+            "status": "RUNNING",
+            "notes": (
+                f"Processing GCS object {blob.name} | "
+                f"extraction_mode={extraction_mode}"
+            ),
+        }
+
+        print("  [DB] Inserting load_audit record...")
+        load_id = insert_load_audit(engine, audit_record)
+
+        # --- Resolve vendor_ticker -> instrument_id (the GENERIC) -----------
+        unique_tickers = sorted({str(t) for t in df["vendor_ticker"].dropna().unique()})
+        if not unique_tickers:
+            msg = f"No vendor_ticker values present in deliverables parquet {filename}"
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        metadata = MetaData(schema="macro_data")
+        master_table = Table("instrument_master", metadata, autoload_with=engine)
+        vendor_default = _first_non_null(df, "vendor") or DEFAULT_VENDOR
+        with engine.begin() as conn:
+            rows = conn.execute(
+                select(master_table.c.vendor_ticker, master_table.c.instrument_id)
+                .where(master_table.c.vendor == vendor_default)
+                .where(master_table.c.vendor_ticker.in_(unique_tickers))
+            ).fetchall()
+        instrument_id_map: Dict[str, int] = {r.vendor_ticker: r.instrument_id for r in rows}
+        missing_tickers = [t for t in unique_tickers if t not in instrument_id_map]
+        if missing_tickers:
+            msg = (
+                f"deliverables parquet references {len(missing_tickers)} "
+                f"vendor_ticker(s) not present in instrument_master "
+                f"({', '.join(missing_tickers[:5])}"
+                f"{'...' if len(missing_tickers) > 5 else ''}). "
+                "Ingest the bond-futures time-series playbook owning these "
+                "tickers first."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Parse the parquet into record dicts ---------------------------
+        # The parser is pure-Python; the optional deliverable_instrument_id FK
+        # is resolved AFTER, below, by a separate CUSIP lookup (the parser is
+        # DB-free by design).
+        try:
+            records = parquet_to_deliverables_records(
+                df,
+                instrument_id_map=instrument_id_map,
+                load_id=load_id,
+            )
+        except ValueError as exc:
+            msg = f"Failed to assemble deliverables records from {filename}: {exc}"
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Ingestability gate (defence-in-depth: parser already validated) -
+        # The parser already validates the natural-key triple is present; this
+        # gate guards against parser drift. FAIL loudly on any malformed row
+        # rather than silently dropping it -- ``upsert_futures_deliverables``
+        # is a full-row upsert, so a half-ingested basket must never be
+        # presented as a clean load.
+        ingestable: List[Dict[str, Any]] = []
+        malformed: List[Dict[str, Any]] = []
+        for rec in records:
+            (ingestable if is_ingestable_deliverable(rec) else malformed).append(rec)
+
+        if malformed:
+            preview = "; ".join(
+                f"{r.get('instrument_id')}/{r.get('contract_code')}/{r.get('deliverable_cusip')}"
+                for r in malformed[:5]
+            )
+            msg = (
+                f"deliverables parquet {filename} has {len(malformed)} malformed "
+                f"row(s) -- each missing a natural-key field "
+                f"(instrument_id / contract_code / deliverable_cusip): {preview}. "
+                "Aborting; re-extract the artifact clean."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        if not ingestable:
+            msg = (
+                f"deliverables parquet {filename} produced 0 records after "
+                "instrument_id resolution; nothing to write."
+            )
+            print(f"  [WARNING] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Per-contract date denormalisation check (ADR 0011 v2) -----------
+        # first/last delivery dates and first/last notice dates are PER CONTRACT
+        # but are stored on every row of the deliverable basket (denormalised --
+        # one (instrument_id, contract_code, deliverable_cusip) row per
+        # deliverable bond). If a parquet's basket rows disagree on those dates
+        # the artifact is malformed: silently folding it in would corrupt
+        # downstream joins. Codex finding 5 / ADR 0011 v2.
+        date_conflicts = validate_per_contract_dates(ingestable)
+        if date_conflicts:
+            preview = " | ".join(date_conflicts[:3])
+            extra = f" (+{len(date_conflicts) - 3} more)" if len(date_conflicts) > 3 else ""
+            msg = (
+                f"deliverables parquet {filename} has {len(date_conflicts)} "
+                f"per-contract date conflict(s) -- denormalised "
+                f"delivery/notice dates disagree across basket rows for the "
+                f"same (instrument_id, contract_code): {preview}{extra}. "
+                "Re-extract the artifact clean."
+            )
+            print(f"  [ABORT] {msg}")
+            update_load_audit_status(engine, load_id, "FAILED", msg)
+            return False
+
+        # --- Optional FK: resolve deliverable_cusip -> instrument_id --------
+        # When a deliverable bond IS registered in instrument_master (ADR 0003
+        # gave instruments typed cusip + isin with a partial unique index on
+        # cusip WHERE NOT NULL), populate ``deliverable_instrument_id`` so
+        # downstream primitives can join via the FK. When the bond is NOT
+        # registered (the common case -- most deliverable bonds are seasoned
+        # issues outside A4's OTR-bounded universe), leave the FK NULL; a
+        # consumer can still join on ``deliverable_cusip = im.cusip``.
+        unique_cusips = sorted({r["deliverable_cusip"] for r in ingestable if r.get("deliverable_cusip")})
+        cusip_to_instrument_id: Dict[str, int] = {}
+        if unique_cusips:
+            with engine.begin() as conn:
+                cusip_rows = conn.execute(
+                    select(master_table.c.cusip, master_table.c.instrument_id)
+                    .where(master_table.c.cusip.in_(unique_cusips))
+                    .where(master_table.c.cusip.isnot(None))
+                ).fetchall()
+            cusip_to_instrument_id = {r.cusip: r.instrument_id for r in cusip_rows}
+        if cusip_to_instrument_id:
+            print(
+                f"  [INFO] Resolved {len(cusip_to_instrument_id)}/{len(unique_cusips)} "
+                "deliverable CUSIP(s) to instrument_master rows."
+            )
+        for r in ingestable:
+            cusip = r.get("deliverable_cusip")
+            if cusip and cusip in cusip_to_instrument_id:
+                r["deliverable_instrument_id"] = int(cusip_to_instrument_id[cusip])
+
+        print(f"  [INFO] {len(ingestable)} deliverables row(s), all well-formed.")
+
+        # --- Critical destructive section ---------------------------------
+        # The upsert + audit flip commit atomically or roll back together.
+        # No close-open-window step here: deliverables are not SCD2 (the basket
+        # is current-state per contract; old contracts' baskets are
+        # historical-immutable; the natural-key UPSERT covers refinement of
+        # a still-active basket).
+        with engine.begin() as conn:
+            upsert_futures_deliverables(conn, ingestable)
+            update_load_audit_status(
+                conn,
+                load_id,
+                "SUCCESS",
+                (
+                    f"Successfully loaded deliverables from GCS object "
+                    f"{blob.name} | extraction_mode={extraction_mode} | "
+                    f"generics={len(instrument_id_map)} | rows={len(ingestable)} | "
+                    f"linked_deliverables={len(cusip_to_instrument_id)}/{len(unique_cusips)}"
+                ),
+            )
+
+        # --- Archive (best-effort) -----------------------------------------
+        try:
+            new_blob_name = blob.name.replace("deliverables/", "archive/deliverables/", 1)
+            bucket.rename_blob(blob, new_blob_name)
+            print(f"  [SUCCESS] Archived file to gs://{BUCKET_NAME}/{new_blob_name}")
+        except Exception as archive_err:
+            print(
+                f"  [WARNING] DB load succeeded but GCS archival failed: "
+                f"{archive_err}. File remains in deliverables/; dedup hash will "
+                "skip it on next run."
+            )
+
+        return True
+
+    except Exception as exc:
+        print(f"  [ERROR] Failed to process deliverables parquet {filename}: {exc}")
+        if load_id is not None:
+            try:
+                update_load_audit_status(
+                    engine, load_id, "FAILED",
+                    f"Processing failed for GCS object {blob.name}: {exc}",
+                )
+            except Exception as audit_err:
+                print(f"  [ERROR] Could not update load_audit status: {audit_err}")
+        return False
+
+    finally:
+        if local_path.exists():
+            local_path.unlink()
+
+
+# ==============================================================================================
 # MAIN PIPELINE
 # ==============================================================================================
 def run_ingestion_pipeline():
@@ -1217,6 +1542,10 @@ def run_ingestion_pipeline():
         b for b in bucket.list_blobs(prefix="events/")
         if b.name.endswith(".parquet")
     ]
+    deliverables_blobs = [
+        b for b in bucket.list_blobs(prefix="deliverables/")
+        if b.name.endswith(".parquet")
+    ]
     parquet_blobs = timeseries_blobs  # Legacy alias for the time-series loop below.
 
     if (
@@ -1224,6 +1553,7 @@ def run_ingestion_pipeline():
         and not metadata_history_blobs
         and not otr_resolution_blobs
         and not event_blobs
+        and not deliverables_blobs
     ):
         print("[INFO] No new Parquet files found in the inbox. Exiting cleanly.")
         return
@@ -1231,8 +1561,9 @@ def run_ingestion_pipeline():
     print(
         f"[INFO] Found {len(timeseries_blobs)} time-series file(s), "
         f"{len(metadata_history_blobs)} metadata-history file(s), "
-        f"{len(otr_resolution_blobs)} otr-resolution file(s) and "
-        f"{len(event_blobs)} event-calendar file(s) to process."
+        f"{len(otr_resolution_blobs)} otr-resolution file(s), "
+        f"{len(event_blobs)} event-calendar file(s) and "
+        f"{len(deliverables_blobs)} deliverables file(s) to process."
     )
 
     temp_dir = current_dir / "temp_processing"
@@ -1554,6 +1885,26 @@ def run_ingestion_pipeline():
         )
         for blob in event_blobs:
             ok = _process_event_blob(
+                bucket=bucket,
+                blob=blob,
+                engine=engine,
+                temp_dir=temp_dir,
+            )
+            if not ok:
+                any_failures = True
+
+    # --- PHASE 6: DELIVERABLES (ADR 0011) -------------------------------------
+    # Per-bond-future-contract deliverable basket + conversion factor +
+    # delivery / notice dates. Each blob is processed end-to-end via
+    # _process_deliverables_blob, which manages its own dedup check, audit
+    # row, atomic destructive section, optional CUSIP->FK lookup, and archive.
+    # Destination is macro_data.futures_deliverables.
+    if deliverables_blobs:
+        print(
+            f"\n[PHASE 6] Processing {len(deliverables_blobs)} deliverables parquet(s)..."
+        )
+        for blob in deliverables_blobs:
+            ok = _process_deliverables_blob(
                 bucket=bucket,
                 blob=blob,
                 engine=engine,

@@ -1452,3 +1452,167 @@ def get_events_in_window(
             .all()
         )
     return [dict(r) for r in rows]
+
+
+# ============================================================================
+# Futures deliverables (ADR 0011, work order C3)
+# ============================================================================
+#
+# ``macro_data.futures_deliverables`` carries one row per
+# ``(generic_instrument_id, contract_code, deliverable_cusip)`` — the
+# deliverable basket + conversion factor + delivery/notice dates of a single
+# bond-future contract cycle. The helpers below mirror
+# ``upsert_event_calendar`` (full-row UPSERT on a natural key) and
+# ``upsert_instrument_metadata_history`` (uniform-key normalisation for bulk
+# insert). No surgical-COALESCE exception is needed here: a deliverables row
+# is written by ONE pipeline (the ``deliverables/`` ingester route), not by
+# two independent writers, so a plain overwrite is correct.
+
+# Every column on ``futures_deliverables`` except the natural key
+# (instrument_id, contract_code, deliverable_cusip) and the immutable
+# identity / audit columns (deliverable_id, created_at). The normaliser
+# defaults every omitted optional column to None so SQLAlchemy bulk-insert
+# derives a single coherent column list across records.
+_DELIVERABLES_VALUE_COLUMNS = (
+    "deliverable_isin",
+    "deliverable_instrument_id",
+    "conversion_factor",
+    "first_delivery_date",
+    "last_delivery_date",
+    "first_notice_date",
+    "last_notice_date",
+    "attributes",
+    "load_id",
+)
+
+
+def _normalize_deliverables_record(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Internal: turn a caller-supplied deliverable-basket record into a clean
+    dict mapping the columns of ``macro_data.futures_deliverables``.
+
+    A record MUST carry the natural-key triple: ``instrument_id``,
+    ``contract_code``, ``deliverable_cusip``. Every other column is optional
+    and defaults to ``None`` so the returned dicts have a uniform key set
+    across every record — bulk ``insert(...).values([...])`` then derives one
+    coherent column list regardless of which optional fields each record
+    carries. Mirrors :func:`_normalize_event_record` and
+    :func:`_normalize_history_record`.
+
+    FK columns (``instrument_id``, ``deliverable_instrument_id``, ``load_id``)
+    are cast to ``int`` when present — a parquet round-trip can yield numpy
+    int64 or a string.
+    """
+    instrument_id = record.get("instrument_id")
+    contract_code = record.get("contract_code")
+    deliverable_cusip = record.get("deliverable_cusip")
+
+    if instrument_id is None:
+        raise ValueError(
+            "futures_deliverables record requires `instrument_id` "
+            "(the generic future's instrument_master id)."
+        )
+    if not contract_code:
+        raise ValueError(
+            "futures_deliverables record requires `contract_code` "
+            "(the specific cycle, e.g. 'TYZ24')."
+        )
+    if not deliverable_cusip:
+        raise ValueError(
+            "futures_deliverables record requires `deliverable_cusip` "
+            "(the canonical Bloomberg identity of the deliverable bond)."
+        )
+
+    row: Dict[str, Any] = {
+        "instrument_id": int(instrument_id),
+        "contract_code": str(contract_code),
+        "deliverable_cusip": str(deliverable_cusip),
+    }
+    for col in _DELIVERABLES_VALUE_COLUMNS:
+        row[col] = record.get(col)
+    for fk in ("deliverable_instrument_id", "load_id"):
+        if row[fk] is not None:
+            row[fk] = int(row[fk])
+    return row
+
+
+def upsert_futures_deliverables(
+    connectable: Connectable,
+    records: List[Dict[str, Any]],
+) -> int:
+    """
+    Idempotent writer for ``macro_data.futures_deliverables`` (ADR 0011).
+
+    Each record MUST carry:
+      - ``instrument_id`` (int) — the generic future's ``instrument_master`` id.
+      - ``contract_code`` (str) — the specific cycle (e.g. ``'TYZ24'``).
+      - ``deliverable_cusip`` (str) — the deliverable bond's canonical identity.
+
+    Optional columns: ``deliverable_isin``, ``deliverable_instrument_id``
+    (FK to ``instrument_master`` — populated only when the deliverable bond is
+    already registered), ``conversion_factor``, ``first_delivery_date``,
+    ``last_delivery_date``, ``first_notice_date``, ``last_notice_date``,
+    ``attributes`` (JSONB), ``load_id``.
+
+    Behaviour:
+      * Idempotent on the natural key
+        ``(instrument_id, contract_code, deliverable_cusip)`` via
+        ``ON CONFLICT DO UPDATE`` — re-ingesting the same basket is safe;
+        post-extraction updates (a corrected conversion factor, a refined
+        delivery date) overwrite on the same row.
+
+    FULL-ROW UPSERT — caller contract. On a natural-key conflict every
+    non-key, non-immutable column is overwritten from the incoming record.
+    :func:`_normalize_deliverables_record` defaults every omitted optional
+    column to ``None``, so a caller that omits a field writes ``NULL`` to
+    it — omitted fields are NOT merge-preserved. **Every call MUST therefore
+    pass the complete current state of the (contract, deliverable) pair.**
+    This matches :func:`upsert_event_calendar` and
+    :func:`upsert_instrument_metadata_history`. There is no surgical-COALESCE
+    exception (cf. ADR 0009 §5 on ``event_calendar.related_instrument_id``):
+    a ``futures_deliverables`` row is written by ONE pipeline — the
+    ``deliverables/`` ingester route (which itself populates
+    ``deliverable_instrument_id`` from a CUSIP lookup before writing) — so
+    plain overwrite is correct.
+
+    Connection contract: accepts either an :class:`Engine` (self-managed
+    transaction) or a :class:`Connection` (caller-managed). See :func:`_txn`.
+    """
+    if not records:
+        return 0
+
+    metadata = MetaData(schema="macro_data")
+    deliverables = Table("futures_deliverables", metadata, autoload_with=connectable)
+
+    # As with upsert_event_calendar / upsert_instrument_metadata_history:
+    # reflection types the JSONB column with ``none_as_null=False`` by default,
+    # under which a Python ``None`` binds as the JSON ``'null'`` literal rather
+    # than SQL NULL. Override so an absent attributes blob persists as a
+    # genuine SQL NULL.
+    deliverables.c.attributes.type = JSONB(none_as_null=True)
+
+    clean: List[Dict[str, Any]] = [_normalize_deliverables_record(r) for r in records]
+
+    stmt = insert(deliverables).values(clean)
+    update_set = {
+        c.name: stmt.excluded[c.name]
+        for c in deliverables.c
+        if c.name
+        not in {
+            "deliverable_id",
+            "instrument_id",
+            "contract_code",
+            "deliverable_cusip",
+            "created_at",
+        }
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["instrument_id", "contract_code", "deliverable_cusip"],
+        set_=update_set,
+    )
+
+    with _txn(connectable) as conn:
+        result = conn.execute(stmt)
+    affected = result.rowcount or 0
+    print(f"[DB] Upserted {affected} rows into futures_deliverables.")
+    return affected

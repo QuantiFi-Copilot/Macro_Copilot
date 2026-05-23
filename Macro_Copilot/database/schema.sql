@@ -386,3 +386,85 @@ CREATE INDEX IF NOT EXISTS idx_event_calendar_related_instrument
 
 CREATE INDEX IF NOT EXISTS idx_event_calendar_attributes
     ON macro_data.event_calendar USING GIN (attributes);
+
+
+-- ================================================================================================
+-- 8) macro_data.futures_deliverables  (ADR 0011)
+-- The deliverable basket + conversion factor + delivery/notice dates per bond-future contract.
+-- One row per (generic, contract cycle, deliverable bond). Reference data — not time-series —
+-- so it does not fit market_data_daily, exactly as event_calendar did not (ADR 0004).
+--
+-- KEYING (ADR 0011 Decisions 1 & 2):
+--   * The futures contract is keyed by (instrument_id, contract_code) — the same identity
+--     instrument_metadata_history uses (ADR 0001) so joins to that table are clean
+--     `ON (instrument_id, contract_code)`. `instrument_id` is the GENERIC's row (TY1's row);
+--     `contract_code` is the specific cycle (e.g. 'TYZ24'). A `metadata_history_id` FK was
+--     rejected — it creates a chicken-and-egg ordering dependency on metadata-history
+--     extraction.
+--   * The deliverable bond is a CUSIP string + an OPTIONAL FK to instrument_master. Most
+--     deliverable bonds are seasoned issues NOT in instrument_master (A4 bounded the cash-bond
+--     universe to OTR + recently-off-the-run); the CUSIP is the universal identity, the FK is
+--     convenience. The ingester populates `deliverable_instrument_id` only when the deliverable
+--     bond IS already registered.
+--
+-- DENORMALISATION (ADR 0011 Alternatives):
+--   First/last delivery + notice dates are per-CONTRACT, but stored on every basket row
+--   (duplicated across the ~30 deliverables of a basket). Accepted for v1 — basket sizes are
+--   small (~11k rows max across all generics and cycles); a future ADR can split into two
+--   tables if scale demands it.
+--
+-- UPSERT discipline:
+--   Natural key (instrument_id, contract_code, deliverable_cusip) — full-row UPSERT on conflict.
+--   Re-ingesting the same parquet over the same key safely overwrites every non-key column.
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS macro_data.futures_deliverables (
+    deliverable_id BIGSERIAL PRIMARY KEY,
+
+    -- The futures contract — generic instrument + cycle code (ADR 0001 keying).
+    instrument_id BIGINT NOT NULL
+        REFERENCES macro_data.instrument_master(instrument_id),
+    contract_code VARCHAR(32) NOT NULL,
+
+    -- The deliverable bond — CUSIP canonical, ISIN secondary, optional FK (ADR 0003 identity).
+    deliverable_cusip VARCHAR(16) NOT NULL,
+    deliverable_isin  VARCHAR(16),
+    deliverable_instrument_id BIGINT
+        REFERENCES macro_data.instrument_master(instrument_id),
+
+    -- Per (contract, deliverable) — the futures invoice adjustment.
+    conversion_factor NUMERIC(20, 10),
+
+    -- Per contract — duplicated across deliverables in the basket (see denormalisation note).
+    first_delivery_date DATE,
+    last_delivery_date  DATE,
+    first_notice_date   DATE,
+    last_notice_date    DATE,
+
+    attributes JSONB,
+    load_id BIGINT REFERENCES macro_data.load_audit(load_id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- One row per (generic, contract cycle, deliverable bond) — the natural key for idempotent
+    -- re-ingestion. UPSERT on conflict.
+    CONSTRAINT uq_futures_deliverables_natural_key
+        UNIQUE (instrument_id, contract_code, deliverable_cusip)
+);
+
+-- Per-contract reads ("give me TYZ24's basket"). The natural-key UNIQUE already supports the
+-- (instrument_id, contract_code) prefix, but a dedicated index makes the intent explicit and
+-- supports group-by counts.
+CREATE INDEX IF NOT EXISTS idx_futures_deliverables_contract
+    ON macro_data.futures_deliverables (instrument_id, contract_code);
+
+-- Per-deliverable-bond reads ("which contracts is this CUSIP deliverable into?").
+CREATE INDEX IF NOT EXISTS idx_futures_deliverables_cusip
+    ON macro_data.futures_deliverables (deliverable_cusip);
+
+-- Optional-FK lookups (partial — most rows will have NULL deliverable_instrument_id since most
+-- deliverable bonds are seasoned issues outside A4's OTR-bounded universe).
+CREATE INDEX IF NOT EXISTS idx_futures_deliverables_deliverable_instrument
+    ON macro_data.futures_deliverables (deliverable_instrument_id)
+    WHERE deliverable_instrument_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_futures_deliverables_attributes
+    ON macro_data.futures_deliverables USING GIN (attributes);
