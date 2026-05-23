@@ -298,6 +298,12 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
     InflationSwapButterflyOutput,
     calculate_inflation_swap_butterfly,
 )
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    calculate_scan_inflation_swaps_extremes,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -1044,6 +1050,29 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_butterfly": "bps",
             "time_series_zscore": "z_score",
         },
+    ),
+    # ``scan_inflation_swaps_extremes_tool`` is a SNAPSHOT primitive
+    # (no canonical TimeSeries on the wire); per-row context columns
+    # mix PERCENT (zcis_rate_pct), BPS
+    # (daily_change_zcis_rate_bps / monthly_change_zcis_rate_bps),
+    # unit-less z-score, and plain-string reference columns
+    # (maturity_date / underlying_index / vendor_ticker).  Declaring
+    # a single unit would silently lie about the mixed-shape row
+    # payload under P8 + P5; the validator's empty-dict exemption
+    # (see shared/workflow/validate.py) defers the unit check to
+    # the operator's runtime refusal — the honest path until a
+    # future ADR extends ``TimeSeriesUnits``.  Same exempt pattern
+    # the linker scanner uses.  Per-pillar / cross-tenor history
+    # lives on the sibling per-pillar inflation_swap_rate_level /
+    # inflation_swap_curve_spread / etc. primitives; composing
+    # those is the honest path for time-series consumers.
+    "scan_inflation_swaps_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_swaps_extremes_tool",
+        callable=calculate_scan_inflation_swaps_extremes,
+        input_class=ScanInflationSwapsExtremesInput,
+        output_class=ScanInflationSwapsExtremesOutput,
+        config_path=SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
     ),
 }
 

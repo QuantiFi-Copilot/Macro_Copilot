@@ -866,8 +866,40 @@ primitives:
       - linker yield_mid history across the universe
 
   - id: inflation_swaps__scan_inflation_swaps_extremes
-    status: todo
+    status: done
     build_order: 25
+    active_step: ready_to_commit
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
+    dismissed_findings:
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          shared/analytics/rates_fetch.py:619-643, 681-691 — the module-
+          level comment block above fetch_scan_universe_reference and
+          the function docstring's primary bulleted description of
+          "per-instrument reference columns" still enumerate only
+          maturity_date / country / vendor_ticker; the Returns section
+          and a new explanatory paragraph (lines 717-724) do mention
+          underlying_index. This is internally inconsistent but the
+          addition IS documented elsewhere in the docstring. Worth a
+          follow-up tidy but not a P10 violation in substance.
+        reason_dismissed: |
+          Reviewer himself classifies the finding as "not a P10 violation
+          in substance" and "not a blocker." The function's Returns
+          section and the dedicated explanatory paragraph at L717-724
+          both name underlying_index explicitly and cite the ZCIS scan
+          as the reason for the projection. The primary bullet list in
+          the function docstring is a column-family summary
+          (maturity_date / country / vendor_ticker as the per-instrument
+          reference triplet) and the authoritative Returns + paragraph
+          are the single source of truth that already documents
+          underlying_index. Falls into the Review adjudication rule's
+          dismissable category (docstring cleanliness with no
+          correctness / methodology / wiring / wire-shape / testing
+          impact). No re-dispatch.
     instrument_family: inflation_swaps
     tool_name: scan_inflation_swaps_extremes
     category: desk_invariant_primitive

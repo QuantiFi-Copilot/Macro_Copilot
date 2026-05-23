@@ -21,15 +21,15 @@ backend: coding-agent
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
 orchestrator_status: processing
-current_primitive: inflation_linkers__scan_inflation_linkers_extremes
-current_primitive_tool_name: scan_inflation_linkers_extremes
+current_primitive: inflation_swaps__scan_inflation_swaps_extremes
+current_primitive_tool_name: scan_inflation_swaps_extremes
 current_step: committing
-last_successful_primitive: policy_futures__futures_cross_market_spread
-last_successful_commit: 026d571
+last_successful_primitive: inflation_linkers__scan_inflation_linkers_extremes
+last_successful_commit: a11c095
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-23T11:45Z_reviewer_round_1_approved_committing_scan_inflation_linkers_extremes
+last_stop_reason: wake_2026-05-23T12:38Z_reviewer_round1_APPROVED_claude_fallback_ready_to_commit
 last_error: null
-last_updated: "2026-05-23T11:46:00Z"
+last_updated: "2026-05-23T12:39:00Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
@@ -85,6 +85,554 @@ human_required: null
 # Audit log — append-only
 # ---------------------------------------------------------------------------
 status_notes:
+  - at: "2026-05-23T12:39:00Z"
+    kind: wake_2026-05-23T12:38Z_reviewer_round1_APPROVED_claude_fallback_with_one_dismissed_finding
+    text: |
+      Reviewer (claude_fallback) round 1 for
+      inflation_swaps__scan_inflation_swaps_extremes returned:
+
+        heading                  : APPROVED
+        environment_failure      : false
+        reviewer_quota_exhausted : false
+        log file                 : /tmp/claude_reviewer_run_inflation_swaps__
+                                   scan_inflation_swaps_extremes_round1.log
+        log size                 : 3328 bytes
+        wall-clock               : ~7 min (12:31Z dispatch -> 12:38Z exit)
+
+      Substantive verifications the reviewer recorded against the live
+      working tree:
+        - Branch primitive_automation, pre-flight load_audit PASS for
+          inflation_swaps (only required playbook).
+        - PR9 four-file pattern (__init__.py / config.yaml /
+          schemas.py / compute.py) all present.
+        - PR8 input-schema discipline: only curve_families (scope) /
+          top_n / min_abs_z_score (display) / as_of_date (anchor);
+          no field_name / lookback_days / metrics. Refusal tests
+          cover all three.
+        - PR10 YAML/code split: z_score_window_days=252 in YAML,
+          instrument_type + schema validators in code.
+        - PR14 wire-freeze: output_field_units={} matches sibling
+          scanners exempt-snapshot pattern; _validate_window_252d
+          raises NotImplementedError on YAML drift.
+        - P5 methodology_disclosure carries the 252-day window
+          verbatim, INDEX-FAMILY caveat naming CPURNSA / CPTFEMU /
+          UKRPI, MARKET-STRUCTURE caveat with 3M/2M lag +
+          daily/monthly interpolation, morning-screen scope;
+          present on response AND every row.
+        - P5 no-proxy on security_name: NULL on DB, not relabelled,
+          planned_extensions documented (same as a11c095).
+        - P8 closed-family whitelist {USD_ZCIS, EUR_ZCIS, GBP_ZCIS}
+          matches DB pre-flight (21 stems across 3 curve_families);
+          nominal / linker / OIS curve_families refused at schema
+          layer.
+        - PR16 testing triplet (compute 44 / wiring 30 / parity 2 /
+          sql_validation read-only script with window-function
+          parity to the Python ranking, plus future-anchor guard).
+        - Wiring (mcp_server Tool 7 with config= kw + sentinel
+          coalescing + error envelope, schemas re-export, workflow
+          PrimitiveSpec, conftest.collect_ignore) all present.
+        - Fetcher extension additive; linker call site unaffected;
+          covered by Layer-A tests.
+        - DB SELECT-only; no mutations.
+        - Sibling parity vs scan_inflation_linkers_extremes (a11c095)
+          intact; deviations (PX_MID vs YLD_YTM_MID, underlying_index
+          column, extended MARKET-STRUCTURE caveat) justified by the
+          ZCIS-vs-linker domain difference.
+
+      Findings: ONE minor doc-drift observation, classified by the
+      reviewer himself as "not a P10 violation in substance" and
+      "not a blocker." See catalog entry's `dismissed_findings`
+      block for the full text + dismissal reason. Falls into the
+      Review adjudication rule's dismissable category (docstring
+      cleanliness; no correctness / methodology / wiring / wire-
+      shape / testing impact); the function-level Returns +
+      explanatory paragraph at L717-724 already document
+      underlying_index explicitly, and the primary bullet list is a
+      column-family summary that the dedicated paragraph supersedes
+      as single source of truth.
+
+      Decision:
+        Per Required loop step 8 (approved-with-dismissals),
+        DONE_DEFINITION.md, and Commit rule, proceed to commit on
+        primitive_automation. Log the dismissal (this entry) for
+        audit hygiene. After commit, advance to the next eligible
+        primitive (build_order 26 ois__calculate_ois_butterfly,
+        first todo).
+
+      Top-level state transitions:
+        current_step        : reviewing -> committing
+        last_reviewer_heading : APPROVED (already, refers to a11c095)
+                                -> APPROVED (now this primitive)
+        last_stop_reason    : wake_2026-05-23T12:30Z_builder_round1_complete_claude_fallback_reviewer_dispatched
+                              -> wake_2026-05-23T12:38Z_reviewer_round1_APPROVED_claude_fallback_ready_to_commit
+        last_updated        : 2026-05-23T12:32:00Z -> 2026-05-23T12:39:00Z
+        catalog entry flipped: status in_progress -> done,
+                              active_step ready_to_commit,
+                              review_round 0 -> 1,
+                              last_review_heading APPROVED,
+                              reviewer_engine claude_fallback,
+                              dismissed_findings appended.
+
+      Next-wake action (this same wake actually): commit and start
+      build_order 26 ois__calculate_ois_butterfly if quota allows.
+
+  - at: "2026-05-23T12:32:00Z"
+    kind: wake_2026-05-23T12:30Z_builder_round1_complete_claude_fallback_reviewer_dispatched_for_scan_inflation_swaps_extremes
+    text: |
+      Cron wake fired at 2026-05-23T12:30Z (Saturday) per the recurring
+      "Primitive factory" cron schedule. Branch guard PASS
+      (primitive_automation). Re-read ORCHESTRATOR_PROMPT and catalog
+      head; the runtime-state header was the live source of truth.
+
+      Builder probe result (PIDs 1822633 / 1822640 from the 11:53Z
+      dispatch):
+        wrapper PID 1822633 : GONE
+        claude  PID 1822640 : GONE
+        log file            : /tmp/claude_builder_run_inflation_swaps__
+                              scan_inflation_swaps_extremes_round1.log
+                              size 7375 bytes, mtime 2026-05-23T12:19Z
+                              (claude --print flushed at process end)
+
+      Builder report (verbatim claims, to be verified by the reviewer):
+        - Files created (four-file package + 4 test files + fixture).
+        - shared/analytics/rates_fetch.py:fetch_scan_universe_reference
+          extended to project underlying_index (additive; linker call
+          site unaffected; 4 Layer-A tests cover it).
+        - rates_agent/inflation_swaps/mcp_server.py — added Tool 7
+          get_scan_inflation_swaps_extremes_tool (PR14 config=
+          keyword; sentinel coalescing; {"error": ...} envelope).
+        - rates_agent/inflation_swaps/tools/schemas/__init__.py — re-
+          exports ScanInflationSwapsExtremesInput/Output/ResultRow.
+        - rates_agent/workflows/__init__.py — registered
+          scan_inflation_swaps_extremes_tool with
+          output_field_units={} (snapshot, exempt-snapshot pattern
+          matches the linker / bond_futures scanners).
+        - tests/conftest.py — Layer-B sql_validation test added to
+          collect_ignore.
+        - Layer A 76/76 PASS; Layer B 5/5 PASS; inflation_swaps
+          neighbour regression 477/477 PASS; shared.config.lint EXIT 0.
+        - DB usage SELECT-only; no ingestion / DDL / DML.
+        - Pinned anchor 2026-04-08; raw_rows_sha256
+          2026eb94...36b7 captured 2026-05-23T12:16:37Z via
+          database.database.get_db_engine.
+        - Closed-family whitelist {USD_ZCIS, EUR_ZCIS, GBP_ZCIS}.
+        - Single-metric ranking on ZCIS quoted-rate LEVEL z-score
+          (matches catalog wording and sibling
+          scan_inflation_linkers_extremes a11c095). daily_change /
+          monthly_change are per-row snapshot context only.
+        - z-score window = 252 in YAML key z_score_window_days;
+          methodology disclosure injects the value at runtime; PR14
+          wire-freeze guard raises if YAML drifts.
+        - security_name NULL on the live DB for ZCIS — no proxy
+          relabel (same treatment as the linker scanner).
+          vendor_ticker surfaced under its honest name.
+        - underlying_index surfaced per output row (CPURNSA Index /
+          CPTFEMU Index / UKRPI Index).
+
+      Git status at handoff (working tree, NOT committed by builder):
+         M automation/primitive_automation/primitive_catalog.yaml
+         M automation/primitive_automation/primitive_runtime_state.yaml
+         M rates_agent/inflation_swaps/mcp_server.py
+         M rates_agent/inflation_swaps/tools/schemas/__init__.py
+         M rates_agent/workflows/__init__.py
+         M shared/analytics/rates_fetch.py
+         M tests/conftest.py
+        ?? rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/
+        ?? tests/fixtures/inflation_swaps_scan_inflation_swaps_extremes_v1/
+        ?? tests/test_scan_inflation_swaps_extremes_compute.py
+        ?? tests/test_scan_inflation_swaps_extremes_parity.py
+        ?? tests/test_scan_inflation_swaps_extremes_sql_validation.py
+        ?? tests/test_scan_inflation_swaps_extremes_wiring.py
+
+      Reviewer dispatch:
+        engine        : claude_fallback (sticky per
+                        QUOTA_AND_RESUME_POLICY.md §10.3; orchestrator
+                        cannot reliably probe Codex quota from this
+                        non-interactive context, so we stay on
+                        claude_fallback rather than risk re-pinning a
+                        depleted Codex bucket mid-primitive).
+        wrapper       : run_claude_reviewer.sh
+        prompt file   : /tmp/reviewer_prompt_scan_inflation_swaps_
+                        extremes_round1.md (132 lines, contains the
+                        verbatim builder report + the focused review
+                        rubric pointing at PR8/9/10/14/16, P5/P8/P10,
+                        and the sibling linker-scanner reference).
+        reviewer log  : /tmp/claude_reviewer_run_inflation_swaps__
+                        scan_inflation_swaps_extremes_round1.log
+        wrapper PID   : 1835536
+        claude  PID   : 1835544 (claude --print --model opus
+                        --effort xhigh --permission-mode
+                        bypassPermissions)
+        dispatched at : 2026-05-23T12:31Z
+        expected      : ~15-25 min wall-clock based on prior
+                        claude_fallback reviewer round runtimes
+                        (e.g. bond_futures round 3 ≈ 14 min).
+
+      Quota mode:
+        Operating per QUOTA_AND_RESUME_POLICY.md §6 — non-interactive
+        runtime-enforced quota mode. Real provider 429 / rate-limit
+        responses will be detected by parse_reviewer_log.py
+        (reviewer_quota_exhausted / environment_failure fields) on
+        the reviewer log; reviewer-fallback rule applies.
+
+      Stop conditions evaluated:
+        - catalog exhausted             : NO (remaining=10)
+        - quota blocker                 : NO (no provider error)
+        - hard runtime/provider error   : NO
+        - human-required                : NO
+        - branch violation              : NO (primitive_automation)
+        - DB-validation path unavailable: NO (preflight PASS earlier;
+                                          builder claims sql_validation
+                                          test green)
+        - in-flight reviewer needs to   : YES — wake exits as
+          be allowed to finish            handoff, no further dispatch
+                                          this wake. Next wake will
+                                          parse the reviewer log and
+                                          adjudicate.
+
+      Top-level state transitions this wake:
+        current_step        : building -> reviewing
+        last_stop_reason    : wake_2026-05-23T12:15Z_heartbeat_builder_still_in_flight_for_scan_inflation_swaps_extremes_round_1
+                              -> wake_2026-05-23T12:30Z_builder_round1_complete_claude_fallback_reviewer_dispatched
+        last_updated        : 2026-05-23T12:15:00Z -> 2026-05-23T12:32:00Z
+        all other top-level fields unchanged (current_primitive,
+        last_successful_primitive, last_successful_commit,
+        last_reviewer_heading=APPROVED [stale — refers to prior
+        primitive a11c095; will be overwritten when this round's
+        verdict is parsed], counts, reviewer_mode).
+
+      No catalog mutation this wake (catalog entry was already
+      flipped to in_progress on the 11:47Z dispatch).
+      No DB queries this wake.
+      No commits this wake.
+
+  - at: "2026-05-23T12:15:00Z"
+    kind: wake_2026-05-23T12:15Z_heartbeat_builder_still_in_flight_for_scan_inflation_swaps_extremes_round_1
+    text: |
+      Cron wake fired at 2026-05-23T12:15Z (Saturday) per the recurring
+      "Primitive factory" cron schedule. Branch guard PASS
+      (primitive_automation). Read the full primitive automation package
+      (ORCHESTRATOR_PROMPT, DESIGN_PRINCIPLES, STANDARD_TOOL_AND_YAML_RULES,
+      PRIMITIVE_BUILD_RULES, TESTING_AND_DB_VALIDATION_POLICY,
+      PRE_FLIGHT_LOAD_AUDIT, NO_GO_RULES, DONE_DEFINITION, REPO_REFERENCE_MAP,
+      QUOTA_AND_RESUME_POLICY, BACKGROUND_EXECUTION_POLICY,
+      DISCORD_STATUS_POLICY, OPENCLAW_CRON_RUNBOOK) and the catalog +
+      top of runtime state — no chat memory used.
+
+      Observed state:
+        orchestrator_status   : processing
+        current_primitive     : inflation_swaps__scan_inflation_swaps_extremes
+        build_order           : 25
+        catalog entry status  : in_progress
+        catalog active_step   : builder_round_1_dispatched
+        reviewer_mode         : claude_fallback (sticky per
+                                QUOTA_AND_RESUME_POLICY.md §10.3)
+        counts                : done=24 / blocked=0 / remaining=10
+
+      Builder probe (PIDs from the 2026-05-23T11:53Z dispatch):
+        wrapper PID 1822633 : ALIVE — STAT=S, elapsed 21:49 at probe time
+        claude  PID 1822640 : ALIVE — Sl, elapsed 21:49, claude --print
+                              --model opus --effort xhigh --permission-mode
+                              bypassPermissions
+        log file size       : 0 bytes (still buffered; claude --print
+                              flushes at end of process)
+        wrapper out file    : 46 bytes (header only)
+        elapsed since dispatch (2026-05-23T11:53Z): ~22 min; expected
+                              ~25-35 min wall-clock based on the
+                              scan_inflation_linkers_extremes round-1
+                              precedent (32m44s). Builder is on track
+                              and close to flushing.
+
+      Builder is visibly writing into the tree (git status probe):
+        tool dir (new)        : rates_agent/inflation_swaps/tools/
+                                scan_inflation_swaps_extremes/
+        fixture dir (new)     : tests/fixtures/
+                                inflation_swaps_scan_inflation_swaps_extremes_v1/
+        test files (new)      : tests/test_scan_inflation_swaps_extremes_compute.py
+                                tests/test_scan_inflation_swaps_extremes_wiring.py
+                                tests/test_scan_inflation_swaps_extremes_parity.py
+                                (sql_validation will land at end of build)
+        wiring edits          : rates_agent/inflation_swaps/mcp_server.py
+                                rates_agent/inflation_swaps/tools/schemas/__init__.py
+                                rates_agent/workflows/__init__.py
+                                tests/conftest.py
+                                shared/analytics/rates_fetch.py (fetcher
+                                helper extension — option (a) appears to
+                                have been chosen, consistent with the
+                                prompt's underlying_index column ask)
+        catalog/runtime YAMLs : dirty from 11:47Z in_progress flip
+                                (expected — will be picked up by the
+                                commit after reviewer approval)
+
+      Pre-flight load_audit for the in-flight primitive (verified at
+      11:47Z dispatch, no re-check needed; DB is read-only):
+        playbook              : inflation_swaps
+        SELECT result         : inflation_swaps|SUCCESS|2026-04-09
+                                19:11:25.434278+01
+        verdict               : PASS
+
+      Decision:
+        Per QUOTA_AND_RESUME_POLICY.md §9 (always resume unfinished work
+        before starting a new primitive) and BACKGROUND_EXECUTION_POLICY.md
+        §7 (no-overlap rule — one orchestrator may mutate catalog/runtime
+        state at a time), this wake does NOT start a new primitive in
+        parallel with the in-flight build, does NOT kill the live builder
+        process, and does NOT invent a verdict. The honest action is a
+        heartbeat: log the observation, refresh last_updated /
+        last_stop_reason, and exit cleanly. The next cron wake (~12:30Z
+        or later) will probe the builder again; if the log is flushed and
+        parseable, the orchestrator will dispatch the reviewer via
+        run_claude_reviewer.sh (reviewer_mode=claude_fallback) per the
+        Required loop.
+
+      Quota mode:
+        Operating per QUOTA_AND_RESUME_POLICY.md §6 — non-interactive
+        runtime-enforced quota mode. Real provider 429 / rate-limit
+        responses during builder/reviewer execution remain the trigger
+        for the fallback rule.
+
+      Stop conditions evaluated:
+        - catalog exhausted               : NO (remaining=10)
+        - quota blocker                   : NO (no provider error observed)
+        - hard runtime/provider error     : NO
+        - human-required                  : NO
+        - branch violation                : NO (primitive_automation)
+        - DB-validation path unavailable  : NO (preflight PASS)
+        - in-flight builder needs to be   : YES — wake exits as
+          allowed to finish                  heartbeat, no new dispatch
+
+      Top-level state transitions this wake:
+        last_stop_reason   : wake_2026-05-23T12:00Z_heartbeat_builder_in_flight_for_scan_inflation_swaps_extremes_round_1
+                             -> wake_2026-05-23T12:15Z_heartbeat_builder_still_in_flight_for_scan_inflation_swaps_extremes_round_1
+        last_updated       : 2026-05-23T12:00:00Z -> 2026-05-23T12:15:00Z
+        all other top-level fields unchanged (current_primitive,
+        current_step=building, last_successful_primitive,
+        last_successful_commit, last_reviewer_heading, counts,
+        reviewer_mode).
+
+      No catalog mutation this wake.
+      No DB queries this wake.
+      No commits this wake.
+
+  - at: "2026-05-23T12:00:00Z"
+    kind: wake_2026-05-23T12:00Z_heartbeat_builder_in_flight_for_scan_inflation_swaps_extremes_round_1
+    text: |
+      Cron wake fired at 2026-05-23T12:00Z (Saturday) per the recurring
+      "Primitive factory" cron schedule. Branch guard PASS
+      (primitive_automation). Read the full primitive automation package
+      (ORCHESTRATOR_PROMPT, DESIGN_PRINCIPLES, STANDARD_TOOL_AND_YAML_RULES,
+      PRIMITIVE_BUILD_RULES, TESTING_AND_DB_VALIDATION_POLICY,
+      PRE_FLIGHT_LOAD_AUDIT, NO_GO_RULES, DONE_DEFINITION, REPO_REFERENCE_MAP,
+      QUOTA_AND_RESUME_POLICY, BACKGROUND_EXECUTION_POLICY,
+      DISCORD_STATUS_POLICY, OPENCLAW_CRON_RUNBOOK) and the catalog +
+      runtime state — no chat memory used.
+
+      Observed state:
+        orchestrator_status   : processing
+        current_primitive     : inflation_swaps__scan_inflation_swaps_extremes
+        build_order           : 25
+        catalog entry status  : in_progress
+        catalog active_step   : builder_round_1_dispatched
+        reviewer_mode         : claude_fallback (sticky per
+                                QUOTA_AND_RESUME_POLICY.md §10.3)
+        counts                : done=24 / blocked=0 / remaining=10
+
+      Builder probe (PIDs from the prior wake's audit note):
+        wrapper PID 1822633 : ALIVE — STAT=S, elapsed 06:47 at probe time
+        claude  PID 1822640 : ALIVE — Sl, elapsed 06:47, claude --print
+                              --model opus --effort xhigh --permission-mode
+                              bypassPermissions
+        log file size       : 0 bytes (still buffered; claude --print
+                              flushes at end)
+        wrapper out file    : 46 bytes (header only)
+        elapsed since dispatch (2026-05-23T11:53Z): ~07:00; expected
+                              ~25-35 min wall-clock based on the
+                              scan_inflation_linkers_extremes round-1
+                              precedent (32m44s). Builder is on track.
+
+      Builder is also visibly writing into the tree (working tree probe):
+        new tool dir          : rates_agent/inflation_swaps/tools/
+                                scan_inflation_swaps_extremes/
+                                contains __init__.py (1965 bytes, mtime
+                                12:00:xx) — package shell already laid down
+        fetcher edit          : shared/analytics/rates_fetch.py modified
+                                (+20 / -8 lines per git diff --stat) —
+                                consistent with the prompt's
+                                fetch_scan_universe_reference extension
+                                option (a)
+        catalog/runtime YAMLs : already dirty from the prior wake's
+                                in_progress status flip — expected, will
+                                be picked up by the commit after
+                                reviewer approval
+
+      Pre-flight load_audit for the in-flight primitive (already verified
+      at the round-1 dispatch in the 11:47Z note):
+        playbook              : inflation_swaps
+        SELECT result         : inflation_swaps|SUCCESS|2026-04-09
+                                19:11:25.434278+01
+        verdict               : PASS (no re-check needed; the row has not
+                                changed and DB is read-only)
+
+      Decision:
+        Per QUOTA_AND_RESUME_POLICY.md §9 (always resume unfinished work
+        before starting a new primitive) and BACKGROUND_EXECUTION_POLICY.md
+        §7 (no-overlap rule — one orchestrator may mutate catalog/runtime
+        state at a time), this wake does NOT start a new primitive in
+        parallel with the in-flight build. It also does NOT prematurely
+        kill the live builder process or invent a verdict — that would
+        burn the round-1 work and violate the review-adjudication
+        discipline.
+
+        The honest action is a heartbeat: log this observation, refresh
+        last_updated, and exit cleanly. The next cron wake (next
+        */15-min tick or later) will probe the builder again; if it has
+        finished and the log parses, the orchestrator will dispatch the
+        reviewer via run_claude_reviewer.sh (reviewer_mode=claude_fallback)
+        and proceed per the Required loop.
+
+      Quota mode:
+        Operating per QUOTA_AND_RESUME_POLICY.md §6 — non-interactive
+        runtime-enforced quota mode (CLI /status not safely scriptable
+        from this environment). Real provider 429 / rate-limit responses
+        during builder/reviewer execution remain the trigger for the
+        fallback rule.
+
+      Stop conditions evaluated:
+        - catalog exhausted               : NO (remaining=10)
+        - quota blocker                   : NO (no provider error observed)
+        - hard runtime/provider error     : NO
+        - human-required                  : NO
+        - branch violation                : NO (primitive_automation)
+        - DB-validation path unavailable  : NO (preflight PASS)
+        - in-flight builder needs to be   : YES — wake exits as
+          allowed to finish                  heartbeat, no new dispatch
+
+      Top-level state transitions this wake:
+        last_stop_reason   : wake_2026-05-23T11:45Z_committed_scan_inflation_linkers_extremes_a11c095_dispatched_builder_round_1_for_scan_inflation_swaps_extremes
+                             -> wake_2026-05-23T12:00Z_heartbeat_builder_in_flight_for_scan_inflation_swaps_extremes_round_1
+        last_updated       : 2026-05-23T11:47:00Z -> 2026-05-23T12:00:00Z
+        all other top-level fields unchanged (current_primitive,
+        current_step=building, last_successful_primitive,
+        last_successful_commit, last_reviewer_heading, counts,
+        reviewer_mode).
+
+      No catalog mutation this wake.
+      No DB queries this wake.
+      No commits this wake.
+
+  - at: "2026-05-23T11:47:00Z"
+    kind: wake_2026-05-23T11:45Z_committed_scan_inflation_linkers_extremes_a11c095_dispatched_builder_round_1_for_scan_inflation_swaps_extremes
+    text: |
+      Continuation of wake 2026-05-23T11:45Z (same wake — no new branch
+      guard required for in-wake continuation; tree was clean after the
+      a11c095 commit).
+
+      Commit landed:
+        SHA       : a11c095
+        message   : feat(inflation_indexed_bonds): add
+                    scan_inflation_linkers_extremes primitive
+        files     : 18 changed, 49171 insertions(+), 9 deletions(-)
+        stat      : 4 new tool files + 4 new test files + 3 fixture
+                    artifacts + 5 wiring updates (mcp_server,
+                    schemas/__init__, workflows/__init__, conftest,
+                    rates_fetch — fetch_scan_universe_reference helper
+                    add) + catalog status flip + runtime state update
+        branch    : primitive_automation (verified post-commit)
+        tree      : clean immediately after commit
+        verdict   : APPROVED (claude_fallback, round 1, 0 mandatory-fix
+                    findings, 3 non-blocking observations pre-classified
+                    as non-findings by reviewer)
+
+      Pre-flight load_audit (next primitive,
+      inflation_swaps__scan_inflation_swaps_extremes):
+        playbook  : inflation_swaps
+        query     : SELECT playbook_name, status, ingested_at
+                      FROM macro_data.load_audit
+                     WHERE playbook_name = 'inflation_swaps'
+                       AND status = 'SUCCESS'
+                     ORDER BY ingested_at DESC LIMIT 1
+        result    : inflation_swaps|SUCCESS|2026-04-09 19:11:25.434278+01
+        verdict   : PASS (read-only check; no DB mutation)
+
+      DB live-state pre-flight (informational):
+        SELECT DISTINCT instrument_type FROM
+          macro_data.v_market_data_daily_enriched
+          WHERE curve_family LIKE '%INFLATION%' OR
+                curve_family LIKE '%ZCIS%' OR
+                curve_family LIKE '%SWAP%'
+        -> inflation_reference, inflation_swap
+        (instrument_type='inflation_swap' confirmed for the scanner
+         build; instrument_type='inflation_reference' is the CPI/RPI
+         index family used by inflation_swaps__realized_vs_implied_inflation,
+         build_order 34, not this build)
+
+        SELECT DISTINCT curve_family, count(*) FROM
+          macro_data.v_market_data_daily_enriched
+          WHERE instrument_type='inflation_swap' GROUP BY 1
+        -> EUR_ZCIS | 38786
+           GBP_ZCIS | 38679
+           USD_ZCIS | 38291
+        (three curve_families confirmed; matches the 21-stem total
+         the catalog cites at concept_summary build_order=25)
+
+      Builder dispatch:
+        primitive_id   : inflation_swaps__scan_inflation_swaps_extremes
+        build_order    : 25
+        tool_name      : scan_inflation_swaps_extremes
+        instrument_family: inflation_swaps
+        depends_on     : [inflation_swaps__inflation_swap_rate_level]
+        wrapper        : automation/primitive_automation/run_claude_builder.sh
+        prompt_file    : /tmp/claude_builder_inflation_swaps__scan_inflation_swaps_extremes_round1.prompt
+        log_file       : /tmp/claude_builder_run_inflation_swaps__scan_inflation_swaps_extremes_round1.log
+        wrapper out    : /tmp/claude_builder_wrapper_inflation_swaps__scan_inflation_swaps_extremes_round1.out
+        wrapper PID    : 1822633 (alive at dispatch+15s; bash
+                         run_claude_builder.sh)
+        claude PID     : 1822640 (alive at dispatch+15s; STAT=Rl,
+                         ELAPSED 00:26; claude --print --model opus
+                         --effort xhigh --permission-mode
+                         bypassPermissions)
+        dispatch_at    : 2026-05-23T11:53:00Z
+        expected       : ~25-35 min wall-clock based on the
+                         scan_inflation_linkers_extremes round-1 build
+                         (32m44s). Next cron wake at 2026-05-23T12:00Z
+                         will likely observe builder still running.
+                         Wake after that (~12:15Z or later) should see
+                         builder finished and parseable.
+
+      Top-level state transitions this wake (continuation):
+        orchestrator_status:        processing (unchanged)
+        current_primitive:          inflation_linkers__scan_inflation_linkers_extremes
+                                    -> inflation_swaps__scan_inflation_swaps_extremes
+        current_primitive_tool_name: scan_inflation_linkers_extremes
+                                    -> scan_inflation_swaps_extremes
+        current_step:               committing -> building
+        last_successful_primitive:  policy_futures__futures_cross_market_spread
+                                    -> inflation_linkers__scan_inflation_linkers_extremes
+        last_successful_commit:     026d571 -> a11c095
+        last_reviewer_heading:      APPROVED (unchanged; stale for the
+                                    new primitive until its round-1
+                                    review)
+        last_stop_reason:           ->
+          wake_2026-05-23T11:45Z_committed_scan_inflation_linkers_extremes_a11c095_dispatched_builder_round_1_for_scan_inflation_swaps_extremes
+        last_updated:               -> 2026-05-23T11:47:00Z
+        done / blocked / remaining: 24 / 0 / 10 (unchanged from earlier
+                                    in this wake)
+        reviewer_mode:              claude_fallback (unchanged, sticky
+                                    per QUOTA_AND_RESUME_POLICY.md §10.3)
+        catalog entry status:       todo -> in_progress
+        catalog entry active_step:  -> builder_round_1_dispatched
+        catalog entry builder_round:-> 1
+        catalog entry review_round: -> 0
+
+      Working tree state at wake exit:
+        - primitive_catalog.yaml and primitive_runtime_state.yaml have
+          the in-progress status flip for the new primitive; both files
+          are dirty and will be picked up by the next commit when this
+          new primitive is approved.
+        - No other files dirty.
+        - This matches the established between-primitive pattern (see
+          prior wakes' transitions in the audit trail).
+
   - at: "2026-05-23T11:46:00Z"
     kind: wake_2026-05-23T11:45Z_reviewer_round_1_approved_committing_scan_inflation_linkers_extremes
     text: |

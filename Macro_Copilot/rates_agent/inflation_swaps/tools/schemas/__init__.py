@@ -79,6 +79,15 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly.schemas import (
     InflationSwapButterflyTimeSeriesRow,
 )
 
+# Inflation-swap universe-wide extremes scan — re-exported from the
+# per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/``).
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes.schemas import (
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    ScanInflationSwapsExtremesResultRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -111,4 +120,8 @@ __all__ = [
     "InflationSwapButterflyCurrentMetrics",
     "InflationSwapButterflyTimeSeriesRow",
     "InflationSwapButterflyOutput",
+    # scan_inflation_swaps_extremes
+    "ScanInflationSwapsExtremesInput",
+    "ScanInflationSwapsExtremesOutput",
+    "ScanInflationSwapsExtremesResultRow",
 ]

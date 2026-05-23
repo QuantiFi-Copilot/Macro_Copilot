@@ -649,7 +649,8 @@ _FETCH_SCAN_UNIVERSE_REFERENCE_ALL_SQL = text("""
         contract_code,
         maturity_date,
         country,
-        vendor_ticker
+        vendor_ticker,
+        underlying_index
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
       AND tenor          IS NOT NULL
@@ -662,7 +663,8 @@ _FETCH_SCAN_UNIVERSE_REFERENCE_FILTERED_SQL = text("""
         contract_code,
         maturity_date,
         country,
-        vendor_ticker
+        vendor_ticker,
+        underlying_index
     FROM macro_data.v_market_data_daily_enriched
     WHERE instrument_type = :instrument_type
       AND tenor          IS NOT NULL
@@ -703,7 +705,7 @@ def fetch_scan_universe_reference(
     -------
     pd.DataFrame with columns
     ``['curve_family', 'tenor', 'contract_code', 'maturity_date',
-       'country', 'vendor_ticker']``.
+       'country', 'vendor_ticker', 'underlying_index']``.
 
     DISTINCT collapses repeated rows in the enriched view to one row
     per instrument. The view's underlying join (instrument_master →
@@ -712,14 +714,24 @@ def fetch_scan_universe_reference(
     reference columns is preserved by selecting only the columns that
     are stable per instrument and applying DISTINCT.
 
+    ``underlying_index`` was added to the projection by the ZCIS
+    universe scan (catalog id
+    ``inflation_swaps__scan_inflation_swaps_extremes``, build_order
+    25) so the desk reader can see which inflation index a ZCIS row
+    references (``CPURNSA Index`` for USD_ZCIS, ``CPTFEMU Index``
+    for EUR_ZCIS, ``UKRPI Index`` for GBP_ZCIS).  The column is
+    additive: existing call sites (the linker scanner) read only
+    the columns they need, so the extension is non-breaking.
+
     Notes on missing fields
     -----------------------
     ``security_name`` is intentionally NOT returned by this helper:
-    the linker universe's ``instrument_metadata_history.security_name``
-    is universally NULL on the current DB snapshot, so returning it
-    here would be a column-of-Nones. Consumers wanting a security
-    identifier should use ``vendor_ticker`` (a Bloomberg-grade
-    identifier that IS populated for linkers).
+    both the linker universe and the ZCIS universe currently have
+    ``instrument_metadata_history.security_name`` universally NULL
+    on the live DB snapshot, so returning it here would be a column-
+    of-Nones. Consumers wanting a security identifier should use
+    ``vendor_ticker`` (a Bloomberg-grade identifier that IS
+    populated for both linkers and ZCIS).
     """
     bind_params: dict = {"instrument_type": instrument_type}
     if curve_families:

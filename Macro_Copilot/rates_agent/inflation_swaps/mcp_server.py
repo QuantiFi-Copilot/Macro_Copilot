@@ -74,7 +74,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Optional
 
 from pydantic import ValidationError
 
@@ -91,6 +93,7 @@ from rates_agent.inflation_swaps.tools.schemas import (  # noqa: E402
     InflationSwapCurveSpreadInput,
     InflationSwapForwardInput,
     InflationSwapRateLevelInput,
+    ScanInflationSwapsExtremesInput,
     SwapBreakevenBasisSimpleInput,
 )
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (  # noqa: E402
@@ -116,6 +119,10 @@ from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (  # n
 from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (  # noqa: E402
     CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
     calculate_inflation_swap_butterfly,
+)
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (  # noqa: E402
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    calculate_scan_inflation_swaps_extremes,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -1269,6 +1276,222 @@ def calculate_inflation_swap_butterfly_tool(
             bespoke_rows, butterfly_rows, zscore_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 7: scan_inflation_swaps_extremes
+# ===========================================================================
+@mcp.tool()
+def get_scan_inflation_swaps_extremes_tool(
+    curve_families: str = "",
+    top_n: int = 0,
+    min_abs_z_score: float = -1.0,
+    as_of_date: str = "",
+) -> str:
+    """Scan the ZCIS (zero-coupon inflation swap) universe and rank
+    ``(curve_family, tenor)`` ZCIS pillars by absolute 252-day
+    z-score of their quoted-rate LEVEL.  Returns the top-N extremes,
+    each tagged with the methodology disclosure (universe-wide
+    ZCIS rate-level label, explicit z-score lookback window,
+    INDEX-FAMILY + MARKET-STRUCTURE caveats covering CPI-U / HICP /
+    RPI underlying-index heterogeneity and the inflation-derivatives
+    index-lag + interpolation conventions, ``morning screen, NOT a
+    tactical signal`` scope).
+
+    Use this tool when the user asks about:
+    - Morning ZCIS sweeps               (e.g. "Where is the ZCIS
+                                              curve stretched
+                                              today?")
+    - Universe-wide ZCIS rate extremes  (e.g. "Biggest inflation-
+                                              swap-rate moves across
+                                              USD / EUR / GBP today?")
+    - Cross-tenor ZCIS rate extremes    (e.g. "Which inflation swaps
+                                              are at 1-year ZCIS-rate
+                                              highs / lows?")
+
+    Do NOT use this tool for:
+    - Nominal sovereign sweeps — use the sovereign_bonds agent's
+      scan_extremes_tool (different instrument_type).
+    - Linker real-yield sweeps — those route to the
+      inflation_indexed_bonds agent's
+      ``get_scan_inflation_linkers_extremes_tool``.
+    - Bond-implied breakeven sweeps — the breakeven primitives are
+      separate concepts (this scan is on ZCIS QUOTED RATES, NOT
+      breakevens).
+    - A per-pillar deep-dive — use the sibling
+      ``calculate_inflation_swap_rate_level_tool`` for one
+      (curve_family, tenor) at a time.
+    - Curve shape / forward / butterfly / cross-market / swap-vs-
+      breakeven basis — use the sibling
+      ``calculate_inflation_swap_curve_spread_tool`` /
+      ``calculate_inflation_swap_forward_tool`` /
+      ``calculate_inflation_swap_butterfly_tool`` /
+      ``calculate_cross_market_inflation_swap_spread_tool`` /
+      ``calculate_swap_breakeven_basis_simple_tool`` primitives
+      respectively.
+
+    ALWAYS preserve the methodology_disclosure field — present on
+    EVERY result row AND on the response — when relaying to the
+    user.  The disclosure makes the scan's scope explicit: the
+    desk reader needs to see WHY a pillar ranked extreme (252d
+    z-score on ZCIS quoted-rate LEVEL, ranked across heterogeneous
+    underlying inflation indices and market-structure conventions,
+    morning screen scope).
+
+    Parameters
+    ----------
+    curve_families : str, optional
+        Comma-separated list of ZCIS curve families to scan.  Empty
+        (default ``""``) = scan the full ZCIS universe
+        (USD_ZCIS, EUR_ZCIS, GBP_ZCIS).  Pass a CSV to narrow
+        (e.g. ``"USD_ZCIS,EUR_ZCIS"`` for a US + EUR sweep).  MCP
+        exposes flat scalars, so the wrapper accepts a string and
+        splits it before constructing the Pydantic input — mirrors
+        the linker scan_inflation_linkers_extremes_tool / bond_futures
+        scan_bond_futures_extremes_tool convention.  Non-ZCIS
+        curve_families (nominal sovereign 'UST', linker 'USD_TIPS',
+        OIS 'USD_SOFR_OIS', etc.) are REFUSED at schema-validation
+        time per the closed-family whitelist in config.yaml.
+    top_n : int, optional
+        Number of extreme stems to return.  MCP exposes flat
+        scalars, so the sentinel ``0`` (default) means "omit" and
+        falls through to the YAML's ``default_top_n`` convention
+        (currently 5) — keeps the default YAML-locked per PR9 /
+        PR10.  Pass an integer in [1, 50] to override per query;
+        the schema-layer bound rejects out-of-range values.
+    min_abs_z_score : float, optional
+        Minimum absolute z-score threshold for inclusion in the
+        ranking.  The sentinel ``-1.0`` (default) means "omit" and
+        falls through to the YAML's ``default_min_abs_z_score``
+        convention (currently 1.5).  Pass a non-negative float to
+        override per query; the schema-layer ``ge=0.0`` bound
+        stays as a structural invariant.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the scan to a
+        specific trading day.  Empty (default ``""``) = anchor to
+        the most-recent shared trading day across the fetched
+        universe (max trade_date observed after per-stem cleaning)
+        — same as-of resolution pattern as the sibling linker /
+        bond_futures scanners and the upstream per-pillar
+        inflation_swap_rate_level primitive.  The fetch window
+        itself is methodology (derived from YAML:
+        z_score_window_days × z_score_buffer_multiplier, currently
+        252 × 1.5 = 378 calendar days) and is NOT an LLM input —
+        exposing ``lookback_days`` would be a PR8 / OPR8 input-
+        schema overreach.
+    """
+    # Parse the comma-separated curve_families CSV into a list (or
+    # None when empty).  Mirrors the linker scanner wrapper.
+    parsed_families = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Sentinel resolution: the MCP boundary cannot carry None for
+    # int/float, so 0 / -1.0 mean "omit".  The schema's bounds would
+    # have rejected the sentinel values themselves, so translate to
+    # None BEFORE constructing the Pydantic input — preserves the
+    # schema's None → YAML-default fall-through.
+    top_n_arg: Optional[int] = top_n if top_n > 0 else None
+    min_abs_z_score_arg: Optional[float] = (
+        min_abs_z_score if min_abs_z_score >= 0.0 else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel.  Empty string ⇒ None
+    # (compute resolves to the most-recent shared trading day).  A
+    # malformed value is caught here and surfaced as a controlled-
+    # error envelope rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_scan_inflation_swaps_extremes_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-08'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = ScanInflationSwapsExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n_arg,
+            min_abs_z_score=min_abs_z_score_arg,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_scan_inflation_swaps_extremes_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_swaps_extremes_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path, so
+    # this is a free lookup after the first call within the MCP
+    # subprocess's lifetime.  Mirrors the linker scanner wrapper.
+    try:
+        scan_config = load_tool_config(
+            SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_inflation_swaps_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_swaps_extremes_tool] unhandled "
+            "error for curve_families=%s",
+            params.curve_families,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "get_scan_inflation_swaps_extremes_tool failed: "
+                    f"{exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_rows = len(result.get("results", []) or [])
+    logger.info(
+        "[get_scan_inflation_swaps_extremes_tool] tool call "
+        "complete: curve_families=%s top_n=%r min_abs_z=%r as_of=%r "
+        "→ %s (%d rows)",
+        params.curve_families, params.top_n, params.min_abs_z_score,
+        params.as_of_date, status, n_rows,
+    )
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================
