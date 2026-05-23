@@ -80,12 +80,14 @@ Repo specials are per-CUSIP, and the cash-bond universe is large and dynamic —
 
 ## Rollout
 
-1. **This ADR (C1)** — the substrate decision. No code, no data.
-2. **C2a — overnight RFR.** A `--mode time-series` playbook (SOFR / SONIA / ESTR / TONA). No vendor dependency — unblocked immediately. `instrument_type: overnight_rfr`.
-3. **C2b — term GC repo curves.** A curve-shaped `--mode time-series` playbook (`ois.yml`-shaped). Ships the Bloomberg-verified coverage; defers the rest. `instrument_type: gc_repo`.
-4. **C2c — CUSIP-level specials**, universe bounded to `otr_history` (Decision 4) — **or a documented deferral** if Bloomberg coverage is insufficient. `instrument_type: repo_special`.
+1. **This ADR (C1)** — the substrate decision. No code, no data.   ✅ **DONE 2026-05-22.**
+2. **C2a — overnight RFR.** A `--mode time-series` playbook (SOFR / SONIA / ESTR / TONA). No vendor dependency — unblocked immediately. `instrument_type: overnight_rfr`.   ✅ **DONE 2026-05-23**, all four markets cleanly verified on Bloomberg and ingested (`rates_agent/playbooks/overnight_rfr.yml` carries `# VERIFIED 2026-05-23` markers).
+3. **C2b — term GC repo curves.** A curve-shaped `--mode time-series` playbook (`ois.yml`-shaped). Ships the Bloomberg-verified coverage; defers the rest. `instrument_type: gc_repo`.   🟡 **DEFERRED** — see `docs/technical_debt.md` entry #29 for the full WHERE/WHAT/IMPACT/FIX/EFFORT/WHEN deferral record. Substrate is in place; deferred by priority, not by empirical Bloomberg-coverage failure (no probe run yet). Unblocks immediately when picked up.
+4. **C2c — CUSIP-level specials**, universe bounded to `otr_history` (Decision 4) — **or a documented deferral** if Bloomberg coverage is insufficient. `instrument_type: repo_special`.   🟡 **DEFERRED** — see `docs/technical_debt.md` entry #30. Same deferral rationale as C2b; ADR 0010 v1 already anticipated this entry would likely defer (named C2c "the most at risk of a documented deferral").
 
-Each C2 sub-phase is its own data PR following the project's two-phase data-PR cycle (operator-run Bloomberg verification → finalize → push/extract/ingest → sanity queries → PR with the report). The deliverables work orders (C3, C4) proceed in parallel under their own ADR.
+Each C2 sub-phase is its own data PR following the project's two-phase data-PR cycle (operator-run Bloomberg verification → finalize → push/extract/ingest → sanity queries → PR with the report). The deliverables work orders (C3, C4) proceeded in parallel under their own ADR (ADR 0011); both are now closed (C3 = PR #181, C4 = PR #182).
+
+Track C v1 ships C1 + C2a + C3 + C4. C2b and C2c are deferred per the documented-deferral discipline; their downstream consumers (`financing_rate.term_repo_curve()`, `financing_rate.gc_special_blend()`) were already `NotImplementedError` before Track C and remain so — no new breakage. Re-prioritisation trigger: when a Phase-3 / Phase-4 primitive that genuinely needs term-GC or CUSIP-specials data is scheduled.
 
 ## Verification
 
@@ -96,3 +98,4 @@ C1 produces no code and no data — its verification is **review of this ADR**. 
 | Version | Date | Change |
 |---|---|---|
 | v1 | 2026-05-22 | Initial decision. Proposed. |
+| v2 | 2026-05-23 | Post-Track-C-rollout amendment recording the closing state of the C2 sub-phases: C2a (overnight RFR) DONE with all four markets cleanly verified and ingested 2026-05-23 — `rates_agent/playbooks/overnight_rfr.yml` carries `# VERIFIED 2026-05-23` markers across all candidates; C2b (term GC repo curves) and C2c (CUSIP-level specials) DEFERRED per the documented-deferral discipline this ADR already named in §Decision 1 / §Decision 4. Deferrals recorded in `docs/technical_debt.md` entries #29 (C2b) and #30 (C2c) with full WHERE/WHAT/IMPACT/FIX/EFFORT/WHEN fields mirroring the format of entry #28 (D-auctions deferred from B2 v1 — the closest analog: a deferred sub-phase of a Track B work order). Both deferrals are by PRIORITY, not by empirical Bloomberg-coverage failure (neither probe has been run): the substrate (this ADR + `market_data_daily` + the three `instrument_type` values) is in place; C2b/C2c are pure data PRs when picked up — no further code work required. Downstream consumers (`financing_rate.term_repo_curve()`, `financing_rate.gc_special_blend()`) were `NotImplementedError` before Track C started and remain so — no new breakage. **Re-prioritisation trigger:** when a Phase-3 / Phase-4 primitive that genuinely needs term-GC or CUSIP-specials data is scheduled. Track C v1 closes at C1 + C2a + C3 + C4 (PR #181 + PR #182). No schema, no code, no ADR §Decision changes — only the §Rollout status update + this version log entry. |
