@@ -21,22 +21,22 @@ backend: coding-agent
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
 orchestrator_status: processing
-current_primitive: bond_futures__futures_volume_oi
-current_primitive_tool_name: futures_volume_oi
+current_primitive: bond_futures__scan_bond_futures_extremes
+current_primitive_tool_name: scan_bond_futures_extremes
 current_step: committing
-last_successful_primitive: bond_futures__futures_price_level
-last_successful_commit: 8711d9f
+last_successful_primitive: bond_futures__futures_volume_oi
+last_successful_commit: e23f019
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_complete_one_primitive_committed
+last_stop_reason: reviewer_round_3_approved_claude_fallback_committing
 last_error: null
-last_updated: "2026-05-23T02:23:00Z"
+last_updated: "2026-05-23T04:30:30Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
 # ---------------------------------------------------------------------------
-done: 17
+done: 18
 blocked: 0
-remaining: 6
+remaining: 5
 
 # ---------------------------------------------------------------------------
 # Quota
@@ -54,8 +54,22 @@ quota_note: |
 # ---------------------------------------------------------------------------
 # Reviewer engine state (QUOTA_AND_RESUME_POLICY.md §10)
 # ---------------------------------------------------------------------------
-reviewer_mode: codex
-reviewer_mode_history: []
+reviewer_mode: claude_fallback
+reviewer_mode_history:
+  - at: "2026-05-23T04:18:00Z"
+    from: codex
+    to: claude_fallback
+    reason: codex_quota_exhausted
+    primitive_id: bond_futures__scan_bond_futures_extremes
+    detail: |
+      Codex round-3 dispatch returned "You've hit your usage limit ...
+      try again at 5:47 AM" before producing any verdict heading.
+      parse_reviewer_log.py: heading=null,
+      reviewer_quota_exhausted=true, environment_failure=false.
+      Codex log: /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes_round3.log
+      (13431 bytes). Re-dispatching the SAME REVIEWER_PROMPT.md
+      contract through run_claude_reviewer.sh for the same primitive
+      (no primitive status downgrade; no verdict invented).
 
 # ---------------------------------------------------------------------------
 # Catalog exhaustion (BACKGROUND_EXECUTION_POLICY.md §8)
@@ -71,6 +85,415 @@ human_required: null
 # Audit log — append-only
 # ---------------------------------------------------------------------------
 status_notes:
+  - at: "2026-05-23T04:30:30Z"
+    kind: reviewer_round_3_approved_under_claude_fallback_committing
+    text: |
+      Cron wake 2026-05-23T04:30Z. Branch guard passed (on
+      primitive_automation). The 04:18Z wake's Claude reviewer round 3 for
+      bond_futures__scan_bond_futures_extremes (dispatched after the Codex
+      round-3 quota-exhaustion fallback per QUOTA_AND_RESUME_POLICY.md §10)
+      has since completed: reviewer log
+      /tmp/claude_reviewer_run_bond_futures__scan_bond_futures_extremes_round3.log
+      is 51 lines (7391 bytes), last modified 2026-05-23T04:26Z; wrapper
+      output /tmp/claude_reviewer_wrapper_round3.out (7437 bytes) confirms
+      identical content. parse_reviewer_log.py: heading=APPROVED,
+      environment_failure=false, reviewer_quota_exhausted=false.
+
+      The reviewer's verdict (claude_fallback engine) independently
+      verified every round-2 mandatory fix on disk with file:line
+      citations: (a) shared/analytics/rates_fetch.py L1034-1040 new
+      end_date param with SQL predicate at L1011, bind at L1122 — NULL
+      short-circuit so existing callers unaffected; (b) new
+      fetch_rolling_generic_universe_max_date helper L1130-1185 sharing
+      the same join/WHERE shape as the series fetcher; (c) compute.py
+      L502-521 future-anchor guard fires only when requested_as_of is not
+      None, returns envelope-only with error key (no results, no
+      scan_summary); (d) end_date=fetch_anchor threaded to all three
+      series fetcher calls (L540/L547/L554); (e) replaced compute test
+      L1049-1094 parametrized over days_after_max ∈ {1,30,1825}; (f)
+      re-homed before-data test L1096-1123 with explicit "beyond" NOT IN
+      assertion to distinguish the two envelopes; (g) Layer-B 5th case
+      L537-633 reads MAX(trade_date) via SELECT, calls Python tool with
+      universe_max+1, asserts envelope shape, asserts error substring,
+      asserts SQL parity (live PASS); (h) schema docstring L279-305
+      tightened to state envelope shape verbatim and disambiguate
+      future-anchor vs before-data cases — no relaxation of documented
+      behaviour; (i) PR15 fixture sha256 c9e2e1c5...699d unchanged
+      (parity test 1 PASS + 1 tamper-detect PASS).
+
+      Reviewer also re-confirmed round-1 / round-2 fixes intact: PR9/PR10
+      YAML defaults at config.yaml L266-292; PR8 input discipline
+      (lookback_days absent from scan's MCP wrapper); typed-boundary
+      discipline (3 BaseModel subclasses all frozen=True + extra=forbid;
+      noted the prompt's "four Pydantic models" was a one-off count
+      discrepancy — file structure is correct); wiring complete (MCP
+      L411-606, schemas/__init__.py L21-24,38-40, workflows/__init__.py
+      L436-443 with documented output_field_units={} exempt per sibling
+      pattern, conftest.py L79).
+
+      Live test results: Layer A 179 PASS (84 scan triplet [60 compute +
+      22 wiring + 2 parity] + 95 sibling regression); Layer B 5/5 PASS
+      including new future-anchor guard case (read-only macro-tsdb,
+      universe_max=2026-04-08); python -m shared.config.lint EXIT 0;
+      pre-flight load_audit bond_futures SUCCESS 2026-05-20
+      08:14:24.343157+01 unchanged; DB read-only throughout. Reviewer
+      explicitly mapped NO_GO_RULES §§1-15 and DONE_DEFINITION 1-14
+      (#11 satisfied by this verdict).
+
+      Round count: 3 substantive verdicts (round 1 CHANGES REQUIRED,
+      round 2 CHANGES REQUIRED, round 3 APPROVED). Under the 4-round
+      cap. Reviewer engines used: codex (rounds 1, 2; round 3 dispatch
+      quota-exhausted) + claude_fallback (round 3 verdict). The
+      claude_fallback engine produced the binding APPROVED verdict per
+      QUOTA_AND_RESUME_POLICY.md §10.4 "the review bar does not relax
+      in fallback mode". reviewer_mode_history audit trail at the
+      04:18Z entry above documents the engine swap honestly.
+
+      No findings to adjudicate; clean approval (zero dismissals).
+      Proceeding to commit on primitive_automation. After commit, the
+      catalog scan entry's pending sha will be backfilled (same
+      established pattern as the post-8711d9f / post-e23f019 commits —
+      catalog + runtime_state metadata mods left as working-tree
+      changes for the next primitive's commit). Per
+      ORCHESTRATOR_PROMPT.md Required loop step 8 ("move immediately to
+      the next eligible primitive in the same run"), after the commit
+      this wake will then advance to the next eligible primitive by
+      build_order: policy_futures__futures_price_level (build_order 14;
+      depends_on []; pre_flight_load_audit policy_futures).
+
+      reviewer_mode stays claude_fallback per
+      QUOTA_AND_RESUME_POLICY.md §10.3 (the recovery clause requires a
+      fresh §2 quota probe, which is unavailable non-interactively per
+      §6; over-using Claude is not a correctness problem, flipping back
+      to a still-exhausted Codex is).
+
+  - at: "2026-05-23T04:18:00Z"
+    kind: wake_resumed_builder_round_3_completed_codex_round_3_quota_exhausted_falling_back_to_claude
+    text: |
+      Cron wake 2026-05-23T04:15Z. Branch guard passed (on
+      primitive_automation). The 04:03Z wake's Claude builder round 3
+      for bond_futures__scan_bond_futures_extremes has since completed:
+      builder process (PID 1658225, wrapper 1658218) exited; log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round3.log
+      is 197 lines (11638 bytes), last modified 2026-05-23T04:15Z.
+
+      Builder round-3 self-report (verified on disk by orchestrator):
+      - shared/analytics/rates_fetch.py: fetch_rolling_generic_universe_series
+        now accepts optional end_date (signature L1035-1040; SQL bind
+        L1122; docstring L1085-1093). New helper
+        fetch_rolling_generic_universe_max_date at L1130-1182 (cheap
+        MAX(trade_date) probe over the same direct-join shape;
+        is_rolling_contract = TRUE, tenor IS NOT NULL,
+        curve_family = ANY(:curve_families); returns Optional[date]).
+      - rates_agent/bond_futures/tools/scan_bond_futures_extremes/compute.py:
+        future-anchor guard at L487-525 — probes universe max via the
+        new helper and returns the documented controlled-error envelope
+        ({"error": "no scoreable stems: as_of_date=... is beyond the
+        bond-futures universe's last observed trade_date=..."}) when
+        requested_as_of > universe_max_trade_date. Guard is skipped
+        when requested_as_of is None (the no-anchor case). The three
+        series fetcher calls at L540/L547/L554 now pass
+        end_date=fetch_anchor for SQL-level deterministic-anchor scope.
+      - rates_agent/bond_futures/tools/scan_bond_futures_extremes/schemas.py
+        L281-310: as_of_date Field description sharpened to make the
+        envelope shape explicit and disambiguate future-anchor vs
+        before-data cases (intent unchanged).
+      - tests/test_scan_bond_futures_extremes_compute.py: REPLACED the
+        mislabeled test with a real future-after-data-max parametrised
+        case at L1050-1093 (days_after_max ∈ {1, 30, 1825}). Re-homed
+        the before-data coverage at L1096-1118 under
+        test_past_as_of_date_before_data_returns_no_scoreable_error
+        (explicitly asserts the future-anchor "beyond" substring is
+        NOT present). New Layer-A fetcher unit tests at L1218-1306.
+      - tests/test_scan_bond_futures_extremes_parity.py: patched the
+        new max-date helper so engine=None replay paths work. PR15
+        fixture full_universe_top3_zfloor.json (raw_rows_sha256
+        c9e2e1c5...699d, anchored at 2026-04-08 = data max) UNCHANGED;
+        guard does not trip for within-data fixture.
+      - tests/test_scan_bond_futures_extremes_sql_validation.py: new
+        5th case run_future_anchor_guard_case (L537-637 helper +
+        L705-720 runner wiring) reads MAX(trade_date) from SQL, calls
+        the Python tool with universe_max+1, asserts the envelope, AND
+        verifies SQL parity (COUNT(*) WHERE trade_date > universe_max
+        AND trade_date <= future_anchor == 0).
+      Builder cites Layer A 179 PASS (60 compute + 22 wiring + 2
+      parity + 42 + 21 + 17 + 7 sibling + 8 rolling-generic-fetcher);
+      Layer B 5/5 PASS (4 prior regression cases + new future-anchor
+      guard); python -m shared.config.lint EXIT 0; DB read-only
+      throughout; working tree dirty (no commit yet).
+
+      Orchestrator spot-checks on disk:
+      - shared/analytics/rates_fetch.py L1035-1040 confirms end_date:
+        Optional[date]=None signature; L1122 confirms SQL bind
+        ("end_date": end_date.isoformat() if end_date is not None else
+        None); new helper at L1130-1182 returns Optional[date].
+      - compute.py L487-525 implements the requested_as_of >
+        universe_max_trade_date guard returning {"error": ...} envelope
+        only when both universe_max is not None AND
+        requested_as_of > universe_max; L540/L547/L554 pass
+        end_date=fetch_anchor.
+
+      current_step advanced to reviewing. Dispatched Codex reviewer
+      round 3 in background via run_codex_reviewer.sh — prompt
+      /tmp/codex_reviewer_bond_futures__scan_bond_futures_extremes_round3.prompt,
+      log
+      /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes_round3.log.
+      Codex started cleanly (session id 019e530d-c97d-71f1-8081-
+      4b8960945970, model gpt-5.5, reasoning effort high) and read the
+      prompt successfully, then returned at line 13431-end:
+
+        ERROR: You've hit your usage limit. Upgrade to Pro
+        (https://chatgpt.com/explore/pro), visit
+        https://chatgpt.com/codex/settings/usage to purchase more
+        credits or try again at 5:47 AM.
+
+      parse_reviewer_log.py output:
+        {"ok": true, "heading": null, "environment_failure": false,
+         "reviewer_quota_exhausted": true,
+         "log_file": "/tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes_round3.log"}
+
+      Per QUOTA_AND_RESUME_POLICY.md §10.2 + ORCHESTRATOR_PROMPT.md
+      Reviewer fallback rule: reviewer_quota_exhausted=true AND
+      heading=null AND reviewer_mode=codex → swap to claude_fallback,
+      append reviewer_mode_history entry (above), leave the primitive
+      in_progress (no verdict produced), and re-dispatch the SAME
+      reviewer prompt through run_claude_reviewer.sh. Doing so now.
+      Stopping cleanly per BACKGROUND_EXECUTION_POLICY.md §7
+      no-overlap; the next cron wake will detect the Claude reviewer's
+      completion and act on the verdict per the Required loop step 7.
+
+  - at: "2026-05-23T04:03:30Z"
+    kind: reviewer_round_2_changes_required_dispatching_builder_round_3
+    text: |
+      Cron wake 2026-05-23T04:00Z. Branch guard passed (on
+      primitive_automation). The 03:48Z wake's Codex reviewer round 2
+      for bond_futures__scan_bond_futures_extremes has since completed:
+      reviewer process (PID 1651375, wrapper 1651358) has exited; log
+      /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes_round2.log
+      is 13916 lines (837254 bytes), last modified 2026-05-23T03:53Z.
+      parse_reviewer_log.py: heading=CHANGES REQUIRED,
+      environment_failure=false, reviewer_quota_exhausted=false.
+
+      Single reviewer finding, classified MANDATORY-FIX after
+      verification against on-disk state (PR8 determinism + PR16 test
+      honesty + P5 doc/code split, all three adjudication categories
+      that ORCHESTRATOR_PROMPT.md Review-adjudication rule lists as
+      mandatory):
+
+      The round-2 schema docstring at
+      rates_agent/bond_futures/tools/scan_bond_futures_extremes/schemas.py
+      L294-302 promises that an as_of_date beyond the DB's last
+      trading day is "handled like an empty-data case (clean skip
+      with controlled error envelope; no exception)". The code does
+      NOT implement that — verified on disk: compute.py L460-500
+      derives only a lower-bound start_date from fetch_anchor; the
+      shared fetcher fetch_rolling_generic_universe_series at
+      shared/analytics/rates_fetch.py L1006 has only
+      `d.trade_date >= :start_date`, no upper bound;
+      _build_stem_aligned_series L196 / L232-234 `cap_at` filter is a
+      no-op when cap_at is in the future of the data max
+      (`common_idx <= cap_ts` retains everything). The test named
+      `test_future_as_of_date_returns_controlled_error` at
+      tests/test_scan_bond_futures_extremes_compute.py L1025+ openly
+      admits in its own docstring that an as_of_date 5y in the future
+      "does NOT exclude rows ... so the scan returns normal results"
+      and instead exercises a past-before-data case. Reviewer
+      confirmed against live DB (universe max=2026-04-08,
+      as_of_date=2026-04-09 returned a normal scan).
+
+      Round count check: 2 substantive reviewer verdicts for this
+      primitive (round 1 CHANGES REQUIRED + round 2 CHANGES
+      REQUIRED). Cap is 4 per ORCHESTRATOR_PROMPT.md Review
+      adjudication rule §Maximum review rounds. Safely under cap;
+      proceeding to builder round 3.
+
+      Re-dispatching Claude builder round 3 in background via
+      run_claude_builder.sh — prompt
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round3.prompt,
+      log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round3.log.
+      Builder PID 1658225 (wrapper 1658218), confirmed alive at
+      dispatch. Scope: (a) extend
+      fetch_rolling_generic_universe_series with optional end_date
+      SQL upper bound; (b) add a future-anchor guard in
+      calculate_scan_bond_futures_extremes that probes the universe's
+      MAX(trade_date) and returns the documented controlled-error
+      envelope when requested_as_of > universe_max_trade_date;
+      (c) replace the mislabeled compute test with a real
+      future-after-data-max case and re-home the past-before-data
+      case under an honest name; (d) extend the Layer-B SQL
+      validator with a beyond-universe-max case asserting the
+      controlled-error envelope. Schema docstring intent stays;
+      the bug is doc-vs-code, fix the code.
+
+      Operating in QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced
+      quota mode (no real provider quota signal). reviewer_mode
+      unchanged (codex). Stopping cleanly per
+      BACKGROUND_EXECUTION_POLICY.md §7 no-overlap; the next cron
+      wake will detect builder completion (via process exit + log
+      content) and dispatch the reviewer round 3 per the Required
+      loop step 6.
+
+  - at: "2026-05-23T03:48:30Z"
+    kind: wake_resumed_builder_round_2_completed_dispatching_reviewer_round_2
+    text: |
+      Cron wake 2026-05-23T03:45Z. Branch guard passed (on
+      primitive_automation). The 03:15Z wake's Claude builder round 2
+      for bond_futures__scan_bond_futures_extremes has since completed:
+      builder process (PID 1640758, wrapper 1640751) has exited; round-2
+      summary log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round2.log
+      is 16 lines (1831 bytes), last modified 2026-05-23T03:42Z. The
+      full round-2 self-report was also appended to the original
+      builder log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes.log
+      (working-tree state + DB-mutations + round-1 finding disposition
+      sections present at tail).
+
+      Builder round-2 self-report (verified on disk):
+      - Finding 1 (PR9/PR10) — config.yaml gained default_top_n=5 at
+        L266 and default_min_abs_z_score=1.5 at L281 in the conventions
+        block; schemas.py L248-262 makes top_n Optional[int] with
+        default=None (validation bounds [1,50] preserved); L263-277
+        makes min_abs_z_score Optional[float] with default=None
+        (>= 0.0 preserved); compute.py L438-446 resolves
+        effective_top_n / effective_min_abs_z_score against
+        config.convention_value(...). Schema docstring L35-67
+        documents the None-sentinel rationale.
+      - Finding 2 (PR8) — lookback_days completely removed from
+        schemas.py (no field, no docstring leftover) and from MCP
+        wrapper; schemas.py L279-294 adds as_of_date: Optional[date];
+        compute.py L196 _build_stem_aligned_series now accepts
+        cap_at: Optional[date]=None with cap-before-z-score at
+        L232-233; new convention_value resolutions for
+        z_score_buffer_multiplier + ffill_limit_days at L419-420 drive
+        the fetch-window arithmetic from YAML.
+      - PR15 parity fixture re-captured at 2026-05-23T03:35:19Z with
+        raw_rows_sha256
+        c9e2e1c53b341980bda8425844c642c401fe396e5bb107a15991ecc98fb9699d
+        anchored at as_of_date=2026-04-08 (frozen_today=2026-04-08).
+      Builder cites Layer A 171 PASS / 0 FAIL (53 compute + 22 wiring +
+      2 parity + 86 sibling-regression + 8 fetcher); Layer B 4/4 PASS
+      (incl. new case 4 deterministic-anchor regression); python -m
+      shared.config.lint EXIT 0; working tree dirty (no commits);
+      DB read-only throughout.
+
+      current_step advanced to reviewing. Dispatching Codex reviewer
+      round 2 in background via run_codex_reviewer.sh — prompt
+      /tmp/codex_reviewer_bond_futures__scan_bond_futures_extremes_round2.prompt,
+      log
+      /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes_round2.log.
+      Reviewer codex PID 1651375 (wrapper 1651358), confirmed alive at
+      dispatch with log already 26K bytes growing. Codex session id
+      019e52f2-b125-7e81-bff5-69ba1a63dca2, model gpt-5.5, reasoning
+      effort high. Operating in QUOTA_AND_RESUME_POLICY.md §6
+      runtime-enforced quota mode. reviewer_mode unchanged (codex).
+      Stopping cleanly per BACKGROUND_EXECUTION_POLICY.md §7
+      no-overlap; the next cron wake will detect reviewer completion
+      (via process exit + log content) and act on the verdict per the
+      Required loop step 7 + Review-adjudication rule.
+
+  - at: "2026-05-23T03:30:30Z"
+    kind: wake_observed_overlap_no_op
+    text: |
+      Cron wake 2026-05-23T03:30Z. Branch guard passed (on
+      primitive_automation). The 03:15Z wake's Claude builder round 2 for
+      bond_futures__scan_bond_futures_extremes is still in flight:
+      PID 1640758 (parent wrapper PID 1640751), started 2026-05-23T03:18Z
+      (~12 min elapsed, ~41s CPU at observation), invoked via
+      `run_claude_builder.sh /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round2.prompt`.
+      On-disk evidence: rates_agent/bond_futures/tools/scan_bond_futures_extremes/
+      already present untracked (round-1 scaffold being modified in
+      place by round 2); the cross-cutting wiring files (mcp_server.py,
+      tools/schemas/__init__.py, workflows/__init__.py, conftest.py,
+      shared/analytics/rates_fetch.py) and the catalog + runtime_state
+      metadata backfill files all already show modified in git status from
+      round 1 + prior commits. Builder round-2 log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round2.log
+      is 0 bytes — same documented Claude --print tee buffering behavior
+      noted at the 02:00Z and 02:45Z wakes; not a stall signal.
+
+      BACKGROUND_EXECUTION_POLICY.md §7 (no-overlap rule) forbids two
+      orchestrator wakes from simultaneously mutating catalog or runtime
+      state for the same primitive. The round-2 fix scope (PR9/PR10 YAML
+      conventions for default_top_n + default_min_abs_z_score, schema
+      None-sentinel refactor across schemas.py + mcp_server.py + compute.py,
+      PR8 lookback_days removal + as_of_date addition with deterministic
+      anchor, PR15 fixture re-capture with new sha256, Layer-A + Layer-B
+      re-validation including the 19/19 SQL universe sweep) is exactly
+      the kind of multi-file change that routinely runs 20-40 min and
+      races the */15 cron interval — same pattern documented at the
+      02:00Z (futures_volume_oi build) and 02:45Z (scan round-1 build)
+      wakes. Acting accordingly: this wake does NOT dispatch a competing
+      builder, does NOT touch the catalog entry for
+      bond_futures__scan_bond_futures_extremes, and does NOT change
+      orchestrator_status / current_primitive / current_step. Only this
+      audit note + last_updated are touched, so the Discord-facing agent
+      can still see the wake fired honestly.
+
+      The in-flight builder will finish on its own; the next cron wake
+      (after ~03:45Z) is responsible for: (a) detecting the builder's
+      completion via log content + process absence, (b) reading the
+      builder self-report, (c) dispatching the Codex reviewer round 2
+      via run_codex_reviewer.sh per the Required loop step 6 — the same
+      handoff pattern used at 03:00Z (scan round-1 → reviewer round-1
+      dispatch) and 02:15Z (volume_oi builder → reviewer). No primitive
+      state changes this wake. Quota state unchanged (probe_unavailable
+      per QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced mode; no real
+      provider quota signal observed). reviewer_mode unchanged (codex).
+      Stopping cleanly.
+
+  - at: "2026-05-23T03:15:30Z"
+    kind: reviewer_round_1_changes_required_dispatching_builder_round_2
+    text: |
+      Cron wake 2026-05-23T03:15Z. Branch guard passed (on
+      primitive_automation). The 03:00Z wake's Codex reviewer round 1 for
+      bond_futures__scan_bond_futures_extremes has since completed:
+      reviewer process exited; log
+      /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes.log
+      is 12067 lines (649630 bytes), last modified 2026-05-23T03:07Z.
+      parse_reviewer_log.py: heading=CHANGES REQUIRED,
+      environment_failure=false, reviewer_quota_exhausted=false.
+
+      Two reviewer findings, both classified MANDATORY-FIX after
+      verification against on-disk state:
+
+      (1) PR9 / PR10 YAML-vs-code split violation. schemas.py L208-209
+      hardcodes top_n=5 as a Pydantic Field default; L219-220 hardcodes
+      min_abs_z_score=1.5 as a Pydantic Field default; mcp_server.py
+      L411-412 repeats both defaults at the MCP layer. config.yaml has
+      NO default_top_n or default_min_abs_z_score convention block —
+      verified directly. Catalog entry methodology guardrails plus the
+      sibling primitives (futures_price_level, futures_volume_oi) keep
+      every defaultable knob YAML-locked; the scan deviates from this
+      pattern. Minimum fix: add YAML conventions for default top_n and
+      default min_abs_z_score; switch the input schema and MCP wrapper
+      to a None-sentinel default pattern; resolve omitted values from
+      config inside compute before the ranking step.
+
+      (2) PR8 input-schema discipline + correctness. schemas.py L231
+      exposes lookback_days as an LLM-controlled per-query input; the
+      MCP wrapper at L413 forwards it. The schema has NO as_of_date
+      input; compute.py L411 anchors the scan to date.today(),
+      making the scan non-deterministic across days. lookback_days
+      controls the fetch window, which is methodology (YAML-locked
+      territory per the catalog's own assumptions block at L308-314).
+      Minimum fix: remove lookback_days from the public input schema
+      and MCP wrapper; add an as_of_date input (date | None); derive
+      the fetch window from YAML conventions (z_score_window_days *
+      z_score_buffer_multiplier); cap rows at the requested as_of_date.
+
+      Both findings touch mandatory-fix categories enumerated in
+      ORCHESTRATOR_PROMPT.md Review-adjudication rule: PR8
+      (input-schema discipline) + PR9/PR10 (YAML-vs-code split). No
+      dismissable findings this round. Re-dispatching builder for
+      round 2 via run_claude_builder.sh in background. Prompt:
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round2.prompt;
+      log: /tmp/claude_builder_bond_futures__scan_bond_futures_extremes_round2.log.
+      Operating in QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced
+      quota mode. reviewer_mode unchanged (codex). The next cron wake
+      will observe the in-flight builder per §7 no-overlap and yield.
+
   - at: "2026-05-22T00:00:00Z"
     kind: catalog_reset
     text: |
@@ -262,6 +685,112 @@ status_notes:
       per the Required loop step 6. No primitive state changes this
       wake. Quota state unchanged (probe_unavailable; no real provider
       quota signal observed). Stopping cleanly.
+  - at: "2026-05-23T03:01:30Z"
+    kind: wake_resumed_builder_completed_dispatching_reviewer
+    text: |
+      Cron wake 2026-05-23T03:00Z. Branch guard passed (on
+      primitive_automation). The 02:25Z wake's Claude builder for
+      bond_futures__scan_bond_futures_extremes has since completed:
+      builder process (PID 1622239) has exited; log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes.log
+      is 82 lines (6083 bytes), last modified 2026-05-23T02:56Z, with
+      a full self-report. On-disk verification: the four-file primitive
+      package rates_agent/bond_futures/tools/scan_bond_futures_extremes/
+      (__init__.py / config.yaml / schemas.py / compute.py) is present;
+      tests test_scan_bond_futures_extremes_compute.py / _wiring.py /
+      _parity.py / _sql_validation.py are present (untracked); the
+      PR15 parity fixture directory tests/fixtures/scan_bond_futures_extremes_v1/
+      (README.md, _capture.py, full_universe_top3_zfloor.json with
+      raw_rows_sha256 0ae977ace04c02099c888b99ebd366182de50d58b20f04ed0f67325b4c440662)
+      is present; the wiring touchpoints (rates_agent/bond_futures/mcp_server.py,
+      rates_agent/bond_futures/tools/schemas/__init__.py,
+      rates_agent/workflows/__init__.py, shared/analytics/rates_fetch.py,
+      tests/conftest.py) all show as modified in git status.
+      Builder self-report: Layer A compute 38p / wiring 16p / parity 2p
+      (incl. tamper-detect) = 56p offline; shared.config.lint EXIT 0;
+      Layer B SQL validation 3/3 PASS (full universe, 2-curve subset,
+      1-curve subset) against macro-tsdb read-only; neighbour
+      regression 87p no regressions; ONE new helper
+      fetch_rolling_generic_universe_series added to
+      shared/analytics/rates_fetch.py with a Layer-A unit test;
+      universe-wide methodology disclosure baked into every row
+      including the "NOT an inter-commodity DV01-weighted spread" guard
+      verbatim per catalog. DB read-only throughout. Pre-flight
+      load_audit was re-verified by the builder (bond_futures SUCCESS
+      2026-05-20 08:14:24.343157+01, unchanged).
+      current_step advanced to reviewing. Dispatching Codex reviewer
+      round 1 in background via run_codex_reviewer.sh — log
+      /tmp/codex_reviewer_run_bond_futures__scan_bond_futures_extremes.log,
+      prompt /tmp/codex_reviewer_bond_futures__scan_bond_futures_extremes.prompt.
+      Operating in QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced
+      quota mode. reviewer_mode unchanged (codex). Stopping cleanly;
+      the next cron wake will detect reviewer completion (per the
+      §7 no-overlap pattern) and act on the verdict.
+
+  - at: "2026-05-23T02:45:30Z"
+    kind: wake_observed_overlap_no_op
+    text: |
+      Cron wake 2026-05-23T02:45Z. Branch guard passed (on
+      primitive_automation). The 02:25Z wake's Claude builder for
+      bond_futures__scan_bond_futures_extremes is still in flight:
+      PID 1622239 (parent wrapper PID 1622231), started ~02:27Z
+      (~18.5 min elapsed at observation), invoked via
+      `run_claude_builder.sh /tmp/claude_builder_bond_futures__scan_bond_futures_extremes.prompt`.
+      On-disk evidence: rates_agent/bond_futures/tools/scan_bond_futures_extremes/
+      already exists as untracked (build in progress); the cross-cutting
+      wiring files (mcp_server.py, tools/schemas/__init__.py,
+      workflows/__init__.py, conftest.py, shared/analytics/rates_fetch.py)
+      already show modified in git status from prior commits' metadata
+      backfills + this build's wiring updates. Builder log
+      /tmp/claude_builder_bond_futures__scan_bond_futures_extremes.log
+      is 0 bytes — same documented Claude --print tee buffering behavior
+      noted at the 02:00Z wake; not a stall signal.
+
+      BACKGROUND_EXECUTION_POLICY.md §7 (no-overlap rule) forbids two
+      orchestrator wakes from simultaneously mutating catalog or runtime
+      state for the same primitive. The typical single-primitive build /
+      review cycle here runs 30-60 min, which routinely races the */15
+      cron interval — same pattern as the 02:00Z wake on
+      bond_futures__futures_volume_oi. Acting accordingly: this wake
+      does NOT dispatch a competing builder, does NOT touch the catalog
+      entry for bond_futures__scan_bond_futures_extremes, and does NOT
+      change orchestrator_status / current_primitive / current_step.
+      Only this audit note + last_updated are touched, so the
+      Discord-facing agent can still see the wake fired honestly.
+
+      The in-flight builder will finish on its own; the next cron wake
+      (after ~03:00Z) is responsible for: (a) detecting the builder's
+      completion via log content + process absence, (b) reading the
+      builder self-report, (c) dispatching the Codex reviewer (round 1)
+      per the Required loop step 6. No primitive state changes this
+      wake. Quota state unchanged (probe_unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced mode; no real
+      provider quota signal observed). reviewer_mode unchanged (codex).
+      Stopping cleanly.
+  - at: "2026-05-23T02:25:00Z"
+    kind: wake_continued_next_primitive
+    text: |
+      bond_futures__futures_volume_oi committed on primitive_automation
+      as e23f0191004634fb82ffc7c9e2bfbf4b8847fdd7 (short: e23f019) at
+      2026-05-23T02:23:00Z. 17 files changed, 9103 insertions(+), 14
+      deletions(-): the four-file primitive package
+      (rates_agent/bond_futures/tools/futures_volume_oi/) +
+      compute/wiring/parity/SQL-validation test triplet + PR15 parity
+      fixture directory + MCP wrapper / schema re-export / workflow
+      PrimitiveSpec / conftest wiring + the catalog + runtime_state
+      updates documenting the round-1 clean approval (no dismissals).
+      Catalog counts now: done 17 / blocked 0 / remaining 6.
+      Per ORCHESTRATOR_PROMPT.md Required loop step 8 ("move
+      immediately to the next eligible primitive in the same run"),
+      this wake continues with the next eligible primitive by
+      build_order: bond_futures__scan_bond_futures_extremes
+      (build_order 3, depends_on: [bond_futures__futures_price_level]
+      — satisfied by 8711d9f). Pre-flight load_audit re-verified
+      read-only: bond_futures SUCCESS row 2026-05-20
+      08:14:24.343157+01 (unchanged). Dispatching Claude builder
+      next. reviewer_mode unchanged (codex). The next cron wake at
+      ~02:30Z will observe the in-flight builder per §7 no-overlap
+      and yield, same pattern as the 02:00Z wake.
   - at: "2026-05-23T02:23:00Z"
     kind: reviewer_round_1_approved
     text: |

@@ -103,12 +103,12 @@ primitives:
   - id: bond_futures__futures_volume_oi
     status: done
     build_order: 2
-    active_step: committed_pending_commit_sha_backfill
+    active_step: committed_e23f019_feat_bond_futures_add_futures_volume_oi_primitive
     review_round: 1
     builder_round: 1
     last_review_heading: APPROVED
     committed_at: "2026-05-23T02:23:00Z"
-    commit_sha: pending_backfill
+    commit_sha: e23f019
     instrument_family: bond_futures
     tool_name: futures_volume_oi
     category: desk_invariant_primitive
@@ -137,8 +137,15 @@ primitives:
       - open_interest history
 
   - id: bond_futures__scan_bond_futures_extremes
-    status: todo
+    status: done
     build_order: 3
+    active_step: committed_pending_sha_feat_bond_futures_add_scan_bond_futures_extremes_primitive
+    review_round: 3
+    builder_round: 3
+    last_review_heading: APPROVED
+    approved_by_reviewer_engine: claude_fallback
+    committed_at: "2026-05-23T04:30:00Z"
+    commit_sha: pending
     instrument_family: bond_futures
     tool_name: scan_bond_futures_extremes
     category: desk_invariant_primitive

@@ -18,10 +18,12 @@ yet. This V1 ships:
    price + Δ + 252d range / z-score.
 2. ``get_futures_volume_oi_tool``             — daily volume / OI /
    Δ-OI / OI z-score (front-back OI migration is the positioning
-   signal).  *(pending — factory build_order 2)*
+   signal).
 3. ``scan_bond_futures_extremes_tool``        — morning bond-futures
-   sweep by absolute z-score across the universe.  *(pending —
-   factory build_order 3)*
+   sweep by absolute z-score across the universe (price LEVEL,
+   1-day price CHANGE, volume LEVEL, OI LEVEL — four metrics, top-N
+   per metric). Replaces the Phase-4 inter-commodity DV01-weighted
+   spread stack per ADR 0011 V1 scope.
 
 Each tool's methodology card MUST disclose: "this is CTD-of-rolling-
 generic price, not a clean tenor-anchored yield; for CTD-implied
@@ -51,7 +53,10 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
+
+from typing import Optional
 
 from pydantic import ValidationError
 
@@ -71,6 +76,11 @@ from rates_agent.bond_futures.tools.futures_volume_oi import (  # noqa: E402
     CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
     FuturesVolumeOIInput,
     calculate_futures_volume_oi,
+)
+from rates_agent.bond_futures.tools.scan_bond_futures_extremes import (  # noqa: E402
+    CONFIG_PATH as SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+    ScanBondFuturesExtremesInput,
+    calculate_scan_bond_futures_extremes,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -396,10 +406,210 @@ def get_futures_volume_oi_tool(
 
 
 # ===========================================================================
-# REMAINING TOOL REGISTRATIONS
+# TOOL 3: scan_bond_futures_extremes
 # ===========================================================================
-# scan_bond_futures_extremes_tool lands here as the OpenClaw primitive-
-# automation factory builds it (per the catalog's ``build_order``).
+@mcp.tool()
+def scan_bond_futures_extremes_tool(
+    curve_families: str = "",
+    top_n: int = 0,
+    min_abs_z_score: float = -1.0,
+    as_of_date: str = "",
+) -> str:
+    """Scan the bond-futures rolling-generic universe and rank stems by
+    absolute 252-day z-score across four metrics — price LEVEL, 1-day
+    price CHANGE ("Δ"), daily traded VOLUME, end-of-day OPEN-INTEREST
+    LEVEL. Returns the top-N extremes PER METRIC, each tagged with the
+    methodology disclosure.
+
+    Use this tool when the user asks about:
+    - Morning bond-futures sweeps        (e.g. "Where is the bond-
+                                                futures universe
+                                                stretched today?")
+    - Universe-wide extreme moves         (e.g. "Biggest movers
+                                                across UST + Bund
+                                                futures today?")
+    - Cross-contract volume / OI extremes (e.g. "Where is positioning
+                                                most stretched in
+                                                bond futures?")
+
+    Do NOT use this tool for:
+    - Policy / STIR futures (SFR / ER / SFI) — those route to the
+      policy_futures agent's scan_policy_futures_extremes tool.
+    - Inter-commodity DV01-weighted spreads (TY vs RX, US vs RX) —
+      Phase-4 work gated on D-repo + D-deliverable; respond with
+      out_of_scope rather than approximating with this monitor.
+    - Tenor-anchored yield calls — bond-futures monitors live in
+      price space; the CTD-implied yield path requires deliverable-
+      basket + conversion-factor metadata that is Phase-4 work.
+    - A per-contract deep-dive on one stem — use
+      get_futures_price_level_tool / get_futures_volume_oi_tool for
+      one (curve_family, contract_code) at a time.
+
+    ALWAYS preserve the methodology_disclosure field — present on EVERY
+    result row AND on the response — when relaying to the user. P5
+    (honest disclosure) + the catalog's methodology guardrail require
+    the universe-wide-sweep label, the explicit z-score lookback window,
+    and the rolling-generic-price / non-DV01-spread caveats to be
+    propagated.
+
+    Parameters
+    ----------
+    curve_families : str, optional
+        Comma-separated list of curve families to scan. Empty
+        (default ``""``) = scan the full bond-futures universe
+        (UST_FUT, DE_FUT, UK_FUT, JP_FUT, FR_FUT, IT_FUT, ES_FUT,
+        CA_FUT, AU_FUT). Pass a CSV to narrow (e.g.
+        ``"UST_FUT,DE_FUT"`` for a UST + Bund sweep). MCP exposes
+        flat scalars, so the wrapper accepts a string and splits it
+        before constructing the Pydantic input — mirrors the
+        sovereign scan_extremes_tool convention. Policy-futures
+        curves (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) are
+        REFUSED at schema-validation time per the closed-family
+        whitelist in config.yaml.
+    top_n : int, optional
+        Number of extreme stems to return PER METRIC. MCP exposes
+        flat scalars, so the sentinel ``0`` (default) means "omit"
+        and falls through to the YAML's ``default_top_n``
+        convention (currently 5) — keeps the default YAML-locked
+        per PR9 / PR10. Pass an integer in [1, 50] to override per
+        query; the schema-layer bound rejects out-of-range values.
+    min_abs_z_score : float, optional
+        Minimum absolute z-score threshold for inclusion in the
+        ranking. Applied PER METRIC — a stem may pass on price but
+        fail on volume; it appears in the price top-N only. The
+        sentinel ``-1.0`` (default) means "omit" and falls through
+        to the YAML's ``default_min_abs_z_score`` convention
+        (currently 1.5). Pass a non-negative float to override per
+        query; the schema-layer ``ge=0.0`` bound stays as a
+        structural invariant.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the scan to a
+        specific trading day. Empty (default ``""``) = anchor to
+        the most-recent shared trading day across the fetched
+        universe (max trade_date observed after per-stem
+        alignment) — same as-of resolution pattern as
+        get_futures_price_level_tool / get_futures_volume_oi_tool.
+        The fetch window itself is methodology (derived from YAML:
+        z_score_window_days × z_score_buffer_multiplier, currently
+        252 × 1.5 = 378 calendar days) and is NOT an LLM input.
+        Reviewer round-1 mandatory-fix: removed the previous
+        ``lookback_days`` input (PR8 / OPR8 input-schema overreach)
+        and replaced ``date.today()`` anchoring with this explicit
+        anchor for determinism.
+    """
+    # Parse the comma-separated curve_families CSV into a list (or
+    # None when empty). MCP exposes flat scalars, so we accept a
+    # string and split it before constructing the Pydantic input —
+    # mirrors the sovereign scan_extremes_tool convention. The empty-
+    # string sentinel translates to None so the YAML's whitelist
+    # full-universe default flows through.
+    parsed_families = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Sentinel resolution: the MCP boundary cannot carry None for
+    # int/float, so we use 0 / -1.0 sentinels for "omit". The
+    # schema's ``ge=1`` / ``ge=0.0`` bounds would have rejected the
+    # sentinel values themselves, so we translate to None BEFORE
+    # constructing the Pydantic input — preserves the schema's None
+    # → YAML-default fall-through, with no concrete defaults leaking
+    # into the MCP wrapper (PR9 / PR10 mandatory-fix).
+    top_n_arg: Optional[int] = top_n if top_n > 0 else None
+    min_abs_z_score_arg: Optional[float] = (
+        min_abs_z_score if min_abs_z_score >= 0.0 else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent shared trading day).
+    # Non-empty ⇒ parse with date.fromisoformat; a malformed value
+    # raises and is caught by the ValidationError envelope below so
+    # the LLM sees a clean error rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[scan_bond_futures_extremes_tool] as_of_date parse "
+                "failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = ScanBondFuturesExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n_arg,
+            min_abs_z_score=min_abs_z_score_arg,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[scan_bond_futures_extremes_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[scan_bond_futures_extremes_tool] failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors get_futures_price_level_tool /
+    # get_futures_volume_oi_tool exactly.
+    try:
+        scan_config = load_tool_config(SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH)
+        result = calculate_scan_bond_futures_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[scan_bond_futures_extremes_tool] unhandled error for "
+            "curve_families=%s",
+            params.curve_families,
+        )
+        return json.dumps(
+            {"error": f"scan_bond_futures_extremes_tool failed: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_rows = len(result.get("results", []) or [])
+    # ``top_n`` / ``min_abs_z_score`` / ``as_of_date`` may all be None
+    # (YAML-fallback / latest-shared-date sentinels); format with %r so
+    # the log line is honest about which knobs the LLM actually set
+    # versus which fell through to defaults.
+    logger.info(
+        "[scan_bond_futures_extremes_tool] tool call complete: "
+        "curve_families=%s top_n=%r min_abs_z=%r as_of=%r → %s (%d rows)",
+        params.curve_families, params.top_n, params.min_abs_z_score,
+        params.as_of_date, status, n_rows,
+    )
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

@@ -18,6 +18,12 @@ from rates_agent.bond_futures.tools.futures_volume_oi.schemas import (
     FuturesVolumeOIOutput,
     FuturesVolumeOITimeSeriesRow,
 )
+from rates_agent.bond_futures.tools.scan_bond_futures_extremes.schemas import (
+    ScanBondFuturesExtremesInput,
+    ScanBondFuturesExtremesOutput,
+    ScanBondFuturesExtremesResultRow,
+    ScanMetric,
+)
 
 
 __all__ = [
@@ -29,4 +35,8 @@ __all__ = [
     "FuturesVolumeOICurrentMetrics",
     "FuturesVolumeOITimeSeriesRow",
     "FuturesVolumeOIOutput",
+    "ScanBondFuturesExtremesInput",
+    "ScanBondFuturesExtremesOutput",
+    "ScanBondFuturesExtremesResultRow",
+    "ScanMetric",
 ]

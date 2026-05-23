@@ -42,6 +42,7 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
 
      - ``fetch_rolling_generic_series``
      - ``fetch_rolling_generic_reference``
+     - ``fetch_rolling_generic_universe_series``
 
    Why a second path exists: the enriched view's ``contract_code``
    column COALESCEs the per-day-effective SCD2 history value (TYH6,
@@ -74,6 +75,8 @@ The currently-shipped fetch shapes are:
   - two curves, matched strip positions   → fetch_cross_market_strip
   - one rolling-generic futures series    → fetch_rolling_generic_series
   - rolling-generic instrument metadata   → fetch_rolling_generic_reference
+  - rolling-generic universe scan, one    → fetch_rolling_generic_universe_series
+    field across many stems
 
 All functions are parameterized (named SQL binds); no string
 interpolation of user-supplied identifiers.
@@ -959,3 +962,224 @@ def fetch_rolling_generic_reference(
     if row is None:
         return None
     return dict(row)
+
+
+# ============================================================================
+# ROLLING-GENERIC UNIVERSE SCAN — many stems × one field, one round-trip
+# ============================================================================
+#
+# Universe-scan analogue of ``fetch_rolling_generic_series``. Returns
+# every (curve_family, contract_code) rolling-generic stem's series for
+# one field across the named curve families, in ONE query. Used by the
+# bond-futures morning-extremes scanner (V1 monitor #3 per ADR 0011 —
+# ``rates_agent.bond_futures.tools.scan_bond_futures_extremes``); the
+# per-stem ``fetch_rolling_generic_series`` would otherwise force the
+# scanner into one round-trip per stem per field (19 stems × 3 fields =
+# 57 round-trips per scan), which is structurally wrong for a morning
+# sweep that wants ONE consistent snapshot across the universe.
+#
+# Why a NEW helper rather than reuse ``fetch_scan_universe``:
+# ``fetch_scan_universe`` queries the enriched view, whose
+# ``contract_code`` column COALESCEs the per-day-effective SCD2 history
+# value (TYH6 / TYM6 / TYU6 ...) onto the master stem — for rolling-
+# generic rows the history value wins. Filtering or grouping on that
+# column splits each rolling-generic into N per-window groups instead
+# of one stable stem-keyed group. The direct-join path (this helper)
+# preserves the stem (TY1, UXY1, ...) as the group key, which is the
+# only correct shape for a universe scan over rolling-generics.
+#
+# This helper is the read-side mirror of the per-stem helper above,
+# scaled to N stems in one query. Single source of truth (P10): the
+# scanner reaches the DB through this helper rather than embedding raw
+# SQL in its ``compute.py``.
+
+_FETCH_ROLLING_GENERIC_UNIVERSE_SERIES_SQL = text("""
+    SELECT
+        d.trade_date,
+        i.curve_family,
+        i.contract_code,
+        i.tenor,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.curve_family        = ANY(:curve_families)
+      AND i.is_rolling_contract = TRUE
+      AND i.tenor              IS NOT NULL
+      AND d.field_name          = :field_name
+      AND d.trade_date         >= :start_date
+      AND (CAST(:end_date AS DATE) IS NULL OR d.trade_date <= CAST(:end_date AS DATE))
+    ORDER BY i.curve_family, i.contract_code, d.trade_date
+""")
+
+
+# Cheap "is the requested as-of beyond what we have ingested" probe used
+# by the bond-futures universe scanner's future-anchor guard. Mirrors the
+# universe-series fetcher's filter shape exactly (same join, same
+# rolling-contract filter, same NULL-tenor guard) so the MAX(trade_date)
+# it returns is the SAME observation date the series fetcher would have
+# bounded against — no possibility of the probe and the fetcher
+# disagreeing about "what's the universe's last trading day".
+_FETCH_ROLLING_GENERIC_UNIVERSE_MAX_DATE_SQL = text("""
+    SELECT MAX(d.trade_date) AS max_trade_date
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.curve_family        = ANY(:curve_families)
+      AND i.is_rolling_contract = TRUE
+      AND i.tenor              IS NOT NULL
+""")
+
+
+def fetch_rolling_generic_universe_series(
+    engine: Engine,
+    curve_families: Sequence[str],
+    field_name: str,
+    start_date: date,
+    end_date: Optional[date] = None,
+) -> pd.DataFrame:
+    """Fetch one field across the entire rolling-generic universe for
+    the named curve families.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'curve_family', 'contract_code', 'tenor',
+       'field_value']``.
+
+    Filters the direct-join path
+    (``market_data_daily JOIN instrument_master``) on
+    ``is_rolling_contract = TRUE`` and the named ``curve_families`` —
+    so for the bond-futures scanner's typical call (curve_families =
+    sovereign-bond futures families per ADR 0011, ``tenor IS NOT
+    NULL`` excludes the policy-futures strip-position-keyed rows
+    that have NULL tenor on instrument_master). Returns every stem's
+    series in one query; the caller groups by
+    ``(curve_family, contract_code)`` to materialise per-stem series.
+
+    Why ``tenor IS NOT NULL``: in the rolling-generic universe today,
+    sovereign-bond futures (UST_FUT etc.) carry a tenor (2Y / 5Y /
+    10Y / 30Y); policy-futures (SOFR_FUT etc.) carry NULL tenor on
+    instrument_master (strip-position-keyed via ``attributes`` JSONB
+    instead). Filtering ``tenor IS NOT NULL`` is the cheapest correct
+    guard against accidentally including a mis-labelled policy-
+    futures stem in a bond-futures scanner call — even if a caller
+    passes a policy-futures family in ``curve_families`` (which the
+    scanner's input schema rejects via the closed-family whitelist),
+    this SQL still returns zero policy-futures rows. The schema
+    validation is the primary refusal; this filter is belt-and-
+    braces.
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    curve_families : Sequence[str]
+        Bond-futures curve families to scan (e.g. ``['UST_FUT',
+        'DE_FUT', 'UK_FUT', 'JP_FUT', 'FR_FUT', 'IT_FUT', 'ES_FUT',
+        'CA_FUT', 'AU_FUT']``).
+    field_name : str
+        Bloomberg observation field mnemonic — typically ``'PX_LAST'``
+        for price, ``'OPEN_INT'`` for open interest, ``'PX_VOLUME'``
+        for volume.
+    start_date : date
+        Inclusive lower bound on ``trade_date``.
+    end_date : date, optional
+        Inclusive upper bound on ``trade_date``. When supplied, the
+        SQL predicate adds ``AND d.trade_date <= :end_date`` so the
+        result set is anchored at a specific DB-as-of for
+        deterministic Layer-B validation and to support the bond-
+        futures scanner's future-anchor guard (an LLM-supplied
+        ``as_of_date`` beyond the universe's last ingested
+        ``trade_date`` is rejected upstream; this upper bound is the
+        belt-and-braces SQL-level scope so the per-stem series cannot
+        contain rows past the requested anchor even if the upstream
+        guard mis-fires). When ``None`` (default), behaviour is
+        unchanged — the fetcher's only ``trade_date`` filter is the
+        inclusive lower bound. Read-only; pure SELECT.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long-format DataFrame; empty if no rows match. Columns are
+        ``['trade_date', 'curve_family', 'contract_code', 'tenor',
+        'field_value']`` so callers groupby
+        ``['curve_family', 'contract_code']`` to materialise per-stem
+        series. ``tenor`` is included so the scanner can surface it
+        on the output row without a second ``fetch_rolling_generic_
+        reference`` round-trip per stem.
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_rolling_generic_universe_series requires at least "
+            "one curve family."
+        )
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_ROLLING_GENERIC_UNIVERSE_SERIES_SQL,
+            {
+                "curve_families": list(curve_families),
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+def fetch_rolling_generic_universe_max_date(
+    engine: Engine,
+    curve_families: Sequence[str],
+) -> Optional[date]:
+    """Return the maximum ``trade_date`` available across the rolling-
+    generic bond-futures universe for the named curve families.
+
+    Cheap single-aggregate probe (``SELECT MAX(d.trade_date) ...``)
+    that mirrors ``fetch_rolling_generic_universe_series``'s join /
+    filter shape exactly (same direct join through ``instrument_
+    master``, same ``is_rolling_contract = TRUE`` filter, same
+    ``tenor IS NOT NULL`` guard). The two helpers must agree on
+    "what is the universe's last trading day" — that is why this
+    probe re-uses the series fetcher's WHERE clause rather than
+    inventing its own.
+
+    Used by the bond-futures scanner's future-anchor guard
+    (``calculate_scan_bond_futures_extremes``): when the caller
+    supplies an ``as_of_date`` beyond this max, the scanner returns
+    the documented controlled-error envelope instead of silently
+    delivering a normal scan computed only on the actually-available
+    rows. Read-only; pure SELECT.
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    curve_families : Sequence[str]
+        Bond-futures curve families to probe.
+
+    Returns
+    -------
+    Optional[date]
+        The maximum ``trade_date`` observed across the named
+        universe, or ``None`` if no rows match (empty universe;
+        ingestion has not yet landed).
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_rolling_generic_universe_max_date requires at "
+            "least one curve family."
+        )
+    with engine.connect() as conn:
+        row = conn.execute(
+            _FETCH_ROLLING_GENERIC_UNIVERSE_MAX_DATE_SQL,
+            {"curve_families": list(curve_families)},
+        ).first()
+    if row is None or row[0] is None:
+        return None
+    value = row[0]
+    # SQLAlchemy returns ``date`` for ``DATE`` columns on the standard
+    # psycopg drivers; defensive isoformat-parse handles any driver
+    # that hands back a string instead.
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
