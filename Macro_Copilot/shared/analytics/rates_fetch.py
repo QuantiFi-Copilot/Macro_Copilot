@@ -2,28 +2,78 @@
 rates_fetch.py — Database helpers for rates analytics
 ======================================================
 
-Thin SQL wrappers used by rates domain tools (sovereign_bonds, ois, and
-any future sub-domain).  These functions query the shared enriched view
-``macro_data.v_market_data_daily_enriched`` and return long-format
-DataFrames that callers pivot / align as needed.
+Thin SQL wrappers used by rates domain tools (sovereign_bonds, ois,
+policy_futures, bond_futures, and any future sub-domain). Most helpers
+return long-format DataFrames that callers pivot / align as needed.
 
-These helpers are instrument-type agnostic: sovereign bonds and OIS
-swaps both live in the same base view, and the caller supplies the
-``curve_family`` + ``field_name`` pair (and for scanners, the
-``instrument_type``) that uniquely identifies the series of interest.
+Helper paths
+------------
+This module exposes **two distinct read paths**, and they are not
+interchangeable. Honest single-source-of-truth disclosure (P10):
+
+1. **Enriched-view helpers** — query the shared denormalized view
+   ``macro_data.v_market_data_daily_enriched``. The view joins
+   ``market_data_daily`` to ``instrument_master`` and exposes
+   ``curve_family`` / ``tenor`` / ``instrument_type`` / ``contract_code``
+   / ``attributes`` directly, so the caller supplies the
+   ``curve_family`` + ``field_name`` pair (plus ``tenor`` /
+   ``strip_position`` / ``instrument_type`` as appropriate) that
+   uniquely identifies the series of interest:
+
+     - ``fetch_single_tenor``
+     - ``fetch_tenor_group``
+     - ``fetch_tenor_pair``  (2-tenor alias of ``fetch_tenor_group``
+       kept for compat with the original curve_spread refactor)
+     - ``fetch_cross_market_pair``
+     - ``fetch_scan_universe``
+     - ``fetch_strip_position``           (policy futures, strip-keyed)
+     - ``fetch_strip_group``              (policy futures, strip-keyed)
+     - ``fetch_cross_market_strip``       (policy futures, strip-keyed)
+
+   These cover sovereign bonds, OIS swaps, and policy futures cleanly:
+   they all live in the same base view and the desk instrument identity
+   is a tenor or a strip position.
+
+2. **Direct-join helpers for rolling-generic bond futures** — do **NOT**
+   go through the enriched view. They join
+   ``macro_data.market_data_daily`` to ``macro_data.instrument_master``
+   directly and filter on the master stem with
+   ``is_rolling_contract = TRUE``:
+
+     - ``fetch_rolling_generic_series``
+     - ``fetch_rolling_generic_reference``
+
+   Why a second path exists: the enriched view's ``contract_code``
+   column COALESCEs the per-day-effective SCD2 history value (TYH6,
+   TYM6, TYU6, … rotating as the front rolls) onto the
+   ``instrument_master`` stem. For rolling-generic rows the history
+   value wins, so filtering the enriched view by
+   ``contract_code = 'TY1'`` returns ZERO rows even though TY1 has
+   years of price history. The canonical rolling-generic stem (TY1,
+   UXY1, US1, WN1, RX1, JB1, OAT1, YM1, XM1, …) lives only on
+   ``instrument_master.contract_code``, so the rolling-generic
+   helpers must filter the master directly. See the in-file section
+   comments at the strip-aware block (L544–587) and the
+   ``ROLLING-GENERIC FUTURES`` block (L748–810) for the full
+   rationale, and ``ADR 0011`` for the bond-futures V1 scope.
 
 Query shapes
 ------------
-Four canonical fetch shapes cover every rates tool we've built or
-plan to build:
+The currently-shipped fetch shapes are:
 
-  - one curve, one tenor            → fetch_single_tenor
-  - one curve, N tenors             → fetch_tenor_group
-                                       (fetch_tenor_pair is a 2-tenor
-                                        alias kept for compat with the
-                                        original curve_spread refactor)
-  - two curves, one tenor           → fetch_cross_market_pair
-  - entire universe of one type     → fetch_scan_universe
+  - one curve, one tenor                  → fetch_single_tenor
+  - one curve, N tenors                   → fetch_tenor_group
+                                             (fetch_tenor_pair is a
+                                              2-tenor alias kept for
+                                              compat with the original
+                                              curve_spread refactor)
+  - two curves, one tenor                 → fetch_cross_market_pair
+  - entire universe of one type           → fetch_scan_universe
+  - one curve, one strip position         → fetch_strip_position
+  - one curve, N strip positions          → fetch_strip_group
+  - two curves, matched strip positions   → fetch_cross_market_strip
+  - one rolling-generic futures series    → fetch_rolling_generic_series
+  - rolling-generic instrument metadata   → fetch_rolling_generic_reference
 
 All functions are parameterized (named SQL binds); no string
 interpolation of user-supplied identifiers.
@@ -76,14 +126,23 @@ def fetch_tenor_group(
     instrument. Default ``None`` preserves the pre-Step-0 query.
 
     **Limitation.** The kwarg filters every requested tenor by the same
-    ``contract_code``. That is correct for a single-contract single-tenor
-    lookup but does NOT express the typical multi-leg futures-strip use
-    case where each leg has its own ``contract_code`` (e.g. SFR1/SFR2/SFR3
-    across the SOFR strip). The right shape for multi-leg futures fetches
-    is a dedicated contract-keyed fetcher; that lands when the first
-    bond-future / strip-snapshot primitive is built (Phase 2 of the
-    primitive roadmap). Until then, callers needing multiple distinct
-    contract codes call this fetcher once per ``contract_code``.
+    ``contract_code`` AND filters via the enriched view's
+    ``contract_code`` column. Neither matches the bond-futures rolling-
+    generic shape: (a) the enriched view's ``contract_code`` exposes the
+    per-window SCD2 history value (TYH6 / TYM6 / ... rotating as the
+    front rolls), NOT the master stem (TY1), so filtering by
+    ``contract_code = 'TY1'`` here returns ZERO rows; (b) multi-leg
+    futures strips have a distinct ``contract_code`` per leg
+    (SFR1/SFR2/... across the SOFR strip). The right shapes are the
+    dedicated fetchers in the futures sections below:
+    ``fetch_strip_position`` / ``fetch_strip_group`` /
+    ``fetch_cross_market_strip`` for policy-futures strip-position-keyed
+    series, and ``fetch_rolling_generic_series`` /
+    ``fetch_rolling_generic_reference`` for bond-futures rolling-generic
+    stems (TY1, UXY1, RX1, JB1, ...). This kwarg path remains for the
+    sovereign / cash playbooks where ``(curve_family, tenor)`` is
+    occasionally non-unique and the enriched view's ``contract_code``
+    matches the master stem.
     """
     if not tenors:
         raise ValueError("fetch_tenor_group requires at least one tenor.")
@@ -551,10 +610,25 @@ def fetch_scan_universe(
 # replaces ``tenor: str``.
 #
 # Bond futures are NOT strip-position-keyed in the same way — they are
-# keyed by ``(curve_family, contract_code)`` (TY1 vs UXY1 share UST_FUT 10Y;
-# US1 vs WN1 share UST_FUT 30Y) — so bond-futures monitors use the existing
-# ``fetch_single_tenor(..., contract_code=)`` path. The strip-aware helpers
-# below are for the policy_futures domain specifically.
+# keyed by ``(curve_family, contract_code)`` where ``contract_code`` is
+# the master rolling-generic stem (TY1, UXY1, US1, WN1, RX1, JB1, ...).
+# The strip-aware helpers below are for the ``policy_futures`` domain
+# specifically.
+#
+# Bond-futures monitors do NOT use the ``fetch_single_tenor(...,
+# contract_code=)`` path. That path filters on the enriched view's
+# ``contract_code`` column, whose value is the per-day-effective SCD2
+# history value (TYH6, TYM6, TYU6, ... rotating as the front rolls) — NOT
+# the master stem. Filtering the enriched view by ``contract_code = 'TY1'``
+# therefore returns ZERO rows even though TY1 has years of price history.
+#
+# The canonical path for bond-futures rolling-generic series is the pair
+# of helpers in the ``ROLLING-GENERIC FUTURES`` section below
+# (``fetch_rolling_generic_series`` / ``fetch_rolling_generic_reference``).
+# Those helpers join ``market_data_daily`` directly to ``instrument_master``
+# and filter on the master stem with ``is_rolling_contract = TRUE``, which
+# is the only filter that selects the bond-futures rolling-generic
+# universe correctly.
 
 
 _FETCH_STRIP_POSITION_SQL = text("""
@@ -719,3 +793,169 @@ def fetch_cross_market_strip(
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
+# ROLLING-GENERIC FUTURES (bond futures: TY1, UXY1, RX1, JB1, ...)
+# ============================================================================
+#
+# Bond-futures rolling-generics are keyed by ``(curve_family, contract_code)``
+# where ``contract_code`` is the rolling-generic stem (TY1, UXY1, US1, WN1,
+# RX1, JB1, ...) — distinct from per-window underlying contract codes
+# (TYH6, TYM6, ...). The enriched view's ``contract_code`` column COALESCEs
+# the per-day-effective ``instrument_metadata_history.contract_code`` (which
+# rotates as the front rolls: TYH6 -> TYM6 -> TYU6 -> ...) onto the
+# instrument_master stem; for rolling-generic rows the history value wins,
+# so filtering the enriched view by ``contract_code = 'TY1'`` returns ZERO
+# rows even though TY1 has years of price history.
+#
+# The canonical stem (TY1 etc.) lives only on ``instrument_master.contract_code``.
+# To fetch a rolling-generic series we therefore join ``market_data_daily``
+# to ``instrument_master`` directly and filter on the master stem. This is
+# the read-side analogue of the ``contract_code`` disambiguator named in
+# TD#11; see also ADR 0011 §"Bond futures".
+
+_FETCH_ROLLING_GENERIC_SERIES_SQL = text("""
+    SELECT
+        d.trade_date,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.curve_family   = :curve_family
+      AND i.contract_code  = :contract_code
+      AND i.is_rolling_contract = TRUE
+      AND d.field_name     = :field_name
+      AND d.trade_date    >= :start_date
+    ORDER BY d.trade_date
+""")
+
+
+def fetch_rolling_generic_series(
+    engine: Engine,
+    curve_family: str,
+    contract_code: str,
+    field_name: str,
+    start_date: date,
+) -> pd.DataFrame:
+    """Fetch a single rolling-generic futures series (e.g. TY1 PX_LAST).
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'field_value']`` — same shape as
+    :func:`fetch_single_tenor` so downstream cleaners (
+    ``clean_single_series``) work without per-fetcher branching.
+
+    Why this is its own fetcher (not ``fetch_single_tenor`` with
+    ``contract_code=``). The enriched view's ``contract_code`` column
+    COALESCEs the per-day-effective rolling history onto the master
+    stem, so for rolling-generic rows the value is the per-window
+    underlying (TYH6 etc.), NOT the stem (TY1). Filtering the enriched
+    view by ``contract_code = 'TY1'`` therefore returns zero rows.
+    The canonical rolling-generic stem lives only on
+    ``instrument_master.contract_code``, so this fetcher joins
+    ``market_data_daily`` to ``instrument_master`` directly and filters
+    on the master stem. Restricted to ``is_rolling_contract = TRUE``
+    so it cannot silently pick up a cash sovereign row whose
+    ``contract_code`` happens to collide.
+
+    Parameters
+    ----------
+    curve_family : str
+        Futures curve family (e.g. ``'UST_FUT'``, ``'DE_FUT'``,
+        ``'UK_FUT'``, ``'JP_FUT'``, ...).
+    contract_code : str
+        Rolling-generic stem from the playbook universe — exactly as
+        stored on ``instrument_master.contract_code``. Examples:
+        ``'TY1'``, ``'UXY1'``, ``'US1'``, ``'WN1'``, ``'RX1'``,
+        ``'JB1'``, ``'OAT1'``, ``'YM1'``, ``'XM1'``.
+    field_name : str
+        Bloomberg observation field mnemonic — typically ``'PX_LAST'``
+        for price, ``'OPEN_INT'`` for open interest, ``'PX_VOLUME'``
+        for volume.
+    start_date : date
+        Inclusive lower bound on ``trade_date``.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_ROLLING_GENERIC_SERIES_SQL,
+            {
+                "curve_family": curve_family,
+                "contract_code": contract_code,
+                "field_name": field_name,
+                "start_date": start_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+# Reference metadata snapshot for one rolling-generic: latest effective
+# expiry / security_name from the SCD2 history table (falling back to
+# instrument_master typed columns when the history table has no row),
+# plus ``quote_units`` and ``contract_size`` from
+# ``instrument_master.attributes`` JSONB (these live on master, not on
+# the per-window history, because the rolling-generic's quote
+# convention does not change as the front rolls).
+
+_FETCH_ROLLING_GENERIC_REFERENCE_SQL = text("""
+    SELECT
+        i.contract_code      AS contract_code,
+        i.curve_family       AS curve_family,
+        i.tenor              AS tenor,
+        COALESCE(h.expiry_date, i.expiry_date)   AS expiry_date,
+        h.security_name      AS security_name,
+        i.attributes->>'quote_units'   AS quote_units,
+        (i.attributes->>'contract_size')::double precision AS contract_size
+    FROM macro_data.instrument_master i
+    LEFT JOIN LATERAL (
+        SELECT expiry_date, security_name
+        FROM macro_data.instrument_metadata_history
+        WHERE instrument_id = i.instrument_id
+        ORDER BY effective_from DESC
+        LIMIT 1
+    ) h ON TRUE
+    WHERE i.curve_family   = :curve_family
+      AND i.contract_code  = :contract_code
+      AND i.is_rolling_contract = TRUE
+    LIMIT 1
+""")
+
+
+def fetch_rolling_generic_reference(
+    engine: Engine,
+    curve_family: str,
+    contract_code: str,
+) -> Optional[Dict[str, object]]:
+    """Fetch the reference metadata for one rolling-generic stem.
+
+    Returns ``None`` when the ``(curve_family, contract_code)`` pair is
+    not present on ``instrument_master`` as a rolling-generic. Returns
+    a dict with keys ``contract_code``, ``curve_family``, ``tenor``,
+    ``expiry_date`` (date or None), ``security_name`` (str or None),
+    ``quote_units`` (str or None), ``contract_size`` (float or None).
+
+    The ``expiry_date`` / ``security_name`` are taken from the latest
+    effective-window row in ``instrument_metadata_history`` (rolling-
+    generic metadata rotates as the front contract rolls), falling
+    back to ``instrument_master`` columns when the history table has
+    no rows for the instrument. ``quote_units`` and ``contract_size``
+    come from ``instrument_master.attributes`` JSONB — these don't
+    rotate with the front contract for a given rolling-generic.
+
+    Used by ``bond_futures`` monitor primitives so the wire payload
+    carries the per-contract disclosure (e.g. ``quote_units = "points"``
+    for TY1, ``"% of par value"`` for RX1) that P5 requires alongside
+    the rolling-generic price level.
+    """
+    with engine.connect() as conn:
+        row = conn.execute(
+            _FETCH_ROLLING_GENERIC_REFERENCE_SQL,
+            {
+                "curve_family": curve_family,
+                "contract_code": contract_code,
+            },
+        ).mappings().first()
+    if row is None:
+        return None
+    return dict(row)

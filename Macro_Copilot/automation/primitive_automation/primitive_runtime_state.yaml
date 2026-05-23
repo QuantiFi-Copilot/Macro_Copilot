@@ -20,31 +20,36 @@ backend: coding-agent
 # ---------------------------------------------------------------------------
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
-orchestrator_status: idle
-current_primitive: null
-current_primitive_tool_name: null
-current_step: idle
+orchestrator_status: processing
+current_primitive: bond_futures__futures_price_level
+current_primitive_tool_name: futures_price_level
+current_step: committing
 last_successful_primitive: inflation_swaps__inflation_swap_butterfly
 last_successful_commit: 975b349
-last_reviewer_heading: null
-last_stop_reason: catalog_reset_for_v2
+last_reviewer_heading: APPROVED_WITH_DISMISSALS
+last_stop_reason: null
 last_error: null
-last_updated: "2026-05-22T00:00:00Z"
+last_updated: "2026-05-23T01:37:00Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
 # ---------------------------------------------------------------------------
-done: 15
+done: 16
 blocked: 0
-remaining: 8
+remaining: 7
 
 # ---------------------------------------------------------------------------
 # Quota
 # ---------------------------------------------------------------------------
-quota_state: ok
+quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_fresh: false
-quota_note: probe pending first wake under v2.0 catalog
+quota_note: |
+  Non-interactive cron wake; CLI /status not safely scriptable from this
+  environment. Operating per QUOTA_AND_RESUME_POLICY.md §6: runtime-enforced
+  quota mode. Real provider 429 / rate-limit responses during builder/reviewer
+  execution will be detected by parse_reviewer_log.py and the reviewer
+  fallback rule.
 
 # ---------------------------------------------------------------------------
 # Reviewer engine state (QUOTA_AND_RESUME_POLICY.md §10)
@@ -93,3 +98,260 @@ status_notes:
       §8 catalog-exhaustion shutdown; (f) QUOTA_AND_RESUME_POLICY.md §10
       Codex->Claude reviewer fallback contract; (g) DESIGN_PRINCIPLES.md
       and REPO_REFERENCE_MAP.md repointed to docs_revamped/.
+  - at: "2026-05-23T00:18:00Z"
+    kind: wake_started
+    text: |
+      Cron wake 2026-05-23T00:15Z. Branch guard passed. Selection: first todo
+      by build_order = bond_futures__futures_price_level (build_order 1).
+      Pre-flight load_audit: bond_futures SUCCESS row found
+      (2026-05-20 08:14:24+01); policy_futures SUCCESS row found
+      (2026-05-20 08:14:28+01). Proceeding to builder dispatch.
+      Quota probe path not available non-interactively; operating in
+      QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced quota mode.
+  - at: "2026-05-23T01:00:00Z"
+    kind: reviewer_round_1_changes_required
+    text: |
+      Codex reviewer (gpt-5.5 high) returned CHANGES REQUIRED for
+      bond_futures__futures_price_level (round 1). Three findings, all
+      classified mandatory-fix after verification against repo state:
+      (1) PR15 parity-fixture discipline — new primitives must ship with a
+      tests/fixtures/<tool>_v1/ directory (captured raw rows, expected
+      output, capture provenance, replay/tamper parity test). Only
+      curve_spread_v1 exists today; the existing gap is grandfathered debt
+      but PR15 binds new primitives from day one per
+      docs_revamped/02_components/primitive/README.md L483-504.
+      (2) typed_boundary_discipline — all four Pydantic models in
+      schemas.py use ConfigDict(extra="forbid") without frozen=True,
+      contrary to docs_revamped/03_standards/typed_boundary_discipline.md
+      §1 which is universal. lineage hashability + immutable contracts
+      require frozen=True.
+      (3) shared/analytics/rates_fetch.py L553-557 contains stale comment
+      asserting "bond-futures monitors use the existing
+      fetch_single_tenor(..., contract_code=) path" — directly contradicts
+      the new fetch_rolling_generic_* helpers the builder added. P10
+      single-source-of-truth violation.
+      Re-dispatching builder for round 2 with these findings.
+  - at: "2026-05-23T01:30:00Z"
+    kind: reviewer_round_2_changes_required
+    text: |
+      Codex reviewer round 2 (gpt-5.5 high) returned CHANGES REQUIRED for
+      bond_futures__futures_price_level. Round-2 reviewer log:
+      /tmp/codex_reviewer_run_round2.log. The reviewer confirmed all three
+      round-1 fixes (PR15 fixture + parity test present, frozen=True on
+      all 4 typed boundaries with no in-place mutation in consumers, the
+      L553-587 stale comment rewritten correctly) and re-ran the full
+      validation suite under `rates-agent-dev` / `macro-env`:
+      compute 31p / wiring 12p / parity 1p / rolling-generic 8p / config
+      lint clean / SQL validation 19/19 live-universe stems passed against
+      macro-tsdb / yield_levels + ois_rate_level neighbours 85p (no
+      regressions). Confirmed bond_futures load_audit SUCCESS row
+      2026-05-20 08:14:24.343157+01.
+
+      Single round-2 finding (mandatory-fix, P10 single-source-of-truth):
+      shared/analytics/rates_fetch.py L5-18 module-level docstring still
+      asserts "These functions query the shared enriched view
+      macro_data.v_market_data_daily_enriched" and lists only the four
+      legacy "canonical fetch shapes" — directly contradicting the new
+      rolling-generic helpers (fetch_rolling_generic_series /
+      fetch_rolling_generic_reference) that join market_data_daily to
+      instrument_master directly (L768-810). Same class as round-1
+      finding 3 (which was scoped to L553-557); the builder rewrote the
+      L553-557 comment but did not catch the parallel staleness in the
+      top-level docstring. Adjudication: mandatory-fix, consistent with
+      round-1 treatment. Re-dispatching builder for round 3 to update the
+      top-level docstring (a) state both helper paths — enriched-view
+      lookups plus the futures direct-join rolling-generic path — and
+      (b) list the now-current set of query shapes (single-tenor,
+      tenor-group / pair, cross-market-pair, scan-universe, strip-aware
+      (strip_position + strip_group + cross-market-strip), and
+      rolling-generic series + reference).
+  - at: "2026-05-23T01:15:30Z"
+    kind: wake_resumed
+    text: |
+      Cron wake 2026-05-23T01:15Z. Prior wake (~01:05Z) completed the
+      builder round-2 run for bond_futures__futures_price_level but
+      stopped before updating runtime state or dispatching the reviewer.
+      Verified on-disk artifacts present: frozen=True applied to all 4
+      ConfigDicts in rates_agent/bond_futures/tools/futures_price_level/
+      schemas.py; shared/analytics/rates_fetch.py L553-587 rewritten to
+      describe bond-futures rolling-generic path correctly; new
+      tests/fixtures/futures_price_level_v1/ (README.md, _capture.py,
+      ty1_ust_fut_10y_365d.json) and tests/test_futures_price_level_parity.py
+      added per PR15. Builder round-2 log:
+      /tmp/claude_builder_bond_futures__futures_price_level_round2.log.
+      Picking up at reviewer dispatch round 2. Branch guard passed.
+  - at: "2026-05-23T01:36:00Z"
+    kind: reviewer_round_3_dismissed_false_finding
+    text: |
+      Codex reviewer round 3 (gpt-5.5 high) returned CHANGES REQUIRED for
+      bond_futures__futures_price_level. Reviewer log:
+      /tmp/codex_reviewer_run_round3.log.
+
+      The reviewer confirmed all round-1 and round-2 fixes (PR15 fixture
+      + parity, frozen=True on all four typed boundaries with no in-place
+      mutation, L553-587 stale comment rewritten) and re-ran the full
+      validation suite under rates-agent-dev / macro-env (compute 31p /
+      wiring 12p / parity 1p / rolling-generic 8p / config lint OK /
+      19/19 SQL universe stems / 85p neighbours).
+
+      Single round-3 finding (quoted verbatim from log L5126):
+        "shared/analytics/rates_fetch.py:5-18 violates P10. The module
+        docstring still says these helpers query only
+        macro_data.v_market_data_daily_enriched and that four canonical
+        fetch shapes cover every rates tool, but this primitive adds and
+        uses rolling-generic helpers that directly join market_data_daily
+        to instrument_master (shared/analytics/rates_fetch.py:768-780).
+        Update the top-level docstring to describe the enriched-view
+        helpers plus the futures direct-join rolling-generic path and
+        include the new futures-keyed query shapes."
+
+      Adjudication: DISMISSED. The finding is contradicted by the
+      reviewer's own evidence and by the on-disk file. Dismissable under
+      the Review Adjudication Rule "based on a false assumption about
+      repo state" / "contradicted by the actual code".
+
+      Evidence trail (reviewer engine: codex):
+      (a) Round-3 builder log
+          (/tmp/claude_builder_bond_futures__futures_price_level_round3.log)
+          documents the docstring rewrite from the legacy four-shape
+          form into the two-section "Helper paths" + "currently-shipped
+          fetch shapes" form with policy_futures + bond_futures sub-
+          domain mentions and explicit P10 single-source-of-truth
+          disclosure of the direct-join rolling-generic path.
+      (b) On-disk verification (orchestrator-run):
+            - sha256sum shared/analytics/rates_fetch.py =
+              7d8fa5d3383b3141145925aefedb702bd665cc5b9664a851ed3a9132b42215cd
+            - file mtime 2026-05-23T01:26:37Z (unchanged through the
+              entire reviewer round-3 dispatch window)
+            - L5  "Thin SQL wrappers used by rates domain tools (sovereign_bonds,"
+            - L6  "policy_futures, bond_futures, and any future sub-domain). Most helpers"
+            - L9  "Helper paths"
+            - L62 "The currently-shipped fetch shapes are:"
+            - grep "Four canonical fetch shapes" returns no matches
+              (the asserted-stale phrase is no longer in the file).
+      (c) Reviewer-log internal inconsistency:
+            - At log L3985 the reviewer's own
+              `sed -n '1,120p' shared/analytics/rates_fetch.py` shows
+              the NEW docstring (lines 3992: "policy_futures,
+              bond_futures…", 3995: "Helper paths", 4048: "currently-
+              shipped fetch shapes are").
+            - At log L4489+ the reviewer's own
+              `git diff -- shared/analytics/rates_fetch.py` shows the
+              docstring rewrite (`-macro_data.v_market_data_daily_enriched`
+              … `+policy_futures, bond_futures`, `+Helper paths`,
+              `+currently-shipped fetch shapes`).
+            - At log L5260+ the reviewer's second
+              `nl -ba shared/analytics/rates_fetch.py | sed -n '1,110p'`
+              shows the NEW docstring (lines 5275: "policy_futures,
+              bond_futures…", 5278: "Helper paths", 5331:
+              "currently-shipped fetch shapes are").
+            - At log L4970 the reviewer's first
+              `nl -ba shared/analytics/rates_fetch.py | sed -n
+              '1,32p;540,585p;748,810p'` shows the OLD docstring at
+              L1-30, even though the file mtime did not change between
+              the two `nl` invocations and the other three reads
+              (sed, git diff, second nl) returned the NEW content.
+            - The verdict was drawn from the (a)-contradicted first
+              `nl` reading. Codex's L540-585 output from the SAME first
+              `nl` invocation showed the NEW round-2 comment block,
+              demonstrating the file was not actually stale — the
+              L1-30 portion of that one command's output is the
+              hallucinated fragment.
+      (d) Round-3 builder report (log L3690 onwards) explicitly lists
+          the before/after of the docstring rewrite; the diff shown
+          there matches the on-disk file exactly.
+
+      The asserted P10 violation does not exist on disk. Treating this
+      as approved-with-dismissals per ORCHESTRATOR_PROMPT.md "Review
+      adjudication rule" → "Dismissal hygiene". No re-dispatch of the
+      builder; proceeding to commit and to the next eligible primitive.
+  - at: "2026-05-23T01:30:30Z"
+    kind: wake_resumed
+    text: |
+      Cron wake 2026-05-23T01:30Z. Branch guard passed. Prior wake had
+      recorded the round-2 reviewer's single mandatory-fix finding
+      (rates_fetch.py L5-18 docstring stale) at 01:30Z and dispatched the
+      round-3 builder, but stopped before recording the round-3 builder
+      completion in runtime state. Verified on-disk artifacts:
+      shared/analytics/rates_fetch.py L1-80 docstring now describes both
+      read paths (enriched-view helpers + direct-join rolling-generic),
+      lists the 9 currently-shipped fetch shapes, adds policy_futures /
+      bond_futures sub-domain mentions, and gives the explicit P10
+      single-source-of-truth disclosure. Round-3 builder log:
+      /tmp/claude_builder_bond_futures__futures_price_level_round3.log.
+      Builder reported all green (compute 31p / wiring 12p / parity 1p /
+      rolling-generic 8p = 52p offline; config lint OK; SQL validator
+      19/19 universe stems passed; neighbours 88p no regressions). Tree
+      dirty; no commit. Picking up at reviewer dispatch round 3.
+  - at: "2026-05-23T01:28:00Z"
+    kind: builder_round_3_completed
+    text: |
+      Claude builder round 3 completed for
+      bond_futures__futures_price_level (log:
+      /tmp/claude_builder_bond_futures__futures_price_level_round3.log).
+      Scope: documentation-only fix to address the single round-2
+      reviewer finding (P10 single-source-of-truth on
+      shared/analytics/rates_fetch.py top-level docstring). The
+      ex-L5-18 stale docstring ("These functions query the shared
+      enriched view ... Four canonical fetch shapes ...") was rewritten
+      into a two-section docstring (L1-80): (a) Helper paths section
+      naming both read paths explicitly — enriched-view helpers
+      (fetch_single_tenor, fetch_tenor_group / fetch_tenor_pair,
+      fetch_cross_market_pair, fetch_scan_universe, fetch_strip_position,
+      fetch_strip_group, fetch_cross_market_strip) and direct-join
+      rolling-generic helpers (fetch_rolling_generic_series,
+      fetch_rolling_generic_reference) with the COALESCE-on-SCD2-history
+      rationale; (b) Query shapes section listing all 9 currently-shipped
+      shapes; (c) sub-domain parenthetical now includes policy_futures +
+      bond_futures; (d) parameterized-SQL closing note preserved. No
+      function signatures, SQL, tests, fixtures, schemas, wiring, or
+      in-file section comments touched. Verification inside
+      rates-agent-dev / macro-env: 52p offline triplet + rolling-generic
+      fetcher tests; python -m shared.config.lint OK; SQL validator 19/19
+      universe stems passed read-only; yield_levels + ois_rate_level +
+      curve_spread_parity 88p no regressions. DB read-only throughout.
+      Tree intentionally left dirty for reviewer round 3.
+  - at: "2026-05-23T01:05:00Z"
+    kind: builder_round_2_completed
+    text: |
+      Claude builder round 2 completed for
+      bond_futures__futures_price_level (log:
+      /tmp/claude_builder_bond_futures__futures_price_level_round2.log).
+      All three round-1 reviewer findings addressed and verified on disk:
+      (1) PR15 parity fixture added at tests/fixtures/futures_price_level_v1/
+      mirroring curve_spread_v1 (README.md, _capture.py, captured
+      ty1_ust_fut_10y_365d.json with raw_rows_sha256
+      83b4077f36ec8a2c30ae86a01511c2483f1f5d881da3aad800d1470203061257,
+      480 raw rows, capture wall-clock 2026-05-23T01:03:43Z) plus
+      tests/test_futures_price_level_parity.py (1 passed). (2) frozen=True
+      added to all 4 ConfigDict instances in schemas.py with
+      typed_boundary_discipline.md §1 reference in docstring; no consumer
+      code mutates in-place (verified by grep). (3) rates_fetch.py L553-587
+      rewrite + fetch_tenor_group "Limitation" paragraph updated to point
+      at the now-existing fetch_rolling_generic_* helpers. Re-run results:
+      compute 31p / wiring 12p / parity 1p / rolling-generic 8p / SQL
+      validation 19/19 universe stems passed / config lint EXIT 0 / no
+      regressions (yield_levels + ois_rate_level 85p). DB read-only
+      throughout. Tree intentionally left dirty for reviewer hand-off.
+  - at: "2026-05-23T00:46:30Z"
+    kind: builder_completed
+    text: |
+      Claude builder finished for bond_futures__futures_price_level
+      (log: /tmp/claude_builder_bond_futures__futures_price_level.log).
+      Builder self-report: 4-file scaffold at
+      rates_agent/bond_futures/tools/futures_price_level/ (config.yaml,
+      schemas.py, compute.py, __init__.py); shared/analytics/rates_fetch.py
+      gained fetch_rolling_generic_series + fetch_rolling_generic_reference
+      (the enriched view's contract_code COALESCEs per-window SCD2 codes onto
+      stems, so catalog-named TY1/UXY1/etc. needed direct master+market_data
+      join). Wiring: bond_futures mcp_server.py + tools/schemas/__init__.py +
+      workflows/__init__.py (output_field_units={} documented exempt per
+      shared/workflow/validate.py:368 — bond-futures price space has no
+      honest TimeSeriesUnits member, ADR 0011 V1 scope only). Tests: 31
+      compute + 12 wiring + 8 rolling-generic-fetcher (Layer A);
+      test_futures_price_level_sql_validation.py runner (Layer B, 19/19
+      universe stems passed read-only). Config lint EXIT=0 after renaming
+      high_low_round_decimals -> price_high_low_round_decimals (yield/price
+      precision contract divergence; documented in YAML rationale). No
+      regressions in yield_levels / ois_rate_level neighbours (85 tests).
+      Dispatching Codex reviewer next.

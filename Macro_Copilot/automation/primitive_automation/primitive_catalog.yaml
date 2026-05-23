@@ -35,8 +35,39 @@ notes:
 
 primitives:
   - id: bond_futures__futures_price_level
-    status: todo
+    status: done
     build_order: 1
+    active_step: approved_with_dismissals_round_3_pending_commit
+    review_round: 3
+    builder_round: 3
+    last_review_heading: APPROVED_WITH_DISMISSALS
+    dismissed_findings:
+      - round: 3
+        reviewer_engine: codex
+        finding: |
+          shared/analytics/rates_fetch.py:5-18 violates P10. The module
+          docstring still says these helpers query only
+          macro_data.v_market_data_daily_enriched and that four canonical
+          fetch shapes cover every rates tool, but this primitive adds and
+          uses rolling-generic helpers that directly join market_data_daily
+          to instrument_master (shared/analytics/rates_fetch.py:768-780).
+          Update the top-level docstring to describe the enriched-view
+          helpers plus the futures direct-join rolling-generic path and
+          include the new futures-keyed query shapes.
+        reason_dismissed: |
+          Contradicted by the actual code. The on-disk file's L1-80 docstring
+          already describes both helper paths explicitly (Helper paths
+          section at L9; currently-shipped fetch shapes section at L62;
+          policy_futures + bond_futures sub-domain mention at L5-6) and gives
+          the explicit P10 single-source-of-truth disclosure. The reviewer's
+          own sed -n '1,120p' (log L3985), git diff -- shared/analytics/
+          rates_fetch.py (log L4489+), and second nl -ba (log L5260+) all
+          read the NEW docstring; only the first nl -ba (log L4970) showed
+          the OLD docstring, and the verdict relied on that one
+          contradicted reading. File sha256 7d8fa5d3...215cd at mtime
+          2026-05-23T01:26:37Z. See status_notes entry
+          reviewer_round_3_dismissed_false_finding for the full evidence
+          trail.
     instrument_family: bond_futures
     tool_name: futures_price_level
     category: desk_invariant_primitive

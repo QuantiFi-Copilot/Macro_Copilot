@@ -6,11 +6,6 @@ Exposes the bond-futures domain tools to the orchestrator via stdio
 MCP. Each tool has flat scalar parameters; Pydantic validation happens
 inside. Lazy engine singleton. Logging to stderr.
 
-V1 SCAFFOLDING — no tools registered yet. The OpenClaw
-primitive-automation factory registers tools here as it builds each
-catalogued primitive (see ``Macro_Copilot/automation/primitive_automation/
-primitive_catalog.yaml`` and the ``REPO_REFERENCE_MAP.md``).
-
 V1 ships MONITORS ONLY (per ADR 0011)
 -------------------------------------
 The desk-recognised RV stack on bond futures (CTD identification,
@@ -23,9 +18,10 @@ yet. This V1 ships:
    price + Δ + 252d range / z-score.
 2. ``get_futures_volume_oi_tool``             — daily volume / OI /
    Δ-OI / OI z-score (front-back OI migration is the positioning
-   signal).
+   signal).  *(pending — factory build_order 2)*
 3. ``scan_bond_futures_extremes_tool``        — morning bond-futures
-   sweep by absolute z-score across the universe.
+   sweep by absolute z-score across the universe.  *(pending —
+   factory build_order 3)*
 
 Each tool's methodology card MUST disclose: "this is CTD-of-rolling-
 generic price, not a clean tenor-anchored yield; for CTD-implied
@@ -33,7 +29,12 @@ yield see the Phase-4 stack" (P5 honest disclosure).
 
 The TY1 / UXY1 (10Y) and US1 / WN1 (30Y) ambiguity is resolved at
 fetch time via the ``contract_code`` disambiguator (TD#11 — already
-in the playbook + the shared fetcher).
+in the playbook). NB the enriched view's ``contract_code`` column
+COALESCEs the SCD2 history's per-window underlying contract code
+(TYH6 / TYM6 / ...) onto the master stem, so the read-side fetcher
+joins ``market_data_daily`` to ``instrument_master`` directly and
+filters on the master ``contract_code`` stem — see
+``shared.analytics.rates_fetch.fetch_rolling_generic_series``.
 
 Conventions for this domain
 ---------------------------
@@ -61,6 +62,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from rates_agent.bond_futures.tools.futures_price_level import (  # noqa: E402
+    CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    calculate_futures_price_level,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -116,22 +122,148 @@ mcp = FastMCP(
 
 
 # ===========================================================================
-# TOOL REGISTRATIONS
+# TOOL 1: get_futures_price_level
 # ===========================================================================
-# Tools are registered here as the OpenClaw primitive-automation factory
-# builds each catalogued primitive. Mirror the per-tool wrapper pattern
-# from ``rates_agent/ois/mcp_server.py``:
-#
-#   1. Import CONFIG_PATH + Input schema + compute function from
-#      ``rates_agent.bond_futures.tools.<tool_name>``.
-#   2. Add a ``@mcp.tool()`` wrapper that validates input via the
-#      Pydantic schema, loads the bundled config via
-#      ``load_tool_config(CONFIG_PATH)``, calls the compute function
-#      with ``config=`` passed explicitly, and returns the JSON
-#      response with LLM-non-friendly fields stripped.
-#   3. Add a corresponding entry to
-#      ``rates_agent/bond_futures/tools/schemas/__init__.py`` so the
-#      schemas hub stays a stable import surface.
+@mcp.tool()
+def get_futures_price_level_tool(
+    curve_family: str,
+    contract_code: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Get the current front-month rolling-generic bond-futures price
+    level, plus daily / weekly / monthly price-unit changes, 1-year
+    z-score, and trailing 252-day range (high / low / percentile).
+    The snapshot carries the per-contract ``quote_units`` and
+    ``contract_size`` so downstream consumers cannot misread (e.g.) a
+    TY1 ``110.45`` as a yield.
+
+    Use this tool when the user asks about:
+    - Bond-futures price levels    (e.g. "Where's TY1?", "RX1 right now?")
+    - Bond-futures price moves     (e.g. "How much has US1 moved this week?")
+    - Bond-futures range extremes  (e.g. "Is JB1 at a 1-year high?")
+
+    Do NOT use this tool for:
+    - Policy / STIR futures (SFR / ER / SFI) → use the policy_futures
+      agent's get_futures_price_level_tool.
+    - Cash sovereign yields (UST 10Y, Bund 10Y) → use the
+      sovereign_bonds agent's get_yield_levels_tool.
+    - CTD-implied yields, basis, or DV01-weighted RV → those are
+      Phase-4 work gated on D-repo + D-deliverable. Respond with
+      out_of_scope rather than approximating with this monitor.
+
+    ALWAYS preserve the methodology_disclosure field when relaying the
+    snapshot to the user — P5 (honest disclosure) requires the rolling-
+    generic-price caveat to be carried forward.
+
+    Parameters
+    ----------
+    curve_family : str
+        Bond-futures curve family. Examples: 'UST_FUT', 'DE_FUT',
+        'UK_FUT', 'JP_FUT', 'FR_FUT', 'IT_FUT', 'ES_FUT', 'CA_FUT',
+        'AU_FUT'.
+    contract_code : str
+        Rolling-generic stem from the bond_futures playbook universe —
+        the canonical disambiguator per TD#11. Examples: 'TY1', 'UXY1',
+        'US1', 'WN1', 'TU1', 'FV1', 'RX1', 'UB1', 'DU1', 'OE1', 'G1',
+        'JB1', 'OAT1', 'IK1', 'BTS1', 'KOA1', 'CN1', 'YM1', 'XM1'.
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365).
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ""  to use the bundled ``default_price_field`` convention
+        from futures_price_level/config.yaml (currently 'PX_LAST').
+        Pass an explicit field name to override per call. Mirrors the
+        empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / ois calculate_ois_rate_level_tool so
+        the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's ``default_price_field``.
+    # Without this, the LLM omitting field_name would always hit a
+    # hardcoded default regardless of what the YAML says — same
+    # shadowing pattern fixed for sovereign curve_move_classifier in
+    # commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = FuturesPriceLevelInput(
+            curve_family=curve_family,
+            contract_code=contract_code,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_price_level_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_price_level_tool] failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors sovereign get_yield_levels_tool exactly.
+    try:
+        fpl_config = load_tool_config(FUTURES_PRICE_LEVEL_CONFIG_PATH)
+        result = calculate_futures_price_level(
+            engine=engine, params=params, config=fpl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_price_level_tool] unhandled error for %s %s",
+            params.curve_family, params.contract_code,
+        )
+        return json.dumps(
+            {"error": f"get_futures_price_level_tool failed for "
+             f"{params.curve_family} {params.contract_code}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_price_level_tool] tool call complete: %s %s → %s",
+        params.curve_family, params.contract_code, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload). The LLM doesn't need every
+    # historical price to answer "where's TY1?" — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveat is propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_price_level_tool] withheld %d time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# REMAINING TOOL REGISTRATIONS
+# ===========================================================================
+# get_futures_volume_oi_tool + scan_bond_futures_extremes_tool land
+# here as the OpenClaw primitive-automation factory builds them
+# (per the catalog's ``build_order``).
 
 
 # ===========================================================================
