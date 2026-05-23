@@ -1,0 +1,114 @@
+# ============================================================================
+# overnight_rfr playbook — overnight risk-free-rate fixings
+# (work order C2a, Track C, Step 1 sub-phase 4A; substrate decision: ADR 0010)
+#
+# CANDIDATE — every Bloomberg mnemonic below is marked `# CANDIDATE — verify
+# via scripts/overnight_rfr_bloomberg_check.py`.  Nothing is "verified" until
+# the operator's terminal run of that script returns a clean PASS and this
+# file is updated to `# VERIFIED <date>` per the data-PR discipline.  A market
+# whose candidate does not verify is DEFERRED and documented (P2/P5) — never
+# shipped guessed.
+#
+# WHAT THIS SHIPS
+#   One daily PX_LAST observation per market per day — the overnight RFR
+#   fixing — for the four core macro markets:
+#     USD  SOFR    (Secured Overnight Financing Rate, Federal Reserve)
+#     EUR  ESTR    (Euro Short-Term Rate, European Central Bank)
+#     GBP  SONIA   (Sterling Overnight Index Average, Bank of England)
+#     JPY  TONA    (Tokyo Overnight Average Rate, Bank of Japan)
+#
+# WHY (the desk demand)
+#   `tmp/primitive_expansion/phase4.md` Step 1, sub-phase 4A: this is what
+#   upgrades the `financing_rate.overnight_index_proxy` primitive from its
+#   current OIS proxy to TRUE overnight RFR — the foundation for every Phase-4
+#   repo / bond-futures-RV primitive that follows.  C2a builds ONLY the data;
+#   the primitive closure is Phase-4 work.
+#
+# SHAPE (per ADR 0010)
+#   Repo (incl. these RFR fixings) is time-series: `(trade_date, instrument_id,
+#   field_name, field_value)`.  It rides the existing rails unchanged —
+#   `--mode time-series` extractor → `data/overnight_rfr/` GCS prefix →
+#   `market_data_daily` via the existing `data/` ingester route.  No new table,
+#   no new extractor mode, no new ingester route, no new DB helper.  ADR 0010
+#   §Decision 2 is explicit about this.
+#
+# INSTRUMENT_TYPE
+#   `overnight_rfr` — one of the three repo `instrument_type` values ADR 0010
+#   §Decision 3 fixed (the others — `gc_repo`, `repo_special` — register in
+#   C2b/C2c).  `instrument_type` is free VARCHAR; no schema change.
+# ============================================================================
+
+playbook_name: "overnight_rfr"
+playbook_version: "1.0"
+asset_class: "rates"
+dataset_name: "overnight_rfr"
+description: |
+  Overnight risk-free-rate (RFR) fixings for the four core macro markets —
+  SOFR / ESTR / SONIA / TONA. One daily PX_LAST value per market, one row per
+  market in instrument_master under `instrument_type: overnight_rfr` (ADR 0010).
+  This is the substrate the Phase-4 `financing_rate.overnight_index_proxy`
+  primitive upgrades to TRUE overnight (Phase 4 Step 1, sub-phase 4A) from its
+  current OIS proxy.  Sourced Bloomberg-only — anything that does not verify on
+  Bloomberg is deferred and documented per the project's data-PR discipline.
+
+extraction:
+  # Request maximum history; Bloomberg returns what each series has (SOFR from
+  # 2018-04, ESTR from 2019-10, SONIA pre-2018 under the same ticker family per
+  # Bloomberg convention, TONA back to the 1990s).
+  start_date: "2005-01-01"
+  # Standard project default. The 14d incremental window covers normal
+  # overnight publication latency plus weekends/holidays comfortably.
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "last_price"
+    bloomberg_field: "PX_LAST"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+
+universe:
+  # --------------------------------------------------------------------------
+  # United States — SOFR (Federal Reserve)
+  # --------------------------------------------------------------------------
+  - ticker: "SOFRRATE Index"   # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+                                # (alt: SOFRINDX Index = compounded index, not the daily rate)
+    instrument_type: "overnight_rfr"
+    curve_family: "USD_SOFR_RFR"
+    country: "US"
+    currency: "USD"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # Euro area — ESTR (European Central Bank)
+  # --------------------------------------------------------------------------
+  - ticker: "ESTRON Index"     # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+                                # (alt: ESTR Index)
+    instrument_type: "overnight_rfr"
+    curve_family: "EUR_ESTR_RFR"
+    country: "EU"
+    currency: "EUR"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # United Kingdom — SONIA (Bank of England)
+  # --------------------------------------------------------------------------
+  - ticker: "SONIO/N Index"    # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+                                # (alt: SONIA Index)
+    instrument_type: "overnight_rfr"
+    curve_family: "GBP_SONIA_RFR"
+    country: "UK"
+    currency: "GBP"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # Japan — TONA (Bank of Japan, Tokyo Overnight Average Rate)
+  # --------------------------------------------------------------------------
+  - ticker: "TONAR Index"      # CANDIDATE — verify via scripts/overnight_rfr_bloomberg_check.py
+                                # (alt: MUTSCALM Index = historical Mutan overnight)
+    instrument_type: "overnight_rfr"
+    curve_family: "JPY_TONA_RFR"
+    country: "JP"
+    currency: "JPY"
+    tenor: "ON"
