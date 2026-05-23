@@ -37,10 +37,12 @@ primitives:
   - id: bond_futures__futures_price_level
     status: done
     build_order: 1
-    active_step: approved_with_dismissals_round_3_pending_commit
+    active_step: committed_8711d9f_feat_bond_futures_add_futures_price_level_primitive
     review_round: 3
     builder_round: 3
     last_review_heading: APPROVED_WITH_DISMISSALS
+    committed_at: "2026-05-23T01:37:00Z"
+    commit_sha: 8711d9f
     dismissed_findings:
       - round: 3
         reviewer_engine: codex
@@ -99,8 +101,14 @@ primitives:
       - contract_size
 
   - id: bond_futures__futures_volume_oi
-    status: todo
+    status: done
     build_order: 2
+    active_step: committed_pending_commit_sha_backfill
+    review_round: 1
+    builder_round: 1
+    last_review_heading: APPROVED
+    committed_at: "2026-05-23T02:23:00Z"
+    commit_sha: pending_backfill
     instrument_family: bond_futures
     tool_name: futures_volume_oi
     category: desk_invariant_primitive

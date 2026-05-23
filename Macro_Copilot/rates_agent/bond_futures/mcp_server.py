@@ -67,6 +67,11 @@ from rates_agent.bond_futures.tools.futures_price_level import (  # noqa: E402
     FuturesPriceLevelInput,
     calculate_futures_price_level,
 )
+from rates_agent.bond_futures.tools.futures_volume_oi import (  # noqa: E402
+    CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
+    FuturesVolumeOIInput,
+    calculate_futures_volume_oi,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -259,11 +264,142 @@ def get_futures_price_level_tool(
 
 
 # ===========================================================================
+# TOOL 2: get_futures_volume_oi
+# ===========================================================================
+@mcp.tool()
+def get_futures_volume_oi_tool(
+    curve_family: str,
+    contract_code: str,
+    lookback_days: int = 365,
+) -> str:
+    """Get the current rolling-generic bond-futures daily volume + end-
+    of-day open interest, plus 1-day ΔOI, rolling 252-day OI z-score,
+    trailing 252-day OI range (high / low / percentile), and rolling
+    22-day volume mean / max. The snapshot carries the per-contract
+    ``contract_size`` so consumers can convert contract counts to
+    notional.
+
+    Use this tool when the user asks about:
+    - Bond-futures volume       (e.g. "Where's TY1 volume today?",
+                                       "JB1 volume vs trend?")
+    - Bond-futures open interest (e.g. "Is RX1 OI elevated?",
+                                       "How stretched is US1 positioning?")
+    - 1-day open-interest moves  (e.g. "ΔOI on TY1 yesterday?")
+    - OI extremes                (e.g. "Is FV1 OI at a 1-year high?")
+
+    Do NOT use this tool for:
+    - Policy / STIR futures (SFR / ER / SFI) → use the policy_futures
+      agent's volume/OI tool.
+    - Cash sovereign positioning → cash sovereigns do not have a
+      desk-recognised open-interest object; this tool is futures-
+      specific.
+    - Front-back OI migration as a positioning signal: that is a
+      cross-contract concept (front - next OI delta) and is NOT a
+      single-contract primitive. The scan_bond_futures_extremes tool
+      surfaces extreme readings across the bond-futures universe;
+      cross-contract roll-pressure primitives are Phase-4 work.
+
+    ALWAYS preserve the methodology_disclosure field when relaying the
+    snapshot to the user — P5 (honest disclosure) requires both the
+    rolling-generic-OI caveat AND the explicit OI z-score lookback
+    window to be carried forward (per the catalog's methodology
+    guardrail on this primitive).
+
+    Parameters
+    ----------
+    curve_family : str
+        Bond-futures curve family. Examples: 'UST_FUT', 'DE_FUT',
+        'UK_FUT', 'JP_FUT', 'FR_FUT', 'IT_FUT', 'ES_FUT', 'CA_FUT',
+        'AU_FUT'.
+    contract_code : str
+        Rolling-generic stem from the bond_futures playbook universe —
+        the canonical disambiguator per TD#11. Examples: 'TY1', 'UXY1',
+        'US1', 'WN1', 'TU1', 'FV1', 'RX1', 'UB1', 'DU1', 'OE1', 'G1',
+        'JB1', 'OAT1', 'IK1', 'BTS1', 'KOA1', 'CN1', 'YM1', 'XM1'.
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the OI z-score window
+        (config-locked at 252), the OI trailing range window (locked
+        at 252), or the volume short-context window (locked at 22).
+    """
+    try:
+        params = FuturesVolumeOIInput(
+            curve_family=curve_family,
+            contract_code=contract_code,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_volume_oi_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_volume_oi_tool] failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors sovereign get_yield_levels_tool /
+    # get_futures_price_level_tool exactly.
+    try:
+        fvoi_config = load_tool_config(FUTURES_VOLUME_OI_CONFIG_PATH)
+        result = calculate_futures_volume_oi(
+            engine=engine, params=params, config=fvoi_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_volume_oi_tool] unhandled error for %s %s",
+            params.curve_family, params.contract_code,
+        )
+        return json.dumps(
+            {"error": f"get_futures_volume_oi_tool failed for "
+             f"{params.curve_family} {params.contract_code}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_volume_oi_tool] tool call complete: %s %s → %s",
+        params.curve_family, params.contract_code, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload). The LLM doesn't need every
+    # historical row to answer "where's TY1 OI?" — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveat + OI-z-score-window
+    # disclosure is propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_volume_oi_tool] withheld %d time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
 # REMAINING TOOL REGISTRATIONS
 # ===========================================================================
-# get_futures_volume_oi_tool + scan_bond_futures_extremes_tool land
-# here as the OpenClaw primitive-automation factory builds them
-# (per the catalog's ``build_order``).
+# scan_bond_futures_extremes_tool lands here as the OpenClaw primitive-
+# automation factory builds it (per the catalog's ``build_order``).
 
 
 # ===========================================================================

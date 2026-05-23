@@ -75,4 +75,5 @@ collect_ignore = [
     "test_swap_breakeven_basis_simple_sql_validation.py",
     "test_inflation_swap_butterfly_sql_validation.py",
     "test_futures_price_level_sql_validation.py",
+    "test_futures_volume_oi_sql_validation.py",
 ]

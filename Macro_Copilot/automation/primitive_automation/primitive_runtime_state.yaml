@@ -21,22 +21,22 @@ backend: coding-agent
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
 orchestrator_status: processing
-current_primitive: bond_futures__futures_price_level
-current_primitive_tool_name: futures_price_level
+current_primitive: bond_futures__futures_volume_oi
+current_primitive_tool_name: futures_volume_oi
 current_step: committing
-last_successful_primitive: inflation_swaps__inflation_swap_butterfly
-last_successful_commit: 975b349
-last_reviewer_heading: APPROVED_WITH_DISMISSALS
-last_stop_reason: null
+last_successful_primitive: bond_futures__futures_price_level
+last_successful_commit: 8711d9f
+last_reviewer_heading: APPROVED
+last_stop_reason: wake_complete_one_primitive_committed
 last_error: null
-last_updated: "2026-05-23T01:37:00Z"
+last_updated: "2026-05-23T02:23:00Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
 # ---------------------------------------------------------------------------
-done: 16
+done: 17
 blocked: 0
-remaining: 7
+remaining: 6
 
 # ---------------------------------------------------------------------------
 # Quota
@@ -180,6 +180,153 @@ status_notes:
       added per PR15. Builder round-2 log:
       /tmp/claude_builder_bond_futures__futures_price_level_round2.log.
       Picking up at reviewer dispatch round 2. Branch guard passed.
+  - at: "2026-05-23T01:37:30Z"
+    kind: wake_complete_committed
+    text: |
+      bond_futures__futures_price_level committed on primitive_automation
+      as 8711d9f15e53c8564a9c8ec9b58257a20a314784 (short: 8711d9f) at
+      2026-05-23T01:37:00Z. 19 files changed, 7112 insertions(+), 65
+      deletions(-): the four-file primitive package
+      (rates_agent/bond_futures/tools/futures_price_level/), the
+      compute/wiring/parity/SQL-validation test triplet plus the
+      rolling-generic fetcher unit tests, the PR15 parity fixture
+      directory, the new fetch_rolling_generic_series /
+      fetch_rolling_generic_reference helpers + module-docstring
+      rewrite in shared/analytics/rates_fetch.py, MCP wrapper + schema
+      re-export + workflow PrimitiveSpec registration, conftest wiring,
+      and the catalog + runtime_state updates documenting the
+      approved-with-dismissals adjudication.
+
+      Wake stopping cleanly without starting the next primitive. The
+      next eligible primitive is bond_futures__futures_volume_oi
+      (build_order 2; pre_flight_load_audit bond_futures already known
+      SUCCESS). Letting the next cron wake start that primitive from a
+      clean state rather than overlap inside this wake, per
+      BACKGROUND_EXECUTION_POLICY.md §7 (no-overlap) — the typical
+      single-primitive build/review cycle for this catalog runs
+      30-60min, which would race the */15 cron interval. Catalog
+      counts: done 16 / blocked 0 / remaining 7. Quota state remains
+      probe_unavailable; no real provider quota signal hit this wake.
+
+      Note on dirty tree post-commit: the post-commit backfill of
+      commit_sha=8711d9f into the catalog entry and
+      last_successful_commit/orchestrator_status into runtime_state
+      remain as working-tree modifications and will be folded into the
+      next primitive's commit (same pattern that left
+      975b349's metadata for this wake to inherit).
+  - at: "2026-05-23T01:45:30Z"
+    kind: wake_started
+    text: |
+      Cron wake 2026-05-23T01:45Z. Branch guard passed. Prior wake committed
+      bond_futures__futures_price_level (8711d9f) and left two working-tree
+      modifications (catalog + runtime_state metadata backfill) per the
+      established pattern. Selection: next todo by build_order =
+      bond_futures__futures_volume_oi (build_order 2; depends_on []).
+      Pre-flight load_audit re-verified: bond_futures SUCCESS row
+      2026-05-20 08:14:24.343157+01 (unchanged from prior wake). Operating in
+      QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced quota mode (CLI /status
+      not safely scriptable from non-interactive cron). Reviewer mode:
+      codex. Dispatching Claude builder next.
+  - at: "2026-05-23T02:00:30Z"
+    kind: wake_observed_overlap_no_op
+    text: |
+      Cron wake 2026-05-23T02:00Z. Branch guard passed (on
+      primitive_automation). Discovered the prior wake's Claude builder for
+      bond_futures__futures_volume_oi is still in flight: PID 1606434
+      (parent wrapper PID 1606427), started 2026-05-23T01:48Z (~12 min
+      elapsed, ~40s CPU at observation), invoked via
+      `run_claude_builder.sh /tmp/claude_builder_bond_futures__futures_volume_oi.prompt`.
+      On-disk evidence: rates_agent/bond_futures/tools/futures_volume_oi/
+      already contains __init__.py / config.yaml / schemas.py / compute.py
+      (untracked; tests / parity fixture / wiring updates not yet visible
+      in `git status`). Builder log /tmp/claude_builder_bond_futures__futures_volume_oi.log
+      is 0 bytes — Claude --print buffers through tee until completion;
+      this is the documented behavior and not a stall signal.
+
+      BACKGROUND_EXECUTION_POLICY.md §7 (no-overlap rule) forbids two
+      orchestrator wakes from simultaneously mutating catalog or runtime
+      state for the same primitive. The typical single-primitive build /
+      review cycle here runs 30-60 min, which routinely races the */15
+      cron interval — this is the same pattern noted on the prior wake's
+      `wake_complete_committed` audit entry. Acting accordingly: this
+      wake does NOT dispatch a competing builder, does NOT touch the
+      catalog entry for bond_futures__futures_volume_oi, and does NOT
+      change orchestrator_status / current_primitive / current_step.
+      Only this audit note + last_updated are touched, so the
+      Discord-facing agent can still see the wake fired honestly.
+
+      The in-flight builder will finish on its own; the next cron wake
+      (after ~02:15Z) is responsible for: (a) detecting the builder's
+      completion via log content + process absence, (b) reading the
+      builder self-report, (c) dispatching the Codex reviewer (round 1)
+      per the Required loop step 6. No primitive state changes this
+      wake. Quota state unchanged (probe_unavailable; no real provider
+      quota signal observed). Stopping cleanly.
+  - at: "2026-05-23T02:23:00Z"
+    kind: reviewer_round_1_approved
+    text: |
+      Codex reviewer (gpt-5.5 high) round 1 for
+      bond_futures__futures_volume_oi returned APPROVED. Reviewer log:
+      /tmp/codex_reviewer_run_bond_futures__futures_volume_oi.log
+      (parse_reviewer_log.py: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false). The reviewer explicitly stated all
+      13 mandatory review angles were verified on disk with file:line
+      citations: PR3 four-file pattern; PR9/PR10 YAML-vs-code split
+      (oi_z_score_window_days at config.yaml L84, methodology knobs
+      YAML-only); PR8 input discipline (only curve_family / contract_code
+      / lookback_days on the input schema); typed-boundary discipline
+      (frozen=True + extra="forbid" on all 4 Pydantic models at
+      schemas.py L103, L155, L194, L340); PR15 parity fixture +
+      tamper-detect negative control at
+      test_futures_volume_oi_parity.py L236, L320; P10 fetcher seam
+      (fetch_rolling_generic_series.field_name supports PX_VOLUME /
+      OPEN_INT per shared/analytics/rates_fetch.py L818, L871; no
+      duplicate fetcher); PR4 category honesty (volume / OI / ΔOI /
+      z-score output, not a price clone); output_field_units={}
+      exemption at workflows/__init__.py L408; wiring complete
+      (mcp_server.py L270, schemas/__init__.py L15,
+      workflows/__init__.py L408, conftest.py L77); PR16 two-layer
+      testing (46 offline passed in rates-agent-dev + 8/8 default +
+      19/19 wider SQL universe stems read-only); DB read-only
+      throughout (SELECT-only); methodology honesty (252d OI z-score
+      window disclosed verbatim); ADR 0011 V1 scope (CTD / repo / DV01
+      explicitly out-of-scope, not implemented). Reviewer also
+      re-confirmed bond_futures load_audit SUCCESS row
+      2026-05-20 08:14:24.343157+01 read-only. No findings to
+      adjudicate — clean approval; proceeding to commit.
+  - at: "2026-05-23T02:15:30Z"
+    kind: wake_resumed_builder_completed
+    text: |
+      Cron wake 2026-05-23T02:15Z. Branch guard passed (on
+      primitive_automation). The prior wake's Claude builder for
+      bond_futures__futures_volume_oi (PID 1606434, started ~01:48Z) has
+      since exited; builder log
+      /tmp/claude_builder_bond_futures__futures_volume_oi.log is 63 lines
+      with a full self-report at 02:09Z. On-disk verification: the
+      four-file primitive package
+      (rates_agent/bond_futures/tools/futures_volume_oi/ __init__.py /
+      config.yaml / schemas.py / compute.py) is present; tests
+      test_futures_volume_oi_compute.py / _wiring.py / _parity.py /
+      _sql_validation.py are present; the PR15 parity fixture directory
+      tests/fixtures/futures_volume_oi_v1/ (README.md, _capture.py,
+      ty1_ust_fut_10y_365d.json) is present; the four wiring points
+      (mcp_server.py, tools/schemas/__init__.py, workflows/__init__.py,
+      conftest.py) all show as modified in git status. Builder
+      self-report: Layer A 34 compute + 10 wiring + 2 parity (incl.
+      tamper-detect) + 181 regression neighbours = 227p; shared.config.lint
+      EXIT 0; Layer B 8/8 default + 19/19 wider universe stems all PASS;
+      no fetcher extension required (fetch_rolling_generic_series already
+      supports field_name=PX_VOLUME / OPEN_INT per its docstring L871-875);
+      OI z-score lookback 252d YAML-keyed (oi_z_score_window_days) with
+      runtime-composed methodology_disclosure (industry_standard_1y_window
+      source tag). Pre-flight load_audit re-verified read-only:
+      bond_futures SUCCESS 2026-05-20 08:14:24.343157+01 (unchanged).
+      DB read-only throughout (builder probe returned 0 rows past 7 days
+      because the bond_futures ingest as_of is 2026-04-08; matches the
+      parity fixture as_of and is not a mutation signal). current_step
+      advanced to reviewing. Dispatching Codex reviewer round 1 next.
+      Operating in QUOTA_AND_RESUME_POLICY.md §6 runtime-enforced quota
+      mode. reviewer_mode: codex (unchanged).
   - at: "2026-05-23T01:36:00Z"
     kind: reviewer_round_3_dismissed_false_finding
     text: |

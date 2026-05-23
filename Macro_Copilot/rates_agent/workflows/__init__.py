@@ -94,6 +94,12 @@ from rates_agent.bond_futures.tools.futures_price_level import (
     FuturesPriceLevelOutput,
     calculate_futures_price_level,
 )
+from rates_agent.bond_futures.tools.futures_volume_oi import (
+    CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
+    FuturesVolumeOIInput,
+    FuturesVolumeOIOutput,
+    calculate_futures_volume_oi,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -385,6 +391,26 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=FuturesPriceLevelInput,
         output_class=FuturesPriceLevelOutput,
         config_path=FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    # ``output_field_units`` is intentionally empty for the same
+    # reason as get_futures_price_level_tool: this primitive's
+    # ``time_series`` is a bespoke list of ``{date, volume,
+    # open_interest}`` rows in CONTRACT COUNTS — not a unit on the
+    # closed-enum ``TimeSeriesUnits`` family (no ``CONTRACTS``
+    # member; ``COUNT`` is reserved for discrete flag enumerations).
+    # Declaring ``percent`` / ``bps`` / ``count`` would silently lie
+    # under P8 (closed-family discipline) + P5 (honest disclosure).
+    # The validator's empty-dict exemption (see
+    # shared/workflow/validate.py:368) defers the unit check to the
+    # operator's runtime refusal — that is the honest path until a
+    # future ADR extends ``TimeSeriesUnits`` with a contracts member.
+    "get_futures_volume_oi_tool": PrimitiveSpec(
+        tool_name="get_futures_volume_oi_tool",
+        callable=calculate_futures_volume_oi,
+        input_class=FuturesVolumeOIInput,
+        output_class=FuturesVolumeOIOutput,
+        config_path=FUTURES_VOLUME_OI_CONFIG_PATH,
         output_field_units={},
     ),
 

@@ -12,6 +12,12 @@ from rates_agent.bond_futures.tools.futures_price_level.schemas import (
     FuturesPriceLevelOutput,
     FuturesPriceLevelTimeSeriesRow,
 )
+from rates_agent.bond_futures.tools.futures_volume_oi.schemas import (
+    FuturesVolumeOICurrentMetrics,
+    FuturesVolumeOIInput,
+    FuturesVolumeOIOutput,
+    FuturesVolumeOITimeSeriesRow,
+)
 
 
 __all__ = [
@@ -19,4 +25,8 @@ __all__ = [
     "FuturesPriceLevelCurrentMetrics",
     "FuturesPriceLevelTimeSeriesRow",
     "FuturesPriceLevelOutput",
+    "FuturesVolumeOIInput",
+    "FuturesVolumeOICurrentMetrics",
+    "FuturesVolumeOITimeSeriesRow",
+    "FuturesVolumeOIOutput",
 ]
