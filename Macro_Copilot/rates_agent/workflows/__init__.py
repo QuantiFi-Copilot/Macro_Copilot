@@ -148,6 +148,12 @@ from rates_agent.policy_futures.tools.futures_strip_snapshot import (
     FuturesStripSnapshotOutput,
     calculate_futures_strip_snapshot,
 )
+from rates_agent.policy_futures.tools.futures_pack_average_simple import (
+    CONFIG_PATH as POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+    FuturesPackAverageSimpleInput,
+    FuturesPackAverageSimpleOutput,
+    calculate_futures_pack_average_simple,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -649,6 +655,30 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_class=FuturesStripSnapshotOutput,
         config_path=POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
         output_field_units={},
+    ),
+    # The pack-average primitive's pack-average series IS single-
+    # unit (PERCENT — the simple arithmetic mean of four implied
+    # rates). Unlike the siblings ``futures_price_level`` and
+    # ``futures_calendar_spread`` (which carry two unit spaces per
+    # row), this primitive emits canonical ``TimeSeries`` with
+    # ``TimeSeriesUnits.PERCENT`` (pack-average) +
+    # ``TimeSeriesUnits.Z_SCORE`` (z-score) — so we declare them
+    # here. The bespoke ``time_series`` shares the same PERCENT unit
+    # on its ``pack_average_implied_rate_pct`` field. Mirrors the
+    # sibling ``futures_butterfly_simple`` /
+    # ``futures_cross_market_spread`` single-axis output_field_units
+    # shape (those primitives' series are also single-unit PERCENT).
+    "policy_futures_get_futures_pack_average_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_pack_average_simple_tool",
+        callable=calculate_futures_pack_average_simple,
+        input_class=FuturesPackAverageSimpleInput,
+        output_class=FuturesPackAverageSimpleOutput,
+        config_path=POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_pack_average": "percent",
+            "time_series_zscore": "z_score",
+        },
     ),
 
     # ---- Analytical models (workspace model-playground surface) ----

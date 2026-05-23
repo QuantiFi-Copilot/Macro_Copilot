@@ -25,6 +25,14 @@ from rates_agent.policy_futures.tools.futures_cross_market_spread.schemas import
     FuturesCrossMarketSpreadOutput,
     FuturesCrossMarketSpreadTimeSeriesRow,
 )
+from rates_agent.policy_futures.tools.futures_pack_average_simple.schemas import (
+    FuturesPackAverageSimpleCurrentMetrics,
+    FuturesPackAverageSimpleInput,
+    FuturesPackAverageSimpleOutput,
+    FuturesPackAverageSimpleTimeSeriesRow,
+    PolicyFuturesPack,
+    PolicyFuturesPackAverageCurveFamily,
+)
 from rates_agent.policy_futures.tools.futures_price_level.schemas import (
     FuturesPriceLevelCurrentMetrics,
     FuturesPriceLevelInput,
@@ -70,4 +78,10 @@ __all__ = [
     "FuturesStripSnapshotRow",
     "FuturesStripSnapshotOutput",
     "PolicyFuturesCurveFamily",
+    "FuturesPackAverageSimpleInput",
+    "FuturesPackAverageSimpleCurrentMetrics",
+    "FuturesPackAverageSimpleTimeSeriesRow",
+    "FuturesPackAverageSimpleOutput",
+    "PolicyFuturesPack",
+    "PolicyFuturesPackAverageCurveFamily",
 ]

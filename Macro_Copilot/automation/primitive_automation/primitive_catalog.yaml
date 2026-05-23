@@ -967,8 +967,54 @@ primitives:
       - all three OIS tenors on the selected curve_family
 
   - id: policy_futures__futures_strip_snapshot
-    status: todo
+    status: done
     build_order: 27
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
+    committed_at: "2026-05-23T14:28:00Z"
+    commit_sha: 4f6dc3b
+    dismissed_findings:
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          Workflow comment cites scan_bond_futures_extremes_tool /
+          scan_inflation_linkers_extremes_tool / sovereign_yield_panel,
+          omitting scan_inflation_swaps_extremes_tool from the trio —
+          stylistic; pattern is clearly the empty-dict exemption.
+        reason_dismissed: |
+          Reviewer self-classified as "Observations (dismissable, not
+          findings)". Pure docstring / comment-completeness polish with
+          no correctness, methodology, wiring, wire-shape, or testing
+          impact. Falls into the Review adjudication rule's
+          dismissable category (style preferences / cleanliness with
+          no behaviour change). The empty-dict exemption is honest;
+          the precedent trio it cites is sufficient to communicate
+          the pattern to a future reader. No re-dispatch.
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          OI alignment uses pivot_and_align_tenors with
+          required_tenors=strip_positions, which drops rows where any
+          leg's OI is NaN; the SQL baseline uses per-leg DISTINCT ON
+          without cross-leg row-drop. Numerically this is absorbed by
+          the open_interest: 0.5 tolerance and the live SQL validation
+          PASSES on both SOFR_FUT + EUR_SHORT_RATE_FUT per the
+          builder log. Honest methodology nuance noted in the SQL
+          validator's docstring.
+        reason_dismissed: |
+          Reviewer self-classified as "Observations (dismissable, not
+          findings)". Reviewer explicitly notes the live SQL validation
+          PASSES on both regime instances and the methodology nuance
+          is already documented in the SQL validator's docstring.
+          Behavioural impact is bounded by the test tolerance (0.5
+          contracts) and verified PASS on both V1 curve families. The
+          cross-leg row-drop semantics are an unavoidable consequence
+          of using pivot_and_align_tenors, which is the canonical
+          alignment idiom shared with the sibling tools — diverging
+          here would itself be a regression. No re-dispatch.
     instrument_family: policy_futures
     tool_name: futures_strip_snapshot
     category: desk_invariant_primitive
@@ -1004,8 +1050,46 @@ primitives:
       - price-to-rate conversion metadata for the curve_family
 
   - id: policy_futures__futures_pack_average_simple
-    status: todo
+    status: done
     build_order: 28
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
+    dismissed_findings:
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          The SQL baseline reads inverse_pricing + contract_code via
+          instrument_master with is_rolling_contract = TRUE whereas the
+          Python helper uses an SCD2-bounded lookup. For a strip-position-
+          keyed master stem there is only one is_rolling row per
+          (curve_family, strip_position), so the two paths converge — no
+          behavioural impact; the SQL pass on all four clean-built cases
+          confirms.
+        reason_dismissed: |
+          Reviewer self-classified as "Observations (dismissable, not
+          findings)". Reviewer explicitly notes the two paths converge for
+          strip-position-keyed master stems and the live SQL validation
+          PASS on all four clean-built cases confirms behavioural
+          equivalence. Falls into the Review adjudication rule's
+          dismissable category (style preference / cleanliness with no
+          correctness, methodology, wiring, wire-shape, or testing
+          impact). No re-dispatch.
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          compute.py:439-441 resolves field_name_resolved once before the
+          future-anchor loop; correct sentinel pattern matching the
+          sibling tools.
+        reason_dismissed: |
+          Reviewer self-classified as "Observations (dismissable, not
+          findings)". This is an affirmative observation of correct
+          sentinel-pattern adherence to the sibling tools, not a finding
+          requiring change. Falls into the Review adjudication rule's
+          dismissable category (no correctness, methodology, wiring,
+          wire-shape, or testing impact). No re-dispatch.
     instrument_family: policy_futures
     tool_name: futures_pack_average_simple
     category: desk_invariant_primitive

@@ -90,6 +90,11 @@ from rates_agent.policy_futures.tools.futures_cross_market_spread import (  # no
     FuturesCrossMarketSpreadInput,
     calculate_futures_cross_market_spread,
 )
+from rates_agent.policy_futures.tools.futures_pack_average_simple import (  # noqa: E402
+    CONFIG_PATH as FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+    FuturesPackAverageSimpleInput,
+    calculate_futures_pack_average_simple,
+)
 from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
     CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
     FuturesPriceLevelInput,
@@ -1412,6 +1417,239 @@ def get_futures_strip_snapshot_tool(
     # the P5 caveats are propagated. No history series to withhold
     # here — the snapshot is by design a single-anchor read.
     return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 7: get_futures_pack_average_simple
+#         (policy_futures whites / reds pack-average implied rate)
+# ===========================================================================
+@mcp.tool()
+def get_futures_pack_average_simple_tool(
+    curve_family: str,
+    pack: str,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+    field_name: str = "",
+) -> str:
+    """Get the current policy-futures whites or reds pack-average
+    implied rate (simple arithmetic mean across the four pack-member
+    strip slots) on ONE curve_family. Plus the four per-leg current
+    implied rates, 1-day raw-subtraction change on the pack-average
+    axis, rolling 252-day z-score of the pack-average series,
+    trailing 252-day high / low / mid range, and percentile rank of
+    the current pack average. The snapshot carries the as_of-bounded
+    SCD2 per-leg disclosure (contract_codes / underlying_contract_codes
+    / security_names / expiry_dates per pack member, inverse_priced
+    flag, short_rate_regime label). Weighting: simple arithmetic
+    mean (each pack member 1/4 = 0.25).
+
+    Use this tool when the user asks about:
+    - STIR pack averages              (e.g. "Where are the SOFR
+                                       whites?", "SONIA reds
+                                       average?", "Front-year SOFR
+                                       implied rate average?")
+    - Pack-average extremes           (e.g. "Are the SOFR whites at
+                                       a 1-year high?", "Z-score on
+                                       the SONIA reds pack?")
+    - Pack-average day-on-day moves   (e.g. "How much did the SOFR
+                                       whites move yesterday?")
+
+    Do NOT use this tool for:
+    - Bond futures pack averages (TY / RX / JB strips) → bond_futures
+      domain, separate primitive.
+    - Cross-CB pack-average spreads (SOFR whites vs SONIA whites) →
+      NOT a V1 primitive.
+    - Three-leg STIR butterflies → use the sibling
+      ``get_futures_butterfly_simple_tool``.
+    - Two-leg same-curve calendar spreads → use the sibling
+      ``get_futures_calendar_spread_tool``.
+    - Single-leg outright price / implied rate → use the sibling
+      ``get_futures_price_level_tool``.
+    - Whole-strip snapshot (1..8 side-by-side) → use the sibling
+      ``get_futures_strip_snapshot_tool``.
+    - Duration-weighted / DV01-weighted pack averages → those
+      weighting variants ship as separate primitives in a future
+      build (this tool refuses them via the methodology card).
+    - Meeting-by-meeting policy-path pack averages (FOMC / ECB / BOE
+      per-meeting implied-step view) → NOT a primitive in this
+      build.
+    - EUR_SHORT_RATE_FUT (Euribor) pack averages — this tool REFUSES
+      EUR_SHORT_RATE_FUT with a controlled error envelope until the
+      playbook annotates per-row ``delivery_month_type`` metadata
+      (the Euribor strip mixes serial and quarterly contracts at the
+      front; ADR 0011 V1 scope). SOFR + SONIA pack averages build
+      cleanly.
+
+    ALWAYS preserve the methodology_disclosure field when relaying
+    the snapshot to the user — P5 (honest disclosure) requires the
+    arithmetic-mean weighting, the regime label, the inverse-pricing
+    rule, the z-score lookback window, AND the explicit refusal of
+    duration-weighted / meeting-path / CTD-of-OIS variants to be
+    carried forward.
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip, RFR regime), 'EUR_SHORT_RATE_FUT' (ECB Euribor
+        strip — REFUSED at compute time per ADR 0011 V1 scope),
+        'SONIA_FUT' (BOE SONIA strip, RFR regime).
+    pack : str
+        Which pack to average: 'whites' (strip positions 1-4, front
+        year) or 'reds' (strip positions 5-8, second year). The
+        strip-position ranges are YAML-locked STIR conventions and
+        are NOT user-overridable.
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the rolling z-score window
+        (config-locked at 252) or the trailing range window (locked
+        at 252).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot to a
+        specific trading day. Empty (default ``""``) = anchor at the
+        universe's last observed ``trade_date`` where ALL FOUR pack
+        legs are observed (post-fetch data-max anchor). An
+        as_of_date BEYOND the universe's last observed
+        ``trade_date`` on ANY pack leg returns the documented
+        controlled-error envelope; an as_of_date WITHIN the universe
+        range produces a DETERMINISTIC snapshot (same as_of + same
+        DB state ⇒ same numbers).
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ``""`` to use the bundled ``default_price_field`` convention
+        from futures_pack_average_simple/config.yaml (currently
+        'PX_LAST'). Pass an explicit field name to override per
+        call. Mirrors the empty-string sentinel pattern used by the
+        sibling tools so the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_price_field``.
+    field_name_arg = field_name if field_name else None
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent universe trade_date
+    # across all four pack legs). Malformed value raises a clean
+    # ValidationError envelope below.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_pack_average_simple_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesPackAverageSimpleInput(
+            curve_family=curve_family,
+            pack=pack,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_pack_average_simple_tool] input validation "
+            "failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_pack_average_simple_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). Mirrors the sibling
+    # get_futures_butterfly_simple_tool exactly. Catches the
+    # ADR-0011 V1 EUR_SHORT_RATE_FUT NotImplementedError refusal
+    # separately so the LLM sees a clean {"error": "..."} envelope
+    # naming the missing delivery_month_type metadata rather than a
+    # stack trace.
+    try:
+        fpas_config = load_tool_config(
+            FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+        )
+        result = calculate_futures_pack_average_simple(
+            engine=engine, params=params, config=fpas_config,
+        )
+    except NotImplementedError as exc:
+        logger.warning(
+            "[get_futures_pack_average_simple_tool] ADR 0011 V1 "
+            "refusal for %s pack=%s: %s",
+            params.curve_family, params.pack, exc,
+        )
+        return json.dumps(
+            {"error": str(exc)},
+            default=str,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_pack_average_simple_tool] unhandled error "
+            "for %s pack=%s",
+            params.curve_family, params.pack,
+        )
+        return json.dumps(
+            {"error": f"get_futures_pack_average_simple_tool failed "
+             f"for {params.curve_family} pack={params.pack}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_pack_average_simple_tool] tool call complete: "
+        "%s pack=%s → %s",
+        params.curve_family, params.pack, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series + canonical series before returning to the
+    # LLM (frontend REST path returns the full payload). The LLM
+    # doesn't need every historical row — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveats are propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in (
+            "time_series",
+            "time_series_pack_average",
+            "time_series_zscore",
+        )
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_pack_average_simple_tool] withheld %d "
+            "time_series rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================
