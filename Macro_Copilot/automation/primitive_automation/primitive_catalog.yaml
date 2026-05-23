@@ -1,5 +1,5 @@
 catalog_name: primitive_automation_initial_remaining_instruments
-catalog_version: "2.0"
+catalog_version: "2.1"
 branch: primitive_automation
 execution_mode: one_primitive_at_a_time
 status_policy:
@@ -25,6 +25,7 @@ selection_principles:
   - Keep the initial batch biased toward desk-recognizable standard primitives rather than Bucket 2 research models.
   - Every entry names its substrate playbook(s) in `pre_flight_load_audit` so the orchestrator's pre-flight gate (PRE_FLIGHT_LOAD_AUDIT.md) can verify `load_audit` SUCCESS before any builder dispatch.
 notes:
+  - v2.1 — appended 11 primitives covering the rest of the original Primitive-Expansion plan (excluding the 4 event primitives, which await the events-sub-agent placement decision, and excluding templates / coverage extensions / ADR-only items, which the factory does not handle). Net effect on this run, factory keeps grinding on the v2.0 todo set; once those 8 are done the factory advances to build_order 24+ without restart. Added 11 = Group 1 (3 — scan_inflation_linkers_extremes, scan_inflation_swaps_extremes, calculate_ois_butterfly) + Group 2 missing (3 — policy_futures futures_strip_snapshot, futures_pack_average_simple, scan_policy_futures_extremes) + Group 3 panels (3 — build_zcis_panel, build_linker_panel, build_policy_futures_strip_panel) + Group 5 (2 — ois asset_swap_spread, inflation_swaps realized_vs_implied_inflation).
   - v2.0 — bond_futures and policy_futures entries unblocked. Bond_futures now reflects ADR 0011 V1 scope (monitors only — price level, volume/OI, morning extremes scan). The Phase-4 RV stack (CTD basis, implied repo, DV01-weighted spreads) remains gated on D-repo + D-deliverable ingestion and is intentionally NOT in this catalog. Policy_futures uses the new strip-aware fetchers in shared/analytics/rates_fetch.py.
   - Inflation linker and inflation swap primitives are already shipped on this branch; their `status: done` reflects the actual on-disk state of `rates_agent/inflation_indexed_bonds/tools/` and `rates_agent/inflation_swaps/tools/`. The orchestrator must NOT re-build them.
   - The 8 remaining buildable primitives (3 bond_futures + 5 policy_futures) are what the factory will work through this run.
@@ -745,3 +746,392 @@ primitives:
       - Must keep the calculation in raw inflation-swap-rate space rather than an adjusted or model-derived basis space.
     no_go_if_missing:
       - all three inflation swap tenors
+
+  # =========================================================================
+  # v2.1 ADDITIONS — Primitive-Expansion plan, the rest of the data-unlocked
+  # primitives (excluding the 4 event primitives, which await events-sub-agent
+  # placement, and templates / extensions / ADR-only items, which the factory
+  # does not handle). Build order 24+ continues after the existing v2.0 todo
+  # set (build_order 14-18) clears. No effect on in-flight work.
+  # =========================================================================
+
+  - id: inflation_linkers__scan_inflation_linkers_extremes
+    status: todo
+    build_order: 24
+    instrument_family: inflation_indexed_bonds
+    tool_name: scan_inflation_linkers_extremes
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+    concept_summary: Morning sweep across the linker universe (all 24 linkers from inflation_indexed_bonds.yml), ranked by absolute 252-day z-score of real yields.
+    why_new_concept: Universe-wide extreme scan is a distinct desk-screen object, not reducible to a single per-bond level read. Plan §5 Group 1 #1.
+    why_standard: Morning "where is the linker curve stretched today?" sweeps are standard inflation-desk practice — desk-recognisable.
+    required_playbooks:
+      - rates_agent/playbooks/inflation_indexed_bonds.yml
+    required_metrics:
+      - yield_mid
+    required_reference_metrics:
+      - maturity_date
+      - security_name
+      - country
+    reference_manifest: manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md
+    reference_tools:
+      - rates_agent/ois/tools/scanner.py
+      - rates_agent/sovereign_bonds/tools/scanner.py
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_scan_universe
+    methodology_guardrails:
+      - Output rows must carry the per-bond methodology disclosure tag so downstream consumers see why a bond ranked extreme.
+      - Methodology card must state the z-score lookback window explicitly.
+    no_go_if_missing:
+      - linker yield_mid history across the universe
+
+  - id: inflation_swaps__scan_inflation_swaps_extremes
+    status: todo
+    build_order: 25
+    instrument_family: inflation_swaps
+    tool_name: scan_inflation_swaps_extremes
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
+    concept_summary: Morning sweep across the ZCIS universe (21 inflation swaps from inflation_swaps.yml), ranked by absolute 252-day z-score.
+    why_new_concept: Universe-wide ZCIS extreme scan is a distinct desk-screen object. Plan §5 Group 1 #2.
+    why_standard: Morning extreme sweeps are standard inflation-desk objects once ZCIS levels are watched.
+    required_playbooks:
+      - rates_agent/playbooks/inflation_swaps.yml
+    required_metrics:
+      - yield_mid
+    required_reference_metrics:
+      - maturity_date
+      - security_name
+      - underlying_index
+    reference_manifest: manifesto/01_instruments/rates_agent/05_inflation_swaps.md
+    reference_tools:
+      - rates_agent/ois/tools/scanner.py
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_scan_universe
+    methodology_guardrails:
+      - Methodology card must state the z-score lookback window explicitly.
+    no_go_if_missing:
+      - ZCIS yield_mid history across the universe
+
+  - id: ois__calculate_ois_butterfly
+    status: todo
+    build_order: 26
+    instrument_family: ois
+    tool_name: calculate_ois_butterfly
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on: []
+    pre_flight_load_audit:
+      - ois
+    concept_summary: USD 2s5s10s OIS butterfly (plus analogues per OIS curve_family — EUR_ESTR_OIS, GBP_SONIA_OIS, JPY_TONA_OIS, AUD_AONIA_OIS, CAD_CORRA_OIS) with 252-day z-score using fixed 50-50 simple-butterfly weights.
+    why_new_concept: OIS-curve curvature is a distinct shape object on the policy-curve side, not reducible to outright OIS levels or single-tenor spreads. Plan §5 Group 1 #3.
+    why_standard: 2s5s10s butterflies are canonical curve-shape tools on every OIS-watching desk.
+    required_playbooks:
+      - rates_agent/playbooks/ois.yml
+    required_metrics:
+      - yield_mid
+    required_reference_metrics:
+      - maturity_date
+      - security_name
+    reference_manifest: manifesto/01_instruments/rates_agent/02_ois.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/butterfly
+    methodology_guardrails:
+      - Must use fixed 50-50 simple-butterfly weights — PR8 central knob, YAML-locked, no LLM override.
+      - Must keep computation in OIS rate space (do NOT convert to a bond-equivalent yield).
+      - Methodology card must disclose the fixed-weight choice and note that DV01-neutral variants are a PR11 planned_extension.
+    no_go_if_missing:
+      - all three OIS tenors on the selected curve_family
+
+  - id: policy_futures__futures_strip_snapshot
+    status: todo
+    build_order: 27
+    instrument_family: policy_futures
+    tool_name: futures_strip_snapshot
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: All 8 strip positions side-by-side — price + implied rate + Δ + z-score + open interest. One primitive returns the whole strip snapshot rather than composing 8 separate per-contract reads.
+    why_new_concept: The strip snapshot is one desk object, not 8 individual outrights. PR4 — composing 8 reads is structurally worse than one strip-aware primitive on accuracy of the implied-rate alignment, provenance, and LLM clarity.
+    why_standard: STIR strip snapshots are how STIR desks describe the front end ("the strip is steep / flat / inverted").
+    required_playbooks:
+      - rates_agent/playbooks/policy_futures.yml
+    required_metrics:
+      - last_price
+      - open_interest
+    required_reference_metrics:
+      - expiry_date
+      - security_name
+      - contract_size
+      - underlying_spot
+    reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_group
+    methodology_guardrails:
+      - implied_rate_pct is a PR14-frozen field name — do NOT rename.
+      - Must handle inverse pricing per curve_family (SFR/ER inverse; SFI/TIIE direct).
+      - Methodology card must disclose RFR vs IBOR regime per curve_family.
+    no_go_if_missing:
+      - last_price across the strip on the selected curve_family
+      - price-to-rate conversion metadata for the curve_family
+
+  - id: policy_futures__futures_pack_average_simple
+    status: todo
+    build_order: 28
+    instrument_family: policy_futures
+    tool_name: futures_pack_average_simple
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: Average implied rate across whites (strip positions 1-4) and reds (5-8) for a policy-futures curve_family. Standard pack-average aggregation.
+    why_new_concept: Pack averages are a distinct STIR-desk object summarising the front (whites) and second year (reds) implied policy path. Plan §5 Group 2 #10.
+    why_standard: White/red pack averages are canonical STIR-desk shorthand; how SOFR and SONIA front-end views are summarised on macro morning calls.
+    required_playbooks:
+      - rates_agent/playbooks/policy_futures.yml
+    required_metrics:
+      - last_price
+    required_reference_metrics:
+      - expiry_date
+      - security_name
+      - underlying_spot
+    reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/butterfly
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_strip_group
+    methodology_guardrails:
+      - SOFR (USD_RFR_STRIP) and SONIA (GBP_RFR_STRIP) build cleanly — both are quarterly serial strips with uniform delivery-month type.
+      - EUR_SHORT_RATE_FUT MUST raise a tested PR11 NotImplementedError per ADR 0011 — the Euribor serial/quarterly Buba-curve mix is not pack-averageable without per-row delivery_month_type metadata that policy_futures.yml does not yet carry.
+      - planned_extensions config entry must name the missing delivery_month_type field as the unblock dependency.
+      - implied_rate_pct field name PR14-frozen.
+    no_go_if_missing:
+      - last_price across all 8 strip positions for the requested curve_family
+      - inverse-pricing handling for the requested regime
+
+  - id: policy_futures__scan_policy_futures_extremes
+    status: todo
+    build_order: 29
+    instrument_family: policy_futures
+    tool_name: scan_policy_futures_extremes
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: Morning sweep across the policy-futures universe (SOFR / SONIA / ER strips), ranked by absolute z-score of implied rate, Δ, volume, and OI.
+    why_new_concept: Universe-wide STIR sweep is a desk-screen object distinct from any per-contract read. Plan §5 Group 2 #11.
+    why_standard: STIR desks sweep the strip universe every morning for the steepest / flattest moves and OI extremes.
+    required_playbooks:
+      - rates_agent/playbooks/policy_futures.yml
+    required_metrics:
+      - last_price
+      - volume
+      - open_interest
+    required_reference_metrics:
+      - curve_family
+      - expiry_date
+      - security_name
+      - underlying_spot
+    reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md
+    reference_tools:
+      - rates_agent/ois/tools/scanner.py
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_scan_universe
+    methodology_guardrails:
+      - Output rows must carry the per-contract methodology disclosure (RFR vs IBOR regime, rolling-generic price caveat).
+      - implied_rate_pct field name PR14-frozen.
+    no_go_if_missing:
+      - synchronised last_price + volume + OI history across the policy-futures universe
+
+  - id: inflation_swaps__build_zcis_panel
+    status: todo
+    build_order: 30
+    instrument_family: inflation_swaps
+    tool_name: build_zcis_panel
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
+    concept_summary: Wide multi-instrument Panel artifact of ZCIS rates across the universe (rows = dates, columns = security_name) — substrate for downstream regression / PCA / cross-sectional operators.
+    why_new_concept: A Panel is a structurally distinct artifact type from a Series. Composition (operators reading the panel) is the point. Plan §5 Group 3 #19.
+    why_standard: Panel-shaped substrate is how every desk-side PCA / cross-curve work consumes ZCIS rates.
+    required_playbooks:
+      - rates_agent/playbooks/inflation_swaps.yml
+    required_metrics:
+      - yield_mid
+    required_reference_metrics:
+      - maturity_date
+      - security_name
+      - underlying_index
+    reference_manifest: manifesto/01_instruments/rates_agent/05_inflation_swaps.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+    fetcher_surface:
+      - shared.analytics.panel_assembly.fetch_instrument_panel
+    methodology_guardrails:
+      - Output must be a canonical Panel artifact with dates on the row axis and security_name on the column axis.
+      - Methodology card must disclose alignment / fill / forward-fill conventions explicitly (PR12 source tag required).
+    no_go_if_missing:
+      - synchronised ZCIS yield_mid across the universe
+
+  - id: inflation_linkers__build_linker_panel
+    status: todo
+    build_order: 31
+    instrument_family: inflation_indexed_bonds
+    tool_name: build_linker_panel
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - inflation_linkers__real_yield_level
+    pre_flight_load_audit:
+      - inflation_indexed_bonds
+    concept_summary: Wide multi-instrument Panel artifact of linker real yields (rows = dates, columns = security_name).
+    why_new_concept: Panel artifact for the linker universe — substrate for cross-bond regression / PCA / RV. Plan §5 Group 3 #20.
+    why_standard: Linker desks routinely look at the real-yield panel for relative-value work.
+    required_playbooks:
+      - rates_agent/playbooks/inflation_indexed_bonds.yml
+    required_metrics:
+      - yield_mid
+    required_reference_metrics:
+      - maturity_date
+      - security_name
+      - country
+    reference_manifest: manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+    fetcher_surface:
+      - shared.analytics.panel_assembly.fetch_instrument_panel
+    methodology_guardrails:
+      - Output must be a canonical Panel artifact.
+      - Methodology card must surface index-family and market-structure caveats per country.
+    no_go_if_missing:
+      - synchronised linker yield_mid across the universe
+
+  - id: policy_futures__build_policy_futures_strip_panel
+    status: todo
+    build_order: 32
+    instrument_family: policy_futures
+    tool_name: build_policy_futures_strip_panel
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - policy_futures__futures_price_level
+    pre_flight_load_audit:
+      - policy_futures
+    concept_summary: Wide Panel artifact of implied rates across strip positions (rows = dates, columns = (curve_family, strip_position)).
+    why_new_concept: Panel artifact for the policy-futures strip universe — substrate for cross-CB pricing analysis. Plan §5 Group 3 #21.
+    why_standard: STIR desks need the strip-wide panel to compare across CBs and dates.
+    required_playbooks:
+      - rates_agent/playbooks/policy_futures.yml
+    required_metrics:
+      - last_price
+    required_reference_metrics:
+      - curve_family
+      - expiry_date
+      - security_name
+      - underlying_spot
+    reference_manifest: manifesto/01_instruments/rates_agent/06_policy_futures.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+    fetcher_surface:
+      - shared.analytics.panel_assembly.fetch_instrument_panel
+      - shared.analytics.rates_fetch.fetch_strip_group
+    methodology_guardrails:
+      - Output is a canonical Panel artifact; columns indexed by (curve_family, strip_position).
+      - implied_rate_pct field name PR14-frozen.
+      - Methodology card must disclose RFR vs IBOR per curve_family and the inverse-pricing handling.
+      - Must NOT collapse EUR_SHORT_RATE_FUT rows into a Buba-mix average per ADR 0011 — preserve raw rows.
+    no_go_if_missing:
+      - synchronised last_price across the strip universe
+      - price-to-rate conversion metadata per curve_family
+
+  - id: ois__asset_swap_spread
+    status: todo
+    build_order: 33
+    instrument_family: ois
+    tool_name: asset_swap_spread
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on: []
+    pre_flight_load_audit:
+      - sovereign_cash_bonds
+    concept_summary: Surfaces the TRUE INGESTED Bloomberg per-bond asset-swap spread (ASSET_SWAP_SPD_MID) from sovereign_cash_bonds, by security_name + date. Reads only; never recomputes.
+    why_new_concept: P12 — per-bond Bloomberg ASW is a source-of-record value; ingest and surface, never recompute from STIR / OIS / discount factors. Plan §5 Group 5 #26.
+    why_standard: ASW is the canonical RV metric on every cash-bond / cross-currency / repo desk.
+    required_playbooks:
+      - rates_agent/playbooks/sovereign_cash_bonds.yml
+    required_metrics:
+      - asw_spread
+    required_reference_metrics:
+      - security_name
+      - maturity_date
+      - issuer
+      - country
+    reference_manifest: manifesto/01_instruments/rates_agent/07_sovereign_cash_bonds.md
+    reference_tools:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_single_tenor
+    methodology_guardrails:
+      - This is the INGESTED Bloomberg ASW per cash bond (ASSET_SWAP_SPD_MID) — P12 ingest, never recompute.
+      - PR4 differentiate from rates_agent/ois/tools/swap_spread/ — that one is a par-par approximation over OIS forwards; THIS one is the per-bond ingested Bloomberg ASW. Methodology cards of BOTH primitives must cite each other and explain the difference.
+      - Methodology source tag must be vendor_ingested (NOT computed / approximated).
+      - On NULL asw_spread for a bond/date, raise a typed exception per P6 — do NOT fall back to computing the spread.
+    no_go_if_missing:
+      - asw_spread column populated for the requested bond/date
+
+  - id: inflation_swaps__realized_vs_implied_inflation
+    status: todo
+    build_order: 34
+    instrument_family: inflation_swaps
+    tool_name: realized_vs_implied_inflation
+    category: desk_invariant_primitive
+    ready_to_build: true
+    depends_on:
+      - inflation_swaps__inflation_swap_rate_level
+    pre_flight_load_audit:
+      - inflation_swaps
+      - inflation_references
+    concept_summary: Realized inflation (CPI / RPI / HICP index ratio over horizon H) versus the ZCIS rate struck at horizon start. Uses actual prints from inflation_references — no seasonal-factor model required.
+    why_new_concept: Bridge object between realized inflation and the inflation-derivatives market. Plan §5 Group 5 #27.
+    why_standard: 'The question "did the market underprice CPI?" is asked every CPI release — this primitive is how a desk quantifies the answer.'
+    required_playbooks:
+      - rates_agent/playbooks/inflation_references.yml
+      - rates_agent/playbooks/inflation_swaps.yml
+    required_metrics:
+      - inflation_reference index_level
+      - ZCIS yield_mid
+    required_reference_metrics:
+      - underlying_index
+      - maturity_date
+    reference_manifest: manifesto/01_instruments/rates_agent/05_inflation_swaps.md
+    reference_tools:
+      - rates_agent/inflation_swaps/tools/inflation_swap_rate_level
+    fetcher_surface:
+      - shared.analytics.rates_fetch.fetch_single_tenor
+    methodology_guardrails:
+      - Uses actual index prints (no seasonality model) per Plan §5 Group 5 #27 — the index-ratio computation is exact, not modeled.
+      - Methodology card must state the horizon convention explicitly (compounded vs annualised; year-fraction basis).
+      - Sign convention - positive = realized > implied (market underpriced inflation). Must NOT silently invert.
+    no_go_if_missing:
+      - inflation_reference index_level series covering the full horizon
+      - ZCIS yield_mid at horizon start
