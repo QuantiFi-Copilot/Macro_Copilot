@@ -40,6 +40,12 @@ from __future__ import annotations
 
 from typing import Dict
 
+from rates_agent.ois.tools.calculate_ois_butterfly import (
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    OISButterflyInput,
+    OISButterflyOutput,
+    calculate_ois_butterfly,
+)
 from rates_agent.ois.tools.cross_market_spread import (
     CONFIG_PATH as OIS_CROSS_MARKET_SPREAD_CONFIG_PATH,
     OISCrossMarketSpreadInput,
@@ -333,6 +339,27 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_field_units={
             "time_series": "bps",
             "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_ois_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_ois_butterfly_tool",
+        callable=calculate_ois_butterfly,
+        input_class=OISButterflyInput,
+        output_class=OISButterflyOutput,
+        config_path=OIS_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen butterfly row list — frontend
+            # consumes ``butterfly_bps`` per row, so the unit is BPS
+            # (mirrors sovereign butterfly / inflation_swap_butterfly /
+            # OIS curve_spread BPS-on-the-wire convention for curve-
+            # shape views, even though the underlying OIS rates are
+            # quoted in PERCENT).
+            "time_series": "bps",
+            # Canonical TimeSeries: OIS butterfly history in BPS,
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
             "time_series_zscore": "z_score",
         },
     ),

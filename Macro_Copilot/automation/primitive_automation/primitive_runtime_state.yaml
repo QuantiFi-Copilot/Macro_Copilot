@@ -21,22 +21,22 @@ backend: coding-agent
 # Top-level state (DISCORD_STATUS_POLICY.md §3)
 # ---------------------------------------------------------------------------
 orchestrator_status: processing
-current_primitive: inflation_swaps__scan_inflation_swaps_extremes
-current_primitive_tool_name: scan_inflation_swaps_extremes
-current_step: committing
-last_successful_primitive: inflation_linkers__scan_inflation_linkers_extremes
-last_successful_commit: a11c095
+current_primitive: ois__calculate_ois_butterfly
+current_primitive_tool_name: calculate_ois_butterfly
+current_step: reviewing
+last_successful_primitive: inflation_swaps__scan_inflation_swaps_extremes
+last_successful_commit: 91a5714
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-23T12:38Z_reviewer_round1_APPROVED_claude_fallback_ready_to_commit
+last_stop_reason: wake_2026-05-23T13:08Z_builder_round1_complete_claude_fallback_reviewer_dispatched_for_ois_calculate_ois_butterfly
 last_error: null
-last_updated: "2026-05-23T12:39:00Z"
+last_updated: "2026-05-23T13:08:00Z"
 
 # ---------------------------------------------------------------------------
 # Catalog progress
 # ---------------------------------------------------------------------------
-done: 24
+done: 25
 blocked: 0
-remaining: 10
+remaining: 9
 
 # ---------------------------------------------------------------------------
 # Quota
@@ -85,6 +85,326 @@ human_required: null
 # Audit log — append-only
 # ---------------------------------------------------------------------------
 status_notes:
+  - at: "2026-05-23T13:08:00Z"
+    kind: wake_2026-05-23T13:00Z_builder_round1_complete_for_ois_calculate_ois_butterfly_claude_fallback_reviewer_dispatched
+    text: |
+      Cron wake fired at 2026-05-23T13:00Z (Saturday). Branch guard
+      PASS (primitive_automation). Re-read the full primitive automation
+      package (ORCHESTRATOR_PROMPT, DESIGN_PRINCIPLES,
+      STANDARD_TOOL_AND_YAML_RULES, PRIMITIVE_BUILD_RULES,
+      TESTING_AND_DB_VALIDATION_POLICY, NO_GO_RULES, DONE_DEFINITION,
+      REPO_REFERENCE_MAP, QUOTA_AND_RESUME_POLICY,
+      BACKGROUND_EXECUTION_POLICY, DISCORD_STATUS_POLICY,
+      OPENCLAW_CRON_RUNBOOK, REVIEWER_PROMPT) + catalog + top of
+      runtime state. No chat memory used.
+
+      Observed state at wake start:
+        orchestrator_status   : processing
+        current_primitive     : ois__calculate_ois_butterfly (build_order 26)
+        catalog entry status  : in_progress
+        catalog active_step   : builder_round_1_dispatched
+        reviewer_mode         : claude_fallback (sticky per
+                                QUOTA_AND_RESUME_POLICY.md §10.3)
+        counts                : done=25 / blocked=0 / remaining=9
+        in-flight builder     : PID 1839898 (wrapper) + 1839906 (claude
+                                --print --model opus --effort xhigh
+                                --permission-mode bypassPermissions);
+                                ELAPSED 18:31 at wake start
+
+      Builder polling (this wake):
+        Waited up to ~10 min for the builder to exit. PID 1839906
+        terminated at 2026-05-23T13:06:14Z, total wall-clock ≈ 24 min
+        (12:42Z dispatch → 13:06Z exit), inside the 25-35 min
+        expected envelope.
+        builder log         : /tmp/claude_builder_run_ois__calculate
+                              _ois_butterfly_round1.log
+        log size            : 5056 bytes
+
+      Builder report (verbatim claims, to be verified by reviewer):
+        Primitive package — rates_agent/ois/tools/calculate_ois_butterfly/
+          __init__.py, config.yaml (10 conventions / 8 assumptions / 6
+          citations / 4 planned_extensions incl. DV01-neutral, PCA-
+          weighted, trailing-window unlock, JPY_TONA / AUD_AONIA /
+          CAD_CORRA disclosure), schemas.py (OIS_CURVE_FAMILY closed
+          Literal whitelist of 6 playbook families,
+          OISButterflyInput/CurrentMetrics/TimeSeriesRow/Output),
+          compute.py (mirrors sovereign butterfly with OIS sub-domain
+          anchoring on latest observation).
+        Tests added —
+          tests/test_calculate_ois_butterfly_compute.py        : 46 (Layer A)
+          tests/test_calculate_ois_butterfly_wiring.py         : 16 (Layer A)
+          tests/test_calculate_ois_butterfly_sql_validation.py :  9 cases (Layer B, USD_SOFR / EUR_ESTR / GBP_SONIA 2s5s10s regression + 6 random; CTE-based ffill-limit-5 + 252-row rolling z ddof=1 + LAG daily-change + 252-row trailing high/low/percentile)
+        Files modified —
+          rates_agent/ois/tools/schemas/__init__.py            (re-export OISButterfly*)
+          rates_agent/ois/mcp_server.py                        (calculate_ois_butterfly_tool registered; 7 tools)
+          rates_agent/workflows/__init__.py                    (PrimitiveSpec entry, output_field_units = {time_series: bps, time_series_butterfly: bps, time_series_zscore: z_score})
+          tests/conftest.py                                    (sql_validation script in collect_ignore)
+        Tests / lint claimed —
+          Layer A : compute 46 PASS + wiring 16 PASS
+          Layer B : sql_validation 9/9 PASS
+          shared.config.lint : OK
+          sibling regression : 99 (sovereign butterfly + OIS curve_spread) PASS
+        Fixture provenance (USD_SOFR_OIS 2s5s10s) —
+          captured_at      : 2026-05-23T13:04:44Z
+          raw_rows_count   : 1445
+          raw_rows_sha256  : 4e9c782780955e4155df87138f9874a67febc5267616d4634460d555ecf6ab66
+          as_of_date       : 2026-04-08
+          fetch window     : 743 calendar days (365 lookback + 378 buffer)
+          capture path     : read-only SELECT via macro_data.v_market_data_daily_enriched
+          parity fixture   : not persisted (OIS sub-domain has no JSON
+                             parity fixtures across its 5 sibling
+                             primitives; SQL validator IS the parity)
+        DB mutations: NONE (explicit statement in BUILDER REPORT).
+        Honest disclosure : JPY_TONA_OIS / AUD_AONIA_OIS / CAD_CORRA_OIS
+                            catalog aliases NOT in the playbook; whitelist
+                            mirrors playbook; schema refuses aliases;
+                            planned_extensions documents the playbook +
+                            CURVE_FAMILY_TO_CURRENCY edit needed to
+                            unblock — no proxy / silent relabel.
+
+      Git status at builder handoff (verified, working tree not committed):
+         M automation/primitive_automation/primitive_catalog.yaml          (orchestrator-owned)
+         M automation/primitive_automation/primitive_runtime_state.yaml    (orchestrator-owned)
+         M rates_agent/ois/mcp_server.py
+         M rates_agent/ois/tools/schemas/__init__.py
+         M rates_agent/workflows/__init__.py
+         M tests/conftest.py
+        ?? rates_agent/ois/tools/calculate_ois_butterfly/
+        ?? tests/test_calculate_ois_butterfly_compute.py
+        ?? tests/test_calculate_ois_butterfly_sql_validation.py
+        ?? tests/test_calculate_ois_butterfly_wiring.py
+      Four-file package contents verified on disk:
+        rates_agent/ois/tools/calculate_ois_butterfly/{__init__.py,
+        config.yaml, schemas.py, compute.py}.
+
+      Reviewer dispatch:
+        engine        : claude_fallback (sticky per
+                        QUOTA_AND_RESUME_POLICY.md §10.3; orchestrator
+                        cannot reliably probe Codex /status from this
+                        non-interactive context per §6, so we stay on
+                        Claude rather than risk re-pinning a depleted
+                        Codex bucket mid-primitive).
+        wrapper       : run_claude_reviewer.sh
+        prompt file   : /tmp/reviewer_prompt_ois__calculate_ois_butterfly_round1.md
+        reviewer log  : /tmp/claude_reviewer_run_ois__calculate_ois_butterfly_round1.log
+        wrapper PID   : 1849172
+        claude  PID   : 1849181 (claude --print --model opus
+                        --effort xhigh --permission-mode
+                        bypassPermissions)
+        dispatched at : 2026-05-23T13:08Z
+        expected      : ~7-15 min wall-clock based on prior
+                        claude_fallback reviewer round runtimes
+                        (scan_inflation_swaps_extremes round 1 ≈ 7 min;
+                        bond_futures round 3 ≈ 14 min).
+
+      Quota mode:
+        Operating per QUOTA_AND_RESUME_POLICY.md §6 — non-interactive
+        runtime-enforced quota mode. Real provider 429 / rate-limit
+        responses will be detected by parse_reviewer_log.py
+        (reviewer_quota_exhausted / environment_failure fields) on
+        the reviewer log; reviewer-fallback rule applies (Claude is
+        already in fallback; if Claude also exhausts on this round,
+        all_reviewer_engines_quota_exhausted stop applies).
+
+      Stop conditions evaluated for this turn:
+        - catalog exhausted             : NO (remaining=9)
+        - quota blocker                 : NO (no provider error)
+        - hard runtime/provider error   : NO
+        - human-required                : NO
+        - branch violation              : NO (primitive_automation)
+        - DB-validation path unavailable: NO
+        - in-flight reviewer needs to   : YES — orchestrator will poll
+          finish before next dispatch     for reviewer exit within this
+                                          wake. If it exits cleanly with
+                                          a parseable heading, adjudicate
+                                          per Review-adjudication rule
+                                          (mandatory-fix vs dismissable);
+                                          if APPROVED or approved-with-
+                                          dismissals, commit and advance
+                                          to the next eligible primitive
+                                          (build_order 27
+                                          policy_futures__futures_strip
+                                          _snapshot, first todo).
+
+      Top-level state transitions this wake:
+        current_step          : building -> reviewing
+        last_stop_reason      : wake_2026-05-23T12:45Z_observed_in_flight_builder_for_ois_calculate_ois_butterfly_monitoring
+                                -> wake_2026-05-23T13:08Z_builder_round1_complete_claude_fallback_reviewer_dispatched_for_ois_calculate_ois_butterfly
+        last_updated          : 2026-05-23T12:45:00Z -> 2026-05-23T13:08:00Z
+        all other top-level fields unchanged (current_primitive,
+        last_successful_primitive, last_successful_commit,
+        last_reviewer_heading=APPROVED [stale — refers to prior
+        primitive 91a5714; will be overwritten when this round's
+        verdict is parsed], counts, reviewer_mode).
+
+      No catalog mutation this wake (catalog entry already in_progress
+      from prior wake's builder dispatch).
+      No DB queries this wake.
+      No commits this wake.
+
+  - at: "2026-05-23T12:45:00Z"
+    kind: wake_2026-05-23T12:45Z_observed_in_flight_builder_for_ois_calculate_ois_butterfly_monitoring
+    text: |
+      Cron wake fired at 2026-05-23T12:45Z (3 min after the prior wake
+      dispatched the round-1 builder for ois__calculate_ois_butterfly).
+      Pre-wake reconnaissance (no worker dispatched in this turn):
+
+        branch guard         : PASS (primitive_automation)
+        package read         : ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+                               STANDARD_TOOL_AND_YAML_RULES.md,
+                               PRIMITIVE_BUILD_RULES.md,
+                               TESTING_AND_DB_VALIDATION_POLICY.md,
+                               NO_GO_RULES.md, DONE_DEFINITION.md,
+                               REPO_REFERENCE_MAP.md,
+                               QUOTA_AND_RESUME_POLICY.md,
+                               BACKGROUND_EXECUTION_POLICY.md,
+                               DISCORD_STATUS_POLICY.md — all read.
+        runtime_state read   : OK; orchestrator_status=processing,
+                               current_primitive=ois__calculate_ois_butterfly,
+                               reviewer_mode=claude_fallback (sticky),
+                               quota_state=probe_unavailable.
+        catalog read         : 8 buildable on v2.0 batch (3 bond_futures
+                               + 5 policy_futures + this OIS butterfly
+                               unblocked under v2.1 expansion).
+                               done=25, blocked=0, remaining=9.
+
+        in-flight builder    : PID 1839898 (wrapper) + 1839906 (claude
+                               --print --model opus --effort xhigh
+                               --permission-mode bypassPermissions)
+                               still RUNNING at 12:45Z (3 min into the
+                               25-35 min expected wall-clock).
+        builder log          : /tmp/claude_builder_run_ois__calculate
+                               _ois_butterfly_round1.log
+                               size at observation = 0 bytes (typical
+                               for opus --print mid-build before final
+                               stdout flush).
+
+      No worker dispatch this turn (BACKGROUND_EXECUTION_POLICY.md §7,
+      no-overlap rule). Monitor task bcx5yzxy9 armed (2_100_000 ms
+      timeout) to fire on builder exit OR on any failure marker
+      (Traceback, usage limit, rate limit, 429, anthropic-ratelimit,
+      overloaded_error, Killed, OOM). When the monitor fires:
+
+        - parse the builder log;
+        - if BUILDER REPORT present and clean → write round-1
+          builder-complete status_notes, then write the round-1
+          reviewer prompt and dispatch through run_claude_reviewer.sh
+          (reviewer_mode=claude_fallback, sticky per §10.3 because
+          the §2 Codex /status probe is unavailable non-interactively
+          per §6);
+        - if quota marker AND builder produced nothing → record
+          builder-side rate-limit, mark primitive waiting_quota, stop
+          cleanly (this is a build-side exhaustion, distinct from the
+          reviewer-fallback path which is for reviewer-side exhaustion);
+        - if generic Traceback / environment failure → record honestly
+          in last_error / last_stop_reason / current_step, stop the wake.
+
+      Stop conditions evaluated for this turn:
+        - catalog exhausted             : NO (remaining=9)
+        - quota blocker                 : NO (per §6 non-interactive
+                                          fallback mode)
+        - hard runtime/provider error   : NO
+        - human-required                : NO
+        - branch violation              : NO
+        - DB-validation path unavailable: NO
+        - in-flight builder needs to    : YES — this wake is the
+          finish before next dispatch     monitoring continuation; no
+                                          new worker will be launched
+                                          until the round-1 builder
+                                          exits.
+
+  - at: "2026-05-23T12:42:00Z"
+    kind: wake_2026-05-23T12:40Z_committed_91a5714_advanced_to_ois_calculate_ois_butterfly_builder_round1_dispatched
+    text: |
+      Continued the same wake (12:15Z heartbeat → 12:30Z builder
+      complete → 12:38Z reviewer APPROVED → commit → next primitive).
+      Per Required loop step 8 + Background execution rule (process
+      as much of the catalog as honestly possible in one run), this
+      wake does NOT stop after the single completed primitive.
+
+      Commit:
+        sha          : 91a5714
+        branch       : primitive_automation (verified)
+        message      : feat(inflation_swaps): add scan_inflation_swaps_extremes primitive
+        files        : 18 changed (4 tool files + 4 test files + 3 fixture files + 7 wiring/state updates)
+        committed_at : 2026-05-23T12:40:10Z
+        tree         : clean post-commit (verified via git status --short)
+
+      Catalog counts:
+        done       : 24 -> 25
+        blocked    : 0
+        remaining  : 10 -> 9
+
+      Selection per Required loop:
+        first in_progress  : none
+        first changes_req  : none
+        first waiting_quota: none
+        first todo         : ois__calculate_ois_butterfly (build_order 26)
+        selected           : ois__calculate_ois_butterfly
+
+      Pre-flight load_audit (per PRE_FLIGHT_LOAD_AUDIT.md):
+        required_playbooks : [ois]
+        SQL probe          : SELECT playbook_name, status, ingested_at
+                             FROM macro_data.load_audit
+                             WHERE playbook_name = 'ois'
+                               AND status = 'SUCCESS'
+                             ORDER BY ingested_at DESC LIMIT 1;
+        result             : ois|SUCCESS|2026-04-20 19:21:21.465195+01
+        verdict            : PASS
+        access path        : docker exec macro-tsdb psql (read-only)
+
+      Builder dispatch:
+        prompt file        : /tmp/builder_prompt_ois__calculate_ois_butterfly_round1.md (201 lines)
+        wrapper            : run_claude_builder.sh
+        builder log        : /tmp/claude_builder_run_ois__calculate_ois_butterfly_round1.log
+        wrapper PID        : 1839898
+        claude PID         : 1839906 (claude --print --model opus
+                             --effort xhigh --permission-mode
+                             bypassPermissions)
+        dispatched at      : 2026-05-23T12:42Z
+        expected wall-clock: ~25-35 min based on prior round-1 build
+                             precedents (scan_inflation_linkers_extremes
+                             round 1 ≈ 33 min; scan_inflation_swaps_
+                             extremes round 1 ≈ 26 min).
+
+      Builder prompt points the builder at:
+        - rates_agent/sovereign_bonds/tools/butterfly/ (closest
+          reference shape per catalog reference_tools)
+        - rates_agent/ois/tools/curve_spread/ and forward_rate/
+          (OIS sub-domain idioms)
+        - rates_agent/playbooks/ois.yml (authoritative OIS
+          curve_family whitelist)
+        - shared/analytics/rates_fetch.py:fetch_tenor_group
+        - explicit instruction to honor the catalog's closed-enum
+          discipline: if EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_TONA_OIS /
+          AUD_AONIA_OIS / CAD_CORRA_OIS are NOT in the playbook,
+          surface the gap as planned_extensions (do NOT proxy).
+
+      Catalog state for this primitive:
+        status      : todo -> in_progress
+        active_step : builder_round_1_dispatched
+        builder_round: 1
+        review_round: 0
+
+      Reviewer mode: claude_fallback (sticky per
+      QUOTA_AND_RESUME_POLICY.md §10.3). Will re-evaluate Codex
+      probe availability at the next round; for now the wrapper
+      stays on Claude.
+
+      Stop conditions evaluated:
+        - catalog exhausted             : NO (remaining=9)
+        - quota blocker                 : NO
+        - hard runtime/provider error   : NO
+        - human-required                : NO
+        - branch violation              : NO
+        - DB-validation path unavailable: NO
+        - in-flight builder needs to    : YES — orchestrator will
+          finish before next dispatch     either (a) continue
+                                          monitoring within this
+                                          wake or (b) hand off to
+                                          the next cron wake when
+                                          this wake naturally ends.
+
   - at: "2026-05-23T12:39:00Z"
     kind: wake_2026-05-23T12:38Z_reviewer_round1_APPROVED_claude_fallback_with_one_dismissed_finding
     text: |

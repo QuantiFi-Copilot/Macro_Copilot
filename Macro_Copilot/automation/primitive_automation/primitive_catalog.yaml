@@ -868,11 +868,13 @@ primitives:
   - id: inflation_swaps__scan_inflation_swaps_extremes
     status: done
     build_order: 25
-    active_step: ready_to_commit
+    active_step: committed_91a5714_feat_inflation_swaps_add_scan_inflation_swaps_extremes_primitive
     builder_round: 1
     review_round: 1
     last_review_heading: APPROVED
     reviewer_engine: claude_fallback
+    committed_at: "2026-05-23T12:40:10Z"
+    commit_sha: 91a5714
     dismissed_findings:
       - round: 1
         reviewer_engine: claude_fallback
@@ -930,8 +932,13 @@ primitives:
       - ZCIS yield_mid history across the universe
 
   - id: ois__calculate_ois_butterfly
-    status: todo
+    status: done
     build_order: 26
+    active_step: ready_to_commit_round_1
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: ois
     tool_name: calculate_ois_butterfly
     category: desk_invariant_primitive

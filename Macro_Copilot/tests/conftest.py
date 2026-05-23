@@ -56,6 +56,7 @@ collect_ignore = [
     "test_ois_cross_market_spread_sql_validation.py",
     "test_ois_curve_spread_sql_validation.py",
     "test_ois_forward_rate_sql_validation.py",
+    "test_calculate_ois_butterfly_sql_validation.py",
     "test_scanner_sql_validation.py",
     "test_swap_spread_sql_validation.py",
     "test_yield_levels_sql_validation.py",
