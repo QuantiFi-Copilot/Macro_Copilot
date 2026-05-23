@@ -1,0 +1,3377 @@
+{
+  "fixture_name": "full_universe_sfr1",
+  "tool_module": "rates_agent.policy_futures.tools.futures_price_level",
+  "tool_function": "calculate_futures_price_level",
+  "capture": {
+    "captured_at": "2026-05-23T05:00:07Z",
+    "database_name": "macrodata",
+    "raw_price_rows_count": 512,
+    "raw_rows_sha256": "b6812183266a5544f108878b7fb9d0a21b39208adbf8ccc44c0fe7686f6b54f8",
+    "resolved_field_name": "PX_LAST"
+  },
+  "input": {
+    "params": {
+      "curve_family": "SOFR_FUT",
+      "strip_position": 1,
+      "lookback_days": 365,
+      "as_of_date": "2026-04-08",
+      "field_name": null
+    },
+    "frozen_today": "2026-04-08",
+    "raw_price_rows": [
+      {
+        "trade_date": "2024-03-26",
+        "field_value": 94.675
+      },
+      {
+        "trade_date": "2024-03-27",
+        "field_value": 94.675
+      },
+      {
+        "trade_date": "2024-03-28",
+        "field_value": 94.6725
+      },
+      {
+        "trade_date": "2024-04-01",
+        "field_value": 94.6675
+      },
+      {
+        "trade_date": "2024-04-02",
+        "field_value": 94.67
+      },
+      {
+        "trade_date": "2024-04-03",
+        "field_value": 94.67
+      },
+      {
+        "trade_date": "2024-04-04",
+        "field_value": 94.675
+      },
+      {
+        "trade_date": "2024-04-05",
+        "field_value": 94.6675
+      },
+      {
+        "trade_date": "2024-04-08",
+        "field_value": 94.6625
+      },
+      {
+        "trade_date": "2024-04-09",
+        "field_value": 94.665
+      },
+      {
+        "trade_date": "2024-04-10",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-11",
+        "field_value": 94.66
+      },
+      {
+        "trade_date": "2024-04-12",
+        "field_value": 94.66
+      },
+      {
+        "trade_date": "2024-04-15",
+        "field_value": 94.66
+      },
+      {
+        "trade_date": "2024-04-16",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-17",
+        "field_value": 94.66
+      },
+      {
+        "trade_date": "2024-04-18",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-19",
+        "field_value": 94.66
+      },
+      {
+        "trade_date": "2024-04-22",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-23",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-24",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-04-25",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-26",
+        "field_value": 94.6575
+      },
+      {
+        "trade_date": "2024-04-29",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-04-30",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-01",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-02",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-03",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-06",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-07",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-08",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-09",
+        "field_value": 94.655
+      },
+      {
+        "trade_date": "2024-05-10",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-13",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-14",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-15",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-16",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-17",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-20",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-21",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-05-22",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-23",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-24",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-28",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-05-29",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-30",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-05-31",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-06-03",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-06-04",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-05",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-06",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-07",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-10",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-11",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-12",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-13",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-14",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-17",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-18",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-20",
+        "field_value": 94.6425
+      },
+      {
+        "trade_date": "2024-06-21",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-24",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-25",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-06-26",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-06-27",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-06-28",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-07-01",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-07-02",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-07-03",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-07-05",
+        "field_value": 94.6525
+      },
+      {
+        "trade_date": "2024-07-08",
+        "field_value": 94.65
+      },
+      {
+        "trade_date": "2024-07-09",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-07-10",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-07-11",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-07-12",
+        "field_value": 94.6425
+      },
+      {
+        "trade_date": "2024-07-15",
+        "field_value": 94.6375
+      },
+      {
+        "trade_date": "2024-07-16",
+        "field_value": 94.6375
+      },
+      {
+        "trade_date": "2024-07-17",
+        "field_value": 94.6325
+      },
+      {
+        "trade_date": "2024-07-18",
+        "field_value": 94.6325
+      },
+      {
+        "trade_date": "2024-07-19",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-22",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-23",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-24",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-25",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-26",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-29",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-07-30",
+        "field_value": 94.6325
+      },
+      {
+        "trade_date": "2024-07-31",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-08-01",
+        "field_value": 94.6325
+      },
+      {
+        "trade_date": "2024-08-02",
+        "field_value": 94.645
+      },
+      {
+        "trade_date": "2024-08-05",
+        "field_value": 94.6475
+      },
+      {
+        "trade_date": "2024-08-06",
+        "field_value": 94.6375
+      },
+      {
+        "trade_date": "2024-08-07",
+        "field_value": 94.6375
+      },
+      {
+        "trade_date": "2024-08-08",
+        "field_value": 94.635
+      },
+      {
+        "trade_date": "2024-08-09",
+        "field_value": 94.635
+      },
+      {
+        "trade_date": "2024-08-12",
+        "field_value": 94.635
+      },
+      {
+        "trade_date": "2024-08-13",
+        "field_value": 94.6325
+      },
+      {
+        "trade_date": "2024-08-14",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-15",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-16",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-19",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-20",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-21",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-22",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-08-23",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-08-26",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-08-27",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-08-28",
+        "field_value": 94.625
+      },
+      {
+        "trade_date": "2024-08-29",
+        "field_value": 94.625
+      },
+      {
+        "trade_date": "2024-08-30",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-09-03",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-04",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-05",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-09-06",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-09",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-09-10",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-11",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-09-12",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-13",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-16",
+        "field_value": 94.63
+      },
+      {
+        "trade_date": "2024-09-17",
+        "field_value": 94.6275
+      },
+      {
+        "trade_date": "2024-09-18",
+        "field_value": 95.25
+      },
+      {
+        "trade_date": "2024-09-19",
+        "field_value": 95.265
+      },
+      {
+        "trade_date": "2024-09-20",
+        "field_value": 95.28
+      },
+      {
+        "trade_date": "2024-09-23",
+        "field_value": 95.28
+      },
+      {
+        "trade_date": "2024-09-24",
+        "field_value": 95.2875
+      },
+      {
+        "trade_date": "2024-09-25",
+        "field_value": 95.2975
+      },
+      {
+        "trade_date": "2024-09-26",
+        "field_value": 95.29
+      },
+      {
+        "trade_date": "2024-09-27",
+        "field_value": 95.2925
+      },
+      {
+        "trade_date": "2024-09-30",
+        "field_value": 95.27
+      },
+      {
+        "trade_date": "2024-10-01",
+        "field_value": 95.265
+      },
+      {
+        "trade_date": "2024-10-02",
+        "field_value": 95.2625
+      },
+      {
+        "trade_date": "2024-10-03",
+        "field_value": 95.2625
+      },
+      {
+        "trade_date": "2024-10-04",
+        "field_value": 95.2275
+      },
+      {
+        "trade_date": "2024-10-07",
+        "field_value": 95.21
+      },
+      {
+        "trade_date": "2024-10-08",
+        "field_value": 95.21
+      },
+      {
+        "trade_date": "2024-10-09",
+        "field_value": 95.2075
+      },
+      {
+        "trade_date": "2024-10-10",
+        "field_value": 95.2075
+      },
+      {
+        "trade_date": "2024-10-11",
+        "field_value": 95.215
+      },
+      {
+        "trade_date": "2024-10-14",
+        "field_value": 95.21
+      },
+      {
+        "trade_date": "2024-10-15",
+        "field_value": 95.2225
+      },
+      {
+        "trade_date": "2024-10-16",
+        "field_value": 95.2175
+      },
+      {
+        "trade_date": "2024-10-17",
+        "field_value": 95.2125
+      },
+      {
+        "trade_date": "2024-10-18",
+        "field_value": 95.2175
+      },
+      {
+        "trade_date": "2024-10-21",
+        "field_value": 95.2125
+      },
+      {
+        "trade_date": "2024-10-22",
+        "field_value": 95.215
+      },
+      {
+        "trade_date": "2024-10-23",
+        "field_value": 95.21
+      },
+      {
+        "trade_date": "2024-10-24",
+        "field_value": 95.215
+      },
+      {
+        "trade_date": "2024-10-25",
+        "field_value": 95.2175
+      },
+      {
+        "trade_date": "2024-10-28",
+        "field_value": 95.22
+      },
+      {
+        "trade_date": "2024-10-29",
+        "field_value": 95.225
+      },
+      {
+        "trade_date": "2024-10-30",
+        "field_value": 95.225
+      },
+      {
+        "trade_date": "2024-10-31",
+        "field_value": 95.225
+      },
+      {
+        "trade_date": "2024-11-01",
+        "field_value": 95.2275
+      },
+      {
+        "trade_date": "2024-11-04",
+        "field_value": 95.23
+      },
+      {
+        "trade_date": "2024-11-05",
+        "field_value": 95.2275
+      },
+      {
+        "trade_date": "2024-11-06",
+        "field_value": 95.23
+      },
+      {
+        "trade_date": "2024-11-07",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-08",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-11",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-12",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-13",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-14",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-15",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-18",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-11-19",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-11-20",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-11-21",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-11-22",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-11-25",
+        "field_value": 95.24
+      },
+      {
+        "trade_date": "2024-11-26",
+        "field_value": 95.2375
+      },
+      {
+        "trade_date": "2024-11-27",
+        "field_value": 95.24
+      },
+      {
+        "trade_date": "2024-11-29",
+        "field_value": 95.24
+      },
+      {
+        "trade_date": "2024-12-02",
+        "field_value": 95.2375
+      },
+      {
+        "trade_date": "2024-12-03",
+        "field_value": 95.24
+      },
+      {
+        "trade_date": "2024-12-04",
+        "field_value": 95.24
+      },
+      {
+        "trade_date": "2024-12-05",
+        "field_value": 95.2375
+      },
+      {
+        "trade_date": "2024-12-06",
+        "field_value": 95.2375
+      },
+      {
+        "trade_date": "2024-12-09",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-12-10",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-12-11",
+        "field_value": 95.235
+      },
+      {
+        "trade_date": "2024-12-12",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-12-13",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-12-16",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-12-17",
+        "field_value": 95.2325
+      },
+      {
+        "trade_date": "2024-12-18",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2024-12-19",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2024-12-20",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2024-12-23",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2024-12-24",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2024-12-26",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2024-12-27",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2024-12-30",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2024-12-31",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-01-02",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-01-03",
+        "field_value": 95.6625
+      },
+      {
+        "trade_date": "2025-01-06",
+        "field_value": 95.6675
+      },
+      {
+        "trade_date": "2025-01-07",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-01-08",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-01-09",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-01-10",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-01-13",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-01-14",
+        "field_value": 95.6625
+      },
+      {
+        "trade_date": "2025-01-15",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-01-16",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-01-17",
+        "field_value": 95.6625
+      },
+      {
+        "trade_date": "2025-01-21",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-01-22",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-01-23",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-01-24",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-01-27",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-01-28",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-01-29",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-01-30",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-01-31",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-02-03",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-02-04",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2025-02-05",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2025-02-06",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-02-07",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-02-10",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-02-11",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-02-12",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-02-13",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-02-14",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-02-18",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-02-19",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-02-20",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-02-21",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-02-24",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-02-25",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-02-26",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-02-27",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-02-28",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-03-03",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-03-04",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-03-05",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-06",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-07",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-03-10",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-11",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-03-12",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-13",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-03-14",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-17",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-18",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-03-19",
+        "field_value": 95.6875
+      },
+      {
+        "trade_date": "2025-03-20",
+        "field_value": 95.6875
+      },
+      {
+        "trade_date": "2025-03-21",
+        "field_value": 95.6875
+      },
+      {
+        "trade_date": "2025-03-24",
+        "field_value": 95.6825
+      },
+      {
+        "trade_date": "2025-03-25",
+        "field_value": 95.68
+      },
+      {
+        "trade_date": "2025-03-26",
+        "field_value": 95.68
+      },
+      {
+        "trade_date": "2025-03-27",
+        "field_value": 95.68
+      },
+      {
+        "trade_date": "2025-03-28",
+        "field_value": 95.69
+      },
+      {
+        "trade_date": "2025-03-31",
+        "field_value": 95.6875
+      },
+      {
+        "trade_date": "2025-04-01",
+        "field_value": 95.6875
+      },
+      {
+        "trade_date": "2025-04-02",
+        "field_value": 95.68
+      },
+      {
+        "trade_date": "2025-04-03",
+        "field_value": 95.69
+      },
+      {
+        "trade_date": "2025-04-04",
+        "field_value": 95.71
+      },
+      {
+        "trade_date": "2025-04-07",
+        "field_value": 95.71
+      },
+      {
+        "trade_date": "2025-04-08",
+        "field_value": 95.7075
+      },
+      {
+        "trade_date": "2025-04-09",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-04-10",
+        "field_value": 95.6775
+      },
+      {
+        "trade_date": "2025-04-11",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-04-14",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-04-15",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-04-16",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-04-17",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-04-21",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-04-22",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-04-23",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-04-24",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-04-25",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-04-28",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-04-29",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-04-30",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-01",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2025-05-02",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-05-05",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-05-06",
+        "field_value": 95.645
+      },
+      {
+        "trade_date": "2025-05-07",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-05-08",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2025-05-09",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-12",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-13",
+        "field_value": 95.6475
+      },
+      {
+        "trade_date": "2025-05-14",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-15",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-16",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-19",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-20",
+        "field_value": 95.65
+      },
+      {
+        "trade_date": "2025-05-21",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-22",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-23",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-27",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-05-28",
+        "field_value": 95.6525
+      },
+      {
+        "trade_date": "2025-05-29",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-05-30",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-02",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-03",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-04",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-06-05",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-06",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-09",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-06-10",
+        "field_value": 95.655
+      },
+      {
+        "trade_date": "2025-06-11",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-06-12",
+        "field_value": 95.66
+      },
+      {
+        "trade_date": "2025-06-13",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-06-16",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-06-17",
+        "field_value": 95.6575
+      },
+      {
+        "trade_date": "2025-06-18",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-06-20",
+        "field_value": 95.675
+      },
+      {
+        "trade_date": "2025-06-23",
+        "field_value": 95.68
+      },
+      {
+        "trade_date": "2025-06-24",
+        "field_value": 95.675
+      },
+      {
+        "trade_date": "2025-06-25",
+        "field_value": 95.6775
+      },
+      {
+        "trade_date": "2025-06-26",
+        "field_value": 95.675
+      },
+      {
+        "trade_date": "2025-06-27",
+        "field_value": 95.6725
+      },
+      {
+        "trade_date": "2025-06-30",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-07-01",
+        "field_value": 95.6625
+      },
+      {
+        "trade_date": "2025-07-02",
+        "field_value": 95.665
+      },
+      {
+        "trade_date": "2025-07-03",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-07-07",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-07-08",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-07-09",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-07-10",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-07-11",
+        "field_value": 95.6425
+      },
+      {
+        "trade_date": "2025-07-14",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-07-15",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-07-16",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-07-17",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-07-18",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-07-21",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-07-22",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-07-23",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-07-24",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-07-25",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-07-28",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-07-29",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-07-30",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-07-31",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-08-01",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-08-04",
+        "field_value": 95.64
+      },
+      {
+        "trade_date": "2025-08-05",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-08-06",
+        "field_value": 95.6375
+      },
+      {
+        "trade_date": "2025-08-07",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-08-08",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-11",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-08-12",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-13",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-14",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-15",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-18",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-19",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-20",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-08-21",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-08-22",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-08-25",
+        "field_value": 95.6275
+      },
+      {
+        "trade_date": "2025-08-26",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-08-27",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-08-28",
+        "field_value": 95.63
+      },
+      {
+        "trade_date": "2025-08-29",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-09-02",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-09-03",
+        "field_value": 95.635
+      },
+      {
+        "trade_date": "2025-09-04",
+        "field_value": 95.6325
+      },
+      {
+        "trade_date": "2025-09-05",
+        "field_value": 95.6275
+      },
+      {
+        "trade_date": "2025-09-08",
+        "field_value": 95.6275
+      },
+      {
+        "trade_date": "2025-09-09",
+        "field_value": 95.625
+      },
+      {
+        "trade_date": "2025-09-10",
+        "field_value": 95.6275
+      },
+      {
+        "trade_date": "2025-09-11",
+        "field_value": 95.625
+      },
+      {
+        "trade_date": "2025-09-12",
+        "field_value": 95.6225
+      },
+      {
+        "trade_date": "2025-09-15",
+        "field_value": 95.6225
+      },
+      {
+        "trade_date": "2025-09-16",
+        "field_value": 95.625
+      },
+      {
+        "trade_date": "2025-09-17",
+        "field_value": 95.965
+      },
+      {
+        "trade_date": "2025-09-18",
+        "field_value": 95.96
+      },
+      {
+        "trade_date": "2025-09-19",
+        "field_value": 95.96
+      },
+      {
+        "trade_date": "2025-09-22",
+        "field_value": 95.9525
+      },
+      {
+        "trade_date": "2025-09-23",
+        "field_value": 95.955
+      },
+      {
+        "trade_date": "2025-09-24",
+        "field_value": 95.95
+      },
+      {
+        "trade_date": "2025-09-25",
+        "field_value": 95.9425
+      },
+      {
+        "trade_date": "2025-09-26",
+        "field_value": 95.9475
+      },
+      {
+        "trade_date": "2025-09-29",
+        "field_value": 95.95
+      },
+      {
+        "trade_date": "2025-09-30",
+        "field_value": 95.9575
+      },
+      {
+        "trade_date": "2025-10-01",
+        "field_value": 95.965
+      },
+      {
+        "trade_date": "2025-10-02",
+        "field_value": 95.9575
+      },
+      {
+        "trade_date": "2025-10-03",
+        "field_value": 95.9525
+      },
+      {
+        "trade_date": "2025-10-06",
+        "field_value": 95.95
+      },
+      {
+        "trade_date": "2025-10-07",
+        "field_value": 95.955
+      },
+      {
+        "trade_date": "2025-10-08",
+        "field_value": 95.955
+      },
+      {
+        "trade_date": "2025-10-09",
+        "field_value": 95.9575
+      },
+      {
+        "trade_date": "2025-10-10",
+        "field_value": 95.9575
+      },
+      {
+        "trade_date": "2025-10-13",
+        "field_value": 95.9575
+      },
+      {
+        "trade_date": "2025-10-14",
+        "field_value": 95.9525
+      },
+      {
+        "trade_date": "2025-10-15",
+        "field_value": 95.94
+      },
+      {
+        "trade_date": "2025-10-16",
+        "field_value": 95.945
+      },
+      {
+        "trade_date": "2025-10-17",
+        "field_value": 95.945
+      },
+      {
+        "trade_date": "2025-10-20",
+        "field_value": 95.94
+      },
+      {
+        "trade_date": "2025-10-21",
+        "field_value": 95.93
+      },
+      {
+        "trade_date": "2025-10-22",
+        "field_value": 95.93
+      },
+      {
+        "trade_date": "2025-10-23",
+        "field_value": 95.9275
+      },
+      {
+        "trade_date": "2025-10-24",
+        "field_value": 95.9275
+      },
+      {
+        "trade_date": "2025-10-27",
+        "field_value": 95.9275
+      },
+      {
+        "trade_date": "2025-10-28",
+        "field_value": 95.9275
+      },
+      {
+        "trade_date": "2025-10-29",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-10-30",
+        "field_value": 95.905
+      },
+      {
+        "trade_date": "2025-10-31",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-03",
+        "field_value": 95.8975
+      },
+      {
+        "trade_date": "2025-11-04",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-05",
+        "field_value": 95.905
+      },
+      {
+        "trade_date": "2025-11-06",
+        "field_value": 95.91
+      },
+      {
+        "trade_date": "2025-11-07",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-11-10",
+        "field_value": 95.905
+      },
+      {
+        "trade_date": "2025-11-11",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-11-12",
+        "field_value": 95.9025
+      },
+      {
+        "trade_date": "2025-11-13",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-14",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-17",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-18",
+        "field_value": 95.9025
+      },
+      {
+        "trade_date": "2025-11-19",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-20",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-21",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-24",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-25",
+        "field_value": 95.9
+      },
+      {
+        "trade_date": "2025-11-26",
+        "field_value": 95.8975
+      },
+      {
+        "trade_date": "2025-11-28",
+        "field_value": 95.8975
+      },
+      {
+        "trade_date": "2025-12-01",
+        "field_value": 95.9025
+      },
+      {
+        "trade_date": "2025-12-02",
+        "field_value": 95.905
+      },
+      {
+        "trade_date": "2025-12-03",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-12-04",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-12-05",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-12-08",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-12-09",
+        "field_value": 95.9075
+      },
+      {
+        "trade_date": "2025-12-10",
+        "field_value": 95.9125
+      },
+      {
+        "trade_date": "2025-12-11",
+        "field_value": 95.915
+      },
+      {
+        "trade_date": "2025-12-12",
+        "field_value": 95.9125
+      },
+      {
+        "trade_date": "2025-12-15",
+        "field_value": 95.915
+      },
+      {
+        "trade_date": "2025-12-16",
+        "field_value": 95.915
+      },
+      {
+        "trade_date": "2025-12-17",
+        "field_value": 96.295
+      },
+      {
+        "trade_date": "2025-12-18",
+        "field_value": 96.3
+      },
+      {
+        "trade_date": "2025-12-19",
+        "field_value": 96.2975
+      },
+      {
+        "trade_date": "2025-12-22",
+        "field_value": 96.2925
+      },
+      {
+        "trade_date": "2025-12-23",
+        "field_value": 96.29
+      },
+      {
+        "trade_date": "2025-12-24",
+        "field_value": 96.2925
+      },
+      {
+        "trade_date": "2025-12-26",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2025-12-29",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2025-12-30",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2025-12-31",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-01-02",
+        "field_value": 96.315
+      },
+      {
+        "trade_date": "2026-01-05",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-01-06",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-01-07",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-08",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-09",
+        "field_value": 96.3
+      },
+      {
+        "trade_date": "2026-01-12",
+        "field_value": 96.2975
+      },
+      {
+        "trade_date": "2026-01-13",
+        "field_value": 96.2975
+      },
+      {
+        "trade_date": "2026-01-14",
+        "field_value": 96.3025
+      },
+      {
+        "trade_date": "2026-01-15",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-16",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-20",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-21",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-22",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-23",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-26",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-01-27",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-01-28",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-01-29",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-01-30",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-02-02",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-03",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-04",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-05",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-06",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-09",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-10",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-11",
+        "field_value": 96.315
+      },
+      {
+        "trade_date": "2026-02-12",
+        "field_value": 96.315
+      },
+      {
+        "trade_date": "2026-02-13",
+        "field_value": 96.315
+      },
+      {
+        "trade_date": "2026-02-17",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-18",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-19",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-20",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-23",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-02-24",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-02-25",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-02-26",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-02-27",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-03-02",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-03",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-04",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-05",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-06",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-03-09",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-10",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-03-11",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-12",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-13",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-03-16",
+        "field_value": 96.3125
+      },
+      {
+        "trade_date": "2026-03-17",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-03-18",
+        "field_value": 96.3075
+      },
+      {
+        "trade_date": "2026-03-19",
+        "field_value": 96.2925
+      },
+      {
+        "trade_date": "2026-03-20",
+        "field_value": 96.285
+      },
+      {
+        "trade_date": "2026-03-23",
+        "field_value": 96.2975
+      },
+      {
+        "trade_date": "2026-03-24",
+        "field_value": 96.295
+      },
+      {
+        "trade_date": "2026-03-25",
+        "field_value": 96.305
+      },
+      {
+        "trade_date": "2026-03-26",
+        "field_value": 96.31
+      },
+      {
+        "trade_date": "2026-03-27",
+        "field_value": 96.315
+      },
+      {
+        "trade_date": "2026-03-30",
+        "field_value": 96.32
+      },
+      {
+        "trade_date": "2026-03-31",
+        "field_value": 96.325
+      },
+      {
+        "trade_date": "2026-04-01",
+        "field_value": 96.3275
+      },
+      {
+        "trade_date": "2026-04-02",
+        "field_value": 96.33
+      },
+      {
+        "trade_date": "2026-04-03",
+        "field_value": 96.3275
+      },
+      {
+        "trade_date": "2026-04-06",
+        "field_value": 96.325
+      },
+      {
+        "trade_date": "2026-04-07",
+        "field_value": 96.3275
+      },
+      {
+        "trade_date": "2026-04-08",
+        "field_value": 96.3325
+      }
+    ],
+    "reference": {
+      "curve_family": "SOFR_FUT",
+      "contract_code": "SFR1",
+      "strip_position": 1,
+      "inverse_pricing": true,
+      "underlying_contract_code": "SFRF6",
+      "expiry_date": "2026-04-14",
+      "security_name": "SFRF6 COMB",
+      "tick_size": 0.0025,
+      "tick_value": 6.25,
+      "contract_size": 2500.0
+    }
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-04-08",
+      "curve_family": "SOFR_FUT",
+      "strip_position": 1,
+      "contract_code": "SFR1",
+      "underlying_contract_code": "SFRF6",
+      "security_name": "SFRF6 COMB",
+      "expiry_date": "2026-04-14",
+      "contract_size": 2500.0,
+      "tick_size": 0.0025,
+      "tick_value": 6.25,
+      "inverse_priced": true,
+      "short_rate_regime": "RFR",
+      "quote_units": "100 - rate",
+      "raw_price": 96.3325,
+      "implied_rate_pct": 3.6675,
+      "daily_change_raw_price": 0.005,
+      "daily_change_implied_rate_pct": -0.005,
+      "z_score_implied_rate": -1.4636,
+      "high_252d_implied_rate_pct": 4.3775,
+      "low_252d_implied_rate_pct": 3.6675,
+      "mid_252d_implied_rate_pct": 4.0225,
+      "high_252d_raw_price": 96.3325,
+      "low_252d_raw_price": 95.6225,
+      "mid_252d_raw_price": 95.9775,
+      "percentile_252d": 0.0,
+      "observation_count": 252
+    },
+    "time_series": [
+      {
+        "date": "2025-04-08",
+        "raw_price": 95.7075,
+        "implied_rate_pct": 4.2925
+      },
+      {
+        "date": "2025-04-09",
+        "raw_price": 95.665,
+        "implied_rate_pct": 4.335
+      },
+      {
+        "date": "2025-04-10",
+        "raw_price": 95.6775,
+        "implied_rate_pct": 4.3225
+      },
+      {
+        "date": "2025-04-11",
+        "raw_price": 95.665,
+        "implied_rate_pct": 4.335
+      },
+      {
+        "date": "2025-04-14",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-04-15",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-04-16",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-04-17",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-04-21",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-04-22",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-04-23",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-04-24",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-04-25",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-04-28",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-04-29",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-04-30",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-01",
+        "raw_price": 95.6475,
+        "implied_rate_pct": 4.3525
+      },
+      {
+        "date": "2025-05-02",
+        "raw_price": 95.645,
+        "implied_rate_pct": 4.355
+      },
+      {
+        "date": "2025-05-05",
+        "raw_price": 95.645,
+        "implied_rate_pct": 4.355
+      },
+      {
+        "date": "2025-05-06",
+        "raw_price": 95.645,
+        "implied_rate_pct": 4.355
+      },
+      {
+        "date": "2025-05-07",
+        "raw_price": 95.6425,
+        "implied_rate_pct": 4.3575
+      },
+      {
+        "date": "2025-05-08",
+        "raw_price": 95.6475,
+        "implied_rate_pct": 4.3525
+      },
+      {
+        "date": "2025-05-09",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-12",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-13",
+        "raw_price": 95.6475,
+        "implied_rate_pct": 4.3525
+      },
+      {
+        "date": "2025-05-14",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-15",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-16",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-19",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-20",
+        "raw_price": 95.65,
+        "implied_rate_pct": 4.35
+      },
+      {
+        "date": "2025-05-21",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-22",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-23",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-27",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-05-28",
+        "raw_price": 95.6525,
+        "implied_rate_pct": 4.3475
+      },
+      {
+        "date": "2025-05-29",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-05-30",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-02",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-03",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-04",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-06-05",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-06",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-09",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-06-10",
+        "raw_price": 95.655,
+        "implied_rate_pct": 4.345
+      },
+      {
+        "date": "2025-06-11",
+        "raw_price": 95.66,
+        "implied_rate_pct": 4.34
+      },
+      {
+        "date": "2025-06-12",
+        "raw_price": 95.66,
+        "implied_rate_pct": 4.34
+      },
+      {
+        "date": "2025-06-13",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-06-16",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-06-17",
+        "raw_price": 95.6575,
+        "implied_rate_pct": 4.3425
+      },
+      {
+        "date": "2025-06-18",
+        "raw_price": 95.665,
+        "implied_rate_pct": 4.335
+      },
+      {
+        "date": "2025-06-20",
+        "raw_price": 95.675,
+        "implied_rate_pct": 4.325
+      },
+      {
+        "date": "2025-06-23",
+        "raw_price": 95.68,
+        "implied_rate_pct": 4.32
+      },
+      {
+        "date": "2025-06-24",
+        "raw_price": 95.675,
+        "implied_rate_pct": 4.325
+      },
+      {
+        "date": "2025-06-25",
+        "raw_price": 95.6775,
+        "implied_rate_pct": 4.3225
+      },
+      {
+        "date": "2025-06-26",
+        "raw_price": 95.675,
+        "implied_rate_pct": 4.325
+      },
+      {
+        "date": "2025-06-27",
+        "raw_price": 95.6725,
+        "implied_rate_pct": 4.3275
+      },
+      {
+        "date": "2025-06-30",
+        "raw_price": 95.665,
+        "implied_rate_pct": 4.335
+      },
+      {
+        "date": "2025-07-01",
+        "raw_price": 95.6625,
+        "implied_rate_pct": 4.3375
+      },
+      {
+        "date": "2025-07-02",
+        "raw_price": 95.665,
+        "implied_rate_pct": 4.335
+      },
+      {
+        "date": "2025-07-03",
+        "raw_price": 95.6425,
+        "implied_rate_pct": 4.3575
+      },
+      {
+        "date": "2025-07-07",
+        "raw_price": 95.64,
+        "implied_rate_pct": 4.36
+      },
+      {
+        "date": "2025-07-08",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-07-09",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-07-10",
+        "raw_price": 95.64,
+        "implied_rate_pct": 4.36
+      },
+      {
+        "date": "2025-07-11",
+        "raw_price": 95.6425,
+        "implied_rate_pct": 4.3575
+      },
+      {
+        "date": "2025-07-14",
+        "raw_price": 95.64,
+        "implied_rate_pct": 4.36
+      },
+      {
+        "date": "2025-07-15",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-07-16",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-07-17",
+        "raw_price": 95.63,
+        "implied_rate_pct": 4.37
+      },
+      {
+        "date": "2025-07-18",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-07-21",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-07-22",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-07-23",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-07-24",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-07-25",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-07-28",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-07-29",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-07-30",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-07-31",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-08-01",
+        "raw_price": 95.64,
+        "implied_rate_pct": 4.36
+      },
+      {
+        "date": "2025-08-04",
+        "raw_price": 95.64,
+        "implied_rate_pct": 4.36
+      },
+      {
+        "date": "2025-08-05",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-08-06",
+        "raw_price": 95.6375,
+        "implied_rate_pct": 4.3625
+      },
+      {
+        "date": "2025-08-07",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-08-08",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-11",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-08-12",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-13",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-14",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-15",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-18",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-19",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-20",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-08-21",
+        "raw_price": 95.63,
+        "implied_rate_pct": 4.37
+      },
+      {
+        "date": "2025-08-22",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-08-25",
+        "raw_price": 95.6275,
+        "implied_rate_pct": 4.3725
+      },
+      {
+        "date": "2025-08-26",
+        "raw_price": 95.63,
+        "implied_rate_pct": 4.37
+      },
+      {
+        "date": "2025-08-27",
+        "raw_price": 95.63,
+        "implied_rate_pct": 4.37
+      },
+      {
+        "date": "2025-08-28",
+        "raw_price": 95.63,
+        "implied_rate_pct": 4.37
+      },
+      {
+        "date": "2025-08-29",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-09-02",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-09-03",
+        "raw_price": 95.635,
+        "implied_rate_pct": 4.365
+      },
+      {
+        "date": "2025-09-04",
+        "raw_price": 95.6325,
+        "implied_rate_pct": 4.3675
+      },
+      {
+        "date": "2025-09-05",
+        "raw_price": 95.6275,
+        "implied_rate_pct": 4.3725
+      },
+      {
+        "date": "2025-09-08",
+        "raw_price": 95.6275,
+        "implied_rate_pct": 4.3725
+      },
+      {
+        "date": "2025-09-09",
+        "raw_price": 95.625,
+        "implied_rate_pct": 4.375
+      },
+      {
+        "date": "2025-09-10",
+        "raw_price": 95.6275,
+        "implied_rate_pct": 4.3725
+      },
+      {
+        "date": "2025-09-11",
+        "raw_price": 95.625,
+        "implied_rate_pct": 4.375
+      },
+      {
+        "date": "2025-09-12",
+        "raw_price": 95.6225,
+        "implied_rate_pct": 4.3775
+      },
+      {
+        "date": "2025-09-15",
+        "raw_price": 95.6225,
+        "implied_rate_pct": 4.3775
+      },
+      {
+        "date": "2025-09-16",
+        "raw_price": 95.625,
+        "implied_rate_pct": 4.375
+      },
+      {
+        "date": "2025-09-17",
+        "raw_price": 95.965,
+        "implied_rate_pct": 4.035
+      },
+      {
+        "date": "2025-09-18",
+        "raw_price": 95.96,
+        "implied_rate_pct": 4.04
+      },
+      {
+        "date": "2025-09-19",
+        "raw_price": 95.96,
+        "implied_rate_pct": 4.04
+      },
+      {
+        "date": "2025-09-22",
+        "raw_price": 95.9525,
+        "implied_rate_pct": 4.0475
+      },
+      {
+        "date": "2025-09-23",
+        "raw_price": 95.955,
+        "implied_rate_pct": 4.045
+      },
+      {
+        "date": "2025-09-24",
+        "raw_price": 95.95,
+        "implied_rate_pct": 4.05
+      },
+      {
+        "date": "2025-09-25",
+        "raw_price": 95.9425,
+        "implied_rate_pct": 4.0575
+      },
+      {
+        "date": "2025-09-26",
+        "raw_price": 95.9475,
+        "implied_rate_pct": 4.0525
+      },
+      {
+        "date": "2025-09-29",
+        "raw_price": 95.95,
+        "implied_rate_pct": 4.05
+      },
+      {
+        "date": "2025-09-30",
+        "raw_price": 95.9575,
+        "implied_rate_pct": 4.0425
+      },
+      {
+        "date": "2025-10-01",
+        "raw_price": 95.965,
+        "implied_rate_pct": 4.035
+      },
+      {
+        "date": "2025-10-02",
+        "raw_price": 95.9575,
+        "implied_rate_pct": 4.0425
+      },
+      {
+        "date": "2025-10-03",
+        "raw_price": 95.9525,
+        "implied_rate_pct": 4.0475
+      },
+      {
+        "date": "2025-10-06",
+        "raw_price": 95.95,
+        "implied_rate_pct": 4.05
+      },
+      {
+        "date": "2025-10-07",
+        "raw_price": 95.955,
+        "implied_rate_pct": 4.045
+      },
+      {
+        "date": "2025-10-08",
+        "raw_price": 95.955,
+        "implied_rate_pct": 4.045
+      },
+      {
+        "date": "2025-10-09",
+        "raw_price": 95.9575,
+        "implied_rate_pct": 4.0425
+      },
+      {
+        "date": "2025-10-10",
+        "raw_price": 95.9575,
+        "implied_rate_pct": 4.0425
+      },
+      {
+        "date": "2025-10-13",
+        "raw_price": 95.9575,
+        "implied_rate_pct": 4.0425
+      },
+      {
+        "date": "2025-10-14",
+        "raw_price": 95.9525,
+        "implied_rate_pct": 4.0475
+      },
+      {
+        "date": "2025-10-15",
+        "raw_price": 95.94,
+        "implied_rate_pct": 4.06
+      },
+      {
+        "date": "2025-10-16",
+        "raw_price": 95.945,
+        "implied_rate_pct": 4.055
+      },
+      {
+        "date": "2025-10-17",
+        "raw_price": 95.945,
+        "implied_rate_pct": 4.055
+      },
+      {
+        "date": "2025-10-20",
+        "raw_price": 95.94,
+        "implied_rate_pct": 4.06
+      },
+      {
+        "date": "2025-10-21",
+        "raw_price": 95.93,
+        "implied_rate_pct": 4.07
+      },
+      {
+        "date": "2025-10-22",
+        "raw_price": 95.93,
+        "implied_rate_pct": 4.07
+      },
+      {
+        "date": "2025-10-23",
+        "raw_price": 95.9275,
+        "implied_rate_pct": 4.0725
+      },
+      {
+        "date": "2025-10-24",
+        "raw_price": 95.9275,
+        "implied_rate_pct": 4.0725
+      },
+      {
+        "date": "2025-10-27",
+        "raw_price": 95.9275,
+        "implied_rate_pct": 4.0725
+      },
+      {
+        "date": "2025-10-28",
+        "raw_price": 95.9275,
+        "implied_rate_pct": 4.0725
+      },
+      {
+        "date": "2025-10-29",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-10-30",
+        "raw_price": 95.905,
+        "implied_rate_pct": 4.095
+      },
+      {
+        "date": "2025-10-31",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-03",
+        "raw_price": 95.8975,
+        "implied_rate_pct": 4.1025
+      },
+      {
+        "date": "2025-11-04",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-05",
+        "raw_price": 95.905,
+        "implied_rate_pct": 4.095
+      },
+      {
+        "date": "2025-11-06",
+        "raw_price": 95.91,
+        "implied_rate_pct": 4.09
+      },
+      {
+        "date": "2025-11-07",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-11-10",
+        "raw_price": 95.905,
+        "implied_rate_pct": 4.095
+      },
+      {
+        "date": "2025-11-11",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-11-12",
+        "raw_price": 95.9025,
+        "implied_rate_pct": 4.0975
+      },
+      {
+        "date": "2025-11-13",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-14",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-17",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-18",
+        "raw_price": 95.9025,
+        "implied_rate_pct": 4.0975
+      },
+      {
+        "date": "2025-11-19",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-20",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-21",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-24",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-25",
+        "raw_price": 95.9,
+        "implied_rate_pct": 4.1
+      },
+      {
+        "date": "2025-11-26",
+        "raw_price": 95.8975,
+        "implied_rate_pct": 4.1025
+      },
+      {
+        "date": "2025-11-28",
+        "raw_price": 95.8975,
+        "implied_rate_pct": 4.1025
+      },
+      {
+        "date": "2025-12-01",
+        "raw_price": 95.9025,
+        "implied_rate_pct": 4.0975
+      },
+      {
+        "date": "2025-12-02",
+        "raw_price": 95.905,
+        "implied_rate_pct": 4.095
+      },
+      {
+        "date": "2025-12-03",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-12-04",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-12-05",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-12-08",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-12-09",
+        "raw_price": 95.9075,
+        "implied_rate_pct": 4.0925
+      },
+      {
+        "date": "2025-12-10",
+        "raw_price": 95.9125,
+        "implied_rate_pct": 4.0875
+      },
+      {
+        "date": "2025-12-11",
+        "raw_price": 95.915,
+        "implied_rate_pct": 4.085
+      },
+      {
+        "date": "2025-12-12",
+        "raw_price": 95.9125,
+        "implied_rate_pct": 4.0875
+      },
+      {
+        "date": "2025-12-15",
+        "raw_price": 95.915,
+        "implied_rate_pct": 4.085
+      },
+      {
+        "date": "2025-12-16",
+        "raw_price": 95.915,
+        "implied_rate_pct": 4.085
+      },
+      {
+        "date": "2025-12-17",
+        "raw_price": 96.295,
+        "implied_rate_pct": 3.705
+      },
+      {
+        "date": "2025-12-18",
+        "raw_price": 96.3,
+        "implied_rate_pct": 3.7
+      },
+      {
+        "date": "2025-12-19",
+        "raw_price": 96.2975,
+        "implied_rate_pct": 3.7025
+      },
+      {
+        "date": "2025-12-22",
+        "raw_price": 96.2925,
+        "implied_rate_pct": 3.7075
+      },
+      {
+        "date": "2025-12-23",
+        "raw_price": 96.29,
+        "implied_rate_pct": 3.71
+      },
+      {
+        "date": "2025-12-24",
+        "raw_price": 96.2925,
+        "implied_rate_pct": 3.7075
+      },
+      {
+        "date": "2025-12-26",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2025-12-29",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2025-12-30",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2025-12-31",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-01-02",
+        "raw_price": 96.315,
+        "implied_rate_pct": 3.685
+      },
+      {
+        "date": "2026-01-05",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-01-06",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-01-07",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-08",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-09",
+        "raw_price": 96.3,
+        "implied_rate_pct": 3.7
+      },
+      {
+        "date": "2026-01-12",
+        "raw_price": 96.2975,
+        "implied_rate_pct": 3.7025
+      },
+      {
+        "date": "2026-01-13",
+        "raw_price": 96.2975,
+        "implied_rate_pct": 3.7025
+      },
+      {
+        "date": "2026-01-14",
+        "raw_price": 96.3025,
+        "implied_rate_pct": 3.6975
+      },
+      {
+        "date": "2026-01-15",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-16",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-20",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-21",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-22",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-23",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-26",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-01-27",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-01-28",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-01-29",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-01-30",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-02-02",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-03",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-04",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-05",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-06",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-09",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-10",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-11",
+        "raw_price": 96.315,
+        "implied_rate_pct": 3.685
+      },
+      {
+        "date": "2026-02-12",
+        "raw_price": 96.315,
+        "implied_rate_pct": 3.685
+      },
+      {
+        "date": "2026-02-13",
+        "raw_price": 96.315,
+        "implied_rate_pct": 3.685
+      },
+      {
+        "date": "2026-02-17",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-18",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-19",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-20",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-23",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-02-24",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-02-25",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-02-26",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-02-27",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-03-02",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-03",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-04",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-05",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-06",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-03-09",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-10",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-03-11",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-12",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-13",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-03-16",
+        "raw_price": 96.3125,
+        "implied_rate_pct": 3.6875
+      },
+      {
+        "date": "2026-03-17",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-03-18",
+        "raw_price": 96.3075,
+        "implied_rate_pct": 3.6925
+      },
+      {
+        "date": "2026-03-19",
+        "raw_price": 96.2925,
+        "implied_rate_pct": 3.7075
+      },
+      {
+        "date": "2026-03-20",
+        "raw_price": 96.285,
+        "implied_rate_pct": 3.715
+      },
+      {
+        "date": "2026-03-23",
+        "raw_price": 96.2975,
+        "implied_rate_pct": 3.7025
+      },
+      {
+        "date": "2026-03-24",
+        "raw_price": 96.295,
+        "implied_rate_pct": 3.705
+      },
+      {
+        "date": "2026-03-25",
+        "raw_price": 96.305,
+        "implied_rate_pct": 3.695
+      },
+      {
+        "date": "2026-03-26",
+        "raw_price": 96.31,
+        "implied_rate_pct": 3.69
+      },
+      {
+        "date": "2026-03-27",
+        "raw_price": 96.315,
+        "implied_rate_pct": 3.685
+      },
+      {
+        "date": "2026-03-30",
+        "raw_price": 96.32,
+        "implied_rate_pct": 3.68
+      },
+      {
+        "date": "2026-03-31",
+        "raw_price": 96.325,
+        "implied_rate_pct": 3.675
+      },
+      {
+        "date": "2026-04-01",
+        "raw_price": 96.3275,
+        "implied_rate_pct": 3.6725
+      },
+      {
+        "date": "2026-04-02",
+        "raw_price": 96.33,
+        "implied_rate_pct": 3.67
+      },
+      {
+        "date": "2026-04-03",
+        "raw_price": 96.3275,
+        "implied_rate_pct": 3.6725
+      },
+      {
+        "date": "2026-04-06",
+        "raw_price": 96.325,
+        "implied_rate_pct": 3.675
+      },
+      {
+        "date": "2026-04-07",
+        "raw_price": 96.3275,
+        "implied_rate_pct": 3.6725
+      },
+      {
+        "date": "2026-04-08",
+        "raw_price": 96.3325,
+        "implied_rate_pct": 3.6675
+      }
+    ],
+    "methodology_disclosure": "Rolling-generic strip read at SOFR_FUT strip_position=1 (master stem=SFR1); the desk-recognised level is the implied rate in PERCENT. Underlying short-rate regime: RFR (RFR = compounded daily risk-free rate; IBOR = unsecured 3M term IBOR). Inverse-priced strip \u2014 implied_rate_pct = 100 - raw_price. Z-score lookback = 252 trading days on the IMPLIED-RATE level series; trailing range window = 252 trading days. This is NOT a CTD-of-futures-of-OIS read; the CTD-implied-OIS curve is not yet a primitive in this build (ADR 0011 V1 scope \u2014 policy_futures ships strip-position-keyed monitors only)."
+  }
+}

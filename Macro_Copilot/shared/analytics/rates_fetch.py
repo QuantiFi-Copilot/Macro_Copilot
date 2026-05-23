@@ -8,7 +8,7 @@ return long-format DataFrames that callers pivot / align as needed.
 
 Helper paths
 ------------
-This module exposes **two distinct read paths**, and they are not
+This module exposes **three distinct read paths**, and they are not
 interchangeable. Honest single-source-of-truth disclosure (P10):
 
 1. **Enriched-view helpers** — query the shared denormalized view
@@ -27,6 +27,8 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
      - ``fetch_cross_market_pair``
      - ``fetch_scan_universe``
      - ``fetch_strip_position``           (policy futures, strip-keyed)
+     - ``fetch_strip_position_max_date``  (policy futures, strip-keyed
+       MAX(trade_date) probe used as the future-anchor guard)
      - ``fetch_strip_group``              (policy futures, strip-keyed)
      - ``fetch_cross_market_strip``       (policy futures, strip-keyed)
 
@@ -58,6 +60,16 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
    ``ROLLING-GENERIC FUTURES`` block (L748–810) for the full
    rationale, and ``ADR 0011`` for the bond-futures V1 scope.
 
+3. **Strip-position reference helpers** — do **NOT** go through the
+   enriched view either. They query ``instrument_master`` with a
+   LATERAL JOIN to ``instrument_metadata_history`` (SCD2,
+   ``as_of_date``-bounded) to surface per-contract disclosure metadata
+   (security_name, expiry_date, contract_size, tick_size, tick_value)
+   and the ``inverse_pricing`` flag from
+   ``instrument_master.attributes`` for one strip position:
+
+     - ``fetch_strip_position_reference``
+
 Query shapes
 ------------
 The currently-shipped fetch shapes are:
@@ -71,6 +83,10 @@ The currently-shipped fetch shapes are:
   - two curves, one tenor                 → fetch_cross_market_pair
   - entire universe of one type           → fetch_scan_universe
   - one curve, one strip position         → fetch_strip_position
+  - one curve, one strip position,
+    MAX(trade_date) probe                 → fetch_strip_position_max_date
+  - one curve, one strip position,
+    SCD2-bounded reference metadata       → fetch_strip_position_reference
   - one curve, N strip positions          → fetch_strip_group
   - two curves, matched strip positions   → fetch_cross_market_strip
   - one rolling-generic futures series    → fetch_rolling_generic_series
@@ -643,6 +659,7 @@ _FETCH_STRIP_POSITION_SQL = text("""
       AND (attributes->>'strip_position')::int = :strip_position
       AND field_name   = :field_name
       AND trade_date  >= :start_date
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
     ORDER BY trade_date
 """)
 
@@ -653,6 +670,7 @@ def fetch_strip_position(
     strip_position: int,
     field_name: str,
     start_date: date,
+    end_date: Optional[date] = None,
 ) -> pd.DataFrame:
     """Fetch a single strip-position series on one futures curve.
 
@@ -667,13 +685,41 @@ def fetch_strip_position(
     Returns a long-format DataFrame with columns
     ``['trade_date', 'field_value']``.
 
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    curve_family : str
+        Policy-futures curve family (SOFR_FUT / EUR_SHORT_RATE_FUT /
+        SONIA_FUT).
+    strip_position : int
+        1-based strip position (1 = front contract; 2..N = quarterly
+        forwards).
+    field_name : str
+        Bloomberg observation field mnemonic — ``'PX_LAST'`` for price,
+        ``'OPEN_INT'`` for open interest, ``'PX_VOLUME'`` for volume.
+    start_date : date
+        Inclusive lower bound on ``trade_date``.
+    end_date : date, optional
+        Inclusive upper bound on ``trade_date``. When supplied, the SQL
+        predicate adds ``AND trade_date <= :end_date`` so the result is
+        anchored at a specific DB-as-of for deterministic Layer-B
+        validation and the policy-futures monitors' future-anchor guard
+        (an LLM-supplied ``as_of_date`` beyond the universe's last
+        ingested ``trade_date`` is rejected upstream; this upper bound
+        is the belt-and-braces SQL-level scope so the per-strip series
+        cannot contain rows past the requested anchor even if the
+        upstream guard mis-fires). When ``None`` (default), behaviour is
+        unchanged — the fetcher's only ``trade_date`` filter is the
+        inclusive lower bound. Read-only; pure SELECT.
+
     Examples
     --------
     - ``futures_price_level`` for SFR1 (front SOFR):
-      ``field_name='last_price'``, ``curve_family='SOFR_FUT'``,
+      ``field_name='PX_LAST'``, ``curve_family='SOFR_FUT'``,
       ``strip_position=1``.
     - ``volume_open_interest_snapshot`` for SFR2:
-      ``field_name='open_interest'``, ``strip_position=2``.
+      ``field_name='OPEN_INT'``, ``strip_position=2``.
     """
     with engine.connect() as conn:
         result = conn.execute(
@@ -683,11 +729,171 @@ def fetch_strip_position(
                 "strip_position": strip_position,
                 "field_name": field_name,
                 "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date is not None else None,
             },
         )
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
+
+
+# Reference metadata snapshot for one policy-futures strip position:
+# current-front contract_code, expiry_date, security_name, tick_size,
+# tick_value, contract_size — plus the per-curve_family
+# ``inverse_pricing`` flag (from ``instrument_master.attributes`` JSONB)
+# that drives the implied-rate conversion in the price-level monitor.
+#
+# The current-front contract is the SCD2 ``instrument_metadata_history``
+# row whose effective window contains the supplied ``as_of_date`` — i.e.
+# ``effective_from <= as_of_date AND (effective_to IS NULL OR
+# effective_to > as_of_date)``. This is different from the bond_futures
+# rolling-generic reference helper's ``ORDER BY effective_from DESC
+# LIMIT 1`` shape: the policy-futures SCD2 history is pre-populated with
+# every future quarterly contract (e.g. SFR1's history runs out to
+# 2035), so a naive "latest effective_from" lookup returns the FAR-end
+# row (SFRU35) instead of the actual current front contract. The
+# as_of-date-bounded window predicate is the only correct shape for the
+# policy-futures domain.
+#
+# The ``inverse_pricing`` flag lives on
+# ``instrument_master.attributes->>'inverse_pricing'`` — set by the
+# policy_futures playbook at ingestion. The fetcher surfaces it on the
+# reference dict so the monitor's compute path drives the regime choice
+# off metadata (P8 — methodology in metadata, not in code).
+_FETCH_STRIP_POSITION_REFERENCE_SQL = text("""
+    SELECT
+        i.curve_family       AS curve_family,
+        i.contract_code      AS contract_code,
+        (i.attributes->>'strip_position')::int AS strip_position,
+        (i.attributes->>'inverse_pricing')::boolean AS inverse_pricing,
+        COALESCE(h.contract_code, i.contract_code)   AS underlying_contract_code,
+        COALESCE(h.expiry_date, i.expiry_date)       AS expiry_date,
+        h.security_name      AS security_name,
+        h.tick_size          AS tick_size,
+        h.tick_value         AS tick_value,
+        h.contract_size      AS contract_size
+    FROM macro_data.instrument_master i
+    LEFT JOIN LATERAL (
+        SELECT
+            contract_code, expiry_date, security_name,
+            tick_size, tick_value, contract_size
+        FROM macro_data.instrument_metadata_history
+        WHERE instrument_id = i.instrument_id
+          AND effective_from <= CAST(:as_of_date AS DATE)
+          AND (effective_to IS NULL OR effective_to > CAST(:as_of_date AS DATE))
+        ORDER BY effective_from DESC
+        LIMIT 1
+    ) h ON TRUE
+    WHERE i.curve_family   = :curve_family
+      AND (i.attributes->>'strip_position')::int = :strip_position
+      AND i.is_rolling_contract = TRUE
+    LIMIT 1
+""")
+
+
+def fetch_strip_position_reference(
+    engine: Engine,
+    curve_family: str,
+    strip_position: int,
+    as_of_date: date,
+) -> Optional[Dict[str, object]]:
+    """Fetch the reference metadata for one policy-futures strip
+    position as of a specific trading day.
+
+    Returns ``None`` when the ``(curve_family, strip_position)`` pair is
+    not present on ``instrument_master`` as a strip-position-keyed
+    rolling contract. Returns a dict with keys ``curve_family``,
+    ``contract_code`` (the master stem, e.g. ``'SFR1'``),
+    ``strip_position``, ``inverse_pricing`` (bool, from
+    ``instrument_master.attributes``), ``underlying_contract_code``
+    (the current-front underlying contract, e.g. ``'SFRM26'``, from the
+    SCD2 history bounded by ``as_of_date``), ``expiry_date`` (date or
+    None), ``security_name`` (str or None), ``tick_size`` (float or
+    None), ``tick_value`` (float or None), ``contract_size`` (float or
+    None).
+
+    Why an as_of-date-bounded SCD2 lookup (not "latest effective_from")
+    -----------------------------------------------------------------
+    The policy-futures SCD2 ``instrument_metadata_history`` is pre-
+    populated with every quarterly contract in the rolling chain out to
+    far-future expiry (e.g. SFR1's history runs out to 2035-09 / SFRU35).
+    The bond_futures rolling-generic reference helper's ``ORDER BY
+    effective_from DESC LIMIT 1`` shape returns the FAR-end row in this
+    domain (SFRU35), not the actual current-front contract. The
+    as_of-date-bounded window predicate (``effective_from <= as_of_date
+    AND (effective_to IS NULL OR effective_to > as_of_date)``) is the
+    only correct shape for policy-futures rolling chains where the SCD2
+    history is dense with future windows. The same predicate also makes
+    the lookup deterministic: a Layer-B SQL validator that passes the
+    same as_of_date sees the same current-front contract the monitor
+    sees.
+
+    Used by the policy_futures monitor primitives so the wire payload
+    carries the per-contract disclosure (security_name, expiry_date,
+    contract_size, tick_size, tick_value) that P5 requires alongside
+    the implied-rate level — without forcing a second tool call for
+    metadata.
+    """
+    with engine.connect() as conn:
+        row = conn.execute(
+            _FETCH_STRIP_POSITION_REFERENCE_SQL,
+            {
+                "curve_family": curve_family,
+                "strip_position": strip_position,
+                "as_of_date": as_of_date.isoformat(),
+            },
+        ).mappings().first()
+    if row is None:
+        return None
+    return dict(row)
+
+
+_FETCH_STRIP_POSITION_MAX_DATE_SQL = text("""
+    SELECT MAX(trade_date) AS max_trade_date
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE curve_family = :curve_family
+      AND (attributes->>'strip_position')::int = :strip_position
+      AND field_name   = :field_name
+""")
+
+
+def fetch_strip_position_max_date(
+    engine: Engine,
+    curve_family: str,
+    strip_position: int,
+    field_name: str,
+) -> Optional[date]:
+    """Return the maximum ``trade_date`` available for one policy-
+    futures strip position.
+
+    Cheap single-aggregate probe that mirrors
+    :func:`fetch_strip_position`'s filter shape (same enriched view,
+    same JSONB strip_position extraction, same field_name filter), so
+    the two helpers must agree on "what is this strip's last trading
+    day". Used by the policy_futures monitor primitives' future-anchor
+    guard: when an LLM-supplied ``as_of_date`` lies beyond this max,
+    the monitor returns the documented controlled-error envelope
+    instead of silently delivering a normal snapshot computed only on
+    the actually-available rows. Read-only; pure SELECT.
+
+    Returns ``None`` when the strip has no rows for the requested
+    field (universe miss or ingestion gap).
+    """
+    with engine.connect() as conn:
+        row = conn.execute(
+            _FETCH_STRIP_POSITION_MAX_DATE_SQL,
+            {
+                "curve_family": curve_family,
+                "strip_position": strip_position,
+                "field_name": field_name,
+            },
+        ).first()
+    if row is None or row[0] is None:
+        return None
+    value = row[0]
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 _FETCH_STRIP_GROUP_SQL = text("""

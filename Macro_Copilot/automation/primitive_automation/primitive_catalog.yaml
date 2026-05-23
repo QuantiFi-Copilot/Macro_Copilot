@@ -139,13 +139,13 @@ primitives:
   - id: bond_futures__scan_bond_futures_extremes
     status: done
     build_order: 3
-    active_step: committed_pending_sha_feat_bond_futures_add_scan_bond_futures_extremes_primitive
+    active_step: committed_095d768_feat_bond_futures_add_scan_bond_futures_extremes_primitive
     review_round: 3
     builder_round: 3
     last_review_heading: APPROVED
     approved_by_reviewer_engine: claude_fallback
     committed_at: "2026-05-23T04:30:00Z"
-    commit_sha: pending
+    commit_sha: 095d768
     instrument_family: bond_futures
     tool_name: scan_bond_futures_extremes
     category: desk_invariant_primitive
@@ -468,8 +468,13 @@ primitives:
       - linker breakeven inputs
 
   - id: policy_futures__futures_price_level
-    status: todo
+    status: done
     build_order: 14
+    active_step: completed
+    builder_round: 3
+    review_round: 3
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: futures_price_level
     category: desk_invariant_primitive

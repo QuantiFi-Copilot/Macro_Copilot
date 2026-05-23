@@ -62,7 +62,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Optional
 
 from pydantic import ValidationError
 
@@ -73,6 +75,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from rates_agent.policy_futures.tools.futures_price_level import (  # noqa: E402
+    CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    calculate_futures_price_level,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -131,7 +138,7 @@ mcp = FastMCP(
 # ===========================================================================
 # Tools are registered here as the OpenClaw primitive-automation factory
 # builds each catalogued primitive. Mirror the per-tool wrapper pattern
-# from ``rates_agent/ois/mcp_server.py``:
+# from ``rates_agent/bond_futures/mcp_server.py``:
 #
 #   1. Import CONFIG_PATH + Input schema + compute function from
 #      ``rates_agent.policy_futures.tools.<tool_name>``.
@@ -144,6 +151,200 @@ mcp = FastMCP(
 #   3. Add a corresponding entry to
 #      ``rates_agent/policy_futures/tools/schemas/__init__.py`` so the
 #      schemas hub stays a stable import surface.
+
+
+# ===========================================================================
+# TOOL 1: get_futures_price_level (policy_futures strip-position-keyed)
+# ===========================================================================
+@mcp.tool()
+def get_futures_price_level_tool(
+    curve_family: str,
+    strip_position: int,
+    lookback_days: int = 365,
+    as_of_date: str = "",
+    field_name: str = "",
+) -> str:
+    """Get the current policy-futures strip-position raw price + desk-
+    recognised IMPLIED RATE (PERCENT), plus 1-day raw-price and
+    implied-rate changes, rolling 252d z-score of the implied rate,
+    trailing 252d high / low / mid range on BOTH the implied-rate AND
+    the raw-price axis, and percentile rank of the current implied
+    rate. The snapshot carries the as_of-bounded SCD2 per-strip
+    disclosure (underlying_contract_code, security_name, expiry_date,
+    contract_size, tick_size, tick_value, inverse_priced flag,
+    short_rate_regime label, quote_units) so downstream consumers
+    cannot misread the raw quote as a rate.
+
+    Use this tool when the user asks about:
+    - Front STIR price / implied rate (e.g. "Where's SFR1?",
+                                        "Implied rate on SFR2?")
+    - STIR strip moves                (e.g. "How much did the front
+                                        SOFR contract move?")
+    - STIR strip range / extremes    (e.g. "Is ER3 at a 1-year low
+                                        in implied rate?")
+
+    Do NOT use this tool for:
+    - Bond futures (TY1 / RX1 / JB1 / ...) → use the bond_futures
+      agent's get_futures_price_level_tool.
+    - OIS rates (the underlying short-rate curve) → use the ois
+      agent's calculate_ois_rate_level_tool.
+    - Cash sovereign yields → use the sovereign_bonds agent's
+      get_yield_levels_tool.
+    - Pack averages / calendar spreads / butterflies on the strip —
+      those are separate primitives in this domain (the
+      policy_futures automation builds them on later catalog entries).
+
+    ALWAYS preserve the methodology_disclosure field when relaying the
+    snapshot to the user — P5 (honest disclosure) requires the
+    rolling-generic-strip-read + regime label + inverse-pricing rule
+    caveats to be carried forward.
+
+    Parameters
+    ----------
+    curve_family : str
+        Policy-futures curve family. V1 universe: 'SOFR_FUT' (US Fed
+        SOFR strip, RFR regime), 'EUR_SHORT_RATE_FUT' (ECB Euribor
+        strip, IBOR regime), 'SONIA_FUT' (BOE SONIA strip, RFR
+        regime).
+    strip_position : int
+        1-based strip position. 1 = front contract; 2..8 = quarterly
+        forwards down the strip in the V1 universe (whites = 1-4,
+        reds = 5-8).
+    lookback_days : int, optional
+        Calendar days of history for the observation_count window
+        (default 365). Does NOT control the rolling z-score window
+        (config-locked at 252) or the trailing range window (locked
+        at 252).
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the snapshot to a
+        specific trading day. Empty (default ``""``) = anchor at the
+        universe's last observed ``trade_date`` for the requested
+        strip (post-fetch data-max anchor). An as_of_date BEYOND the
+        universe's last observed ``trade_date`` returns the
+        documented controlled-error envelope; an as_of_date WITHIN
+        the universe range produces a DETERMINISTIC snapshot (same
+        as_of + same DB state ⇒ same numbers).
+    field_name : str, optional
+        Bloomberg field mnemonic. Leave as the default empty string
+        ``""`` to use the bundled ``default_price_field`` convention
+        from futures_price_level/config.yaml (currently 'PX_LAST').
+        Pass an explicit field name to override per call. Mirrors the
+        empty-string sentinel pattern used by sovereign
+        get_yield_levels_tool / bond_futures get_futures_price_level_tool
+        so the YAML default actually flows through.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's ``default_price_field``.
+    # Without this, the LLM omitting field_name would always hit a
+    # hardcoded default regardless of what the YAML says — same
+    # shadowing pattern fixed for sovereign curve_move_classifier in
+    # commit b2605ee.
+    field_name_arg = field_name if field_name else None
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒ None
+    # (compute resolves to the most-recent universe trade_date for
+    # the strip). Malformed value raises a ValidationError envelope
+    # below — LLM sees a clean error rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_futures_price_level_tool] as_of_date parse "
+                "failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-30'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = FuturesPriceLevelInput(
+            curve_family=curve_family,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=as_of_date_arg,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_futures_price_level_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_price_level_tool] failed to connect to "
+            "TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable here (PR14). load_tool_config caches by path, so this
+    # is a free lookup after the first call within the MCP subprocess's
+    # lifetime. Mirrors bond_futures get_futures_price_level_tool
+    # exactly.
+    try:
+        fpl_config = load_tool_config(FUTURES_PRICE_LEVEL_CONFIG_PATH)
+        result = calculate_futures_price_level(
+            engine=engine, params=params, config=fpl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_futures_price_level_tool] unhandled error for %s "
+            "strip_position=%d",
+            params.curve_family, params.strip_position,
+        )
+        return json.dumps(
+            {"error": f"get_futures_price_level_tool failed for "
+             f"{params.curve_family} strip_position="
+             f"{params.strip_position}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_futures_price_level_tool] tool call complete: %s "
+        "strip_position=%d → %s",
+        params.curve_family, params.strip_position, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip time_series before returning to the LLM (frontend REST
+    # path returns the full payload). The LLM doesn't need every
+    # historical row to answer "where's SFR1?" — but it MUST see
+    # ``methodology_disclosure`` so the P5 caveat is propagated.
+    llm_response: dict = {
+        k: v for k, v in result.items() if k != "time_series"
+    }
+    ts_rows = len(result.get("time_series", []) or [])
+    if ts_rows:
+        logger.info(
+            "[get_futures_price_level_tool] withheld %d time_series "
+            "rows from LLM context.",
+            ts_rows,
+        )
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

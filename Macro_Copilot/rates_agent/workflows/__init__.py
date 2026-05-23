@@ -106,6 +106,12 @@ from rates_agent.bond_futures.tools.scan_bond_futures_extremes import (
     ScanBondFuturesExtremesOutput,
     calculate_scan_bond_futures_extremes,
 )
+from rates_agent.policy_futures.tools.futures_price_level import (
+    CONFIG_PATH as POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput as PolicyFuturesPriceLevelInput,
+    FuturesPriceLevelOutput as PolicyFuturesPriceLevelOutput,
+    calculate_futures_price_level as calculate_policy_futures_price_level,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -439,6 +445,27 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=ScanBondFuturesExtremesInput,
         output_class=ScanBondFuturesExtremesOutput,
         config_path=SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+
+    # ---- Policy-futures domain (ADR 0011 — strip-position-keyed) ----
+    # ``output_field_units`` is intentionally empty for the same
+    # P8 + P5 reasons the bond_futures monitors use: this primitive's
+    # ``time_series`` carries TWO unit spaces per row (raw_price in
+    # the contract's quote space ``100 - rate``, AND implied_rate_pct
+    # in PERCENT). The closed-enum ``TimeSeriesUnits`` family has no
+    # PRICE member; declaring ``percent`` would only cover the
+    # implied-rate axis and silently mis-label the raw-price axis.
+    # The validator's empty-dict exemption (see
+    # shared/workflow/validate.py:368) defers the unit check to the
+    # operator's runtime refusal — that is the honest path until a
+    # future ADR extends ``TimeSeriesUnits`` with a PRICE member.
+    "policy_futures_get_futures_price_level_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_price_level_tool",
+        callable=calculate_policy_futures_price_level,
+        input_class=PolicyFuturesPriceLevelInput,
+        output_class=PolicyFuturesPriceLevelOutput,
+        config_path=POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
         output_field_units={},
     ),
 
