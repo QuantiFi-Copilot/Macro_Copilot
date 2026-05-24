@@ -212,3 +212,69 @@ tools:
       identical carry_annualized_pct via calculate_fx_carry and
       get_fx_forward_curve. Targeted compute / wiring tests pending in
       the same step-7 PR slice.
+
+  # ---------------------------------------------------------------------------
+  # CROSS-SECTIONAL PANEL (Phase B cornerstone primitive)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_fx_panel
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_panel_tool
+      schema: fx_agent/spot/tools/fx_panel/schemas.py::FXPanelInput
+      compute: fx_agent/spot/tools/fx_panel/compute.py::calculate_fx_panel
+      config: fx_agent/spot/tools/fx_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX spot levels for a market_scope subset
+      (G10 = 9 majors, EM = 9 EM majors, G10_CROSSES = 11 G10 crosses,
+      ALL = 29 fx_spot instruments). Returns a typed Panel artifact
+      (rows = dates, columns = pair names, units = PRICE) ready for
+      downstream cross-sectional operators (returns, drawdown, realized
+      vol, correlation matrix, carry basket, factor decomposition,
+      regime classifier).
+
+    bucket_rationale: >-
+      Deterministic pivot of stored market_data_daily into a wide
+      Panel with pair-name columns. Filter (market_scope → fx_family)
+      and missing-data / calendar / ffill conventions are YAML-locked.
+      Substrate-primitive discipline: fail-loud on empty fetch /
+      unknown scope / fully-empty pair / strict-policy NaN residual —
+      downstream code cannot mistake a degraded fetch for a valid
+      empty Panel.
+
+    pm_overridable:
+      - market_scope
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_panel_workspace
+      - fx_correlation_monitor
+      - fx_carry_basket_screen
+
+    references:
+      - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      Smoke-tested live: G10 returns 9 pairs, EM returns 9 pairs,
+      G10_CROSSES returns 11 pairs, ALL returns 29 pairs. Typed Panel
+      round-trips cleanly via FXPanelOutput.model_validate. Empty
+      window + invalid scope correctly raise ValueError /
+      ValidationError. Targeted compute / wiring / sql_validation tests
+      included.

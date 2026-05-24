@@ -11,6 +11,8 @@ from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import FXForwardCurveInput
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput
+from fx_agent.spot.tools.fx_panel import calculate_fx_panel
+from fx_agent.spot.tools.fx_panel.schemas import FXPanelInput
 from fx_agent.spot.tools.scanner import run_fx_scanner
 from fx_agent.spot.tools.schemas import FXScannerInput
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
@@ -149,4 +151,39 @@ def forward_curve(
     except Exception as exc:
         raise HTTPException(
             status_code=503, detail=f"FX forward curve failed: {exc}"
+        )
+
+
+@router.post(
+    "/panel",
+    summary="FX Cross-Sectional Spot Panel",
+    description=(
+        "Assemble a typed Panel of FX spot levels for a market_scope "
+        "subset (G10 / EM / G10_CROSSES / ALL). Returns metadata "
+        "(columns = pair names, date range, observation count, "
+        "per-column units) — the typed Panel artifact itself is "
+        "extracted by the workflow executor and is not part of the "
+        "HTTP body."
+    ),
+)
+def panel(
+    payload: FXPanelInput,
+    engine: Engine = Depends(get_engine),
+):
+    try:
+        result = calculate_fx_panel(engine, payload)
+        # Drop the typed Panel from the wire shape — the HTTP client
+        # gets the summary metadata only. The typed artifact path is
+        # the workflow executor's, not the REST surface's.
+        result.pop("panel", None)
+        return result
+    except ValueError as exc:
+        # Substrate-level fail-loud cases (empty fetch, bad scope,
+        # bad policy, empty post-policy panel) → 422 Unprocessable
+        # Entity rather than 503; the request was syntactically OK
+        # but semantically incompatible with the substrate state.
+        raise HTTPException(status_code=422, detail=f"FX panel failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"FX panel failed: {exc}"
         )

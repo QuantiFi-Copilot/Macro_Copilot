@@ -25,6 +25,11 @@ from fx_agent.forwards.tools.fx_carry import (  # noqa: E402
     FXCarryInput,
     get_fx_carry,
 )
+from fx_agent.spot.tools.fx_panel import (  # noqa: E402
+    CONFIG_PATH as FX_PANEL_CONFIG_PATH,
+    FXPanelInput,
+    calculate_fx_panel,
+)
 from fx_agent.spot.tools.scanner import run_fx_scanner  # noqa: E402
 from fx_agent.spot.tools.schemas import FXScannerInput  # noqa: E402
 from fx_agent.spot.tools.spot_levels import (  # noqa: E402
@@ -220,6 +225,72 @@ def get_fx_forward_curve_tool(
     except Exception as exc:
         logger.exception("FX forward curve failed for pair=%s", pair)
         return json.dumps({"error": f"FX forward curve failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def calculate_fx_panel_tool(
+    market_scope: str,
+    start_date: str,
+    end_date: Optional[str] = None,
+    missing_data_policy: Optional[str] = None,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Cross-sectional FX spot Panel for a market_scope subset.
+
+    Assembles a wide multi-instrument Panel of FX spot levels keyed
+    by pair (e.g. EURUSD, USDMXN), pivoted from market_data_daily and
+    cleaned via the standard missing-data policy. Cornerstone Phase B
+    primitive — every later cross-sectional FX tool (returns,
+    drawdown, realized vol, correlation matrix, carry basket, factor
+    decomposition) consumes a Panel produced by this primitive.
+
+    Returns the panel's metadata (column list, date range, observation
+    count, per-column units) inline; the typed Panel artifact is
+    extracted by the workflow executor and dropped before LLM
+    serialisation to keep the token budget sane.
+
+    Parameters
+    ----------
+    market_scope : str — one of {"G10", "EM", "G10_CROSSES", "ALL"}.
+        G10 = 9 G10 majors; EM = 9 EM majors; G10_CROSSES = 11 G10
+        crosses; ALL = every fx_spot instrument (29).
+    start_date : str — ISO date "YYYY-MM-DD" (inclusive).
+    end_date : str | None — ISO date "YYYY-MM-DD"; None = latest.
+    missing_data_policy : str | None — one of {"forward_fill_only",
+        "raise", "drop_rows_any_missing"}; None = config default
+        ("forward_fill_only").
+    field_name : str, default "PX_LAST" — Bloomberg field on
+        market_data_daily.
+    """
+    from datetime import date as _date  # local import keeps top clean
+
+    try:
+        params = FXPanelInput(
+            market_scope=market_scope,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date) if end_date else None,
+            missing_data_policy=missing_data_policy,
+            field_name=field_name,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_PANEL_CONFIG_PATH)
+        result = calculate_fx_panel(_get_engine(), params, config=config)
+        # Drop the typed Panel before serialising for the LLM — the
+        # workflow executor's bridge has already extracted it. Keeps
+        # the JSON small (metadata only, not the full ~60k-row wide
+        # DataFrame for a 26-year EM panel).
+        result.pop("panel", None)
+    except Exception as exc:
+        logger.exception(
+            "FX panel failed for scope=%s start=%s end=%s",
+            market_scope, start_date, end_date,
+        )
+        return json.dumps({"error": f"FX panel failed: {exc}"}, default=str)
 
     return json.dumps(result, default=str)
 
