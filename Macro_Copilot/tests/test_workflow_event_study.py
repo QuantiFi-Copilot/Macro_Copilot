@@ -1104,16 +1104,21 @@ class TestResolverCompleteness:
         assert spec.output_field_units["time_series_zscore"] == "z_score"
 
     def test_known_primitives_includes_all_canonical(self):
-        # Registry has grown across Phase 0 + Phase 1 PRs (PR 20 adds
-        # the panel-emitting + breakeven-inflation primitives).  We
-        # assert the FULL canonical set is present — the test exists
-        # to catch accidental deregistration AND to gate the
-        # workflow router's catalogue against silent regressions.
+        # Registry has grown across Phase 0 + Phase 1 PRs (PR 20
+        # added the panel-emitting + breakeven-inflation primitives;
+        # subsequent automation cycles added the bond_futures /
+        # policy_futures families, the scan_extremes triad, the OIS
+        # butterfly, and the inflation_swaps + inflation_indexed_bonds
+        # Panel substrates).  We assert the FULL canonical set is
+        # present — the test exists to catch accidental
+        # deregistration AND to gate the workflow router's
+        # catalogue against silent regressions.
         registered = set(known_rates_primitives())
         canonical_set = {
             # OIS family
             "calculate_ois_curve_spread_tool",
             "calculate_ois_cross_market_spread_tool",
+            "calculate_ois_butterfly_tool",
             "get_ois_rate_level_tool",
             "calculate_swap_spread_tool",
             "calculate_ois_forward_rate_tool",
@@ -1141,6 +1146,8 @@ class TestResolverCompleteness:
             "calculate_cross_country_real_yield_spread_simple_tool",
             "calculate_real_yield_butterfly_tool",
             "calculate_breakeven_butterfly_tool",
+            "scan_inflation_linkers_extremes_tool",
+            "build_linker_panel_tool",
             # Inflation-swaps family
             "calculate_inflation_swap_rate_level_tool",
             "calculate_inflation_swap_curve_spread_tool",
@@ -1148,6 +1155,21 @@ class TestResolverCompleteness:
             "calculate_cross_market_inflation_swap_spread_tool",
             "calculate_swap_breakeven_basis_simple_tool",
             "calculate_inflation_swap_butterfly_tool",
+            "scan_inflation_swaps_extremes_tool",
+            "build_zcis_panel_tool",
+            # Bond-futures family (monitors-only V1, ADR 0011)
+            "get_futures_price_level_tool",
+            "get_futures_volume_oi_tool",
+            "scan_bond_futures_extremes_tool",
+            # Policy-futures family (ADR 0011 V1)
+            "policy_futures_get_futures_price_level_tool",
+            "policy_futures_get_volume_open_interest_snapshot_tool",
+            "policy_futures_get_futures_calendar_spread_tool",
+            "policy_futures_get_futures_butterfly_simple_tool",
+            "policy_futures_get_futures_cross_market_spread_tool",
+            "policy_futures_get_futures_strip_snapshot_tool",
+            "policy_futures_get_futures_pack_average_simple_tool",
+            "get_scan_policy_futures_extremes_tool",
         }
         missing = canonical_set - registered
         assert not missing, (

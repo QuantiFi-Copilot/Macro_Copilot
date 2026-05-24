@@ -1209,8 +1209,45 @@ primitives:
       - synchronised ZCIS yield_mid across the universe
 
   - id: inflation_linkers__build_linker_panel
-    status: todo
+    status: done
     build_order: 31
+    active_step: ready_to_commit_round_1
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
+    dismissed_findings:
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          shared/analytics/panel_assembly.py:81 imports Dict, List,
+          Optional, Sequence, Tuple from typing but not Any;
+          _maturity_sort_key(md: Any) at line 720 uses it as a type
+          annotation. Harmless at runtime under
+          from __future__ import annotations (line 78) — annotations are
+          strings — but a latent get_type_hints() failure. Cosmetic.
+        reason_dismissed: |
+          Reviewer self-classified as "Minor nits (dismissable)". The
+          module already has `from __future__ import annotations` so
+          all annotations are strings at runtime and the missing
+          `Any` import never executes. Falls into the Review
+          adjudication rule's dismissable category (style / cleanliness
+          with no correctness, methodology, wiring, wire-shape, or
+          testing impact). No re-dispatch.
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          test_build_linker_panel_sql_validation.py:117 comment claims
+          "default calendar policy (instrument_native for linkers)" but
+          the actual YAML default is business_days. The test resolves
+          the default from the YAML at runtime (line 358) so behavior
+          is correct; the comment is just stale.
+        reason_dismissed: |
+          Reviewer self-classified as "Minor nits (dismissable)" and
+          explicitly notes "behavior is correct; the comment is just
+          stale." Falls into the Review adjudication rule's dismissable
+          category (cleanliness with no correctness, methodology,
+          wiring, wire-shape, or testing impact). No re-dispatch.
     instrument_family: inflation_indexed_bonds
     tool_name: build_linker_panel
     category: desk_invariant_primitive
@@ -1219,7 +1256,7 @@ primitives:
       - inflation_linkers__real_yield_level
     pre_flight_load_audit:
       - inflation_indexed_bonds
-    concept_summary: Wide multi-instrument Panel artifact of linker real yields (rows = dates, columns = security_name).
+    concept_summary: Wide multi-instrument Panel artifact of linker real yields (rows = dates, columns = vendor_ticker — security_name is universally NULL on live SCD2 rows for inflation_indexed_bonds; same no-proxy treatment as build_zcis_panel commit 32c386f).
     why_new_concept: Panel artifact for the linker universe — substrate for cross-bond regression / PCA / RV. Plan §5 Group 3 #20.
     why_standard: Linker desks routinely look at the real-yield panel for relative-value work.
     required_playbooks:
@@ -1228,16 +1265,18 @@ primitives:
       - yield_mid
     required_reference_metrics:
       - maturity_date
-      - security_name
+      - vendor_ticker
       - country
     reference_manifest: manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md
     reference_tools:
       - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
     fetcher_surface:
-      - shared.analytics.panel_assembly.fetch_instrument_panel
+      - shared.analytics.panel_assembly.fetch_linker_panel_by_vendor_ticker
+      - shared.analytics.panel_assembly.fetch_linker_universe
     methodology_guardrails:
-      - Output must be a canonical Panel artifact.
+      - Output must be a canonical Panel artifact with dates on the row axis and vendor_ticker on the column axis (security_name caveat disclosed inside the tool's __init__.py / compute.py / config.yaml / schemas.py / MCP docstring / methodology_card.security_name_caveat).
       - Methodology card must surface index-family and market-structure caveats per country.
+      - Universe helper MUST bind instrument_type='inflation_linker' so non-linker rows cannot leak through; no_proxy guard verified by test_bind_parameters_constrain_instrument_type.
     no_go_if_missing:
       - synchronised linker yield_mid across the universe
 

@@ -147,6 +147,25 @@ from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes.s
     ScanInflationLinkersExtremesResultRow,
 )
 
+# Build-linker-panel substrate primitive (Plan §5 Group 3 #20) —
+# re-exported from the per-tool-folder package
+# (``rates_agent/inflation_indexed_bonds/tools/build_linker_panel/``).
+# Assembles a closed-family Panel artifact (rows = trade_date,
+# columns = vendor_ticker) across the USD_TIPS / GBP_LINKER /
+# EUR_FR_LINKER / CAD_RRB universe.  Substrate primitive for
+# downstream cross-country / cross-tenor RV scanning, real-yield
+# PCA, and operator-shaped work.  Inherits the structural
+# ``instrument_type='inflation_linker'`` guard at the fetcher
+# layer.  Catalog id ``inflation_linkers__build_linker_panel``
+# (build_order 31).
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel.schemas import (
+    BuildLinkerPanelInput,
+    BuildLinkerPanelOutput,
+    LinkerCurveFamily,
+    LinkerPanelCalendarPolicy,
+    LinkerPanelMissingDataPolicy,
+)
+
 # Breakeven butterfly (same-country, three-tenor curvature on a
 # single nominal/linker pair) — re-exported from the per-tool-folder
 # package
@@ -215,4 +234,10 @@ __all__ = [
     "ScanInflationLinkersExtremesInput",
     "ScanInflationLinkersExtremesOutput",
     "ScanInflationLinkersExtremesResultRow",
+    # build_linker_panel
+    "BuildLinkerPanelInput",
+    "BuildLinkerPanelOutput",
+    "LinkerCurveFamily",
+    "LinkerPanelCalendarPolicy",
+    "LinkerPanelMissingDataPolicy",
 ]

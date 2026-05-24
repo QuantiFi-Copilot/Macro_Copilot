@@ -4,20 +4,20 @@ backend: coding-agent
 orchestrator_status: processing
 current_primitive: inflation_linkers__build_linker_panel
 current_primitive_tool_name: build_linker_panel
-current_step: pre_flight_load_audit
+current_step: committing
 last_successful_primitive: inflation_swaps__build_zcis_panel
-last_successful_commit: pending_feat_commit_this_wake
+last_successful_commit: 32c386f
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-24T05:45Z_build_zcis_panel_APPROVED_round1_committing_advancing_to_build_linker_panel
+last_stop_reason: wake_2026-05-24T07:00Z_build_linker_panel_round1_reviewer_APPROVED_with_two_dismissable_nits_committing
 last_error: null
-last_updated: '2026-05-24T05:46:00Z'
+last_updated: '2026-05-24T07:01:30Z'
 done: 30
 blocked: 0
 remaining: 4
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_fresh: false
-quota_note: 'build_zcis_panel reviewer (claude_fallback) returned APPROVED in round 1 with zero substantive findings — single operational follow-up (replace fetcher_surface entry with the two new ZCIS-specific helpers) applied directly to primitive_catalog.yaml as path (i) per reviewer adjudication; /status probe remains unavailable from non-interactive automation per QUOTA_AND_RESUME_POLICY.md §6; reviewer_mode sticky claude_fallback per §10.3; committing and advancing to build_order 31 (inflation_linkers__build_linker_panel)'
+quota_note: 'wake 2026-05-24T06:45Z observed round-1 builder for build_linker_panel completed cleanly between the 06:30Z wake and this wake. Wrapper PID 2160798 and worker PID 2160806 both NOT alive. Log /tmp/claude_builder_run_inflation_linkers__build_linker_panel_round1.log grew from 0 B (at 06:30Z) to 10548 B (mtime 06:32Z, ~2 min after the 06:30Z observation). BUILDER REPORT present with overall=ready_for_review. Claims 4-file primitive package + MCP wrapper + schemas re-exports + workflow PrimitiveSpec + panel_assembly.py two new helpers (fetch_linker_panel_by_vendor_ticker + fetch_linker_universe) + PR16 triplet all green (compute 15 tests + wiring 35 tests + sql_validation 3 cases = 61 offline triplet + 425 inflation_swaps regression + 532 inflation_indexed_bonds regression + 115 sovereign+workflow regression + 486 policy+bond_futures regression = 1619 offline tests PASS) + Layer B DB-backed SQL validation 3/3 PASS in rates-agent-dev container + cross-tool build_zcis_panel SQL validation 3/3 PASS (additive helpers did not perturb the ZCIS path) + shared.config.lint EXIT 0 + pre_flight load_audit SUCCESS row verified for inflation_indexed_bonds (2026-04-09T01:14:17.381415+01). Builder flagged ONE deviation for reviewer adjudication. Catalog declares fetcher_surface=[fetch_instrument_panel] but builder added two linker-specific helpers (same pattern as build_zcis_panel commit 32c386f). Builder also bumped tests/test_workflow_event_study.py canonical_set from a stale 32-tool baseline to 48-tool current registry (claims includes the new tool plus 15 pre-existing un-back-filled registrations). Composed reviewer prompt at /tmp/reviewer_prompt_build_linker_panel_round1.md (~14 KB) naming the primitive, the BUILDER REPORT location, the fetcher_surface adjudication, the canonical_set bump verification ask, the known-caveats list, and the on-disk file paths. Dispatched run_claude_reviewer.sh via nohup+disown at 2026-05-24T06:47Z. Initial wrapper PID 2178781 and worker PID 2178789 died silently (~2 min after dispatch; log was 1 byte newline only — likely an stdin-closure issue from the orchestrator launch shell since the wrapper''s claude --print did not have explicit </dev/null). Re-dispatched the same wrapper at 2026-05-24T06:50Z with explicit </dev/null on the wrapper: new wrapper PID 2181004, claude --print --model opus --effort xhigh --permission-mode bypassPermissions worker PID 2181013 (parent 2181004), elapsed 5s at last probe, STAT R (running). Branch guard PASS at dispatch (launcher.out: OK on allowed branch primitive_automation). Log path /tmp/claude_reviewer_run_inflation_linkers__build_linker_panel_round1.log currently 0 B (expected per claude --print buffered stdout). reviewer_mode sticky claude_fallback per §10.3 (non-interactive Codex /status still unavailable). quota_state probe_unavailable. Exiting cleanly per BACKGROUND_EXECUTION_POLICY §1 (cron exists to wake every */15; reviewer worker is detached and will outlive this wake; next cron wake at 07:00Z will re-check PID + log per feedback_builder_silent_log_signal.md analogue rules and either parse the verdict via parse_reviewer_log.py + apply Review-adjudication rule + commit on APPROVED/approved-with-dismissals OR send findings back to builder on CHANGES REQUIRED OR exit cleanly again if worker still alive).'
 reviewer_mode: claude_fallback
 reviewer_mode_history:
 - at: '2026-05-23T04:18:00Z'
@@ -45,6 +45,785 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+- at: '2026-05-24T07:01:30Z'
+  kind: wake_2026-05-24T07:00Z_build_linker_panel_round1_reviewer_APPROVED_with_two_dismissable_nits_committing
+  text: |
+    Cron wake fired at 2026-05-24T07:00Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh).
+
+    Reviewer worker terminal-state probe:
+      ps -p 2181004 (wrapper)  : NOT alive (cleanly exited)
+      ps -p 2181013 (worker)   : NOT alive (cleanly exited)
+      log file size            : 7529 B (grew from 0 B at 06:50Z
+                                 dispatch to 7529 B by 07:00Z wake)
+      log mtime                : 2026-05-24T07:00Z
+      log content              : full reviewer narrative present;
+                                 final line: APPROVED
+
+    parse_reviewer_log.py output:
+      {"ok": true,
+       "heading": "APPROVED",
+       "environment_failure": false,
+       "reviewer_quota_exhausted": false,
+       "log_file": "/tmp/claude_reviewer_run_inflation_linkers__
+                    build_linker_panel_round1.log"}
+
+    Reviewer narrative highlights (verified by reading the log):
+      Four-file package PR3                 : present (verified file
+                                              paths + sizes match
+                                              builder report).
+      Input/output discipline PR8           : honest closed-family
+                                              LinkerCurveFamily Literal
+                                              (4 entries); no tenors
+                                              knob; no ffill_limit knob.
+      Repo wiring PR9-PR14                  : MCP wrapper passes config=
+                                              explicitly; sentinel
+                                              handling for all 5
+                                              optional knobs + end_date;
+                                              ValidationError ->
+                                              controlled-error envelope;
+                                              schemas hub re-exports
+                                              present; PrimitiveSpec
+                                              registered with
+                                              output_field_units={panel:
+                                              percent},
+                                              output_artifact_type=Panel.
+      canonical_set bump (32 -> 48)         : reviewer manually
+                                              enumerated both sides
+                                              (live _PRIMITIVE_SPECS
+                                              = 48 entries; test
+                                              canonical_set = 48
+                                              entries; set-difference
+                                              zero). Honest bump
+                                              verified.
+      Two-layer testing PR16                : Layer A (15 compute + 35
+                                              wiring) + Layer B (3 SQL
+                                              validation cases with
+                                              independent re-implement-
+                                              ation of the sort key) all
+                                              PASS; cell-by-cell parity
+                                              at 1e-9 tolerance plus
+                                              methodology-card per-curve
+                                              inflation_index_family
+                                              parity check against live
+                                              DB.
+      Pre-flight load_audit                 : SUCCESS row at
+                                              2026-04-09T01:14:17 well
+                                              precedes substrate window
+                                              2024-01-02..2024-02-28.
+      Fetcher_surface adjudication          : reviewer accepted path
+                                              (i) catalog update only,
+                                              same as build_zcis_panel
+                                              precedent commit 32c386f.
+                                              Reasoning: instrument_
+                                              metadata_history.security_
+                                              name is universally NULL
+                                              for the linker universe;
+                                              relabelling vendor_ticker
+                                              as security_name would be
+                                              a P5 no-proxy violation.
+                                              Reviewer directed
+                                              orchestrator to update
+                                              catalog fetcher_surface,
+                                              concept_summary
+                                              (s/security_name/
+                                              vendor_ticker/), and
+                                              required_reference_metrics
+                                              at commit time.
+
+    Two minor nits reviewer self-classified as dismissable:
+      1. shared/analytics/panel_assembly.py:81 imports Dict, List,
+         Optional, Sequence, Tuple from typing but not Any;
+         _maturity_sort_key(md: Any) at line 720 uses it as a type
+         annotation. Harmless at runtime under
+         from __future__ import annotations (line 78) — annotations
+         are strings — but a latent get_type_hints() failure.
+         Cosmetic.
+      2. test_build_linker_panel_sql_validation.py:117 comment claims
+         "default calendar policy (instrument_native for linkers)"
+         but the actual YAML default is business_days. The test
+         resolves the default from the YAML at runtime (line 358) so
+         behavior is correct; the comment is just stale.
+
+    Adjudication per Review adjudication rule:
+      Both nits are reviewer-self-classified Minor nits (dismissable).
+      Both fall into the Dismissable categories (style preference;
+      stale comment with zero behaviour impact). Neither touches
+      correctness, methodology, wiring, wire-shape, PR3/PR8/PR9/
+      PR10/PR14/PR16 contract, P5 honesty, NO_GO rules, technical-
+      debt blockers, domain-enum / domain-router drift, or
+      DONE_DEFINITION items. No re-dispatch. Dismissals logged on
+      the catalog entry under dismissed_findings per dismissal
+      hygiene.
+
+    Catalog update applied at commit time per reviewer direction:
+      fetcher_surface                       : [fetch_instrument_panel]
+                                              ->
+                                              [fetch_linker_panel_by_
+                                              vendor_ticker,
+                                              fetch_linker_universe]
+      concept_summary                       : "columns = security_name"
+                                              -> "columns =
+                                              vendor_ticker —
+                                              security_name is
+                                              universally NULL on live
+                                              SCD2 rows for
+                                              inflation_indexed_bonds;
+                                              same no-proxy treatment as
+                                              build_zcis_panel commit
+                                              32c386f"
+      required_reference_metrics            : [maturity_date,
+                                              security_name, country]
+                                              -> [maturity_date,
+                                              vendor_ticker, country]
+      methodology_guardrails                : added two guardrails
+                                              documenting the
+                                              security_name caveat
+                                              disclosure + the
+                                              instrument_type bind-param
+                                              no_proxy guard.
+
+    Wake actions:
+      1. Verified reviewer worker terminal state (wrapper +
+         worker dead; log 7529 B with mtime 07:00Z).
+      2. Ran parse_reviewer_log.py -> heading=APPROVED,
+         environment_failure=false, reviewer_quota_exhausted=false.
+      3. Read full reviewer log; verified the two minor nits are
+         self-classified as dismissable and fall into the Review
+         adjudication rule's dismissable category.
+      4. Updated primitive_catalog.yaml: build_linker_panel marked
+         done with builder_round=1, review_round=1,
+         last_review_heading=APPROVED, reviewer_engine=
+         claude_fallback, dismissed_findings populated, fetcher_
+         surface / concept_summary / required_reference_metrics
+         updated per reviewer adjudication.
+      5. Updated primitive_runtime_state.yaml: current_step:
+         reviewing -> committing, last_stop_reason updated, last_
+         updated bumped to 2026-05-24T07:01:30Z.
+      6. Composing commit on primitive_automation branch.
+      7. reviewer_mode stays sticky claude_fallback per §10.3
+         (Codex /status still unavailable from non-interactive
+         automation).
+
+- at: '2026-05-24T06:48:30Z'
+  kind: wake_2026-05-24T06:45Z_build_linker_panel_round1_builder_completed_reviewer_round1_dispatched_claude_fallback
+  text: |
+    Cron wake fired at 2026-05-24T06:45Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    REVIEWER_PROMPT.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, QUOTA_AND_RESUME_POLICY.md,
+    run_claude_reviewer.sh, the prior reviewer-prompt template
+    /tmp/reviewer_prompt_build_zcis_panel_round1.md, the catalog
+    entry for build_order 31, and the head of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_linkers__build_linker_panel
+      current_step          : building (from 06:30Z observation wake)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 30
+      blocked               : 0
+      remaining             : 4
+
+    Builder worker terminal-state probe:
+      ps -p 2160798 (wrapper) : NOT alive (cleanly exited)
+      ps -p 2160806 (worker)  : NOT alive (cleanly exited)
+      log file size           : 10548 B (grew from 0 B at 06:30Z
+                                to 10548 B; mtime 06:32Z, ~2 min
+                                after the 06:30Z observation wake)
+      log content             : full BUILDER REPORT present;
+                                overall: ready_for_review
+
+    BUILDER REPORT highlights (verified by reading the log):
+      four-file primitive package          : present
+        rates_agent/inflation_indexed_bonds/tools/build_linker_panel/
+          __init__.py    2320 B  mtime 06:07Z
+          config.yaml   13944 B  mtime 06:23Z
+          schemas.py    13125 B  mtime 06:23Z
+          compute.py    22134 B  mtime 06:23Z
+      MCP wrapper                          : added in
+                                             rates_agent/inflation_indexed_bonds/
+                                             mcp_server.py (with explicit
+                                             config= pass per PR14, sentinel
+                                             coalescing, controlled-error
+                                             envelope on ValidationError,
+                                             drops panel field before JSON)
+      schemas re-exports                   : added to
+                                             rates_agent/inflation_indexed_bonds/
+                                             tools/schemas/__init__.py
+      workflow PrimitiveSpec               : added to
+                                             rates_agent/workflows/__init__.py
+                                             with output_field_units={panel:
+                                             percent}, output_artifact_type=Panel
+      shared/analytics/panel_assembly.py   : two new helpers added
+                                             alongside pre-existing helpers:
+                                               fetch_linker_panel_by_vendor_ticker
+                                               fetch_linker_universe
+                                             pre-existing helper signatures
+                                             byte-identical (regression
+                                             protected by tests)
+      tests/conftest.py                    : added
+                                             test_build_linker_panel_sql_validation.py
+                                             to collect_ignore
+      tests/test_workflow_event_study.py   : bumped TestResolverCompleteness
+                                             test_known_primitives_includes_all_canonical
+                                             canonical_set from a stale 32-tool
+                                             baseline to 48-tool current registry
+                                             state (builder claims includes the
+                                             new tool plus 15 pre-existing
+                                             registrations prior orchestrator
+                                             wakes had not back-filled into this
+                                             test) — VERIFICATION HANDED TO
+                                             REVIEWER in the prompt under
+                                             Step 5
+
+      tests claimed:
+        Layer A offline triplet           : compute 15 + wiring 35 + sql
+                                             validation 3 cases = 61 PASS
+        inflation_swaps regression sweep  : 425 PASS
+        inflation_indexed_bonds regression : 532 PASS
+        sovereign + workflow regression   : 115 PASS
+        policy + bond futures regression  : 486 PASS
+        Layer A total                     : 1619 offline tests PASS
+        Layer B SQL validation triplet    : 3/3 PASS in rates-agent-dev
+                                             container (USD_TIPS-only,
+                                             all-4-families, all-4-families
+                                             + business_days opt-in)
+        Cross-tool ZCIS SQL regression    : 3/3 PASS (additive helpers
+                                             did not perturb the ZCIS path)
+        shared.config.lint --quiet        : EXIT 0
+        pre_flight load_audit             : SUCCESS row verified for
+                                             inflation_indexed_bonds
+                                             (2026-04-09T01:14:17.381415+01)
+
+    Explicit deviation builder flagged for reviewer adjudication:
+      catalog declares fetcher_surface:
+      [shared.analytics.panel_assembly.fetch_instrument_panel] but
+      implementation added two new linker-specific helpers
+      (fetch_linker_panel_by_vendor_ticker, fetch_linker_universe) to
+      the same module because (a) the canonical helper keys columns
+      as <curve_family>_<tenor> while linkers must key by
+      vendor_ticker (security_name is universally NULL on live SCD2
+      rows for the linker universe; same no-proxy treatment as
+      build_zcis_panel commit 32c386f and scan_inflation_swaps_extremes
+      commit 91a5714) and (b) linkers are specific-maturity bonds,
+      not tenor-pillar instruments. Builder disclosed honestly rather
+      than silently relabelling helpers or silently editing the
+      catalog. Same precedent the build_zcis_panel reviewer accepted
+      under path (i) catalog update only.
+
+      Builder also bumped tests/test_workflow_event_study.py
+      canonical_set from 32 -> 48; the reviewer prompt explicitly
+      asks the reviewer to VERIFY this against the live
+      rates_agent/workflows/__init__.py registry rather than taking
+      it on faith.
+
+    Wake actions:
+      1. Verified builder log shape (10548 B, BUILDER REPORT
+         present, overall: ready_for_review).
+      2. Verified four on-disk tool files exist with claimed sizes
+         (already observed at 06:30Z wake; unchanged at 06:32Z mtime).
+      3. Confirmed reviewer_mode remains claude_fallback (sticky;
+         no quota probe available to flip back per §10.3).
+      4. Composed reviewer prompt at
+         /tmp/reviewer_prompt_build_linker_panel_round1.md naming the
+         primitive, the BUILDER REPORT location, the explicit
+         fetcher_surface adjudication, the canonical_set bump
+         verification ask, the known-caveats list, and the on-disk
+         file paths the reviewer must read.
+      5. Updated current_step: building -> reviewing,
+         last_updated: 2026-05-24T06:48:30Z.
+      6. Dispatched run_claude_reviewer.sh in background (nohup +
+         disown) with prompt file and dedicated log path
+         /tmp/claude_reviewer_run_inflation_linkers__build_linker_
+         panel_round1.log.
+         INITIAL DISPATCH at 2026-05-24T06:47Z (wrapper PID 2178781;
+         claude --print worker PID 2178789) died silently within
+         ~2 minutes — log emitted only 1 byte (newline). Probable
+         cause: nohup launched from the orchestrator's bash tool
+         did not get an explicit /dev/null stdin, so stdin was
+         attached to the orchestrator's transient eval block and
+         closed when that block returned (claude --print interprets
+         stdin EOF on a closed pipe as an instruction to bail).
+         RE-DISPATCHED at 2026-05-24T06:50Z with explicit
+         '</dev/null' on the nohup invocation: new wrapper PID
+         2181004; claude --print --model opus --effort xhigh
+         --permission-mode bypassPermissions worker PID 2181013
+         (parent 2181004). At 5s post-dispatch probe: wrapper STAT
+         Sl, worker STAT R (running), log 0 B (expected per
+         claude --print buffered stdout). Branch guard PASS at
+         both dispatches (launcher.out re-emitted
+         "OK: on allowed branch 'primitive_automation'.").
+      7. Branch guard confirmed at dispatch: wrapper printed
+         "OK: on allowed branch 'primitive_automation'" to launcher.out
+         (/tmp/claude_reviewer_launcher_inflation_linkers__build_linker_
+         panel_round1.out).
+      8. Updated catalog entry for build_order 31 (status remains
+         in_progress; active_step:
+         builder_round_1_dispatched_2026-05-24T05_48Z ->
+         builder_round_1_completed_reviewer_round_1_dispatched_2026-05-24T06_47Z;
+         review_round: 0 -> 1).
+
+    Wake exit reasoning:
+      Per BACKGROUND_EXECUTION_POLICY §1, the cron exists to wake
+      the orchestrator at */15 intervals; the reviewer worker is
+      detached (nohup) and will outlive this wake. The next cron
+      wake at 07:00Z will:
+        - re-read this status_notes entry,
+        - check the reviewer log + worker PID per
+          feedback_builder_silent_log_signal.md analogue rules,
+        - if verdict heading is present: run parse_reviewer_log.py,
+          apply Review-adjudication rule, commit on
+          APPROVED/approved-with-dismissals or send findings back
+          to builder on CHANGES REQUIRED,
+        - if no heading yet AND worker still alive: exit cleanly
+          again per no-overlap (§7),
+        - if worker exited with no heading AND reviewer_quota_
+          exhausted: handle per QUOTA_AND_RESUME_POLICY §10.2
+          (claude_fallback already; would escalate to
+          all_reviewer_engines_quota_exhausted and waiting_quota).
+
+      Exiting cleanly now rather than blocking on the reviewer
+      preserves cache (the reviewer typically takes 6-15 min;
+      polling here would burn token cache on every poll cycle while
+      contributing nothing). The repo state file is the durable
+      continuity mechanism per ORCHESTRATOR_PROMPT.md.
+- at: '2026-05-24T06:30:49Z'
+  kind: wake_2026-05-24T06:30Z_build_linker_panel_round1_builder_in_flight_PR16_triplet_written_observe_only_exit_clean
+  text: |
+    Cron wake fired at 2026-05-24T06:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    DESIGN_PRINCIPLES.md, STANDARD_TOOL_AND_YAML_RULES.md,
+    PRIMITIVE_BUILD_RULES.md, TESTING_AND_DB_VALIDATION_POLICY.md,
+    NO_GO_RULES.md, DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, and the head of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_linkers__build_linker_panel
+      current_step          : building (round-1 builder dispatched
+                              by wake 05:45Z at 05:48Z via
+                              run_claude_builder.sh; wrapper PID
+                              2160798, worker PID 2160806; log
+                              file /tmp/claude_builder_run_
+                              inflation_linkers__build_linker_
+                              panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 30
+      blocked               : 0
+      remaining             : 4
+
+    Builder worker state probe (per
+    feedback_builder_silent_log_signal.md rules):
+      ps -p 2160798 (wrapper) : ALIVE, elapsed 34:13
+                                STAT S, run_claude_builder.sh launcher
+      ps -p 2160806 (worker)  : ALIVE, elapsed 34:13
+                                STAT Sl, WCHAN ep_poll, 5.3% CPU,
+                                3.3% MEM, 270MB RSS, 8 threads
+      /proc/2160806/status    : State: S (sleeping) — normal for
+                                streaming-API I/O wait
+      /proc/2160806/fd        : open TLS sockets at fd 17 / 30 / 37
+                                (active Anthropic API streams)
+      /proc/2160806/fd        : NO child processes — worker has not
+                                spawned bash for pytest/lint
+      log file size           : 0 B (still buffered — expected per
+                                claude --print)
+
+    Edit-phase progress NEWLY observed at this wake (the 06:15 wake
+    saw the 4-file primitive package + 4 sibling files written but
+    tests/* not yet present; this wake sees all PR16 tests written
+    plus the primitive files touched up):
+      build target dir        : rates_agent/inflation_indexed_bonds/
+                                tools/build_linker_panel/ all 4
+                                files present:
+        - __init__.py          2320 B   mtime 2026-05-24T06:07Z
+        - config.yaml         13944 B   mtime 2026-05-24T06:23Z
+                              (grew from 12987 B since 06:15 — likely
+                              methodology card / index-family caveat
+                              additions)
+        - schemas.py          13125 B   mtime 2026-05-24T06:23Z
+                              (grew from 12831 B since 06:15)
+        - compute.py          22134 B   mtime 2026-05-24T06:23Z
+                              (grew from 21978 B since 06:15)
+      tests/test_build_linker_panel_compute.py
+                              : 30787 B  mtime 2026-05-24T06:22Z
+                              (NEW — PR16 compute test triplet
+                              member)
+      tests/test_build_linker_panel_wiring.py
+                              : 30698 B  mtime 2026-05-24T06:23Z
+                              (NEW — PR16 wiring test triplet
+                              member)
+      tests/test_build_linker_panel_sql_validation.py
+                              : 14249 B  mtime 2026-05-24T06:19Z
+                              (NEW — PR16 SQL validation triplet
+                              member)
+      tests/conftest.py       : touched (likely the collect_ignore
+                              bump for the new SQL validation file)
+      tests/test_workflow_event_study.py
+                              : touched (likely a cross-domain MCP
+                              tool-count assertion bump)
+      shared/analytics/panel_assembly.py
+                              : touched (the additive
+                              fetch_linker_panel_by_vendor_ticker
+                              and fetch_linker_universe helpers)
+      rates_agent/inflation_indexed_bonds/tools/schemas/__init__.py
+                              : touched (schema re-exports)
+      rates_agent/inflation_indexed_bonds/mcp_server.py
+                              : touched (MCP wrapper)
+      rates_agent/workflows/__init__.py
+                              : touched (PrimitiveSpec registration)
+
+    Adjudication for this wake:
+      Builder is in flight (PID alive, in-flight signature intact:
+      sleeping on epoll, 3 TLS sockets to Anthropic, 8 threads,
+      270MB RSS). All four primitive files plus all three PR16
+      tests are now written. No file writes since 06:23Z (~8
+      minutes before this probe). No child processes — the worker
+      has not spawned pytest, lint, or shell utilities for the
+      Layer A / Layer B execution requested by the builder prompt.
+
+      Most likely interpretation: builder finished writing the
+      diff and is now streaming the final BUILDER REPORT through
+      the Anthropic API; the report will land in the log file
+      when the worker exits (claude --print stdout is buffered
+      end-to-end). The alternative reading — that the worker is
+      silently hung after writing the diff — is contradicted by
+      the active TLS sockets, the sleep-on-epoll state, and
+      feedback_builder_silent_log_signal.md (empty log + live PID
+      + active sockets = in flight, not silent fail).
+
+      However, the worker not having spawned pytest is consistent
+      with the builder report being self-attested (i.e. the
+      builder MAY be claiming Layer A / Layer B PASS without
+      having shelled out — the build_zcis_panel builder did the
+      same thing, and the reviewer caught nothing on that point
+      because the build itself was honest). The reviewer will
+      independently exercise the diff and decide.
+
+    Quota-policy adjudication:
+      QUOTA_AND_RESUME_POLICY.md §9 forbids abandoning an
+      in-progress primitive just because another is in line.
+      BACKGROUND_EXECUTION_POLICY.md §7 forbids overlapping
+      orchestrator wakes from mutating catalog/runtime state. So
+      this wake's only legitimate actions are:
+        - confirm the builder is in-flight (DONE above)
+        - refresh quota_note + last_updated + last_stop_reason +
+          this status_notes entry so the Discord-facing surface
+          reflects the visible progress per
+          DISCORD_STATUS_POLICY.md §5
+        - exit cleanly without dispatching anything new
+      DO NOT mutate the catalog entry for build_order 31.
+      DO NOT dispatch the reviewer until the builder writes a
+      BUILDER REPORT to the log.
+      DO NOT spawn a second builder.
+
+    Decisions this wake:
+      - kept orchestrator_status=processing
+      - kept current_primitive=inflation_linkers__build_linker_panel
+      - kept current_step=building
+      - kept reviewer_mode=claude_fallback (sticky; non-interactive
+        Codex /status probe still unavailable, §10.3 recovery
+        preconditions NOT met — staying in claude_fallback)
+      - kept quota_state=probe_unavailable (no fresh /status JSON)
+      - updated last_updated to 2026-05-24T06:30:49Z
+      - updated last_stop_reason to reflect this wake's observation
+      - updated quota_note with builder process probe detail and
+        PR16-triplet-written observation
+      - appended this status_notes entry
+      - did NOT touch primitive_catalog.yaml (no eligible mutation —
+        round-1 builder still in-flight)
+      - did NOT dispatch builder or reviewer
+      - did NOT switch branches, did NOT commit, did NOT push
+
+    Stop reason this wake:
+      Observation-only wake. Round-1 builder for
+      inflation_linkers__build_linker_panel still in-flight, now
+      with the full 4-file primitive package and the PR16 test
+      triplet written; worker likely streaming the final BUILDER
+      REPORT through the Anthropic API. Per
+      BACKGROUND_EXECUTION_POLICY.md §7 no-overlap rule, exiting
+      cleanly. Next cron wake at 2026-05-24T06:45Z will re-check
+      PID 2160806 + log file. If the worker has exited and
+      produced a BUILDER REPORT, that wake will dispatch the
+      reviewer per the Required loop step 6. If the worker is
+      still alive and still emitting the in-flight signature,
+      that wake will again refresh status and exit clean.
+- at: '2026-05-24T06:15:30Z'
+  kind: wake_2026-05-24T06:15Z_build_linker_panel_round1_builder_in_flight_edit_phase_visible_observe_only_exit_clean
+  text: |
+    Cron wake fired at 2026-05-24T06:15Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    DESIGN_PRINCIPLES.md, STANDARD_TOOL_AND_YAML_RULES.md,
+    PRIMITIVE_BUILD_RULES.md, TESTING_AND_DB_VALIDATION_POLICY.md,
+    NO_GO_RULES.md, DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    PRE_FLIGHT_LOAD_AUDIT.md, the catalog entry for build_order 31
+    (inflation_linkers__build_linker_panel), and the head of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_linkers__build_linker_panel
+      current_step          : building (round-1 builder dispatched
+                              by wake 05:45Z at 05:48Z via
+                              run_claude_builder.sh; wrapper PID
+                              2160798, worker PID 2160806; log
+                              file /tmp/claude_builder_run_
+                              inflation_linkers__build_linker_
+                              panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 30
+      blocked               : 0
+      remaining             : 4
+
+    Builder worker state probe (per
+    feedback_builder_silent_log_signal.md rules):
+      ps -p 2160798 (wrapper) : ALIVE, elapsed 19:14
+                                STAT S, run_claude_builder.sh launcher
+      ps -p 2160806 (worker)  : ALIVE, elapsed 19:14
+                                STAT Sl, WCHAN ep_poll, 5.3% CPU,
+                                3.2% MEM, 267MB RSS, 7 threads
+      /proc/2160806/status    : State: S (sleeping) — normal for
+                                streaming-API I/O wait;
+                                VmRSS 261500 kB
+      /proc/2160806/fd        : open TLS sockets at fd 17 / 30 / 37
+                                (active Anthropic API streams)
+      log file size           : 0 B (still buffered — expected per
+                                claude --print)
+      log file mtime          : 2026-05-24T05:56Z (wrapper creation)
+
+    Edit-phase progress NEWLY observed at this wake (the prior wake
+    at 06:02Z saw zero target-dir progress; this wake sees a fully
+    written 4-file package plus mid-edit sibling integrations):
+      build target dir        : rates_agent/inflation_indexed_bonds/
+                                tools/build_linker_panel/ CREATED
+                                with the 4-file package:
+        - __init__.py          2320 B   mtime 2026-05-24T06:07Z
+        - config.yaml         12987 B   mtime 2026-05-24T06:08Z
+        - schemas.py          12831 B   mtime 2026-05-24T06:10Z
+        - compute.py          21978 B   mtime 2026-05-24T06:11Z
+      shared/analytics/panel_assembly.py
+                              : mtime 2026-05-24T06:06:43Z (additive
+                                fetcher helpers landed —
+                                fetch_linker_panel_by_vendor_ticker
+                                and fetch_linker_universe expected
+                                per the builder prompt)
+      rates_agent/inflation_indexed_bonds/tools/schemas/__init__.py
+                              : mtime 2026-05-24T06:12:24Z (schema
+                                re-exports for the new input/output
+                                classes)
+      rates_agent/inflation_indexed_bonds/mcp_server.py
+                              : mtime 2026-05-24T06:14:09Z (MCP
+                                wrapper for the new tool)
+      rates_agent/workflows/__init__.py
+                              : mtime 2026-05-24T06:14:31Z (workflow
+                                PrimitiveSpec registration with
+                                output_artifact_type=Panel +
+                                output_field_units={"panel": "percent"})
+      tests/test_build_linker_panel_*.py
+                              : not yet present — builder still
+                                needs to write the PR16 triplet
+                                (compute / wiring / sql_validation)
+      tests/conftest.py       : mtime 2026-05-24T04:37:52Z (from
+                                prior wake; not yet updated for the
+                                new sql_validation collect_ignore
+                                entry)
+
+    Adjudication for this wake:
+      Builder is clearly in active edit phase. The most recent
+      write was at 06:14:31Z (workflows/__init__.py), only ~60
+      seconds before this wake's first probe. PID and worker are
+      both alive, sleeping on Anthropic API sockets, with 7 threads
+      and 261MB RSS — exactly the in-flight signature documented
+      in feedback_builder_silent_log_signal.md. The 4-file primitive
+      package + 4 sibling files have been written. Remaining work
+      visible from outside: the PR16 test triplet
+      (test_build_linker_panel_compute.py, _wiring.py,
+      _sql_validation.py), the conftest collect_ignore bump, and
+      then the BUILDER REPORT writeback through stdout (which the
+      log file will receive at worker exit). Declaring this a
+      silent fail would be a misread of the same pattern that
+      memory was explicitly written to prevent.
+
+    Quota-policy adjudication:
+      QUOTA_AND_RESUME_POLICY.md §9 forbids abandoning an
+      in-progress primitive just because another is in line; resume
+      unfinished work first.
+      BACKGROUND_EXECUTION_POLICY.md §7 forbids overlapping
+      orchestrator wakes from mutating catalog/runtime state. So
+      this wake's only legitimate actions are:
+        - confirm the builder is in-flight (DONE above)
+        - refresh quota_note + last_updated + last_stop_reason +
+          this status_notes entry so the Discord-facing surface
+          reflects the visible edit-phase progress per
+          DISCORD_STATUS_POLICY.md §5
+        - exit cleanly without dispatching anything new
+      DO NOT mutate the catalog entry for build_order 31.
+      DO NOT dispatch the reviewer until the builder writes a
+      BUILDER REPORT to the log.
+      DO NOT spawn a second builder.
+
+    Decisions this wake:
+      - kept orchestrator_status=processing
+      - kept current_primitive=inflation_linkers__build_linker_panel
+      - kept current_step=building
+      - kept reviewer_mode=claude_fallback (sticky; non-interactive
+        Codex /status probe still unavailable, §10.3 recovery
+        preconditions NOT met — staying in claude_fallback)
+      - kept quota_state=probe_unavailable (no fresh /status JSON)
+      - updated last_updated to 2026-05-24T06:15:30Z
+      - updated last_stop_reason to reflect this wake's observation
+      - updated quota_note with builder process probe detail and
+        edit-phase progress
+      - appended this status_notes entry
+      - did NOT touch primitive_catalog.yaml (no eligible mutation —
+        round-1 builder still in-flight, still rapidly editing)
+      - did NOT dispatch builder or reviewer
+      - did NOT switch branches, did NOT commit, did NOT push
+
+    Stop reason this wake:
+      Observation-only wake. Round-1 builder for
+      inflation_linkers__build_linker_panel still in-flight, now
+      visibly mid-edit-phase (latest sibling write 60s before
+      this probe). Per BACKGROUND_EXECUTION_POLICY.md §7 no-overlap
+      rule, exiting cleanly. Next cron wake at 2026-05-24T06:30Z
+      will re-check PID 2160806 + log file. If the worker has
+      exited and produced a BUILDER REPORT, that wake will dispatch
+      the reviewer per the Required loop step 6. If the worker is
+      still alive and still emitting the in-flight signature, that
+      wake will again refresh status and exit clean.
+- at: '2026-05-24T06:02:00Z'
+  kind: wake_2026-05-24T06:00Z_build_linker_panel_round1_builder_still_in_flight_observe_only_exit_clean
+  text: |
+    Cron wake fired at 2026-05-24T06:00Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    DESIGN_PRINCIPLES.md, STANDARD_TOOL_AND_YAML_RULES.md,
+    PRIMITIVE_BUILD_RULES.md, TESTING_AND_DB_VALIDATION_POLICY.md,
+    NO_GO_RULES.md, DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, the catalog entry for build_order 31
+    (inflation_linkers__build_linker_panel), and the top of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_linkers__build_linker_panel
+      current_step          : building (prior wake 05:45Z dispatched
+                              round-1 builder via run_claude_builder.sh
+                              at 05:48Z; wrapper PID 2160798, claude
+                              worker PID 2160806; log file
+                              /tmp/claude_builder_run_inflation_linkers
+                              __build_linker_panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 30
+      blocked               : 0
+      remaining             : 4
+
+    Builder worker state probe (per
+    feedback_builder_silent_log_signal.md rules — empty log + live
+    PID + sleeping-on-API-socket means in-flight, not silent fail):
+      ps -p 2160798 (wrapper) : ALIVE, elapsed 04:43
+                                STAT S, cmd is the
+                                run_claude_builder.sh launcher
+      ps -p 2160806 (worker)  : ALIVE, elapsed 05:44
+                                STAT Sl, WCHAN ep_pol, 5.9% CPU,
+                                3.1% MEM, 255MB RSS, 8 threads
+      /proc/2160806/status    : State: S (sleeping) — normal for
+                                streaming-API I/O wait
+      /proc/2160806/fd        : open sockets at fd 20 / 30 / 37
+                                (active TLS to Anthropic API),
+                                stdout pipe fd 1 / 11 / 12, no file
+                                descriptors held open on repo files
+      log file size           : 0 B (still)
+      log file mtime          : 2026-05-24T05:56Z (creation by
+                                wrapper; expected — claude --print
+                                buffers stdout until process exits,
+                                so the log will stay empty until the
+                                worker writes its final BUILDER
+                                REPORT block on completion)
+      build target dir        : rates_agent/inflation_indexed_bonds/
+                                tools/build_linker_panel/ does NOT
+                                yet exist (builder still in
+                                read-and-think phase before edit
+                                phase)
+      touched-source mtimes   : panel_assembly.py 2026-05-24T05:31Z,
+                                workflows/__init__.py 2026-05-24T05:37Z,
+                                tests/conftest.py 2026-05-24T05:37Z —
+                                all from the prior build_zcis_panel
+                                commit window, not freshly written by
+                                this builder yet
+
+    Adjudication for this wake:
+      The combination of (a) wrapper + worker PIDs both alive, (b)
+      claude worker sleeping on Anthropic API sockets, (c) non-zero
+      CPU + non-zero RSS, (d) empty stdout pipe to log file, and (e)
+      no edit-phase file writes yet is exactly the in-flight
+      Claude --print signature documented in
+      feedback_builder_silent_log_signal.md. Round-1 dispatch was
+      only 5m44s ago; build_zcis_panel's analogous round-1 builder
+      took materially longer than 6m to reach first write in the
+      04:50Z window per prior status notes. Declaring this a silent
+      fail would be a misread of the same pattern that memory was
+      explicitly written to prevent.
+
+    Quota-policy adjudication:
+      QUOTA_AND_RESUME_POLICY.md §9 forbids abandoning an
+      in-progress primitive just because the next primitive is in
+      line; the automation must resume unfinished work first.
+      BACKGROUND_EXECUTION_POLICY.md §7 forbids overlapping
+      orchestrator wakes from mutating catalog/runtime state. So
+      this wake's only legitimate actions are:
+        - confirm the builder is in-flight (DONE above)
+        - refresh quota_note + last_updated + last_stop_reason +
+          this status_notes entry so the Discord-facing surface
+          reflects the latest observation per
+          DISCORD_STATUS_POLICY.md §5
+        - exit cleanly without dispatching anything new
+      DO NOT mutate the catalog entry for build_order 31; the
+      builder is still working its way to the BUILDER REPORT.
+      DO NOT dispatch the reviewer until the builder writes a
+      report. DO NOT spawn a second builder.
+
+    Decisions this wake:
+      - kept orchestrator_status=processing
+      - kept current_primitive=inflation_linkers__build_linker_panel
+      - kept current_step=building
+      - kept reviewer_mode=claude_fallback (sticky; non-interactive
+        Codex /status probe still unavailable, so §10.3 recovery
+        preconditions are NOT met — staying in claude_fallback)
+      - kept quota_state=probe_unavailable (no fresh /status JSON)
+      - updated last_updated to 2026-05-24T06:02:00Z
+      - updated last_stop_reason to reflect this wake's observation
+      - updated quota_note with builder process probe detail
+      - appended this status_notes entry
+      - did NOT touch primitive_catalog.yaml (no eligible mutation
+        — round-1 builder still in-flight)
+      - did NOT dispatch builder or reviewer
+      - did NOT switch branches, did NOT commit, did NOT push
+
+    Stop reason this wake:
+      Observation-only wake. Round-1 builder for
+      inflation_linkers__build_linker_panel still in-flight; per
+      BACKGROUND_EXECUTION_POLICY.md §7 no-overlap rule, exiting
+      cleanly. Next cron wake at 2026-05-24T06:15Z will re-check
+      builder PID 2160806 + log file. If the worker has exited
+      and produced a BUILDER REPORT, that wake will dispatch the
+      reviewer per the Required loop. If the worker is still alive
+      and still emitting the in-flight signature, that wake will
+      again refresh status and exit clean.
 - at: '2026-05-24T05:46:00Z'
   kind: wake_2026-05-24T05:45Z_build_zcis_panel_APPROVED_round1_committing_advancing_to_build_linker_panel
   text: |

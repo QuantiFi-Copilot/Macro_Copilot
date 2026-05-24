@@ -286,6 +286,12 @@ from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes i
     ScanInflationLinkersExtremesOutput,
     calculate_scan_inflation_linkers_extremes,
 )
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel import (
+    CONFIG_PATH as BUILD_LINKER_PANEL_CONFIG_PATH,
+    BuildLinkerPanelInput,
+    BuildLinkerPanelOutput,
+    build_linker_panel,
+)
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
     CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
     InflationSwapRateLevelInput,
@@ -1230,6 +1236,33 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=BuildZcisPanelInput,
         output_class=BuildZcisPanelOutput,
         config_path=BUILD_ZCIS_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    # ---- Inflation-linker Panel substrate primitive
+    # ---- (Plan §5 Group 3 #20) ----
+    #
+    # ``build_linker_panel_tool`` emits a Panel artifact (rows =
+    # trade_date, columns = vendor_ticker) over the USD_TIPS /
+    # GBP_LINKER / EUR_FR_LINKER / CAD_RRB universe.  Declares
+    # ``output_artifact_type="Panel"`` so the executor picks
+    # ``tool_output_to_artifact_panel`` over the default Series
+    # bridge.  Mirrors the ``build_sovereign_yield_panel_tool``
+    # and ``build_zcis_panel_tool`` registrations.
+    #
+    # ``output_field_units`` declares the single ``panel`` field
+    # as PERCENT — the Panel's per-column ``units_by_column``
+    # carries the authoritative per-leg unit tags (every linker
+    # column is PERCENT since the V1 primitive emits a uniform
+    # field_name across the panel).
+    "build_linker_panel_tool": PrimitiveSpec(
+        tool_name="build_linker_panel_tool",
+        callable=build_linker_panel,
+        input_class=BuildLinkerPanelInput,
+        output_class=BuildLinkerPanelOutput,
+        config_path=BUILD_LINKER_PANEL_CONFIG_PATH,
         output_field_units={
             "panel": "percent",
         },
