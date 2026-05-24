@@ -302,6 +302,26 @@ WORKFLOW_INCOMPATIBLE_TOOLS: Dict[str, str] = {
         "``TimeSeries`` or wide-format ``Panel``; bridge cannot dispatch "
         "it.  See get_otr_history/schemas.py docstring."
     ),
+    "calculate_wirp_meeting_pricing_tool": (
+        "List of per-meeting WIRP snapshots — each meeting carries a "
+        "mix of identifier columns (vendor_ticker + 4 Bloomberg "
+        "tickers per ADR 0009 §1 provenance) and Bloomberg-ingested "
+        "numeric fields (implied_policy_rate_pct, cumulative_move_"
+        "prob_pct, num_25bp_moves_priced, rate_change_native — all "
+        "surfaced verbatim per P12).  No derived hike/cut/hold "
+        "probabilities; WIRP_MOVE_PROB is cumulative and any single-"
+        "event identity would be empirically wrong (per the Codex P0 "
+        "finding on PR #190 — see wirp_meeting_pricing/compute.py "
+        "_METHODOLOGY_NOTE).  Output is the natural 'N meeting "
+        "snapshots' shape — not a single numeric ``TimeSeries`` or "
+        "wide-format ``Panel``; bridge cannot dispatch it.  See "
+        "wirp_meeting_pricing/schemas.py docstring 'Output shape' "
+        "section.  A future Panel-shaped (N meetings × K metrics) "
+        "bridge artifact could absorb this; documented in "
+        "methodology.planned_extensions.  AC8 judgment per get_otr_"
+        "history / classify_curve_move precedent: list-shaped "
+        "categorical output is a deliberate non-V1-bridge primitive."
+    ),
 }
 
 

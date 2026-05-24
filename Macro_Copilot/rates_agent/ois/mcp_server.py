@@ -84,6 +84,11 @@ from rates_agent.ois.tools.financing_rate import (  # noqa: E402
     FinancingRateInput,
     compute_financing_rate,
 )
+from rates_agent.ois.tools.wirp_meeting_pricing import (  # noqa: E402
+    CONFIG_PATH as WIRP_MEETING_PRICING_CONFIG_PATH,
+    WirpMeetingPricingInput,
+    calculate_wirp_meeting_pricing,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1040,6 +1045,140 @@ def compute_financing_rate_tool(
         if not k.startswith("_") and k not in _LLM_DROPPED_KEYS
     }
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: calculate_wirp_meeting_pricing
+# ===========================================================================
+@mcp.tool()
+def calculate_wirp_meeting_pricing_tool(
+    central_bank: str,
+    selection_mode: str = "next_n_meetings",
+    n_meetings: int = 0,
+    meeting_date: str = "",
+) -> str:
+    """Surface Bloomberg's WIRP-screen pricing per central-bank meeting.
+
+    INGEST primitive (P12 boundary per ADR 0009 §1): the four WIRP
+    fields (implied policy rate, CUMULATIVE move probability, number
+    of 25bp moves priced, implied rate change) are read verbatim from
+    macro_data.market_data_daily.  NOT recomputed from STIR futures
+    or OIS pricing.
+
+    ``cumulative_move_prob_pct`` is the CUMULATIVE signed pricing of
+    25bp moves into a meeting (range -360.1..548.0 per wirp.yml
+    Stage-B) — DO NOT interpret as a single-event hike/cut
+    probability.  Per-meeting step-by-step hike/cut/hold decomposition
+    is a separate, forthcoming primitive (see config.yaml
+    ``methodology.planned_extensions``).
+
+    Use this tool when the user asks about:
+    - WIRP-implied policy rate for a meeting ("where's the JUN
+      FOMC pricing?")
+    - Cumulative move-probability or number of 25bp moves priced into
+      an upcoming central-bank meeting
+    - Forward strip of meeting pricing for a central bank
+
+    Do NOT use this tool for:
+    - Recomputing rate path from STIR futures / OIS — this primitive
+      INGESTS Bloomberg WIRP verbatim per ADR 0009.
+    - Single-event hike vs. cut vs. hold probabilities at a meeting —
+      WIRP_MOVE_PROB is cumulative, not single-event; the dedicated
+      step-by-step primitive is a documented planned extension.
+    - Categorical FOMC surprise / hawk-dove labels — that's the
+      forthcoming ``calculate_fomc_surprise_label_tool`` (primitive
+      6 of the easy-win batch).
+    - Historical WIRP daily series per meeting — today's primitive
+      returns only the LATEST snapshot per meeting; daily-history
+      view is a documented planned extension.
+
+    Parameters
+    ----------
+    central_bank : str
+        One of 'FOMC' (US), 'ECB' (Eurozone), 'BOE' (UK), 'BOJ'
+        (Japan).  Lowercase / whitespace canonicalised; other
+        central banks return a controlled error envelope listing
+        the supported set.
+    selection_mode : str, optional
+        Either ``'next_n_meetings'`` (default — returns the next
+        ``n_meetings`` scheduled meetings from today forward) or
+        ``'specific_meeting_date'`` (returns exactly one meeting
+        on the given ``meeting_date``).
+    n_meetings : int, optional
+        Number of forward meetings to return.  Used only when
+        ``selection_mode='next_n_meetings'``.  Default 0 is the
+        wire sentinel for "use YAML default" (currently 6); pass an
+        explicit positive integer to override.
+    meeting_date : str, optional
+        ISO date (YYYY-MM-DD) of the specific meeting to query.
+        Required when ``selection_mode='specific_meeting_date'``;
+        empty string is the wire sentinel for "not provided" (must
+        match a scheduled meeting per
+        macro_data.instrument_master).
+    """
+    # Translate wire sentinels:
+    #   - n_meetings=0 → None (use YAML default in compute layer).
+    #   - meeting_date='' → None.
+    # Same MCP-wrapper-sentinel pattern as
+    # curve_move_classifier / get_otr_history / cpi_surprise.
+    resolved_n_meetings = n_meetings if n_meetings > 0 else None
+    resolved_meeting_date_str = meeting_date if meeting_date else None
+
+    # Build kwargs for Pydantic — only include the dependent field
+    # for the active mode so the @model_validator's "must be None"
+    # constraint fires correctly.
+    pydantic_kwargs = {
+        "central_bank": central_bank,
+        "selection_mode": selection_mode,
+    }
+    if selection_mode == "next_n_meetings":
+        if resolved_n_meetings is not None:
+            pydantic_kwargs["n_meetings"] = resolved_n_meetings
+    elif selection_mode == "specific_meeting_date":
+        if resolved_meeting_date_str is not None:
+            pydantic_kwargs["meeting_date"] = resolved_meeting_date_str
+
+    try:
+        params = WirpMeetingPricingInput(**pydantic_kwargs)
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        cfg = load_tool_config(WIRP_MEETING_PRICING_CONFIG_PATH)
+        result = calculate_wirp_meeting_pricing(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_wirp_meeting_pricing for %s",
+            params.central_bank,
+        )
+        return json.dumps(
+            {"error": f"WIRP pricing calculation failed for "
+                      f"{params.central_bank}: {exc}"},
+            default=str,
+        )
+
+    logger.info(
+        "Tool call complete: calculate_wirp_meeting_pricing %s %s → %s",
+        params.central_bank, params.selection_mode,
+        "error" if "error" in result else "OK",
+    )
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================
