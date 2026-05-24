@@ -25,10 +25,25 @@ from fx_agent.forwards.tools.fx_carry import (  # noqa: E402
     FXCarryInput,
     get_fx_carry,
 )
+from fx_agent.spot.tools.drawdown import (  # noqa: E402
+    CONFIG_PATH as FX_DRAWDOWN_CONFIG_PATH,
+    FXDrawdownInput,
+    calculate_fx_drawdown,
+)
 from fx_agent.spot.tools.fx_panel import (  # noqa: E402
     CONFIG_PATH as FX_PANEL_CONFIG_PATH,
     FXPanelInput,
     calculate_fx_panel,
+)
+from fx_agent.spot.tools.realized_vol import (  # noqa: E402
+    CONFIG_PATH as FX_REALIZED_VOL_CONFIG_PATH,
+    FXRealizedVolInput,
+    get_fx_realized_vol,
+)
+from fx_agent.spot.tools.returns_series import (  # noqa: E402
+    CONFIG_PATH as FX_RETURNS_SERIES_CONFIG_PATH,
+    FXReturnsSeriesInput,
+    get_fx_returns_series,
 )
 from fx_agent.spot.tools.scanner import run_fx_scanner  # noqa: E402
 from fx_agent.spot.tools.schemas import FXScannerInput  # noqa: E402
@@ -291,6 +306,132 @@ def calculate_fx_panel_tool(
             market_scope, start_date, end_date,
         )
         return json.dumps({"error": f"FX panel failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_returns_series_tool(
+    pair: str,
+    horizon: str = "daily",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Log-returns time series for one FX spot pair at a chosen horizon.
+
+    Returns the rolling log-returns at the requested horizon
+    (daily / weekly / monthly) plus snapshot summary stats (current
+    return, mean / std / min / max over the lookback). Built on top
+    of the spot substrate via ``shared.analytics.fx_fetch.fetch_fx_spot_series``.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD', 'USDMXN').
+    horizon : str, default 'daily' — one of 'daily' / 'weekly' /
+        'monthly'. Trading-day periods (1 / 5 / 22).
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXReturnsSeriesInput(
+            pair=pair,
+            horizon=horizon,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_RETURNS_SERIES_CONFIG_PATH)
+        result = get_fx_returns_series(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX returns series failed for pair=%s horizon=%s", pair, horizon)
+        return json.dumps({"error": f"FX returns series failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def calculate_fx_drawdown_tool(
+    pair: str,
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Running drawdown of an FX spot pair vs its trailing peak.
+
+    Computes DD_t = (P_t / running_max(P_0..P_t)) - 1 over the
+    lookback window. Returns the drawdown TimeSeries (RATIO, always
+    ≤ 0) plus a snapshot summary (current drawdown, max drawdown,
+    peak / trough dates, recovery date / time-to-recovery).
+
+    Computed on the raw spot series; sign interpretation is the
+    consumer's call based on position direction.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD').
+    lookback_days : int, default 365. Controls fetch window AND the
+        running-max anchor (pre-window peaks are NOT carried in).
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXDrawdownInput(
+            pair=pair,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_DRAWDOWN_CONFIG_PATH)
+        result = calculate_fx_drawdown(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX drawdown failed for pair=%s", pair)
+        return json.dumps({"error": f"FX drawdown failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_realized_vol_tool(
+    pair: str,
+    window_days: int = 30,
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Rolling annualized realized vol of an FX spot pair.
+
+    Computes σ(t) = std(daily_log_returns_t-w..t) * sqrt(252) * 100
+    expressed in PERCENT (8.0 = 8% / year). Returns the vol
+    TimeSeries plus a snapshot summary (current, mean / min / max
+    over the lookback).
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD').
+    window_days : int, default 30. Trading-day rolling window.
+        Common alternatives: 60 (quarter), 252 (year).
+    lookback_days : int, default 365. Display + snapshot lookback.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXRealizedVolInput(
+            pair=pair,
+            window_days=window_days,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_REALIZED_VOL_CONFIG_PATH)
+        result = get_fx_realized_vol(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX realized vol failed for pair=%s window=%s", pair, window_days)
+        return json.dumps({"error": f"FX realized vol failed: {exc}"}, default=str)
 
     return json.dumps(result, default=str)
 

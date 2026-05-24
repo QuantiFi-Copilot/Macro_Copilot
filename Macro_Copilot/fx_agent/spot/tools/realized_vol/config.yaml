@@ -1,0 +1,98 @@
+# =============================================================================
+# get_fx_realized_vol_tool — tool configuration
+# =============================================================================
+# Single-pair FX rolling realized vol. Substrate: spot_fx history via
+# shared.analytics.fx_fetch.fetch_fx_spot_series. Output: clean
+# TimeSeries (closed-enum PERCENT units, annualized) + snapshot summary.
+#
+# Formula (V1, locked):
+#   r_t = log(P_t) - log(P_t-1)
+#   σ_w(t) = std(r_{t-w+1}..r_t, ddof=1)
+#   σ_annual(t) = σ_w(t) * sqrt(annualization_trading_days_per_year) * 100
+#
+# Output unit: PERCENT (trader convention — 8.0 means 8% / year).
+# =============================================================================
+
+tool:
+  name: get_fx_realized_vol_tool
+  domain: spot_fx
+  description: |
+    Compute the rolling annualized realized vol of an FX spot pair
+    over a configurable window (default 30 trading days). Returns
+    the time series (PERCENT) plus a snapshot summary (current vol,
+    mean / min / max over the lookback window).
+
+conventions:
+
+  default_field_name:
+    value: PX_LAST
+    source: industry_standard_close
+    rationale: >-
+      End-of-day spot is the canonical price for FX realized vol.
+
+  ffill_limit_days:
+    value: 5
+    source: team_judgment
+    rationale: >-
+      Bridge up to one trading week of missing spot observations
+      across local holidays before computing returns / vol. Same
+      convention as get_fx_returns_series.
+    valid_range: [0, 10]
+
+  annualization_trading_days_per_year:
+    value: 252
+    source: market_convention
+    rationale: >-
+      Standard FX market convention (252 trading days per year).
+      Hardcoded — bumping this is a methodology change with
+      downstream impact on every consumer that compares vol to
+      implied vol or to a constant ATM target.
+    valid_range: [252, 252]
+
+  std_ddof:
+    value: 1
+    source: statistical_convention
+    rationale: >-
+      Sample standard deviation (Bessel's correction). Matches numpy
+      default behaviour and yield_levels' z_score_ddof=1.
+    valid_range: [0, 1]
+
+  vol_round_decimals:
+    value: 4
+    source: precision_choice
+    rationale: >-
+      4 decimals on a vol in PERCENT (e.g., 8.1234%). Enough precision
+      for the snapshot to match time_series.rows[-1].value byte-for-byte
+      and to distinguish vol moves at the 1bp-of-vol level without
+      overstating false precision.
+    valid_range: [2, 8]
+
+methodology:
+
+  what_it_does: |
+    1. Fetch single-pair PX_LAST history via
+       shared.analytics.fx_fetch.fetch_fx_spot_series. Fetch window =
+       lookback_days + window_days + buffer (enough history for the
+       first display row to have a defined rolling std).
+    2. Clean via shared.analytics.levels.clean_single_series.
+    3. Compute daily log-returns: r_t = log(P_t) - log(P_t-1).
+    4. Compute rolling standard deviation σ_w(t) = std(r_{t-w+1}..r_t,
+       ddof=std_ddof).
+    5. Annualize and convert to percent: σ_annual_pct(t) = σ_w(t) *
+       sqrt(annualization_trading_days_per_year) * 100.
+    6. Slice to display window. First (window_days - 1) rows are NaN
+       by construction → value=None in the canonical TimeSeries.
+    7. Build snapshot from the non-NaN values in the display slice.
+
+  assumptions:
+    - "Daily log-returns are the input to vol — same r_t convention as get_fx_returns_series at horizon='daily'."
+    - "Annualization factor sqrt(252) assumes daily returns. Other return frequencies (weekly, monthly) would need a different factor — out of scope for this V1 tool."
+    - "Sample std (ddof=1) is used — matches numpy's default and yield_levels' z_score_ddof=1."
+    - "Output is in PERCENT (8.0 = 8% / year), NOT in ratio (0.08). Multiply by 100 once at the end."
+
+  citations: []
+
+  planned_extensions:
+    - "EWMA (RiskMetrics) realized vol as a sibling primitive — common in macro vol-forecasting workflows."
+    - "Multi-window output (return 30d/60d/252d in one shot) for vol-cone analysis."
+    - "Pair with implied ATM vol (when Phase E lands) to expose realized-vs-implied carry / vol risk premium."

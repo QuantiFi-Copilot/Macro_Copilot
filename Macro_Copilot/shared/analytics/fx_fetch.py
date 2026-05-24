@@ -7,22 +7,38 @@ and any future FX sub-domain). Mirrors the discipline of
 ``shared/analytics/rates_fetch.py``: finance-aware (knows the
 ``instrument_master`` / ``market_data_daily`` schema and the FX-specific
 metadata layout under ``instrument_master.attributes``) but agnostic to
-FX sub-family — the caller supplies the ``market_scope`` filter
-(G10 / EM / G10_CROSSES / ALL) and the field name (default PX_LAST), and
-this module returns a long-format DataFrame ready to be pivoted into a
-wide Panel.
+FX sub-family.
+
+Vocabulary note — ``market_scope`` is the user-facing INPUT keyword
+-------------------------------------------------------------------
+Callers pass ``market_scope`` ∈ {G10, EM, G10_CROSSES, ALL} as the
+human-readable scope name. Internally this is mapped to the DB-side
+``fx_family`` filter via ``_SCOPE_TO_FX_FAMILIES`` — see that mapping's
+comment for why we use ``fx_family`` rather than directly filtering
+``instrument_master.attributes->>'market_scope'`` (the DB-side
+``market_scope`` value is ambiguous for G10 because both majors AND
+G10 crosses are tagged as ``market_scope='G10'``).
+
+In short:
+  - **input vocabulary** = ``market_scope`` (what the tool / LLM passes in)
+  - **DB filter column** = ``attributes->>'fx_family'`` (what the SQL hits)
+
+This indirection keeps the public API ergonomic ("give me G10") while
+the SQL stays unambiguous ("just the G10 majors family, not crosses").
 
 Query shapes
 ------------
-V1 ships one canonical fetch shape for the Phase B ``calculate_fx_panel``
-primitive:
+Each shape covers one canonical FX fetch pattern used by FX agent
+tools. Add new shapes here (do NOT push SQL into the per-tool
+compute.py) when a new tool needs a fetch pattern that doesn't exist
+yet. Mirror ``rates_fetch.py``'s style — one focused function per
+shape, named with its scope.
 
-  - whole spot universe filtered by market_scope → fetch_fx_spot_panel
+  - whole spot universe filtered by market_scope → ``fetch_fx_spot_panel``
+  - single spot pair's PX_LAST history       → ``fetch_fx_spot_series``
 
 Additional shapes (forwards by tenor, NDF by pair, vol-surface by smile
-point) land in future PRs as Phase C/D/E primitives need them. Each
-new fetch shape gets its own focused function here — same discipline
-as ``rates_fetch.py``.
+point) land in future PRs as Phase C/D/E primitives need them.
 
 Asset-aware loader, not an operator
 -----------------------------------
@@ -227,6 +243,92 @@ def fetch_fx_spot_panel(
     return long_df.sort_values(["pair", "trade_date"]).reset_index(drop=True), instrument_meta
 
 
+def fetch_fx_spot_series(
+    engine: Engine,
+    pair: str,
+    start_date: date,
+    end_date: Optional[date] = None,
+    field_name: str = "PX_LAST",
+) -> pd.DataFrame:
+    """Fetch the long-format PX_LAST history for a SINGLE FX spot pair.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'field_value']``, ordered by ``trade_date`` ascending.
+    Empty DataFrame if the pair is unknown OR has no observations in the
+    requested window — the caller decides whether to raise (single-pair
+    derived primitives typically fail-loud, mirror Phase B's
+    calculate_fx_panel discipline).
+
+    Mirrors ``shared.analytics.rates_fetch.fetch_single_tenor`` shape:
+    one engine, one identifier (here: pair), one field, one date range.
+    Single-pair counterpart to ``fetch_fx_spot_panel`` so derived
+    primitives (returns / drawdown / realized vol / etc.) don't have to
+    fetch the whole universe just to extract one column.
+
+    Parameters
+    ----------
+    engine
+        SQLAlchemy engine for the macro_data Postgres / Timescale.
+    pair
+        FX pair identifier as stored in ``instrument_master.attributes.pair``
+        (e.g. ``"EURUSD"``, ``"USDMXN"``). Not the vendor ticker.
+    start_date
+        Inclusive lower bound on ``trade_date``.
+    end_date
+        Inclusive upper bound on ``trade_date``. ``None`` ⇒ latest
+        observation in DB.
+    field_name
+        Bloomberg field on ``market_data_daily``. Default ``"PX_LAST"``.
+
+    Raises
+    ------
+    ValueError
+        If ``end_date < start_date``. Unknown pairs and zero-row windows
+        do NOT raise here — they return an empty DataFrame so the caller
+        can attach a domain-specific error message.
+    """
+    if end_date is not None and end_date < start_date:
+        raise ValueError(
+            f"end_date={end_date} cannot be before start_date={start_date}."
+        )
+
+    end_predicate = " AND d.trade_date <= :end_date" if end_date is not None else ""
+    sql = text(f"""
+        SELECT
+            d.trade_date,
+            d.field_value
+        FROM macro_data.market_data_daily d
+        JOIN macro_data.instrument_master im
+          ON im.instrument_id = d.instrument_id
+        WHERE im.instrument_type             = 'fx_spot'
+          AND im.attributes->>'pair'         = :pair
+          AND d.field_name                   = :field_name
+          AND d.trade_date                  >= :start_date
+          {end_predicate}
+        ORDER BY d.trade_date
+    """)
+    params: Dict[str, object] = {
+        "pair": pair,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if end_date is not None:
+        params["end_date"] = end_date.isoformat()
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+
+    df = pd.DataFrame(rows, columns=columns)
+    if df.empty:
+        return df
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
+    df["field_value"] = pd.to_numeric(df["field_value"], errors="coerce")
+    return df.reset_index(drop=True)
+
+
 __all__ = [
     "fetch_fx_spot_panel",
+    "fetch_fx_spot_series",
 ]
