@@ -26,6 +26,7 @@ import { CrossMarketSpreadWidget } from './widgets/CrossMarketSpreadWidget';
 import { FXSpotSnapshotWidget } from './widgets/FXSpotSnapshotWidget';
 import { FXScannerWidget } from './widgets/FXScannerWidget';
 import { FXCarryWidget } from './widgets/FXCarryWidget';
+import { FXForwardCurveWidget } from './widgets/FXForwardCurveWidget';
 
 type Props = {
   instance: WidgetInstance;
@@ -98,7 +99,9 @@ function Body({ instance }: { instance: WidgetInstance }) {
     case 'fx_scanner':
       return <FXScannerWidget />;
     case 'fx_carry':
-      return <FXCarryWidget />;
+      return <FXCarryWidget params={instance.params} />;
+    case 'fx_forward_curve':
+      return <FXForwardCurveWidget params={instance.params} />;
     default:
       return (
         <WidgetError

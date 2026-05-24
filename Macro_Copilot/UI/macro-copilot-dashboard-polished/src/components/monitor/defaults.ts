@@ -120,6 +120,22 @@ export function defaultFxAgentLayout(): LayoutState {
   return buildLayout([
     ['fx_spot_snapshot'],
     ['fx_scanner'],
-    ['fx_carry'],
+    [
+      'fx_carry',
+      {
+        params: {
+          tenor: '1M',
+          rank_by: 'carry_signed',
+          top_n: 6,
+          lookback_days: '365',
+        },
+      },
+    ],
+    [
+      'fx_forward_curve',
+      {
+        params: { pair: 'EURUSD', lookback_days: '365' },
+      },
+    ],
   ]);
 }
