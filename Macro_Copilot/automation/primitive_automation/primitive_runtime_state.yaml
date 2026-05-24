@@ -2,18 +2,18 @@ version: '2.0'
 branch: primitive_automation
 backend: coding-agent
 orchestrator_status: processing
-current_primitive: policy_futures__futures_pack_average_simple
-current_primitive_tool_name: futures_pack_average_simple
+current_primitive: policy_futures__scan_policy_futures_extremes
+current_primitive_tool_name: scan_policy_futures_extremes
 current_step: committing
-last_successful_primitive: policy_futures__futures_strip_snapshot
-last_successful_commit: 4f6dc3b
+last_successful_primitive: policy_futures__futures_pack_average_simple
+last_successful_commit: 80a26cd
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-23T19:15Z_reviewer_round1_APPROVED_for_policy_futures__futures_pack_average_simple_with_two_dismissable_observations_proceeding_to_commit
+last_stop_reason: wake_2026-05-24T04:00Z_reviewer_round2_approved_committing_scan_policy_futures_extremes
 last_error: null
-last_updated: '2026-05-23T19:20:00Z'
-done: 27
+last_updated: '2026-05-24T04:05:00Z'
+done: 28
 blocked: 0
-remaining: 7
+remaining: 6
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_fresh: false
@@ -45,6 +45,854 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+- at: '2026-05-24T04:00:30Z'
+  kind: wake_2026-05-24T04:00Z_builder_round2_complete_reviewer_round2_dispatched_claude_fallback
+  text: |
+    Cron wake fired at 2026-05-24T04:00Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, the catalog entry for build_order 29,
+    and the top of primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building (stale; round 2 builder had been in
+                              Layer B SQL validation at the prior wake)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder round-2 process check (prior wake dispatched at 20:24Z):
+      PIDs 1987416/1987417/1987424/1990534 : EXITED (no longer in ps table)
+      log path             : /tmp/claude_builder_run_policy_futures__
+                             scan_policy_futures_extremes_round2.log
+      log size             : 4330 bytes (modified 2026-05-23T20:32Z)
+      tail of log          : "Round-2 docstring fix complete; ready for
+                             reviewer dispatch."
+      builder report claims:
+        - Only shared/analytics/rates_fetch.py touched (module docstring
+          only; lines 28-106 region).
+        - Section 1 of "Helper paths" gained 2 new entries
+          (fetch_scan_universe_strip_position,
+           fetch_scan_universe_strip_position_max_date).
+        - Section 3 gained 1 new entry
+          (fetch_scan_universe_policy_future_reference).
+        - "Query shapes" table gained 3 new rows.
+        - Layer A: 93/93 triplet + 519/519 sibling + 231/231 cross-
+          domain. python -m shared.config.lint EXIT 0.
+        - Layer B: 8/8 SQL validation PASS (inverse_pricing parity,
+          6 ranking cases, future-anchor guard).
+        - Branch primitive_automation; DB read-only.
+
+    Working-tree spot-check this wake:
+      git diff --stat shared/analytics/rates_fetch.py
+        -> 391 insertions (cumulative round-1 + round-2 vs HEAD 80a26cd)
+      git diff shared/analytics/rates_fetch.py (head 200 lines)
+        -> ONLY additions in the module-docstring region (L26-49,
+           L80-86, L100-106) and the post-EOF helper additions from
+           round 1. No deletions in the docstring. No edits to
+           pre-existing helper signatures or SQL text.
+      verdict: round-2 fix scope appears coherent.
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED on purpose — pre-flight runs before BUILDER dispatch;
+      this wake dispatches the REVIEWER. The prior wake's pre-flight
+      (2026-05-23T20:15Z) PASSED policy_futures|SUCCESS|2026-05-20
+      08:14:28.129099+01.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6; staying in probe_unavailable
+      fallback mode. reviewer_mode held at claude_fallback (sticky
+      per §10.3 — no fresh probe + the previous primitive completed
+      cleanly under claude_fallback at 80a26cd but the current
+      primitive is still mid-loop, so no flip-back).
+
+    Reviewer round 2 dispatch:
+      engine                : claude_fallback (sticky)
+      wrapper               : automation/primitive_automation/
+                              run_claude_reviewer.sh
+      prompt                : /tmp/reviewer_prompt_scan_policy_futures_
+                              extremes_round2.md
+      log                   : /tmp/claude_reviewer_run_policy_futures__
+                              scan_policy_futures_extremes_round2.log
+      builder PID context   : 2121827 (launcher; nohup'd, disowned).
+      scope                 : Verify round-1 P10 docstring finding is
+                              fixed on-disk; verify no other file was
+                              touched in round 2; verify no new
+                              regression introduced.
+      branch                : primitive_automation.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      this-wake reviewer round-2 dispatch is the ONLY worker. Other
+      Claude / Codex / builder processes are not running. This wake
+      will monitor the reviewer log and act on the verdict in the
+      same wake when possible.
+
+    Top-level state transitions this wake:
+      current_step          : building -> reviewing
+      last_stop_reason      : wake_2026-05-23T20:30Z_observed_builder_
+                              round2_in_flight_layerB_sql_validation_
+                              no_overlap_exit
+                              ->
+                              wake_2026-05-24T04:00Z_reviewer_round2_
+                              dispatched_claude_fallback_for_scan_
+                              policy_futures_extremes
+      last_updated          : 2026-05-23T20:30:30Z -> 2026-05-24T04:00:30Z
+
+- at: '2026-05-23T20:30:30Z'
+  kind: wake_2026-05-23T20:30Z_observed_builder_round2_in_flight_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-23T20:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, QUOTA_AND_RESUME_POLICY.md,
+    BACKGROUND_EXECUTION_POLICY.md, DISCORD_STATUS_POLICY.md, the
+    catalog entry for build_order 29 (policy_futures__scan_policy_futures_extremes),
+    and the top of primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building (builder round 2 still alive)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder round-2 process check (prior wake dispatched at 20:24Z):
+      PID 1987416 (launcher shell)  : ALIVE, etime ~5:54
+      PID 1987417 (run_claude_builder.sh wrapper) : ALIVE
+      PID 1987424 (claude --print --model opus --effort xhigh
+                   --permission-mode bypassPermissions, round-2 builder
+                   process) : ALIVE, CPU 21s
+      PID 1990534 (most recent grandchild, dispatched at 20:30Z) :
+                   bash -c "docker exec rates-agent-dev bash -c
+                   'cd /app && micromamba run -n macro-env python
+                   tests/test_scan_policy_futures_extremes_sql_validation.py'
+                   2>&1 | tail -60; echo 'EXIT=$?'"
+      verdict      : builder is currently in Layer B (DB-backed
+                     read-only SQL validation) — final mandatory step
+                     before the BUILDER REPORT. Estimated remaining
+                     runtime 1-5 min for the SQL runner plus the
+                     report emit.
+      log path     : /tmp/claude_builder_run_policy_futures__
+                     scan_policy_futures_extremes_round2.log
+      log size     : 0 bytes at wake (claude --print buffers final
+                     output until exit, then writes through tee)
+      launcher out : OK: on allowed branch 'primitive_automation'.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      prior wake (20:15Z) is the owner of the in-flight builder
+      round-2 worker. This wake (20:30Z) must NOT dispatch another
+      builder, must NOT dispatch a reviewer (the verdict input does
+      not yet exist), and must NOT mutate primitive/catalog status
+      while the prior wake's worker is still writing to its log
+      and rates_fetch.py. Touching anything would either race the
+      docstring edit or invent a reviewer dispatch with no log to
+      parse.
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED on purpose — pre-flight runs before BUILDER dispatch;
+      this wake does not dispatch a builder. The prior wake's
+      pre-flight (2026-05-23T20:15Z) already PASSED
+      'policy_futures|SUCCESS|2026-05-20 08:14:28.129099+01'.
+      No DB calls made this wake.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable (per
+      QUOTA_AND_RESUME_POLICY.md §6); staying in probe_unavailable
+      fallback mode. reviewer_mode held at claude_fallback (sticky
+      per §10.3 — flip-back requires fresh probe + clean primitive
+      completion + between-primitives gap, none of which hold).
+
+    Exit decision:
+      this wake exits cleanly with last_stop_reason
+      'wake_2026-05-23T20:30Z_observed_builder_round2_in_flight_layerB_sql_validation_no_overlap_exit'.
+      No code edits. No catalog mutations. No worker dispatch.
+      Runtime state updated only to refresh last_updated +
+      last_stop_reason and append this status note so the
+      Discord-facing main agent reflects the current observation
+      (per DISCORD_STATUS_POLICY.md §5 writing discipline).
+
+    Next-wake handoff:
+      next cron tick should re-check PID 1987416/1987417/1987424
+      and the log size. When the builder has exited, parse the
+      builder log tail for the 'Round-2 docstring fix complete;
+      ready for reviewer dispatch.' marker, then:
+        1. confirm the on-disk diff to shared/analytics/rates_fetch.py
+           matches the round-2 finding scope (module docstring only;
+           no other files touched)
+        2. write the reviewer prompt
+           /tmp/reviewer_prompt_scan_policy_futures_extremes_round2.md
+        3. dispatch reviewer round 2 through
+           automation/primitive_automation/run_claude_reviewer.sh
+           (reviewer_mode is sticky claude_fallback)
+        4. parse the resulting log with parse_reviewer_log.py
+        5. on APPROVED → commit; advance to build_order 30
+           (inflation_swaps__build_zcis_panel)
+        6. on CHANGES REQUIRED → re-classify the new findings per
+           the Review adjudication rule (this would be reviewer
+           verdict #2 — still under the 4-round cap)
+
+- at: '2026-05-23T20:24:00Z'
+  kind: wake_2026-05-23T20:15Z_round1_review_changes_required_one_mandatory_fix_p10_rates_fetch_docstring_builder_round2_dispatched
+  text: |
+    Cron wake fired at 2026-05-23T20:15Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    the catalog entry for build_order 29, and the top of
+    primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building (stale — prior wake exited
+                              while builder round 1 was still mid-flight)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder round-1 process check (prior wake dispatched at 19:24Z):
+      PID 1966075/1966095/1966102 : EXITED (no longer in ps table)
+      log path                    : /tmp/claude_builder_run_policy_futures__
+                                    scan_policy_futures_extremes_round1.log
+      log size                    : 14460 bytes (modified 20:07Z)
+      tail of log                 : "Build complete; ready for reviewer
+                                    dispatch."
+      verdict                     : builder round 1 COMPLETE.
+
+    Builder round-1 self-report claims (verbatim summary in
+    /tmp/reviewer_prompt_scan_policy_futures_extremes_round1.md):
+      - 4-file pkg at rates_agent/policy_futures/tools/
+        scan_policy_futures_extremes/
+      - tests: compute 65 + wiring 26 + parity 2 + sql_validation
+      - fixture: tests/fixtures/scan_policy_futures_extremes_v1/
+        full_universe_top3_zfloor.json (pinned as_of 2026-04-08)
+      - wiring: mcp_server.py Tool 8, schemas hub re-export,
+        workflows PrimitiveSpec (output_field_units={}),
+        tests/conftest.py (collect_ignore + 7->8 stale-count bump
+        on sibling pack-average wiring test)
+      - shared/analytics/rates_fetch.py: 3 NEW helpers
+        (fetch_scan_universe_strip_position,
+         fetch_scan_universe_policy_future_reference,
+         fetch_scan_universe_strip_position_max_date).
+        Builder claims ADDITIVE — pre-existing helpers untouched.
+      - Layer A 93/93 PASS (compute 65 + wiring 26 + parity 2)
+      - Layer B 8/8 PASS (universe coverage, inverse_pricing parity,
+        6 ranking cases, future-anchor guard)
+      - policy_futures sibling regression 419/419 PASS
+      - cross-domain scanner regression 231/231 PASS
+
+    Pre-flight load_audit re-verification this wake:
+      docker exec macro-tsdb psql -tAc
+        "SELECT playbook_name, status, ingested_at FROM
+         macro_data.load_audit WHERE playbook_name='policy_futures'
+         AND status='SUCCESS' ORDER BY ingested_at DESC LIMIT 1"
+      -> 'policy_futures|SUCCESS|2026-05-20 08:14:28.129099+01'
+      verdict: PASS.
+
+    Reviewer round 1 dispatch:
+      engine                : claude_fallback (sticky)
+      wrapper               : automation/primitive_automation/
+                              run_claude_reviewer.sh
+      prompt                : /tmp/reviewer_prompt_scan_policy_futures_
+                              extremes_round1.md
+      log                   : /tmp/claude_reviewer_run_policy_futures__
+                              scan_policy_futures_extremes_round1.log
+      runtime               : ~6 min (PID 1985362, exited cleanly)
+      parse_reviewer_log.py:
+        heading                  : CHANGES REQUIRED
+        environment_failure      : false
+        reviewer_quota_exhausted : false
+
+    Reviewer round 1 verdict body (verbatim, terse):
+      Reviewer verified 20 contract bullets on-disk:
+      - PR9 four-file pattern, PR8 input-schema discipline,
+        PR10 YAML/code split, PR14 wire-freeze, P5 disclosure,
+        multi-metric ranking honesty (BPS labelling on
+        implied_rate_change distinct from PERCENT axis;
+        output_field_units={} exempt pattern correct),
+        P8 closed-family, inverse-pricing source from
+        instrument_master.attributes (not YAML), EUR_SHORT_RATE_FUT
+        correctly INCLUDED (not over-applied pack-average refusal),
+        future-anchor guard, security_name surfaced honestly from
+        SCD2, rates_fetch.py helpers truly ADDITIVE
+        (fetch_scan_universe + fetch_scan_universe_reference
+        signatures + SQL text unchanged in diff), Layer-B SQL
+        validation is read-only SELECT independently reproducing
+        Python ranking via window functions + DISTINCT ON,
+        futures_pack_average_simple_wiring.py change is exactly
+        the 7->8 stale-count bump, MCP wrapper PR14 + sentinel
+        + controlled-error discipline.
+
+      ONE finding (mandatory-fix per Review adjudication rule):
+        finding: P10 single-source-of-truth — module docstring of
+          shared/analytics/rates_fetch.py at L11-105 ("Helper paths"
+          section + "Query shapes" table) is STALE. Does not name
+          the 3 new helpers (fetch_scan_universe_strip_position,
+          fetch_scan_universe_policy_future_reference,
+          fetch_scan_universe_strip_position_max_date). The
+          second helper is structurally a section-3 strip-position
+          reference helper and should be co-listed with
+          fetch_strip_position_reference under section 3.
+        classification: mandatory-fix.
+          - P10 single-source-of-truth (the file's own header
+            explicitly invokes "Honest single-source-of-truth
+            disclosure (P10)") — repo-wide non-negotiable.
+          - P5 methodology honesty (module index "lies about its
+            own surface" per reviewer; orchestrator brief itself
+            flagged this as a focus area).
+          - Mandatory-fix category "repo wiring (... module
+            docstring ...)" per Review adjudication rule.
+          - NOT contradicted by current on-disk state — orchestrator
+            spot-checked rates_fetch.py:1-105: section 1 enumerates
+            only the pre-existing helpers; section 3 lists only
+            fetch_strip_position_reference; the "Query shapes"
+            table at L77-101 has 12 entries, no strip-keyed
+            universe shapes. Finding stands.
+        re-dispatch: builder round 2.
+
+      Sibling-precedent note: bond_futures__futures_price_level
+      DISMISSED a similar P10 docstring claim in round 3
+      because the on-disk state had ALREADY been updated and the
+      reviewer's reading was contradicted. THIS case is the
+      opposite — the docstring is genuinely stale on-disk, so
+      the same finding is binding. Not dismissable.
+
+    Round 2 dispatch:
+      builder prompt : /tmp/builder_prompt_scan_policy_futures_
+                       extremes_round2.md
+      builder log    : /tmp/claude_builder_run_policy_futures__
+                       scan_policy_futures_extremes_round2.log
+      builder PID    : 1987416 (nohup'd, disowned, running)
+      scope          : ONE finding: update rates_fetch.py module
+                       docstring to add 3 new helpers to sections
+                       1 + 3 and add 3 rows to the "Query shapes"
+                       table. No other file touched.
+      re-test        : Layer A (93/93) + Layer B (8/8) + sibling
+                       regressions (419 + 231) all re-run by builder.
+      DB             : read-only.
+      branch         : primitive_automation.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      this-wake builder round-2 dispatch is the ONLY worker
+      mutating state. Exit cleanly here so the next wake observes
+      builder round-2 completion (estimated 10-20 min for a
+      docstring fix + full test re-run; the docstring edit itself
+      is one file but the full sibling-regression sweep takes the
+      bulk of the time).
+      verdict       : EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=6, 1 in-flight)
+      - quota blocker                 : NO (provider quota surfaces
+                                        only via real worker output;
+                                        reviewer round 1 returned a
+                                        clean heading)
+      - hard runtime/provider error   : NO
+      - human-required                : NO
+      - branch violation              : NO
+      - no-overlap violation          : would-be YES if I dispatched
+                                        another worker; avoided by
+                                        exiting cleanly after the
+                                        round-2 builder dispatch
+      - DB-validation path unavailable: NO (load_audit re-verified
+                                        this wake)
+      - max review rounds exceeded    : NO (1 substantive verdict;
+                                        cap is 4 per Required loop)
+      - all reviewer engines exhausted: NO
+
+    Top-level state transitions this wake:
+      current_step          : building -> reviewing -> applying_findings
+                              -> building (round 2 dispatch)
+      last_reviewer_heading : APPROVED (stale from pack_average)
+                              -> CHANGES REQUIRED
+      last_stop_reason      : wake_2026-05-23T20:00Z_..._no_overlap_exit
+                              ->
+                              wake_2026-05-23T20:15Z_round1_review_
+                              changes_required_one_mandatory_fix_p10_
+                              rates_fetch_docstring_builder_round2_
+                              dispatched_no_overlap_exit
+      last_updated          : 2026-05-23T20:00:00Z -> 2026-05-23T20:24:00Z
+
+    Catalog transitions this wake (build_order 29):
+      status                : in_progress -> changes_required
+      active_step           : builder_round_1_dispatched ->
+                              reviewer_round_1_changes_required_one_
+                              mandatory_fix_finding_p10_rates_fetch_
+                              docstring_stale_builder_round_2_dispatched
+      builder_round         : 1 -> 2
+      review_round          : 0 -> 1
+      last_review_heading   : null -> CHANGES REQUIRED
+      reviewer_engine       : null -> claude_fallback
+
+    Exit cleanly. A later cron wake will observe builder round-2
+    completion, parse the log, dispatch the reviewer round-2
+    (claude_fallback engine per sticky reviewer_mode), and either
+    commit or re-dispatch the builder per the Required loop.
+- at: '2026-05-23T20:00:00Z'
+  kind: wake_2026-05-23T20:00Z_builder_still_in_flight_for_policy_futures__scan_policy_futures_extremes_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-23T20:00Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    PRE_FLIGHT_LOAD_AUDIT.md, the catalog entry for build_order 29,
+    and the top of primitive_runtime_state.yaml. No chat memory used.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder process check (prior wake dispatched round-1 at 19:24Z):
+      PID launcher          : 1966075 (ELAPSED 36:24, STAT Ss)
+      PID wrapper-bash      : 1966095 (ELAPSED 36:24, STAT S)
+      PID claude worker     : 1966102 (ELAPSED 36:24, STAT Sl)
+      log path              : /tmp/claude_builder_run_policy_futures__
+                              scan_policy_futures_extremes_round1.log
+      log size              : 0 bytes (claude --print buffers stdout
+                              to tee until completion; consistent
+                              with 19:31Z and 19:45Z wakes and
+                              expected mid-flight, not a failure)
+      verdict               : builder ALIVE and progressing.
+
+    Working tree check (consistent with 19:45Z observation —
+    builder has produced and continues to refine files in-tree):
+      branch                : primitive_automation (PASS)
+      HEAD                  : 80a26cd  (unchanged from prior wake)
+      dirty paths:
+        - automation/primitive_automation/primitive_catalog.yaml
+            (orchestrator-owned)
+        - automation/primitive_automation/primitive_runtime_state.yaml
+            (orchestrator-owned)
+        - rates_agent/policy_futures/mcp_server.py
+            (BUILDER — MCP wrapper edits in flight)
+        - rates_agent/policy_futures/tools/schemas/__init__.py
+            (BUILDER — schema re-export)
+        - rates_agent/workflows/__init__.py
+            (BUILDER — workflow PrimitiveSpec registration)
+        - shared/analytics/rates_fetch.py
+            (BUILDER — fetch_scan_universe_reference projection
+             extension per builder prompt)
+        - tests/conftest.py
+            (BUILDER — test collection / fixture wiring)
+        - ?? rates_agent/policy_futures/tools/
+            scan_policy_futures_extremes/      (BUILDER — new tool dir)
+        - ?? tests/fixtures/scan_policy_futures_extremes_v1/
+            (BUILDER — parity fixtures)
+        - ?? tests/test_scan_policy_futures_extremes_compute.py
+            (BUILDER — PR16 compute test)
+        - ?? tests/test_scan_policy_futures_extremes_parity.py
+            (BUILDER — parity test)
+        - ?? tests/test_scan_policy_futures_extremes_wiring.py
+            (BUILDER — PR16 wiring test)
+      verdict               : tree is consistent with an in-flight
+                              builder mid-edit, progressing further
+                              since the 19:45Z snapshot (workflows
+                              + conftest + tests files now visible).
+                              No stray blocked scaffold
+                              (NO_GO_RULES §14 — N/A because the
+                              primitive is in_progress, not blocked).
+                              The orchestrator must NOT modify any
+                              builder-owned path during this wake.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      prior-wake builder    : ALIVE (still running at ELAPSED 36:24)
+      this-wake dispatch    : MUST NOT start a new builder, reviewer,
+                              or any state-mutating worker against
+                              the same primitive. The in-flight
+                              builder is expected to complete on
+                              its own and a later wake will observe
+                              the result.
+      verdict               : EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=6)
+      - quota blocker                 : NO (cannot probe;
+                                        provider quota surfaces
+                                        only via real worker output)
+      - hard runtime/provider error   : NO (builder still running)
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : would-be YES if I dispatched;
+                                        avoided by exiting cleanly
+      - DB-validation path unavailable: N/A (no validation due this
+                                        wake)
+
+    Top-level state transitions this wake:
+      last_stop_reason      : wake_2026-05-23T19:45Z_builder_still_in_
+                              flight_for_policy_futures__scan_policy_
+                              futures_extremes_no_overlap_exit
+                              ->
+                              wake_2026-05-23T20:00Z_builder_still_in_
+                              flight_for_policy_futures__scan_policy_
+                              futures_extremes_no_overlap_exit
+      last_updated          : 2026-05-23T19:45:00Z -> 2026-05-23T20:00:00Z
+      (no other field changes — current_primitive, current_step,
+      reviewer_mode, counts, quota_state, human_required, and
+      catalog_exhausted_at all unchanged because no meaningful
+      transition has occurred since the prior wake; the builder
+      is still building.)
+
+    Exit cleanly. A later cron wake will observe builder completion,
+    parse the log, dispatch the reviewer (claude_fallback engine
+    per sticky reviewer_mode), and either commit or re-dispatch
+    the builder per the Required loop.
+- at: '2026-05-23T19:45:00Z'
+  kind: wake_2026-05-23T19:45Z_builder_still_in_flight_for_policy_futures__scan_policy_futures_extremes_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-23T19:45Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    the primitive catalog entry for build_order 29, and the top of
+    primitive_runtime_state.yaml. No chat memory used.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder process check (prior wake dispatched round-1 at 19:24Z):
+      PID launcher          : 1966075 (ELAPSED 21:39, STAT Ss)
+      PID wrapper-bash      : 1966095 (ELAPSED 21:39, STAT S)
+      PID claude worker     : 1966102 (ELAPSED 21:39, STAT Sl)
+      log path              : /tmp/claude_builder_run_policy_futures__
+                              scan_policy_futures_extremes_round1.log
+      log size              : 0 bytes (claude --print buffers stdout
+                              to tee until completion; consistent
+                              with the 19:31Z wake and expected
+                              mid-flight, not a failure)
+      verdict               : builder ALIVE and progressing.
+
+    Working tree check (NEW since 19:31Z wake — builder has produced
+    files in-tree, confirming forward progress):
+      branch                : primitive_automation (PASS)
+      HEAD                  : 80a26cd  (unchanged from prior wake)
+      dirty paths:
+        - automation/primitive_automation/primitive_catalog.yaml
+            (orchestrator-owned)
+        - automation/primitive_automation/primitive_runtime_state.yaml
+            (orchestrator-owned)
+        - rates_agent/policy_futures/mcp_server.py
+            (BUILDER — MCP wrapper edits in flight)
+        - rates_agent/policy_futures/tools/schemas/__init__.py
+            (BUILDER — schema re-export)
+        - shared/analytics/rates_fetch.py
+            (BUILDER — fetch_scan_universe_reference projection
+             extension per builder prompt)
+        - ?? rates_agent/policy_futures/tools/
+            scan_policy_futures_extremes/      (BUILDER — new tool dir)
+      verdict               : tree is consistent with an in-flight
+                              builder mid-edit. No stray blocked
+                              scaffold (NO_GO_RULES §14 — N/A
+                              because the primitive is in_progress,
+                              not blocked). The orchestrator must
+                              NOT modify any builder-owned path
+                              during this wake.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      prior-wake builder    : ALIVE (still running at ELAPSED 21:39)
+      this-wake dispatch    : MUST NOT start a new builder, reviewer,
+                              or any state-mutating worker against
+                              the same primitive. The in-flight
+                              builder is expected to complete on
+                              its own and a later wake will observe
+                              the result.
+      verdict               : EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=6)
+      - quota blocker                 : NO (cannot probe;
+                                        provider quota surfaces
+                                        only via real worker output)
+      - hard runtime/provider error   : NO (builder still running)
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : would-be YES if I dispatched;
+                                        avoided by exiting cleanly
+      - DB-validation path unavailable: N/A (no validation due this
+                                        wake)
+
+    Top-level state transitions this wake:
+      last_stop_reason      : wake_2026-05-23T19:30Z_builder_still_in_
+                              flight_for_policy_futures__scan_policy_
+                              futures_extremes_no_overlap_exit
+                              ->
+                              wake_2026-05-23T19:45Z_builder_still_in_
+                              flight_for_policy_futures__scan_policy_
+                              futures_extremes_no_overlap_exit
+      last_updated          : 2026-05-23T19:31:00Z -> 2026-05-23T19:45:00Z
+      (no other field changes — current_primitive, current_step,
+      reviewer_mode, counts, quota_state, human_required, and
+      catalog_exhausted_at all unchanged because no meaningful
+      transition has occurred since the prior wake; the builder
+      is still building.)
+
+    Exit cleanly. A later cron wake will observe builder completion,
+    parse the log, dispatch the reviewer (claude_fallback engine
+    per sticky reviewer_mode), and either commit or re-dispatch
+    the builder per the Required loop.
+- at: '2026-05-23T19:31:00Z'
+  kind: wake_2026-05-23T19:30Z_builder_still_in_flight_for_policy_futures__scan_policy_futures_extremes_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-23T19:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/check_branch.sh).
+    Re-read ORCHESTRATOR_PROMPT.md, QUOTA_AND_RESUME_POLICY.md,
+    BACKGROUND_EXECUTION_POLICY.md, DISCORD_STATUS_POLICY.md,
+    PRE_FLIGHT_LOAD_AUDIT.md, NO_GO_RULES.md, DONE_DEFINITION.md,
+    OPENCLAW_CRON_RUNBOOK.md, and the top of primitive_runtime_state.yaml.
+    No chat memory used.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__scan_policy_futures_extremes
+      current_step          : building
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 6
+
+    Builder process check (prior wake dispatched round-1 at 19:24Z):
+      PID launcher          : 1966075 (ELAPSED 06:39, STAT Ss)
+      PID wrapper-bash      : 1966095 (ELAPSED 06:39, STAT S)
+      PID claude worker     : 1966102 (ELAPSED 06:39, STAT Sl)
+      log path              : /tmp/claude_builder_run_policy_futures__
+                              scan_policy_futures_extremes_round1.log
+      log size              : 0 bytes (claude --print buffers stdout
+                              to tee until completion; 0-byte log is
+                              expected mid-flight, not a failure)
+      verdict               : builder ALIVE and progressing.
+
+    Working tree check:
+      branch                : primitive_automation (PASS)
+      HEAD                  : 80a26cd feat(policy_futures): add
+                              futures_pack_average_simple primitive
+                              (ADR 0011 V1)  [prior wake commit]
+      dirty paths           : only the orchestrator-owned YAMLs
+                              (primitive_catalog.yaml and
+                              primitive_runtime_state.yaml). No
+                              builder-produced files yet in the tree
+                              — consistent with claude --print not
+                              having returned, and consistent with
+                              the builder writing files only after
+                              its planning + tool calls complete.
+      verdict               : tree is clean of stray scaffold; no
+                              violation of NO_GO_RULES §14 (blocked
+                              scaffold) — current primitive is
+                              in_progress, not blocked.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      prior-wake builder    : ALIVE
+      this-wake dispatch    : MUST NOT start a new builder, reviewer,
+                              or any state-mutating worker against
+                              the same primitive. The cron just
+                              fired ~1 minute after the prior wake's
+                              clean exit; the in-flight builder is
+                              expected to complete on its own and a
+                              later wake will observe the result.
+      verdict               : EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=6)
+      - quota blocker                 : NO (cannot probe;
+                                        provider quota will surface
+                                        only via real worker output)
+      - hard runtime/provider error   : NO
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : would-be YES if I dispatched;
+                                        avoided by exiting cleanly
+      - DB-validation path unavailable: N/A (no validation due this
+                                        wake)
+
+    Top-level state transitions this wake:
+      last_stop_reason      : wake_2026-05-23T19:15Z_committed_80a26cd_
+                              policy_futures__futures_pack_average_
+                              simple_dispatched_builder_round1_for_
+                              policy_futures__scan_policy_futures_
+                              extremes
+                              ->
+                              wake_2026-05-23T19:30Z_builder_still_in_
+                              flight_for_policy_futures__scan_policy_
+                              futures_extremes_no_overlap_exit
+      last_updated          : 2026-05-23T19:30:00Z -> 2026-05-23T19:31:00Z
+      (no other field changes — current_primitive, current_step,
+      reviewer_mode, counts, quota_state, human_required, and
+      catalog_exhausted_at all unchanged because no meaningful
+      transition has occurred since the prior wake.)
+
+    Exit cleanly. A later cron wake will observe builder completion,
+    parse the log, dispatch the reviewer (claude_fallback engine per
+    sticky reviewer_mode), and either commit or re-dispatch the
+    builder per the Required loop.
+- at: '2026-05-23T19:30:00Z'
+  kind: wake_2026-05-23T19:15Z_committed_80a26cd_policy_futures__futures_pack_average_simple_dispatched_builder_round1_for_policy_futures__scan_policy_futures_extremes
+  text: |
+    Continuation of the 2026-05-23T19:15Z wake. After reviewer round-1
+    APPROVED and dismissals were logged, the orchestrator executed the
+    Commit rule end-to-end and immediately advanced to the next eligible
+    catalog entry.
+
+    Commit:
+      branch         : primitive_automation
+      sha            : 80a26cd
+      title          : feat(policy_futures): add futures_pack_average_simple
+                       primitive (ADR 0011 V1)
+      author         : Macro Agent Bot <macro-agent-bot@noreply.macro-copilot.local>
+      files          : 13 changed, +5660 / -14
+      direct-to-main : NO (commit on primitive_automation only)
+      branch guard   : PASS (check_branch.sh after commit re-verified
+                       primitive_automation).
+
+    Catalog transition for policy_futures__futures_pack_average_simple:
+      status         : in_progress -> done
+      active_step    : committed_80a26cd_feat_policy_futures_add_
+                       futures_pack_average_simple_primitive
+      commit_sha     : 80a26cd
+      committed_at   : 2026-05-23T19:25:00Z
+      last_review_heading: APPROVED
+      reviewer_engine: claude_fallback
+      dismissed_findings: two entries (both self-classified by reviewer
+                         as Observations not findings) — logged per
+                         dismissal hygiene.
+
+    Counts:
+      done           : 27 -> 28
+      blocked        :  0 (unchanged)
+      remaining      :  7 -> 6
+
+    Next eligible primitive selection (selection order per
+    BACKGROUND_EXECUTION_POLICY.md §3):
+      in_progress    : none after the commit
+      changes_required: none
+      waiting_quota  : none
+      todo           : policy_futures__scan_policy_futures_extremes
+                       (build_order 29) — FIRST todo.
+                       Other todos behind it: build_zcis_panel (30),
+                       build_linker_panel (31),
+                       build_policy_futures_strip_panel (32),
+                       asset_swap_spread (33),
+                       realized_vs_implied_inflation (34).
+
+    Selected: policy_futures__scan_policy_futures_extremes
+      depends_on     : policy_futures__futures_price_level (done)
+      pre_flight_load_audit: policy_futures
+
+    Pre-flight load_audit check (READ-ONLY per
+    PRE_FLIGHT_LOAD_AUDIT.md):
+      query   : SELECT playbook_name, status, ingested_at
+                  FROM macro_data.load_audit
+                 WHERE playbook_name='policy_futures'
+                   AND status='SUCCESS'
+                 ORDER BY ingested_at DESC LIMIT 1;
+      result  : policy_futures | SUCCESS |
+                2026-05-20 08:14:28.129099+01.
+      verdict : PASS — gate honoured; safe to dispatch builder.
+
+    No-overlap check (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      no prior builder / reviewer PIDs alive at this point;
+      this wake's builder dispatch will be the sole active worker.
+
+    Builder dispatch (Required loop step 5 + Reviewer dispatch rule;
+    reviewer_mode remains claude_fallback / sticky per
+    QUOTA_AND_RESUME_POLICY.md §10.3 — applies to the SUBSEQUENT
+    reviewer round, not to this builder round):
+      mode        : claude_builder (run_claude_builder.sh)
+      prompt file : /tmp/claude_builder_policy_futures__scan_policy_
+                    futures_extremes_round1.prompt (16985 bytes,
+                    multi-metric structural reference is
+                    scan_bond_futures_extremes commit 095d768;
+                    fetcher-extension precedent is scan_inflation_
+                    swaps_extremes commit 91a5714; per-stem inverse-
+                    pricing source is instrument_master.attributes
+                    per the policy_futures sibling discipline).
+      wrapper     : automation/primitive_automation/run_claude_builder.sh
+                    (PIDs 1966075 launcher / 1966095 wrapper-bash /
+                    1966102 claude-worker — verified ALIVE at
+                    2026-05-23T19:25Z with ELAPSED 00:41).
+      worker      : claude --print --model opus --effort xhigh
+                    --permission-mode bypassPermissions.
+      tee log     : /tmp/claude_builder_run_policy_futures__scan_
+                    policy_futures_extremes_round1.log (created 0 B
+                    at 19:24Z; expected to grow as the worker
+                    produces output).
+
+    Catalog transition for policy_futures__scan_policy_futures_extremes:
+      status      : todo -> in_progress
+      active_step : (none) -> builder_round_1_dispatched
+      builder_round: (none) -> 1
+      review_round: (none) -> 0
+
+    Top-level state transitions this wake (continuation):
+      current_primitive     : policy_futures__futures_pack_average_simple
+                              -> policy_futures__scan_policy_futures_
+                              extremes
+      current_primitive_tool_name: futures_pack_average_simple ->
+                              scan_policy_futures_extremes
+      current_step          : committing -> building
+      last_successful_primitive: policy_futures__futures_strip_snapshot
+                              -> policy_futures__futures_pack_average_
+                              simple
+      last_successful_commit: 4f6dc3b -> 80a26cd
+      last_stop_reason      : wake_2026-05-23T19:15Z_reviewer_round1_
+                              APPROVED_for_policy_futures__futures_pack_
+                              average_simple_with_two_dismissable_
+                              observations_proceeding_to_commit
+                              ->
+                              wake_2026-05-23T19:15Z_committed_80a26cd_
+                              policy_futures__futures_pack_average_
+                              simple_dispatched_builder_round1_for_
+                              policy_futures__scan_policy_futures_
+                              extremes
+      last_updated          : 2026-05-23T19:20:00Z -> 2026-05-23T19:30:00Z
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=6)
+      - quota blocker                 : NO (builder dispatch succeeded;
+                                        provider quota will surface
+                                        only if the builder log shows
+                                        a real failure)
+      - hard runtime/provider error   : NO
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - DB-validation path unavailable: NO (load_audit probe
+                                        succeeded)
+      - no-overlap violation          : NO (this wake sole active)
+
+    Exit cleanly with the builder in flight. A later cron wake will
+    observe builder completion, dispatch the reviewer round, and
+    either commit or re-dispatch the builder per the Required loop.
 - at: '2026-05-23T19:20:00Z'
   kind: wake_2026-05-23T19:15Z_reviewer_round1_APPROVED_for_policy_futures__futures_pack_average_simple_with_two_dismissable_observations_proceeding_to_commit
   text: |

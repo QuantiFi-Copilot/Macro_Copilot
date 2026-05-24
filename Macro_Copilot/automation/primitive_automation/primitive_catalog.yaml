@@ -1052,11 +1052,13 @@ primitives:
   - id: policy_futures__futures_pack_average_simple
     status: done
     build_order: 28
-    active_step: completed
+    active_step: committed_80a26cd_feat_policy_futures_add_futures_pack_average_simple_primitive
     builder_round: 1
     review_round: 1
     last_review_heading: APPROVED
     reviewer_engine: claude_fallback
+    committed_at: "2026-05-23T19:25:00Z"
+    commit_sha: 80a26cd
     dismissed_findings:
       - round: 1
         reviewer_engine: claude_fallback
@@ -1124,8 +1126,13 @@ primitives:
       - inverse-pricing handling for the requested regime
 
   - id: policy_futures__scan_policy_futures_extremes
-    status: todo
+    status: done
     build_order: 29
+    active_step: completed
+    builder_round: 2
+    review_round: 2
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: policy_futures
     tool_name: scan_policy_futures_extremes
     category: desk_invariant_primitive

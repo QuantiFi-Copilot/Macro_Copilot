@@ -105,6 +105,11 @@ from rates_agent.policy_futures.tools.futures_strip_snapshot import (  # noqa: E
     FuturesStripSnapshotInput,
     calculate_futures_strip_snapshot,
 )
+from rates_agent.policy_futures.tools.scan_policy_futures_extremes import (  # noqa: E402
+    CONFIG_PATH as SCAN_POLICY_FUTURES_EXTREMES_CONFIG_PATH,
+    ScanPolicyFuturesExtremesInput,
+    calculate_scan_policy_futures_extremes,
+)
 from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (  # noqa: E402
     CONFIG_PATH as VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
     VolumeOpenInterestSnapshotInput,
@@ -1650,6 +1655,253 @@ def get_futures_pack_average_simple_tool(
             ts_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 8: scan_policy_futures_extremes
+# ===========================================================================
+@mcp.tool()
+def get_scan_policy_futures_extremes_tool(
+    curve_families: str = "",
+    top_n: int = 0,
+    min_abs_z_score: float = -1.0,
+    metrics: str = "",
+    as_of_date: str = "",
+) -> str:
+    """Scan the policy-futures strip universe and rank stems by
+    absolute 252-day z-score across four metrics — implied-rate
+    LEVEL (PERCENT), 1-day implied-rate CHANGE (BPS), daily
+    VOLUME (CONTRACTS), end-of-day OPEN-INTEREST LEVEL (CONTRACTS).
+    Returns the top-N extremes PER METRIC, each tagged with the
+    per-row methodology disclosure (RFR vs IBOR regime, rolling-
+    generic strip caveat, inverse-pricing rule).
+
+    Use this tool when the user asks about:
+    - Morning STIR-strip sweeps          (e.g. "Where is the SOFR /
+                                                Euribor / SONIA
+                                                strip stretched
+                                                today?")
+    - Universe-wide implied-rate extremes (e.g. "Biggest movers
+                                                across the policy-
+                                                futures universe?")
+    - Cross-strip volume / OI extremes    (e.g. "Where is
+                                                positioning most
+                                                stretched on the
+                                                STIR strip?")
+
+    Do NOT use this tool for:
+    - Bond / sovereign futures (TY / RX / JB / OAT etc.) — those
+      route to the bond_futures agent's
+      scan_bond_futures_extremes_tool.
+    - Cash sovereign / OIS / inflation extreme scans — those route
+      to the sovereign_bonds / ois / inflation_indexed_bonds /
+      inflation_swaps agents respectively.
+    - Pack-average summaries (whites = positions 1-4 / reds = 5-8)
+      — use the policy_futures futures_pack_average_simple tool.
+    - Curve-shape reads (calendar spreads, butterflies,
+      cross-CB spreads) — use the calendar / butterfly /
+      cross_market tools.
+    - Per-strip deep-dive on one stem — use
+      get_futures_price_level_tool /
+      get_volume_open_interest_snapshot_tool for one
+      (curve_family, strip_position) at a time.
+    - Meeting-by-meeting policy-path decomposition — Phase-4 work,
+      not in this V1.
+
+    ALWAYS preserve the methodology_disclosure field — present on
+    EVERY result row AND on the response — when relaying to the
+    user. P5 (honest disclosure) + the catalog's methodology
+    guardrail require the universe-wide-strip-scan label, the
+    explicit z-score lookback window, the per-row RFR-vs-IBOR
+    regime caveat, the inverse-pricing rule, and the rolling-
+    generic strip caveat to be propagated. Crucially, the
+    short_rate_regime row field disambiguates SOFR/SONIA (RFR) vs
+    Euribor (IBOR) — relaying the SCAN output without that label
+    would let a desk consumer mistake an IBOR z-score for an RFR
+    z-score.
+
+    Parameters
+    ----------
+    curve_families : str, optional
+        Comma-separated list of curve families to scan. Empty
+        (default ``""``) = scan the full policy-futures universe
+        (SOFR_FUT, EUR_SHORT_RATE_FUT, SONIA_FUT). Pass a CSV to
+        narrow (e.g. ``"SOFR_FUT,EUR_SHORT_RATE_FUT"`` for a USD
+        + EUR STIR sweep). MCP exposes flat scalars, so the
+        wrapper accepts a string and splits it before constructing
+        the Pydantic input — mirrors the
+        scan_bond_futures_extremes_tool convention. Non-policy-
+        futures curves (UST_FUT / DE_FUT / UST / DE_BUND / OIS
+        families / inflation families) are REFUSED at schema-
+        validation time per the closed-family whitelist in
+        config.yaml.
+    top_n : int, optional
+        Number of extreme stems to return PER METRIC. MCP exposes
+        flat scalars, so the sentinel ``0`` (default) means "omit"
+        and falls through to the YAML's ``default_top_n``
+        convention (currently 5) — keeps the default YAML-locked
+        per PR9 / PR10. Pass an integer in [1, 50] to override per
+        query; the schema-layer bound rejects out-of-range values.
+    min_abs_z_score : float, optional
+        Minimum absolute z-score threshold for inclusion in the
+        ranking. Applied PER METRIC — a stem may pass on
+        implied_rate_level but fail on volume_level; it appears in
+        the implied_rate_level top-N only. The sentinel ``-1.0``
+        (default) means "omit" and falls through to the YAML's
+        ``default_min_abs_z_score`` convention (currently 1.5).
+        Pass a non-negative float to override per query; the
+        schema-layer ``ge=0.0`` bound stays as a structural
+        invariant.
+    metrics : str, optional
+        Comma-separated list of metric identifiers to rank. Empty
+        (default ``""``) = rank all four metrics
+        (implied_rate_level, implied_rate_change, volume_level,
+        open_interest_level). Pass a CSV to narrow (e.g.
+        ``"implied_rate_level"`` for a rate-only screen). Each
+        entry MUST be a member of the closed ScanMetric Literal —
+        values outside the four are REFUSED at schema-validation
+        time.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the scan to a
+        specific trading day. Empty (default ``""``) = anchor to
+        the most-recent shared trading day across the fetched
+        universe (max trade_date observed after per-stem
+        alignment) — same as-of resolution pattern as the
+        bond_futures / inflation_swaps scanners and the per-strip
+        policy_futures monitors. The fetch window itself is
+        methodology (derived from YAML: z_score_window_days ×
+        z_score_buffer_multiplier, currently 252 × 1.5 = 378
+        calendar days) and is NOT an LLM input.
+    """
+    # Parse the comma-separated curve_families CSV into a list (or
+    # None when empty). MCP exposes flat scalars, so we accept a
+    # string and split it before constructing the Pydantic input —
+    # mirrors the scan_bond_futures_extremes_tool convention. The
+    # empty-string sentinel translates to None so the YAML's
+    # whitelist full-universe default flows through.
+    parsed_families = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Parse the metrics CSV the same way.
+    parsed_metrics = None
+    if metrics and metrics.strip():
+        parsed_metrics = [
+            m.strip() for m in metrics.split(",") if m.strip()
+        ]
+
+    # Sentinel resolution: the MCP boundary cannot carry None for
+    # int/float, so we use 0 / -1.0 sentinels for "omit". The
+    # schema's ``ge=1`` / ``ge=0.0`` bounds would have rejected the
+    # sentinel values themselves, so we translate to None BEFORE
+    # constructing the Pydantic input — preserves the schema's
+    # None → YAML-default fall-through, with no concrete defaults
+    # leaking into the MCP wrapper (PR9 / PR10).
+    top_n_arg: Optional[int] = top_n if top_n > 0 else None
+    min_abs_z_score_arg: Optional[float] = (
+        min_abs_z_score if min_abs_z_score >= 0.0 else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel. Empty string ⇒
+    # None (compute resolves to the most-recent shared trading
+    # day). Non-empty ⇒ parse with date.fromisoformat; a
+    # malformed value raises and is caught by the ValidationError
+    # envelope below so the LLM sees a clean error rather than a
+    # stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_scan_policy_futures_extremes_tool] "
+                "as_of_date parse failed: %s",
+                exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must "
+                        f"be ISO YYYY-MM-DD (e.g. '2026-04-08'). "
+                        f"Detail: {exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = ScanPolicyFuturesExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n_arg,
+            min_abs_z_score=min_abs_z_score_arg,
+            metrics=parsed_metrics,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_scan_policy_futures_extremes_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_policy_futures_extremes_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency
+    # is observable here (PR14). Mirrors the sibling
+    # get_futures_price_level_tool /
+    # get_volume_open_interest_snapshot_tool wrappers exactly.
+    try:
+        scan_config = load_tool_config(
+            SCAN_POLICY_FUTURES_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_policy_futures_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_policy_futures_extremes_tool] unhandled "
+            "error for curve_families=%s metrics=%s",
+            params.curve_families, params.metrics,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"get_scan_policy_futures_extremes_tool "
+                    f"failed: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_rows = len(result.get("results", []) or [])
+    logger.info(
+        "[get_scan_policy_futures_extremes_tool] tool call "
+        "complete: curve_families=%s top_n=%r min_abs_z=%r "
+        "metrics=%r as_of=%r → %s (%d rows)",
+        params.curve_families, params.top_n, params.min_abs_z_score,
+        params.metrics, params.as_of_date, status, n_rows,
+    )
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

@@ -154,6 +154,12 @@ from rates_agent.policy_futures.tools.futures_pack_average_simple import (
     FuturesPackAverageSimpleOutput,
     calculate_futures_pack_average_simple,
 )
+from rates_agent.policy_futures.tools.scan_policy_futures_extremes import (
+    CONFIG_PATH as POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+    ScanPolicyFuturesExtremesInput,
+    ScanPolicyFuturesExtremesOutput,
+    calculate_scan_policy_futures_extremes,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -679,6 +685,38 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_pack_average": "percent",
             "time_series_zscore": "z_score",
         },
+    ),
+    # ``output_field_units`` is intentionally empty by design —
+    # same exempt-snapshot pattern the sibling
+    # scan_bond_futures_extremes_tool /
+    # scan_inflation_swaps_extremes_tool /
+    # policy_futures_get_futures_strip_snapshot_tool use. This is
+    # a SNAPSHOT primitive (no canonical TimeSeries on the wire);
+    # per-row context columns mix PERCENT (implied_rate_pct), BPS
+    # (daily_change_implied_rate_bps), the contract's native price
+    # units (``100 - rate`` for inverse-priced strips), CONTRACTS
+    # (volume / open_interest / delta_open_interest_1d), unit-less
+    # z-score, and plain-string reference columns (contract_code /
+    # security_name / expiry_date / quote_units / short_rate_regime).
+    # Declaring a single unit would silently lie about the mixed-
+    # shape row payload under P8 (closed-family discipline) + P5
+    # (honest disclosure); the validator's empty-dict exemption
+    # (see shared/workflow/validate.py:368) defers the unit check
+    # to the operator's runtime refusal — the honest path until a
+    # future ADR extends ``TimeSeriesUnits`` with PRICE +
+    # CONTRACTS members. Per-strip history with the full range /
+    # percentile / canonical TimeSeries lives on the sibling
+    # policy_futures_get_futures_price_level_tool /
+    # policy_futures_get_volume_open_interest_snapshot_tool
+    # primitives; composing those is the honest path for
+    # time-series consumers.
+    "get_scan_policy_futures_extremes_tool": PrimitiveSpec(
+        tool_name="get_scan_policy_futures_extremes_tool",
+        callable=calculate_scan_policy_futures_extremes,
+        input_class=ScanPolicyFuturesExtremesInput,
+        output_class=ScanPolicyFuturesExtremesOutput,
+        config_path=POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+        output_field_units={},
     ),
 
     # ---- Analytical models (workspace model-playground surface) ----

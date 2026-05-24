@@ -87,4 +87,5 @@ collect_ignore = [
     "test_policy_futures_futures_pack_average_simple_sql_validation.py",
     "test_scan_inflation_linkers_extremes_sql_validation.py",
     "test_scan_inflation_swaps_extremes_sql_validation.py",
+    "test_scan_policy_futures_extremes_sql_validation.py",
 ]

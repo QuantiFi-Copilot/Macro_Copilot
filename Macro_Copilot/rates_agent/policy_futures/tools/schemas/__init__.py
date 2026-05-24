@@ -45,6 +45,13 @@ from rates_agent.policy_futures.tools.futures_strip_snapshot.schemas import (
     FuturesStripSnapshotRow,
     PolicyFuturesCurveFamily,
 )
+from rates_agent.policy_futures.tools.scan_policy_futures_extremes.schemas import (
+    PolicyFuturesScanCurveFamily,
+    ScanMetric,
+    ScanPolicyFuturesExtremesInput,
+    ScanPolicyFuturesExtremesOutput,
+    ScanPolicyFuturesExtremesResultRow,
+)
 from rates_agent.policy_futures.tools.volume_open_interest_snapshot.schemas import (
     VolumeOpenInterestSnapshotCurrentMetrics,
     VolumeOpenInterestSnapshotInput,
@@ -84,4 +91,9 @@ __all__ = [
     "FuturesPackAverageSimpleOutput",
     "PolicyFuturesPack",
     "PolicyFuturesPackAverageCurveFamily",
+    "ScanMetric",
+    "PolicyFuturesScanCurveFamily",
+    "ScanPolicyFuturesExtremesInput",
+    "ScanPolicyFuturesExtremesResultRow",
+    "ScanPolicyFuturesExtremesOutput",
 ]

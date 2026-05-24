@@ -26,6 +26,9 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
        kept for compat with the original curve_spread refactor)
      - ``fetch_cross_market_pair``
      - ``fetch_scan_universe``
+     - ``fetch_scan_universe_strip_position``  (policy futures universe
+       scan, strip-keyed analogue of ``fetch_scan_universe``; one field
+       across every (curve_family, strip_position) stem)
      - ``fetch_scan_universe_reference``  (per-(curve_family, tenor)
        reference metadata — maturity_date / country / vendor_ticker
        — joined sibling of ``fetch_scan_universe`` for scanners that
@@ -33,6 +36,10 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
      - ``fetch_strip_position``           (policy futures, strip-keyed)
      - ``fetch_strip_position_max_date``  (policy futures, strip-keyed
        MAX(trade_date) probe used as the future-anchor guard)
+     - ``fetch_scan_universe_strip_position_max_date``  (policy futures
+       universe MAX(trade_date) probe used as the future-anchor guard
+       for the universe scan; universe-wide analogue of
+       ``fetch_strip_position_max_date``)
      - ``fetch_strip_group``              (policy futures, strip-keyed)
      - ``fetch_cross_market_strip``       (policy futures, strip-keyed)
 
@@ -73,6 +80,11 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
    ``instrument_master.attributes`` for one strip position:
 
      - ``fetch_strip_position_reference``
+     - ``fetch_scan_universe_policy_future_reference``  (per-(curve_family,
+       strip_position) reference metadata + ``inverse_pricing`` flag,
+       universe-wide analogue of ``fetch_strip_position_reference``;
+       LATERAL SCD2 join on ``instrument_metadata_history`` against
+       ``instrument_master``)
 
 Query shapes
 ------------
@@ -88,6 +100,12 @@ The currently-shipped fetch shapes are:
   - entire universe of one type           → fetch_scan_universe
   - per-instrument reference metadata
     across a universe scan                → fetch_scan_universe_reference
+  - entire universe of one type,
+    strip-keyed                           → fetch_scan_universe_strip_position
+  - per-(curve_family, strip_position) universe
+    reference metadata + inverse_pricing  → fetch_scan_universe_policy_future_reference
+  - entire universe of one type, strip-keyed,
+    MAX(trade_date) probe                 → fetch_scan_universe_strip_position_max_date
   - one curve, one strip position         → fetch_strip_position
   - one curve, one strip position,
     MAX(trade_date) probe                 → fetch_strip_position_max_date
@@ -1523,6 +1541,379 @@ def fetch_rolling_generic_universe_max_date(
     # SQLAlchemy returns ``date`` for ``DATE`` columns on the standard
     # psycopg drivers; defensive isoformat-parse handles any driver
     # that hands back a string instead.
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
+# ============================================================================
+# POLICY-FUTURES UNIVERSE SCAN — strip-position-keyed
+# ============================================================================
+#
+# Universe-scan analogues of the per-strip / per-curve helpers above,
+# scaled to N (curve_family, strip_position) stems in ONE query each.
+# Used by the policy-futures morning-extremes scanner (catalog id
+# ``policy_futures__scan_policy_futures_extremes``, build_order 29).
+#
+# Why a NEW pair of helpers rather than reuse ``fetch_scan_universe`` /
+# ``fetch_scan_universe_reference``:
+#
+#   - The existing tenor-keyed ``fetch_scan_universe`` filters on
+#     ``tenor IS NOT NULL``. ``instrument_type='policy_future'`` rows
+#     carry ``tenor IS NULL`` on the enriched view; the strip-position
+#     disambiguator lives in ``attributes->>'strip_position'`` JSONB.
+#     Passing ``instrument_type='policy_future'`` to the tenor-keyed
+#     helper returns zero rows. Extending the existing helper to also
+#     handle the strip-position key would either complicate the
+#     signature with a discriminator (loose-typed branching at a
+#     boundary that should be tight per P3) or silently break the
+#     existing sovereign / OIS / inflation callers that depend on the
+#     ``tenor IS NOT NULL`` invariant.
+#
+#   - The existing ``fetch_scan_universe_reference`` projects
+#     ``curve_family, tenor, contract_code, maturity_date, country,
+#     vendor_ticker, underlying_index`` — none of the policy-futures-
+#     specific columns (``strip_position``, ``inverse_pricing``,
+#     ``security_name``, ``expiry_date``, ``contract_size``,
+#     ``tick_size``, ``tick_value``, ``underlying_contract_code``). The
+#     policy-futures monitor primitives source these per-leg via
+#     ``fetch_strip_position_reference``; the universe scan needs them
+#     per (curve_family, strip_position) in one round-trip.
+#
+# Both helpers are additive — they do not touch ``fetch_scan_universe``
+# / ``fetch_scan_universe_reference`` / any rolling-generic /
+# bond_futures / sovereign / OIS callsite. The bond_futures /
+# inflation_linkers / inflation_swaps scanners continue to use the
+# existing tenor-keyed helpers unchanged.
+#
+# Read-only; pure SELECT.
+
+_FETCH_SCAN_UNIVERSE_STRIP_POSITION_ALL_SQL = text("""
+    SELECT
+        trade_date,
+        curve_family,
+        (attributes->>'strip_position')::int AS strip_position,
+        contract_code,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND field_name      = :field_name
+      AND trade_date     >= :start_date
+      AND (attributes->>'strip_position')::int IS NOT NULL
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
+    ORDER BY curve_family, strip_position, trade_date
+""")
+
+_FETCH_SCAN_UNIVERSE_STRIP_POSITION_FILTERED_SQL = text("""
+    SELECT
+        trade_date,
+        curve_family,
+        (attributes->>'strip_position')::int AS strip_position,
+        contract_code,
+        field_value
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND field_name      = :field_name
+      AND trade_date     >= :start_date
+      AND (attributes->>'strip_position')::int IS NOT NULL
+      AND curve_family    = ANY(:curve_families)
+      AND (CAST(:end_date AS DATE) IS NULL OR trade_date <= CAST(:end_date AS DATE))
+    ORDER BY curve_family, strip_position, trade_date
+""")
+
+
+def fetch_scan_universe_strip_position(
+    engine: Engine,
+    instrument_type: str,
+    field_name: str,
+    start_date: date,
+    curve_families: Optional[Iterable[str]] = None,
+    end_date: Optional[date] = None,
+) -> pd.DataFrame:
+    """Fetch every (curve_family, strip_position) series of the given
+    strip-position-keyed instrument type for use by scanner-style tools.
+
+    Strip-position-keyed analogue of :func:`fetch_scan_universe`. Today
+    the only ``instrument_type`` this helper is exercised against is
+    ``'policy_future'`` (SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT —
+    24 stems × 8 strip positions × 3 curve families on the V1
+    playbook); the signature is generic so a future strip-position-keyed
+    instrument family (TIIE futures etc.) can reuse it.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'curve_family', 'strip_position', 'contract_code',
+       'field_value']``.
+
+    ``strip_position`` is sourced via
+    ``(attributes->>'strip_position')::int`` — exactly the same JSONB
+    extraction the per-leg :func:`fetch_strip_position` and
+    :func:`fetch_strip_group` helpers use, so the row-set this universe
+    fetcher returns is byte-identical (per-row) with concatenating the
+    per-leg fetcher's output across every (curve_family, strip_position)
+    pair in the universe.
+
+    ``contract_code`` is the enriched-view value, which for
+    policy-futures resolves to the SCD2-history's per-window underlying
+    contract code (e.g. ``'SFRH6 COMB'``) rather than the master stem
+    (``'SFR1'``). Scanners that need the master stem should join the
+    universe-series rows to
+    :func:`fetch_scan_universe_policy_future_reference` output keyed on
+    (curve_family, strip_position).
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    instrument_type : str
+        Enriched-view instrument type — for policy futures this is
+        ``'policy_future'``. The closed-family invariant lives in each
+        scanner's compute.py (a module-level constant, NOT in YAML —
+        same discipline the inflation_swaps scanner uses).
+    field_name : str
+        Bloomberg observation field mnemonic — ``'PX_LAST'`` for
+        price, ``'OPEN_INT'`` for open interest, ``'PX_VOLUME'`` for
+        volume.
+    start_date : date
+        Inclusive lower bound on ``trade_date``.
+    curve_families : Optional[Iterable[str]]
+        If None, scan every curve_family of the given
+        ``instrument_type`` (subject to the SQL's
+        ``strip_position IS NOT NULL`` guard, which excludes the
+        per-window underlying delivery contracts that share the same
+        instrument_type). If provided, scope to the named curves only.
+    end_date : date, optional
+        Inclusive upper bound on ``trade_date``. When supplied, the SQL
+        predicate adds ``AND trade_date <= :end_date`` so the result is
+        anchored at a specific DB-as-of for deterministic Layer-B
+        validation. Mirrors the same upper-bound contract the
+        rolling-generic universe series fetcher uses. When None
+        (default), behaviour is unchanged.
+    """
+    bind_params: dict = {
+        "instrument_type": instrument_type,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat() if end_date is not None else None,
+    }
+    if curve_families:
+        bind_params["curve_families"] = list(curve_families)
+        sql = _FETCH_SCAN_UNIVERSE_STRIP_POSITION_FILTERED_SQL
+    else:
+        sql = _FETCH_SCAN_UNIVERSE_STRIP_POSITION_ALL_SQL
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, bind_params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+# Per-(curve_family, strip_position) reference metadata for a
+# policy-futures universe scan. Joins ``instrument_master`` directly to
+# the SCD2 ``instrument_metadata_history`` (LATERAL, as_of-bounded) to
+# surface per-stem disclosure metadata (security_name, expiry_date,
+# contract_size, tick_size, tick_value, underlying_contract_code) AND
+# the ``inverse_pricing`` flag from ``instrument_master.attributes``
+# that drives the implied-rate conversion. One row per
+# (curve_family, strip_position) — 24 rows for the V1 universe
+# (8 strip positions × 3 curve families) — in ONE query.
+#
+# The as_of-bounded SCD2 window mirrors the per-leg
+# ``fetch_strip_position_reference`` exactly so a Layer-B SQL validator
+# that passes the same as_of_date sees the same current-front contract
+# the scanner sees.
+
+_FETCH_SCAN_UNIVERSE_POLICY_FUTURE_REFERENCE_ALL_SQL = text("""
+    SELECT
+        i.curve_family       AS curve_family,
+        i.contract_code      AS contract_code,
+        (i.attributes->>'strip_position')::int AS strip_position,
+        (i.attributes->>'inverse_pricing')::boolean AS inverse_pricing,
+        COALESCE(h.contract_code, i.contract_code)   AS underlying_contract_code,
+        COALESCE(h.expiry_date, i.expiry_date)       AS expiry_date,
+        h.security_name      AS security_name,
+        h.tick_size          AS tick_size,
+        h.tick_value         AS tick_value,
+        h.contract_size      AS contract_size
+    FROM macro_data.instrument_master i
+    LEFT JOIN LATERAL (
+        SELECT
+            contract_code, expiry_date, security_name,
+            tick_size, tick_value, contract_size
+        FROM macro_data.instrument_metadata_history
+        WHERE instrument_id = i.instrument_id
+          AND effective_from <= CAST(:as_of_date AS DATE)
+          AND (effective_to IS NULL OR effective_to > CAST(:as_of_date AS DATE))
+        ORDER BY effective_from DESC
+        LIMIT 1
+    ) h ON TRUE
+    WHERE i.is_rolling_contract = TRUE
+      AND (i.attributes->>'strip_position')::int IS NOT NULL
+    ORDER BY i.curve_family, (i.attributes->>'strip_position')::int
+""")
+
+_FETCH_SCAN_UNIVERSE_POLICY_FUTURE_REFERENCE_FILTERED_SQL = text("""
+    SELECT
+        i.curve_family       AS curve_family,
+        i.contract_code      AS contract_code,
+        (i.attributes->>'strip_position')::int AS strip_position,
+        (i.attributes->>'inverse_pricing')::boolean AS inverse_pricing,
+        COALESCE(h.contract_code, i.contract_code)   AS underlying_contract_code,
+        COALESCE(h.expiry_date, i.expiry_date)       AS expiry_date,
+        h.security_name      AS security_name,
+        h.tick_size          AS tick_size,
+        h.tick_value         AS tick_value,
+        h.contract_size      AS contract_size
+    FROM macro_data.instrument_master i
+    LEFT JOIN LATERAL (
+        SELECT
+            contract_code, expiry_date, security_name,
+            tick_size, tick_value, contract_size
+        FROM macro_data.instrument_metadata_history
+        WHERE instrument_id = i.instrument_id
+          AND effective_from <= CAST(:as_of_date AS DATE)
+          AND (effective_to IS NULL OR effective_to > CAST(:as_of_date AS DATE))
+        ORDER BY effective_from DESC
+        LIMIT 1
+    ) h ON TRUE
+    WHERE i.is_rolling_contract = TRUE
+      AND (i.attributes->>'strip_position')::int IS NOT NULL
+      AND i.curve_family = ANY(:curve_families)
+    ORDER BY i.curve_family, (i.attributes->>'strip_position')::int
+""")
+
+
+def fetch_scan_universe_policy_future_reference(
+    engine: Engine,
+    as_of_date: date,
+    curve_families: Optional[Iterable[str]] = None,
+) -> pd.DataFrame:
+    """Fetch per-(curve_family, strip_position) reference metadata for
+    the policy-futures universe scan.
+
+    Returns one row per ``(curve_family, strip_position)`` stem with the
+    columns the universe scanner attaches to every output row:
+
+      - ``curve_family``        — STIR curve family (``'SOFR_FUT'``,
+        ``'EUR_SHORT_RATE_FUT'``, ``'SONIA_FUT'``).
+      - ``contract_code``       — master rolling-generic stem
+        (``'SFR1'``, ``'ER1'``, ``'SFI1'``, ...) from
+        ``instrument_master``.
+      - ``strip_position``      — 1-based strip slot.
+      - ``inverse_pricing``     — bool flag from
+        ``instrument_master.attributes->>'inverse_pricing'``; drives
+        the implied-rate conversion (when true:
+        ``implied_rate_pct = 100 - raw_price``).
+      - ``underlying_contract_code`` — current-front underlying contract
+        code from the SCD2 history bounded by ``as_of_date``.
+      - ``expiry_date``         — current-front expiry from the SCD2
+        history; date or None.
+      - ``security_name``       — current-front security name from the
+        SCD2 history; str or None.
+      - ``tick_size`` / ``tick_value`` / ``contract_size`` — current-
+        front contract economics; floats or None.
+
+    Why an as_of-bounded SCD2 lookup
+    --------------------------------
+    The policy-futures SCD2 ``instrument_metadata_history`` is
+    pre-populated with every quarterly contract in the rolling chain
+    out to far-future expiry (e.g. SFR1's history runs out to
+    2035-09 / SFRU35). A naive ``ORDER BY effective_from DESC LIMIT 1``
+    returns the FAR-end row, not the actual current-front contract.
+    The ``effective_from <= as_of_date AND (effective_to IS NULL OR
+    effective_to > as_of_date)`` predicate is the only correct shape
+    for policy-futures rolling chains — same predicate
+    :func:`fetch_strip_position_reference` uses for the per-leg
+    monitors.
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    as_of_date : date
+        SCD2 anchor date. The scanner passes its resolved as_of_date
+        (post-fetch data-max or the LLM-supplied anchor) so the
+        disclosed ``underlying_contract_code`` / ``expiry_date`` /
+        ``security_name`` are the values that were effective on the
+        snapshot's anchor date.
+    curve_families : Optional[Iterable[str]]
+        If None, return reference rows for every strip-position-keyed
+        rolling-contract on instrument_master. If provided, scope to
+        the named curves only — mirrors
+        :func:`fetch_scan_universe_strip_position`'s scope kwarg.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long-format DataFrame; empty when no rows match. One row per
+        (curve_family, strip_position) stem, ordered by curve_family
+        ascending then strip_position ascending — deterministic for
+        Layer-B SQL validation.
+    """
+    bind_params: dict = {"as_of_date": as_of_date.isoformat()}
+    if curve_families:
+        bind_params["curve_families"] = list(curve_families)
+        sql = _FETCH_SCAN_UNIVERSE_POLICY_FUTURE_REFERENCE_FILTERED_SQL
+    else:
+        sql = _FETCH_SCAN_UNIVERSE_POLICY_FUTURE_REFERENCE_ALL_SQL
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, bind_params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+_FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_ALL_SQL = text("""
+    SELECT MAX(trade_date) AS max_trade_date
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND (attributes->>'strip_position')::int IS NOT NULL
+""")
+
+_FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_FILTERED_SQL = text("""
+    SELECT MAX(trade_date) AS max_trade_date
+    FROM macro_data.v_market_data_daily_enriched
+    WHERE instrument_type = :instrument_type
+      AND (attributes->>'strip_position')::int IS NOT NULL
+      AND curve_family    = ANY(:curve_families)
+""")
+
+
+def fetch_scan_universe_strip_position_max_date(
+    engine: Engine,
+    instrument_type: str,
+    curve_families: Optional[Iterable[str]] = None,
+) -> Optional[date]:
+    """Return the maximum ``trade_date`` available across the
+    strip-position-keyed universe scan for the named instrument_type
+    (and optionally the named curve_families).
+
+    Cheap single-aggregate probe that mirrors
+    :func:`fetch_scan_universe_strip_position`'s filter shape exactly
+    (same enriched-view source, same ``strip_position IS NOT NULL``
+    guard, same instrument_type / curve_families scoping). Used by the
+    policy_futures morning-extremes scanner's future-anchor guard: when
+    an LLM-supplied ``as_of_date`` lies beyond this max, the scanner
+    returns the documented controlled-error envelope instead of
+    silently delivering an unbounded ranking under a future-anchored
+    label.
+
+    Returns ``None`` when the universe has no rows (empty scope or
+    ingestion gap).
+    """
+    bind_params: dict = {"instrument_type": instrument_type}
+    if curve_families:
+        bind_params["curve_families"] = list(curve_families)
+        sql = _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_FILTERED_SQL
+    else:
+        sql = _FETCH_SCAN_UNIVERSE_STRIP_POSITION_MAX_DATE_ALL_SQL
+
+    with engine.connect() as conn:
+        row = conn.execute(sql, bind_params).first()
+    if row is None or row[0] is None:
+        return None
+    value = row[0]
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
