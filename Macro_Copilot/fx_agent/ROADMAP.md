@@ -8,19 +8,27 @@
 
 ## Current status
 
-**Date:** 2026-05-21
+**Date:** 2026-05-25
 
-**Branch:** `codex/fx-data-universe-extension` — stacked on `codex/fx-on-latest-build` (PR #178, draft).
+**Branch:** `codex/fx-data-universe-phase-b` — stacked on `codex/fx-data-universe-extension` (PR #184, draft), itself stacked on `codex/fx-on-latest-build` (PR #178, draft).
 
-**Phase in flight:** **Phase A — Cash forwards depth — ✅ COMPLETE (8/8 steps shipped).** Branch pushed on `codex/fx-data-universe-extension` as a draft stacked PR above #178.
+**Phase in flight:** **Phase B — Spot EM universe + FX Panel primitive — STARTING.** All 5 architectural Qs locked by Codex on 2026-05-24. EM start_date locked to **2000-01-01** after Bloomberg verification on 2026-05-25 (USDTRY confirmed Scenario A — clean back-adjusted series across 2005 redenomination; all 9 EM pairs have PX_LAST from ≤ 2000-01-03).
 
-**Immediate next action:** PR hygiene + manual `/fx` smoke + Phase B planning (per Codex's step-8 review). Specifically:
+**Maximaliste target locked:** Tier 1 + Tier 2 = **~28 tools across Phases A → E + G + H** (see [Maximaliste vision](#maximaliste-vision--tier-12--28-tools-across-phases-a-e--g--h) below). Tier 3 phases (F macro indices, I CFTC positioning, J PPP/REER) are nice-to-have, built only on concrete demand.
 
-1. Open or refresh the stacked PR with `Depends on #178` in the body, request review **after** CI + manual smoke pass.
-2. Manual `/fx` smoke in a real browser (not the headless preview that CORS-blocks `:5180`): configure `fx_carry` (tenor / rank_by / top_n / lookback) and `fx_forward_curve` (pair / lookback), verify reset-to-default, verify legacy localStorage layouts (with empty params) still render via widget-side defaults.
-3. Phase B planning — start with EM spot/crosses only, verify Bloomberg conventions, update ROADMAP, then ingest. Discipline reminder: data acquisition ≠ product phase; do not ingest NDF / vol smile / CIP into canonical data yet.
+**Immediate next action — Phase B execution sequence:**
 
-**Steps 1–8 ✅ complete.** Wave 1 production ingestion landed cleanly:
+1. First commit on this branch = THIS ROADMAP update (port maximaliste plan from session memory, do NOT touch PR #184 — Codex G1).
+2. Extend `spot_fx.yml` v3.0 with 9 EM pairs (MXN, ZAR, TRY, BRL, PLN, HUF, KRW, IDR, PHP), uniform `start_date: 2000-01-01`, `fx_family: "EM_SPOT"`, `market_scope: "EM"`. **Do NOT create a separate `spot_fx_em.yml`** (Codex locked: single playbook).
+3. Wave 1 Bloomberg extraction for EM spot (~9 tickers × ~26 years = ~60k rows, single dataset).
+4. Ingest to Postgres, extend `tests/test_fx_data_readiness.py` with EM ticker assertions (do NOT create a new test file — Codex locked).
+5. Implement `calculate_fx_panel` primitive — returns a real typed `Panel` artifact (Shape C, asset-agnostic via `shared.artifacts.types.Panel`). **Single new primitive for this PR.**
+6. `scan_fx_spot` already market_scope-aware via SQL filter — zero code change needed (Codex confirmed). Verify with a runtime smoke + targeted test assertion.
+7. MCP wiring + API route + manifest entry + tests for **`calculate_fx_panel` ONLY** (compute + wiring + sql_validation). Follow-up tools (`returns_series`, `drawdown`, `realized_vol`) get their own stacked PR on top of this one.
+8. **Defer UI** for Phase B (Codex locked) — ship data + panel primitive first. UI lands in a sub-phase or Phase E.
+9. Stacked draft PR with `Depends on #184` and `Depends on #178` in body. **Short, focused, single-primitive — easy to review.**
+
+**Phase A ✅ SHIPPED on `codex/fx-data-universe-extension` (PR #184).** Wave 1 production ingestion landed cleanly:
 
 | Playbook | Tickers | Rows ingested | Date range | Load ID |
 |---|---|---|---|---|
@@ -85,17 +93,181 @@ An ADR 0008 will be needed **only when** we split `Domain.FX` into `FX_CASH` / `
 
 The objective is a **complete FX universe to build real macro workflows**, not an exhaustive primitives library. Every new tool must answer: "what macro workflow does this enable that doesn't work today?"
 
+### 5. Codex stacked-PR guardrails (G1, G2, G3)
+
+Locked by Codex review on 2026-05-24 — apply to every contribution on this branch and descendants.
+
+**G1 — Stability of in-review PRs.** Do NOT push commits to a branch whose PR is in draft-stable / review-pending state. Any update must land on a separate stacked branch.
+- PR #178 (`codex/fx-on-latest-build`) — review-pending. **Frozen.**
+- PR #184 (`codex/fx-data-universe-extension`) — review-pending. **Frozen.**
+- All Phase B+ work happens on `codex/fx-data-universe-phase-b` and its descendants.
+
+**G2 — Operators discipline (strict).** When adding to `shared/operators/`, ZERO asset-class references in the operator code. No `fx_pair` parameter, no hidden FX logic, no instrument-master attribute reads. If a transform is generic, it lives in shared and serves rates / FX / credit / equity identically. Asset-aware glue belongs in `shared/analytics/` loaders or in the per-domain primitive that *uses* the operator.
+
+**G3 — ADR timing.** ADR 0008 (split `Domain.FX` → `FX_CASH` / `FX_VOL` / `FX_NDF`) only when vol AND/OR NDF have **substantial built tools**, not preemptively. Mirror Sreeram's inflation split timing — ADR 0006 landed with 15 inflation tools already built, not with the first scaffold. Premature ADR = wasted churn.
+
 ---
 
 ## Phase plan (ordered low risk → high risk)
 
 ```
-Phase A — cash forwards depth         [LOCKED, awaiting tickers]
-Phase B — spot universe + FX panel    [planned]
-Phase C — CIP / cross-currency basis  [planned, reads OIS substrate]
-Phase D — NDFs                        [planned]
-Phase E — FX vol                      [planned, will require ADR 0008]
+Phase A — cash forwards depth (G10)   [✅ SHIPPED, PR #184 draft]   Tier 1
+Phase B — spot EM + FX panel          [IN FLIGHT, this branch]      Tier 1
+Phase C — CIP / cross-currency basis  [planned, reads OIS]          Tier 1
+Phase D — NDFs                        [planned]                     Tier 1
+Phase E — FX vol (ATM + smile)        [planned, ADR 0008 here]      Tier 1
+Phase F — macro indices (DXY, etc.)   [optional]                    Tier 3
+Phase G — workflows substrate         [planned]                     Tier 2
+Phase H — shared operators extension  [planned]                     Tier 2
+Phase I — CFTC positioning            [optional]                    Tier 3
+Phase J — PPP / REER deviations       [optional]                    Tier 3
 ```
+
+**Target = Tier 1 + Tier 2 = Phases A → E + G + H = ~28 tools, 8-10 dev sessions.** See [Maximaliste vision](#maximaliste-vision--tier-12--28-tools-across-phases-a-e--g--h) for the full substrate map, tools catalogue, and Tier rationale.
+
+### Maximaliste vision — Tier 1+2 = ~28 tools across Phases A-E + G + H
+
+Locked by Codex review on 2026-05-24. This section is the **strategic answer** to the question "what would a serious macro-hedge-fund FX system look like in this architecture?"
+
+**Quality framing — not tool count:** "Serious FX" = correct conventions + deterministic primitives + asset-agnostic operators + reusable DAG workflows + compute/wiring/SQL tests + ADR only for real architectural extension. Tool count is an outcome of covering real macro workflows, not a target in itself.
+
+#### Substrate map (~150-200 tickers cible)
+
+| Sub-domain | Coverage | Approx tickers | Phase |
+|---|---|---|---|
+| G10 spot | 9 majors + 11 crosses | 20 | A ✅ |
+| G10 forwards | 6 G10 pairs × 5 tenors (1W/1M/3M/6M/12M) | 30 | A ✅ |
+| G10 vol ATM | 6 G10 pairs × 5 tenors (1W/1M/3M/6M/1Y) | 30 | E |
+| G10 vol smile | 6 G10 pairs × ~3 tenors × {RR25, BF25, RR10, BF10} | ~72 | E |
+| EM spot | 9 EM pairs (MXN, ZAR, TRY, BRL, PLN, HUF, KRW, IDR, PHP) | 9 | **B (this branch)** |
+| EM forwards (deliverable) | MXN, ZAR, TRY, BRL, PLN, HUF × 5 tenors | 30 | B extension or sub-phase |
+| NDFs (outright) | CCN+, IRN+, BCN+, KWN+, IHN+ × 5 tenors | 25 | D |
+| CIP basis / xccy proxy | G10 × 3 tenors (1M / 3M / 12M) | derived, no new tickers | C |
+| Macro proxies (DXY, BBDXY, JPMEMCI, …) | 5-10 indices | 10 | F (Tier 3) |
+| Central bank rates substrate | reads existing `rates_agent` OIS — cross-domain | 0 new | C |
+| CFTC positioning | Non-commercial net spec for 6 G10 | 6 | I (Tier 3) |
+| PPP / REER | BIS REER monthly | 5-10 | J (Tier 3) |
+
+#### 32 tools catalogue by sub-domain
+
+Numbers in parentheses = count per sub-domain.
+
+**Spot (8)**
+- `get_fx_spot_level` ✅ (A)
+- `scan_fx_spot` ✅ (A) — market_scope-aware (G10 / EM / etc.) via SQL filter, no code change needed for B
+- `calculate_fx_panel` — Shape C, returns typed `Panel` artifact via `shared.artifacts.types.Panel` (**B-core, this PR**)
+- `get_fx_returns_series` — log-returns, configurable horizon (B follow-up)
+- `calculate_fx_drawdown` (B follow-up)
+- `get_fx_realized_vol` — N-day rolling realized (B follow-up)
+- `get_fx_z_score_panel` — uses shared operator (H)
+- `get_fx_correlation_matrix` — uses shared operator (H)
+
+**Forwards (5)**
+- `calculate_fx_carry` ✅ (A, extended to scanner with rank_by / top_n / lookback / field_name)
+- `get_fx_forward_curve` ✅ (A)
+- `calculate_fx_implied_yield_differential` — `y_quote − y_base` from forward points (B+ — depends on EM forwards substrate)
+- `scan_fx_carry_basket` — top-K basket constructor across G10 + EM (B+ — depends on EM forwards substrate)
+- `calculate_fx_roll_yield` — forward → spot decay (C)
+
+**Vol (8)**
+- `get_fx_atm_vol_level` (E)
+- `get_fx_vol_term_structure` — ATM full curve for one pair (E)
+- `scan_fx_vol` — cross-pair ATM ranking (E)
+- `get_fx_vol_z_score` (E)
+- `get_fx_risk_reversal` — RR25 / RR10 skew metric (E)
+- `get_fx_butterfly` — BF25 / BF10 kurtosis metric (E)
+- `calculate_fx_vol_smile` — full {ATM, RR25, BF25, RR10, BF10} for one pair × one tenor (E)
+- `calculate_fx_vol_carry` — implied vs realized spread (E)
+
+**Derived (3)**
+- `calculate_fx_cip_basis` — reads OIS via `shared.analytics.rates_fetch` (C)
+- `scan_fx_cip_dislocations` (C)
+- `calculate_fx_cross_currency_basis` — xccy proxy (C)
+
+**NDFs (3)**
+- `get_fx_ndf_outright` — different convention from G10 forwards (outright not points) (D)
+- `calculate_fx_ndf_implied_carry` (D)
+- `scan_fx_ndf_carry` (D)
+
+**Macro (3, Tier 3)**
+- `get_fx_index_level` — DXY, BBDXY, JPMEMCI (F)
+- `calculate_fx_reer_deviation` — vs BIS REER (J)
+- `calculate_fx_ppp_deviation` — vs OECD PPP (J)
+
+**Positioning (2, Tier 3)**
+- `get_cftc_fx_positioning` — non-commercial net spec (I)
+- `scan_fx_positioning_extremes` (I)
+
+#### Effort estimates per phase
+
+| Phase | Scope | Tools | Effort | Tier |
+|---|---|---|---|---|
+| A | G10 forwards depth + scanner + curve + UI | 4 | ✅ shipped | 1 |
+| **B-core (THIS PR)** | EM spot universe (9 pairs) + `calculate_fx_panel` typed Panel primitive | 1 | 1 session | 1 |
+| B follow-up | `get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol` (after panel lands, separate stacked PR) | 3 | 0.5 session | 1 |
+| B+ | `calculate_fx_implied_yield_differential` + `scan_fx_carry_basket` (after EM forwards substrate extracted) | 2 | 0.5-1 session | 1 |
+| C | CIP / xccy basis (reads OIS substrate) + roll yield | 3 | 1 session | 1 |
+| D | NDFs (5 pairs × 5 tenors, outright convention) | 3 | 1-2 sessions | 1 |
+| E | Vol ATM term structure + RR/BF smile + vol carry | 8 | 2 sessions | 1 |
+| F | Macro indices (DXY, BBDXY, JPMEMCI) | 1 | 0.5 session | 3 |
+| G | Workflows substrate (`fx_agent/workflows/` mirroring `rates_agent/workflows/`) | infra | 0.5 session | 2 |
+| H | Shared operators extension (correlation_matrix, pca, regime_classifier, factor_decomposition) — strictly asset-agnostic per G2 | 4 | 1 session | 2 |
+| I | CFTC positioning | 2 | 0.5 session | 3 |
+| J | PPP / REER deviations | 2 | 0.5 session | 3 |
+
+**Tier 1 (must-have)** = A + B + C + D + E = **24 tools**
+**Tier 2 (substrate maturity)** = G + H = **+4 tools** (infra + 4 operators)
+**Tier 1 + Tier 2 = ~28 tools, 8-10 sessions.** ← validated target.
+**Tier 3 (nice-to-have)** = F + I + J = +5 tools, built only on concrete demand.
+
+#### 4 cross-cutting infrastructure items
+
+1. **Operators extension** (`shared/operators/`) — Phase H
+   - `correlation_matrix` (rolling, configurable window)
+   - `pca` (eigendecomp on returns matrix)
+   - `regime_classifier` (vol-state HMM or threshold-based)
+   - `factor_decomposition` (carry / value / momentum factor exposures)
+   - **G2 discipline (strict):** ZERO asset-class references. No `fx_pair` param. Works on any `Panel`.
+
+2. **Workflows substrate** (`fx_agent/workflows/`) — Phase G
+   - Mirror `rates_agent/workflows/` pattern.
+   - Composable DAG workflows: `fx_carry_screen.yml`, `fx_vol_regime_scan.yml`, `cip_dislocation_alert.yml`, `em_spot_drawdown_report.yml`.
+
+3. **UI surfaces extension**
+   - `FXVolAgentPage` (E) — separate route if vol becomes substantial.
+   - `FXCorrelationMatrixWidget` (H)
+   - `FXCarryBasketWidget` (B)
+   - `FXNDFScannerWidget` (D)
+   - Existing `FXAgentPage` extended with vol / CIP panels.
+
+4. **Orchestrator extensions**
+   - **ADR 0008 (G3 timing):** split `Domain.FX` → `Domain.FX_CASH` + `Domain.FX_VOL` + `Domain.FX_NDF` only when each has substantial built tools. Mirror Sreeram's inflation split timing.
+   - When fired: update `contracts.py`, `config.py`, agent prompts, `session.py` routing.
+   - Per-domain orchestrator test in `test_orchestrator_domains.py`.
+
+#### Final decision rationale
+
+**Build Tier 1 + Tier 2 = 28 tools across Phases A → E + G + H.**
+
+- Covers every major FX research workflow: spot regime, carry, CIP, NDFs, vol surface, basket construction, factor analysis.
+- Stays within Sreeram's architectural patterns (primitives vs operators, per-tool 4-file, manifest discipline, ADR per closed-family extension).
+- Provides ~3× the tool count of current Rates agent (~10 tools) — appropriate since FX has more sub-domains (cash vs vol vs NDF) than rates.
+- Skips Tier 3 unless concrete demand emerges. No speculative builds on CFTC / PPP / REER.
+- 8-10 dev sessions total.
+
+#### Per-phase compliance check discipline (~10 min before coding any new phase)
+
+1. Does Sreeram have an analogous tool / concept in `rates_agent/`? Read his code.
+2. Does the proposed addition violate any of his disciplines (primitives vs operators, per-tool 4-file layout, naming conventions, cross-domain reads)?
+3. Does this need a new ADR? (Use G3 timing.)
+4. Does this need new tests in his pattern (compute + wiring + sql_validation)?
+5. Document the compliance answer in the matching "Phase X" section below before starting.
+
+#### 3 open questions for Sreeram (raise at PR #178 / #184 review)
+
+1. **Cross-domain reads** — when an FX tool reads OIS substrate (Phase C CIP), preferred pattern: shared helper in `shared.analytics.rates_fetch`, or a FX-side wrapper that imports from it?
+2. **Workflows factoring** — when creating `fx_agent/workflows/` (Phase G), what stays agent-local vs. goes to `shared/workflow/`?
+3. **ADR 0008 timing** — wait until FX_VOL + FX_NDF have concrete tools (per G3), or prepare the split scaffold earlier so the rest of Phase E lands inside it?
 
 ### Wave 1 — Opportunistic data acquisition
 
@@ -142,19 +314,69 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 - `calculate_fx_carry_curve` — likely derivable from `get_fx_forward_curve` + a generic carry operator; drop until we can prove non-redundancy.
 - `FXCarryCurveWidget` — same reasoning.
 
-### Phase B — Spot universe + FX panel — planned
+### Phase B — Spot EM + FX panel primitive — IN FLIGHT (this branch)
 
-Goal: extend spot coverage from 6 G10 majors to G10 (including crosses) + EM majors; introduce the cross-sectional FX panel primitive.
+**Goal:** extend spot coverage to 9 EM majors and introduce the cross-sectional FX panel primitive — the foundation for every later cross-sectional FX workflow (carry basket, correlation matrix, factor decomposition, regime classification).
 
-**Scope:**
+**Branch:** `codex/fx-data-universe-phase-b` — stacked on `codex/fx-data-universe-extension` (PR #184), itself stacked on `codex/fx-on-latest-build` (PR #178).
 
-- New playbook `fx_spot_em.yml` (USDMXN, USDZAR, USDTRY, USDPLN, USDHUF, USDCZK, USDIDR, USDKRW, USDINR, USDBRL, USDCLP, etc.)
-- Extend `spot_fx.yml` with missing G10 crosses (NZDUSD, EURGBP, EURJPY, GBPJPY, AUDJPY, AUDNZD)
-- `calculate_fx_panel` primitive (loads FX spots into a typed Panel)
-- Verify `scan_fx_spot` accepts `market_scope='EM'` / `'G10_CROSSES'` correctly
-- 1–2 UI widgets (`FXPanelWidget`)
+#### 5 architectural Qs locked by Codex (2026-05-24)
 
-**Operator gap to flag (not in Phase B but to track):** if a generic `summarize_series` doesn't expose z-score on a Panel, that's an operator extension — done in `shared/operators/`, not as an FX primitive.
+1. **Single playbook:** extend `spot_fx.yml` to include EM. Do NOT create a separate `spot_fx_em.yml`. Rationale: G10 + EM share schema, family field already segregates them.
+2. **`calculate_fx_panel` shape:** Shape C — returns a real typed `Panel` artifact via `shared.artifacts.types.Panel` (cross-sectional, time-indexed). Not a dict, not a DataFrame, not an ad-hoc namedtuple.
+3. **`scan_fx_spot` market_scope:** already market_scope-aware via SQL filter on `instrument_master.attributes`. **Zero code change** needed — adding EM rows to the universe is enough for it to surface them under `market_scope='EM'`.
+4. **Tests:** extend `tests/test_fx_data_readiness.py` with EM assertions. Do NOT create a new test file.
+5. **UI deferred:** ship data + scanner + panel primitive first. UI for EM scanner / FX panel lands later (sub-phase or Phase E grouping). Phase B closes when the API + MCP layer is clean.
+
+#### Locked decisions (BBG verification 2026-05-25)
+
+- **EM universe = 9 pairs:** USDMXN, USDZAR, USDTRY, USDBRL, USDPLN, USDHUF, USDKRW, USDIDR, USDPHP. No drop, no add.
+- **Uniform start_date = 2000-01-01** for all 9 EM pairs. No per-instrument override (locked out).
+- **USDTRY redenomination resolution:** Scenario A — Bloomberg has a clean back-adjusted series across the 1 Jan 2005 redenomination. 31/12/2004 = 1.3435, 03/01/2005 = 1.3475, 28/02/2005 = 1.2830. No 1,000,000× discontinuity. TRY stays in V1.
+- **Fail-loud ingestion:** if any of the 9 tickers has no PX_LAST at the retained start window, pipeline must crash, not silent-skip.
+
+#### Phase B core + follow-ups
+
+**Discipline (Codex):** this PR ships ONE new primitive (`calculate_fx_panel`) + the spot EM substrate that feeds it. The follow-ups land in their own stacked branches/PRs to keep this PR short, focused, and reviewable. **Do not let Phase B grow into a 6-tool PR.**
+
+**Core (THIS PR — single new primitive):**
+1. `calculate_fx_panel` — Shape C typed `Panel` of FX returns / levels across a universe via `shared.artifacts.types.Panel`. **Cornerstone primitive** — every later cross-sectional FX tool consumes it.
+
+**Follow-ups after panel lands** (separate stacked PR on top of this one, no extra substrate dependency):
+2. `get_fx_returns_series` — log-returns at configurable horizon (daily, weekly, monthly). Reads spot substrate.
+3. `calculate_fx_drawdown` — running max / drawdown over a window for one pair.
+4. `get_fx_realized_vol` — N-day rolling realized vol for one pair.
+
+**Later (depends on EM forwards substrate, then C/D — explicitly NOT in immediate Phase B):**
+5. `calculate_fx_implied_yield_differential` — `y_quote − y_base` from forward points. Requires EM forwards extracted first (not in this PR). Prepares Phase C CIP.
+6. `scan_fx_carry_basket` — top-K basket constructor across G10 + EM. Requires EM forwards + ideally CIP / NDF substrate to be meaningful.
+
+#### Phase B execution sequence (core PR only — short and focused)
+
+1. ✅ **First commit (THIS commit) — ROADMAP update.** Maximaliste plan ported from session memory; Phase B 5 Qs and BBG decision acted in repo.
+2. **Extend `spot_fx.yml` v3.0** — add 9 EM pairs with `start_date: 2000-01-01`, `fx_family: "EM_SPOT"`, `market_scope: "EM"`, `region` per pair (LATAM / EMEA / APAC).
+3. **Wave 1.5 Bloomberg extraction** — ~9 tickers × ~26 years = ~60k rows. Bucket: `gs://quantifi-fx-data-sacha`. Use the same canonical recipe as Phase A (see "Open questions / blockers" historical entry).
+4. **Postgres ingestion** — extend `tests/test_fx_data_readiness.py` with EM assertions; readiness gate `--strict-metadata` must pass clean.
+5. **Verify `scan_fx_spot(market_scope="EM")`** surfaces the 9 new pairs correctly — no code change expected (Codex locked), but a runtime smoke + a targeted test assertion in `test_fx_data_readiness.py` (or a new wiring assertion) to make the contract visible.
+6. **Implement `calculate_fx_panel`** — compute + schemas + config + `__init__.py`. Uses `shared.artifacts.types.Panel`. Pydantic schema with `Literal["G10", "EM", "G10_CROSSES", "ALL"]` for `market_scope`.
+7. **MCP wiring + API route + manifest entry + tests for `calculate_fx_panel` ONLY** (compute + wiring + sql_validation, mirroring Phase A pattern). Do NOT scope-creep into the follow-up tools (`returns_series`, `drawdown`, `realized_vol`) — they get their own stacked PR.
+8. **Stacked draft PR** — `Depends on #184` and `Depends on #178` in body. Short, single-primitive, very reviewable.
+
+**Follow-up PRs (planned but explicitly not in this PR):**
+- **Phase B follow-up PR** — `get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol`. Stacked on this PR's branch. Same architectural pattern, no extra substrate.
+- **Phase B+ PR** — `calculate_fx_implied_yield_differential` + `scan_fx_carry_basket`. Requires EM forwards substrate to be extracted first (separate Wave). Lands after Phase C planning is clear.
+
+#### Phase B compliance check (per §"Per-phase compliance check discipline")
+
+1. **Sreeram analogue?** Rates has no `calculate_rates_panel` yet, but `shared.artifacts.types.Panel` exists from his core types. We re-use his abstraction, do not invent a parallel.
+2. **Discipline violations?** None — adding tools to existing `fx_agent/spot/tools/` directory; no operator violations; no orchestrator touch.
+3. **New ADR?** No (G3). Adding spot pairs + a panel primitive is catalogue extension, not architectural.
+4. **New tests?** Yes — compute + wiring + sql_validation for each new tool (mirror Phase A step 7b pattern). EM ticker assertions added to `test_fx_data_readiness.py` (existing file, per locked Q4).
+5. **Compliance answer documented** — this section.
+
+#### Operator gap flagged for Phase H
+
+If a generic `summarize_series` doesn't expose z-score on a `Panel`, that's an operator extension — done in `shared/operators/` (Phase H), not as an FX primitive. Phase B should NOT add `zscore_fx_panel` even if convenient; flag the gap and route through `shared/operators/` once Phase H lands.
 
 ### Phase C — CIP / cross-currency basis — planned
 
@@ -475,6 +697,12 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-24 | Phase A step 7b — three standalone-CLI test runners (same pattern as `tests/test_fx_data_readiness.py`) covering the regressions and contracts Codex's step-7 review demanded: 22 assertions across `test_fx_carry_compute.py` (9), `test_fx_forward_curve_compute.py` (8), `test_fx_tools_wiring.py` (5). All assertions pin failures we would have shipped if the bugs of steps 4 / 6 came back. | Codex review: tests must catch known-fixed bugs, not be aspirational |
 | 2026-05-24 | Phase A step 8 — UI: parameterized `fx_carry` widget (tenor / rank_by / top_n / lookback) and new `fx_forward_curve` parameterized widget. Per Codex's UI discipline ("upgrade the widget id, do not duplicate"), kept widget id `fx_carry` so legacy localStorage layouts survive; widget-side defaults preserve pre-upgrade behaviour. Both widgets self-fetching via per-instance hooks (no longer rely on `FXDataProvider` context, which is now reserved for the page-level `fx_spot_snapshot` + `fx_scanner` that don't take params). | Codex discipline: one widget per primitive, no duplicates |
 | 2026-05-24 | Phase A wrap — ROADMAP refresh: status line moved from "step 4 next" to "8/8 complete"; stale "pre-aggregated only in V1" copy in `defaults.ts` and `FXDataProvider.tsx` updated to reflect that fx_carry / fx_forward_curve are now parameterized. Branch ready for stacked PR (Depends on #178) and manual `/fx` smoke. | Codex independent validation: typecheck / build / test:build / 3 test runners / readiness gate / lint / live API smokes all green |
+| 2026-05-24 | **Maximaliste vision locked** — Tier 1 + Tier 2 = ~28 tools across Phases A → E + G + H. Quality framing ("serious FX" = conventions + primitives + asset-agnostic operators + workflows + tests + ADR-when-real). Codex validated G1/G2/G3 guardrails: G1 freezes in-review PRs, G2 forbids asset-class refs in `shared/operators/`, G3 defers ADR 0008 until vol/NDF have substance. Tier 3 (F macro indices, I CFTC positioning, J PPP/REER) deferred — build on concrete demand only. | Sacha asked "what does serious FX look like in this architecture?" Codex synthesised the maximaliste target + the 3 guardrails to keep it disciplined. |
+| 2026-05-24 | **Phase B architectural Qs locked** (5/5) — (1) extend `spot_fx.yml`, not separate `spot_fx_em.yml`; (2) `calculate_fx_panel` returns typed `Panel` via `shared.artifacts.types.Panel` (Shape C); (3) `scan_fx_spot` already market_scope-aware via SQL filter — zero code change; (4) extend `test_fx_data_readiness.py`, not new test file; (5) defer UI — ship data + scanner + panel primitive first. Per-instrument start_date also LOCKED OUT — uniform EM start_date, no exceptions. | Codex Q&A pass: each decision pre-empts a future architectural divergence between FX and rates. |
+| 2026-05-25 | **EM Bloomberg verification done** at university terminal. USDTRY = Scenario A (clean back-adjusted across 1 Jan 2005 redenomination — 31/12/2004=1.3435, 03/01/2005=1.3475, 28/02/2005=1.2830 — no 1,000,000× discontinuity). All 9 EM pairs (MXN, ZAR, TRY, BRL, PLN, HUF, KRW, IDR, PHP) have PX_LAST from ≤ 2000-01-03. | ChatGPT-assisted BBG HP verification, structured prompt with explicit decision tree (3 scenarios → uniform decision). |
+| 2026-05-25 | **EM start_date LOCKED = 2000-01-01** for all 9 pairs. Universe intact (no drop of TRY, no shift of all EM to 2005). Fail-loud ingestion required — pipeline crashes rather than silent-skip if any of the 9 tickers has no PX_LAST at the retained window. | Direct consequence of the BBG verification result. |
+| 2026-05-25 | **Phase B branch created.** `codex/fx-data-universe-phase-b` stacked on `codex/fx-data-universe-extension` (PR #184 still in review-pending, G1 respected — no commits added to it). This ROADMAP commit is the first commit on the new branch, porting the maximaliste plan from session-only memory into the repo as durable documentation. | Codex G1 — separate stacked branch for every meaningful update once a PR is in review-pending state. |
+| 2026-05-25 | **Phase B scope tightened to one primitive** during ROADMAP diff review. Codex flagged a scope-creep risk: the initial draft listed 6 tools (`calculate_fx_panel` + returns / drawdown / realized vol + implied yield diff + carry basket) all under Phase B. Re-split into B-core (THIS PR — `calculate_fx_panel` only), B-followup (returns / drawdown / realized vol, separate stacked PR — no extra substrate), B+ (implied yield diff + carry basket, deferred until EM forwards substrate is extracted). The 6 tools stay in the maximaliste plan, but only 1 ships in this PR. Also corrected `shared.types.Panel` → `shared.artifacts.types.Panel` (actual repo path). | Keep PRs short, single-primitive, easy to review — same discipline as Phase A step splits. |
 
 ---
 

@@ -52,6 +52,21 @@ DEFAULT_MIN_HISTORY_POINTS = 252
 DEFAULT_MAX_STALENESS_DAYS = 90
 OPTIONAL_METADATA_FIELDS = ("market_scope", "base_ccy", "quote_ccy", "fx_family", "region")
 
+# Phase B / Wave 1.5 — EM spot universe invariants (Codex-locked 2026-05-25).
+# These are tighter than the generic spot checks because the EM universe
+# was locked to exactly 9 pairs with a uniform start_date = 2000-01-03,
+# validated against Bloomberg on 2026-05-25. Any drift from these
+# invariants signals either an unintentional universe change, a partial
+# ingestion, or a regression in the manual-extraction pipeline.
+EM_SPOT_PAIRS: tuple[str, ...] = (
+    "USDMXN", "USDBRL", "USDZAR", "USDTRY",
+    "USDPLN", "USDHUF", "USDKRW", "USDIDR", "USDPHP",
+)
+EM_VALID_REGIONS: frozenset[str] = frozenset({"LATAM", "EMEA", "APAC"})
+EM_DEFAULT_MIN_DATE = date(2000, 1, 3)
+EM_DEFAULT_MIN_ROWS_PER_PAIR = 6000
+EM_REQUIRED_ATTRS: tuple[str, ...] = ("pair", "base_ccy", "quote_ccy")
+
 
 @dataclass(frozen=True)
 class CheckResult:
@@ -347,6 +362,153 @@ def validate_market_coverage(
     return results
 
 
+def validate_em_spot_specifics(
+    *,
+    playbook: Mapping[str, Any],
+    instruments_by_ticker: Mapping[str, Mapping[str, Any]],
+    coverage_by_ticker: Mapping[str, Mapping[str, Any]],
+    expected_min_date: date,
+    min_rows_per_pair: int,
+) -> list[CheckResult]:
+    """Stronger invariants for the EM subset of `spot_fx`, layered on top
+    of the generic playbook+coverage checks. Codex-locked 2026-05-25 as
+    Phase B's readiness contract:
+
+      - exactly the 9 expected EM pairs in the playbook (EM_SPOT_PAIRS),
+      - fx_family="EM_SPOT" and market_scope="EM" in DB for all 9
+        (already enforced via OPTIONAL_METADATA_FIELDS — restated here
+        for explicitness in case the optional check is silenced),
+      - region in {LATAM, EMEA, APAC} for all 9,
+      - pair / base_ccy / quote_ccy populated in instrument_master.attributes,
+      - row_count per pair >= min_rows_per_pair (default 6000),
+      - min_date == expected_min_date (default 2000-01-03) per pair.
+
+    Total EM row count is reported as an INFO/PASS line, not asserted —
+    it grows naturally if the playbook is re-extracted later (Codex
+    nuance: keep the invariants tight on shape & boundaries, soft on
+    absolute counts that will drift over time).
+    """
+    results: list[CheckResult] = []
+
+    # 1. Universe identity — exactly the 9 expected pairs.
+    em_universe = [u for u in _universe(playbook) if u.get("fx_family") == "EM_SPOT"]
+    em_pairs_in_playbook = {str(u.get("pair") or "").upper() for u in em_universe}
+    expected_set = set(EM_SPOT_PAIRS)
+    if em_pairs_in_playbook != expected_set:
+        missing = expected_set - em_pairs_in_playbook
+        extra = em_pairs_in_playbook - expected_set
+        bits: list[str] = []
+        if missing:
+            bits.append(f"missing={sorted(missing)}")
+        if extra:
+            bits.append(f"unexpected={sorted(extra)}")
+        results.append(_fail("spot EM universe", "set mismatch: " + ", ".join(bits)))
+        return results  # short-circuit — rest of the checks would be misleading
+    results.append(_pass("spot EM universe", "all 9 expected EM pairs present in playbook"))
+
+    # 2-6. Per-pair invariants.
+    bad_scope_or_family: list[str] = []
+    bad_region: list[str] = []
+    missing_required_attrs: list[str] = []
+    short_history: list[str] = []
+    wrong_min_date: list[str] = []
+    total_em_rows = 0
+
+    for item in em_universe:
+        ticker = str(item["ticker"])
+        row = instruments_by_ticker.get(ticker) or {}
+        attrs = row.get("attributes") or {}
+
+        # market_scope + fx_family (Codex Q3 lock: SQL filter relies on these)
+        if attrs.get("market_scope") != "EM":
+            bad_scope_or_family.append(f"{ticker}.market_scope={attrs.get('market_scope')!r}")
+        if attrs.get("fx_family") != "EM_SPOT":
+            bad_scope_or_family.append(f"{ticker}.fx_family={attrs.get('fx_family')!r}")
+
+        # region vocab
+        region = attrs.get("region")
+        if region not in EM_VALID_REGIONS:
+            bad_region.append(f"{ticker}.region={region!r}")
+
+        # required attrs
+        for must_have in EM_REQUIRED_ATTRS:
+            if not attrs.get(must_have):
+                missing_required_attrs.append(f"{ticker}.{must_have}")
+
+        # market data coverage
+        coverage = coverage_by_ticker.get(ticker) or {}
+        row_count = int(coverage.get("row_count") or 0)
+        total_em_rows += row_count
+        if row_count < min_rows_per_pair:
+            short_history.append(f"{ticker}={row_count}")
+
+        min_date_val = coverage.get("min_date")
+        if hasattr(min_date_val, "date"):
+            min_date_val = min_date_val.date()
+        if min_date_val != expected_min_date:
+            wrong_min_date.append(f"{ticker}.min_date={min_date_val}")
+
+    if bad_scope_or_family:
+        results.append(
+            _fail(
+                "spot EM scope/family",
+                f"{bad_scope_or_family} (expected market_scope='EM' and fx_family='EM_SPOT')",
+            )
+        )
+    else:
+        results.append(_pass("spot EM scope/family", "all 9 pairs market_scope='EM' fx_family='EM_SPOT'"))
+
+    if bad_region:
+        results.append(
+            _fail(
+                "spot EM region vocab",
+                f"{bad_region} (must be in {sorted(EM_VALID_REGIONS)})",
+            )
+        )
+    else:
+        results.append(_pass("spot EM region vocab", f"all 9 pairs region in {sorted(EM_VALID_REGIONS)}"))
+
+    if missing_required_attrs:
+        results.append(
+            _fail(
+                "spot EM required attrs",
+                f"{missing_required_attrs} (required: {list(EM_REQUIRED_ATTRS)})",
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "spot EM required attrs",
+                f"{', '.join(EM_REQUIRED_ATTRS)} populated for all 9 pairs",
+            )
+        )
+
+    if short_history:
+        results.append(
+            _fail(
+                "spot EM history depth",
+                f"min required {min_rows_per_pair}; short series: {short_history}",
+            )
+        )
+    else:
+        results.append(_pass("spot EM history depth", f">= {min_rows_per_pair} rows per pair"))
+
+    if wrong_min_date:
+        results.append(
+            _fail(
+                "spot EM min_date",
+                f"expected {expected_min_date} per pair; mismatches: {wrong_min_date}",
+            )
+        )
+    else:
+        results.append(_pass("spot EM min_date", f"all 9 pairs start at {expected_min_date}"))
+
+    # INFO line — total rows reported but not pinned (will grow on re-extraction)
+    results.append(_pass("spot EM total rows (info)", f"{total_em_rows:,} rows across 9 pairs"))
+
+    return results
+
+
 def validate_tool_smoke(engine, *, field_name: str) -> list[CheckResult]:
     results: list[CheckResult] = []
 
@@ -403,6 +565,26 @@ def main() -> None:
         help="Treat optional metadata warnings as failures.",
     )
     parser.add_argument(
+        "--em-min-date",
+        type=lambda s: date.fromisoformat(s),
+        default=EM_DEFAULT_MIN_DATE,
+        help=(
+            "Required uniform min_date for every EM spot pair (default "
+            f"{EM_DEFAULT_MIN_DATE.isoformat()}). Tighten if you ever re-extract "
+            "EM with a different baseline."
+        ),
+    )
+    parser.add_argument(
+        "--em-min-rows-per-pair",
+        type=int,
+        default=EM_DEFAULT_MIN_ROWS_PER_PAIR,
+        help=(
+            "Minimum row_count per EM spot pair (default "
+            f"{EM_DEFAULT_MIN_ROWS_PER_PAIR}). Stricter than the generic "
+            "--min-history-points because EM has uniform 2000-onward history."
+        ),
+    )
+    parser.add_argument(
         "--skip-tools",
         action="store_true",
         help="Only check playbooks + database coverage; skip compute smoke calls.",
@@ -421,7 +603,7 @@ def main() -> None:
 
     all_results: list[CheckResult] = []
 
-    _print_section("[1/5] Loading playbooks")
+    _print_section("[1/6] Loading playbooks")
     try:
         spot_playbook = _load_playbook(args.spot_playbook)
         forwards_playbook = _load_playbook(args.forwards_playbook)
@@ -442,7 +624,7 @@ def main() -> None:
     _print_results(playbook_results)
     all_results.extend(playbook_results)
 
-    _print_section("[2/5] Validating playbook shape")
+    _print_section("[2/6] Validating playbook shape")
     shape_results = []
     shape_results.extend(
         validate_playbook_shape(
@@ -466,16 +648,17 @@ def main() -> None:
     _print_results(shape_results)
     all_results.extend(shape_results)
 
-    _print_section("[3/5] Checking live DB instrument metadata")
+    _print_section("[3/6] Checking live DB instrument metadata")
     engine = get_db_engine()
     spot_tickers = _expected_tickers(spot_playbook)
     forwards_tickers = _expected_tickers(forwards_playbook)
+    spot_instruments = fetch_instrument_rows(engine, spot_tickers)
     metadata_results = []
     metadata_results.extend(
         validate_instrument_master(
             label="spot",
             playbook=spot_playbook,
-            rows_by_ticker=fetch_instrument_rows(engine, spot_tickers),
+            rows_by_ticker=spot_instruments,
             expected_instrument_type="fx_spot",
         )
     )
@@ -491,12 +674,13 @@ def main() -> None:
     _print_results(metadata_results)
     all_results.extend(metadata_results)
 
-    _print_section("[4/5] Checking live DB market-data coverage")
+    _print_section("[4/6] Checking live DB market-data coverage")
+    spot_coverage = fetch_market_coverage(engine, tickers=spot_tickers, field_name=args.field)
     coverage_results = []
     coverage_results.extend(
         validate_market_coverage(
             label="spot",
-            coverage_by_ticker=fetch_market_coverage(engine, tickers=spot_tickers, field_name=args.field),
+            coverage_by_ticker=spot_coverage,
             expected_tickers=spot_tickers,
             field_name=args.field,
             min_history_points=args.min_history_points,
@@ -520,13 +704,24 @@ def main() -> None:
     _print_results(coverage_results)
     all_results.extend(coverage_results)
 
+    _print_section("[5/6] Checking EM spot-specific invariants (Phase B Codex lock)")
+    em_results = validate_em_spot_specifics(
+        playbook=spot_playbook,
+        instruments_by_ticker=spot_instruments,
+        coverage_by_ticker=spot_coverage,
+        expected_min_date=args.em_min_date,
+        min_rows_per_pair=args.em_min_rows_per_pair,
+    )
+    _print_results(em_results)
+    all_results.extend(em_results)
+
     if not args.skip_tools:
-        _print_section("[5/5] Running FX tool smoke checks")
+        _print_section("[6/6] Running FX tool smoke checks")
         tool_results = validate_tool_smoke(engine, field_name=args.field)
         _print_results(tool_results)
         all_results.extend(tool_results)
     else:
-        _print_section("[5/5] Running FX tool smoke checks")
+        _print_section("[6/6] Running FX tool smoke checks")
         skipped = [_warn("tool smoke", "skipped by --skip-tools")]
         _print_results(skipped)
         all_results.extend(skipped)
