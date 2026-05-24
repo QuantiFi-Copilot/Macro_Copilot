@@ -146,6 +146,8 @@ def _custom_config(**overrides) -> ToolConfig:
         "rate_round_decimals": 4,
         "prob_round_decimals": 2,
         "num_moves_round_decimals": 3,
+        "forward_horizon_days": 365,
+        "past_horizon_days": 540,
     }
     defaults.update(overrides)
     valid_ranges = {
@@ -153,6 +155,8 @@ def _custom_config(**overrides) -> ToolConfig:
         "rate_round_decimals": [2, 8],
         "prob_round_decimals": [0, 4],
         "num_moves_round_decimals": [0, 6],
+        "forward_horizon_days": [30, 1095],
+        "past_horizon_days": [30, 1825],
     }
     return ToolConfig(
         tool=ToolMeta(
@@ -200,9 +204,19 @@ class TestBundledConfig:
             "rate_round_decimals",
             "prob_round_decimals",
             "num_moves_round_decimals",
+            "forward_horizon_days",
+            "past_horizon_days",
         }
         missing = required - set(cfg.conventions.keys())
         assert not missing, f"missing: {sorted(missing)}"
+
+    def test_horizons_sourced_from_wirp_yml(self):
+        """Codex P3 fix — the 1500-day hard-coded horizon was
+        replaced with YAML conventions sourced from wirp.yml's
+        Stage-B-verified band."""
+        cfg = load_tool_config(CONFIG_PATH)
+        assert cfg.convention_value("forward_horizon_days") == 365
+        assert cfg.convention_value("past_horizon_days") == 540
 
     def test_field_mappings_pinned_to_adr_0009(self):
         """The four ``*_field`` conventions must match ADR 0009 §1's
@@ -285,14 +299,27 @@ class TestComputeHappyPath:
         assert cm["requested_meeting_date"] is None
         assert cm["next_meeting_date"] == "2026-06-17"
         assert cm["next_implied_policy_rate_pct"] == 3.637
-        assert cm["next_signed_move_prob_pct"] == 8.10
-        # All move_probs are positive — hike-leaning
-        assert cm["next_hike_prob_pct"] == 8.10
-        assert cm["next_cut_prob_pct"] == 0.0
-        assert cm["next_hold_prob_pct"] == 91.90
+        # Post-Codex-P0 schema: raw cumulative move prob surfaced
+        # verbatim; no derived hike/hold/cut fields.
+        assert cm["next_cumulative_move_prob_pct"] == 8.10
+        assert cm["next_num_25bp_moves_priced"] == 0.081
+        assert cm["next_rate_change_native"] == 0.020
+        # The removed fields MUST NOT be present (pins the
+        # post-Codex-P0 schema change).
+        assert "next_hike_prob_pct" not in cm
+        assert "next_cut_prob_pct" not in cm
+        assert "next_hold_prob_pct" not in cm
+        assert "next_signed_move_prob_pct" not in cm
 
         assert len(out["meetings"]) == 3
         meeting = out["meetings"][0]
+        # Per-meeting shape: removed derived fields too.
+        assert "hike_prob_pct" not in meeting
+        assert "cut_prob_pct" not in meeting
+        assert "hold_prob_pct" not in meeting
+        assert "signed_move_prob_pct" not in meeting
+        # Renamed field is present
+        assert "cumulative_move_prob_pct" in meeting
         # Provenance: synthetic vendor_ticker + 4 Bloomberg tickers
         assert meeting["vendor_ticker"] == "WIRP:FOMC:2026-06-17"
         assert meeting["bloomberg_ticker_implied_rate"] == "US0BFR JUN2026 Index"
@@ -318,9 +345,9 @@ class TestComputeHappyPath:
         assert cm["n_meetings_returned"] == 1
         assert len(out["meetings"]) == 1
 
-    def test_signed_move_prob_negative_is_cut_leaning(self):
-        """Verify identity-derived hike/cut/hold when move_prob is
-        negative (cut-leaning meeting)."""
+    def test_cumulative_move_prob_negative_is_cut_leaning(self):
+        """Negative cumulative_move_prob_pct surfaces verbatim as
+        cut-leaning pricing.  No derivation."""
         raw_df = _build_raw_df(meetings=[
             (date(2026, 6, 17), 3.50, -22.0, -0.30, -0.055),
         ], central_bank="FOMC")
@@ -330,12 +357,9 @@ class TestComputeHappyPath:
         out, _ = self._run(params, raw_df)
         assert "error" not in out
         cm = out["current_metrics"]
-        # signed = -22.0 → hike=0, cut=22, hold=78
-        assert cm["next_hike_prob_pct"] == 0.0
-        assert cm["next_cut_prob_pct"] == 22.0
-        assert cm["next_hold_prob_pct"] == 78.0
+        assert cm["next_cumulative_move_prob_pct"] == -22.0
 
-    def test_signed_move_prob_zero_is_pure_hold(self):
+    def test_cumulative_move_prob_zero_surfaces_verbatim(self):
         raw_df = _build_raw_df(meetings=[
             (date(2026, 6, 17), 3.50, 0.0, 0.0, 0.0),
         ], central_bank="ECB")
@@ -344,9 +368,7 @@ class TestComputeHappyPath:
         )
         out, _ = self._run(params, raw_df)
         cm = out["current_metrics"]
-        assert cm["next_hike_prob_pct"] == 0.0
-        assert cm["next_cut_prob_pct"] == 0.0
-        assert cm["next_hold_prob_pct"] == 100.0
+        assert cm["next_cumulative_move_prob_pct"] == 0.0
 
     def test_default_n_meetings_used_when_input_omits_it(self):
         """When selection_mode=next_n_meetings and n_meetings is None,
@@ -510,7 +532,7 @@ class TestHonestAbsence:
         )
         # The other three fields are populated normally
         assert meeting["implied_policy_rate_pct"] == 3.637
-        assert meeting["signed_move_prob_pct"] == 8.10
+        assert meeting["cumulative_move_prob_pct"] == 8.10
 
 
 # ===========================================================================
@@ -646,10 +668,10 @@ class TestMethodologyNoteSurface:
             )
 
     def test_methodology_note_surfaces_mandatory_disclosure(self):
-        """The brief calls this out as MANDATORY: the P5 card must
-        surface 'Source: Bloomberg WIRP screen as ingested per
-        ADR 0009. NOT recomputed from STIR futures. WIRP definition
-        of hike-probability anchored at consensus 25bp move.'"""
+        """The brief's MANDATORY P5 card disclosure: source + NOT
+        recomputed + 25bp anchor.  Plus the post-Codex-P0 cumulative
+        disclosure (PR #190 fix).
+        """
         raw_df = _build_raw_df(meetings=[
             (date(2026, 6, 17), 3.637, 8.10, 0.081, 0.020),
         ])
@@ -672,40 +694,57 @@ class TestMethodologyNoteSurface:
         assert "ADR 0009" in note
         assert "NOT recomputed" in note or "Not recomputed" in note.lower()
         assert "STIR futures" in note
-        assert "25bp move" in note or "25bp" in note
+        assert "25bp" in note
         assert "P12" in note
-        # Identity-derivation disclosure
-        assert "hike_prob" in note
-        assert "max(p, 0)" in note or "max(p,0)" in note.lower().replace(' ', '')
-        # Unit-honesty disclosure for rate_change
-        assert "NATIVE" in note or "native" in note
+        # Codex-P0 cumulative disclosure (the LOAD-BEARING fix)
+        assert "CUMULATIVE" in note
+        assert "-360.1" in note or "-360" in note  # observed range disclosure
+        assert "548.0" in note or "548" in note
+        assert "DO NOT" in note or "DOES NOT" in note  # the explicit no-identity disclosure
+        # The removed-derivation disclaimer
+        assert (
+            "does NOT emit" in note or "DOES NOT emit" in note
+            or "does not emit" in note.lower()
+        )
+        # WIRP_RATE_CHANGE unit confirmed as percentage points
+        assert "PERCENTAGE POINTS" in note or "percentage points" in note
 
 
 # ===========================================================================
 # 8. Identity derivation math — exhaustive corner cases
 # ===========================================================================
 
-class TestIdentityDerivation:
-    """Pin the desk-recognised hike/cut/hold identity:
-        hike = max(p, 0)
-        cut  = max(-p, 0)
-        hold = 100 - |p|
-    These are NOT recomputed Bloomberg quantities; they're identities
-    on the single signed WIRP_MOVE_PROB.  P12 boundary preserved.
+class TestCumulativeMoveProbVerbatim:
+    """Post-Codex-P0 (PR #190 review): WIRP_MOVE_PROB is CUMULATIVE
+    per wirp.yml — observed live-DB range -360.1 .. 548.0.  The
+    primitive surfaces the value VERBATIM and DOES NOT emit any
+    derived hike / hold / cut probability fields.  These tests pin
+    the post-fix wire contract and cover the load-bearing cumulative
+    values that broke the original derivation.
     """
 
-    @pytest.mark.parametrize("signed_prob,expected_hike,expected_cut,expected_hold", [
-        (8.10, 8.10, 0.0, 91.90),
-        (-22.0, 0.0, 22.0, 78.0),
-        (0.0, 0.0, 0.0, 100.0),
-        (50.0, 50.0, 0.0, 50.0),
-        (-50.0, 0.0, 50.0, 50.0),
-        (100.0, 100.0, 0.0, 0.0),    # full hike priced
-        (-100.0, 0.0, 100.0, 0.0),   # full cut priced
+    @pytest.mark.parametrize("cumulative_prob", [
+        # Values inside the naive [-100, 100] range
+        8.10,
+        -22.0,
+        0.0,
+        100.0,
+        -100.0,
+        # Values OUTSIDE [-100, 100] — the empirical cases that
+        # broke the original derivation.  These are the load-bearing
+        # cumulative-semantics test vectors per the Codex P0 finding.
+        -104.9,     # BOE 2025-05-08 — Codex's empirical counter-example
+        200.0,      # Two-25bp-hike priced
+        -150.0,     # 1.5 cuts priced
+        548.0,      # Live-DB max range
+        -360.1,     # Live-DB min range
     ])
-    def test_identity_matrix(self, signed_prob, expected_hike, expected_cut, expected_hold):
+    def test_cumulative_move_prob_surfaces_verbatim(self, cumulative_prob):
+        """No matter the value (in-band or out-of-naive-range), the
+        primitive surfaces it verbatim under ``cumulative_move_prob_pct``
+        and emits no derived hike/hold/cut fields."""
         raw_df = _build_raw_df(meetings=[
-            (date(2026, 6, 17), 3.5, signed_prob, 0.0, 0.0),
+            (date(2026, 6, 17), 3.5, cumulative_prob, 0.0, 0.0),
         ])
         params = WirpMeetingPricingInput(
             central_bank="FOMC", selection_mode="next_n_meetings", n_meetings=1,
@@ -721,14 +760,25 @@ class TestIdentityDerivation:
         ):
             out = calculate_wirp_meeting_pricing(engine=mock_engine, params=params)
         m = out["meetings"][0]
-        assert m["signed_move_prob_pct"] == signed_prob
-        assert m["hike_prob_pct"] == expected_hike
-        assert m["cut_prob_pct"] == expected_cut
-        assert m["hold_prob_pct"] == expected_hold
+        # Verbatim — no clamping, no clipping, no derivation.
+        assert m["cumulative_move_prob_pct"] == cumulative_prob
+        # Removed-field absence pinned for the cumulative case too.
+        for removed in (
+            "signed_move_prob_pct",
+            "hike_prob_pct",
+            "cut_prob_pct",
+            "hold_prob_pct",
+        ):
+            assert removed not in m, (
+                f"Removed field {removed!r} reappeared in the output "
+                f"for cumulative_prob={cumulative_prob!r} — the Codex "
+                f"P0 fix has regressed"
+            )
 
-    def test_none_propagates_through_identity_derivation(self):
-        """When signed_move_prob is missing (None), all three derived
-        probabilities are None — NOT fabricated zeros."""
+    def test_none_propagates_when_move_prob_missing(self):
+        """When WIRP_MOVE_PROB is missing (the available=false opt-
+        out per ADR 0009 §4), the cumulative_move_prob_pct is None.
+        Pin the honest-absence shape — no fallback to 0.0."""
         raw_df = _build_raw_df(
             meetings=[(date(2026, 6, 17), 3.5, 0.0, 0.0, 0.0)],
             drop_field="WIRP_MOVE_PROB",
@@ -747,7 +797,4 @@ class TestIdentityDerivation:
         ):
             out = calculate_wirp_meeting_pricing(engine=mock_engine, params=params)
         m = out["meetings"][0]
-        assert m["signed_move_prob_pct"] is None
-        assert m["hike_prob_pct"] is None
-        assert m["cut_prob_pct"] is None
-        assert m["hold_prob_pct"] is None
+        assert m["cumulative_move_prob_pct"] is None

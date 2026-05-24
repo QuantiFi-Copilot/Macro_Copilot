@@ -45,7 +45,12 @@ def _clear_cache():
 
 
 def _well_formed_output() -> dict:
-    """Mock that validates against the live WirpMeetingPricingOutput shape."""
+    """Mock that validates against the live WirpMeetingPricingOutput shape.
+
+    Field names + semantics reflect the Codex P0 fix on PR #190:
+    ``cumulative_move_prob_pct`` (replacing the misnamed
+    signed_move_prob_pct), and NO derived hike/cut/hold fields.
+    """
     return {
         "current_metrics": {
             "central_bank": "FOMC",
@@ -55,10 +60,9 @@ def _well_formed_output() -> dict:
             "requested_meeting_date": None,
             "next_meeting_date": "2026-06-17",
             "next_implied_policy_rate_pct": 3.637,
-            "next_signed_move_prob_pct": 8.1,
-            "next_hike_prob_pct": 8.1,
-            "next_cut_prob_pct": 0.0,
-            "next_hold_prob_pct": 91.9,
+            "next_cumulative_move_prob_pct": 8.1,
+            "next_num_25bp_moves_priced": 0.081,
+            "next_rate_change_native": 0.02,
             "next_as_of_date": "2026-05-22",
         },
         "meetings": [
@@ -68,12 +72,9 @@ def _well_formed_output() -> dict:
                 "meeting_token": "JUN2026",
                 "as_of_date": "2026-05-22",
                 "implied_policy_rate_pct": 3.637,
-                "signed_move_prob_pct": 8.1,
+                "cumulative_move_prob_pct": 8.1,
                 "num_25bp_moves_priced": 0.081,
                 "rate_change_native": 0.02,
-                "hike_prob_pct": 8.1,
-                "cut_prob_pct": 0.0,
-                "hold_prob_pct": 91.9,
                 "vendor_ticker": "WIRP:FOMC:2026-06-17",
                 "bloomberg_ticker_implied_rate": "US0BFR JUN2026 Index",
                 "bloomberg_ticker_move_prob": "US0BPR JUN2026 Index",
@@ -83,11 +84,11 @@ def _well_formed_output() -> dict:
         ],
         "methodology_note": (
             "Source: Bloomberg WIRP screen as ingested per ADR 0009.  "
-            "NOT recomputed from STIR futures.  WIRP definition of "
-            "hike-probability anchored at consensus 25bp move.  "
-            "Identity: hike_prob = max(p, 0), cut_prob = max(-p, 0), "
-            "hold_prob = 100 - |p|.  rate_change in NATIVE Bloomberg "
-            "units.  P12."
+            "NOT recomputed from STIR futures.  cumulative_move_prob_pct "
+            "is CUMULATIVE across multiple 25bp moves (range "
+            "-360.1..548.0 — see wirp.yml Stage-B); DO NOT interpret as "
+            "single-event probability.  rate_change_native in PERCENTAGE "
+            "POINTS (Bloomberg native units).  P12."
         ),
     }
 

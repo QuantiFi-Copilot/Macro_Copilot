@@ -337,23 +337,29 @@ tools:
       ECB / BOE / BOJ).  Surfaces Bloomberg's WIRP-screen fields
       verbatim per ADR 0009 §1 (INGEST primitive, P12 boundary —
       NOT recomputed from STIR futures or OIS pricing): implied
-      policy rate, signed move probability, number of 25bp moves
-      priced, implied rate change.  Identity-derives separate hike /
-      cut / hold probabilities from Bloomberg's single signed
-      WIRP_MOVE_PROB (max(p, 0) / max(-p, 0) / 100 - |p| — the
-      desk's standard interpretation, NOT a recomputation).  Two
-      selection modes (next_n_meetings vs specific_meeting_date)
-      via a cohesive PR8 central surface; n_meetings defaults from
-      YAML (currently 6).
+      policy rate, CUMULATIVE move probability, number of 25bp moves
+      priced, implied rate change.  WIRP_MOVE_PROB is cumulative
+      across multiple 25bp moves (range -360.1..548.0 per wirp.yml
+      Stage-B) — emitted as ``cumulative_move_prob_pct`` with explicit
+      methodology disclosure.  No hike/cut/hold decomposition: any
+      single-event identity (max(p,0)/max(-p,0)/100-|p|) is
+      empirically wrong for a cumulative quantity — BOE 2025-05-08
+      ships -104.9% verbatim, which the identity would render as
+      hold=-4.9% (impossible).  Step-by-step probability derivation is
+      a documented separate primitive (see config.yaml planned_
+      extensions).  Two selection modes (next_n_meetings vs
+      specific_meeting_date) via a cohesive PR8 central surface;
+      n_meetings defaults from YAML (currently 6).
 
     bucket_rationale: >-
-      Strict INGEST of Bloomberg-stored WIRP fields with identity-
-      derived auxiliary probabilities.  No model inference, no
-      recomputation.  The wire-frozen ``*_field`` conventions
-      (implied_rate_field / move_prob_field / num_moves_field /
-      rate_change_field) pin the read path to ADR 0009 §1's metric →
-      field mapping; compute layer guards each with
-      NotImplementedError.  Categorical convention
+      Strict INGEST of Bloomberg-stored WIRP fields surfaced verbatim
+      under accurate field names.  No model inference, no
+      recomputation, no derived single-event probabilities (per
+      P12 + the Codex P0 finding on PR #190 — see one_liner).  The
+      wire-frozen ``*_field`` conventions (implied_rate_field /
+      move_prob_field / num_moves_field / rate_change_field) pin the
+      read path to ADR 0009 §1's metric → field mapping; compute layer
+      guards each with NotImplementedError.  Categorical convention
       ``supported_central_banks`` wire-locked to the four ADR 0009
       §2 region-prefix banks.
 

@@ -259,6 +259,11 @@ class WirpMeetingSnapshot(BaseModel):
     )
 
     # ---- Bloomberg-ingested fields (P12 boundary) ----
+    #
+    # All four are surfaced verbatim per ADR 0009 §1.  No identity-
+    # derived "hike probability / hold probability / cut probability"
+    # fields are emitted — see the docstring note on field naming
+    # below for the Codex-review correction (PR #190).
     implied_policy_rate_pct: Optional[float] = Field(
         None,
         description=(
@@ -268,66 +273,50 @@ class WirpMeetingSnapshot(BaseModel):
             "0009 §1's P12 boundary."
         ),
     )
-    signed_move_prob_pct: Optional[float] = Field(
+    cumulative_move_prob_pct: Optional[float] = Field(
         None,
         description=(
-            "WIRP_MOVE_PROB — Bloomberg's SIGNED probability (in "
-            "percent) of a single 25bp move at this meeting.  "
-            "Positive = hike-leaning, negative = cut-leaning.  "
-            "The desk's separate hike / cut / hold probabilities "
-            "are IDENTITY-derived from this single signed field "
-            "below — see hike_prob_pct / cut_prob_pct / "
-            "hold_prob_pct."
+            "WIRP_MOVE_PROB — Bloomberg's CUMULATIVE signed "
+            "probability of a 25bp move at this meeting, in percent.  "
+            "Sign: + = hike-leaning, − = cut-leaning.  "
+            "**CUMULATIVE** per rates_agent/playbooks/wirp.yml — the "
+            "value CAN exceed ±100 when the market prices more than "
+            "one 25bp move (observed live-DB range: -360.1 .. 548.0). "
+            "It is NOT a single-event probability bounded in "
+            "[0, 100], and a naive ``hike = max(p, 0)`` / "
+            "``cut = max(-p, 0)`` / ``hold = 100 - |p|`` "
+            "identity DOES NOT hold and produces impossible "
+            "values (e.g. hold = −4.9% for BOE 2025-05-08).  This "
+            "primitive therefore SURFACES the raw value verbatim "
+            "and DOES NOT emit derived hike / hold / cut "
+            "probability fields; a future primitive that maps the "
+            "cumulative WIRP_NUM_MOVES + WIRP_MOVE_PROB joint "
+            "distribution into desk-recognised step-by-step "
+            "probabilities is documented in "
+            "methodology.planned_extensions."
         ),
     )
     num_25bp_moves_priced: Optional[float] = Field(
         None,
         description=(
-            "WIRP_NUM_MOVES — Bloomberg's count of 25bp moves "
-            "priced into the meeting.  Fractional values are normal "
-            "(e.g. 0.237 = 23.7% of a 25bp move = ~6bp implied)."
+            "WIRP_NUM_MOVES — Bloomberg's signed count of 25bp moves "
+            "priced into the meeting.  Fractional and beyond-±1 "
+            "values are normal (observed live-DB range: -9.57 .. 6.729).  "
+            "Surfaced verbatim per ADR 0009 §1."
         ),
     )
     rate_change_native: Optional[float] = Field(
         None,
         description=(
             "WIRP_RATE_CHANGE — Bloomberg's implied change in the "
-            "rate vs the current effective rate.  In NATIVE "
-            "Bloomberg units (ADR 0009 §1 explicitly disclaims the "
-            "unit — Bloomberg's PX_LAST is stored verbatim and the "
-            "unit is NOT confirmed bp).  Surfaced as-is; downstream "
-            "consumers must NOT assume the unit.  Field-name "
-            "suffix ``_native`` to make the unit-disclaimer loud on "
-            "the wire."
-        ),
-    )
-
-    # ---- IDENTITY-derived probabilities (NOT recomputed quantities) ----
-    hike_prob_pct: Optional[float] = Field(
-        None,
-        description=(
-            "max(signed_move_prob_pct, 0) — the desk-recognised "
-            "hike probability identity-derived from Bloomberg's "
-            "signed move probability.  In percent.  None when "
-            "signed_move_prob_pct is None."
-        ),
-    )
-    cut_prob_pct: Optional[float] = Field(
-        None,
-        description=(
-            "max(-signed_move_prob_pct, 0) — the desk-recognised "
-            "cut probability identity-derived from Bloomberg's "
-            "signed move probability.  In percent.  None when "
-            "signed_move_prob_pct is None."
-        ),
-    )
-    hold_prob_pct: Optional[float] = Field(
-        None,
-        description=(
-            "100 - |signed_move_prob_pct| — the desk-recognised "
-            "hold probability identity-derived from Bloomberg's "
-            "signed move probability.  In percent.  None when "
-            "signed_move_prob_pct is None."
+            "rate vs the current effective rate.  Per ``wirp.yml``'s "
+            "Stage-B verification: the unit is PERCENTAGE POINTS "
+            "(NOT basis points) — confirmed by the probe's observed "
+            "range -2.392 .. 1.013 (a bp-unit field would print "
+            "values in the ±100s, not ±2).  The ``_native`` suffix "
+            "is kept for backward-compat with the ADR 0009 §1 "
+            "naming convention (Bloomberg's value is stored "
+            "verbatim, no conversion applied)."
         ),
     )
 
@@ -417,21 +406,31 @@ class WirpMeetingPricingCurrentMetrics(BaseModel):
             "mirrors ``meetings[0].implied_policy_rate_pct``."
         ),
     )
-    next_signed_move_prob_pct: Optional[float] = Field(
+    next_cumulative_move_prob_pct: Optional[float] = Field(
         None,
-        description="WIRP_MOVE_PROB at the next-up meeting (signed, percent).",
+        description=(
+            "WIRP_MOVE_PROB at the next-up meeting — CUMULATIVE "
+            "signed move probability (can exceed ±100 per the "
+            "WirpMeetingSnapshot docstring).  Mirrors "
+            "``meetings[0].cumulative_move_prob_pct``."
+        ),
     )
-    next_hike_prob_pct: Optional[float] = Field(
+    next_num_25bp_moves_priced: Optional[float] = Field(
         None,
-        description="Identity-derived hike_prob_pct at the next-up meeting.",
+        description=(
+            "WIRP_NUM_MOVES at the next-up meeting — signed count of "
+            "25bp moves priced.  Mirrors "
+            "``meetings[0].num_25bp_moves_priced``."
+        ),
     )
-    next_cut_prob_pct: Optional[float] = Field(
+    next_rate_change_native: Optional[float] = Field(
         None,
-        description="Identity-derived cut_prob_pct at the next-up meeting.",
-    )
-    next_hold_prob_pct: Optional[float] = Field(
-        None,
-        description="Identity-derived hold_prob_pct at the next-up meeting.",
+        description=(
+            "WIRP_RATE_CHANGE at the next-up meeting — implied rate "
+            "change vs current effective rate, in percentage points "
+            "(per wirp.yml's Stage-B verification).  Mirrors "
+            "``meetings[0].rate_change_native``."
+        ),
     )
     next_as_of_date: Optional[str] = Field(
         None,

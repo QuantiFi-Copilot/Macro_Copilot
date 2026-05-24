@@ -1060,21 +1060,31 @@ def calculate_wirp_meeting_pricing_tool(
     """Surface Bloomberg's WIRP-screen pricing per central-bank meeting.
 
     INGEST primitive (P12 boundary per ADR 0009 §1): the four WIRP
-    fields (implied policy rate, signed move probability, number of
-    25bp moves priced, implied rate change) are read verbatim from
+    fields (implied policy rate, CUMULATIVE move probability, number
+    of 25bp moves priced, implied rate change) are read verbatim from
     macro_data.market_data_daily.  NOT recomputed from STIR futures
     or OIS pricing.
+
+    ``cumulative_move_prob_pct`` is the CUMULATIVE signed pricing of
+    25bp moves into a meeting (range -360.1..548.0 per wirp.yml
+    Stage-B) — DO NOT interpret as a single-event hike/cut
+    probability.  Per-meeting step-by-step hike/cut/hold decomposition
+    is a separate, forthcoming primitive (see config.yaml
+    ``methodology.planned_extensions``).
 
     Use this tool when the user asks about:
     - WIRP-implied policy rate for a meeting ("where's the JUN
       FOMC pricing?")
-    - Hike/hold/cut probabilities for upcoming central-bank meetings
-    - Number of 25bp moves priced into a meeting
+    - Cumulative move-probability or number of 25bp moves priced into
+      an upcoming central-bank meeting
     - Forward strip of meeting pricing for a central bank
 
     Do NOT use this tool for:
     - Recomputing rate path from STIR futures / OIS — this primitive
       INGESTS Bloomberg WIRP verbatim per ADR 0009.
+    - Single-event hike vs. cut vs. hold probabilities at a meeting —
+      WIRP_MOVE_PROB is cumulative, not single-event; the dedicated
+      step-by-step primitive is a documented planned extension.
     - Categorical FOMC surprise / hawk-dove labels — that's the
       forthcoming ``calculate_fomc_surprise_label_tool`` (primitive
       6 of the easy-win batch).

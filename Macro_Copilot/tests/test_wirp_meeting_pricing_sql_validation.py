@@ -7,14 +7,22 @@ Independently reproduces ``calculate_wirp_meeting_pricing``'s logic
 against the live TimescaleDB and compares row-for-row (no sampling
 per PR16 / Codex P2 lesson from PR #186).
 
-INGEST-primitive parity check: the four Bloomberg WIRP fields are
-surfaced verbatim — the SQL baseline below pulls the same DISTINCT
-ON (instrument_id, field_name) ORDER BY trade_date DESC shape the
-production fetcher uses and reproduces the identity-derived
-hike/cut/hold computation row-for-row.
+INGEST-primitive parity check (P12 Bloomberg Accuracy Boundary): the
+four Bloomberg WIRP fields are surfaced VERBATIM — the SQL baseline
+below pulls the same DISTINCT ON (instrument_id, field_name) ORDER BY
+trade_date DESC shape the production fetcher uses, applies the same
+rounding, and emits the same identity-field set.  No derived
+hike/cut/hold computation: ``WIRP_MOVE_PROB`` is a cumulative quantity
+(can exceed ±100 when multiple 25bp moves are priced — observed range
+-360.1..548.0 per wirp.yml Stage-B) and any single-event probability
+identity would be empirically wrong (BOE 2025-05-08 ships
+-104.9% verbatim).  See Codex P0 finding on PR #190.
 
 SQL-bind syntax: ``CAST(:x AS DATE)`` per the Codex P0 lesson from
 PR #186.
+
+Both ``next_n_meetings`` and ``specific_meeting_date`` selection
+modes are exercised — added in the PR #190 Codex P2 fix.
 
 Read-only:
   - Only ``SELECT`` queries.
@@ -30,8 +38,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date as _date_cls, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
@@ -59,17 +68,13 @@ REGRESSION_CASES: List[str] = ["FOMC", "ECB", "BOE", "BOJ"]
 
 TOLERANCE_BY_FIELD: Dict[str, float] = {
     "implied_policy_rate_pct": 1e-3,
-    "signed_move_prob_pct": 1e-2,
+    "cumulative_move_prob_pct": 1e-2,
     "num_25bp_moves_priced": 1e-3,
     "rate_change_native": 1e-3,
-    "hike_prob_pct": 1e-2,
-    "cut_prob_pct": 1e-2,
-    "hold_prob_pct": 1e-2,
     "next_implied_policy_rate_pct": 1e-3,
-    "next_signed_move_prob_pct": 1e-2,
-    "next_hike_prob_pct": 1e-2,
-    "next_cut_prob_pct": 1e-2,
-    "next_hold_prob_pct": 1e-2,
+    "next_cumulative_move_prob_pct": 1e-2,
+    "next_num_25bp_moves_priced": 1e-3,
+    "next_rate_change_native": 1e-3,
 }
 
 
@@ -140,7 +145,9 @@ def sql_baseline(
     central_bank: str,
     earliest_meeting_date_iso: str,
     latest_meeting_date_iso: str,
-    n_meetings: int,
+    selection_mode: str,
+    n_meetings: Optional[int],
+    requested_meeting_date_iso: Optional[str],
     rate_round: int,
     prob_round: int,
     num_moves_round: int,
@@ -162,8 +169,16 @@ def sql_baseline(
     if not rows:
         return {"current_metrics": None, "meetings": []}
 
-    # Trim to n_meetings (next_n mode).
-    display_rows = list(rows[:n_meetings])
+    if selection_mode == "specific_meeting_date":
+        assert requested_meeting_date_iso is not None
+        display_rows = [
+            r for r in rows if r["meeting_date"] == requested_meeting_date_iso
+        ]
+        n_meetings_requested = None
+    else:
+        assert n_meetings is not None
+        display_rows = list(rows[:n_meetings])
+        n_meetings_requested = n_meetings
 
     def _round_or_none(v: Any, decimals: int) -> Any:
         if v is None:
@@ -173,16 +188,9 @@ def sql_baseline(
     meetings = []
     for r in display_rows:
         implied_rate = _round_or_none(r["implied_rate"], rate_round)
-        signed_prob = _round_or_none(r["move_prob"], prob_round)
+        cumulative_prob = _round_or_none(r["move_prob"], prob_round)
         num_moves = _round_or_none(r["num_moves"], num_moves_round)
         rate_change = _round_or_none(r["rate_change"], rate_round)
-
-        if signed_prob is None:
-            hike, cut, hold = None, None, None
-        else:
-            hike = round(max(signed_prob, 0.0), prob_round)
-            cut = round(max(-signed_prob, 0.0), prob_round)
-            hold = round(100.0 - abs(signed_prob), prob_round)
 
         meetings.append({
             "central_bank": r["central_bank"],
@@ -190,12 +198,9 @@ def sql_baseline(
             "meeting_token": r["meeting_token"],
             "as_of_date": r["as_of_date"],
             "implied_policy_rate_pct": implied_rate,
-            "signed_move_prob_pct": signed_prob,
+            "cumulative_move_prob_pct": cumulative_prob,
             "num_25bp_moves_priced": num_moves,
             "rate_change_native": rate_change,
-            "hike_prob_pct": hike,
-            "cut_prob_pct": cut,
-            "hold_prob_pct": hold,
             "vendor_ticker": r["vendor_ticker"],
             "bloomberg_ticker_implied_rate": r["bloomberg_ticker_fr"],
             "bloomberg_ticker_move_prob": r["bloomberg_ticker_pr"],
@@ -203,19 +208,21 @@ def sql_baseline(
             "bloomberg_ticker_rate_change": r["bloomberg_ticker_ch"],
         })
 
+    if not meetings:
+        return {"current_metrics": None, "meetings": []}
+
     first = meetings[0]
     current_metrics = {
         "central_bank": central_bank,
-        "selection_mode": "next_n_meetings",
+        "selection_mode": selection_mode,
         "n_meetings_returned": len(meetings),
-        "n_meetings_requested": n_meetings,
-        "requested_meeting_date": None,
+        "n_meetings_requested": n_meetings_requested,
+        "requested_meeting_date": requested_meeting_date_iso,
         "next_meeting_date": first["meeting_date"],
         "next_implied_policy_rate_pct": first["implied_policy_rate_pct"],
-        "next_signed_move_prob_pct": first["signed_move_prob_pct"],
-        "next_hike_prob_pct": first["hike_prob_pct"],
-        "next_cut_prob_pct": first["cut_prob_pct"],
-        "next_hold_prob_pct": first["hold_prob_pct"],
+        "next_cumulative_move_prob_pct": first["cumulative_move_prob_pct"],
+        "next_num_25bp_moves_priced": first["num_25bp_moves_priced"],
+        "next_rate_change_native": first["rate_change_native"],
         "next_as_of_date": first["as_of_date"],
     }
     return {"current_metrics": current_metrics, "meetings": meetings}
@@ -244,6 +251,7 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
             "selection_mode",
             "n_meetings_returned",
             "n_meetings_requested",
+            "requested_meeting_date",
             "next_meeting_date",
             "next_as_of_date",
         ),
@@ -255,10 +263,9 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
         sql_payload=sql_cm,
         fields=(
             "next_implied_policy_rate_pct",
-            "next_signed_move_prob_pct",
-            "next_hike_prob_pct",
-            "next_cut_prob_pct",
-            "next_hold_prob_pct",
+            "next_cumulative_move_prob_pct",
+            "next_num_25bp_moves_priced",
+            "next_rate_change_native",
         ),
         tolerances=TOLERANCE_BY_FIELD,
         prefix="current_metrics.",
@@ -297,12 +304,9 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
             sql_payload=sql_m,
             fields=(
                 "implied_policy_rate_pct",
-                "signed_move_prob_pct",
+                "cumulative_move_prob_pct",
                 "num_25bp_moves_priced",
                 "rate_change_native",
-                "hike_prob_pct",
-                "cut_prob_pct",
-                "hold_prob_pct",
             ),
             tolerances=TOLERANCE_BY_FIELD,
             prefix=f"meetings[{index}].",
@@ -311,7 +315,23 @@ def compare_results(tool_result: Dict[str, Any], sql_result: Dict[str, Any]) -> 
     return mismatches
 
 
-def run_case(engine, *, central_bank: str, n_meetings: int) -> Tuple[str, List[str]]:
+def _earliest_latest_iso_next_n(
+    cfg, *, today: _date_cls
+) -> Tuple[str, str]:
+    """Mirror compute.py's forward window for next_n_meetings mode —
+    earliest = today, latest = today + forward_horizon_days.  The
+    ``past_horizon_days`` YAML convention is not used here (compute.py
+    does not consult it for next_n; it bounds the future
+    'any-meeting' mode)."""
+    forward_horizon_days = int(cfg.convention_value("forward_horizon_days"))
+    earliest = today.isoformat()
+    latest = (today + timedelta(days=forward_horizon_days)).isoformat()
+    return earliest, latest
+
+
+def run_case_next_n(
+    engine, *, central_bank: str, n_meetings: int
+) -> Tuple[str, List[str]]:
     cfg = load_tool_config(CONFIG_PATH)
     rate_round = int(cfg.convention_value("rate_round_decimals"))
     prob_round = int(cfg.convention_value("prob_round_decimals"))
@@ -326,17 +346,83 @@ def run_case(engine, *, central_bank: str, n_meetings: int) -> Tuple[str, List[s
         ),
     )
 
-    from datetime import date as _date_cls, timedelta
     today = _date_cls.today()
-    earliest = today.isoformat()
-    latest = (today + timedelta(days=1500)).isoformat()
+    earliest, latest = _earliest_latest_iso_next_n(cfg, today=today)
 
     sql_result = sql_baseline(
         engine=engine,
         central_bank=central_bank,
         earliest_meeting_date_iso=earliest,
         latest_meeting_date_iso=latest,
+        selection_mode="next_n_meetings",
         n_meetings=n_meetings,
+        requested_meeting_date_iso=None,
+        rate_round=rate_round,
+        prob_round=prob_round,
+        num_moves_round=num_moves_round,
+    )
+
+    if (
+        "error" in tool_result
+        and sql_result["current_metrics"] is None
+    ):
+        return "SKIP", []
+
+    mismatches = compare_results(tool_result, sql_result)
+    return ("PASS" if not mismatches else "FAIL"), mismatches
+
+
+def run_case_specific_meeting(
+    engine, *, central_bank: str
+) -> Tuple[str, List[str]]:
+    """Exercise selection_mode='specific_meeting_date' against the first
+    upcoming meeting for the central bank, sourced from the SQL baseline
+    itself so the test stays deterministic across DB refreshes."""
+    cfg = load_tool_config(CONFIG_PATH)
+    rate_round = int(cfg.convention_value("rate_round_decimals"))
+    prob_round = int(cfg.convention_value("prob_round_decimals"))
+    num_moves_round = int(cfg.convention_value("num_moves_round_decimals"))
+
+    today = _date_cls.today()
+    earliest, latest = _earliest_latest_iso_next_n(cfg, today=today)
+
+    # Discover the first upcoming meeting via the SQL baseline (read-only).
+    discovery = sql_baseline(
+        engine=engine,
+        central_bank=central_bank,
+        earliest_meeting_date_iso=earliest,
+        latest_meeting_date_iso=latest,
+        selection_mode="next_n_meetings",
+        n_meetings=1,
+        requested_meeting_date_iso=None,
+        rate_round=rate_round,
+        prob_round=prob_round,
+        num_moves_round=num_moves_round,
+    )
+    if discovery["current_metrics"] is None:
+        return "SKIP", []
+
+    requested_iso = discovery["meetings"][0]["meeting_date"]
+
+    tool_result = calculate_wirp_meeting_pricing(
+        engine=engine,
+        params=WirpMeetingPricingInput(
+            central_bank=central_bank,
+            selection_mode="specific_meeting_date",
+            meeting_date=requested_iso,
+        ),
+    )
+
+    # specific_meeting_date mode collapses the window to the single
+    # requested date — mirror compute.py exactly.
+    sql_result = sql_baseline(
+        engine=engine,
+        central_bank=central_bank,
+        earliest_meeting_date_iso=requested_iso,
+        latest_meeting_date_iso=requested_iso,
+        selection_mode="specific_meeting_date",
+        n_meetings=None,
+        requested_meeting_date_iso=requested_iso,
         rate_round=rate_round,
         prob_round=prob_round,
         num_moves_round=num_moves_round,
@@ -357,7 +443,8 @@ def main() -> None:
         description=(
             "Validate calculate_wirp_meeting_pricing against direct "
             "SQL on macro_data.instrument_master + market_data_daily "
-            "(ADR 0009).  Row-for-row parity per PR16."
+            "(ADR 0009).  Row-for-row parity per PR16. Exercises BOTH "
+            "next_n_meetings and specific_meeting_date selection modes."
         )
     )
     parser.add_argument("--n-meetings", type=int, default=DEFAULT_N_MEETINGS)
@@ -375,6 +462,7 @@ def main() -> None:
     print("CALCULATE_WIRP_MEETING_PRICING TOOL — SQL VALIDATION (row-for-row)")
     print("=" * 80)
     print(f"  n_meetings : {args.n_meetings}")
+    print(f"  modes      : next_n_meetings + specific_meeting_date")
     print("-" * 80)
 
     print("[1/3] Creating DB engine...")
@@ -384,9 +472,14 @@ def main() -> None:
     pass_count = 0
     skip_count = 0
     failed_cases: List[Tuple[str, List[str]]] = []
-    for index, cb in enumerate(REGRESSION_CASES, start=1):
-        print_case_header(index, len(REGRESSION_CASES), cb)
-        status, mismatches = run_case(
+
+    total_cases = len(REGRESSION_CASES) * 2  # next_n + specific
+    case_index = 0
+    for cb in REGRESSION_CASES:
+        # --- next_n_meetings mode ---
+        case_index += 1
+        print_case_header(case_index, total_cases, f"{cb} [next_n_meetings]")
+        status, mismatches = run_case_next_n(
             engine, central_bank=cb, n_meetings=args.n_meetings,
         )
         if status == "PASS":
@@ -401,11 +494,29 @@ def main() -> None:
                 print(f"  - {mismatch}")
             if len(mismatches) > 10:
                 print(f"  - ... plus {len(mismatches) - 10} more mismatches")
-            failed_cases.append((cb, mismatches))
+            failed_cases.append((f"{cb}[next_n]", mismatches))
+
+        # --- specific_meeting_date mode ---
+        case_index += 1
+        print_case_header(case_index, total_cases, f"{cb} [specific_meeting_date]")
+        status, mismatches = run_case_specific_meeting(engine, central_bank=cb)
+        if status == "PASS":
+            print("PASS")
+            pass_count += 1
+        elif status == "SKIP":
+            print("SKIP (no WIRP meetings ingested)")
+            skip_count += 1
+        else:
+            print("FAIL")
+            for mismatch in mismatches[:10]:
+                print(f"  - {mismatch}")
+            if len(mismatches) > 10:
+                print(f"  - ... plus {len(mismatches) - 10} more mismatches")
+            failed_cases.append((f"{cb}[specific]", mismatches))
 
     print("[3/3] Summary")
     print("-" * 80)
-    print(f"  total_cases : {len(REGRESSION_CASES)}")
+    print(f"  total_cases : {total_cases}")
     print(f"  passed      : {pass_count}")
     print(f"  skipped     : {skip_count}")
     print(f"  failed      : {len(failed_cases)}")

@@ -181,8 +181,8 @@ def main() -> None:
             summary = (
                 f"next={cm.get('next_meeting_date')}  "
                 f"rate={cm.get('next_implied_policy_rate_pct')}%  "
-                f"hike/cut/hold={cm.get('next_hike_prob_pct')}/"
-                f"{cm.get('next_cut_prob_pct')}/{cm.get('next_hold_prob_pct')}"
+                f"cum_move_prob={cm.get('next_cumulative_move_prob_pct')}%  "
+                f"num_25bp_moves={cm.get('next_num_25bp_moves_priced')}"
             )
         print(
             f"  ✓ {case['fixture_name']:30s}  "

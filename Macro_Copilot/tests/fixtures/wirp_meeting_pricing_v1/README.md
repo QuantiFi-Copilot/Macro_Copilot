@@ -82,6 +82,25 @@ Each `*.json` file is a self-contained fixture:
 }
 ```
 
+## Output-shape note — Codex P0 fix (PR #190)
+
+The shipped v1 fixtures reflect the PR #190 Codex P0 correction:
+
+- ``cumulative_move_prob_pct`` (NOT ``signed_move_prob_pct``) —
+  the renamed field surfaces WIRP_MOVE_PROB's cumulative-across-25bp-
+  moves semantics (range -360.1..548.0 per wirp.yml Stage-B) loudly
+  on the wire.
+- **No** ``hike_prob_pct`` / ``cut_prob_pct`` / ``hold_prob_pct`` —
+  the original identity-derivation block (``max(p,0)``,
+  ``max(-p,0)``, ``100-|p|``) was empirically wrong for a cumulative
+  quantity (BOE 2025-05-08 → -104.9% → identity would have
+  rendered ``hold_prob_pct = -4.9%``, which is impossible).  Step-
+  by-step probability decomposition is a separate forthcoming
+  primitive (see ``rates_agent/ois/tools/wirp_meeting_pricing/
+  config.yaml`` → ``methodology.planned_extensions``).
+- ``rate_change_native`` unit is **percentage points** (confirmed
+  against wirp.yml Stage-B), not basis points.
+
 ## Regenerating fixtures (live-DB capture)
 
 Only after a deliberate methodology change.  When the WIRP horizon

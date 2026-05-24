@@ -3,36 +3,51 @@ compute.py — INGEST primitive: per-meeting WIRP pricing snapshot
 =================================================================
 
 For one central bank (FOMC / ECB / BOE / BOJ), pulls the latest
-WIRP snapshot per scheduled meeting and surfaces:
+WIRP snapshot per scheduled meeting and surfaces ONLY the raw
+Bloomberg-ingested fields verbatim (P12 boundary per ADR 0009 §1):
 
-  - Bloomberg-ingested fields (INGEST per ADR 0009 §1, P12 boundary):
-      * implied_policy_rate_pct  ← WIRP_IMPLIED_RATE
-      * signed_move_prob_pct      ← WIRP_MOVE_PROB
-      * num_25bp_moves_priced     ← WIRP_NUM_MOVES
-      * rate_change_native        ← WIRP_RATE_CHANGE (native units)
+  - implied_policy_rate_pct   ← WIRP_IMPLIED_RATE
+  - cumulative_move_prob_pct  ← WIRP_MOVE_PROB (CUMULATIVE — see
+                                disclosure block below)
+  - num_25bp_moves_priced     ← WIRP_NUM_MOVES
+  - rate_change_native        ← WIRP_RATE_CHANGE (percentage points,
+                                Bloomberg native units)
 
-  - Desk-recognised IDENTITY-derived fields from the signed move
-    probability (NOT recomputed quantities — the single signed
-    Bloomberg field carries the information; the derivation is
-    arithmetic by definition):
-      * hike_prob_pct = max(signed_move_prob_pct, 0)
-      * cut_prob_pct  = max(-signed_move_prob_pct, 0)
-      * hold_prob_pct = 100 - |signed_move_prob_pct|
+Plus per-field Bloomberg-ticker provenance from
+``instrument_master.attributes`` per ADR 0009 §1.
 
-  - Per-field Bloomberg-ticker provenance from
-    instrument_master.attributes per ADR 0009 §1.
+NO derived hike / cut / hold probability fields are emitted.  See
+the Codex P0 correction block below — WIRP_MOVE_PROB is cumulative,
+and any single-event identity would be empirically wrong.
 
 P12 (Bloomberg Accuracy Boundary) — MANDATORY disclosure per the brief
 ---------------------------------------------------------------------
 This is the load-bearing P12 boundary the brief calls out
 explicitly: WIRP is INGESTED verbatim from Bloomberg's WIRP screen
 via ADR 0009.  This primitive does NOT recompute the implied rate
-from STIR futures, OIS swaps, or any other source.  The four
-Bloomberg fields are surfaced as-is; the hike/cut/hold derivation
-is the desk-recognised IDENTITY interpretation of Bloomberg's
-single signed WIRP_MOVE_PROB, not a recomputation of a different
-Bloomberg quantity.  ``methodology_note`` surfaces all of this at
-the user-facing layer (PR10).
+from STIR futures, OIS swaps, or any other source.  All four
+Bloomberg fields (WIRP_IMPLIED_RATE / WIRP_MOVE_PROB /
+WIRP_NUM_MOVES / WIRP_RATE_CHANGE) are surfaced as-is.
+
+Codex P0 correction (PR #190 review)
+------------------------------------
+The original draft of this primitive emitted derived hike / hold /
+cut probability fields using the identity
+``hike = max(p, 0)``, ``cut = max(-p, 0)``, ``hold = 100 - |p|``
+on WIRP_MOVE_PROB.  Codex correctly identified that this identity
+DOES NOT hold: ``rates_agent/playbooks/wirp.yml`` documents that
+WIRP_MOVE_PROB is **CUMULATIVE** (observed range -360.1 .. 548.0),
+not a single-event probability bounded in [0, 100].  Empirically
+BOE 2025-05-08 = -104.9% → the derivation produced
+hold_prob = -4.9% (impossible).
+
+The derived fields have been removed entirely.  The primitive
+surfaces only the four raw Bloomberg fields, with the
+``cumulative_move_prob_pct`` name making the cumulative semantics
+loud on the wire.  A correct hike-step probability surface would
+require a verified joint-distribution mapping between WIRP_NUM_MOVES
+and WIRP_MOVE_PROB (an AC8 design question deferred to a
+follow-up primitive — documented in methodology.planned_extensions).
 
 P8 closed-family — central_bank set wire-locked
 -----------------------------------------------
@@ -48,9 +63,10 @@ The four ``*_field`` conventions
 ``rate_change_field``) are categorical conventions whose accepted
 values are wire-frozen.  Each is guarded with NotImplementedError
 if the YAML value drifts from the ADR-0009 metric → field mapping;
-the wire field names in the output schema (``hike_prob_pct``,
-``rate_change_native``, etc.) embed the unit / derivation
-convention and a field-rename would silently lie.
+the wire field names in the output schema
+(``cumulative_move_prob_pct``, ``rate_change_native``, etc.) embed
+the unit / semantics convention and a field-rename would silently
+lie.
 
 Test seam
 ---------
@@ -109,20 +125,25 @@ _METHODOLOGY_NOTE: str = (
     "'wirp_meeting').  NOT recomputed from STIR futures or OIS — "
     "this is an INGEST primitive (P12 boundary): the four WIRP "
     "fields (WIRP_IMPLIED_RATE / WIRP_MOVE_PROB / WIRP_NUM_MOVES / "
-    "WIRP_RATE_CHANGE) are surfaced verbatim.  WIRP definition of "
-    "hike-probability anchored at consensus 25bp move: Bloomberg's "
-    "WIRP_MOVE_PROB is the SIGNED probability of a single 25bp "
-    "move (+ = hike, − = cut, in percent).  The separate hike / "
-    "cut / hold probabilities surfaced here are IDENTITY-derived "
-    "from this single signed field: hike_prob = max(p, 0), "
-    "cut_prob = max(-p, 0), hold_prob = 100 - |p|.  This is NOT "
-    "a recomputation of a Bloomberg-supplied quantity; it is the "
-    "desk's standard interpretation of WIRP's single signed "
-    "probability.  ``rate_change_native`` is in NATIVE Bloomberg "
-    "units per ADR 0009 §1 — the unit (bp vs percent vs decimal) "
-    "is NOT confirmed and no conversion is applied; downstream "
-    "consumers must NOT assume the unit and should consult the "
-    "Stage-B observed-value-range disclosure when it lands."
+    "WIRP_RATE_CHANGE) are surfaced verbatim.  "
+    "IMPORTANT: WIRP_MOVE_PROB is CUMULATIVE (per "
+    "rates_agent/playbooks/wirp.yml — observed live-DB range "
+    "-360.1 .. 548.0%), NOT a single-event probability bounded in "
+    "[0, 100].  Values can exceed ±100 when the market prices "
+    "more than one 25bp move.  Naive single-event-probability "
+    "interpretations (hike/hold/cut decomposition by "
+    "``max(p, 0)`` / ``max(-p, 0)`` / ``100 - |p|``) DO NOT HOLD "
+    "and produce impossible values — this primitive therefore "
+    "SURFACES the raw value as ``cumulative_move_prob_pct`` and "
+    "DOES NOT emit derived hike / hold / cut probability fields.  "
+    "WIRP_NUM_MOVES is similarly the signed count of 25bp moves "
+    "priced (observed -9.57 .. 6.729) and can be beyond ±1.  "
+    "WIRP_RATE_CHANGE is in PERCENTAGE POINTS per wirp.yml's "
+    "Stage-B verification (observed -2.392 .. 1.013; the bp "
+    "vs pct ambiguity ADR 0009 v2 disclaimed was resolved by the "
+    "probe).  Field name retains the ``_native`` suffix because "
+    "no conversion is applied — Bloomberg's value is stored "
+    "verbatim per P12."
 )
 
 
@@ -223,32 +244,39 @@ def calculate_wirp_meeting_pricing(
         }
 
     # ------------------------------------------------------------------
-    # Pull conventions for rounding + selection
+    # Pull conventions for rounding + selection + horizon (YAML-locked
+    # per Codex P3 finding — wirp.yml's Stage-B-verified horizons
+    # mirrored into config.yaml so the primitive's behaviour is
+    # entirely YAML-discoverable, not buried in a code constant).
     # ------------------------------------------------------------------
     default_n_meetings = int(config.convention_value("default_n_meetings"))
     rate_round = int(config.convention_value("rate_round_decimals"))
     prob_round = int(config.convention_value("prob_round_decimals"))
     num_moves_round = int(config.convention_value("num_moves_round_decimals"))
+    forward_horizon_days = int(config.convention_value("forward_horizon_days"))
+    past_horizon_days = int(config.convention_value("past_horizon_days"))
 
     # ------------------------------------------------------------------
     # Determine the meeting-date filter window from selection_mode
     # ------------------------------------------------------------------
     today = date.today()
     if params.selection_mode == "next_n_meetings":
-        # Forward window — from today to a far enough horizon to
-        # capture n_meetings.  ADR 0009 caps the horizon at the
-        # Stage-B verified band; 1500 days ≈ 4 years is past any
-        # reasonable WIRP horizon so the fetch will return at most
-        # all available meetings.
+        # Forward window — from today to ``forward_horizon_days`` per
+        # config (sourced from wirp.yml's Stage-B-verified band per
+        # ADR 0009 §3).  YAML-locked horizon — no hidden constants.
         earliest_meeting_date = today
-        latest_meeting_date = today + timedelta(days=1500)
+        latest_meeting_date = today + timedelta(days=forward_horizon_days)
         effective_n_meetings = (
             params.n_meetings if params.n_meetings is not None
             else default_n_meetings
         )
         requested_meeting_date_iso: Optional[str] = None
     else:
-        # specific_meeting_date — exact single-day window
+        # specific_meeting_date — exact single-day window.  The
+        # ``past_horizon_days`` convention is not used here (the
+        # window collapses to a single date by design), but it
+        # bounds the supported-date range a future "any meeting" mode
+        # would respect.
         assert params.meeting_date is not None  # enforced by @model_validator
         earliest_meeting_date = params.meeting_date
         latest_meeting_date = params.meeting_date
@@ -365,25 +393,20 @@ def calculate_wirp_meeting_pricing(
         }
 
     # ------------------------------------------------------------------
-    # Build the meetings list — one WirpMeetingSnapshot per row
+    # Build the meetings list — one WirpMeetingSnapshot per row.
+    # All four Bloomberg fields surfaced verbatim (P12).  NO derived
+    # hike/hold/cut probabilities are emitted — per the Codex P0
+    # finding (PR #190), WIRP_MOVE_PROB is CUMULATIVE and a naive
+    # single-event-probability decomposition does not hold.  See
+    # the module docstring's "Codex P0 correction" section + the
+    # methodology_note's CUMULATIVE disclosure.
     # ------------------------------------------------------------------
     meetings: List[WirpMeetingSnapshot] = []
     for row in display.itertuples():
         implied_rate = _safe_float(getattr(row, _SUPPORTED_IMPLIED_RATE_FIELD), rate_round)
-        signed_prob = _safe_float(getattr(row, _SUPPORTED_MOVE_PROB_FIELD), prob_round)
+        cumulative_prob = _safe_float(getattr(row, _SUPPORTED_MOVE_PROB_FIELD), prob_round)
         num_moves = _safe_float(getattr(row, _SUPPORTED_NUM_MOVES_FIELD), num_moves_round)
         rate_change = _safe_float(getattr(row, _SUPPORTED_RATE_CHANGE_FIELD), rate_round)
-
-        # Identity-derived hike/cut/hold from signed_prob.  None
-        # propagates honestly when signed_prob is None.
-        if signed_prob is None:
-            hike_prob = None
-            cut_prob = None
-            hold_prob = None
-        else:
-            hike_prob = round(max(signed_prob, 0.0), prob_round)
-            cut_prob = round(max(-signed_prob, 0.0), prob_round)
-            hold_prob = round(100.0 - abs(signed_prob), prob_round)
 
         meetings.append(WirpMeetingSnapshot(
             central_bank=str(row.central_bank),
@@ -391,12 +414,9 @@ def calculate_wirp_meeting_pricing(
             meeting_token=_str_or_none(row.meeting_token),
             as_of_date=_iso_date(row.as_of_date),
             implied_policy_rate_pct=implied_rate,
-            signed_move_prob_pct=signed_prob,
+            cumulative_move_prob_pct=cumulative_prob,
             num_25bp_moves_priced=num_moves,
             rate_change_native=rate_change,
-            hike_prob_pct=hike_prob,
-            cut_prob_pct=cut_prob,
-            hold_prob_pct=hold_prob,
             vendor_ticker=str(row.vendor_ticker),
             bloomberg_ticker_implied_rate=_str_or_none(row.bloomberg_ticker_fr),
             bloomberg_ticker_move_prob=_str_or_none(row.bloomberg_ticker_pr),
@@ -405,7 +425,9 @@ def calculate_wirp_meeting_pricing(
         ))
 
     # ------------------------------------------------------------------
-    # Build current_metrics from the first meeting
+    # Build current_metrics from the first meeting.  Convenience
+    # snapshot fields mirror the four raw Bloomberg fields of the
+    # next-up (or requested) meeting.  No derived hike/hold/cut.
     # ------------------------------------------------------------------
     first = meetings[0]
     current_metrics = WirpMeetingPricingCurrentMetrics(
@@ -416,10 +438,9 @@ def calculate_wirp_meeting_pricing(
         requested_meeting_date=requested_meeting_date_iso,
         next_meeting_date=first.meeting_date,
         next_implied_policy_rate_pct=first.implied_policy_rate_pct,
-        next_signed_move_prob_pct=first.signed_move_prob_pct,
-        next_hike_prob_pct=first.hike_prob_pct,
-        next_cut_prob_pct=first.cut_prob_pct,
-        next_hold_prob_pct=first.hold_prob_pct,
+        next_cumulative_move_prob_pct=first.cumulative_move_prob_pct,
+        next_num_25bp_moves_priced=first.num_25bp_moves_priced,
+        next_rate_change_native=first.rate_change_native,
         next_as_of_date=first.as_of_date,
     )
 
