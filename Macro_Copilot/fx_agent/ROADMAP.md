@@ -10,23 +10,13 @@
 
 **Date:** 2026-05-25
 
-**Branch:** `codex/fx-data-universe-phase-b` — stacked on `codex/fx-data-universe-extension` (PR #184, draft), itself stacked on `codex/fx-on-latest-build` (PR #178, draft).
+**Branch:** `codex/fx-data-universe-phase-b-followup` — stacked on `codex/fx-data-universe-phase-b` (PR #189, ready), itself stacked on `codex/fx-data-universe-extension` (PR #184, ready), itself stacked on `codex/fx-on-latest-build` (PR #178, ready).
 
-**Phase in flight:** **Phase B — Spot EM universe + FX Panel primitive — STARTING.** All 5 architectural Qs locked by Codex on 2026-05-24. EM start_date locked to **2000-01-01** after Bloomberg verification on 2026-05-25 (USDTRY confirmed Scenario A — clean back-adjusted series across 2005 redenomination; all 9 EM pairs have PX_LAST from ≤ 2000-01-03).
+**Phase in flight:** **Phase B core ✅ SHIPPED + Phase B follow-up ✅ SHIPPED.** Tier 1 progress: A ✅, B-core ✅, B-followup ✅, B+ pending EM forwards substrate, C/D/E planned. EM start_date locked to **2000-01-01** (USDTRY Scenario A back-adjusted, all 9 EM pairs have PX_LAST from ≤ 2000-01-03). 4 cornerstone primitives shipped on the FX spot side: `calculate_fx_panel` (typed Panel) + the 3 derived single-pair primitives (`get_fx_returns_series` / `calculate_fx_drawdown` / `get_fx_realized_vol`). Substrate loader `shared.analytics.fx_fetch.py` now exposes both `fetch_fx_spot_panel` (whole universe) and `fetch_fx_spot_series` (single pair). All 3 stacked PRs (#178 → #184 → #189) Open/Ready/Sreeram-requested with mergeable=clean; follow-up branch local-only until merge order is decided.
 
 **Maximaliste target locked:** Tier 1 + Tier 2 = **~28 tools across Phases A → E + G + H** (see [Maximaliste vision](#maximaliste-vision--tier-12--28-tools-across-phases-a-e--g--h) below). Tier 3 phases (F macro indices, I CFTC positioning, J PPP/REER) are nice-to-have, built only on concrete demand.
 
-**Immediate next action — Phase B execution sequence:**
-
-1. First commit on this branch = THIS ROADMAP update (port maximaliste plan from session memory, do NOT touch PR #184 — Codex G1).
-2. Extend `spot_fx.yml` v3.0 with 9 EM pairs (MXN, ZAR, TRY, BRL, PLN, HUF, KRW, IDR, PHP), uniform `start_date: 2000-01-01`, `fx_family: "EM_SPOT"`, `market_scope: "EM"`. **Do NOT create a separate `spot_fx_em.yml`** (Codex locked: single playbook).
-3. Wave 1 Bloomberg extraction for EM spot (~9 tickers × ~26 years = ~60k rows, single dataset).
-4. Ingest to Postgres, extend `tests/test_fx_data_readiness.py` with EM ticker assertions (do NOT create a new test file — Codex locked).
-5. Implement `calculate_fx_panel` primitive — returns a real typed `Panel` artifact (Shape C, asset-agnostic via `shared.artifacts.types.Panel`). **Single new primitive for this PR.**
-6. `scan_fx_spot` already market_scope-aware via SQL filter — zero code change needed (Codex confirmed). Verify with a runtime smoke + targeted test assertion.
-7. MCP wiring + API route + manifest entry + tests for **`calculate_fx_panel` ONLY** (compute + wiring + sql_validation). Follow-up tools (`returns_series`, `drawdown`, `realized_vol`) get their own stacked PR on top of this one.
-8. **Defer UI** for Phase B (Codex locked) — ship data + panel primitive first. UI lands in a sub-phase or Phase E.
-9. Stacked draft PR with `Depends on #184` and `Depends on #178` in body. **Short, focused, single-primitive — easy to review.**
+**Immediate next decision:** integrate when ready. Sreeram trusts the work — no formal review-gate. When the merge window opens, integrate in order: #178 → #184 → #189 → follow-up. Phase B+ (implied yield diff + carry basket) needs EM forwards extracted first (a Wave 1.5 extension for the forwards substrate). Phase C (CIP, reads OIS substrate) is the cleanest next coding target if we want to advance Tier 1 without another extraction.
 
 **Phase A ✅ SHIPPED on `codex/fx-data-universe-extension` (PR #184).** Wave 1 production ingestion landed cleanly:
 
@@ -156,9 +146,9 @@ Numbers in parentheses = count per sub-domain.
 - `get_fx_spot_level` ✅ (A)
 - `scan_fx_spot` ✅ (A) — market_scope-aware (G10 / EM / etc.) via SQL filter, no code change needed for B
 - `calculate_fx_panel` — Shape C, returns typed `Panel` artifact via `shared.artifacts.types.Panel` (**B-core, this PR**)
-- `get_fx_returns_series` — log-returns, configurable horizon (B follow-up)
-- `calculate_fx_drawdown` (B follow-up)
-- `get_fx_realized_vol` — N-day rolling realized (B follow-up)
+- `get_fx_returns_series` ✅ (B follow-up — shipped on `codex/fx-data-universe-phase-b-followup`, daily/weekly/monthly horizons)
+- `calculate_fx_drawdown` ✅ (B follow-up — shipped, running DD + peak/trough/recovery)
+- `get_fx_realized_vol` ✅ (B follow-up — shipped, rolling std × sqrt(252), default window 30d)
 - `get_fx_z_score_panel` — uses shared operator (H)
 - `get_fx_correlation_matrix` — uses shared operator (H)
 
@@ -203,8 +193,8 @@ Numbers in parentheses = count per sub-domain.
 | Phase | Scope | Tools | Effort | Tier |
 |---|---|---|---|---|
 | A | G10 forwards depth + scanner + curve + UI | 4 | ✅ shipped | 1 |
-| **B-core (THIS PR)** | EM spot universe (9 pairs) + `calculate_fx_panel` typed Panel primitive | 1 | 1 session | 1 |
-| B follow-up | `get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol` (after panel lands, separate stacked PR) | 3 | 0.5 session | 1 |
+| B-core | EM spot universe (9 pairs) + `calculate_fx_panel` typed Panel primitive | 1 | ✅ shipped | 1 |
+| B follow-up | `get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol` (separate stacked branch on B-core) | 3 | ✅ shipped | 1 |
 | B+ | `calculate_fx_implied_yield_differential` + `scan_fx_carry_basket` (after EM forwards substrate extracted) | 2 | 0.5-1 session | 1 |
 | C | CIP / xccy basis (reads OIS substrate) + roll yield | 3 | 1 session | 1 |
 | D | NDFs (5 pairs × 5 tenors, outright convention) | 3 | 1-2 sessions | 1 |
@@ -342,10 +332,10 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 **Core (THIS PR — single new primitive):**
 1. `calculate_fx_panel` — Shape C typed `Panel` of FX returns / levels across a universe via `shared.artifacts.types.Panel`. **Cornerstone primitive** — every later cross-sectional FX tool consumes it.
 
-**Follow-ups after panel lands** (separate stacked PR on top of this one, no extra substrate dependency):
-2. `get_fx_returns_series` — log-returns at configurable horizon (daily, weekly, monthly). Reads spot substrate.
-3. `calculate_fx_drawdown` — running max / drawdown over a window for one pair.
-4. `get_fx_realized_vol` — N-day rolling realized vol for one pair.
+**Follow-ups after panel lands ✅ SHIPPED** on `codex/fx-data-universe-phase-b-followup` (stacked on `codex/fx-data-universe-phase-b`):
+2. `get_fx_returns_series` ✅ — log-returns at configurable horizon (daily / weekly / monthly). Closed-Literal horizon, output unit RATIO. 9/9 targeted compute tests PASS.
+3. `calculate_fx_drawdown` ✅ — running drawdown DD_t = (P_t / running_max) - 1 with snapshot (current/max DD + peak/trough/recovery dates + time-to-recovery). Output unit RATIO ≤ 0. 9/9 PASS.
+4. `get_fx_realized_vol` ✅ — N-day rolling realized vol from daily log-returns, annualized via sqrt(252), expressed in PERCENT. Default window 30d. 9/9 PASS + math hand-verified against direct spot fetch.
 
 **Later (depends on EM forwards substrate, then C/D — explicitly NOT in immediate Phase B):**
 5. `calculate_fx_implied_yield_differential` — `y_quote − y_base` from forward points. Requires EM forwards extracted first (not in this PR). Prepares Phase C CIP.
@@ -362,8 +352,8 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 7. **MCP wiring + API route + manifest entry + tests for `calculate_fx_panel` ONLY** (compute + wiring + sql_validation, mirroring Phase A pattern). Do NOT scope-creep into the follow-up tools (`returns_series`, `drawdown`, `realized_vol`) — they get their own stacked PR.
 8. **Stacked draft PR** — `Depends on #184` and `Depends on #178` in body. Short, single-primitive, very reviewable.
 
-**Follow-up PRs (planned but explicitly not in this PR):**
-- **Phase B follow-up PR** — `get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol`. Stacked on this PR's branch. Same architectural pattern, no extra substrate.
+**Follow-up PRs status:**
+- **Phase B follow-up PR ✅ SHIPPED** on `codex/fx-data-universe-phase-b-followup` — 3 new derived primitives (`get_fx_returns_series` + `calculate_fx_drawdown` + `get_fx_realized_vol`) + `shared.analytics.fx_fetch.fetch_fx_spot_series` single-pair helper. 6 commits, 33 targeted-test assertions (9+9+9+6 wiring) PASS. Same architectural pattern as B-core, no extra substrate.
 - **Phase B+ PR** — `calculate_fx_implied_yield_differential` + `scan_fx_carry_basket`. Requires EM forwards substrate to be extracted first (separate Wave). Lands after Phase C planning is clear.
 
 #### Phase B compliance check (per §"Per-phase compliance check discipline")
@@ -703,6 +693,8 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-25 | **EM start_date LOCKED = 2000-01-01** for all 9 pairs. Universe intact (no drop of TRY, no shift of all EM to 2005). Fail-loud ingestion required — pipeline crashes rather than silent-skip if any of the 9 tickers has no PX_LAST at the retained window. | Direct consequence of the BBG verification result. |
 | 2026-05-25 | **Phase B branch created.** `codex/fx-data-universe-phase-b` stacked on `codex/fx-data-universe-extension` (PR #184 still in review-pending, G1 respected — no commits added to it). This ROADMAP commit is the first commit on the new branch, porting the maximaliste plan from session-only memory into the repo as durable documentation. | Codex G1 — separate stacked branch for every meaningful update once a PR is in review-pending state. |
 | 2026-05-25 | **Phase B scope tightened to one primitive** during ROADMAP diff review. Codex flagged a scope-creep risk: the initial draft listed 6 tools (`calculate_fx_panel` + returns / drawdown / realized vol + implied yield diff + carry basket) all under Phase B. Re-split into B-core (THIS PR — `calculate_fx_panel` only), B-followup (returns / drawdown / realized vol, separate stacked PR — no extra substrate), B+ (implied yield diff + carry basket, deferred until EM forwards substrate is extracted). The 6 tools stay in the maximaliste plan, but only 1 ships in this PR. Also corrected `shared.types.Panel` → `shared.artifacts.types.Panel` (actual repo path). | Keep PRs short, single-primitive, easy to review — same discipline as Phase A step splits. |
+| 2026-05-25 | **Phase B follow-up shipped** on `codex/fx-data-universe-phase-b-followup` (stacked on `codex/fx-data-universe-phase-b`). 3 single-pair derived primitives — `get_fx_returns_series` (log-returns, daily/weekly/monthly, RATIO), `calculate_fx_drawdown` (running DD + peak/trough/recovery, RATIO ≤ 0), `get_fx_realized_vol` (rolling std × sqrt(252), PERCENT). Architecture: extend `shared.analytics.fx_fetch.py` with `fetch_fx_spot_series` single-pair helper (mirror `rates_fetch.fetch_single_tenor`); each tool follows the 4-file pattern of `yield_levels` exactly (current_metrics + canonical `TimeSeries`); ZERO SQL ad-hoc per tool (all loading through `shared/analytics/fx_fetch.py` per Codex's panel-first discipline). MCP + API GET routes + manifest entries wired. 33 targeted-test assertions PASS (9+9+9 compute + 15 wiring + readiness gate 28/0/0 no regression). Doc nit on `fx_fetch.py` market_scope/fx_family clarification (Codex's #189 skim backlog) resolved in commit 1. | Phase B follow-up plan locked 2026-05-25 with Codex: panel-first discipline, no ad-hoc SQL per tool, mirror yield_levels shape. |
+| 2026-05-25 | **TimeSeriesUnits.PRICE** added to the closed enum during Phase B core. Used by `calculate_fx_panel`'s typed Panel for FX spot levels (closed enum had only PERCENT/BPS/Z_SCORE/RATIO/PCT_RANK/FACTOR_LEVEL/COUNT — none fits cleanly for an absolute price level). Non-breaking extension (no exhaustive enumeration over the enum anywhere). Asset-agnostic — equally usable for equity / commodity prices. | Closed-enum extension is the explicit Sreeram pattern for adding a new unit; documented in the enum itself. |
 
 ---
 
