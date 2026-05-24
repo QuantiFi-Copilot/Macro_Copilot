@@ -62,6 +62,10 @@ class TimeSeriesUnits(str, Enum):
     PCT_RANK = "pct_rank"          # 0–100 percentile rank
     FACTOR_LEVEL = "factor_level"  # PCA factor scores (eigen-units)
     COUNT = "count"                # observation counts, quality flags as 0/1
+    PRICE = "price"                # price levels (FX spots, equity prices,
+                                   # commodity quotes, etc.) — non-percent
+                                   # absolute levels. Added Phase B 2026-05-25
+                                   # for fx_panel; equally usable cross-asset.
 
 
 # ============================================================================
