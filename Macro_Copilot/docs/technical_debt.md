@@ -177,6 +177,62 @@ EFFORT: Medium — the gauntlet SQL already exists, needs pytest harness.
 WHEN: ChatGPT's audit flagged this as "more urgent than you think."
       Should be treated as a launch requirement.
 
+### 31. fomc_surprise_label primitive deferred — intraday OIS + statement_classification gap
+WHERE: rates_agent/ois/tools/ (primitive does NOT exist; planned as
+       primitive 6 of the 8-primitive easy-win batch).
+       rates_agent/playbooks/central_bank_meetings.yml
+       (docstring mentions a "Phase-3 fomc_surprise primitive" — that
+       reference now points here.)
+WHAT:  A categorical hawk/dove/neutral regime tag per FOMC meeting
+       cannot be honestly shipped today.  Two independent metadata
+       gaps each block the primitive:
+       (1) NO PRE-CLASSIFIED PLAYBOOK FIELD.  central_bank_meetings.yml
+           stores only the FACTUAL rate decision (`actual` policy rate,
+           `prior` policy rate, identity-derived hike/hold/cut classifier
+           in attributes).  It does NOT contain a hawk/dove statement-
+           sentiment classification.  The playbook's docstring's
+           "Phase-3 fomc_surprise primitive" wording was aspirational.
+       (2) NO INTRADAY MARKET DATA.  macro_data.market_data_daily holds
+           Bloomberg PX_LAST at daily close only — there is no
+           market_data_intraday table and no minute-resolution feed.
+           The desk-textbook methodology (Nakamura-Steinsson 2018 /
+           Bauer-Swanson 2023) measures the bp-change in 2y OIS in a
+           tight intraday window (typically 30 minutes) around the
+           statement.  That window cannot be reproduced from daily
+           closes.
+
+       Shipping a daily-close-to-close proxy on 2y OIS would
+       systematically conflate the policy-decision component with
+       overnight macro flow and would violate P12 (Bloomberg Accuracy
+       Boundary) + PR6 (refusal-when-metadata-absent) — the desk would
+       have to caveat every output that the signal is materially
+       different from the published methodology.
+IMPACT: The MCP catalog has no hawk/dove FOMC tag.  Workflows that
+        would condition on FOMC surprise regime (the event-study
+        template's FOMC variant) must wait for this primitive or
+        accept a coarser hike/hold/cut categorical from the existing
+        playbook attributes.
+FIX:   Two independent unblock paths, either of which suffices:
+       (a) Ingest intraday 2y OIS data (Bloomberg intraday tick query
+           on USOSFR2 Curncy + sibling tickers for ECB/BOE/BOJ
+           central banks, new market_data_intraday table, ADR for the
+           intraday substrate).  Then build the primitive as
+           originally specified with the 30-minute window.
+       (b) Add an LLM-classified statement_classification field to
+           central_bank_meetings.yml (separate ingestion increment
+           that reads the official statement text + classifies via
+           a sentiment model).  Then YAML-lock the hawk/dove threshold
+           and build the primitive with the playbook-field source.
+       Path (a) is desk-canonical; path (b) is cheaper and faster
+       but introduces a new LLM-dependency in the ingestion pipeline.
+WHEN:  Out of scope for the 8-primitive easy-win batch.  Revisit
+       when EITHER intraday OIS ingestion lands OR a statement-
+       classification ingest increment is prioritised.
+EFFORT: Large — neither unblock path is a single-PR change.  Both
+       require new ingestion plumbing AND, only after that lands,
+       the primitive build itself (four files + test triplet + parity
+       fixture).
+
 
 ## MEDIUM — Fix within first quarter
 

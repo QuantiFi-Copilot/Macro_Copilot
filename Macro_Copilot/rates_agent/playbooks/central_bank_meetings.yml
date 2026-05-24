@@ -41,9 +41,20 @@ description: |
   the Bank of Japan. One macro_data.event_calendar row per scheduled meeting,
   carrying the meeting date, the policy rate the meeting set, the rate that
   held before it, and the hike / hold / cut classification. This is the
-  substrate the Phase-3 fomc_surprise primitive and the FOMC event-study
-  template read; the per-meeting WIRP implied-rate series links in via
-  related_instrument_id once the D-wirp increment lands.
+  substrate the FOMC event-study template reads; the per-meeting WIRP
+  implied-rate series links in via related_instrument_id (D-wirp increment,
+  ADR 0009).
+
+  NOTE — hawk/dove sentiment NOT in this playbook (TD #31).
+  This playbook stores the FACTUAL policy decision only
+  (`actual`/`prior` rates → identity-derived hike/hold/cut classifier in
+  `attributes`).  It does NOT carry a hawk/dove statement-sentiment
+  field.  Building a categorical FOMC-surprise hawk/dove label
+  (originally scoped as "primitive 6" of the easy-win batch) requires
+  EITHER intraday 2y OIS data (the desk-canonical methodology — see
+  TD #31 path a) OR a separately ingested statement_classification
+  field on this playbook (TD #31 path b).  Both are out of scope for
+  the easy-win batch — see `docs/technical_debt.md` §31.
 
 extraction:
   # The bds meeting calendar spans ~2025 -> 2027; the bdh policy-rate pull must
