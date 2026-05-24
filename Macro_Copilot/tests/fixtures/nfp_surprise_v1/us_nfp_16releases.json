@@ -3,7 +3,7 @@
   "tool_module": "rates_agent.sovereign_bonds.tools.nfp_surprise",
   "tool_function": "calculate_nfp_surprise",
   "capture": {
-    "captured_at": "2026-05-24T16:05:34Z",
+    "captured_at": "2026-05-24T16:26:53Z",
     "capture_method": "live_db_v1",
     "database_name": "macrodata",
     "frozen_today": "2026-05-24",
@@ -438,71 +438,71 @@
     "time_series_surprise": {
       "series_name": "us_nfp_surprise",
       "units": "count",
-      "description": "Per-release nonfarm payrolls surprise for US (actual \u2212 consensus_median, in THOUSANDS of jobs \u2014 the Bloomberg 'NFP TCH Index' convention) over the displayed release window.  Closed-enum ``COUNT`` is the nearest matching unit for an integer-count delta; downstream consumers must treat the values as thousands of jobs, NOT raw counts.",
+      "description": "Per-release nonfarm payrolls surprise for US (actual \u2212 consensus_median, in RAW JOB COUNTS \u2014 i.e. the bespoke ``surprise_k_jobs`` field's value times 1000) over the displayed release window.  Closed-enum ``COUNT`` semantics: integer counts of jobs.  The bespoke ``time_series[i].surprise_k_jobs`` carries the desk-quote convention (thousands of jobs) \u2014 divide this canonical value by 1000 to recover the desk-quote form.  This split exists because COUNT is documented as 'observation counts' and a thousands-of-jobs delta is not a count; raw jobs IS.",
       "rows": [
         {
           "date": "2025-01-10",
-          "value": 72.0
+          "value": 72000.0
         },
         {
           "date": "2025-02-07",
-          "value": -223.0
+          "value": -223000.0
         },
         {
           "date": "2025-03-07",
-          "value": -118.0
+          "value": -118000.0
         },
         {
           "date": "2025-04-04",
-          "value": -73.0
+          "value": -73000.0
         },
         {
           "date": "2025-05-02",
-          "value": -30.0
+          "value": -30000.0
         },
         {
           "date": "2025-06-06",
-          "value": -113.0
+          "value": -113000.0
         },
         {
           "date": "2025-07-03",
-          "value": -126.0
+          "value": -126000.0
         },
         {
           "date": "2025-08-01",
-          "value": -41.0
+          "value": -41000.0
         },
         {
           "date": "2025-09-05",
-          "value": -145.0
+          "value": -145000.0
         },
         {
           "date": "2025-11-20",
-          "value": -115.0
+          "value": -115000.0
         },
         {
           "date": "2025-12-16",
-          "value": -9.0
+          "value": -9000.0
         },
         {
           "date": "2026-01-09",
-          "value": -87.0
+          "value": -87000.0
         },
         {
           "date": "2026-02-11",
-          "value": 95.0
+          "value": 95000.0
         },
         {
           "date": "2026-03-06",
-          "value": -211.0
+          "value": -211000.0
         },
         {
           "date": "2026-04-03",
-          "value": 120.0
+          "value": 120000.0
         },
         {
           "date": "2026-05-08",
-          "value": 50.0
+          "value": 50000.0
         }
       ]
     },

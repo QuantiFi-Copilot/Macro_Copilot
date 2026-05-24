@@ -504,12 +504,9 @@ class TestHonestAbsence:
 # ===========================================================================
 
 class TestSchemaInvariants:
-    def test_no_country_input_accepted(self):
-        """The Pydantic input must NOT accept a country argument —
+    def test_no_country_input_field(self):
+        """The Pydantic input must NOT have a country field —
         country is YAML-locked per the brief."""
-        from pydantic import ValidationError
-        # Extra fields should be ignored by default (Pydantic v2),
-        # but the field shouldn't exist on the model.
         p = NfpSurpriseInput()
         assert not hasattr(p, "country"), (
             "NfpSurpriseInput must NOT have a country field — "
@@ -518,6 +515,39 @@ class TestSchemaInvariants:
         assert not hasattr(p, "event_type"), (
             "NfpSurpriseInput must NOT have an event_type field"
         )
+
+    def test_country_input_raises_validation_error(self):
+        """Per P2 of the Codex review (PR #188): passing
+        ``country='EU'`` (or any other extra field) MUST raise a
+        loud ValidationError rather than being silently ignored.
+        Pydantic's default behaviour ignores extras; we force the
+        loud-rejection shape with model_config(extra='forbid') so a
+        caller mistakenly selecting a non-US country gets a clear
+        error instead of receiving US NFP under the wrong label."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc:
+            NfpSurpriseInput(country="EU", lookback_releases=12)
+        msg = str(exc.value)
+        assert "country" in msg or "extra" in msg.lower()
+
+    def test_event_type_input_raises_validation_error(self):
+        """Same P2 protection for ``event_type``: a caller passing
+        ``event_type='adp'`` mustn't silently get NFP."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc:
+            NfpSurpriseInput(event_type="adp", lookback_releases=12)
+        msg = str(exc.value)
+        assert "event_type" in msg or "extra" in msg.lower()
+
+    def test_arbitrary_extra_field_raises_validation_error(self):
+        """Any unknown field — not just country/event_type — must
+        raise.  Pins the strict ``extra='forbid'`` behaviour
+        catalogue-wide."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            NfpSurpriseInput(  # type: ignore[call-arg]
+                some_random_field=True, lookback_releases=12,
+            )
 
     def test_lookback_releases_lower_bound(self):
         from pydantic import ValidationError
@@ -632,7 +662,13 @@ class TestMethodologyNoteSurface:
 # ===========================================================================
 
 class TestSeriesParity:
-    def test_bespoke_and_canonical_surprise_match_row_for_row(self):
+    def test_bespoke_and_canonical_surprise_match_with_k_to_raw_conversion(self):
+        """Per the P1 fix from PR #188's Codex review: the canonical
+        surprise series emits RAW job counts (so units=COUNT is
+        semantically honest), while the bespoke series carries the
+        desk-quote thousands-of-jobs convention.  The parity check
+        therefore asserts ``canonical.value == bespoke.surprise_k_jobs
+        * 1000`` rather than byte-equal."""
         raw_df = _build_raw_df(n_releases=40)
         params = NfpSurpriseInput(lookback_releases=20)
         mock_engine = MagicMock(name="engine")
@@ -649,7 +685,47 @@ class TestSeriesParity:
             zip(out["time_series"], out["time_series_surprise"]["rows"])
         ):
             assert bespoke["date"] == canonical["date"], f"row {i}"
-            assert bespoke["surprise_k_jobs"] == canonical["value"], f"row {i}"
+            if bespoke["surprise_k_jobs"] is None:
+                assert canonical["value"] is None, f"row {i}"
+            else:
+                expected_canonical = round(
+                    float(bespoke["surprise_k_jobs"]) * 1000.0, 0,
+                )
+                assert canonical["value"] == expected_canonical, (
+                    f"row {i}: canonical={canonical['value']!r} "
+                    f"!= bespoke ({bespoke['surprise_k_jobs']!r}) × 1000 "
+                    f"= {expected_canonical!r}"
+                )
+
+    def test_canonical_surprise_unit_is_count_with_raw_jobs(self):
+        """Pin the unit declaration AND the raw-jobs semantics — these
+        together are what makes units=COUNT honest after the P1 fix."""
+        raw_df = _build_raw_df(n_releases=20)
+        params = NfpSurpriseInput(lookback_releases=10)
+        mock_engine = MagicMock(name="engine")
+        target = (
+            "rates_agent.sovereign_bonds.tools.nfp_surprise."
+            "compute.fetch_economic_release_surprises"
+        )
+        with patch(target, return_value=raw_df), patch(
+            "rates_agent.sovereign_bonds.tools.nfp_surprise.compute.date",
+            _FrozenDate,
+        ):
+            out = calculate_nfp_surprise(engine=mock_engine, params=params)
+        # Unit declaration
+        assert out["time_series_surprise"]["units"] == "count"
+        # Description carries the explicit "raw" disclosure
+        desc = out["time_series_surprise"]["description"].lower()
+        assert "raw" in desc and "job" in desc
+        # Spot-check: any non-None canonical value is a multiple of 1000
+        # (because surprise_k_jobs is rounded to whole-k → × 1000 lands
+        # on whole thousands).
+        for row in out["time_series_surprise"]["rows"]:
+            if row["value"] is not None:
+                assert row["value"] % 1000 == 0, (
+                    f"canonical value {row['value']!r} is not a whole "
+                    f"thousand — the * 1000 scaling broke the rounding"
+                )
 
     def test_bespoke_and_canonical_zscore_match_row_for_row(self):
         raw_df = _build_raw_df(n_releases=40)

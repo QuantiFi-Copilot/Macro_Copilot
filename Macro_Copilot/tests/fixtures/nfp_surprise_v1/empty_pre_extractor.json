@@ -3,9 +3,9 @@
   "tool_module": "rates_agent.sovereign_bonds.tools.nfp_surprise",
   "tool_function": "calculate_nfp_surprise",
   "capture": {
-    "captured_at": "2026-05-24T16:05:55Z",
+    "captured_at": "2026-05-24T16:27:13Z",
     "capture_method": "synthetic_v1",
-    "capture_method_note": "Empty-edge-case fixture pins the error-envelope shape for the pre-extractor-deployment / honest-absence path.  Cannot be captured from the live DB because the canonical US NFP slot now has realised data \u2014 this is a deliberate synthetic edge-case fixture, matching the empty_pre_extractor.json pattern established by cpi_surprise.",
+    "capture_method_note": "Empty-edge-case fixture pins the error-envelope shape for the pre-extractor-deployment / honest-absence path.  Cannot be captured from the live DB because the canonical US NFP slot now has realised data.",
     "frozen_today": "2026-05-24",
     "raw_rows_count": 0,
     "raw_rows_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"

@@ -347,11 +347,26 @@ def _build_canonical_surprise_series(
     """Convert the display DataFrame's surprise column into the
     canonical ``TimeSeries`` shape (closed-enum COUNT units).
 
-    Naming convention: ``<country_lower>_nfp_surprise``.  The
-    description field carries the explicit "thousands of jobs"
-    unit label so a downstream consumer reading the canonical
-    shape knows the unit semantics without inferring from the
-    series name.
+    Unit honesty (Codex P1 fix from PR #188 review)
+    -----------------------------------------------
+    The bespoke ``time_series[i].surprise_k_jobs`` carries values in
+    THOUSANDS of jobs — the desk-quote convention Bloomberg's
+    NFP TCH Index uses.  The canonical TimeSeries below emits the
+    SAME observation in RAW jobs (``value = surprise_k_jobs *
+    1000``) so the ``units = COUNT`` declaration is semantically
+    honest: COUNT means "integer counts" per the enum docstring,
+    and a raw job-count IS an integer count; a thousands-of-jobs
+    delta is NOT.  This deliberately makes the bespoke and
+    canonical fields carry DIFFERENT numeric values for the same
+    observation — they share the date index but the unit
+    convention differs (bespoke = desk-quote; canonical = bridge-
+    consumable unit-honest).
+
+    The parity test ``test_bespoke_and_canonical_surprise_match_row_for_row``
+    asserts the relationship ``canonical.value == bespoke.surprise_k_jobs
+    * 1000`` (not byte-equal) — see test_nfp_surprise_compute.py.
+
+    Naming convention: ``<country_lower>_nfp_surprise``.
     """
     series_name = f"{country.lower()}_nfp_surprise"
     rows = [
@@ -360,7 +375,13 @@ def _build_canonical_surprise_series(
             value=(
                 None
                 if _is_nan(row.surprise_k_jobs)
-                else round(float(row.surprise_k_jobs), surprise_round)
+                # Multiply by 1000 to convert thousands-of-jobs (desk
+                # quote) to raw-jobs (COUNT enum semantics).
+                # surprise_k_jobs is already rounded to whole-k per
+                # surprise_round_decimals; the * 1000 keeps the value
+                # an integer (50.0 → 50000.0) — no further rounding
+                # needed.
+                else round(float(row.surprise_k_jobs) * 1000.0, 0)
             ),
         )
         for row in display_df.itertuples()
@@ -370,12 +391,16 @@ def _build_canonical_surprise_series(
         units=TimeSeriesUnits.COUNT,
         description=(
             f"Per-release nonfarm payrolls surprise for {country} "
-            f"(actual − consensus_median, in THOUSANDS of jobs — the "
-            f"Bloomberg 'NFP TCH Index' convention) over the displayed "
-            f"release window.  Closed-enum ``COUNT`` is the nearest "
-            f"matching unit for an integer-count delta; downstream "
-            f"consumers must treat the values as thousands of jobs, "
-            f"NOT raw counts."
+            f"(actual − consensus_median, in RAW JOB COUNTS — i.e. "
+            f"the bespoke ``surprise_k_jobs`` field's value times "
+            f"1000) over the displayed release window.  Closed-enum "
+            f"``COUNT`` semantics: integer counts of jobs.  The "
+            f"bespoke ``time_series[i].surprise_k_jobs`` carries the "
+            f"desk-quote convention (thousands of jobs) — divide "
+            f"this canonical value by 1000 to recover the desk-quote "
+            f"form.  This split exists because COUNT is documented "
+            f"as 'observation counts' and a thousands-of-jobs delta "
+            f"is not a count; raw jobs IS."
         ),
         rows=rows,
     )

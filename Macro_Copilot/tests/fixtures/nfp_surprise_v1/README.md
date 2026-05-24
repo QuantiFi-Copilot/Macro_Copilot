@@ -35,6 +35,28 @@ This matches the strict-PR15-compliance approach cpi_surprise
 adopted after the Codex review of PR #187, applied here from day
 one.
 
+### Unit honesty note (P1 fix from PR #188 Codex review)
+
+After the Codex review of PR #188, the canonical
+``time_series_surprise`` was changed to emit **raw job counts** so
+``units = COUNT`` is semantically honest per the ``TimeSeriesUnits``
+enum's "observation counts" documentation.  The bespoke
+``time_series[i].surprise_k_jobs`` field retains the desk-quote
+convention (thousands of jobs).
+
+In the live-DB fixture for May 2026's US NFP release:
+
+| Field | Value |
+|---|---|
+| ``time_series[-1].surprise_k_jobs`` (bespoke, desk-quote) | `50.0` (= +50k jobs) |
+| ``time_series_surprise.rows[-1].value`` (canonical, raw jobs) | `50000.0` (= +50,000 jobs) |
+
+The parity test asserts ``canonical == bespoke * 1000`` rather than
+byte-equal.  This split was deliberate at the schema level — both
+shapes carry the same observation, but the unit conventions differ
+between the desk-display surface (bespoke) and the bridge-consumable
+surface (canonical).
+
 ## Live-DB pre-requisite — ADR 0008 §6 / TD #28b
 
 The event extractor is forward-only and bounded by Bloomberg's

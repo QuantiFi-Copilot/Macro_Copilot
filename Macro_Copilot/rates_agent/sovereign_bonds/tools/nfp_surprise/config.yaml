@@ -132,6 +132,14 @@ conventions:
       Sample standard deviation (Bessel-corrected, ddof=1).  Matches
       pandas' default and the industry convention.  Same value as
       cpi_surprise and every other catalog rolling-z primitive.
+      Valid range pinned to {0, 1} — the only two meaningful ddof
+      values for a rolling z-score (0 = population std, 1 = sample
+      std).  PR7 normative requirement for numeric conventions;
+      existing primitives (curve_spread / otr_ofr_spread /
+      cpi_surprise) carry the same ddof convention WITHOUT a
+      valid_range (inherited catalog debt — fixed here on the new
+      primitive at v1 land, not retroactively).
+    valid_range: [0, 1]
 
   # ---------------------------------------------------------------------------
   # Calendar buffer for the fetch window (in DAYS) per release

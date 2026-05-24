@@ -13,17 +13,25 @@ Snapshot + canonical ``TimeSeries`` — the curve_spread / yield_levels
 fields:
 
   - ``time_series_surprise`` (units = COUNT) — the historical surprise
-    values (actual − consensus_median, in thousands of jobs).  Closed-
-    enum ``TimeSeriesUnits.COUNT`` is the closest match for an
-    integer-count delta; the ``description`` field on the TimeSeries
-    states explicitly that the unit is "thousands of jobs" so a
-    downstream consumer reading the canonical shape does not have
-    to infer it from the series_name.
+    values in RAW JOB COUNTS (NOT thousands of jobs).  The bespoke
+    ``time_series[i].surprise_k_jobs`` carries the desk-quote
+    convention (thousands of jobs, e.g. +50 means +50k jobs); the
+    canonical TimeSeries emits ``value = surprise_k_jobs * 1000``
+    (e.g. +50000) so that ``units=COUNT`` is semantically honest
+    — COUNT is documented as "observation counts" per
+    ``shared.schemas.TimeSeriesUnits.COUNT``, and a raw job-count
+    IS an integer count; a thousands-of-jobs delta is not.  This is
+    a deliberate Codex P1 fix from the PR #188 review.  The
+    parity test asserts the conversion factor
+    (canonical = bespoke * 1000), NOT byte-equal.
   - ``time_series_zscore`` (units = Z_SCORE) — the rolling z-score
     over the trailing ``release_z_window`` realised releases.
 
-Both fields plus the bespoke ``time_series`` array are built from the
-same display DataFrame and cannot drift — proven by the parity test.
+The bespoke ``time_series`` array shares the date index with the
+canonical series but uses the desk-quote unit (thousands of jobs);
+the canonical surprise series uses raw job counts.  This split is
+intentional — see ``compute._build_canonical_surprise_series``'s
+"Unit honesty" docstring section.
 
 The time-series INDEX is the release date (``YYYY-MM-DD`` string),
 NOT trade_date — releases happen monthly so the index is sparse
@@ -65,7 +73,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from shared.schemas import TimeSeries
 
@@ -101,7 +109,17 @@ class NfpSurpriseInput(BaseModel):
     selector or methodology choice — both ``country`` and
     ``event_type`` are YAML-locked (US-only, event_type=nfp).  The
     only input is the display-window length in number of releases.
+
+    ``extra='forbid'`` is set so a caller that passes ``country=...``
+    or ``event_type=...`` (mistakenly thinking those are valid LLM
+    inputs) gets a loud Pydantic ValidationError rather than a
+    silent ignore that would return US NFP for what they thought
+    was an EU CPI or ADP query.  This pins the single-country
+    single-event guarantee at the API boundary (P6 — no silent
+    failure).
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     lookback_releases: int = Field(
         default_factory=_bundled_default_lookback_releases,
@@ -278,13 +296,17 @@ class NfpSurpriseOutput(BaseModel):
     time_series_surprise: TimeSeries = Field(
         ...,
         description=(
-            "Historical US NFP surprise series (actual − consensus_median, "
-            "in thousands of jobs) over the displayed window.  Closed-enum "
-            "``TimeSeriesUnits.COUNT`` (the closest match for "
-            "thousands-of-jobs deltas; description field carries the "
-            "explicit 'thousands of jobs' label).  series_name = "
-            "'us_nfp_surprise'.  Values match "
-            "``time_series[i].surprise_k_jobs`` 1-to-1 by construction."
+            "Historical US NFP surprise series (actual − consensus_median) "
+            "over the displayed window, in RAW JOB COUNTS (canonical "
+            "TimeSeries values = bespoke ``surprise_k_jobs * 1000`` so "
+            "that ``units = COUNT`` is semantically honest per the "
+            "``TimeSeriesUnits.COUNT`` 'observation counts' "
+            "documentation).  series_name = 'us_nfp_surprise'.  The "
+            "bespoke ``time_series[i].surprise_k_jobs`` carries the "
+            "desk-quote convention (thousands of jobs); the canonical "
+            "value is 1000× that.  See "
+            "``compute._build_canonical_surprise_series``'s 'Unit "
+            "honesty' note for the rationale."
         ),
     )
     time_series_zscore: TimeSeries = Field(
