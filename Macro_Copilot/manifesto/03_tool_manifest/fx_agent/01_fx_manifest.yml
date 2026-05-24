@@ -278,3 +278,175 @@ tools:
       window + invalid scope correctly raise ValueError /
       ValidationError. Targeted compute / wiring / sql_validation tests
       included.
+
+  # ---------------------------------------------------------------------------
+  # DERIVED SINGLE-PAIR SERIES (Phase B follow-up)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_returns_series
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_returns_series_tool
+      schema: fx_agent/spot/tools/returns_series/schemas.py::FXReturnsSeriesInput
+      compute: fx_agent/spot/tools/returns_series/compute.py::get_fx_returns_series
+      config: fx_agent/spot/tools/returns_series/config.yaml
+
+    one_liner: >-
+      Single-pair FX log-returns time series at a chosen horizon
+      (daily / weekly / monthly). Returns a clean TimeSeries
+      (closed-enum RATIO) plus a snapshot summary (current return,
+      mean / std / min / max over the lookback window).
+
+    bucket_rationale: >-
+      Deterministic log(P_t) - log(P_t-h) on a single-pair PX_LAST
+      series loaded via shared.analytics.fx_fetch.fetch_fx_spot_series.
+      Horizon mapping (1 / 5 / 22 trading days) is YAML-locked.
+      Closed Literal enforces the horizon vocabulary at the schema
+      layer.
+
+    pm_overridable:
+      - pair
+      - horizon
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - calculate_fx_drawdown_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_returns_workspace
+      - fx_carry_basket_screen
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: 3 horizons run end-to-end;
+      snapshot == time_series.rows[-1].value (strict); log-return
+      math verified against direct spot fetch; observation_count
+      matches non-None row count; unknown pair and invalid horizon
+      both fail-loud; units == 'ratio'.
+
+  - name: calculate_fx_drawdown
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_drawdown_tool
+      schema: fx_agent/spot/tools/drawdown/schemas.py::FXDrawdownInput
+      compute: fx_agent/spot/tools/drawdown/compute.py::calculate_fx_drawdown
+      config: fx_agent/spot/tools/drawdown/config.yaml
+
+    one_liner: >-
+      Running drawdown of an FX spot rate vs its trailing peak over
+      a lookback window. Returns the drawdown TimeSeries (RATIO,
+      always <= 0) plus a snapshot summary (current drawdown, max
+      drawdown, peak / trough dates, recovery date, time-to-recovery
+      in trading days).
+
+    bucket_rationale: >-
+      Deterministic (P_t / running_max(P_0..P_t)) - 1 on a single-
+      pair PX_LAST series loaded via the shared FX fetcher. Running
+      max anchors on the first row of the display window
+      (documented assumption — pre-window peaks are NOT carried in).
+      Sign is raw — no position-direction interpretation.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - get_fx_returns_series_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_risk_workspace
+      - fx_drawdown_alert
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: all drawdown values <= 0;
+      snapshot current_drawdown == time_series.rows[-1].value
+      (strict); max_drawdown == min(time_series) (strict);
+      max_drawdown_date row matches snapshot value; recovery
+      invariants hold when recovery_date is non-None;
+      observation_count matches row count; unknown pair fails
+      loud; units == 'ratio'.
+
+  - name: get_fx_realized_vol
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_realized_vol_tool
+      schema: fx_agent/spot/tools/realized_vol/schemas.py::FXRealizedVolInput
+      compute: fx_agent/spot/tools/realized_vol/compute.py::get_fx_realized_vol
+      config: fx_agent/spot/tools/realized_vol/config.yaml
+
+    one_liner: >-
+      Rolling annualized realized vol of an FX spot pair (default
+      30 trading days, range 5-504). Daily log-returns to rolling
+      std (ddof=1) * sqrt(252) * 100, expressed in PERCENT (8.0 =
+      8% / year). Returns the vol TimeSeries plus a snapshot
+      summary (current vol, mean / min / max over the lookback).
+
+    bucket_rationale: >-
+      Deterministic std-of-log-returns annualized via the locked
+      sqrt(252) convention. Window and lookback are caller-tunable;
+      annualization factor and ddof are YAML-locked. Output unit
+      PERCENT matches the trader convention (and the unit ATM
+      implied vol will use when Phase E lands).
+
+    pm_overridable:
+      - pair
+      - window_days
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_returns_series_tool
+      - calculate_fx_drawdown_tool
+      - get_fx_spot_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_realized_vs_implied_carry
+
+    references:
+      - rates_agent/sovereign_bonds/tools/yield_levels
+      - shared/analytics/fx_fetch.py
+
+    built_date: 2026-05-25
+    validation_status: >-
+      9/9 PASS on targeted compute test: default args run end-to-end;
+      vol values >= 0; EURUSD mean vol in plausible 2-25 % range
+      (sanity vs accidental ratio output); snapshot ==
+      time_series.rows[-1].value (strict); observation_count
+      matches non-None row count; math verified by hand recompute
+      of std(log-rets) * sqrt(252) * 100; unknown pair fails loud;
+      short lookback + long window works (buffer absorbs); units
+      == 'percent'.

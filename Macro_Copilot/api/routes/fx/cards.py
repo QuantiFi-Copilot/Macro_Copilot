@@ -11,8 +11,14 @@ from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import FXForwardCurveInput
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput
+from fx_agent.spot.tools.drawdown import calculate_fx_drawdown
+from fx_agent.spot.tools.drawdown.schemas import FXDrawdownInput
 from fx_agent.spot.tools.fx_panel import calculate_fx_panel
 from fx_agent.spot.tools.fx_panel.schemas import FXPanelInput
+from fx_agent.spot.tools.realized_vol import get_fx_realized_vol
+from fx_agent.spot.tools.realized_vol.schemas import FXRealizedVolInput
+from fx_agent.spot.tools.returns_series import get_fx_returns_series
+from fx_agent.spot.tools.returns_series.schemas import FXReturnsSeriesInput
 from fx_agent.spot.tools.scanner import run_fx_scanner
 from fx_agent.spot.tools.schemas import FXScannerInput
 from fx_agent.spot.tools.spot_levels import get_fx_spot_level
@@ -187,3 +193,80 @@ def panel(
         raise HTTPException(
             status_code=503, detail=f"FX panel failed: {exc}"
         )
+
+
+@router.get("/returns-series", summary="FX Log-Returns Series")
+def returns_series(
+    pair: str = Query(..., description="Six-char FX pair (e.g. 'EURUSD')."),
+    horizon: str = Query(
+        default="daily",
+        description="One of 'daily' / 'weekly' / 'monthly'.",
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    try:
+        return get_fx_returns_series(
+            engine,
+            FXReturnsSeriesInput(
+                pair=pair,
+                horizon=horizon,
+                lookback_days=lookback_days,
+                field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        # Substrate-level fail-loud (empty fetch, etc.) → 422
+        raise HTTPException(status_code=422, detail=f"FX returns series failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX returns series failed: {exc}")
+
+
+@router.get("/drawdown", summary="FX Drawdown")
+def drawdown(
+    pair: str = Query(..., description="Six-char FX pair (e.g. 'EURUSD')."),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    try:
+        return calculate_fx_drawdown(
+            engine,
+            FXDrawdownInput(
+                pair=pair,
+                lookback_days=lookback_days,
+                field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX drawdown failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX drawdown failed: {exc}")
+
+
+@router.get("/realized-vol", summary="FX Rolling Realized Vol")
+def realized_vol(
+    pair: str = Query(..., description="Six-char FX pair (e.g. 'EURUSD')."),
+    window_days: int = Query(
+        default=30, ge=5, le=504,
+        description="Rolling vol window in trading days.",
+    ),
+    lookback_days: int = Query(default=365, ge=60, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    try:
+        return get_fx_realized_vol(
+            engine,
+            FXRealizedVolInput(
+                pair=pair,
+                window_days=window_days,
+                lookback_days=lookback_days,
+                field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX realized vol failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX realized vol failed: {exc}")

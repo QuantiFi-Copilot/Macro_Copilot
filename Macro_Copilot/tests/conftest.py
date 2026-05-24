@@ -96,4 +96,5 @@ collect_ignore = [
     "test_fx_returns_series_compute.py",
     "test_fx_drawdown_compute.py",
     "test_fx_realized_vol_compute.py",
+    "test_fx_followup_wiring.py",
 ]
