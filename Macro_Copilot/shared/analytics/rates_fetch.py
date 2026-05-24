@@ -813,3 +813,136 @@ def fetch_otr_ofr_yield_pair(
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
+# WIRP — per-meeting implied-rate snapshot fetch
+# ============================================================================
+#
+# Reads the four WIRP fields ingested per ADR 0009 for one central
+# bank's synthetic per-meeting instruments:
+#
+#   - WIRP_IMPLIED_RATE  — post-meeting implied effective policy rate
+#   - WIRP_MOVE_PROB     — signed probability of a single 25bp hike(+)/cut(-)
+#   - WIRP_NUM_MOVES     — number of 25bp moves priced
+#   - WIRP_RATE_CHANGE   — implied change in rate vs current effective
+#                          (in NATIVE Bloomberg units — see ADR 0009 §1)
+#
+# The synthetic ``wirp_meeting`` instruments are keyed by
+# ``vendor_ticker = 'WIRP:{central_bank}:{meeting_date}'`` and carry
+# ``maturity_date`` = the meeting date plus the per-metric Bloomberg
+# tickers in the ``attributes`` JSONB (per ADR 0009 §1).
+#
+# This fetcher returns the LATEST observation per (instrument, field)
+# — i.e. a snapshot of the four WIRP fields per meeting at the
+# latest available trade_date.  Used by the ``wirp_meeting_pricing``
+# primitive in V1; a future "WIRP history per meeting" primitive
+# would use a different fetcher that returns the full daily series
+# rather than the latest snapshot.
+#
+# Bind-syntax discipline: ``CAST(:x AS DATE)`` rather than
+# ``:x::date`` per the Codex P0 lesson from PR #186 (SQLAlchemy's
+# bind regex excludes ``:name::cast`` patterns).
+
+_WIRP_FIELDS: tuple = (
+    "WIRP_IMPLIED_RATE",
+    "WIRP_MOVE_PROB",
+    "WIRP_NUM_MOVES",
+    "WIRP_RATE_CHANGE",
+)
+
+
+_FETCH_WIRP_MEETING_SNAPSHOTS_SQL = text(
+    """
+    SELECT DISTINCT ON (md.instrument_id, md.field_name)
+        i.instrument_id,
+        i.vendor_ticker,
+        i.maturity_date            AS meeting_date,
+        i.attributes->>'central_bank'        AS central_bank,
+        i.attributes->>'wirp_meeting_token'  AS meeting_token,
+        i.attributes->>'wirp_ticker_fr'      AS bloomberg_ticker_fr,
+        i.attributes->>'wirp_ticker_pr'      AS bloomberg_ticker_pr,
+        i.attributes->>'wirp_ticker_nm'      AS bloomberg_ticker_nm,
+        i.attributes->>'wirp_ticker_ch'      AS bloomberg_ticker_ch,
+        md.field_name,
+        md.field_value,
+        md.trade_date              AS as_of_date
+    FROM macro_data.instrument_master i
+    JOIN macro_data.market_data_daily md
+      ON md.instrument_id = i.instrument_id
+    WHERE i.instrument_type = 'wirp_meeting'
+      AND i.attributes->>'central_bank' = :central_bank
+      AND md.field_name IN (
+          'WIRP_IMPLIED_RATE', 'WIRP_MOVE_PROB',
+          'WIRP_NUM_MOVES', 'WIRP_RATE_CHANGE'
+      )
+      AND i.maturity_date >= CAST(:earliest_meeting_date AS DATE)
+      AND i.maturity_date <= CAST(:latest_meeting_date AS DATE)
+    ORDER BY md.instrument_id, md.field_name, md.trade_date DESC
+    """
+)
+
+
+def fetch_wirp_meeting_snapshots(
+    engine: Engine,
+    *,
+    central_bank: str,
+    earliest_meeting_date: date,
+    latest_meeting_date: date,
+) -> pd.DataFrame:
+    """Fetch the LATEST snapshot of the four WIRP fields per meeting
+    for one central bank, restricted to meetings whose
+    ``maturity_date`` (= meeting date) falls in
+    ``[earliest_meeting_date, latest_meeting_date]``.
+
+    Returns a long-format DataFrame with columns
+    ``['instrument_id', 'vendor_ticker', 'meeting_date',
+      'central_bank', 'meeting_token',
+      'bloomberg_ticker_fr', 'bloomberg_ticker_pr',
+      'bloomberg_ticker_nm', 'bloomberg_ticker_ch',
+      'field_name', 'field_value', 'as_of_date']``
+
+    Each (instrument_id, field_name) pair contributes exactly one
+    row — the latest ``trade_date`` for that pair.  A meeting with
+    full 4/4 coverage contributes 4 rows; a meeting missing one
+    field (e.g. region-opted-out via the ADR 0009 §4
+    ``available: false`` shape) contributes <4 rows and the caller
+    handles the absence honestly (None on the wire).
+
+    Empty DataFrame when no meeting matches the filter — honest
+    absence per P6 (pre-extractor-deployment shape per ADR 0008 §6
+    / TD #28b, or a central_bank outside the four supported regions).
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    central_bank : str
+        One of the four supported values per ADR 0009 §1:
+        ``'FOMC'``, ``'ECB'``, ``'BOE'``, ``'BOJ'``.
+    earliest_meeting_date, latest_meeting_date : date
+        Inclusive calendar boundaries on the meeting date (the
+        synthetic instrument's ``maturity_date`` column, per
+        ADR 0009 §1's typed-column mapping).
+
+    Notes
+    -----
+    The shipped WIRP data is INGESTED per ADR 0009 verbatim from
+    Bloomberg's WIRP screen.  Units are stored as Bloomberg returns
+    them (P12 — the field name asserts a *quantity*, not a unit;
+    see ADR 0009 §1's "rate_change is in NATIVE units" disclosure).
+    Callers must NOT apply unit conversion — surfaces the values as
+    fetched.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_WIRP_MEETING_SNAPSHOTS_SQL,
+            {
+                "central_bank": str(central_bank),
+                "earliest_meeting_date": earliest_meeting_date.isoformat(),
+                "latest_meeting_date": latest_meeting_date.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)

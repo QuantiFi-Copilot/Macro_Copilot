@@ -71,6 +71,17 @@ from rates_agent.ois.tools.schemas.scanner import (
     OISScannerResultRow,
 )
 
+# WIRP per-meeting pricing — INGEST primitive surfacing Bloomberg's
+# WIRP-screen fields per ADR 0009 (P12 boundary).  List-shaped
+# categorical output — registered in WORKFLOW_INCOMPATIBLE_TOOLS
+# (not bridge-composable in V1).
+from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
+    WirpMeetingPricingCurrentMetrics,
+    WirpMeetingPricingInput,
+    WirpMeetingPricingOutput,
+    WirpMeetingSnapshot,
+)
+
 # NOTE: meeting_pricing was removed.  The tool used linear interpolation
 # on par OIS swap rates to approximate central-bank meeting moves, which
 # produces a ramp where the market prices a step function — outputs drifted
@@ -107,4 +118,9 @@ __all__ = [
     "OISScannerInput",
     "OISScannerOutput",
     "OISScannerResultRow",
+    # wirp_meeting_pricing
+    "WirpMeetingPricingInput",
+    "WirpMeetingPricingCurrentMetrics",
+    "WirpMeetingSnapshot",
+    "WirpMeetingPricingOutput",
 ]

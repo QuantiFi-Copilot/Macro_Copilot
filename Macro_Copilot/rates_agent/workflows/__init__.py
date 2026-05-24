@@ -302,6 +302,20 @@ WORKFLOW_INCOMPATIBLE_TOOLS: Dict[str, str] = {
         "``TimeSeries`` or wide-format ``Panel``; bridge cannot dispatch "
         "it.  See get_otr_history/schemas.py docstring."
     ),
+    "calculate_wirp_meeting_pricing_tool": (
+        "List of per-meeting WIRP snapshots — each meeting carries a "
+        "mix of identifier columns (vendor_ticker + 4 Bloomberg "
+        "tickers per ADR 0009 §1 provenance), Bloomberg-ingested "
+        "numeric fields (implied_policy_rate_pct, signed_move_prob_pct, "
+        "num_25bp_moves_priced, rate_change_native), and identity-"
+        "derived probabilities (hike/cut/hold_prob_pct).  Output is "
+        "the natural 'N meeting snapshots' shape — not a single "
+        "numeric ``TimeSeries`` or wide-format ``Panel``; bridge "
+        "cannot dispatch it.  See wirp_meeting_pricing/schemas.py "
+        "docstring 'Output shape' section.  A future Panel-shaped "
+        "(N meetings × K metrics) bridge artifact could absorb this; "
+        "documented in methodology.planned_extensions."
+    ),
 }
 
 

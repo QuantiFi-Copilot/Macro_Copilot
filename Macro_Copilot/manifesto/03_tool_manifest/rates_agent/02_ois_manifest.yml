@@ -313,3 +313,77 @@ tools:
     built_date: 2026-05-01
     validation_status: >-
       Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # WIRP — per-meeting policy-rate pricing (INGEST primitive, P12 boundary)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_wirp_meeting_pricing
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: meeting_pricing
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_wirp_meeting_pricing_tool
+      schema: rates_agent/ois/tools/wirp_meeting_pricing/schemas.py::WirpMeetingPricingInput
+      compute: rates_agent/ois/tools/wirp_meeting_pricing/compute.py::calculate_wirp_meeting_pricing
+      config: rates_agent/ois/tools/wirp_meeting_pricing/config.yaml
+
+    one_liner: >-
+      Per-meeting WIRP pricing snapshot for one central bank (FOMC /
+      ECB / BOE / BOJ).  Surfaces Bloomberg's WIRP-screen fields
+      verbatim per ADR 0009 §1 (INGEST primitive, P12 boundary —
+      NOT recomputed from STIR futures or OIS pricing): implied
+      policy rate, signed move probability, number of 25bp moves
+      priced, implied rate change.  Identity-derives separate hike /
+      cut / hold probabilities from Bloomberg's single signed
+      WIRP_MOVE_PROB (max(p, 0) / max(-p, 0) / 100 - |p| — the
+      desk's standard interpretation, NOT a recomputation).  Two
+      selection modes (next_n_meetings vs specific_meeting_date)
+      via a cohesive PR8 central surface; n_meetings defaults from
+      YAML (currently 6).
+
+    bucket_rationale: >-
+      Strict INGEST of Bloomberg-stored WIRP fields with identity-
+      derived auxiliary probabilities.  No model inference, no
+      recomputation.  The wire-frozen ``*_field`` conventions
+      (implied_rate_field / move_prob_field / num_moves_field /
+      rate_change_field) pin the read path to ADR 0009 §1's metric →
+      field mapping; compute layer guards each with
+      NotImplementedError.  Categorical convention
+      ``supported_central_banks`` wire-locked to the four ADR 0009
+      §2 region-prefix banks.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_forward_rate_tool
+      - get_otr_history_tool   # also list-shaped categorical output
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0009-wirp-time-series.md
+      - docs_revamped/05_decisions/0008-event-playbook-contract.md  # §5 WIRP carve-out
+      - docs_revamped/05_decisions/0004-event-calendar-substrate.md
+      - rates_agent/playbooks/wirp.yml
+      - docs/technical_debt.md  # TD #28 — ECO_RELEASE_DT_LIST window limit
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.
+      Live-DB SQL validation green (4/4 central banks PASS row-for-
+      row against macro_data.instrument_master + market_data_daily).
+      Parity fixtures shipped at v1 land are live-DB captures
+      (capture_method = live_db_v1) for FOMC + ECB + BOE + BOJ —
+      strict PR15 compliance from day one (mirroring nfp_surprise's
+      precedent).  Output shape is list-shaped categorical (the
+      natural shape of "N meeting snapshots") and is NOT bridge-
+      composable in V1 — registered in
+      rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS with
+      explicit rationale per the get_otr_history /
+      classify_curve_move precedent.
