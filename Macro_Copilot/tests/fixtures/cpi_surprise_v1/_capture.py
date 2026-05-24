@@ -73,22 +73,29 @@ from shared.analytics.events_fetch import fetch_economic_release_surprises  # no
 from shared.config import load_tool_config  # noqa: E402
 
 
+# lookback_releases values chosen to exercise the primitive's
+# trimming + the z-score warmup gate against the v1 live-DB coverage:
+#   US: 16 realised, EU: 20 realised, UK: 17 realised, JP: 16 realised.
+# Each fixture's lookback is at-or-below realised_count so the
+# display-window trim emits the full realised series + the z-score
+# warmup boundary is captured naturally (z emits after
+# release_z_min_periods=6 realised releases).
 _CASES: list[dict] = [
     {
-        "fixture_name": "us_cpi_24releases",
-        "params": {"country": "US", "lookback_releases": 24},
+        "fixture_name": "us_cpi_16releases",
+        "params": {"country": "US", "lookback_releases": 16},
     },
     {
         "fixture_name": "eu_hicp_18releases",
         "params": {"country": "EU", "lookback_releases": 18},
     },
     {
-        "fixture_name": "uk_cpi_24releases",
-        "params": {"country": "UK", "lookback_releases": 24},
+        "fixture_name": "uk_cpi_16releases",
+        "params": {"country": "UK", "lookback_releases": 16},
     },
     {
-        "fixture_name": "jp_cpi_18releases",
-        "params": {"country": "JP", "lookback_releases": 18},
+        "fixture_name": "jp_cpi_12releases",
+        "params": {"country": "JP", "lookback_releases": 12},
     },
 ]
 

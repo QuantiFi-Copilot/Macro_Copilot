@@ -26,17 +26,24 @@ relative to a daily series.  Each row also carries the reference
 
 Validation layering
 -------------------
-- ``country`` is the LLM-facing instrument selector (PR1).  No
-  Pydantic-layer closed enum — the supported set is YAML-locked via
-  the ``cpi_event_type_for_<country>`` conventions (compute layer
+- ``country`` is the LLM-facing instrument selector (PR1) — the
+  brief's nominated "central knob" in the desk sense (it selects
+  *which* CPI series).  No Pydantic-layer closed enum — the
+  supported set is YAML-locked via the
+  ``cpi_event_type_for_<country>`` conventions (compute layer
   returns a controlled error envelope for an unsupported country).
   Validators canonicalise lowercase / whitespace input (P5/P6 —
   loud rejection over silent SQL-layer miss).
-- ``lookback_releases`` is the central methodology knob (PR8) —
-  number of releases (NOT calendar days) to display.  Pydantic
-  default is sourced from ``config.yaml``'s
-  ``default_lookback_releases`` convention via the lazy-factory
-  pattern (P10 — single source of truth for the default).
+- ``lookback_releases`` is the display-window knob (NOT a
+  methodology choice — same shape as ``lookback_days`` in
+  curve_spread / yield_levels, which PR8's worked-example table
+  names as the "central methodology surface" for those primitives:
+  a display window, not a methodology window).  Number of
+  releases, not calendar days.  Pydantic default is sourced from
+  ``config.yaml``'s ``default_lookback_releases`` convention via
+  the lazy-factory pattern (P10 — single source of truth).  The
+  rolling z-score window is YAML-locked at
+  ``release_z_window=24`` regardless of this value.
 
 PR14 — wire-format honesty
 --------------------------
@@ -112,11 +119,14 @@ class CpiSurpriseInput(BaseModel):
         le=200,
         description=(
             "Number of realised releases of trailing history to display in "
-            "the time_series output.  The bundled default is read from "
+            "the time_series output.  DISPLAY WINDOW ONLY — not a "
+            "methodology choice.  The bundled default is read from "
             "config.yaml's ``default_lookback_releases`` convention "
             "(currently 24 ≈ 2Y at monthly CPI cadence).  The rolling "
-            "z-score window is fixed by config convention "
-            "``release_z_window`` (24 releases) regardless of this value."
+            "z-score window is YAML-locked at "
+            "``release_z_window=24`` regardless of this value (same "
+            "display-vs-z-window separation as curve_spread / "
+            "yield_levels' day-based primitives)."
         ),
     )
 

@@ -160,8 +160,13 @@ def calculate_cpi_surprise(
         Live SQLAlchemy engine.
     params : CpiSurpriseInput
         Validated input.  ``country`` is the LLM-facing instrument
-        selector (PR1); ``lookback_releases`` is the single LLM-
-        controlled central methodology knob (PR8).
+        selector (PR1) — the brief's nominated "central knob" in
+        the desk sense (it selects *which* CPI series).
+        ``lookback_releases`` is the display-window knob (NOT a
+        methodology choice — same shape as ``lookback_days`` in
+        curve_spread / yield_levels per PR8's worked-example table).
+        Methodology choices (z-score window, ddof, surprise formula,
+        country → event_type mapping) are all YAML-locked.
     config : ToolConfig, optional
         Bundled config.yaml is auto-loaded when None.  Tests pass a
         custom ToolConfig to exercise convention overrides.

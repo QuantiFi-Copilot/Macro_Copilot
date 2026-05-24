@@ -17,70 +17,48 @@ lock in the primitive's output shape + numeric content for known
 inputs, so any future code change that breaks the snapshot contract
 fails the parity test loudly.
 
-## v1 fixture provenance — SYNTHETIC, not live-DB (debt — not the intended end-state)
+## v1 fixture provenance — LIVE-DB CAPTURES + one synthetic empty-case fixture
 
-The shipped v1 fixtures carry `capture.capture_method = "synthetic_v1"`.
-The `raw_rows` are NOT from a live-DB capture; they are deterministic
-synthetic event-calendar rows designed to exercise:
+The shipped v1 fixtures are a **mix** of live-DB captures and one
+synthetic edge-case fixture.  Each `*.json` file declares its
+provenance under `capture.capture_method`:
 
-- the happy-path `cpi_yoy` series with full z-score warmup
-  (`us_cpi_24releases`);
-- the `hicp_yoy` resolution path for EU — load-bearing correctness
-  check that the country → event_type YAML mapping reaches the
-  fetcher correctly (`eu_hicp_18releases`);
-- the survey=false honest-absence shape per ADR 0008 §2 — rows with
-  `consensus_median=None` emit `surprise_pct=None` rather than a
-  fabricated zero (`uk_cpi_with_missing_consensus`);
-- the empty-result honest-absence error envelope (TD #28b pre-
-  extractor-deployment shape) (`empty_pre_extractor`).
+| Fixture | Provenance | Purpose |
+|---|---|---|
+| `us_cpi_16releases.json` | `live_db_v1` (`macrodata`, 16 raw rows) | Real captured US CPI YoY releases (Jan 2025 → May 2026 — within ECO_RELEASE_DT_LIST window per TD #28b). 16 realised → 16-row display + post-warmup z-score on the trailing 10 rows. |
+| `eu_hicp_18releases.json` | `live_db_v1` (`macrodata`, 20 raw rows) | Real captured EU HICP YoY releases — exercises the load-bearing EU → `hicp_yoy` country → event_type mapping correctness. |
+| `uk_cpi_16releases.json` | `live_db_v1` (`macrodata`, 17 raw rows) | Real captured UK CPI YoY releases. |
+| `jp_cpi_12releases.json` | `live_db_v1` (`macrodata`, 17 raw rows) | Real captured Japan CPI YoY releases. |
+| `empty_pre_extractor.json` | `synthetic_v1` (0 raw rows) | Pins the error-envelope shape for the pre-extractor-deployment / unknown-country case.  Cannot be captured from the live DB because all 4 canonical supported countries (US/UK/JP/EU) now have realised data — this is a deliberate synthetic edge-case fixture that exercises the empty-window honest-absence path. |
 
-The `expected_output` was produced by running the primitive itself
-against those rows under a frozen wall-clock date (2026-05-22).  This
-is **honest disclosure (P5)** — these fixtures lock in regression
-behaviour but are **NOT captured production output**.
+**PR15 compliance:** the four happy-path fixtures satisfy PR15
+strictly — they capture real production output against the live
+TimescaleDB.  The `empty_pre_extractor.json` fixture is intentionally
+synthetic because the live DB cannot reproduce its precondition
+(zero realised rows for a supported country, which the v1 event-
+extractor coverage no longer permits).
 
-### Codex-review-style PR15 stance
-
-Per the strict reading of PR15 ("captures real production output"),
-synthetic fixtures are non-conformant.  This primitive follows the
-inherited precedent from `get_otr_history`-v1 (merged 2026-05-24)
-and `otr_ofr_spread`-v1 (merged 2026-05-24 — PR #186), which shipped
-synthetic-v1 fixtures with explicit P5 disclosure and a documented
-live-DB-capture path.  The blocker is identical: the upstream
-substrate (event extractor / cash-bond ingestion) is rolling out
-and the canonical regression slots do not yet have enough live data
-to populate a meaningful 24-release surprise z-score warmup.
-
-The path to live-DB replacement is unblocked the moment
-`event_calendar` has realised `cpi_yoy` / `hicp_yoy` rows for the
-canonical regression slots — `_capture.py` is ready to run, parity
-test is provenance-agnostic.
-
-### Why synthetic and not live-DB?
-
-Two upstream-coverage blockers force the synthetic shape at v1 land:
-
-1. The event extractor (ADR 0008's `--mode event-calendar`) is
-   forward-only and bounded by Bloomberg's `ECO_RELEASE_DT_LIST`
-   recent-past-plus-forward window (~1.5 years history + forward
-   scheduled per ADR 0008 §6 / TD #28b).
-2. The `economic_releases.yml` playbook is itself rolling out, so
-   per-country CPI / HICP rows may not yet cover the full
-   `release_z_window=24` realised releases for every supported
-   country.
-
-A captured fixture against the partly-populated DB would either be
-empty for some countries or carry incomplete z-score warmup —
-neither shape locks in useful regression behaviour.
+This represents a **stricter compliance level** than the v1 fixtures
+of primitives 1 (`get_otr_history`) and 2 (`otr_ofr_spread`), which
+shipped entirely synthetic v1 fixtures (inherited debt) — those
+will be remediated incrementally as their upstream substrates fill
+in.
 
 ## Live-DB pre-requisite — ADR 0008 §6 / TD #28b
 
-The event extractor is forward-only.  The capture script
-(`_capture.py`) handles partial coverage honestly: if a slot has zero
-realised releases in the live DB for the lookback, the capture
-writes an error-envelope fixture (matching the primitive's
-pre-extractor-deployment shape).  The `empty_pre_extractor.json`
-fixture pins this honest-absence path explicitly.
+The event extractor is forward-only and bounded by Bloomberg's
+`ECO_RELEASE_DT_LIST` recent-past-plus-forward window (~1.5 years
+history + forward scheduled).  At v1 land time, the live DB has
+realised CPI / HICP releases:
+
+- US (`cpi_yoy`): 16 realised, Jan 2025 → May 2026
+- EU (`hicp_yoy`): 20 realised, Jan 2025 → May 2026
+- UK (`cpi_yoy`): 17 realised, Jan 2025 → May 2026
+- JP (`cpi_yoy`): 16 realised, Jan 2025 → Apr 2026
+
+These windows cover the post-warmup z-score region (the warmup gate
+fires at `release_z_min_periods = 6`) so the fixtures exercise both
+the warmup boundary and the steady-state rolling z-score.
 
 ## Fixture format
 
@@ -88,19 +66,20 @@ Each `*.json` file is a self-contained fixture:
 
 ```json
 {
-  "fixture_name": "us_cpi_24releases",
+  "fixture_name": "us_cpi_16releases",
   "tool_module": "rates_agent.inflation_swaps.tools.cpi_surprise",
   "tool_function": "calculate_cpi_surprise",
   "capture": {
-    "captured_at": "2026-05-22T13:26:38Z",
-    "capture_method": "synthetic_v1",
-    "frozen_today": "2026-05-22",
-    "raw_rows_count": 48,
+    "captured_at": "2026-05-24T15:23:01Z",
+    "capture_method": "live_db_v1",
+    "database_name": "macrodata",
+    "frozen_today": "2026-05-24",
+    "raw_rows_count": 16,
     "raw_rows_sha256": "abc123..."
   },
   "input": {
-    "params": {"country": "US", "lookback_releases": 24},
-    "frozen_today": "2026-05-22",
+    "params": {"country": "US", "lookback_releases": 16},
+    "frozen_today": "2026-05-24",
     "raw_rows": [
       {
         "event_id": 5000,
@@ -108,14 +87,14 @@ Each `*.json` file is a self-contained fixture:
         "event_category": "economic_release",
         "country": "US",
         "currency": "USD",
-        "release_date": "2024-06-15",
+        "release_date": "2025-01-15",
         "release_time": null,
-        "period": "May 2024",
-        "actual": 3.2,
-        "consensus_median": 3.1,
-        "consensus_high": 3.2,
-        "consensus_low": 3.0,
-        "prior": 3.15,
+        "period": "Dec 2024",
+        "actual": 2.9,
+        "consensus_median": 2.9,
+        "consensus_high": 3.0,
+        "consensus_low": 2.8,
+        "prior": 2.7,
         "revised_prior": null,
         "surprise_std_dev": 0.05
       }
@@ -131,7 +110,11 @@ Each `*.json` file is a self-contained fixture:
 }
 ```
 
-## Generating fixtures (live-DB capture)
+## Regenerating fixtures (live-DB capture)
+
+Only after a deliberate methodology change.  When the event
+extractor's coverage advances (e.g. TD #28b history backfill lands),
+re-running the capture refreshes the live-DB fixtures:
 
 ```bash
 docker-compose up -d tsdb
@@ -142,7 +125,10 @@ python tests/fixtures/cpi_surprise_v1/_capture.py
 
 The capture queries `macro_data.event_calendar` for each canonical
 slot using the same fetcher the primitive uses, records the raw
-rows, then runs the primitive to record the expected output.
+rows + SHA-256 hash, then runs the primitive to record the
+expected output.  Existing fixtures are overwritten in place; the
+parity test will fail loudly on any unintended drift (the SHA
+tamper-detection check catches edits without re-running capture).
 
 ## Running the parity test
 
