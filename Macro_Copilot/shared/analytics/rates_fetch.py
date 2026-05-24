@@ -530,3 +530,104 @@ def fetch_scan_universe(
         rows = result.fetchall()
         columns = list(result.keys())
     return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
+# ON-THE-RUN (OTR) HISTORY FETCH — SCD2 substrate
+# ============================================================================
+#
+# Reads ``macro_data.otr_history`` (ADR 0003) JOIN
+# ``macro_data.instrument_master`` for one ``(country, tenor)`` slot,
+# filtered to windows whose effective range intersects a calendar
+# lookback window.  Used by the ``get_otr_history`` primitive today;
+# future cash-bond primitives that resolve the OTR / OFR bond for a
+# slot (``otr_ofr_spread``) call the same fetcher so the resolution
+# logic exists in exactly one place (P10 — single source of truth).
+#
+# ``effective_to IS NULL`` (open window) is treated as
+# ``'infinity'::date`` for the intersection check, matching the
+# table's EXCLUDE GIST constraint convention from ADR 0003.
+
+_FETCH_OTR_TRANSITIONS_SQL = text(
+    """
+    SELECT
+        o.effective_from,
+        o.effective_to,
+        o.otr_instrument_id,
+        i.cusip,
+        i.isin,
+        i.vendor_ticker,
+        i.maturity_date
+    FROM macro_data.otr_history o
+    JOIN macro_data.instrument_master i
+      ON i.instrument_id = o.otr_instrument_id
+    WHERE o.country = :country
+      AND o.tenor   = :tenor
+      AND daterange(
+              o.effective_from,
+              COALESCE(o.effective_to, 'infinity'::date),
+              '[]'
+          ) && daterange(:window_start, :window_end, '[]')
+    ORDER BY o.effective_from ASC
+    """
+)
+
+
+def fetch_otr_transitions(
+    engine: Engine,
+    *,
+    country: str,
+    tenor: str,
+    window_start: date,
+    window_end: date,
+) -> "list[dict]":
+    """Fetch the SCD2 OTR transition log for one ``(country, tenor)`` slot.
+
+    Returns one dict per ``otr_history`` row whose effective range
+    intersects ``[window_start, window_end]``, sorted by
+    ``effective_from`` ascending.  The currently-open window (the row
+    with ``effective_to IS NULL``) is included when its
+    ``effective_from`` falls on or before ``window_end``.
+
+    Each dict has keys: ``effective_from``, ``effective_to`` (None on
+    the open window), ``otr_instrument_id``, ``cusip``, ``isin``,
+    ``vendor_ticker``, ``maturity_date``.  Date columns are returned
+    as the DB driver's ``date`` objects; the caller is responsible for
+    ISO-coercion at the wire layer if needed.
+
+    Returns the empty list (never ``None``) when no window intersects
+    the lookback — honest absence per P6 (the absence is information,
+    not failure).  This is the expected pre-resolver-deployment shape
+    documented in TD #27a.
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    country : str
+        Sovereign country code as stored in ``macro_data.otr_history``
+        (uppercase ISO-3166-alpha-2/3 per ADR 0007 §4 + 0005 §3).
+    tenor : str
+        Canonical slot tenor (integer-Y form matching
+        ``sovereign_cash_bonds.yml``).
+    window_start, window_end : date
+        Calendar boundaries of the intersection check.  Windows whose
+        effective range overlaps ``[window_start, window_end]``
+        (inclusive on both ends, matching the table's EXCLUDE GIST
+        boundary convention) are returned.
+    """
+    with engine.connect() as conn:
+        rows = (
+            conn.execute(
+                _FETCH_OTR_TRANSITIONS_SQL,
+                {
+                    "country": str(country),
+                    "tenor": str(tenor),
+                    "window_start": window_start.isoformat(),
+                    "window_end": window_end.isoformat(),
+                },
+            )
+            .mappings()
+            .all()
+        )
+    return [dict(r) for r in rows]

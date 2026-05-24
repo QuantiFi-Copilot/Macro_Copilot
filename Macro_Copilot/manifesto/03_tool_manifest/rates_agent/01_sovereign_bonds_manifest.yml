@@ -68,6 +68,60 @@ tools:
     validation_status: >-
       Not validated yet
 
+  - name: get_otr_history
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: get_otr_history_tool
+      schema: rates_agent/sovereign_bonds/tools/get_otr_history/schemas.py::OtrHistoryInput
+      compute: rates_agent/sovereign_bonds/tools/get_otr_history/compute.py::get_otr_history
+      config: rates_agent/sovereign_bonds/tools/get_otr_history/config.yaml
+
+    one_liner: >-
+      On-the-run transition log for one (country, tenor) sovereign cash-bond
+      slot — current OTR snapshot (CUSIP, ISIN, vendor_ticker, maturity_date,
+      effective_from of the open window) plus the chronological list of OTR
+      transitions intersecting the lookback window.  Pure-INGEST read of
+      macro_data.otr_history (ADR 0003), forward-only per ADR 0007 / TD #27.
+
+    bucket_rationale: >-
+      Deterministic read-only monitor of the macro_data.otr_history SCD2
+      table.  No arithmetic over market_data_daily; no recomputation of
+      anything Bloomberg already provides (P12).  Categorical / list-shape
+      output — NOT bridge-composable into workflow Series / Panel artifacts
+      in V1 (matches the curve_move_classifier precedent); intentionally
+      omitted from rates_agent/workflows/__init__.py.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+      - calculate_cross_market_spread_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0003-cash-bond-substrate.md
+      - docs_revamped/05_decisions/0005-cash-bond-playbook-universe.md
+      - docs_revamped/05_decisions/0007-otr-resolver.md
+      - docs/technical_debt.md  # TD #27 — forward-only + detection-date
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.  SQL-validation
+      runner ships in tests/test_get_otr_history_sql_validation.py and runs
+      against the live macro_data.otr_history table; parity fixture capture
+      script ships in tests/fixtures/get_otr_history_v1/_capture.py.  Both
+      require the resolver to have populated otr_history before they can
+      validate (TD #27a — forward-only) and are run against the live DB by
+      the project operator.
+
   # ---------------------------------------------------------------------------
   # CURVE SHAPE / SPREADS
   # ---------------------------------------------------------------------------

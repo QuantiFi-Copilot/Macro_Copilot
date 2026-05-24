@@ -248,6 +248,46 @@ from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
 # ============================================================================
+# WORKFLOW-INCOMPATIBLE TOOLS — explicit absence-of-registration marker
+# ============================================================================
+#
+# Some primitives in the rates agent's MCP catalogue are intentionally NOT
+# registered in ``_PRIMITIVE_SPECS`` because their output shape is not
+# bridge-composable into the workflow substrate's ``Series`` / ``Panel``
+# artifact types (per docs_revamped/02_components/primitive/README.md,
+# section "What a primitive *is*" — only Series and Panel outputs are
+# bridge-dispatched in V1; categorical / list-shaped outputs are valid
+# primitives but cannot feed an operator chain).
+#
+# Listing them here — rather than just omitting them — turns the silent
+# "absent from the registry" state into an EXPLICIT contract: a tool here
+# is intentionally workflow-incompatible by output shape; a tool absent from
+# BOTH this set AND ``_PRIMITIVE_SPECS`` is genuinely unregistered (a
+# documentation bug).  The substrate validator + manifest renderers can
+# read this set to distinguish the two cases.
+#
+# Adding a tool to this set requires a one-line rationale.  When the
+# substrate bridge gains support for a new artifact shape that this tool's
+# output can be lifted into, REMOVE it from this set and add a matching
+# entry to ``_PRIMITIVE_SPECS`` in the same PR.
+WORKFLOW_INCOMPATIBLE_TOOLS: Dict[str, str] = {
+    "classify_curve_move_tool": (
+        "Categorical output (BULL_STEEPENER / BEAR_FLATTENER / PARALLEL_SHIFT "
+        "/ TWIST regime label) + supporting numeric evidence; not a "
+        "``Series`` or ``Panel`` artifact.  Bridge support for categorical "
+        "outputs would let this register."
+    ),
+    "get_otr_history_tool": (
+        "SCD2 transition log + identifier snapshot (CUSIP / ISIN / "
+        "vendor_ticker / maturity_date + effective_from / effective_to "
+        "date ranges).  List-shaped categorical output, not a numeric "
+        "``TimeSeries`` or wide-format ``Panel``; bridge cannot dispatch "
+        "it.  See get_otr_history/schemas.py docstring."
+    ),
+}
+
+
+# ============================================================================
 # PRIMITIVE REGISTRY
 # ============================================================================
 #

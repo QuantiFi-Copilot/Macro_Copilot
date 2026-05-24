@@ -1,0 +1,39 @@
+{
+  "fixture_name": "empty_absence",
+  "tool_module": "rates_agent.sovereign_bonds.tools.get_otr_history",
+  "tool_function": "get_otr_history",
+  "capture": {
+    "captured_at": "2026-05-24T13:26:38Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Synthetic raw_rows representing realistic resolver-observed OTR transitions for the slot; expected_output produced by running the primitive against these rows.  Locks in regression behavior pending replacement by live-DB capture via _capture.py once the resolver is deployed and macro_data.otr_history is populated.",
+    "frozen_today": "2026-05-24",
+    "raw_rows_count": 0,
+    "raw_rows_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "input": {
+    "params": {
+      "country": "ZA",
+      "tenor": "10Y",
+      "lookback_days": 365
+    },
+    "frozen_today": "2026-05-24",
+    "raw_rows": []
+  },
+  "expected_output": {
+    "current_metrics": {
+      "country": "ZA",
+      "tenor": "10Y",
+      "as_of_date": "2026-05-24",
+      "otr_instrument_id": null,
+      "cusip": null,
+      "isin": null,
+      "vendor_ticker": null,
+      "maturity_date": null,
+      "current_effective_from": null,
+      "transition_count_in_window": 0,
+      "lookback_days": 365
+    },
+    "transitions": [],
+    "methodology_note": "Source: macro_data.otr_history (ADR 0003), populated by the on-the-run resolver per ADR 0007. Forward-only ingest: pre-resolver OTR windows are NOT reconstructed \u2014 queries that pre-date the resolver's first run return honest absence (transitions=[], current_metrics identity fields None), never a fabricated mapping. Detection-date precision: a window's effective_from is the resolver's first confirmed observation, ~1-2 days after the true auction date at daily incremental cadence (TD #27). Bloomberg has no historical OTR-window screen; this primitive does not recompute what the source of record provides (P12)."
+  }
+}
