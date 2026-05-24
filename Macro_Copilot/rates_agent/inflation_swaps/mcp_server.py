@@ -117,6 +117,11 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (  # noqa
     CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
     calculate_inflation_swap_butterfly,
 )
+from rates_agent.inflation_swaps.tools.cpi_surprise import (  # noqa: E402
+    CONFIG_PATH as CPI_SURPRISE_CONFIG_PATH,
+    CpiSurpriseInput,
+    calculate_cpi_surprise,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1269,6 +1274,99 @@ def calculate_inflation_swap_butterfly_tool(
             bespoke_rows, butterfly_rows, zscore_rows,
         )
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 7: calculate_cpi_surprise
+# ===========================================================================
+@mcp.tool()
+def calculate_cpi_surprise_tool(
+    country: str,
+    lookback_releases: int = 24,
+) -> str:
+    """Compute the per-release CPI surprise series + rolling release-
+    window z-score for one country's headline CPI YoY print.
+
+    Surprise = ``actual − consensus_median`` per release (in
+    percentage points of YoY CPI) — the exact identity ADR 0008 §2
+    designates as the primitive layer's P12-disclosed computation
+    (event_calendar.surprise is intentionally NULL by ingestion).
+
+    Use this tool when the user asks about:
+    - CPI surprises ("what was the latest US CPI surprise?")
+    - Headline-print history around CPI ("how big were the last 6
+      EU HICP surprises?")
+    - CPI-surprise z-score / standardisation ("is this CPI print
+      surprisingly high vs the last 2 years?")
+    - Pre-/post-event read-throughs (a release-spaced complement to
+      market-data primitives)
+
+    Do NOT use this tool for:
+    - NFP / payrolls surprises — that's the forthcoming
+      ``calculate_nfp_surprise_tool`` (primitive 4 of the easy-win
+      batch), keyed on event_type=nfp.
+    - Revisions of prior CPI surprises — see methodology.planned_extensions.
+    - ZCIS / inflation-swap pricing — use the inflation-swap tools.
+    - Linker breakeven — call the inflation_indexed_bonds agent.
+
+    Parameters
+    ----------
+    country : str
+        Country / region code.  Supported: 'US', 'UK', 'JP', 'EU'.
+        US/UK/JP resolve to event_type='cpi_yoy'; EU resolves to
+        event_type='hicp_yoy' (the eurozone HICP equivalent of CPI YoY).
+        See cpi_surprise/config.yaml's ``cpi_event_type_for_<country>``
+        conventions for the full mapping.
+    lookback_releases : int, optional
+        Number of realised releases of trailing history to display
+        (default 24 ≈ 2 years at monthly CPI cadence).  The rolling
+        z-score window is always fixed at ``release_z_window``
+        realised releases (24 by default), independent of this
+        parameter — same display-vs-z-window separation as
+        curve_spread / yield_levels' day-based primitives.
+    """
+    try:
+        params = CpiSurpriseInput(
+            country=country,
+            lookback_releases=lookback_releases,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        cfg = load_tool_config(CPI_SURPRISE_CONFIG_PATH)
+        result = calculate_cpi_surprise(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_cpi_surprise for %s",
+            params.country,
+        )
+        return json.dumps(
+            {"error": f"CPI surprise calculation failed for "
+                      f"{params.country}: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: calculate_cpi_surprise %s → %s",
+                params.country,
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

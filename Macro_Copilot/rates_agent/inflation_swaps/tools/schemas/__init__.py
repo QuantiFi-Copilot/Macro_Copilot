@@ -79,6 +79,19 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly.schemas import (
     InflationSwapButterflyTimeSeriesRow,
 )
 
+# CPI surprise (per-release actual − consensus_median, plus rolling
+# release-window z-score) — re-exported from the per-tool-folder
+# package
+# (``rates_agent/inflation_swaps/tools/cpi_surprise/``).  Bridge-
+# composable (snapshot + canonical TimeSeries) so registered in
+# ``rates_agent/workflows/__init__.py`` ``_PRIMITIVE_SPECS``.
+from rates_agent.inflation_swaps.tools.cpi_surprise.schemas import (
+    CpiSurpriseCurrentMetrics,
+    CpiSurpriseInput,
+    CpiSurpriseOutput,
+    CpiSurpriseTimeSeriesRow,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -111,4 +124,9 @@ __all__ = [
     "InflationSwapButterflyCurrentMetrics",
     "InflationSwapButterflyTimeSeriesRow",
     "InflationSwapButterflyOutput",
+    # cpi_surprise
+    "CpiSurpriseInput",
+    "CpiSurpriseCurrentMetrics",
+    "CpiSurpriseTimeSeriesRow",
+    "CpiSurpriseOutput",
 ]

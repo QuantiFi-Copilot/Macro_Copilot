@@ -1,0 +1,24 @@
+{
+  "fixture_name": "empty_pre_extractor",
+  "tool_module": "rates_agent.inflation_swaps.tools.cpi_surprise",
+  "tool_function": "calculate_cpi_surprise",
+  "capture": {
+    "captured_at": "2026-05-24T15:17:36Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Synthetic raw_rows representing realistic event-extractor-observed CPI / HICP release rows for the labelled slot; expected_output produced by running the primitive against these rows.  Locks in regression behaviour pending live-DB capture via _capture.py once the event extractor populates event_calendar for the canonical regression slots.",
+    "frozen_today": "2026-05-22",
+    "raw_rows_count": 0,
+    "raw_rows_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "input": {
+    "params": {
+      "country": "JP",
+      "lookback_releases": 24
+    },
+    "frozen_today": "2026-05-22",
+    "raw_rows": []
+  },
+  "expected_output": {
+    "error": "No event_calendar rows found for country='JP', event_type='cpi_yoy' since 2021-10-15.  Either the event extractor has not yet ingested this slot (ADR 0008 \u00a76 / TD #28b \u2014 D-econ release-date window limit) or the requested period pre-dates the playbook's coverage.  Verify rates_agent/playbooks/economic_releases.yml covers the country and that the extractor has run."
+  }
+}

@@ -28,7 +28,7 @@ Every `defaults` entry in any `config.yaml` carries a `source` tag identifying *
 
 | Tag | Use |
 |---|---|
-| `industry_standard_<concept>` | A widely-accepted convention (e.g., `industry_standard_252_business_days`, `industry_standard_mid_yield`, `industry_standard_sample_std`, `industry_standard_with_intercept`, `industry_standard_two_sided_95`, `industry_standard_level_slope_curvature`, `industry_standard_daily_changes`, `industry_standard_sovereign_repo_usd_money_market`, `industry_standard_1y_window`, `industry_standard_5y_window`) |
+| `industry_standard_<concept>` | A widely-accepted convention (e.g., `industry_standard_252_business_days`, `industry_standard_mid_yield`, `industry_standard_sample_std`, `industry_standard_with_intercept`, `industry_standard_two_sided_95`, `industry_standard_level_slope_curvature`, `industry_standard_daily_changes`, `industry_standard_sovereign_repo_usd_money_market`, `industry_standard_1y_window`, `industry_standard_5y_window`, `industry_standard_release_window` — N-release rolling-window standardisation for economic-release surprise z-scores, the Citi-Economic-Surprise-style convention used by `cpi_surprise` / `nfp_surprise`) |
 | `bloomberg_field_convention` | The default mirrors a specific Bloomberg field's convention (name the field, not "bloomberg") |
 | `trading_day_convention` | Calendar / business-day / settlement convention |
 | `numerical_stability_lock` | A value chosen for numerical stability (epsilons, regularization), not domain meaning |

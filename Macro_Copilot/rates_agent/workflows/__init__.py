@@ -250,6 +250,12 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
     InflationSwapButterflyOutput,
     calculate_inflation_swap_butterfly,
 )
+from rates_agent.inflation_swaps.tools.cpi_surprise import (
+    CONFIG_PATH as CPI_SURPRISE_CONFIG_PATH,
+    CpiSurpriseInput,
+    CpiSurpriseOutput,
+    calculate_cpi_surprise,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -855,6 +861,19 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # rolling z-score in Z_SCORE units.  Operator-layer
             # unit-compat checks rely on these declarations.
             "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cpi_surprise_tool": PrimitiveSpec(
+        tool_name="calculate_cpi_surprise_tool",
+        callable=calculate_cpi_surprise,
+        input_class=CpiSurpriseInput,
+        output_class=CpiSurpriseOutput,
+        config_path=CPI_SURPRISE_CONFIG_PATH,
+        output_field_units={
+            # Surprise is in PERCENT (percentage points of YoY CPI —
+            # actual − consensus_median); z-score is unitless.
+            "time_series_surprise": "percent",
             "time_series_zscore": "z_score",
         },
     ),
