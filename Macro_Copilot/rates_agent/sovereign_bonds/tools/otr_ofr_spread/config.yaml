@@ -1,0 +1,313 @@
+# =============================================================================
+# calculate_otr_ofr_spread_tool — tool configuration
+# =============================================================================
+# Canonical record of conventions + methodology for the OTR/OFR (on-the-run
+# vs first-off-the-run) yield-spread primitive.
+#
+# Desk concept
+# ------------
+# For a (country, tenor) sovereign cash-bond slot, the OTR/OFR spread is the
+# basis-point yield differential between the bond currently on-the-run and
+# the bond that was OTR immediately prior to it (the "first off-the-run",
+# OFR).  Cash-bond traders watch this spread as the rich-cheap / liquidity-
+# premium indicator: a freshly-auctioned 10Y typically trades RICH (lower
+# yield) versus the bond it just displaced, and the spread widens around
+# auction settles and tightens after the new bond seasons.
+#
+# Data sources
+# ------------
+# - macro_data.otr_history (ADR 0003) — SCD2 windows; resolves OTR bond
+#   per date and the immediately-prior bond (LAG over effective_from).
+# - macro_data.market_data_daily — cash-bond yields keyed by instrument_id
+#   (ADR 0005's sovereign_cash_bonds.yml universe; field YLD_YTM_MID
+#   verified live).
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  Conventions are YAML-locked.  See
+# docs_revamped/02_components/primitive/README.md (PR7).
+#
+# Bumping any value in `conventions:` is a deliberate methodology change.
+# It must come with a regenerated parity fixture (see
+# tests/fixtures/otr_ofr_spread_v1/README.md) AND a rationale in the PR
+# message.  Do not edit casually.
+# =============================================================================
+
+tool:
+  name: calculate_otr_ofr_spread_tool
+  domain: sovereign_bonds
+  description: |
+    Basis-point yield spread between the on-the-run (OTR) bond and the
+    first-off-the-run (OFR) bond for one (country, tenor) sovereign
+    cash-bond slot, plus a rolling 252-trading-day z-score and the full
+    chartable time series.
+
+    The OTR bond on each trade_date is the instrument_id resolved from
+    the open or covering otr_history SCD2 window for the slot (ADR 0003
+    + ADR 0007).  The OFR bond is defined as the bond from the SCD2
+    window IMMEDIATELY PRIOR to the OTR window — i.e. the bond that was
+    on-the-run just before the current OTR took the slot.  Cash-bond
+    desks call this "the first off-the-run" and trade the OTR/OFR
+    spread as a rich-cheap / liquidity-premium signal around auction
+    rolls.
+
+    Pure compute primitive: reads identifier rows from otr_history,
+    pulls already-ingested per-bond YLD_YTM_MID from market_data_daily,
+    and applies (otr_yield − ofr_yield) × 100 arithmetic.  Nothing
+    Bloomberg already computes is recomputed here (P12).
+
+    Honest absence per P5 + P6: when the resolver has not yet observed
+    the slot (pre-deployment dates, or slots the resolver has not run
+    against) the response is an error envelope naming the missing
+    data, NEVER a fabricated spread.  When there IS an OTR window but
+    no prior window yet (the slot's very first observed window — LAG
+    over effective_from is NULL), ofr_yield and spread_bps are emitted
+    as None on those dates rather than as a proxy.
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  # 252-day trading-year rolling z-score, matching the rest of the rates
+  # catalogue (curve_spread, yield_levels, butterfly, cross_market_spread).
+  # PR13 cross-config consistency — the lint compares this key across every
+  # tool that uses it.
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches Bloomberg's
+      default rolling window for percentile and z-score metrics; consistent
+      with the existing catalogue value across curve_spread / yield_levels /
+      butterfly / cross_market_spread / swap_spread.  PR13 keeps the lint
+      green.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are deemed
+      trustworthy.  Same value as curve_spread / yield_levels so the
+      warmup-edge behaviour is identical across spread primitives.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the industry convention for finite-sample
+      rolling z-scores.  Same value as curve_spread / yield_levels.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x the trading-day window covers weekends, holidays, and the
+      occasional missing observation without over-fetching.  Same value
+      as curve_spread.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  # Note: ffill happens INDEPENDENTLY on the OTR series and the OFR series
+  # before they are aligned, then aligned-and-spread.  Bridging up to one
+  # trading week of holiday gaps on each leg matches the curve_spread /
+  # yield_levels convention.
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday gaps.
+      Larger values would silently extrapolate stale yields into active
+      trading days; smaller values would leave many holidays unfilled
+      and shrink the comparable observation set.  Same value as
+      curve_spread / yield_levels (PR13).
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps
+  # ---------------------------------------------------------------------------
+  spread_bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output to 0.01 bps.  Display precision; matches the
+      precision Bloomberg / DLib quotes use for sovereign curve and
+      OTR/OFR spreads.  Same as curve_spread.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Display precision; further
+      decimals are noise given the underlying yield precision.  Same as
+      curve_spread.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Yield field name (default)
+  # ---------------------------------------------------------------------------
+  # Cash-bond yields are stored under YLD_YTM_MID per ADR 0005's verified
+  # mnemonic set.  The Pydantic input's field_name=None sentinel resolves
+  # to this YAML value at compute-time, exactly like yield_levels.
+  default_field_name:
+    value: YLD_YTM_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      Mid yield-to-maturity is the canonical desk yield reference and
+      the per-CUSIP field verified in ADR 0005's realbond Bloomberg
+      check (one of the five YLD_YTM_MID / RISK_MID / PX_DIRTY_MID /
+      PX_CLEAN_MID / ASSET_SWAP_SPD_MID mnemonics that returned a
+      historised series via bdh on real-bond tickers).  Cash bonds in
+      sovereign_cash_bonds.yml are ingested under this field name.
+
+  # ---------------------------------------------------------------------------
+  # OFR definition (first-off-the-run)
+  # ---------------------------------------------------------------------------
+  # Categorical convention; the only V1-supported value is
+  # ``prior_otr_window``.  Compute.py's _validate_conventions raises
+  # NotImplementedError if any other value is configured.  Documented
+  # in methodology.planned_extensions for the future widening path.
+  ofr_definition:
+    value: prior_otr_window
+    source: team_judgment_pending_review
+    rationale: >-
+      The first-off-the-run bond is defined as the bond from the SCD2
+      otr_history window IMMEDIATELY PRIOR to the window covering the
+      observation date — i.e. the bond that was on-the-run just before
+      the current OTR took the slot.  Implemented via SQL LAG over
+      effective_from in shared.analytics.rates_fetch.fetch_otr_ofr_yield_pair.
+      Categorical convention; the accepted-value set is wire-frozen at
+      the compute layer until methodology.planned_extensions widens it
+      to support alternative OFR definitions (e.g. "second-OTR-back" or
+      "OTR-cohort-by-maturity").
+
+  # ---------------------------------------------------------------------------
+  # Tenor / country canonicalisation — established by ADR 0007 + the
+  # sovereign_cash_bonds.yml universe (ADR 0005)
+  # ---------------------------------------------------------------------------
+  # The (country, tenor) slot identity used by the resolver:
+  #   - country: uppercase ISO-3166-alpha-2 (US, DE, GB, JP, FR, IT, ES, …)
+  #   - tenor:   integer-Y matching the slot labels (2Y, 3Y, 5Y, 7Y,
+  #              10Y, 20Y, 30Y).
+  # The Pydantic-layer validator on OtrOfrSpreadInput canonicalises
+  # country to uppercase and rejects non-matching tenor patterns
+  # before the SQL fetch runs — matching the convention so mistyped
+  # inputs ("10y", "usa") fail loudly at the API boundary rather than
+  # degrading silently into honest absence at the SQL layer.  Same
+  # validator pattern as get_otr_history (PR13 — convention reused
+  # across the OTR-substrate primitives).
+  tenor_canonicalisation:
+    value: uppercase_country_integer_y_tenor
+    source: adr_0007_otr_canonicalisation
+    rationale: >-
+      The resolver writes (country, tenor) slots in uppercase ISO-
+      country / integer-Y-tenor form (ADR 0007 §4 + 0005 §3); reading
+      against any other shape returns no rows and the SCD2 join
+      returns honest absence.  Canonicalising at the Pydantic layer
+      makes the convention loud + enforced.  Same convention re-used
+      from get_otr_history (P10 — single source of truth for OTR
+      slot identity).
+
+methodology:
+  what_it_does: |
+    For one (country, tenor) sovereign on-the-run slot:
+
+      1. Resolves the OTR bond per trade_date from macro_data.otr_history
+         (the SCD2 window covering that date).  Resolves the OFR bond
+         as the bond from the IMMEDIATELY PRIOR SCD2 window (window
+         function LAG over effective_from).
+      2. Joins macro_data.market_data_daily to pull the configured
+         yield field (YLD_YTM_MID by default) for both the OTR and OFR
+         bonds on each trade_date in the fetch window.  The OFR yield
+         join is LEFT — when no prior bond exists (the slot's first
+         resolver-observed window) or the prior bond has no observation
+         that day, ofr_yield is honest-None.
+      3. Pivots to wide format and forward-fills each leg up to
+         ffill_limit_days separately (matches curve_spread / yield_levels).
+      4. Computes spread_bps = (otr_yield − ofr_yield) × 100, rounded
+         to spread_bps_round_decimals.  Rows where either leg is None
+         emit spread_bps=None (NOT a fabricated zero).
+      5. Computes a rolling 252-trading-day z-score over the resulting
+         spread series (curve_spread / yield_levels convention).
+      6. Trims to the requested lookback_days display window and
+         returns ``current_metrics`` (snapshot + daily change),
+         ``time_series`` (the bespoke wire shape used by RatesView.tsx),
+         ``time_series_spread`` and ``time_series_zscore`` (the canonical
+         TimeSeries shapes consumed by the upcoming primitive-to-operator
+         bridge), and ``methodology_note`` surfacing TD #27 disclosure.
+
+  assumptions:
+    - "Yields are stored as percent in macro_data.market_data_daily
+       (e.g. 4.25 = 4.25%).  spread_bps = (otr - ofr) × 100 honours
+       this scale."
+    - "macro_data.otr_history is populated forward-only by the
+       resolver per ADR 0007.  Pre-resolver OTR/OFR pairs are not
+       reconstructed; the methodology_note surfaces this at the
+       user-facing layer (TD #27a)."
+    - "Roll dates carry detection-date precision — a window's
+       effective_from is the resolver's first confirmed observation
+       of the new OTR bond, ~1-2 days after the true auction date
+       at daily incremental cadence (TD #27b).  This means the
+       SPREAD's roll-day datapoints may lag the auction by a day or
+       two."
+    - "The OFR is defined as the bond from the IMMEDIATELY PRIOR
+       SCD2 window.  The slot's very first observed window has no
+       prior bond — those rows emit ofr_yield=None and spread=None
+       (honest absence, not a fabricated zero)."
+    - "Forward-fill is applied per-leg before alignment, with up to
+       5 trading days bridged per leg.  Larger gaps drop the row
+       from the spread series."
+    - "User-input lookback_days controls *display* window, not z-score
+       window.  Z-score window is fixed at 252 trading days regardless
+       of the display lookback."
+
+  citations:
+    - "docs_revamped/05_decisions/0003-cash-bond-substrate.md
+       (otr_history SCD2 + cash-bond identity columns)."
+    - "docs_revamped/05_decisions/0005-cash-bond-playbook-universe.md
+       (sovereign_cash_bonds.yml verified five-field set)."
+    - "docs_revamped/05_decisions/0007-otr-resolver.md (forward-only
+       resolver writing otr_history)."
+    - "docs/technical_debt.md #27 (forward-only + detection-date
+       limits on OTR observations)."
+
+  planned_extensions:
+    - >-
+      Pre-resolver historical OTR/OFR backfill (TD #27a).  Requires an
+      authoritative non-Bloomberg history of past auctions and roll
+      dates per (country, tenor) slot — debt-office auction calendars
+      — encoded as verified otr_history rows.  Until that data is
+      sourced and ingested, the primitive returns honest absence for
+      any window pre-dating the resolver's first run.
+    - >-
+      Tighter roll dating (TD #27b).  Tighten the detection-date gap
+      by cross-referencing the auction calendar to correct
+      effective_from to the true roll date.  Cadence + calendar work;
+      no schema change in this primitive.
+    - >-
+      ofr_definition: widen to support alternative definitions of
+      "first off-the-run", e.g. "second-OTR-back" (the OTR before the
+      OFR — useful for very-recent-roll RV) or maturity-cohort
+      grouping.  Compute layer guards with NotImplementedError today;
+      widening adds a second SQL branch keyed on the convention value.

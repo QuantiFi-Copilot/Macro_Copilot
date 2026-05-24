@@ -631,3 +631,158 @@ def fetch_otr_transitions(
             .all()
         )
     return [dict(r) for r in rows]
+
+
+# ============================================================================
+# ON-THE-RUN / OFF-THE-RUN YIELD PAIR FETCH
+# ============================================================================
+#
+# Reads ``macro_data.otr_history`` (ADR 0003) JOIN
+# ``macro_data.market_data_daily`` to resolve, per trade_date, the OTR
+# bond's yield AND the prior-bond's yield (the "first off-the-run" /
+# OFR, defined as the bond from the SCD2 window immediately prior to
+# whichever window covers the trade_date).
+#
+# The OFR-resolution shape is a window-function LAG over the SCD2
+# rows for the slot: each row's OFR is the otr_instrument_id of the
+# previous row by ``effective_from``.  This collapses to a single SQL
+# query so the resolution logic lives in ONE place — the
+# ``otr_ofr_spread`` primitive's compute() reads this output and runs
+# pure arithmetic on it.
+#
+# Used by the ``otr_ofr_spread`` primitive (rates_agent/sovereign_bonds/
+# tools/otr_ofr_spread/).  Future cash-bond primitives that need the
+# same (date → OTR/OFR yield pair) resolution call this fetcher so
+# the desk-concept "OFR = the bond that was OTR immediately prior" is
+# defined in exactly one place (P10 — single source of truth).
+
+_FETCH_OTR_OFR_YIELD_PAIR_SQL = text(
+    """
+    WITH slot_windows AS (
+        SELECT
+            o.effective_from,
+            o.effective_to,
+            o.otr_instrument_id,
+            LAG(o.otr_instrument_id) OVER (
+                PARTITION BY o.country, o.tenor
+                ORDER BY o.effective_from
+            ) AS ofr_instrument_id
+        FROM macro_data.otr_history o
+        WHERE o.country = :country
+          AND o.tenor   = :tenor
+    ),
+    date_resolved AS (
+        SELECT
+            w.effective_from   AS window_effective_from,
+            COALESCE(w.effective_to, 'infinity'::date)
+                               AS window_effective_to,
+            w.otr_instrument_id,
+            w.ofr_instrument_id
+        FROM slot_windows w
+        WHERE daterange(
+                  w.effective_from,
+                  COALESCE(w.effective_to, 'infinity'::date),
+                  '[]'
+              ) && daterange(:window_start, :window_end, '[]')
+    )
+    SELECT
+        d_otr.trade_date,
+        dr.otr_instrument_id,
+        dr.ofr_instrument_id,
+        d_otr.field_value AS otr_yield,
+        d_ofr.field_value AS ofr_yield
+    FROM date_resolved dr
+    JOIN macro_data.market_data_daily d_otr
+      ON d_otr.instrument_id = dr.otr_instrument_id
+     AND d_otr.field_name    = :field_name
+     AND d_otr.trade_date BETWEEN
+         GREATEST(dr.window_effective_from, :window_start::date)
+         AND LEAST(dr.window_effective_to, :window_end::date)
+    LEFT JOIN macro_data.market_data_daily d_ofr
+      ON d_ofr.instrument_id = dr.ofr_instrument_id
+     AND d_ofr.field_name    = :field_name
+     AND d_ofr.trade_date    = d_otr.trade_date
+    ORDER BY d_otr.trade_date ASC
+    """
+)
+
+
+def fetch_otr_ofr_yield_pair(
+    engine: Engine,
+    *,
+    country: str,
+    tenor: str,
+    field_name: str,
+    window_start: date,
+    window_end: date,
+) -> pd.DataFrame:
+    """Fetch the time-varying OTR/OFR yield pair for one ``(country, tenor)``
+    sovereign cash-bond slot.
+
+    For each ``trade_date`` in ``[window_start, window_end]``:
+
+    - resolves the OTR bond as the ``otr_instrument_id`` of the
+      ``otr_history`` window whose ``[effective_from, effective_to]``
+      contains the date (NULL ``effective_to`` treated as
+      ``'infinity'::date``);
+    - resolves the OFR bond as the ``otr_instrument_id`` of the
+      SCD2 row immediately prior (window function ``LAG`` over
+      ``effective_from``);
+    - pulls ``field_value`` for the OTR instrument from
+      ``market_data_daily`` (required); pulls the OFR instrument's
+      ``field_value`` (LEFT JOIN — may be NULL if the OFR bond has no
+      observation on that date, e.g. the first OTR row of the slot
+      whose LAG is NULL).
+
+    The LEFT JOIN on the OFR yield means the returned frame has one
+    row per OTR observation in the window; ``ofr_yield`` is ``None``
+    for rows where either the SCD2 LAG is NULL (the very first
+    resolver-observed window for the slot — no prior bond exists in
+    history) or the OFR bond has no ingested yield for that date
+    (e.g. the bond matured / lost coverage before the OTR roll).
+    The compute layer treats ``None`` honestly — the spread is
+    ``None`` on those dates, NOT a fabricated number.
+
+    Returns
+    -------
+    pd.DataFrame with columns
+    ``['trade_date', 'otr_instrument_id', 'ofr_instrument_id',
+       'otr_yield', 'ofr_yield']``.
+
+    Empty DataFrame when no OTR window overlaps the lookback (honest
+    absence per P6 — the pre-resolver-deployment shape documented in
+    TD #27a).
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    country : str
+        Sovereign country code as stored in ``macro_data.otr_history``
+        (uppercase ISO-3166-alpha-2/3 per ADR 0007 §4 + ADR 0005 §3).
+    tenor : str
+        Canonical slot tenor (integer-Y form matching
+        ``sovereign_cash_bonds.yml``).
+    field_name : str
+        Bloomberg field mnemonic to read from ``market_data_daily``.
+        Sovereign cash-bond yields are stored under ``YLD_YTM_MID``
+        (ADR 0005 — the verified 14-mnemonic real-bond field set).
+    window_start, window_end : date
+        Inclusive calendar boundaries of the lookback window the
+        primitive displays.  Both the OTR window-intersection check
+        and the per-date BETWEEN filter use this range.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(
+            _FETCH_OTR_OFR_YIELD_PAIR_SQL,
+            {
+                "country": str(country),
+                "tenor": str(tenor),
+                "field_name": str(field_name),
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+            },
+        )
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)

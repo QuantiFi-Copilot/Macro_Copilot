@@ -1,0 +1,25 @@
+{
+  "fixture_name": "empty_pre_resolver",
+  "tool_module": "rates_agent.sovereign_bonds.tools.otr_ofr_spread",
+  "tool_function": "calculate_otr_ofr_spread",
+  "capture": {
+    "captured_at": "2026-05-24T14:09:42Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Synthetic raw_rows representing realistic resolver-observed OTR/OFR yield pairs; expected_output produced by running the primitive against these rows.  Locks in regression behaviour pending replacement by live-DB capture via _capture.py once the resolver is deployed and the cash-bond playbook has ingested per-CUSIP yields.",
+    "frozen_today": "2026-05-22",
+    "raw_rows_count": 0,
+    "raw_rows_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "input": {
+    "params": {
+      "country": "ZA",
+      "tenor": "10Y",
+      "lookback_days": 252
+    },
+    "frozen_today": "2026-05-22",
+    "raw_rows": []
+  },
+  "expected_output": {
+    "error": "No OTR/OFR data found for country='ZA', tenor='10Y', field='YLD_YTM_MID' since 2024-08-30.  Either the OTR resolver has not yet observed this slot (TD #27a \u2014 forward-only ingest) or the requested window pre-dates the resolver's first run.  Verify the slot is one the resolver covers and that macro_data.otr_history has a window intersecting the lookback."
+  }
+}
