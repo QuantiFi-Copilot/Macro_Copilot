@@ -1,0 +1,91 @@
+# =============================================================================
+# Inflation Swaps — tool manifest
+# =============================================================================
+# Canonical source of truth for the inflation-swaps sub-agent tool
+# catalogue.  Read by the Library page UI.  Each entry must mirror what's
+# actually registered in `rates_agent/inflation_swaps/mcp_server.py` and
+# what lives under `rates_agent/inflation_swaps/tools/<tool>/`.
+#
+# This file is bootstrapped by the cpi_surprise primitive (primitive 3
+# of the 8-easy-win batch).  The pre-existing inflation-swap tools
+# (rate_level, curve_spread, forward, cross_market_spread,
+# swap_breakeven_basis_simple, butterfly) are documented in
+# manifesto/01_instruments/rates_agent/05_inflation_swaps.md but were
+# not previously surfaced via a 03_tool_manifest file — adding them here
+# would expand the scope of this PR beyond the cpi_surprise primitive.
+# A follow-up PR can backfill those entries.
+#
+# Bucket convention (same as sovereign_bonds_manifest.yml):
+#   1A — strict deterministic arithmetic on stored market / event data
+#        with no user-facing model inference; conventions YAML-locked.
+#   1B — statistical model fits (rolling OLS, PCA, OU/AR(1)) where the
+#        user picks a window/factor count but solver + conventions are
+#        YAML-locked; bit-stable on same input.
+#   2  — open-ended / scenario-generating / model-state tools (none
+#        shipped yet).
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # ECONOMIC-RELEASE SURPRISES
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_cpi_surprise
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: economic_release_surprises
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_cpi_surprise_tool
+      schema: rates_agent/inflation_swaps/tools/cpi_surprise/schemas.py::CpiSurpriseInput
+      compute: rates_agent/inflation_swaps/tools/cpi_surprise/compute.py::calculate_cpi_surprise
+      config: rates_agent/inflation_swaps/tools/cpi_surprise/config.yaml
+
+    one_liner: >-
+      Per-release CPI surprise series (actual − consensus_median, in
+      percentage points of YoY CPI) for one country's headline CPI YoY
+      print, plus a rolling z-score over a window of N RELEASES (NOT
+      calendar days — releases happen monthly, so day-based windows are
+      the wrong unit).  US/UK/JP query event_type=cpi_yoy; EU queries
+      event_type=hicp_yoy (the eurozone HICP equivalent of CPI YoY).
+      Surprise is computed at the primitive layer per ADR 0008 §2's
+      P12 disclosure (event_calendar.surprise is intentionally NULL
+      by ingestion); Bloomberg's ECO screen reports the same number.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored event_calendar rows.
+      The methodology lives in config.yaml; deterministic mode exposes
+      no LLM-facing override path for it.  No model inference, no
+      scenario generation.  Categorical convention (surprise_formula)
+      wire-frozen at the compute layer until methodology.planned_extensions
+      widens it.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_inflation_swap_curve_spread_tool
+      - calculate_breakeven_inflation_simple_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0004-event-calendar-substrate.md
+      - docs_revamped/05_decisions/0008-event-playbook-contract.md
+      - rates_agent/playbooks/economic_releases.yml
+      - docs/technical_debt.md  # TD #28 — D-econ release-date window limit
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.  SQL-validation
+      runner ships in tests/test_cpi_surprise_sql_validation.py and runs
+      against the live macro_data.event_calendar table; parity fixture
+      capture script ships in tests/fixtures/cpi_surprise_v1/_capture.py.
+      Both require the event extractor to have populated event_calendar
+      for the canonical regression slots before they can validate
+      (ADR 0008 §6 / TD #28 — D-econ v1 release-date window).  Synthetic
+      v1 parity fixtures ship with explicit P5 disclosure per the
+      get_otr_history-v1 / otr_ofr_spread-v1 inherited precedent.

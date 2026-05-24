@@ -1,0 +1,1119 @@
+{
+  "fixture_name": "uk_cpi_with_missing_consensus",
+  "tool_module": "rates_agent.inflation_swaps.tools.cpi_surprise",
+  "tool_function": "calculate_cpi_surprise",
+  "capture": {
+    "captured_at": "2026-05-24T15:17:36Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Synthetic raw_rows representing realistic event-extractor-observed CPI / HICP release rows for the labelled slot; expected_output produced by running the primitive against these rows.  Locks in regression behaviour pending live-DB capture via _capture.py once the event extractor populates event_calendar for the canonical regression slots.",
+    "frozen_today": "2026-05-22",
+    "raw_rows_count": 40,
+    "raw_rows_sha256": "39108f9eccfac6aaa48a1cb34a214b7e0b91868071add92624b82a5638e0f207"
+  },
+  "input": {
+    "params": {
+      "country": "UK",
+      "lookback_releases": 24
+    },
+    "frozen_today": "2026-05-22",
+    "raw_rows": [
+      {
+        "event_id": 5000,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-03-09",
+        "release_time": null,
+        "period": "Mar 2023",
+        "actual": 3.2,
+        "consensus_median": 3.1,
+        "consensus_high": 3.2,
+        "consensus_low": 3.0,
+        "prior": null,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5001,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-04-08",
+        "release_time": null,
+        "period": "Apr 2023",
+        "actual": 3.25,
+        "consensus_median": 3.14,
+        "consensus_high": 3.24,
+        "consensus_low": 3.04,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5002,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-05-08",
+        "release_time": null,
+        "period": "May 2023",
+        "actual": 3.3,
+        "consensus_median": 3.18,
+        "consensus_high": 3.28,
+        "consensus_low": 3.08,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5003,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-06-07",
+        "release_time": null,
+        "period": "Jun 2023",
+        "actual": 3.35,
+        "consensus_median": 3.235,
+        "consensus_high": 3.335,
+        "consensus_low": 3.135,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5004,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-07-07",
+        "release_time": null,
+        "period": "Jul 2023",
+        "actual": 3.42,
+        "consensus_median": 3.275,
+        "consensus_high": 3.375,
+        "consensus_low": 3.175,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5005,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-08-06",
+        "release_time": null,
+        "period": "Aug 2023",
+        "actual": 3.47,
+        "consensus_median": 3.115,
+        "consensus_high": 3.215,
+        "consensus_low": 3.015,
+        "prior": 3.4,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5006,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-09-05",
+        "release_time": null,
+        "period": "Sep 2023",
+        "actual": 3.52,
+        "consensus_median": 3.17,
+        "consensus_high": 3.27,
+        "consensus_low": 3.07,
+        "prior": 3.45,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5007,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-10-05",
+        "release_time": null,
+        "period": "Oct 2023",
+        "actual": 3.22,
+        "consensus_median": 3.21,
+        "consensus_high": 3.31,
+        "consensus_low": 3.11,
+        "prior": 3.5,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5008,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-11-04",
+        "release_time": null,
+        "period": "Nov 2023",
+        "actual": 3.29,
+        "consensus_median": null,
+        "consensus_high": null,
+        "consensus_low": null,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": null
+      },
+      {
+        "event_id": 5009,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2023-12-04",
+        "release_time": null,
+        "period": "Dec 2023",
+        "actual": 3.34,
+        "consensus_median": null,
+        "consensus_high": null,
+        "consensus_low": null,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": null
+      },
+      {
+        "event_id": 5010,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-01-03",
+        "release_time": null,
+        "period": "Jan 2024",
+        "actual": 3.39,
+        "consensus_median": null,
+        "consensus_high": null,
+        "consensus_low": null,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": null
+      },
+      {
+        "event_id": 5011,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-02-02",
+        "release_time": null,
+        "period": "Feb 2024",
+        "actual": 3.44,
+        "consensus_median": 3.185,
+        "consensus_high": 3.285,
+        "consensus_low": 3.085,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5012,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-03-03",
+        "release_time": null,
+        "period": "Mar 2024",
+        "actual": 3.51,
+        "consensus_median": 3.24,
+        "consensus_high": 3.34,
+        "consensus_low": 3.14,
+        "prior": 3.4,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5013,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-04-02",
+        "release_time": null,
+        "period": "Apr 2024",
+        "actual": 3.56,
+        "consensus_median": 3.28,
+        "consensus_high": 3.38,
+        "consensus_low": 3.18,
+        "prior": 3.45,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5014,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-05-02",
+        "release_time": null,
+        "period": "May 2024",
+        "actual": 3.26,
+        "consensus_median": 3.32,
+        "consensus_high": 3.42,
+        "consensus_low": 3.22,
+        "prior": 3.5,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5015,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-06-01",
+        "release_time": null,
+        "period": "Jun 2024",
+        "actual": 3.31,
+        "consensus_median": 3.175,
+        "consensus_high": 3.275,
+        "consensus_low": 3.075,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5016,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-07-01",
+        "release_time": null,
+        "period": "Jul 2024",
+        "actual": 3.38,
+        "consensus_median": 3.215,
+        "consensus_high": 3.315,
+        "consensus_low": 3.115,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5017,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-07-31",
+        "release_time": null,
+        "period": "Jul 2024",
+        "actual": 3.43,
+        "consensus_median": 3.255,
+        "consensus_high": 3.355,
+        "consensus_low": 3.155,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5018,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-08-30",
+        "release_time": null,
+        "period": "Aug 2024",
+        "actual": 3.48,
+        "consensus_median": 3.31,
+        "consensus_high": 3.41,
+        "consensus_low": 3.21,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5019,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-09-29",
+        "release_time": null,
+        "period": "Sep 2024",
+        "actual": 3.53,
+        "consensus_median": 3.35,
+        "consensus_high": 3.45,
+        "consensus_low": 3.25,
+        "prior": 3.4,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5020,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-10-29",
+        "release_time": null,
+        "period": "Oct 2024",
+        "actual": 3.5,
+        "consensus_median": 3.19,
+        "consensus_high": 3.29,
+        "consensus_low": 3.09,
+        "prior": 3.45,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5021,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-11-28",
+        "release_time": null,
+        "period": "Nov 2024",
+        "actual": 3.2,
+        "consensus_median": 3.14,
+        "consensus_high": 3.24,
+        "consensus_low": 3.04,
+        "prior": 3.5,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5022,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2024-12-28",
+        "release_time": null,
+        "period": "Dec 2024",
+        "actual": 3.25,
+        "consensus_median": 3.18,
+        "consensus_high": 3.28,
+        "consensus_low": 3.08,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5023,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-01-27",
+        "release_time": null,
+        "period": "Jan 2025",
+        "actual": 3.3,
+        "consensus_median": 3.22,
+        "consensus_high": 3.32,
+        "consensus_low": 3.12,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5024,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-02-26",
+        "release_time": null,
+        "period": "Feb 2025",
+        "actual": 3.37,
+        "consensus_median": 3.275,
+        "consensus_high": 3.375,
+        "consensus_low": 3.175,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5025,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-03-28",
+        "release_time": null,
+        "period": "Mar 2025",
+        "actual": 3.42,
+        "consensus_median": 3.115,
+        "consensus_high": 3.215,
+        "consensus_low": 3.015,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5026,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-04-27",
+        "release_time": null,
+        "period": "Apr 2025",
+        "actual": 3.47,
+        "consensus_median": 3.155,
+        "consensus_high": 3.255,
+        "consensus_low": 3.055,
+        "prior": 3.4,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5027,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-05-27",
+        "release_time": null,
+        "period": "May 2025",
+        "actual": 3.52,
+        "consensus_median": 3.21,
+        "consensus_high": 3.31,
+        "consensus_low": 3.11,
+        "prior": 3.45,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5028,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-06-26",
+        "release_time": null,
+        "period": "Jun 2025",
+        "actual": 3.24,
+        "consensus_median": 3.25,
+        "consensus_high": 3.35,
+        "consensus_low": 3.15,
+        "prior": 3.5,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5029,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-07-26",
+        "release_time": null,
+        "period": "Jul 2025",
+        "actual": 3.29,
+        "consensus_median": 3.29,
+        "consensus_high": 3.39,
+        "consensus_low": 3.19,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5030,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-08-25",
+        "release_time": null,
+        "period": "Aug 2025",
+        "actual": 3.34,
+        "consensus_median": 3.145,
+        "consensus_high": 3.245,
+        "consensus_low": 3.045,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5031,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-09-24",
+        "release_time": null,
+        "period": "Sep 2025",
+        "actual": 3.39,
+        "consensus_median": 3.185,
+        "consensus_high": 3.285,
+        "consensus_low": 3.085,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5032,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-10-24",
+        "release_time": null,
+        "period": "Oct 2025",
+        "actual": 3.46,
+        "consensus_median": 3.225,
+        "consensus_high": 3.325,
+        "consensus_low": 3.125,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5033,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-11-23",
+        "release_time": null,
+        "period": "Nov 2025",
+        "actual": 3.51,
+        "consensus_median": 3.28,
+        "consensus_high": 3.38,
+        "consensus_low": 3.18,
+        "prior": 3.4,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5034,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2025-12-23",
+        "release_time": null,
+        "period": "Dec 2025",
+        "actual": 3.56,
+        "consensus_median": 3.32,
+        "consensus_high": 3.42,
+        "consensus_low": 3.22,
+        "prior": 3.45,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5035,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2026-01-22",
+        "release_time": null,
+        "period": "Jan 2026",
+        "actual": 3.26,
+        "consensus_median": 3.16,
+        "consensus_high": 3.26,
+        "consensus_low": 3.06,
+        "prior": 3.5,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5036,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2026-02-21",
+        "release_time": null,
+        "period": "Feb 2026",
+        "actual": 3.33,
+        "consensus_median": 3.215,
+        "consensus_high": 3.315,
+        "consensus_low": 3.115,
+        "prior": 3.2,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5037,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2026-03-23",
+        "release_time": null,
+        "period": "Mar 2026",
+        "actual": 3.38,
+        "consensus_median": 3.255,
+        "consensus_high": 3.355,
+        "consensus_low": 3.155,
+        "prior": 3.25,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5038,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2026-04-22",
+        "release_time": null,
+        "period": "Apr 2026",
+        "actual": 3.43,
+        "consensus_median": 3.295,
+        "consensus_high": 3.395,
+        "consensus_low": 3.195,
+        "prior": 3.3,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      },
+      {
+        "event_id": 5039,
+        "event_type": "cpi_yoy",
+        "event_category": "economic_release",
+        "country": "UK",
+        "currency": "GBP",
+        "release_date": "2026-05-22",
+        "release_time": null,
+        "period": "May 2026",
+        "actual": 3.48,
+        "consensus_median": 3.35,
+        "consensus_high": 3.45,
+        "consensus_low": 3.25,
+        "prior": 3.35,
+        "revised_prior": null,
+        "surprise_std_dev": 0.05
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "release_date": "2026-05-22",
+      "country": "UK",
+      "event_type": "cpi_yoy",
+      "period": "May 2026",
+      "surprise_label": "UK CPI YoY surprise",
+      "current_surprise_pct": 0.13,
+      "current_z_score": -0.3622,
+      "release_z_window_releases": 24,
+      "current_actual_pct": 3.48,
+      "current_consensus_median_pct": 3.35,
+      "current_prior_pct": 3.35,
+      "observation_count": 24
+    },
+    "time_series": [
+      {
+        "date": "2024-07-01",
+        "period": "Jul 2024",
+        "surprise_pct": 0.165,
+        "z_score": -0.0236,
+        "actual_pct": 3.38,
+        "consensus_median_pct": 3.215
+      },
+      {
+        "date": "2024-07-31",
+        "period": "Jul 2024",
+        "surprise_pct": 0.175,
+        "z_score": 0.0572,
+        "actual_pct": 3.43,
+        "consensus_median_pct": 3.255
+      },
+      {
+        "date": "2024-08-30",
+        "period": "Aug 2024",
+        "surprise_pct": 0.17,
+        "z_score": 0.0139,
+        "actual_pct": 3.48,
+        "consensus_median_pct": 3.31
+      },
+      {
+        "date": "2024-09-29",
+        "period": "Sep 2024",
+        "surprise_pct": 0.18,
+        "z_score": 0.0997,
+        "actual_pct": 3.53,
+        "consensus_median_pct": 3.35
+      },
+      {
+        "date": "2024-10-29",
+        "period": "Oct 2024",
+        "surprise_pct": 0.31,
+        "z_score": 1.1994,
+        "actual_pct": 3.5,
+        "consensus_median_pct": 3.19
+      },
+      {
+        "date": "2024-11-28",
+        "period": "Nov 2024",
+        "surprise_pct": 0.06,
+        "z_score": -0.9972,
+        "actual_pct": 3.2,
+        "consensus_median_pct": 3.14
+      },
+      {
+        "date": "2024-12-28",
+        "period": "Dec 2024",
+        "surprise_pct": 0.07,
+        "z_score": -0.8669,
+        "actual_pct": 3.25,
+        "consensus_median_pct": 3.18
+      },
+      {
+        "date": "2025-01-27",
+        "period": "Jan 2025",
+        "surprise_pct": 0.08,
+        "z_score": -0.7474,
+        "actual_pct": 3.3,
+        "consensus_median_pct": 3.22
+      },
+      {
+        "date": "2025-02-26",
+        "period": "Feb 2025",
+        "surprise_pct": 0.095,
+        "z_score": -0.6071,
+        "actual_pct": 3.37,
+        "consensus_median_pct": 3.275
+      },
+      {
+        "date": "2025-03-28",
+        "period": "Mar 2025",
+        "surprise_pct": 0.305,
+        "z_score": 1.1878,
+        "actual_pct": 3.42,
+        "consensus_median_pct": 3.115
+      },
+      {
+        "date": "2025-04-27",
+        "period": "Apr 2025",
+        "surprise_pct": 0.315,
+        "z_score": 1.1575,
+        "actual_pct": 3.47,
+        "consensus_median_pct": 3.155
+      },
+      {
+        "date": "2025-05-27",
+        "period": "May 2025",
+        "surprise_pct": 0.31,
+        "z_score": 1.015,
+        "actual_pct": 3.52,
+        "consensus_median_pct": 3.21
+      },
+      {
+        "date": "2025-06-26",
+        "period": "Jun 2025",
+        "surprise_pct": -0.01,
+        "z_score": -1.5183,
+        "actual_pct": 3.24,
+        "consensus_median_pct": 3.25
+      },
+      {
+        "date": "2025-07-26",
+        "period": "Jul 2025",
+        "surprise_pct": 0.0,
+        "z_score": -1.3113,
+        "actual_pct": 3.29,
+        "consensus_median_pct": 3.29
+      },
+      {
+        "date": "2025-08-25",
+        "period": "Aug 2025",
+        "surprise_pct": 0.195,
+        "z_score": 0.3147,
+        "actual_pct": 3.34,
+        "consensus_median_pct": 3.145
+      },
+      {
+        "date": "2025-09-24",
+        "period": "Sep 2025",
+        "surprise_pct": 0.205,
+        "z_score": 0.3336,
+        "actual_pct": 3.39,
+        "consensus_median_pct": 3.185
+      },
+      {
+        "date": "2025-10-24",
+        "period": "Oct 2025",
+        "surprise_pct": 0.235,
+        "z_score": 0.5784,
+        "actual_pct": 3.46,
+        "consensus_median_pct": 3.225
+      },
+      {
+        "date": "2025-11-23",
+        "period": "Nov 2025",
+        "surprise_pct": 0.23,
+        "z_score": 0.5193,
+        "actual_pct": 3.51,
+        "consensus_median_pct": 3.28
+      },
+      {
+        "date": "2025-12-23",
+        "period": "Dec 2025",
+        "surprise_pct": 0.24,
+        "z_score": 0.5927,
+        "actual_pct": 3.56,
+        "consensus_median_pct": 3.32
+      },
+      {
+        "date": "2026-01-22",
+        "period": "Jan 2026",
+        "surprise_pct": 0.1,
+        "z_score": -0.6348,
+        "actual_pct": 3.26,
+        "consensus_median_pct": 3.16
+      },
+      {
+        "date": "2026-02-21",
+        "period": "Feb 2026",
+        "surprise_pct": 0.115,
+        "z_score": -0.4441,
+        "actual_pct": 3.33,
+        "consensus_median_pct": 3.215
+      },
+      {
+        "date": "2026-03-23",
+        "period": "Mar 2026",
+        "surprise_pct": 0.125,
+        "z_score": -0.2979,
+        "actual_pct": 3.38,
+        "consensus_median_pct": 3.255
+      },
+      {
+        "date": "2026-04-22",
+        "period": "Apr 2026",
+        "surprise_pct": 0.135,
+        "z_score": -0.3113,
+        "actual_pct": 3.43,
+        "consensus_median_pct": 3.295
+      },
+      {
+        "date": "2026-05-22",
+        "period": "May 2026",
+        "surprise_pct": 0.13,
+        "z_score": -0.3622,
+        "actual_pct": 3.48,
+        "consensus_median_pct": 3.35
+      }
+    ],
+    "time_series_surprise": {
+      "series_name": "uk_cpi_surprise",
+      "units": "percent",
+      "description": "Per-release CPI surprise for UK (actual \u2212 consensus_median, in percentage points of YoY CPI) over the displayed release window.",
+      "rows": [
+        {
+          "date": "2024-07-01",
+          "value": 0.165
+        },
+        {
+          "date": "2024-07-31",
+          "value": 0.175
+        },
+        {
+          "date": "2024-08-30",
+          "value": 0.17
+        },
+        {
+          "date": "2024-09-29",
+          "value": 0.18
+        },
+        {
+          "date": "2024-10-29",
+          "value": 0.31
+        },
+        {
+          "date": "2024-11-28",
+          "value": 0.06
+        },
+        {
+          "date": "2024-12-28",
+          "value": 0.07
+        },
+        {
+          "date": "2025-01-27",
+          "value": 0.08
+        },
+        {
+          "date": "2025-02-26",
+          "value": 0.095
+        },
+        {
+          "date": "2025-03-28",
+          "value": 0.305
+        },
+        {
+          "date": "2025-04-27",
+          "value": 0.315
+        },
+        {
+          "date": "2025-05-27",
+          "value": 0.31
+        },
+        {
+          "date": "2025-06-26",
+          "value": -0.01
+        },
+        {
+          "date": "2025-07-26",
+          "value": 0.0
+        },
+        {
+          "date": "2025-08-25",
+          "value": 0.195
+        },
+        {
+          "date": "2025-09-24",
+          "value": 0.205
+        },
+        {
+          "date": "2025-10-24",
+          "value": 0.235
+        },
+        {
+          "date": "2025-11-23",
+          "value": 0.23
+        },
+        {
+          "date": "2025-12-23",
+          "value": 0.24
+        },
+        {
+          "date": "2026-01-22",
+          "value": 0.1
+        },
+        {
+          "date": "2026-02-21",
+          "value": 0.115
+        },
+        {
+          "date": "2026-03-23",
+          "value": 0.125
+        },
+        {
+          "date": "2026-04-22",
+          "value": 0.135
+        },
+        {
+          "date": "2026-05-22",
+          "value": 0.13
+        }
+      ]
+    },
+    "time_series_zscore": {
+      "series_name": "uk_cpi_surprise_zscore",
+      "units": "z_score",
+      "description": "Rolling release-window z-score of the UK CPI surprise series vs its own trailing window.",
+      "rows": [
+        {
+          "date": "2024-07-01",
+          "value": -0.0236
+        },
+        {
+          "date": "2024-07-31",
+          "value": 0.0572
+        },
+        {
+          "date": "2024-08-30",
+          "value": 0.0139
+        },
+        {
+          "date": "2024-09-29",
+          "value": 0.0997
+        },
+        {
+          "date": "2024-10-29",
+          "value": 1.1994
+        },
+        {
+          "date": "2024-11-28",
+          "value": -0.9972
+        },
+        {
+          "date": "2024-12-28",
+          "value": -0.8669
+        },
+        {
+          "date": "2025-01-27",
+          "value": -0.7474
+        },
+        {
+          "date": "2025-02-26",
+          "value": -0.6071
+        },
+        {
+          "date": "2025-03-28",
+          "value": 1.1878
+        },
+        {
+          "date": "2025-04-27",
+          "value": 1.1575
+        },
+        {
+          "date": "2025-05-27",
+          "value": 1.015
+        },
+        {
+          "date": "2025-06-26",
+          "value": -1.5183
+        },
+        {
+          "date": "2025-07-26",
+          "value": -1.3113
+        },
+        {
+          "date": "2025-08-25",
+          "value": 0.3147
+        },
+        {
+          "date": "2025-09-24",
+          "value": 0.3336
+        },
+        {
+          "date": "2025-10-24",
+          "value": 0.5784
+        },
+        {
+          "date": "2025-11-23",
+          "value": 0.5193
+        },
+        {
+          "date": "2025-12-23",
+          "value": 0.5927
+        },
+        {
+          "date": "2026-01-22",
+          "value": -0.6348
+        },
+        {
+          "date": "2026-02-21",
+          "value": -0.4441
+        },
+        {
+          "date": "2026-03-23",
+          "value": -0.2979
+        },
+        {
+          "date": "2026-04-22",
+          "value": -0.3113
+        },
+        {
+          "date": "2026-05-22",
+          "value": -0.3622
+        }
+      ]
+    },
+    "methodology_note": "Source: macro_data.event_calendar (ADR 0004) populated by the economic-releases playbook per ADR 0008.  Surprise is the EXACT IDENTITY ``actual \u2212 consensus_median`` (in percentage points of YoY CPI) \u2014 the ingestion layer intentionally leaves event_calendar.surprise NULL (ADR 0008 \u00a72) so the primitive layer carries this identity with the P12 disclosure on the wire (Bloomberg reports the same number; this primitive is materialising a desk-recognised identity at the right architectural layer, NOT recomputing what the vendor provides). Pre-release REVISIONS of prior surprises (``revised_prior`` on a later release re-stating the previous month's actual) are NOT in this series \u2014 those produce new ``revised_prior`` values on subsequent rows but do NOT retroactively adjust earlier ``surprise`` outputs (a revision-adjusted surprise primitive is a documented follow-up).  Scope: bounded by the ECO_RELEASE_DT_LIST release-date window (~1.5 years history + forward scheduled) per ADR 0008 \u00a76 / TD #28b \u2014 releases pre-dating that window return honest absence."
+  }
+}

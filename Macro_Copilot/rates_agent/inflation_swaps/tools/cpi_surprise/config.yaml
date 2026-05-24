@@ -1,0 +1,422 @@
+# =============================================================================
+# calculate_cpi_surprise_tool — tool configuration
+# =============================================================================
+# Canonical record of conventions + methodology for the CPI-surprise
+# primitive.
+#
+# Desk concept
+# ------------
+# For one country's headline CPI release series, the CPI surprise is
+# the per-release identity ``actual − consensus_median`` (in
+# percentage points of year-over-year CPI), plus a rolling z-score
+# computed over the trailing window of N RELEASES (NOT trailing
+# calendar days — releases happen monthly, so day-based windows are
+# the wrong unit).
+#
+# Cash-bond, inflation-swap, and breakeven desks all watch CPI
+# surprises around the print; this primitive returns the time series
+# + the latest snapshot in one query.
+#
+# Data sources
+# ------------
+# - macro_data.event_calendar (ADR 0004) populated by
+#   rates_agent/playbooks/economic_releases.yml (ADR 0008) for
+#   event_type in {cpi_yoy (US/UK/JP), hicp_yoy (EU)}.
+# - Typed columns ``actual`` + ``consensus_median`` are the load-
+#   bearing surprise inputs; ``surprise`` is INTENTIONALLY NULL on
+#   ingestion (ADR 0008 §2) and is the exact identity this primitive
+#   computes downstream WITH disclosure (P12).
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  Conventions are YAML-locked.  See
+# docs_revamped/02_components/primitive/README.md (PR7).
+# =============================================================================
+
+tool:
+  name: calculate_cpi_surprise_tool
+  domain: inflation_swaps
+  description: |
+    Per-release CPI surprise series (actual − consensus_median, in
+    percentage points) for one country's headline CPI YoY print,
+    plus a rolling z-score computed over the trailing N RELEASES.
+
+    Surprise is the exact identity ``actual − consensus_median``
+    computed on the wire here per ADR 0008 §2's P12 disclosure —
+    NOT a Bloomberg-supplied surprise field (the ingestion layer
+    intentionally leaves ``event_calendar.surprise`` NULL because
+    the primitive layer is the right place to surface the identity).
+
+    Returns ``current_metrics`` (most-recent realised release's
+    surprise + z + actual + consensus_median + period + release_date),
+    ``time_series`` (chronological list of realised releases in the
+    display window with their surprise / z-score / actual /
+    consensus_median), ``time_series_surprise`` and
+    ``time_series_zscore`` (canonical TimeSeries shapes for the
+    primitive-to-operator bridge), and ``methodology_note`` (TD #28b
+    release-date-window disclosure + the surprise-identity note).
+
+    Honest absence per P5 + P6: when no realised release falls in
+    the requested window (e.g. pre-deployment date, or the slot has
+    no ingested releases yet) the response is an error envelope
+    naming the missing data — NEVER a fabricated surprise.  When a
+    release exists but Bloomberg has no consensus survey for it
+    (e.g. Japan composite PMI per ADR 0008 §2 — same shape applies
+    to any event_type where survey=false), the row's surprise is
+    None on the wire rather than a fabricated zero.
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Display window — default number of releases the time-series shows
+  # ---------------------------------------------------------------------------
+  # 24 releases at monthly cadence ≈ 2 years of history — enough to
+  # see two full annual seasonality cycles plus the release-window
+  # z-score warmup at the front end.  Matches the brief's "release_z_window
+  # default 24 releases".  Sourced from the YAML via a lazy default
+  # factory in schemas.py (P10 — single source of truth).
+  default_lookback_releases:
+    value: 24
+    source: team_judgment_pending_review
+    rationale: >-
+      24 releases ≈ 2Y at monthly CPI cadence.  Covers two annual
+      seasonality cycles + a meaningful warmup for the
+      release-window z-score (release_z_window).  The brief
+      explicitly recommended 24 releases.  This primitive's
+      LLM-facing ``lookback_releases`` input defaults to this value
+      via the lazy-factory pattern; per-query overrides are honoured.
+    valid_range: [4, 200]
+
+  # ---------------------------------------------------------------------------
+  # Z-score window — number of RELEASES (NOT days) per the brief
+  # ---------------------------------------------------------------------------
+  # Brief: "optional surprise-z over a rolling window of releases
+  # (not days)".  CPI releases are monthly so 24 releases ≈ 2Y; this
+  # is the same Bloomberg-screen convention as the surprise-index
+  # standardisation everyone watches.  Shared with the forthcoming
+  # nfp_surprise primitive (primitive 4 of the 8-batch); PR13 lint
+  # enforces the same value across every surprise primitive that
+  # uses this convention key.
+  release_z_window:
+    value: 24
+    source: industry_standard_release_window
+    rationale: >-
+      24 trailing realised releases ≈ 2 years of monthly CPI
+      observations.  Matches the canonical surprise-index z-score
+      convention used by Citi Economic Surprise / Bloomberg
+      Economic Surprise indices on monthly cadence.  PR13 keeps
+      this value identical across cpi_surprise / nfp_surprise /
+      any future release-window-z surprise primitive.
+    valid_range: [6, 60]
+
+  # ---------------------------------------------------------------------------
+  # Minimum realised releases before the rolling z-score is emitted
+  # ---------------------------------------------------------------------------
+  # ~6 months of CPI history before the rolling mean / std are
+  # deemed trustworthy.  Smaller would emit noisy z-scores at the
+  # start; larger would suppress legitimate early signal.
+  release_z_min_periods:
+    value: 6
+    source: team_judgment_pending_review
+    rationale: >-
+      6 realised releases ≈ 6 months of CPI history before the
+      rolling z-score is emitted.  Releases without enough history
+      to standardise emit z_score=None.  Smaller min_periods would
+      emit noisy z-scores at the start of a series; larger would
+      suppress legitimate early signal.
+    valid_range: [3, 24]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  release_z_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the industry convention for finite-sample
+      rolling z-scores.  Same value as curve_spread / yield_levels
+      / otr_ofr_spread.
+
+  # ---------------------------------------------------------------------------
+  # Calendar buffer for the fetch window (in DAYS)
+  # ---------------------------------------------------------------------------
+  # Two concepts:
+  #   - lookback_releases:    number of realised releases in the *display*
+  #   - release_z_window:     rolling-z window in releases
+  #   - this buffer:          calendar-day buffer added to the fetch so the
+  #                           z-score is fully populated at the start of
+  #                           the display window
+  #
+  # CPI releases happen monthly (~30 calendar days apart, with some
+  # holiday slip), so the buffer in calendar days is roughly
+  # ``release_z_window × 32`` to cover holiday slip + the warmup
+  # period.  Expressed as a multiplier on top of the brief.
+  release_fetch_buffer_days_per_release:
+    value: 35
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer per release added to the fetch window so
+      the rolling z-score is fully populated from the first
+      displayed release.  35 calendar days ≈ 30-day cadence + ~5d
+      holiday slip per CPI cycle.  Multiplied by
+      ``lookback_releases + release_z_window`` to size the total
+      fetch window.  Conservative — overfetching is cheap (the row
+      count per series is at most a few hundred); underfetching
+      would silently warm up the z-score inside the display window.
+    valid_range: [25, 45]
+
+  # ---------------------------------------------------------------------------
+  # Surprise formula — wire-frozen identity
+  # ---------------------------------------------------------------------------
+  # The desk-recognised CPI-surprise definition is the simple identity
+  # actual − consensus_median (in percentage points of YoY CPI).  Per
+  # ADR 0008 §2 / P12, this primitive computes the identity at the
+  # wire layer and discloses it via methodology_note rather than
+  # reading a Bloomberg-supplied surprise field (the ingestion layer
+  # leaves event_calendar.surprise NULL deliberately).
+  #
+  # Categorical convention; the only V1-supported value is
+  # ``actual_minus_consensus_median``.  compute._validate_conventions
+  # raises NotImplementedError on any other value.
+  surprise_formula:
+    value: actual_minus_consensus_median
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      Per ADR 0008 §2, the canonical surprise is the exact identity
+      actual − consensus_median in percentage points.  Bloomberg's
+      ECO screen reports the same number, but the ingestion layer
+      leaves ``event_calendar.surprise`` NULL by design so the
+      primitive carries the P12-disclosed identity computation
+      (rather than appearing to recompute a Bloomberg-supplied
+      number).  Categorical convention wire-frozen at the compute
+      layer until methodology.planned_extensions widens it to
+      support standardised surprise (surprise / surprise_std_dev)
+      or revision-adjusted surprise.
+
+  # ---------------------------------------------------------------------------
+  # Country → event_type mapping — one scalar convention per country
+  # ---------------------------------------------------------------------------
+  # The country is the LLM-facing instrument selector (PR1 + PR8); the
+  # underlying ``event_calendar.event_type`` value differs by country
+  # because the eurozone uses HICP (Harmonised Index of Consumer
+  # Prices) rather than a national CPI.  US/UK/JP all use the
+  # ``cpi_yoy`` event_type; EU uses ``hicp_yoy``.  Documented in
+  # rates_agent/playbooks/economic_releases.yml — these conventions
+  # are the single source of truth (P10) for the primitive's
+  # resolution path.
+  #
+  # Convention values must be scalar per ``shared.config.Convention``,
+  # so the mapping is expressed as one scalar convention per country.
+  # The convention names are prefixed ``cpi_event_type_for_<country>``
+  # so they (a) self-document the cpi_surprise context, (b) do not
+  # collide with a future nfp_surprise primitive's own per-country
+  # event_type conventions under PR13 cross-config consistency.
+  # Compute layer reads via
+  # ``config.convention_value(f"cpi_event_type_for_{country.lower()}")``
+  # and returns a controlled error envelope for an unsupported
+  # country (no silent fall-through, P6).
+  cpi_event_type_for_us:
+    value: cpi_yoy
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      US headline CPI YoY is ingested under ``event_type=cpi_yoy``
+      per rates_agent/playbooks/economic_releases.yml.  Bloomberg
+      ticker "CPI YOY Index".
+  cpi_event_type_for_uk:
+    value: cpi_yoy
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      UK headline CPI YoY is ingested under ``event_type=cpi_yoy``
+      per rates_agent/playbooks/economic_releases.yml.  Bloomberg
+      ticker "UKRPCJYR Index" (note: this is the UK CPI ticker,
+      NOT the older UK RPI series).
+  cpi_event_type_for_jp:
+    value: cpi_yoy
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      Japan headline CPI YoY is ingested under
+      ``event_type=cpi_yoy`` per
+      rates_agent/playbooks/economic_releases.yml.  Bloomberg
+      ticker "JNCPIYOY Index".
+  cpi_event_type_for_eu:
+    value: hicp_yoy
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      Eurozone CPI is conventionally HICP (Harmonised Index of
+      Consumer Prices) ex-tobacco — ingested under
+      ``event_type=hicp_yoy`` per
+      rates_agent/playbooks/economic_releases.yml (Bloomberg ticker
+      "ECCPEMUY Index").  This is the desk-recognised eurozone
+      equivalent of the US/UK/JP cpi_yoy series; treating it as
+      ``cpi_yoy`` here would silently miss every EU release in
+      event_calendar.
+
+  # ---------------------------------------------------------------------------
+  # Country canonicalisation (uppercase ISO-3166-alpha-2 / EU)
+  # ---------------------------------------------------------------------------
+  # The playbook stores country values in uppercase (US, UK, JP, EU).
+  # The Pydantic-layer validator on CpiSurpriseInput canonicalises
+  # lowercase / whitespace input before the SQL fetch runs — matching
+  # the substrate convention so mistyped inputs ("us", " jp ") fail
+  # in a desk-friendly way rather than degrading silently to honest
+  # absence at the SQL layer (which would mask the user's typo as a
+  # real no-data result).
+  country_canonicalisation:
+    value: uppercase_iso_or_region_code
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      The economic_releases.yml playbook stores country values as
+      uppercase ISO-3166-alpha-2 (US, UK, JP) or region code (EU);
+      reading against any other casing returns no rows and the
+      event-calendar lookup would look empty.  Canonicalising at
+      the Pydantic layer makes the convention loud + enforced.
+      Same validator pattern as get_otr_history / otr_ofr_spread —
+      the rates_agent codebase has one consistent country
+      canonicalisation shape.
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — surprise (percentage points)
+  # ---------------------------------------------------------------------------
+  surprise_pct_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round surprise output to 4 decimal places of percent (0.0001%
+      ≈ 1bp on YoY CPI).  Display precision; matches the precision
+      Bloomberg uses for CPI surprises and consistent with the
+      ``yield_round_decimals`` convention on inflation-swap tools.
+    valid_range: [2, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  release_z_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Display precision; further
+      decimals are noise given the underlying surprise precision.
+      Same rounding as the catalog's day-based z-scores
+      (z_score_round_decimals in curve_spread / yield_levels /
+      otr_ofr_spread).
+    valid_range: [0, 8]
+
+methodology:
+  what_it_does: |
+    For one country's headline CPI YoY release series:
+
+      1. Resolves the ``event_calendar.event_type`` value from the
+         ``country_to_event_type`` YAML mapping (US/UK/JP →
+         ``cpi_yoy``, EU → ``hicp_yoy``).
+      2. Fetches every event_calendar row for (event_type, country)
+         in a calendar window large enough to populate the rolling
+         z-score warmup at the start of the display window — via
+         ``shared.analytics.events_fetch.fetch_economic_release_surprises``.
+      3. Drops scheduled-placeholder rows (actual IS NULL) so only
+         realised releases contribute to the surprise series.
+      4. Computes ``surprise = actual − consensus_median`` per row.
+         Rows where consensus_median is NULL (no survey published —
+         honest absence per ADR 0008 §2) emit surprise=None on the
+         wire — NOT a fabricated zero.
+      5. Computes a rolling z-score over the trailing
+         ``release_z_window`` realised releases with min_periods =
+         ``release_z_min_periods``.  Releases inside the warmup emit
+         z_score=None.
+      6. Trims the series to the most-recent ``lookback_releases``
+         realised releases and surfaces:
+            - ``current_metrics``: latest realised release's surprise +
+              z + actual + consensus_median + period + release_date,
+              plus the resolved event_type and the country's
+              ``observation_count``.
+            - ``time_series``: bespoke wire shape for the frontend.
+            - ``time_series_surprise`` (units = PERCENT) +
+              ``time_series_zscore`` (units = Z_SCORE) — canonical
+              TimeSeries shapes consumed by the upcoming
+              primitive-to-operator bridge.
+            - ``methodology_note``: surfaces ADR 0008's P12
+              disclosure (the identity ``actual − consensus_median``
+              + the ingestion-layer-NULL surprise design choice) and
+              the TD #28b release-date-window scope limit.
+
+  assumptions:
+    - "macro_data.event_calendar is populated by the event extractor
+       per ADR 0008.  The release-date window is bounded by
+       Bloomberg's ECO_RELEASE_DT_LIST surface (~1.5 years history +
+       forward scheduled), so realised-release coverage pre-dating
+       that window is honest absence (TD #28b / ADR 0008 §6)."
+    - "Surprise is the exact identity actual − consensus_median per
+       release.  The ingestion layer intentionally leaves
+       event_calendar.surprise NULL (ADR 0008 §2) so the identity is
+       computed here at the primitive layer with the P12 disclosure
+       on the wire."
+    - "actual and consensus_median are stored in the same units
+       (percentage points of year-over-year CPI), so the subtraction
+       is a clean identity, NOT a unit-converted derived field."
+    - "Scheduled-placeholder rows (actual IS NULL — release date in
+       the future, or print not yet ingested) are dropped before the
+       surprise series is constructed.  Releases with NULL
+       consensus_median (survey=false in the playbook — e.g. Japan
+       composite PMI per ADR 0008 §2) keep their actual and emit
+       surprise=None (honest absence)."
+    - "Pre-release revisions of PRIOR surprises (i.e. when a
+       scheduled release re-states the prior month's actual via
+       ``revised_prior``) are NOT in this series — those produce
+       new ``revised_prior`` values on subsequent rows but do NOT
+       retroactively adjust earlier ``surprise`` outputs.  A
+       revision-adjusted surprise primitive is a documented
+       follow-up under methodology.planned_extensions."
+    - "User-input lookback_releases controls *display* window; the
+       z-score window is fixed at release_z_window=24 regardless."
+
+  citations:
+    - "docs_revamped/05_decisions/0004-event-calendar-substrate.md
+       (event_calendar table + typed surprise-input columns)."
+    - "docs_revamped/05_decisions/0008-event-playbook-contract.md
+       §2 (P12 disclosure: surprise is the exact identity
+       actual − consensus_median, computed by the primitive layer)."
+    - "rates_agent/playbooks/economic_releases.yml (CPI YOY ingestion
+       for US/UK/JP under cpi_yoy and EU under hicp_yoy)."
+    - "docs/technical_debt.md #28 / ADR 0008 §6 (D-econ v1
+       release-date window limit)."
+
+  planned_extensions:
+    - >-
+      Revision-adjusted surprise.  When a release publishes a
+      ``revised_prior`` that differs from the previous realised
+      release's ``actual``, the prior month's surprise can be
+      revised retroactively (``revised_prior − consensus_median_of_prior``).
+      Today's series is the AS-RELEASED surprise — NOT
+      revision-adjusted.  A sibling primitive
+      ``cpi_revision_surprise`` (or a method enum on this primitive
+      if PR2 cohesion still holds) would surface the revision-
+      adjusted view alongside the as-released series.
+    - >-
+      Standardised surprise (z by survey dispersion).  The
+      ``surprise_std_dev`` column on event_calendar is the
+      *forecast* standard deviation of the survey at the time of
+      release — standardising ``surprise / surprise_std_dev``
+      produces a per-release "z-by-survey" that complements the
+      rolling-window z-score returned here.  Adding a third
+      canonical TimeSeries (surprise_z_by_survey) is the natural
+      widening.
+    - >-
+      surprise_formula: widen to support alternative definitions
+      (e.g. ``actual_minus_consensus_mean``, ``actual_minus_prior``).
+      Compute layer guards with NotImplementedError today; widening
+      adds a second branch keyed on the convention value.
+    - >-
+      cpi_event_type_for_<country>: extend to additional regions
+      (CA, AU, etc.) when economic_releases.yml ingests their CPI
+      series.  Requires the playbook extension AND a new
+      ``cpi_event_type_for_<country>`` convention in the same PR;
+      adding a country WITHOUT the convention fails loudly at
+      compute layer (no silent fall-through).
+    - >-
+      D-econ deep history backfill (ADR 0008 §6 / TD #28b).
+      Today's release-date window is bounded by Bloomberg's
+      ECO_RELEASE_DT_LIST recent-past-plus-forward surface
+      (~1.5 years).  A backfill source (e.g. a non-Bloomberg
+      release-date archive) would extend the historical reach;
+      no schema change in this primitive.
