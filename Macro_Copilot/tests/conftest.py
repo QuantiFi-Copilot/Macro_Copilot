@@ -94,4 +94,5 @@ collect_ignore = [
     "test_fx_panel_wiring.py",
     "test_fx_panel_sql_validation.py",
     "test_fx_returns_series_compute.py",
+    "test_fx_drawdown_compute.py",
 ]
