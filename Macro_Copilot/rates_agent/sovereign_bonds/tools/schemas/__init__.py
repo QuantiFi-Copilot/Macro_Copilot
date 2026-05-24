@@ -84,6 +84,17 @@ from rates_agent.sovereign_bonds.tools.schemas.scanner import (
     ScannerOutput,
 )
 
+# OTR-history monitor — categorical / SCD2 output, not bridge-composable
+# (see get_otr_history/schemas.py docstring).  Re-exported here so
+# external code can import from the schemas hub uniformly with the
+# other sovereign tools.
+from rates_agent.sovereign_bonds.tools.get_otr_history.schemas import (
+    OtrHistoryInput,
+    OtrHistoryCurrentMetrics,
+    OtrHistoryTransitionRow,
+    OtrHistoryOutput,
+)
+
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
     "YieldLevelInput", "YieldLevelMetrics", "YieldLevelOutput",
@@ -91,4 +102,5 @@ __all__ = [
     "ButterflyInput", "ButterflyCurrentMetrics", "ButterflyTimeSeriesRow", "ButterflyOutput",
     "CurveMoveInput", "CurveMoveCurrentMetrics", "CurveMoveOutput",
     "ScannerInput", "ScannerResultRow", "ScannerOutput",
+    "OtrHistoryInput", "OtrHistoryCurrentMetrics", "OtrHistoryTransitionRow", "OtrHistoryOutput",
 ]

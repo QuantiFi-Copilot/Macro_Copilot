@@ -96,6 +96,11 @@ from rates_agent.sovereign_bonds.tools.breakeven_inflation import (  # noqa: E40
     BreakevenInflationInput,
     calculate_breakeven_inflation,
 )
+from rates_agent.sovereign_bonds.tools.get_otr_history import (  # noqa: E402
+    CONFIG_PATH as GET_OTR_HISTORY_CONFIG_PATH,
+    OtrHistoryInput,
+    get_otr_history,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -302,6 +307,89 @@ def get_yield_levels_tool(
     if "error" in result:
         return json.dumps(result, default=str)
     return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
+
+
+# ===========================================================================
+# TOOL 2b: get_otr_history
+# ===========================================================================
+@mcp.tool()
+def get_otr_history_tool(
+    country: str,
+    tenor: str,
+    lookback_days: int = 365,
+) -> str:
+    """Return the on-the-run (OTR) transition log + currently-OTR
+    snapshot for one (country, tenor) sovereign cash-bond slot.
+
+    Use this tool when the user asks about:
+    - Which CUSIP / ISIN is the current OTR bond for a slot
+      (e.g. "what's the current US 10Y OTR?")
+    - The history of OTR transitions for a slot
+      (e.g. "show me US 10Y OTR rolls in the past year")
+    - How many distinct bonds have been OTR for a slot over a window
+
+    Output shape: ``current_metrics`` (snapshot of the currently-OTR
+    bond, or ``None`` identity fields when no bond is currently OTR)
+    + ``transitions`` (chronological list of SCD2 windows) +
+    ``methodology_note`` (TD #27 disclosure — forward-only resolver,
+    detection-date precision).
+
+    Honest absence: when no OTR window covers the slot in the lookback
+    (e.g. resolver has not yet observed this slot, or query pre-dates
+    the resolver's first run), ``transitions`` is the empty list and
+    ``current_metrics`` identity fields are ``None``.  This is NOT an
+    error envelope — it's the honest absence shape per P5 + P6.
+
+    Parameters
+    ----------
+    country : str
+        Sovereign country code.  Convention: uppercase ISO-3166-alpha-2
+        (e.g. 'US', 'DE', 'GB', 'JP', 'FR', 'IT', 'ES').
+    tenor : str
+        Canonical slot tenor.  Convention: integer-Y matching
+        sovereign_cash_bonds.yml ('2Y', '3Y', '5Y', '7Y', '10Y',
+        '20Y', '30Y').
+    lookback_days : int, optional
+        Calendar days of trailing OTR-transition history to display
+        (default 252; same as every other 1Y window in the catalogue).
+    """
+    try:
+        params = OtrHistoryInput(
+            country=country, tenor=tenor, lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (DESIGN_PRINCIPLES §8 + PR7).
+    try:
+        otr_config = load_tool_config(GET_OTR_HISTORY_CONFIG_PATH)
+        result = get_otr_history(
+            engine=engine, params=params, config=otr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in get_otr_history for %s %s",
+            params.country, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"OTR-history lookup failed for {params.country} "
+                      f"{params.tenor}: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: get_otr_history %s %s → %s",
+                params.country, params.tenor,
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

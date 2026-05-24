@@ -1,0 +1,185 @@
+# =============================================================================
+# get_otr_history_tool — tool configuration
+# =============================================================================
+# Canonical record of conventions + methodology for the OTR-history primitive.
+# This primitive is a READ-ONLY MONITOR of the macro_data.otr_history SCD2
+# table (ADR 0003, populated by the resolver per ADR 0007).  It returns the
+# chronological list of OTR transitions for a single (country, tenor) slot
+# plus a snapshot of which sovereign cash bond is currently on-the-run.  No
+# arithmetic over market_data_daily is performed; nothing the source of
+# record (Bloomberg) computes is recomputed here.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  Conventions are YAML-locked.  See
+# docs_revamped/02_components/primitive/README.md (PR7).
+# =============================================================================
+
+tool:
+  name: get_otr_history_tool
+  domain: sovereign_bonds
+  description: |
+    On-the-run (OTR) transition log for one (country, tenor) sovereign
+    cash-bond slot — emits both:
+
+      - ``current_metrics``: snapshot of the bond currently on-the-run
+        for the slot (effective_to IS NULL), with instrument identity
+        (otr_instrument_id, CUSIP, ISIN, vendor_ticker, maturity_date),
+        the ``current_effective_from`` date the open window opened on,
+        and the transition_count_in_window over the lookback.
+
+      - ``transitions``: chronological list of every otr_history row
+        whose effective_window intersects the lookback_days display
+        window.  One entry per SCD2 window — effective_from /
+        effective_to (NULL = currently on-the-run) plus the same
+        identity fields as the snapshot.
+
+    Pure INGEST primitive (P12 Bloomberg Accuracy Boundary): reads
+    identifier rows from otr_history; recomputes nothing.
+
+    Forward-only / detection-date-precise per ADR 0007 + TD #27 —
+    the methodology_note in the output surfaces these limits at the
+    user-facing layer (P5).
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Display window — default chronological depth of the transition log
+  # ---------------------------------------------------------------------------
+  default_lookback_days:
+    value: 365
+    source: industry_standard_1y_window
+    rationale: >-
+      Calendar-day count for a 1-year rolling window.  365 (not 252)
+      because this primitive's lookback is in CALENDAR days (the
+      SCD2 query uses date.today() - timedelta(days=N)), and the
+      lint consistency check is keyed on the shared name
+      ``default_lookback_days`` whose existing catalogue value is
+      365 (cross_market_inflation_swap_spread, swap_breakeven_basis_simple).
+      Aligning to 365 keeps PR13 cross-config consistency green.
+      Same semantic span as the catalogue's 252-trading-day z-score
+      windows (~1Y) — just a different unit convention.  This value
+      is the default for the Pydantic ``OtrHistoryInput.lookback_days``
+      field; per-query overrides via the LLM-controlled input are
+      still honoured.
+    valid_range: [30, 3650]
+
+  # ---------------------------------------------------------------------------
+  # Window-boundary semantics — which transitions are included
+  # ---------------------------------------------------------------------------
+  # "range_intersection" means: include every otr_history row whose
+  # [effective_from, effective_to] (with NULL effective_to = open
+  # window) intersects the displayed lookback window.  This is the
+  # honest SCD2-history convention: if a bond was OTR for some part of
+  # the lookback window, it appears in the transitions list, even if
+  # its effective_from pre-dates the lookback start.
+  #
+  # The alternative — "effective_from_within_window" (only rows whose
+  # effective_from falls inside the window) — drops the bond that was
+  # already-OTR at the start of the lookback, which makes the log
+  # incomplete for callers asking "what bonds covered this period".
+  window_boundary_semantics:
+    value: range_intersection
+    source: team_judgment_pending_review
+    rationale: >-
+      Include every otr_history window that overlaps the lookback
+      window in calendar terms, so the open-at-start bond is not
+      silently dropped.  Chosen over "effective_from_within_window"
+      because the desk question is "which bonds covered this period"
+      not "which auctions happened in this period." Categorical
+      convention; the accepted-value set is wire-frozen at the
+      compute layer until methodology.planned_extensions widens it.
+
+  # ---------------------------------------------------------------------------
+  # Transition sort order — chronological by default
+  # ---------------------------------------------------------------------------
+  transition_sort_order:
+    value: ascending
+    source: team_judgment_pending_review
+    rationale: >-
+      Sort transitions by ``effective_from`` ascending so the open
+      (currently-OTR) window is last.  Matches the natural human
+      reading order ("oldest first, newest last") and lets a caller
+      take the last row as the current OTR without a separate query.
+      Categorical convention; the accepted-value set is wire-frozen
+      at the compute layer until methodology.planned_extensions
+      widens it.
+
+methodology:
+  what_it_does: |
+    For one (country, tenor) sovereign on-the-run slot:
+
+      1. Queries macro_data.otr_history JOIN macro_data.instrument_master
+         for every SCD2 window whose range intersects the lookback_days
+         display window, sorted by effective_from ascending.
+      2. Emits each window as one ``OtrHistoryTransitionRow`` carrying
+         effective_from / effective_to (NULL = currently OTR) and the
+         OTR bond's identity (otr_instrument_id, CUSIP, ISIN,
+         vendor_ticker, maturity_date).
+      3. Emits ``current_metrics`` as the bond currently on-the-run for
+         the slot (the row with effective_to IS NULL), plus the
+         transition_count_in_window over the displayed window.
+      4. Returns a ``methodology_note`` surfacing the resolver's
+         forward-only + detection-date limits (TD #27) at the user-
+         facing layer so callers consuming the output know what
+         absence means.
+
+    The primitive is read-only: it does not write otr_history.  When
+    no OTR window covers the slot in the requested lookback (e.g. the
+    resolver has not yet run for the slot, or the requested dates
+    pre-date the resolver's first run), the response is honest
+    absence — current_metrics' identity fields are None and
+    transitions is the empty list — per P5 + P6, never a fabricated
+    window.
+
+  assumptions:
+    - "macro_data.otr_history is populated forward-only by the
+       resolver per ADR 0007.  Pre-resolver OTR windows are not
+       reconstructed; the methodology_note surfaces this at the
+       user-facing layer (TD #27a)."
+    - "Roll dates carry detection-date precision — a window's
+       effective_from is the resolver's first confirmed observation
+       of the new OTR bond, ~1-2 days after the true auction date
+       at daily incremental cadence (TD #27b)."
+    - "country values match the convention in
+       macro_data.instrument_master (uppercase ISO-3166-alpha-2,
+       e.g. 'US', 'DE', 'GB', 'JP').  tenor values match the
+       canonical slot labels in sovereign_cash_bonds.yml
+       (e.g. '2Y', '5Y', '10Y', '30Y')."
+    - "The lookback window is anchored to date.today() at the
+       caller's wall clock.  effective_to = NULL on the open window
+       is preserved on the wire (not coerced to today's date), so
+       downstream consumers can recognise the still-open window."
+
+  citations:
+    - "docs_revamped/05_decisions/0003-cash-bond-substrate.md (otr_history SCD2 table)."
+    - "docs_revamped/05_decisions/0005-cash-bond-playbook-universe.md (sovereign_cash_bonds.yml universe)."
+    - "docs_revamped/05_decisions/0007-otr-resolver.md (resolver — forward-only ingest of otr_history)."
+    - "docs/technical_debt.md #27 (forward-only + detection-date limits)."
+
+  planned_extensions:
+    - >-
+      Historical pre-resolver OTR backfill (TD #27a).  Requires an
+      authoritative non-Bloomberg history of past auctions /
+      benchmark rolls per (country, tenor) slot — debt-office
+      auction calendars — encoded as VERIFIED otr_history rows with
+      verified effective dates.  Until that data is sourced,
+      ingested and verified, this primitive returns honest absence
+      for any window pre-dating the resolver's first run.
+    - >-
+      Tighter roll dating (TD #27b).  Tighten the detection-date
+      gap by running the incremental extractor daily and/or by
+      later cross-referencing the auction calendar to correct
+      ``effective_from`` to the true roll date.  Cadence +
+      calendar work; no schema change in this primitive.
+    - >-
+      window_boundary_semantics: widen to support
+      ``effective_from_within_window`` (auctions-in-window view).
+      Compute layer guards with NotImplementedError today; widening
+      adds a second SQL branch keyed on the convention value.
+    - >-
+      transition_sort_order: widen to support ``descending``
+      (newest first).  Compute layer guards with
+      NotImplementedError today; widening flips the ORDER BY
+      direction in the SCD2 fetch.
