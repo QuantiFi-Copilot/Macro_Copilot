@@ -116,28 +116,99 @@ tools:
       config: fx_agent/forwards/tools/fx_carry/config.yaml
 
     one_liner: >-
-      Cross-sectional FX forward carry snapshot — joins latest spot and
-      same-tenor forward-points observations, converts points into spot
-      units, and ranks pairs by annualized carry.
+      Cross-sectional FX carry scanner over the G10 forward universe at a
+      given tenor. Joins per-date spot and forward-points history, converts
+      points into spot units with the JPY-aware divisor, annualises by a
+      trading-day basis, and per pair computes a rolling 252-day z-score /
+      percentile / range on the carry_annualized_pct series. Rows are
+      ranked by signed carry, absolute carry, or absolute carry z-score
+      and optionally capped to top-N.
 
     bucket_rationale: >-
-      Deterministic forward-points arithmetic over stored spot and
-      forward observations. Tenor-day, annualization, and points-divisor
-      conventions are YAML-locked.
+      Deterministic forward-points arithmetic over stored spot and forward
+      observations, joined per date so no historical row uses today's
+      spot. Tenor-day, annualization, points-divisor, z-score window, and
+      trailing-range window conventions are YAML-locked. The rolling-stat
+      computation delegates to shared.analytics.levels.compute_level_metrics
+      (the same generic operator the rates yield_levels tool uses).
 
     pm_overridable:
       - tenor
+      - rank_by
+      - top_n
+      - lookback_days
 
     related_tools:
       - get_fx_spot_level_tool
       - scan_fx_spot_tool
+      - get_fx_forward_curve_tool
 
     workflows:
       - fx_carry_monitor
       - fx_forwards_workspace
+      - fx_carry_scanner
 
     references: []
 
     built_date: 2026-05-20
     validation_status: >-
-      Structurally aligned; Bloomberg ingestion / parity validation pending.
+      Phase A scanner extension shipped 2026-05-24 — 12M annualisation
+      bug fixed, lookahead-free historical z-score on carry_annualized_pct,
+      latest-common-date snapshot alignment. Targeted regression tests
+      pending in the same step-7 PR slice.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS / TERM STRUCTURE
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_forward_curve
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_forward_curve_tool
+      schema: fx_agent/forwards/tools/forward_curve/schemas.py::FXForwardCurveInput
+      compute: fx_agent/forwards/tools/forward_curve/compute.py::get_fx_forward_curve
+      config: fx_agent/forwards/tools/forward_curve/config.yaml
+
+    one_liner: >-
+      For one G10 pair, returns the full forward-curve term structure
+      across 1W / 1M / 3M / 6M / 12M tenors with raw forward points,
+      spot-unit forward points, outright forward, carry in basis points,
+      annualised carry %, and a rolling 252-day z-score / percentile /
+      range on the spot-unit forward points. Numerically consistent with
+      calculate_fx_carry at any given (pair, tenor).
+
+    bucket_rationale: >-
+      Deterministic per-tenor SQL fetch + the shared per-pair divisor and
+      tenor-day conventions, joined per date. Z-score / percentile / range
+      delegate to shared.analytics.levels.compute_level_metrics. Tenor
+      set, divisor, annualization and rolling-window conventions are all
+      YAML-locked.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_forwards_workspace
+      - fx_carry_monitor
+
+    references: []
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Cross-tool consistency verified: every (EURUSD, tenor) returns
+      identical carry_annualized_pct via calculate_fx_carry and
+      get_fx_forward_curve. Targeted compute / wiring tests pending in
+      the same step-7 PR slice.

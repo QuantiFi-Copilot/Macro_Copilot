@@ -1,11 +1,11 @@
 playbook_name: "spot_fx"
-playbook_version: "1.0"
+playbook_version: "2.0"
 asset_class: "fx"
 dataset_name: "spot_fx"
-description: "Daily G10 spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring."
+description: "Daily G10 spot FX majors for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. Wave 1 extends coverage from 6 to 9 majors by adding NZDUSD, USDNOK, USDSEK (the missing Nordic / antipodean members of the G10 majors set)."
 
 extraction:
-  start_date: "2005-01-01"
+  start_date: "2000-01-01"
   incremental_window_days: 14
 
 target_metrics:
@@ -70,3 +70,33 @@ universe:
     pair: "USDCHF"
     base_ccy: "USD"
     quote_ccy: "CHF"
+
+  # ============================================================
+  # Wave 1 additions (NZD + Nordics)
+  # ============================================================
+  - ticker: "NZDUSD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "NZDUSD"
+    base_ccy: "NZD"
+    quote_ccy: "USD"
+
+  - ticker: "USDNOK Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDNOK"
+    base_ccy: "USD"
+    quote_ccy: "NOK"
+
+  - ticker: "USDSEK Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_SPOT"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDSEK"
+    base_ccy: "USD"
+    quote_ccy: "SEK"

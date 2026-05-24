@@ -106,6 +106,43 @@ export const LOOKBACK_OPTIONS: { value: string; label: string }[] = [
   { value: '1260', label: '5Y · 1260 days' },
 ];
 
+// FX-specific option sets. The supported pairs + tenors mirror the
+// backend's fx_agent/forwards/_shared.py::SUPPORTED_FORWARD_TENORS
+// and fx_agent/playbooks/fx_forwards.yml v2.0 universe. Adding a new
+// G10 pair or tenor on the backend means appending an entry here too.
+export const FX_FORWARD_PAIR_OPTIONS: { value: string; label: string }[] = [
+  { value: 'EURUSD', label: 'EURUSD' },
+  { value: 'GBPUSD', label: 'GBPUSD' },
+  { value: 'USDJPY', label: 'USDJPY' },
+  { value: 'AUDUSD', label: 'AUDUSD' },
+  { value: 'USDCAD', label: 'USDCAD' },
+  { value: 'USDCHF', label: 'USDCHF' },
+];
+
+export const FX_FORWARD_TENOR_OPTIONS: { value: string; label: string }[] = [
+  { value: '1W', label: '1W' },
+  { value: '1M', label: '1M' },
+  { value: '3M', label: '3M' },
+  { value: '6M', label: '6M' },
+  { value: '12M', label: '12M' },
+];
+
+export const FX_CARRY_RANK_BY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'carry_signed', label: 'Signed carry (default)' },
+  { value: 'abs_carry', label: 'Absolute carry magnitude' },
+  { value: 'abs_z_score', label: 'Absolute carry z-score' },
+];
+
+// Calendar-day lookback choices for the FX forwards tools. Different
+// from LOOKBACK_OPTIONS above (which is trading-day) — the FX tools
+// take calendar-day lookback_days bounded by Pydantic [30, 7300].
+export const FX_LOOKBACK_DAYS_OPTIONS: { value: string; label: string }[] = [
+  { value: '180', label: '6M · 180 calendar days' },
+  { value: '365', label: '1Y · 365 calendar days (default)' },
+  { value: '730', label: '2Y · 730 calendar days' },
+  { value: '1825', label: '5Y · 1825 calendar days' },
+];
+
 // ----------------------------------------------------------------------------
 // V1 widget catalog
 
@@ -318,14 +355,73 @@ export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
   },
   fx_carry: {
     id: 'fx_carry',
-    label: 'FX Carry Monitor',
+    label: 'FX Carry Scanner',
     description:
-      'Cross-sectional forward-implied carry (default 1M tenor) for the G10 universe. Backed by calculate_fx_carry.',
+      'Cross-sectional G10 FX carry scanner at a chosen tenor (1W / 1M / 3M / 6M / 12M), ranked by signed carry, absolute carry, or absolute carry z-score. Each row carries a rolling 252-day z-score / percentile / range on its own annualised-carry series. Backed by calculate_fx_carry.',
     category: 'analysis',
     defaultSize: 'wide',
     allowedSizes: ['wide'],
-    parameterized: false,
+    parameterized: true,
+    paramFields: [
+      {
+        kind: 'select',
+        name: 'tenor',
+        label: 'Tenor',
+        defaultValue: '1M',
+        options: FX_FORWARD_TENOR_OPTIONS,
+      },
+      {
+        kind: 'select',
+        name: 'rank_by',
+        label: 'Rank by',
+        defaultValue: 'carry_signed',
+        options: FX_CARRY_RANK_BY_OPTIONS,
+      },
+      {
+        kind: 'number',
+        name: 'top_n',
+        label: 'Top N',
+        defaultValue: 6,
+        min: 1,
+        max: 20,
+        step: 1,
+      },
+      {
+        kind: 'select',
+        name: 'lookback_days',
+        label: 'Lookback',
+        defaultValue: '365',
+        options: FX_LOOKBACK_DAYS_OPTIONS,
+      },
+    ],
     sourceTool: 'calculate_fx_carry',
+  },
+  fx_forward_curve: {
+    id: 'fx_forward_curve',
+    label: 'FX Forward Curve',
+    description:
+      'For one G10 pair, the full forward-curve term structure (1W / 1M / 3M / 6M / 12M) with raw forward points, outright forward, annualised carry, and the rolling 252-day z-score / percentile / range on spot-unit forward points. Numerically consistent with FX Carry Scanner at any (pair, tenor). Backed by get_fx_forward_curve.',
+    category: 'data',
+    defaultSize: 'wide',
+    allowedSizes: ['medium', 'wide'],
+    parameterized: true,
+    paramFields: [
+      {
+        kind: 'select',
+        name: 'pair',
+        label: 'Pair',
+        defaultValue: 'EURUSD',
+        options: FX_FORWARD_PAIR_OPTIONS,
+      },
+      {
+        kind: 'select',
+        name: 'lookback_days',
+        label: 'Lookback',
+        defaultValue: '365',
+        options: FX_LOOKBACK_DAYS_OPTIONS,
+      },
+    ],
+    sourceTool: 'get_fx_forward_curve',
   },
 };
 
@@ -342,6 +438,7 @@ export const CATALOG_ORDER: string[] = [
   'fx_spot_snapshot',
   'fx_scanner',
   'fx_carry',
+  'fx_forward_curve',
 ];
 
 // ----------------------------------------------------------------------------

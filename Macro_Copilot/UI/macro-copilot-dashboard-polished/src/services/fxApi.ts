@@ -1,5 +1,6 @@
 import type {
   FXCarryResponse,
+  FXForwardCurveResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
 } from '@/types/fx';
@@ -40,10 +41,30 @@ export function fetchFXSpotLevel(
 }
 
 export function fetchFXCarry(
-  params?: { tenor?: string },
+  params?: {
+    tenor?: string;
+    rank_by?: string;
+    top_n?: number;
+    lookback_days?: number;
+    field_name?: string;
+  },
 ): Promise<FXCarryResponse> {
   const qs = new URLSearchParams();
   if (params?.tenor) qs.set('tenor', params.tenor);
+  if (params?.rank_by) qs.set('rank_by', params.rank_by);
+  if (params?.top_n) qs.set('top_n', String(params.top_n));
+  if (params?.lookback_days) qs.set('lookback_days', String(params.lookback_days));
+  if (params?.field_name) qs.set('field_name', params.field_name);
   const query = qs.toString();
   return fetchJSON(`${FX_PREFIX}/carry${query ? `?${query}` : ''}`);
+}
+
+export function fetchFXForwardCurve(
+  params: { pair: string; lookback_days?: number; field_name?: string },
+): Promise<FXForwardCurveResponse> {
+  const qs = new URLSearchParams();
+  qs.set('pair', params.pair);
+  if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days));
+  if (params.field_name) qs.set('field_name', params.field_name);
+  return fetchJSON(`${FX_PREFIX}/forward-curve?${qs.toString()}`);
 }

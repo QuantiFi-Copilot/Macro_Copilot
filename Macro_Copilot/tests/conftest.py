@@ -82,4 +82,12 @@ collect_ignore = [
     # FX live-DB readiness gate.  Standalone CLI runner; requires a
     # running local Postgres with ingested FX data.
     "test_fx_data_readiness.py",
+
+    # FX tools regression / wiring tests (Phase A step 7b).  Same
+    # standalone-CLI pattern as the readiness gate above — they
+    # assert / print / exit non-zero rather than using pytest, so
+    # pytest discovery would mis-collect them as zero-test files.
+    "test_fx_carry_compute.py",
+    "test_fx_forward_curve_compute.py",
+    "test_fx_tools_wiring.py",
 ]
