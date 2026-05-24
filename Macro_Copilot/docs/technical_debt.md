@@ -233,6 +233,123 @@ EFFORT: Large — neither unblock path is a single-PR change.  Both
        the primitive build itself (four files + test triplet + parity
        fixture).
 
+### 32. linker_carry_with_seasonals primitive deferred — three independent metadata gaps
+WHERE: rates_agent/inflation_indexed_bonds/tools/ (primitive does
+       NOT exist; planned as primitive 7 of the 8-primitive easy-win
+       batch).
+       rates_agent/playbooks/inflation_indexed_bonds.yml
+       rates_agent/playbooks/inflation_references.yml
+WHAT:  A carry primitive that honestly decomposes linker P&L over a
+       horizon (coupon accrual + index-ratio appreciation +
+       price-pull-to-par) cannot be shipped today.  THREE independent
+       metadata gaps each, alone, block the as-written brief:
+       (1) PER-BOND CARRY FIELDS NOT INGESTED.
+           inflation_indexed_bonds.yml carries only YLD_YTM_MID +
+           MATURITY + SECURITY_DES + inflation_index_family.  No
+           CUR_CPN (coupon), no PX_DIRTY_MID (dirty price), no
+           DAY_CNT_DES (day count), no IDX_RATIO (current index
+           ratio), no INFLATION_LAG (per-bond indexation lag — TD #25
+           SECTION 3 verified it IS exposed on the bond as the
+           Bloomberg reference field INFLATION_LAG, but it has NOT
+           been added to the playbook).  The non-linker
+           sovereign_cash_bonds.yml playbook carries CPN + PX_DIRTY_MID
+           + ISSUE_DT richly, but its universe is nominal bonds only —
+           the linker tickers are not duplicated there.  Without these
+           fields the three carry components each require proxies
+           (duration ≈ tenor, coupon ≈ current yield, dirty price ≈ par,
+           index ratio ≈ ratio-of-monthly-prints) — exactly the
+           opinionated-proxy pattern that kept TD #27's sovereign
+           carry+roll out of the build.
+       (2) DAILY-INDEX INTERPOLATION RULE ABSENT (TD #25).
+           The index_ratio appreciation component needs the daily
+           reference index between two monthly CPI prints.  TD #25
+           explicitly defers the per-market interpolation rule
+           ("never guessed").  Any primitive that "computes a daily
+           reference index, projects linker cash flows, or prices an
+           inflation-linked bond off the reference indices" is
+           blocked at TD #25's boundary — this primitive is exactly
+           that case.
+       (3) SEASONAL FACTORS DELIBERATELY ABSENT.
+           inflation_references.yml §1 documents "SEASONAL FACTORS
+           [are] DEFERRED to a non-Bloomberg follow-up; they cannot
+           be sourced uniformly here" (the statistical-agency probe
+           found no Bloomberg surface for them outside US SA-CPI).
+           The brief's "with seasonals" wording cannot be honored
+           without these factors.
+
+       Shipping a degraded-proxy version would violate P12 (Bloomberg
+       Accuracy Boundary) + PR6 (refusal-when-metadata-absent) — the
+       carry decomposition would be three stacked guesses, none of
+       which the desk could defend against a Bloomberg PORT screen.
+       The brief's §5 bail-out explicitly named this case ("If you
+       find the inflation-references data is not at the granularity
+       the carry methodology requires (e.g. you'd need daily index
+       interpolation that exceeds TD #25's stated boundary), STOP and
+       ask me (AC8).  Do NOT proxy.")  User confirmed deferral.
+IMPACT: The MCP catalog has no linker-carry primitive.  Linker RV
+        analysis must compose the rougher tools that exist (real
+        yield levels, breakeven primitives) without a horizon
+        decomposition.  Transitively blocks TD #33 (primitive 8 —
+        carry-adjusted breakeven, which composes this primitive under
+        strict PR9).
+FIX:   Single combined ingestion + standards workstream that lands
+       ALL THREE substrate pieces, after which this primitive can be
+       built as a single small four-file PR:
+       (a) Ingestion increment on inflation_indexed_bonds.yml:
+           add CUR_CPN / PX_DIRTY_MID / DAY_CNT_DES / IDX_RATIO /
+           INFLATION_LAG to target_metrics + reference_metrics; re-
+           verify against Bloomberg per the playbook's
+           verification-probe pattern; backfill historical series.
+       (b) Resolve TD #25 — source the per-market interpolation rule
+           from each debt office's index-linked-bond prospectus
+           (US Treasury, UK DMO, AFT, BoC, JMOF) and encode one
+           VERIFIED `interpolation` attribute per bond row.
+       (c) Seasonality ingest: source statistical-agency seasonal
+           factors (FRB / BLS / Eurostat / ONS) via a non-Bloomberg
+           ingest path — a new playbook or extension to
+           inflation_references.yml.
+WHEN:  Out of scope for the 8-primitive easy-win batch.  Revisit
+       when the combined substrate workstream above is prioritised.
+       Per user direction, "do it as a separate ingestion/substrate
+       workstream first, then return to primitive 7."
+EFFORT: Very large — three independent ingestion / standards
+       extensions, each with its own verification + backfill;
+       primitive itself is small once substrate lands.
+
+### 33. carry_adjusted_breakeven primitive deferred — PR9 composition cascade from TD #32
+WHERE: rates_agent/inflation_indexed_bonds/tools/ (primitive does
+       NOT exist; planned as primitive 8 of the 8-primitive easy-win
+       batch).
+WHAT:  carry_adjusted_breakeven is a strict-PR9-composition primitive
+       that consumes the OUTPUT of linker_carry_with_seasonals
+       (primitive 7) plus a nominal-bond carry equivalent.  It cannot
+       be built honestly until its underlying primitive exists:
+         - the linker leg requires calculate_linker_carry_with_
+           seasonals() — TRANSITIVELY blocked by TD #32 above.
+         - the nominal leg requires per-bond CUR_CPN / DAY_CNT_DES /
+           PX_DIRTY_MID / MOD_DUR_MID on the nominal sovereign-bond
+           universe.  TD #27 already documents this as the open
+           blocker for the sibling sovereign carry+roll primitive.
+
+       Building primitive 8 against degraded proxies on either leg
+       would compound the proxy error — and PR9 explicitly forbids a
+       composition primitive that masks its dependencies' weaknesses.
+IMPACT: The MCP catalog has no carry-adjusted breakeven primitive.
+        Breakeven RV screens see only the raw nominal − real yield
+        spread without horizon-carry adjustment.
+FIX:   Compound of TD #32 (resolve all three linker gaps) AND
+       TD #27 (extend nominal sovereign bonds with carry fields).
+       After both land, this primitive becomes a small four-file PR
+       that demonstrates strict PR9 composition (explicit `config=`
+       pass-through of both inner primitives' configurations + the
+       provenance echo PR10 mandates).
+WHEN:  After TD #32 and TD #27 both close.  Per user direction, the
+       8-primitive easy-win batch closes at 5/8 — this primitive
+       returns only after the substrate workstream lands.
+EFFORT: Small for the primitive itself once both substrate gaps are
+       closed; the underlying ingestion work is captured under
+       TD #32 + TD #27.
+
 
 ## MEDIUM — Fix within first quarter
 

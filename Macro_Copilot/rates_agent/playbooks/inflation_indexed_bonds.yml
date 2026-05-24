@@ -1,8 +1,32 @@
+# ============================================================================
+# WHAT IS DELIBERATELY ABSENT FROM THIS PLAYBOOK — none of it is guessed:
+#
+# This playbook ships ONLY real-yield curve points (YLD_YTM_MID + MATURITY +
+# SECURITY_DES) for breakeven and real-yield-curve analytics.  Carry-decomposi-
+# tion primitives that need per-bond cash-flow detail (coupon, day count, dirty
+# price, current index ratio, indexation lag) are blocked: those five fields
+# are NOT yet on target_metrics / reference_metrics here.
+#
+#   - CUR_CPN (coupon)            — not ingested
+#   - DAY_CNT_DES (day count)     — not ingested
+#   - PX_DIRTY_MID (dirty price)  — not ingested
+#   - IDX_RATIO (index ratio)     — not ingested
+#   - INFLATION_LAG (per-bond lag — TD #25 SECTION 3 verified Bloomberg
+#                                   exposes it; not ingested here yet)
+#
+# Consequence: the planned "linker_carry_with_seasonals" primitive (originally
+# scoped as primitive 7 of the easy-win batch) is DEFERRED.  See
+# docs/technical_debt.md §32 for the three-gap analysis and the combined-
+# ingestion unblock workstream.  The downstream "carry_adjusted_breakeven"
+# primitive (primitive 8) is transitively blocked via PR9 composition —
+# docs/technical_debt.md §33.
+# ============================================================================
+
 playbook_name: inflation_indexed_bonds
 playbook_version: "1.0"
 asset_class: rates
 dataset_name: inflation_indexed_bonds
-description: "Daily sovereign inflation-indexed bond benchmark points for US TIPS, UK linkers, France OATi/OATei linkers, and Canadian RRBs, using Bloomberg real-yield series for curve analysis and breakeven construction."
+description: "Daily sovereign inflation-indexed bond benchmark points for US TIPS, UK linkers, France OATi/OATei linkers, and Canadian RRBs, using Bloomberg real-yield series for curve analysis and breakeven construction.  Per-bond carry fields (coupon / day count / dirty price / index ratio / indexation lag) are NOT yet ingested — see header note + docs/technical_debt.md §32 + §33 for the deferred linker-carry + carry-adjusted-breakeven primitives."
 
 extraction:
   start_date: "2005-01-01"
