@@ -92,6 +92,31 @@ conventions:
       compute layer until methodology.planned_extensions widens it.
 
   # ---------------------------------------------------------------------------
+  # Tenor / country canonicalisation — established by ADR 0007 + the
+  # sovereign_cash_bonds.yml universe (ADR 0005)
+  # ---------------------------------------------------------------------------
+  # The (country, tenor) slot identity used by the resolver:
+  #   - country: uppercase ISO-3166-alpha-2 (US, DE, GB, JP, FR, IT, ES, …)
+  #   - tenor:   integer-Y matching the slot labels (2Y, 3Y, 5Y, 7Y,
+  #              10Y, 20Y, 30Y).
+  # The Pydantic-layer validator on OtrHistoryInput canonicalises
+  # country to uppercase and rejects non-matching tenor patterns
+  # before the SQL fetch runs — matching the substrate convention so
+  # mistyped inputs ("10y", "usa") fail loudly at the API boundary
+  # rather than degrading silently into honest absence at the SQL
+  # layer (which would mask the user's typo as a real
+  # no-OTR-window-found result).
+  tenor_canonicalisation:
+    value: uppercase_country_integer_y_tenor
+    source: adr_0007_otr_canonicalisation
+    rationale: >-
+      The resolver writes (country, tenor) slots in uppercase ISO-
+      country / integer-Y-tenor form (ADR 0007 §4 + 0005 §3); reading
+      against any other shape returns no rows and the SCD2 history
+      would look empty.  Canonicalising at the Pydantic layer makes
+      the convention loud + enforced.
+
+  # ---------------------------------------------------------------------------
   # Transition sort order — chronological by default
   # ---------------------------------------------------------------------------
   transition_sort_order:

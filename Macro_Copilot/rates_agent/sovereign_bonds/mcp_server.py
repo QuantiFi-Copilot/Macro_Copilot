@@ -351,7 +351,9 @@ def get_otr_history_tool(
         '20Y', '30Y').
     lookback_days : int, optional
         Calendar days of trailing OTR-transition history to display
-        (default 252; same as every other 1Y window in the catalogue).
+        (default 365; matches the YAML's ``default_lookback_days``
+        convention — 1-year calendar window, PR13 consistency with
+        cross_market_inflation_swap_spread / swap_breakeven_basis_simple).
     """
     try:
         params = OtrHistoryInput(

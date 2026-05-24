@@ -316,6 +316,17 @@ def main() -> None:
     parser.add_argument("--cases", type=int, default=DEFAULT_CASE_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--days", type=int, default=DEFAULT_LOOKBACK_DAYS)
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help=(
+            "Allow exit 0 when macro_data.otr_history has zero rows for "
+            "every queried slot.  Required during the pre-resolver-"
+            "deployment window (TD #27a — forward-only ingest).  Without "
+            "this flag, an empty SCD2 table fails the gate so a silent "
+            "regression to no-data-at-all is caught."
+        ),
+    )
     args = parser.parse_args()
 
     print("=" * 80)
@@ -337,10 +348,14 @@ def main() -> None:
     )
     if not cases:
         print("\n  No (country, tenor) slots have any rows in macro_data.otr_history.")
-        print("  This is expected pre-resolver-deployment (TD #27a).  The")
-        print("  parity test has nothing to validate; this is honest absence,")
-        print("  not a failure.")
-        sys.exit(0)
+        if args.allow_empty:
+            print("  --allow-empty set; treating as honest pre-resolver-deployment")
+            print("  state (TD #27a forward-only).  Exiting 0.")
+            sys.exit(0)
+        print("  This is expected pre-resolver-deployment (TD #27a) but a")
+        print("  mandatory SQL validation gate must not pass silently on")
+        print("  zero data — pass --allow-empty to waive explicitly.  Failing.")
+        sys.exit(2)
     print_selected_cases(cases, lambda case: f"{case[0]} {case[1]}")
 
     print("[3/4] Running tool vs SQL comparisons...")
@@ -378,6 +393,20 @@ def main() -> None:
         for case, mismatches in failed_cases:
             print(f"  - {case[0]} {case[1]} ({len(mismatches)} mismatches)")
         sys.exit(1)
+
+    # Every case skipped — DB had slots but none had rows in the lookback.
+    # Same fail-by-default rule as the zero-cases-globally path: without an
+    # explicit --allow-empty waiver, a SQL validation gate that validates
+    # nothing must fail.
+    if pass_count == 0 and skip_count > 0:
+        if args.allow_empty:
+            print("\n  All cases SKIPPED (empty otr_history in window); --allow-empty set.")
+            print("  Treating as honest pre-resolver-deployment state (TD #27a).")
+            sys.exit(0)
+        print("\n  All cases SKIPPED — no slot had rows in the lookback window.")
+        print("  Pass --allow-empty to waive explicitly during the pre-resolver-")
+        print("  deployment window.  Failing.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

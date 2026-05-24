@@ -39,10 +39,10 @@ Test seam
 ---------
 Tests patch ``date`` at this module's namespace
 (``...get_otr_history.compute.date``) — same pattern as
-``yield_levels.compute.date``.  The DB engine is a SQLAlchemy
-``Engine`` and tests pass a ``MagicMock`` whose ``.connect()``
-context manager yields a connection whose ``.execute()`` returns a
-``mappings()`` view.
+``yield_levels.compute.date``.  The actual SCD2 fetch lives in
+``shared.analytics.rates_fetch.fetch_otr_transitions``; tests patch it
+at this module's namespace (``...get_otr_history.compute.fetch_otr_transitions``)
+to inject synthetic rows without touching a live DB.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.get_otr_history.schemas import (
@@ -60,6 +59,7 @@ from rates_agent.sovereign_bonds.tools.get_otr_history.schemas import (
     OtrHistoryOutput,
     OtrHistoryTransitionRow,
 )
+from shared.analytics.rates_fetch import fetch_otr_transitions
 from shared.config import ToolConfig, load_tool_config
 
 
@@ -97,76 +97,6 @@ _METHODOLOGY_NOTE: str = (
     "screen; this primitive does not recompute what the source of "
     "record provides (P12)."
 )
-
-
-# ============================================================================
-# SQL — read-only point-in-time + history queries
-# ============================================================================
-
-# Chronological SCD2 history for one slot.  Uses range-intersection
-# boundary semantics: include every window whose effective range
-# intersects the lookback.  ``effective_to IS NULL`` (open window) is
-# treated as ``'infinity'::date`` for the intersection check, matching
-# the table's EXCLUDE GIST constraint convention.
-_OTR_HISTORY_SQL = text(
-    """
-    SELECT
-        o.effective_from,
-        o.effective_to,
-        o.otr_instrument_id,
-        i.cusip,
-        i.isin,
-        i.vendor_ticker,
-        i.maturity_date
-    FROM macro_data.otr_history o
-    JOIN macro_data.instrument_master i
-      ON i.instrument_id = o.otr_instrument_id
-    WHERE o.country = :country
-      AND o.tenor   = :tenor
-      AND daterange(
-              o.effective_from,
-              COALESCE(o.effective_to, 'infinity'::date),
-              '[]'
-          ) && daterange(:window_start, :window_end, '[]')
-    ORDER BY o.effective_from ASC
-    """
-)
-
-
-def _fetch_otr_transitions(
-    engine: Engine,
-    *,
-    country: str,
-    tenor: str,
-    window_start: date,
-    window_end: date,
-) -> List[Dict[str, Any]]:
-    """Run the SCD2 history query and return one dict per window.
-
-    Private to this primitive's compute layer.  When a future primitive
-    needs the same shape (e.g. ``otr_ofr_spread`` resolving the prior
-    off-the-run bond), promote this to ``shared/analytics/`` and
-    update both call sites in the same PR (P10 — one definition).
-
-    Returns an empty list (never ``None``) when the slot has no
-    resolver-observed windows that intersect the lookback — honest
-    absence per P6.
-    """
-    with engine.connect() as conn:
-        rows = (
-            conn.execute(
-                _OTR_HISTORY_SQL,
-                {
-                    "country": str(country),
-                    "tenor": str(tenor),
-                    "window_start": window_start.isoformat(),
-                    "window_end": window_end.isoformat(),
-                },
-            )
-            .mappings()
-            .all()
-        )
-    return [dict(r) for r in rows]
 
 
 # ============================================================================
@@ -249,9 +179,11 @@ def get_otr_history(
     window_end = today
 
     # ------------------------------------------------------------------
-    # 2. Fetch
+    # 2. Fetch — through the shared analytics helper so a future
+    # cash-bond primitive (e.g. otr_ofr_spread) resolves OTR slots
+    # through the same SQL definition (P10 — single source of truth).
     # ------------------------------------------------------------------
-    rows = _fetch_otr_transitions(
+    rows = fetch_otr_transitions(
         engine=engine,
         country=params.country,
         tenor=params.tenor,

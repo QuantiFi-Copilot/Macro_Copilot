@@ -41,9 +41,23 @@ on ``lookback_days``.
 
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+# Tenor pattern fixed by the ``tenor_canonicalisation`` convention
+# (config.yaml + ADR 0007 §4 + 0005 §3) — integer-Y form matching the
+# slot labels the resolver writes.  Compiled at module load so the
+# validator path is O(1) per call.
+_TENOR_PATTERN = re.compile(r"^[1-9][0-9]*Y$")
+
+# Country pattern fixed by the same convention — uppercase ISO-3166-alpha-2
+# (the typical case; the resolver does not write longer codes today).
+# Lower-case input is canonicalised to upper rather than rejected, since
+# the alias is unambiguous; non-letter input fails loudly.
+_COUNTRY_PATTERN = re.compile(r"^[A-Z]{2,3}$")
 
 
 def _bundled_default_lookback_days() -> int:
@@ -54,23 +68,21 @@ def _bundled_default_lookback_days() -> int:
     module-load time; only the factory path touches them).  Cached by
     the underlying ``load_tool_config`` so this is a one-time cost.
 
-    If the bundled YAML can't be loaded for any reason, falls back to
-    the documented historical default of 365 (calendar days, 1Y).
-    ``compute()`` still does the strict per-call validation against its
-    own (possibly custom) ToolConfig, so this branch never silently
-    breaks tests that pass a stub config.
+    Raises loudly when ``config.yaml`` cannot be loaded or the
+    ``default_lookback_days`` convention is missing — per P6 (no
+    silent failure) and P10 (single source of truth).  A corrupt or
+    missing YAML is a real bug; hiding it behind a fallback would
+    create a second source of truth for the default and silently
+    drift away from the documented methodology.
     """
-    try:
-        # Local imports to avoid a top-of-module cycle through compute.
-        from rates_agent.sovereign_bonds.tools.get_otr_history.compute import (
-            CONFIG_PATH,
-        )
-        from shared.config import load_tool_config
+    # Local imports to avoid a top-of-module cycle through compute.
+    from rates_agent.sovereign_bonds.tools.get_otr_history.compute import (
+        CONFIG_PATH,
+    )
+    from shared.config import load_tool_config
 
-        cfg = load_tool_config(CONFIG_PATH)
-        return int(cfg.convention_value("default_lookback_days"))
-    except Exception:
-        return 365
+    cfg = load_tool_config(CONFIG_PATH)
+    return int(cfg.convention_value("default_lookback_days"))
 
 
 class OtrHistoryInput(BaseModel):
@@ -106,6 +118,71 @@ class OtrHistoryInput(BaseModel):
             "methodology knob for this primitive."
         ),
     )
+
+    # =====================================================================
+    # Canonicalisation invariants — code-owned per PR7 (invariants in code,
+    # not YAML).  The CONVENTION the rule is documented under is
+    # ``tenor_canonicalisation`` in config.yaml, source tag
+    # ``adr_0007_otr_canonicalisation``.  The invariants below ENFORCE that
+    # convention at the API boundary so mistyped inputs ("10y", "us ",
+    # "USA1") fail loudly with a typed ValidationError, rather than
+    # degrading silently to honest absence at the SQL layer (where a
+    # mistyped input that doesn't match any row LOOKS like a legitimate
+    # "no resolver coverage" result).
+    # =====================================================================
+
+    @field_validator("country", mode="before")
+    @classmethod
+    def _canonicalise_country(cls, v: object) -> str:
+        """Uppercase ISO-3166-alpha-2 (or alpha-3); reject anything else.
+
+        Per the ``tenor_canonicalisation`` convention (config.yaml).
+        Lowercase input is upcased rather than rejected because the
+        alias is unambiguous and rejecting it would be hostile.
+        Non-letter or wrong-length input is rejected loudly (P6 — no
+        silent failure).
+        """
+        if not isinstance(v, str):
+            raise ValueError(
+                f"country must be a string (uppercase ISO-3166-alpha-2/3); "
+                f"got {type(v).__name__}"
+            )
+        s = v.strip().upper()
+        if not _COUNTRY_PATTERN.match(s):
+            raise ValueError(
+                f"country={v!r} does not match the resolver's convention "
+                f"(uppercase ISO-3166-alpha-2/3; e.g. 'US', 'DE', 'GB', "
+                f"'JP', 'FR', 'IT', 'ES').  See the "
+                f"``tenor_canonicalisation`` convention in config.yaml + "
+                f"ADR 0007 §4 / ADR 0005 §3."
+            )
+        return s
+
+    @field_validator("tenor", mode="before")
+    @classmethod
+    def _canonicalise_tenor(cls, v: object) -> str:
+        """Integer-Y tenor matching sovereign_cash_bonds.yml slot labels.
+
+        Per the ``tenor_canonicalisation`` convention (config.yaml).
+        '10y' is upcased to '10Y' (unambiguous alias); anything other
+        than the integer-Y pattern is rejected loudly so the SCD2 lookup
+        cannot silently miss.
+        """
+        if not isinstance(v, str):
+            raise ValueError(
+                f"tenor must be a string (integer-Y form); "
+                f"got {type(v).__name__}"
+            )
+        s = v.strip().upper()
+        if not _TENOR_PATTERN.match(s):
+            raise ValueError(
+                f"tenor={v!r} does not match the resolver's convention "
+                f"(integer-Y form matching sovereign_cash_bonds.yml; "
+                f"e.g. '2Y', '5Y', '10Y', '30Y').  See the "
+                f"``tenor_canonicalisation`` convention in config.yaml + "
+                f"ADR 0007 §4 / ADR 0005 §3."
+            )
+        return s
 
 
 class OtrHistoryTransitionRow(BaseModel):

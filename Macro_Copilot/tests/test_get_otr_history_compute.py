@@ -90,7 +90,7 @@ def _build_engine_mock(rows: list[dict]) -> MagicMock:
     """Build a mock SQLAlchemy ``Engine`` whose ``.connect()`` context
     manager yields a connection returning ``rows`` from
     ``execute().mappings().all()``.  Mirrors the live shape in
-    ``compute._fetch_otr_transitions``."""
+    ``shared.analytics.rates_fetch.fetch_otr_transitions``."""
     mock_engine = MagicMock(name="engine")
     mock_conn = MagicMock()
     mock_result = MagicMock()
@@ -153,9 +153,19 @@ class TestBundledConfig:
             "default_lookback_days",
             "window_boundary_semantics",
             "transition_sort_order",
+            "tenor_canonicalisation",
         }
         missing = required - set(cfg.conventions.keys())
         assert not missing, f"missing: {sorted(missing)}"
+
+    def test_tenor_canonicalisation_convention_present(self):
+        """PR12 + Primitive-1 spec — the tenor_canonicalisation
+        convention exists and uses the ADR-0007 source tag.  Catches
+        silent removal of this disclosure / drift to a vague tag."""
+        cfg = load_tool_config(CONFIG_PATH)
+        conv = cfg.conventions["tenor_canonicalisation"]
+        assert conv.source == "adr_0007_otr_canonicalisation"
+        assert conv.value == "uppercase_country_integer_y_tenor"
 
     def test_convention_defaults(self):
         cfg = load_tool_config(CONFIG_PATH)
@@ -171,6 +181,7 @@ class TestBundledConfig:
         registered = {
             "industry_standard_1y_window",
             "team_judgment_pending_review",
+            "adr_0007_otr_canonicalisation",
         }
         for name, conv in cfg.conventions.items():
             assert conv.source in registered, (
@@ -435,6 +446,73 @@ class TestSchemaInvariants:
         # The Pydantic default reads from YAML — see schemas.py.
         p = OtrHistoryInput(country="US", tenor="10Y")
         assert p.lookback_days == 365
+
+
+# ===========================================================================
+# Tenor / country canonicalisation — PR12 + Primitive-1 spec
+# ===========================================================================
+
+class TestCanonicalisation:
+    """The ``tenor_canonicalisation`` convention (config.yaml, source
+    ``adr_0007_otr_canonicalisation``) plus the Pydantic validators
+    enforce the resolver's slot identity at the API boundary so
+    mistyped inputs fail loudly rather than degrade silently to honest
+    absence at the SQL layer.  See schemas.py validators."""
+
+    def test_lowercase_country_canonicalised(self):
+        p = OtrHistoryInput(country="us", tenor="10Y")
+        assert p.country == "US"
+
+    def test_lowercase_tenor_canonicalised(self):
+        p = OtrHistoryInput(country="US", tenor="10y")
+        assert p.tenor == "10Y"
+
+    def test_country_whitespace_stripped(self):
+        p = OtrHistoryInput(country=" DE ", tenor="10Y")
+        assert p.country == "DE"
+
+    def test_country_iso_alpha_3_accepted(self):
+        # Some resolvers may write alpha-3; both shapes are honoured.
+        p = OtrHistoryInput(country="USA", tenor="10Y")
+        assert p.country == "USA"
+
+    def test_country_numeric_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="ISO-3166"):
+            OtrHistoryInput(country="12", tenor="10Y")
+
+    def test_country_too_long_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="ISO-3166"):
+            OtrHistoryInput(country="USAR", tenor="10Y")
+
+    def test_country_empty_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            OtrHistoryInput(country="", tenor="10Y")
+
+    def test_tenor_month_rejected(self):
+        """Sovereign-cash-bond slots are integer-Y; '3M' / '6M' do not
+        match the resolver's universe."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="integer-Y"):
+            OtrHistoryInput(country="US", tenor="3M")
+
+    def test_tenor_decimal_rejected(self):
+        """'1.5Y' / '7.5Y' don't match the integer-Y slot labels."""
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="integer-Y"):
+            OtrHistoryInput(country="US", tenor="1.5Y")
+
+    def test_tenor_zero_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="integer-Y"):
+            OtrHistoryInput(country="US", tenor="0Y")
+
+    def test_tenor_without_unit_rejected(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError, match="integer-Y"):
+            OtrHistoryInput(country="US", tenor="10")
 
 
 # ===========================================================================

@@ -305,6 +305,40 @@ class TestConfigPathPublicSymbol:
 
 
 # ===========================================================================
+# Workflow-incompatibility — explicit registry marker (Codex AC8 follow-up)
+# ===========================================================================
+
+class TestWorkflowIncompatibilityRegistry:
+    """The primitive is intentionally NOT bridge-composable in V1
+    (categorical / SCD2-shaped output, not Series/Panel).  Per the
+    workflow contract, this omission is made EXPLICIT via
+    ``rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS`` so the
+    distinction between 'intentionally omitted' and 'forgotten' is
+    legible at the registry layer."""
+
+    def test_listed_in_workflow_incompatible_registry(self):
+        from rates_agent.workflows import WORKFLOW_INCOMPATIBLE_TOOLS
+
+        assert "get_otr_history_tool" in WORKFLOW_INCOMPATIBLE_TOOLS, (
+            "get_otr_history_tool should be in WORKFLOW_INCOMPATIBLE_TOOLS "
+            "so the omission from _PRIMITIVE_SPECS is intentional, not "
+            "absence-of-registration."
+        )
+        rationale = WORKFLOW_INCOMPATIBLE_TOOLS["get_otr_history_tool"]
+        # Rationale must name the output shape — categorical / SCD2
+        # transition log — to keep the disclosure honest.
+        assert "SCD2" in rationale or "categorical" in rationale.lower()
+
+    def test_not_in_primitive_specs(self):
+        """Pin the absence — adding get_otr_history to _PRIMITIVE_SPECS
+        without removing it from WORKFLOW_INCOMPATIBLE_TOOLS would be
+        a contract violation (the tool would be in both at once)."""
+        from rates_agent.workflows import _PRIMITIVE_SPECS
+
+        assert "get_otr_history_tool" not in _PRIMITIVE_SPECS
+
+
+# ===========================================================================
 # Mock-vs-schema parity
 # ===========================================================================
 

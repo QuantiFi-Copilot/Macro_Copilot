@@ -38,6 +38,7 @@ Every `defaults` entry in any `config.yaml` carries a `source` tag identifying *
 | `methodology_judgement_pending_review` / `team_judgment_pending_review` | An explicit "this is a judgment call we have not yet ratified" marker |
 | `legacy_default_pre_pilot` | A pre-pilot default kept for compatibility; flagged for review |
 | `<primitive_name>_primitive_v1` | A primitive-specific default the substrate honours (e.g., `rolling_regression_primitive_v1`) |
+| `adr_<N>_<concept>` | The convention's authoritative source is a specific ADR; tag names the ADR number and the concept (e.g., `adr_0007_otr_canonicalisation` — the (country, tenor) canonicalisation rule established by ADR 0007's resolver design). Use when a convention exists *because* a specific ADR fixed it. |
 
 New tags require:
 1. An entry in this table (one line).
