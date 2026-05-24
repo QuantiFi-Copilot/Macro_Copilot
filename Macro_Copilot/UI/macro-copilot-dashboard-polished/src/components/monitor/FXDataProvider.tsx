@@ -1,15 +1,19 @@
 // ============================================================================
 // FXDataProvider
 // ----------------------------------------------------------------------------
-// Page-level fetch for the 3 pre-aggregated FX endpoints (scanner,
-// EURUSD spot snapshot, 1M carry), exposed via context so multiple
-// pre-aggregated FX widgets on the same surface share one fetch
-// instead of duplicating requests.
+// Page-level fetch for the FX endpoints consumed by the *non-
+// parameterized* widgets and by the sidebar's "Today" panel: scanner,
+// EURUSD spot snapshot, 1M carry. The carry payload here is kept for
+// the sidebar live-scope summary ("N pairs scanned · M carry rows")
+// and for FXAgentPage's headline — the actual FXCarryWidget and
+// FXForwardCurveWidget became parameterized in Phase A step 8 and do
+// their own per-instance fetches via fxApi (so multiple carry-scanner
+// widgets with different tenors / rank modes can coexist on one
+// surface).
 //
 // Mirrors RatesDataProvider exactly — same hook→context shape, same
 // strict + optional consumer pattern.  See that file for the original
-// rationale (multiple widgets fanning out into N×M requests, coherent
-// loading state across the page, sidebar Today panel reading the
+// rationale (loading state coherence, sidebar Today panel reading the
 // same data without a separate fetch).
 //
 // Mounted in AppShell next to RatesDataProvider so the sidebar can
@@ -36,8 +40,10 @@ type FXDataContextValue = {
 const FXDataCtx = createContext<FXDataContextValue | null>(null);
 
 export function FXDataProvider({ children }: { children: ReactNode }) {
-  // Single fetch, single state.  All pre-aggregated FX widgets read
-  // from this — sharing one network request across the surface.
+  // Single fetch, single state. Consumed by the pre-aggregated FX
+  // widgets (FXSpotSnapshotWidget, FXScannerWidget), the sidebar
+  // Today panel, and the FXAgentPage headline. Parameterized widgets
+  // (FXCarryWidget, FXForwardCurveWidget) fetch independently.
   const value = useFxData();
   return <FXDataCtx.Provider value={value}>{children}</FXDataCtx.Provider>;
 }

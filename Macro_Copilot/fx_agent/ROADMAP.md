@@ -12,11 +12,15 @@
 
 **Branch:** `codex/fx-data-universe-extension` — stacked on `codex/fx-on-latest-build` (PR #178, draft).
 
-**Phase in flight:** **Phase A — Cash forwards depth** (step 3 ✅ complete, step 4 next — audit `calculate_fx_carry` across tenors).
+**Phase in flight:** **Phase A — Cash forwards depth — ✅ COMPLETE (8/8 steps shipped).** Branch pushed on `codex/fx-data-universe-extension` as a draft stacked PR above #178.
 
-**Immediate next action:** audit `fx_agent/forwards/tools/fx_carry/compute.py` to confirm the carry calculation works correctly across all 5 tenors (1W, 1M, 3M, 6M, 12M) now that the data substrate is in place. The tool was written when only 1M data existed and may have semantic 1M-only assumptions in annualisation, day-count, or output labels.
+**Immediate next action:** PR hygiene + manual `/fx` smoke + Phase B planning (per Codex's step-8 review). Specifically:
 
-**Steps 1–3 ✅ complete.** Wave 1 production ingestion landed cleanly:
+1. Open or refresh the stacked PR with `Depends on #178` in the body, request review **after** CI + manual smoke pass.
+2. Manual `/fx` smoke in a real browser (not the headless preview that CORS-blocks `:5180`): configure `fx_carry` (tenor / rank_by / top_n / lookback) and `fx_forward_curve` (pair / lookback), verify reset-to-default, verify legacy localStorage layouts (with empty params) still render via widget-side defaults.
+3. Phase B planning — start with EM spot/crosses only, verify Bloomberg conventions, update ROADMAP, then ingest. Discipline reminder: data acquisition ≠ product phase; do not ingest NDF / vol smile / CIP into canonical data yet.
+
+**Steps 1–8 ✅ complete.** Wave 1 production ingestion landed cleanly:
 
 | Playbook | Tickers | Rows ingested | Date range | Load ID |
 |---|---|---|---|---|
@@ -127,11 +131,11 @@ Goal: extend forwards from 1M-only to the standard tenor strip (1W, 1M, 3M, 6M, 
 1. ✅ **Confirm Bloomberg tickers.** Done 2026-05-21. Long format `<PAIR><TENOR> Curncy` valid for all 30 combinations, history from 2000-01-03. Canonical 1Y is `12M`.
 2. 🟡 **Extend `fx_forwards.yml`** for all G10 forward tenors. **Done in repo (canonical v2.0, 30 tickers, start 2000-01-01); legacy `fx_forwards_curve.yml` deleted.** Pending: actual Bloomberg extraction from the playbook.
 3. ✅ **Run extraction → ingestion → readiness gate strict mode.** Done 2026-05-22. Extraction ran in ~7 min from university BBG terminal; ingestion landed 548,609 rows across 4 playbooks (loads 17-20, all SUCCESS); readiness gate strict mode passes 21/0/0; 30 forward tickers / 9 spot / 11 crosses / 30 vol present in DB with uniform 2000-01-03 → 2026-05-22 coverage.
-4. **Audit `calculate_fx_carry`** for tenor conventions: annualisation by tenor, day-count basis (ACT/360 for USD-funding, ACT/365 for JPY/GBP), JPY divisor still correct (it is — see Conventions).
-5. **Add `get_fx_forward_curve`** primitive: returns the forward curve (all available tenors) for a given pair.
-6. **Add `scan_fx_carry`** primitive: cross-sectional carry ranking at a chosen tenor.
-7. **Add manifests + tests** (compute / wiring / sql_validation per tool, following Sreeram's rates pattern).
-8. **Add UI widgets** — `FXForwardCurveWidget` (parameterised by pair) and `FXCarryScannerWidget` (parameterised by tenor). Only after tools are stable.
+4. ✅ **Audit `calculate_fx_carry` across tenors.** Done 2026-05-22 (commit `293c031`). Bug fixed: 12M tenor was silently falling back to 21-day tenor_days → ~12× inflated annualisation. Added explicit ValueError on unsupported tenors and tightened the Pydantic schema to `Literal["1W","1M","3M","6M","12M"]`.
+5. ✅ **Add `get_fx_forward_curve` primitive.** Done 2026-05-22 (commit `e241f94`). For one G10 pair, returns one row per tenor with raw forward points, spot-unit forward points, outright, carry bps + ann%, z-score / percentile / range on `forward_points_spot_units`. Cross-tool consistency verified vs `calculate_fx_carry`.
+6. ✅ **Carry scanner — extension of `calculate_fx_carry`, NOT a duplicate `scan_fx_carry`.** Done 2026-05-23 (commit `43a9632`). Per Codex's discipline ("one tool, not a duplicate"), `calculate_fx_carry` gained `rank_by` (carry_signed / abs_carry / abs_z_score) + `top_n` + `lookback_days` + per-pair carry-series z-score / percentile / range. Historical carry is built from per-date joined spot + forward (no lookahead); current snapshot uses the last common spot+forward date.
+7. ✅ **Manifests + wiring (7a) + targeted tests (7b).** Done 2026-05-24 (commits `e35fb77` + `8a52959`). MCP server registers all 4 FX tools; API exposes `/forward-curve`; manifest entries updated with `pm_overridable` reflecting the new scanner params. 22 targeted assertions across 3 standalone test runners — 12M not inflated, rank_by sort, top_n truncation, latest-common-date alignment, JPY divisor handling on USDJPY, outright consistency, cross-tool numerical consistency, unknown-pair fail-loud, lookback_days bounds.
+8. ✅ **Parameterized FX Carry widget + new FX Forward Curve widget.** Done 2026-05-24 (commit `378f233`). Per Codex's discipline ("one widget, not a `FXCarryScannerWidget` duplicate"), `fx_carry` widget upgraded to parameterized (tenor / rank_by / top_n / lookback); new `fx_forward_curve` parameterized widget for the term-structure view. Both self-fetching via per-widget hooks (no longer depend on `FXDataProvider` context); widget-side defaults preserve backward compatibility for legacy localStorage layouts with empty params.
 
 **Explicitly OUT of Phase A:**
 
@@ -464,12 +468,21 @@ Chronological history of decisions, so a returning contributor can see *why* thi
 | 2026-05-22 | Wave 2 follow-up (same session) — USDCNY NDF ticker resolved (`CCN+1M Curncy`, outright, full 2010-2026 history). AUD basis ticker resolved (`ADBS3 Curncy`). **Bigger discovery: the `EUBSn` convention is maturity-in-YEARS, not tenor-in-months** — `EUBS3` is a 3-year basis swap, `EUBS12` is 12-year, etc. This re-explains the patchy data coverage and reinforces the derived-from-OIS approach for Phase C CIP. | Decoded NAME field `EURUSD BS (3M VS 3M) 3Y` of `EUBS3 BGN Curncy` |
 | 2026-05-22 | Wave 1 Postgres ingestion ✅ — 548,609 rows ingested into `macro_data.market_data_daily` (loads 17–20). All 4 playbooks SUCCESS. Readiness gate `--strict-metadata` passes 21/0/0. DB sanity snapshot confirmed: 30 forwards / 9 spot / 11 crosses / 30 vol with uniform 2000-01-03 → 2026-05-22 coverage and full 5-tenor × 6-pair matrix on forwards and vol. | After fixing ADR 0003 schema delta, max_locks_per_transaction bump, and `GCP_BUCKET_NAME` env var |
 | 2026-05-22 | `docker-compose.yml` tsdb service gained a `command:` override setting `max_locks_per_transaction=16384`. Persistent across volume recreation; future devs won't hit the "out of shared memory" OOM that blocked the first ingestion attempt. | Local fix during Wave 1 ingestion, now infrastructure |
+| 2026-05-22 | Phase A step 4 — audit of `calculate_fx_carry` across all 5 tenors surfaced a silent-fallback regression on the 12M tenor (annualisation factor was 12× too large because the missing 12M entry in `_tenor_days_from_config` fell through to the 1M default). Fixed: added `tenor_12m_days: 252` convention, replaced the silent fallback with an explicit `ValueError`, and tightened the schema to `Literal["1W","1M","3M","6M","12M"]`. Verified EURUSD 12M annualised carry of +1.43% (was a ghost +17% before). | Codex review caught the silent fallback as a "fail loud" violation |
+| 2026-05-22 | Phase A step 5 — `get_fx_forward_curve` primitive shipped. First FX primitive that consumes the full Wave 1 substrate (G10 forwards depth + spot) and delegates rolling z-score / percentile / range to `shared.analytics.levels.compute_level_metrics` — same generic operator the rates `yield_levels` tool uses. New helper module `fx_agent/forwards/_shared.py` carries the JPY-aware divisor and tenor-day lookup; `fx_carry` was refactored to import from it (zero behaviour change, single source of truth for conventions across forwards tools). | Codex "primitives vs operators" architectural discipline |
+| 2026-05-23 | Phase A step 6 — `calculate_fx_carry` extended into a proper scanner instead of duplicating into a separate `scan_fx_carry`. New params: `rank_by`, `top_n`, `lookback_days`, `field_name`. Each output row now carries a rolling 252-day z-score / percentile / range on its OWN `carry_annualized_pct` historical series. Three Codex garde-fous enforced: historical carry joined per `trade_date` (no lookahead bias), current snapshot uses the LAST common spot+forward date, and `lookback_days` is the DB fetch window only (the z-score window stays in config). Z-score is on `carry_annualized_pct` (carry richness) rather than on `forward_points_spot_units` (curve stretchedness) — different question, documented in config.yaml. | Codex review: avoid duplicate tool surfaces; extend the existing primitive |
+| 2026-05-24 | Phase A step 7a — wired `get_fx_forward_curve` everywhere (MCP server, FastAPI route, manifest entry), and updated the `calculate_fx_carry_tool` MCP signature + API endpoint to expose the new scanner params. Without this, the step-5 compute file was an orphan unreachable from the Copilot routing stack and the dashboard. Manifest descriptions rewritten for retrieval-quality matching. | Codex flag: an unwired compute file is not a primitive |
+| 2026-05-24 | Phase A step 7b — three standalone-CLI test runners (same pattern as `tests/test_fx_data_readiness.py`) covering the regressions and contracts Codex's step-7 review demanded: 22 assertions across `test_fx_carry_compute.py` (9), `test_fx_forward_curve_compute.py` (8), `test_fx_tools_wiring.py` (5). All assertions pin failures we would have shipped if the bugs of steps 4 / 6 came back. | Codex review: tests must catch known-fixed bugs, not be aspirational |
+| 2026-05-24 | Phase A step 8 — UI: parameterized `fx_carry` widget (tenor / rank_by / top_n / lookback) and new `fx_forward_curve` parameterized widget. Per Codex's UI discipline ("upgrade the widget id, do not duplicate"), kept widget id `fx_carry` so legacy localStorage layouts survive; widget-side defaults preserve pre-upgrade behaviour. Both widgets self-fetching via per-instance hooks (no longer rely on `FXDataProvider` context, which is now reserved for the page-level `fx_spot_snapshot` + `fx_scanner` that don't take params). | Codex discipline: one widget per primitive, no duplicates |
+| 2026-05-24 | Phase A wrap — ROADMAP refresh: status line moved from "step 4 next" to "8/8 complete"; stale "pre-aggregated only in V1" copy in `defaults.ts` and `FXDataProvider.tsx` updated to reflect that fx_carry / fx_forward_curve are now parameterized. Branch ready for stacked PR (Depends on #178) and manual `/fx` smoke. | Codex independent validation: typecheck / build / test:build / 3 test runners / readiness gate / lint / live API smokes all green |
 
 ---
 
 ## Open questions / blockers
 
-### 🟡 BLOCKER: Bloomberg extraction for canonical `fx_forwards` v2.0 (Phase A step 3)
+### ✅ RESOLVED: Bloomberg extraction for canonical `fx_forwards` v2.0 (Phase A step 3)
+
+Historical note retained for reference. The extraction sequence below ran successfully on 2026-05-22 in ~7 minutes; ingestion in ~5 minutes after two env fixes (the ADR 0003 schema delta and the `max_locks_per_transaction` bump, now persisted in `docker-compose.yml`). The same sequence is the canonical recipe for any future FX extraction wave.
 
 **Owner:** Sacha (university terminal with Bloomberg + GCP access).
 
