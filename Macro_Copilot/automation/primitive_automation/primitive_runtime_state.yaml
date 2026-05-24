@@ -2,22 +2,22 @@ version: '2.0'
 branch: primitive_automation
 backend: coding-agent
 orchestrator_status: processing
-current_primitive: policy_futures__scan_policy_futures_extremes
-current_primitive_tool_name: scan_policy_futures_extremes
-current_step: committing
-last_successful_primitive: policy_futures__futures_pack_average_simple
-last_successful_commit: 80a26cd
+current_primitive: inflation_linkers__build_linker_panel
+current_primitive_tool_name: build_linker_panel
+current_step: pre_flight_load_audit
+last_successful_primitive: inflation_swaps__build_zcis_panel
+last_successful_commit: pending_feat_commit_this_wake
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-24T04:00Z_reviewer_round2_approved_committing_scan_policy_futures_extremes
+last_stop_reason: wake_2026-05-24T05:45Z_build_zcis_panel_APPROVED_round1_committing_advancing_to_build_linker_panel
 last_error: null
-last_updated: '2026-05-24T04:05:00Z'
-done: 28
+last_updated: '2026-05-24T05:46:00Z'
+done: 30
 blocked: 0
-remaining: 6
+remaining: 4
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_fresh: false
-quota_note: 'operating per QUOTA_AND_RESUME_POLICY.md §6 non-interactive fallback mode; reviewer_mode sticky claude_fallback per §10.3'
+quota_note: 'build_zcis_panel reviewer (claude_fallback) returned APPROVED in round 1 with zero substantive findings — single operational follow-up (replace fetcher_surface entry with the two new ZCIS-specific helpers) applied directly to primitive_catalog.yaml as path (i) per reviewer adjudication; /status probe remains unavailable from non-interactive automation per QUOTA_AND_RESUME_POLICY.md §6; reviewer_mode sticky claude_fallback per §10.3; committing and advancing to build_order 31 (inflation_linkers__build_linker_panel)'
 reviewer_mode: claude_fallback
 reviewer_mode_history:
 - at: '2026-05-23T04:18:00Z'
@@ -45,6 +45,1225 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+- at: '2026-05-24T05:46:00Z'
+  kind: wake_2026-05-24T05:45Z_build_zcis_panel_APPROVED_round1_committing_advancing_to_build_linker_panel
+  text: |
+    Cron wake fired at 2026-05-24T05:45Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, the catalog entries for build_order 30
+    (inflation_swaps__build_zcis_panel) and build_order 31
+    (inflation_linkers__build_linker_panel), and the top of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : reviewing (prior wake 05:30Z dispatched
+                              round-1 reviewer claude_fallback)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      remaining             : 5
+
+    Reviewer worker state probe:
+      PID 2152762 (wrapper run_claude_reviewer.sh) : NOT alive (exited).
+      PID 2152769 (claude --print worker)          : NOT alive (exited).
+      log file size                                : 4813 B
+      log mtime                                    : 2026-05-24T05:40Z
+      worker wall time                             : ~06 min from
+                                                      dispatch 05:34Z to
+                                                      log mtime 05:40Z
+
+    parse_reviewer_log.py output:
+      {"ok": true, "heading": "APPROVED", "environment_failure": false,
+       "reviewer_quota_exhausted": false,
+       "log_file": "/tmp/claude_reviewer_run_inflation_swaps__build_
+       zcis_panel_round1.log"}
+
+    Review adjudication:
+      Verdict heading is APPROVED with ZERO substantive findings.
+      Reviewer explicitly walked the design-principle audit
+      (P5/P12/PR7 honesty / P8 closed-family / PR3 four-file / PR8
+      input-schema / PR9/PR10 methodology split / PR13 canonical
+      artifact / PR14 config-path / PR16 wiring / two-layer test rule /
+      read-only DB / branch). Reviewer independently re-ran:
+        - pytest tests/test_build_zcis_panel_compute.py
+          tests/test_build_zcis_panel_wiring.py  → 57 passed in 2.99s
+        - python tests/test_build_zcis_panel_sql_validation.py → 3/3
+          PASS against live macro-tsdb
+        - python -m shared.config.lint → OK — no convention drift
+        - read-only grep audit on SQL validator + panel_assembly.py +
+          compute.py → no INSERT/UPDATE/DELETE/UPSERT/TRUNCATE/CREATE/
+          DROP/ALTER (only sys.path.insert and drop_* false positives)
+        - macro-tsdb pre-flight load_audit check confirmed
+          inflation_swaps | SUCCESS | 2026-04-09 19:11:25
+      Reviewer accepted the disclosed fetcher_surface deviation via
+      "path (i)" — update the catalog entry's fetcher_surface to list
+      the two new ZCIS-specific helpers (fetch_inflation_swap_panel_by_
+      vendor_ticker + fetch_inflation_swap_universe), keeping the
+      pre-existing fetch_instrument_panel signature untouched and
+      regression-protected by test_sovereign_fetch_instrument_panel_
+      signature_unchanged. Path (ii) (refactor fetch_instrument_panel)
+      was rejected because it would either leak ZCIS-domain
+      pricing_type='zero_coupon_breakeven' logic into a generic helper
+      (violating structural-identity-in-code) or keep the no-proxy
+      guard at the caller layer where a second future caller could
+      bypass it. The column-key contracts also differ fundamentally
+      (<curve_family>_<tenor> vs vendor_ticker). Same split established
+      by scan_inflation_swaps_extremes commit 91a5714.
+
+      No findings were dismissed because no substantive findings were
+      raised. The single "operational follow-up" (fetcher_surface
+      catalog edit) is not a code-change finding — it is a metadata
+      hygiene action that the orchestrator owns directly.
+
+    Catalog edits this wake (this commit):
+      build_order 30 (inflation_swaps__build_zcis_panel):
+        status                : in_progress → done
+        active_step           : builder_round_1_continuation_dispatched
+                                _after_quota_reset_at_05_00Z → completed
+        review_round          : 0 → 1
+        last_review_heading   : (added) APPROVED
+        reviewer_engine       : (added) claude_fallback
+        fetcher_surface       : [shared.analytics.panel_assembly.
+                                 fetch_instrument_panel] →
+                                [shared.analytics.panel_assembly.
+                                 fetch_inflation_swap_panel_by_vendor_
+                                 ticker,
+                                 shared.analytics.panel_assembly.
+                                 fetch_inflation_swap_universe]
+        concept_summary       : appended "(security_name is universally
+                                NULL on live SCD2 rows for inflation_
+                                swaps)" honesty clarifier per the
+                                shipped reality
+        methodology_guardrails: rewrote the column-axis line to name
+                                vendor_ticker and cite the caveat
+                                disclosure surfaces; appended the
+                                pricing_type filter requirement
+      build_order 29 (policy_futures__scan_policy_futures_extremes):
+        active_step           : completed → committed_0cfa05a_feat_
+                                policy_futures_add_scan_policy_futures
+                                _extremes_primitive (cement step per
+                                established pattern; commit_sha and
+                                committed_at were already set in the
+                                prior wake)
+
+    Runtime state edits this wake (this commit):
+      current_primitive            : inflation_swaps__build_zcis_panel
+                                     → inflation_linkers__build_linker_
+                                       panel
+      current_primitive_tool_name  : build_zcis_panel → build_linker_
+                                     panel
+      current_step                 : reviewing → pre_flight_load_audit
+      last_successful_primitive    : policy_futures__scan_policy_
+                                     futures_extremes →
+                                     inflation_swaps__build_zcis_panel
+      last_successful_commit       : 0cfa05a → pending_feat_commit_this
+                                     _wake (will be backfilled by the
+                                     NEXT feat commit per the
+                                     established pattern, where the
+                                     successor primitive's commit
+                                     records the predecessor's sha)
+      last_reviewer_heading        : (unchanged) APPROVED
+      last_stop_reason             : wake_2026-05-24T05:30Z_builder_
+                                     continuation_emitted_BUILDER_REPORT
+                                     _ready_for_review_dispatching_
+                                     round1_reviewer → wake_2026-05-24T
+                                     05:45Z_build_zcis_panel_APPROVED_
+                                     round1_committing_advancing_to_
+                                     build_linker_panel
+      last_updated                 : 2026-05-24T05:30:00Z → 2026-05-24T
+                                     05:46:00Z
+      done / blocked / remaining   : 29 / 0 / 5 → 30 / 0 / 4
+      quota_state                  : (unchanged) probe_unavailable
+      quota_snapshot               : (unchanged) null
+      quota_snapshot_fresh         : (unchanged) false
+
+    Next steps this wake:
+      1. Commit feat(inflation_swaps): add build_zcis_panel primitive
+         (build + catalog + runtime state) on primitive_automation
+         branch. This will leave the catalog entry's commit_sha and
+         committed_at unset for build_zcis_panel — both will be
+         backfilled by the NEXT primitive's feat commit per the
+         established pattern (see how futures_pack_average_simple
+         commit_sha was backfilled by scan_policy_futures_extremes
+         commit 0cfa05a).
+      2. Run pre-flight load_audit gate for inflation_indexed_bonds
+         playbook via docker exec macro-tsdb psql.
+      3. If SUCCESS row present → write builder prompt for
+         build_linker_panel and dispatch via run_claude_builder.sh
+         (claude_fallback reviewer mode irrelevant for the builder
+         dispatch — builder is always Claude). Update runtime state
+         current_step → building.
+      4. If pre-flight returns empty → mark build_linker_panel blocked,
+         set last_stop_reason: pre_flight_load_audit_missing, continue
+         to the NEXT eligible primitive (build_order 32 = build_policy_
+         futures_strip_panel) per ORCHESTRATOR_PROMPT.md pre-flight
+         rule step 4.
+      5. Exit cleanly with builder dispatched in background (nohup).
+         Next cron wake at 06:00Z will check the builder log per the
+         feedback_builder_silent_log_signal.md analogue rules.
+- at: '2026-05-24T05:35:00Z'
+  kind: wake_2026-05-24T05:30Z_builder_continuation_completed_dispatched_round1_reviewer_for_build_zcis_panel
+  text: |
+    Cron wake fired at 2026-05-24T05:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    DESIGN_PRINCIPLES.md, STANDARD_TOOL_AND_YAML_RULES.md,
+    PRIMITIVE_BUILD_RULES.md, TESTING_AND_DB_VALIDATION_POLICY.md,
+    NO_GO_RULES.md, DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    REVIEWER_PROMPT.md, the catalog entry for build_order 30
+    (inflation_swaps__build_zcis_panel), and the top of
+    primitive_runtime_state.yaml.
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : building (prior wake 05:15Z dispatched
+                              builder continuation)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      remaining             : 5
+
+    Builder continuation log
+    (/tmp/claude_builder_run_inflation_swaps__build_zcis_panel_
+    round1_continuation.log, 11213 B, mtime 2026-05-24T05:25:32Z)
+    contains the full BUILDER REPORT with overall: ready_for_review.
+
+    Builder claims (all subsequently verified by disk inspection):
+      four_file_pattern_present: yes
+        - __init__.py (1969 B, 04:34)
+        - config.yaml (9839 B, 04:32)
+        - schemas.py (12132 B, 04:33)
+        - compute.py (19484 B, 05:23 — post-fix for input-order
+          preservation in resolved_curve_families_in_panel; the only
+          continuation edit applied)
+      repo_wiring_status: coherent across mcp_server.py (+245 LOC
+        for build_zcis_panel_tool wrapper), tools/schemas/__init__.py
+        (+16 LOC re-exports), workflows/__init__.py (+31 LOC
+        PrimitiveSpec with output_artifact_type=Panel and
+        output_field_units={panel: percent}),
+        shared/analytics/panel_assembly.py (+284 LOC; two new
+        ZCIS-specific helpers added alongside pre-existing
+        fetch_instrument_panel, sovereign helper signature
+        unchanged), conftest.py (+1 LOC collect_ignore entry).
+      offline_tests: 57 PASS (19 compute + 38 wiring) in 3.09s.
+      db_validation: 3/3 PASS against live rates-agent-dev +
+        macro-tsdb on USD-narrow / all-currencies-broad /
+        all-currencies-with-instrument_native-calendar cases. SQL
+        validator is a standalone-script DISTINCT ON SELECT pivoted
+        in raw pandas — independent baseline, not a callback into
+        the Python primitive. Read-only confirmed (grep for
+        INSERT/UPDATE/DELETE/UPSERT/TRUNCATE/CREATE/DROP/ALTER on
+        the SQL validator returned only sys.path.insert and
+        drop_duplicates false positives).
+      config_lint: PASS (49 rates configs checked; ffill_limit_days=5
+        matches cross-tool convention).
+      pre_flight_load_audit: inflation_swaps SUCCESS at
+        2026-04-09T19:11:25Z; substrate window 2024-01-02..2024-02-28
+        well inside coverage.
+
+    Explicit deviation builder flagged for reviewer adjudication:
+      catalog declares fetcher_surface:
+      [shared.analytics.panel_assembly.fetch_instrument_panel] but
+      implementation added two new ZCIS-specific helpers
+      (fetch_inflation_swap_panel_by_vendor_ticker at L309,
+       fetch_inflation_swap_universe at L478) to the same module
+      because (a) the canonical helper keys columns as
+      <curve_family>_<tenor> while ZCIS must key by vendor_ticker
+      (security_name is universally NULL on live SCD2 rows; same
+      no-proxy treatment as scan_inflation_swaps_extremes commit
+      91a5714) and (b) the canonical helper does not apply the
+      pricing_type='zero_coupon_breakeven' no-proxy guard the ZCIS
+      family requires to prevent future YoY-swap rows from silently
+      flowing through. Builder disclosed honestly rather than
+      silently relabelling helpers or silently editing the catalog.
+
+    Wake actions:
+      1. Verified builder log shape (11213 B, BUILDER REPORT
+         present, overall: ready_for_review).
+      2. Verified four on-disk tool files exist with claimed sizes
+         (compute.py post-fix at 19484 B / 05:23 mtime; others
+         unchanged from 04:32-04:34).
+      3. Verified git diff scope (7 files, +1518/-17; matches
+         claimed wiring touchpoints exactly).
+      4. Confirmed reviewer_mode remains claude_fallback (sticky;
+         no quota probe available to flip back).
+      5. Composed reviewer prompt at
+         /tmp/reviewer_prompt_build_zcis_panel_round1.md naming the
+         primitive, the BUILDER REPORT location, the explicit
+         fetcher_surface adjudication, the known-caveats list, and
+         the on-disk file paths the reviewer must read.
+      6. Updated current_step: building → reviewing,
+         last_updated: 2026-05-24T05:30:00Z.
+      7. Dispatched run_claude_reviewer.sh in background (nohup +
+         disown) with prompt file and dedicated log path
+         /tmp/claude_reviewer_run_inflation_swaps__build_zcis_panel_
+         round1.log. Wrapper PID 2152762; claude --print reviewer
+         worker PID 2152769 (started 05:34:00Z; --print --model opus
+         --effort xhigh --permission-mode bypassPermissions per
+         run_claude_reviewer.sh).
+      8. Branch guard confirmed: wrapper printed
+         "OK: on allowed branch 'primitive_automation'" at dispatch.
+
+    Wake exit reasoning:
+      Per BACKGROUND_EXECUTION_POLICY §1, the cron exists to wake
+      the orchestrator at */15 intervals; the reviewer worker is
+      detached (nohup) and will outlive this wake. The next cron
+      wake at 05:45Z will:
+        - re-read this status_notes entry,
+        - check the reviewer log + worker PID per
+          feedback_builder_silent_log_signal.md analogue rules,
+        - if verdict heading is present: run parse_reviewer_log.py,
+          apply Review-adjudication rule, commit on
+          APPROVED/approved-with-dismissals or send findings back
+          to builder on CHANGES REQUIRED,
+        - if no heading yet AND worker still alive: exit cleanly
+          again per no-overlap (§7),
+        - if worker exited with no heading AND reviewer_quota_
+          exhausted: handle per QUOTA_AND_RESUME_POLICY §10.2
+          (claude_fallback already; would escalate to
+          all_reviewer_engines_quota_exhausted and waiting_quota).
+
+      Exiting cleanly now rather than blocking on the reviewer
+      preserves cache (the reviewer typically takes 6-15 min;
+      polling here would burn token cache on every poll cycle while
+      contributing nothing). The repo state file is the durable
+      continuity mechanism per ORCHESTRATOR_PROMPT.md.
+- at: '2026-05-24T05:15:50Z'
+  kind: wake_2026-05-24T05:15Z_dispatched_builder_continuation_for_build_zcis_panel_after_claimed_05_00Z_quota_reset
+  text: |
+    Cron wake fired at 2026-05-24T05:15Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DONE_DEFINITION.md, DISCORD_STATUS_POLICY.md,
+    OPENCLAW_CRON_RUNBOOK.md, the catalog entry for build_order 30
+    (inflation_swaps__build_zcis_panel), and the top of
+    primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : waiting_quota (from prior 05:00Z wake)
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : builder_round_1_quota_exhausted_partial
+                              _artifacts_on_disk_awaiting_resume
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : builder_quota_exhausted_reset_claimed
+                              _at_05_00Z
+      remaining             : 5
+      time now              : 2026-05-24T05:15Z (15 min past the
+                              builder-reported reset claim of 05:00Z)
+      working tree          : substantial uncommitted build_zcis_panel
+                              artifacts (same set as the 05:00Z wake
+                              recorded — no mutation since).
+
+    Process check at wake start:
+      PID 2141087 (prior 05:00Z orchestrator's claude process) :
+        NOT alive (cleanly exited between the 05:00Z note write and
+        this wake; confirms the 05:00Z wake's EXIT CLEANLY verdict).
+      Live Claude PIDs at wake start : only this orchestrator
+        (PID 2145712 launched 05:15Z). No overlap.
+      Builder/reviewer workers       : none. Builder log
+        /tmp/claude_builder_run_inflation_swaps__build_zcis_panel_
+        round1_retry.log still 46 bytes ("You're out of extra usage
+        · resets 5am (UTC)") at 04:44 mtime — unchanged from 05:00Z
+        wake observation.
+
+    On-disk artifact survey (still intact from prior build):
+      rates_agent/inflation_swaps/tools/build_zcis_panel/
+        __init__.py    1969 bytes (mtime 04:34)
+        compute.py     19243 bytes (mtime 04:34)
+        config.yaml    9839 bytes  (mtime 04:32)
+        schemas.py     12132 bytes (mtime 04:33)
+      tests/test_build_zcis_panel_compute.py        27066 (04:39)
+      tests/test_build_zcis_panel_wiring.py         28857 (04:43)
+      tests/test_build_zcis_panel_sql_validation.py 12910 (04:44)
+        (latest file; was being finalized when quota cut)
+      shared/analytics/panel_assembly.py            21189 (04:31)
+      rates_agent/inflation_swaps/mcp_server.py     modified (245+)
+      rates_agent/inflation_swaps/tools/schemas/__init__.py modified
+      rates_agent/workflows/__init__.py             modified
+      tests/conftest.py                             modified (+1)
+
+    Decision tree per the 05:00Z wake's recommendation:
+      (a) disk state UNCHANGED from the 05:00Z snapshot     : YES
+      (b) quota probe automation-safe path available?      : NO
+          (still §6 fallback — non-interactive /status
+          unavailable)
+      (c) any live builder/reviewer worker?                : NO
+      (d) time past the builder-reported reset claim?      : YES
+          (now 05:15Z vs claimed 05:00Z)
+      → APPLY OPTION (a) from the 05:00Z recommendation:
+        dispatch BUILDER via run_claude_builder.sh with a
+        CONTINUATION prompt instructing the worker to
+        verify/finalize the on-disk artifacts, run offline +
+        DB-backed tests, and emit BUILDER REPORT for the work
+        already produced (no rewrite-from-scratch unless real
+        fault found).
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED on purpose — the substrate has not been mutated;
+      the same playbook (inflation_swaps) passed pre-flight at
+      04:08Z this run (SUCCESS|2026-04-09 19:11:25 UTC). Re-probing
+      mid-primitive would burn a DB connection for no incremental
+      truth.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6; staying in probe_unavailable
+      fallback mode for the orchestrator-level numeric snapshot.
+      The OPERATIONAL signal is the provider-reported 05:00Z reset
+      claim from 04:44Z + the elapsed 15 min — sufficient to
+      attempt a continuation dispatch and let the actual provider
+      response confirm or deny recovery.
+
+    Codex-recovery flip evaluation (§10.3 of
+    QUOTA_AND_RESUME_POLICY):
+      - Fresh quota probe available?     NO (§6 fallback)
+      - Previous primitive done cleanly under claude_fallback?  YES
+        (scan_policy_futures_extremes APPROVED, commit 0cfa05a).
+      - Between primitives?              NO (mid-primitive on
+                                          build_zcis_panel).
+      - VERDICT: stay in claude_fallback. (Condition #3 fails.)
+
+    Builder continuation dispatched THIS WAKE:
+      prompt path           : /tmp/builder_prompt_build_zcis_panel
+                              _round1_continuation.md (newly
+                              written this wake; instructs the
+                              worker to VERIFY the on-disk
+                              artifacts, RUN offline + SQL tests,
+                              and EMIT BUILDER REPORT — no
+                              rewrite-from-scratch).
+      wrapper               : automation/primitive_automation/
+                              run_claude_builder.sh
+      engine                : Claude (model opus, effort xhigh,
+                              --print, bypassPermissions)
+      log path              : /tmp/claude_builder_run_inflation_
+                              swaps__build_zcis_panel_round1_
+                              continuation.log (NOTE: distinct
+                              _continuation suffix so the prior
+                              _round1.log and _round1_retry.log
+                              are preserved as evidence of the
+                              quota-cut history rather than
+                              overwritten)
+      launcher.out          : /tmp/claude_builder_launcher_
+                              inflation_swaps__build_zcis_panel_
+                              round1_continuation.out
+                              (content: "OK: on allowed branch
+                              'primitive_automation'." — branch
+                              guard PASS)
+      wrapper PID (bash)    : 2147185 (run_claude_builder.sh)
+      worker PID (claude)   : 2147193 (claude --print --model opus
+                              --effort xhigh)
+      tee PID               : 2147194 (writes to the log file
+                              via fuser confirmation)
+      dispatch wall time    : 2026-05-24T05:19Z
+      builder_round counter : remains 1 (this is a CONTINUATION of
+                              the original round-1 dispatch that
+                              was quota-interrupted; it does NOT
+                              consume a new builder slot per the
+                              same "dispatches that failed before
+                              producing a parseable verdict do NOT
+                              count toward the cap" analogy used
+                              for the reviewer parser rule).
+
+    Per-memory note honored:
+      "Builder silent log ≠ failure" — the continuation builder log
+      will be 0 bytes for tens of minutes while the worker
+      interleaves Read/Edit/Write/Bash tool calls. The next wake
+      must check (a) PID alive AND (b) any source file modified
+      since 05:19Z before declaring a silent failure.
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      - this wake exits cleanly with builder PID 2147193 in flight.
+      - cron interval is 15 min. Panel-primitive builds of
+        sovereign_yield_panel scale historically take 20-40 min
+        wall under `claude --print --effort xhigh`, but THIS run
+        is a verification-and-finalize continuation (no
+        from-scratch generation), so expect a meaningfully shorter
+        wall time — best-case BUILDER REPORT between 05:34Z and
+        05:55Z.
+      - the next cron wake (05:30Z) will:
+          * if PID 2147193 still alive → exit again, no overlap
+            (per memory note: silent log + live PID = in-flight)
+          * if exited AND log contains BUILDER REPORT sentinel →
+            tail-parse the log, dispatch reviewer round 1 via
+            run_claude_reviewer.sh (claude_fallback sticky)
+          * if exited AND log contains a quota-exhaustion marker
+            without BUILDER REPORT → record waiting_quota again
+            (this would indicate the 05:00Z claimed reset did NOT
+            actually deliver a usable window) and exit
+          * if exited AND log has no BUILDER REPORT AND no quota
+            marker AND zero further file changes since dispatch
+            → THEN treat as silent failure per
+            QUOTA_AND_RESUME_POLICY.md §7
+      - Verdict: EXIT CLEANLY now.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=5)
+      - quota blocker                 : NO this wake (dispatched
+                                        continuation; actual quota
+                                        state TBD by provider
+                                        response)
+      - hard runtime/provider error   : NO
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : avoided by exiting now
+      - DB-validation path unavailable: NO (the continuation will
+                                        run it; result TBD)
+      - max review rounds exceeded    : NO (no reviewer rounds yet)
+
+    Top-level state transitions this wake:
+      orchestrator_status          : waiting_quota → processing
+      current_primitive            : (unchanged) inflation_swaps__
+                                     build_zcis_panel
+      current_primitive_tool_name  : (unchanged) build_zcis_panel
+      current_step                 : builder_round_1_quota_exhausted
+                                     _partial_artifacts_on_disk_
+                                     awaiting_resume → building
+      last_successful_primitive    : (unchanged) policy_futures__
+                                     scan_policy_futures_extremes
+      last_successful_commit       : (unchanged) 0cfa05a
+      last_reviewer_heading        : (unchanged) APPROVED  (refers
+                                     to the last completed primitive)
+      done / remaining             : (unchanged) 29 / 5
+      last_error                   : was=claude_builder_quota_
+                                     exhausted_at_~04_44Z... →
+                                     CLEARED to null. The prior
+                                     quota-cut is preserved in the
+                                     historical status_notes; the
+                                     current operational error
+                                     state is "none — continuation
+                                     dispatched, awaiting result."
+                                     Carrying the stale error here
+                                     would mislead the Discord
+                                     agent.
+      last_stop_reason             : builder_quota_exhausted_during
+                                     _round_1_mid_BUILDER_REPORT_
+                                     reset_claimed_at_05_00Z →
+                                     wake_2026-05-24T05:15Z_
+                                     dispatched_builder_
+                                     continuation_for_build_zcis_
+                                     panel_after_claimed_05_00Z_
+                                     reset
+      quota_state                  : builder_quota_exhausted_reset_
+                                     claimed_at_05_00Z →
+                                     probe_unavailable
+      last_updated                 : 2026-05-24T05:00:30Z →
+                                     2026-05-24T05:15:50Z
+
+    Catalog edit this wake:
+      build_order 30 active_step: builder_round_1_quota_exhausted_
+        partial_artifacts_on_disk_awaiting_resume →
+        builder_round_1_continuation_dispatched_after_quota_reset
+        _at_05_00Z. Status unchanged at in_progress.
+
+- at: '2026-05-24T05:00:30Z'
+  kind: wake_2026-05-24T05:00Z_observed_builder_quota_exhausted_during_round1_artifacts_on_disk_waiting_quota_exit
+  text: |
+    Cron wake fired at 2026-05-24T05:00Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md, the
+    catalog entry for build_order 30 (inflation_swaps__build_zcis_panel),
+    and the top of primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing (stale from prior wake)
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : building (stale — prior wake left
+                              builder PID 2128499 in flight at 04:32Z)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 5
+      working tree          : substantial uncommitted changes from
+                              the builder run (see below).
+
+    Builder PID 2128499 process check:
+      ps -p 2128499                       : NOT alive (exited)
+      log path                            : /tmp/claude_builder_run_
+                                            inflation_swaps__build_zcis_
+                                            panel_round1_retry.log
+      log size                            : 46 bytes
+      log content                         : "You're out of extra usage
+                                            · resets 5am (UTC)"
+      log mtime                           : 2026-05-24 04:44 (UTC)
+
+    Diagnosis: this is NOT a silent failure. The Claude builder
+    worker explicitly returned a usage-limit message before being
+    able to emit the BUILDER REPORT sentinel. The reset clock the
+    provider quoted is exactly 05:00Z (this wake's fire time).
+
+    In-tree builder artifacts (git status -s + git diff --stat):
+      modified:
+        - shared/analytics/panel_assembly.py     (+284 / -0 lines)
+        - rates_agent/inflation_swaps/mcp_server.py    (+245 net)
+        - rates_agent/inflation_swaps/tools/schemas/__init__.py
+            (+16 lines)
+        - rates_agent/workflows/__init__.py      (+31 lines)
+        - tests/conftest.py                      (+1 line — registers
+                                                 the new sql_validation
+                                                 test in the DB-backed
+                                                 marker set)
+      untracked (new):
+        - rates_agent/inflation_swaps/tools/build_zcis_panel/
+            __init__.py    (57 lines)
+            compute.py     (466 lines, 19243 bytes)
+            config.yaml    (~10 KB)
+            schemas.py     (314 lines, 12132 bytes)
+        - tests/test_build_zcis_panel_compute.py        (755 lines)
+        - tests/test_build_zcis_panel_sql_validation.py (417 lines)
+        - tests/test_build_zcis_panel_wiring.py         (729 lines)
+
+    Coherence check on the artifacts:
+      - The PR3 four-file pattern is present
+        (__init__.py / compute.py / config.yaml / schemas.py).
+      - compute.py imports resolve against the new panel_assembly.py
+        helpers — confirmed via grep:
+          shared/analytics/panel_assembly.py defines
+            fetch_inflation_swap_panel_by_vendor_ticker (L309) and
+            fetch_inflation_swap_universe (L478),
+          and compute.py imports BOTH at L54-58 alongside
+            apply_missing_data_policy and infer_units_for_field.
+      - Test triplet (compute / wiring / sql_validation) is present
+        and registered in tests/conftest.py.
+      - MCP server, schemas registry, and workflows registry all
+        carry build_zcis_panel wiring.
+      - NOTE for the reviewer: the catalog's `fetcher_surface` field
+        named `shared.analytics.panel_assembly.fetch_instrument_panel`
+        as the expected fetcher, but the builder instead added two
+        domain-specific helpers (fetch_inflation_swap_panel_by_
+        vendor_ticker, fetch_inflation_swap_universe). This is a
+        substantive PR4 / fetcher-surface deviation that the reviewer
+        should adjudicate when it runs.
+
+    Why the orchestrator is NOT dispatching the reviewer this wake:
+      1. No BUILDER REPORT sentinel was emitted, so the reviewer
+         contract (REVIEWER_PROMPT.md expects to read the builder's
+         own report at the top of the log) is not satisfied.
+      2. Both engines on the host are Claude in this period
+         (reviewer_mode = claude_fallback). The same Claude account
+         that just quota-exhausted at the builder would almost
+         certainly quota-exhaust at the reviewer if dispatched in
+         the same minute the reset is claimed — the reset is a
+         soft window, not an instantaneous refill, and we cannot
+         probe it from non-interactive automation per §6.
+      3. Per ORCHESTRATOR_PROMPT.md commit rule, no commit is
+         allowed until a reviewer verdict (APPROVED or
+         approved-with-dismissals) is produced AND the build
+         satisfies DONE_DEFINITION.md. We have neither.
+      4. Per QUOTA_AND_RESUME_POLICY.md §7, prefer waiting_quota
+         when recovery is expected after reset.
+
+    Why the orchestrator is NOT re-dispatching the builder this wake:
+      1. The in-tree artifacts look functionally complete; a fresh
+         builder dispatch with the same prompt would do redundant
+         work and might introduce drift from the disk state.
+      2. The reset is at 05:00Z but the provider has not yet
+         confirmed quota recovery (no automation-safe probe path).
+         Starting another builder in the same minute carries a
+         real risk of another mid-stream quota cut.
+      3. The cleanest play per the BACKGROUND_EXECUTION_POLICY is
+         to record the truth and let the next cron wake decide on
+         fresh evidence.
+
+    Recommendation for the NEXT cron wake (recorded so the next
+    wake's reader can act on it without rediscovering the state):
+      - Re-check ps for any new live Claude/Codex worker (should
+        be none).
+      - Inspect the in-tree artifacts (still expected: full PR3
+        pattern + tests + wiring).
+      - Decision tree:
+          (a) If the disk state is unchanged from this wake AND
+              quota probe is unavailable AND no live worker,
+              dispatch the BUILDER via run_claude_builder.sh with
+              a CONTINUATION prompt that says:
+                "A prior builder dispatch for build_zcis_panel
+                 hit Claude usage-limit before emitting the
+                 BUILDER REPORT. The in-tree artifacts are
+                 already on disk (list them). VERIFY each file
+                 is internally consistent and PR3/PR4-compliant,
+                 RUN the offline tests, RUN the DB-backed SQL
+                 validation, and emit the BUILDER REPORT
+                 sentinel for the work already produced. Do NOT
+                 rewrite from scratch unless you find a real
+                 fault."
+              That is the cheapest path to a clean BUILDER REPORT.
+          (b) If the builder also quota-exhausts on (a),
+              stay in waiting_quota; do not invent a verdict.
+          (c) If (a) succeeds with a BUILDER REPORT, proceed to
+              REVIEWER round 1 via run_claude_reviewer.sh.
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED — pre-flight already passed (inflation_swaps|SUCCESS|
+      2026-04-09 19:11:25 UTC at 04:08Z this run). The substrate has
+      not been mutated; the primitive is unchanged; re-probing while
+      mid-primitive is unnecessary and would burn DB connections.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6. Provider-reported builder
+      quota exhaustion is the operational signal: reset claimed at
+      05:00Z. quota_state recorded as
+      builder_quota_exhausted_reset_claimed_at_05_00Z.
+
+    Codex-recovery flip evaluation (§10.3 of QUOTA_AND_RESUME_POLICY):
+      - Fresh quota probe available?     NO (§6 fallback)
+      - Previous primitive done cleanly under claude_fallback?  YES
+        (scan_policy_futures_extremes APPROVED, commit 0cfa05a).
+      - Between primitives?              NO (mid-primitive on
+                                          build_zcis_panel).
+      - VERDICT: stay in claude_fallback. (Condition #3 fails.)
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      - No live builder/reviewer for this slice (sole Claude PID
+        is THIS orchestrator).
+      - This wake exits cleanly with no in-flight worker.
+      - Verdict: EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=5)
+      - quota blocker                 : YES (provider-reported
+                                        builder quota exhaustion,
+                                        reset at 05:00Z)
+      - hard runtime/provider error   : NO (this is recoverable
+                                        quota, not a hard error)
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : avoided by exiting now
+      - DB-validation path unavailable: NO
+      - max review rounds exceeded    : NO (no reviewer rounds yet)
+
+    Top-level state transitions this wake:
+      orchestrator_status          : processing → waiting_quota
+      current_primitive            : (unchanged) inflation_swaps__
+                                     build_zcis_panel
+      current_primitive_tool_name  : (unchanged) build_zcis_panel
+      current_step                 : building → builder_round_1_
+                                     quota_exhausted_partial_artifacts_
+                                     on_disk_awaiting_resume
+      last_successful_primitive    : (unchanged) policy_futures__
+                                     scan_policy_futures_extremes
+      last_successful_commit       : (unchanged) 0cfa05a
+      last_reviewer_heading        : (unchanged) APPROVED  (refers
+                                     to the last completed primitive)
+      done / remaining             : (unchanged) 29 / 5
+      last_error                   : null → claude_builder_quota_
+                                     exhausted_at_~04_44Z_log_message_
+                                     youre_out_of_extra_usage_resets_
+                                     5am_utc_BUILDER_REPORT_sentinel_
+                                     not_emitted
+      last_stop_reason             : wake_2026-05-24T04:30Z_observed_
+                                     builder_pid_2128499_alive... →
+                                     builder_quota_exhausted_during_
+                                     round_1_mid_BUILDER_REPORT_reset_
+                                     claimed_at_05_00Z
+      quota_state                  : probe_unavailable → builder_quota_
+                                     exhausted_reset_claimed_at_05_00Z
+      last_updated                 : 2026-05-24T04:32:00Z →
+                                     2026-05-24T05:00:30Z
+
+    Catalog edit this wake:
+      build_order 30 active_step: builder_round_1_dispatched →
+        builder_round_1_quota_exhausted_partial_artifacts_on_disk_
+        awaiting_resume. Status unchanged at in_progress (preserves
+        catalog position; no verdict invented).
+
+- at: '2026-05-24T04:32:00Z'
+  kind: wake_2026-05-24T04:30Z_observed_builder_pid_2128499_alive_and_progressing_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-24T04:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md, the catalog
+    entry for build_order 30 (inflation_swaps__build_zcis_panel),
+    and the top of primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : building (re-dispatched prior wake at
+                              2026-05-24T04:19Z, builder PID 2128499)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 5
+      working tree          : prior-wake edits to the two state
+                              yamls + shared/analytics/panel_assembly.py
+                              (the latter is the LIVE builder's work).
+
+    Builder round-1 re-dispatch process check (PID 2128499):
+      etime                : 11:33 (alive, launched 04:19Z)
+      CPU time             : 0:36 (5.2% CPU)
+      state                : Sl (multi-threaded sleeping — actively
+                             running, not zombie / wedged)
+      log path             : /tmp/claude_builder_run_inflation_swaps__
+                             build_zcis_panel_round1_retry.log
+      log size             : 0 bytes (still empty — see analysis below)
+      launcher.out content : "OK: on allowed branch
+                             'primitive_automation'." (branch guard
+                             PASS at launch).
+
+    Evidence this builder is HEALTHY (not the prior wake's silent
+    fail again):
+      - shared/analytics/panel_assembly.py mtime is 2026-05-24
+        04:31:19Z — modified seconds before this wake. The diff is
+        +284 / -0 lines, which matches the prompt's "extend
+        panel_assembly.py with a sibling fetcher
+        (fetch_instrument_panel_by_security_name) — additive,
+        existing helper signatures unchanged" instruction.
+      - PID 2128499 is still consuming CPU (36s wall CPU in 11 min;
+        consistent with a real prompt that is interleaving file
+        edits with planning).
+      - This is the THIRD piece of evidence that the prior wake's
+        "1-byte newline log + zero source files touched = silent
+        provider failure" diagnosis was over-eager. The actual
+        signal is: `claude --print --effort xhigh` buffers stdout
+        until the assistant's final response is committed. While
+        the worker is mid-build (using bash / edit / write tools
+        internally), stdout is empty even though file edits are
+        landing on disk. The truthful failure signal is
+        EXITED + empty log + zero file changes — not
+        ALIVE + empty log.
+      - Self-correction: the next time a builder appears to be
+        silent-failing, the orchestrator must check
+        (a) is the worker PID still alive AND (b) has any source
+        file been modified since dispatch, before declaring a
+        silent failure. If either is true, the build is in flight
+        and must not be killed or re-dispatched.
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED — the prior wake already passed pre-flight
+      (inflation_swaps|SUCCESS|2026-04-09 19:11:25 UTC at 04:08Z).
+      The primitive is the same, the playbook is the same, and the
+      substrate has not been mutated. No need to re-probe load_audit
+      while the same in-flight build is still active.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6; staying in probe_unavailable
+      fallback mode. reviewer_mode held at claude_fallback (sticky
+      per §10.3 — no fresh probe and the active builder is still
+      mid-build).
+
+    Catalog back-fill this wake:
+      None. The active primitive (build_order 30, status in_progress)
+      is unchanged; no committed-but-unrecorded SHAs from the
+      previous catalog edit (the 04:20Z wake recorded 0cfa05a for
+      build_order 29 already).
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      - this wake exits cleanly with builder PID 2128499 in flight.
+      - cron interval is 15 min, but a Panel-primitive build of
+        sovereign_yield_panel's scale (the explicit twin) historically
+        takes 20-40 min wall under claude --print --effort xhigh.
+        Expect the BUILDER REPORT to land between 04:39Z and 04:59Z.
+      - the next cron wake (04:45Z) will check PID 2128499:
+          * if still alive → exit again, no overlap
+          * if exited AND log has BUILDER REPORT sentinel → tail-parse
+            the log, dispatch reviewer round 1 via
+            run_claude_reviewer.sh (claude_fallback sticky)
+          * if exited AND log empty AND zero further file changes
+            since 04:31:19Z → THEN treat as silent failure per
+            §7 and re-dispatch (this time with the correct
+            evidence trail)
+      - Verdict: EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=5, 1 in-flight)
+      - quota blocker                 : NO (active worker is alive
+                                        and writing files)
+      - hard runtime/provider error   : NO (the prior wake's
+                                        "silent fail" call is now
+                                        understood as a wrong-call;
+                                        the actual provider state
+                                        is healthy)
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : avoided by exiting now
+      - DB-validation path unavailable: NO
+      - max review rounds exceeded    : NO (no reviewer rounds yet)
+
+    Top-level state transitions this wake:
+      current_primitive            : (unchanged) inflation_swaps__
+                                     build_zcis_panel
+      current_primitive_tool_name  : (unchanged) build_zcis_panel
+      current_step                 : (unchanged) building
+      last_successful_primitive    : (unchanged) policy_futures__
+                                     scan_policy_futures_extremes
+      last_successful_commit       : (unchanged) 0cfa05a
+      last_reviewer_heading        : (unchanged) APPROVED  (refers
+                                     to the last completed primitive)
+      done / remaining             : (unchanged) 29 / 5
+      last_error                   : was=prior_wake_builder_dispatch
+                                     _pid_2124637_produced_1_byte_log
+                                     _only_newline... → CLEARED to
+                                     null. The prior diagnosis is
+                                     superseded by the corrected
+                                     understanding above; preserving
+                                     the prior text in last_error
+                                     would mislead the Discord agent
+                                     into reporting an error state
+                                     that no longer holds.
+      last_stop_reason             : wake_2026-05-24T04:15Z_observed_
+                                     prior_builder_silent_fail... →
+                                     wake_2026-05-24T04:30Z_observed_
+                                     builder_pid_2128499_alive_and_
+                                     progressing_panel_assembly_py_
+                                     modified_at_04_31_19Z_no_
+                                     overlap_exit
+      last_updated                 : 2026-05-24T04:20:00Z →
+                                     2026-05-24T04:32:00Z
+
+- at: '2026-05-24T04:20:00Z'
+  kind: wake_2026-05-24T04:15Z_observed_prior_builder_silent_fail_redispatched_builder_round1_for_build_zcis_panel
+  text: |
+    Cron wake fired at 2026-05-24T04:15Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh). Re-read ORCHESTRATOR_PROMPT.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    PRE_FLIGHT_LOAD_AUDIT.md, DISCORD_STATUS_POLICY.md, the catalog
+    entry for build_order 30 (inflation_swaps__build_zcis_panel),
+    and the top of primitive_runtime_state.yaml.
+
+    Observed state at wake start:
+      orchestrator_status   : processing
+      current_primitive     : inflation_swaps__build_zcis_panel
+      current_step          : building (dispatched at prior wake
+                              2026-05-24T04:08Z by PID 2124637)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable (§6 fallback mode)
+      remaining             : 5
+      working tree          : prior-wake edits to
+                              primitive_catalog.yaml and
+                              primitive_runtime_state.yaml still
+                              uncommitted (the standard "next
+                              primitive back-fills the previous
+                              commit_sha" pattern).
+
+    Builder round-1 process check (prior wake dispatched at 04:09Z):
+      PID 2124637 (launcher shell) : EXITED (no longer in ps table)
+      log path             : /tmp/claude_builder_run_inflation_swaps__
+                             build_zcis_panel_round1.log
+      log size             : 1 byte (single 0x0a newline)
+      log mtime            : 2026-05-24T04:13Z
+      launcher.out content : "OK: on allowed branch
+                             'primitive_automation'." (branch guard
+                             passed; nothing further)
+      working tree         : git status --porcelain shows ONLY the
+                             two state-yaml files modified — ZERO
+                             source files touched. No BUILDER REPORT
+                             emitted. HEAD still at 0cfa05a.
+      verdict              : SILENT FAILURE. The claude --print
+                             worker exited after ~4 min with no
+                             stdout, no stderr, no code, no report.
+                             Cannot distinguish provider-quota
+                             error from transport failure from
+                             upstream CLI bug (the wrapper does
+                             `2>&1 | tee` so both streams are in
+                             the empty log).
+
+    Classification:
+      Per QUOTA_AND_RESUME_POLICY.md §7 ("Provider error
+      behavior"), a silent provider/runtime failure that produced
+      no parseable output is treated as a transient failure: the
+      primitive is preserved in_progress, the error is recorded,
+      and the recurring scheduler retries later. The dispatch is
+      NOT counted toward the builder cap — by analogy with the
+      reviewer parser rule "dispatches that failed before
+      producing a parseable verdict do NOT count toward this
+      cap" (ORCHESTRATOR_PROMPT.md Maximum review rounds clause).
+      builder_round therefore remains 1 in the catalog;
+      active_step remains builder_round_1_dispatched.
+
+    Pre-flight load_audit re-verification this wake:
+      SKIPPED on purpose — the prior wake already passed
+      pre-flight (inflation_swaps|SUCCESS|2026-04-09 19:11:25
+      UTC at 04:08Z). The primitive is the same, the playbook
+      is the same, and the substrate has not been mutated by
+      the silent-fail build. No need to re-probe load_audit
+      for a pure builder re-dispatch in the same wake-window.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6; staying in
+      probe_unavailable fallback mode. reviewer_mode held at
+      claude_fallback (sticky per §10.3 — no fresh probe and
+      we are mid-loop on the same primitive).
+
+    Builder round-1 RE-DISPATCH for build_zcis_panel:
+      engine               : Claude (run_claude_builder.sh)
+      wrapper              : automation/primitive_automation/
+                             run_claude_builder.sh
+      prompt               : /tmp/builder_prompt_build_zcis_panel_
+                             round1.md (12471 bytes; verified
+                             intact, head + tail spot-checked
+                             against the prior dispatch — same
+                             content)
+      log                  : /tmp/claude_builder_run_inflation_swaps__
+                             build_zcis_panel_round1_retry.log
+                             (NOTE: _retry suffix so the prior
+                             empty log is preserved as evidence
+                             of the silent-fail rather than
+                             overwritten — the reviewer parser
+                             will read the _retry log next wake)
+      launcher.out         : /tmp/claude_builder_launcher_inflation_
+                             swaps__build_zcis_panel_round1_retry.out
+      launcher PID         : 2128491 (nohup'd, disowned)
+      worker PID           : 2128499 (claude --print --model opus
+                             --effort xhigh --permission-mode
+                             bypassPermissions) — VERIFIED ALIVE
+                             at 04:19Z (CPU 0:02 / 68% in 4s,
+                             busy — consistent with a real
+                             prompt-processing start, not another
+                             silent fail)
+      branch               : primitive_automation (check_branch.sh
+                             PASS in launcher.out).
+
+    Catalog back-fill this wake:
+      build_order 29 (policy_futures__scan_policy_futures_extremes)
+      had active_step=completed but the prior wake deferred the
+      commit_sha + committed_at back-fill to "the next primitive's
+      catalog update". Performed the back-fill in this wake:
+        committed_at : "2026-05-24T04:06:00Z"
+        commit_sha   : 0cfa05a
+      Mirrors the established 80a26cd / 4f6dc3b / 4f6dc3b pattern
+      where each commit's metadata lands in the next primitive's
+      catalog edit. No other catalog changes (build_order 30
+      already at status=in_progress, builder_round=1,
+      active_step=builder_round_1_dispatched from the prior wake;
+      that remains accurate after the silent-fail-then-redispatch
+      because the in_progress dispatch is still live, just under
+      a new PID).
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      this wake exits cleanly with the re-dispatched builder
+      worker (PID 2128499) in flight. Prior-wake claude
+      orchestrator PID 2120669 is alive in ep_poll state
+      (S+sleep, CPU 0:45 in 18 min — waiting for completion
+      notification, NOT actively mutating files; harmless).
+      The 15-min cron tick budget cannot absorb a full panel-
+      primitive build per the prior wake's analysis
+      (sovereign_yield_panel reference is ~10k LOC + tests). The
+      next cron wake (04:30Z) will observe the _retry log, parse
+      the tail, and either dispatch the reviewer round-1 if the
+      BUILDER REPORT sentinel is present or wait one more tick.
+      verdict: EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=5,
+                                        1 in-flight)
+      - quota blocker                 : NO (re-dispatched worker
+                                        is verifiably alive and
+                                        consuming CPU; if Claude
+                                        quota were actually
+                                        exhausted, this re-dispatch
+                                        would have produced the
+                                        same silent fail; it did
+                                        not)
+      - hard runtime/provider error   : the prior dispatch IS one
+                                        but it was transient (the
+                                        re-dispatch is healthy);
+                                        not a stop condition under
+                                        QUOTA_AND_RESUME_POLICY §7
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : avoided by exiting after
+                                        builder re-dispatch
+      - DB-validation path unavailable: NO (load_audit re-verified
+                                        at prior wake; no DB mutation
+                                        attempted here)
+      - max review rounds exceeded    : NO (no reviewer rounds yet
+                                        for this primitive)
+
+    Top-level state transitions this wake:
+      current_primitive     : (unchanged) inflation_swaps__build_
+                              zcis_panel
+      current_primitive_tool_name : (unchanged) build_zcis_panel
+      current_step          : (unchanged) building
+      last_successful_primitive   : (unchanged) policy_futures__
+                                   scan_policy_futures_extremes
+      last_successful_commit      : (unchanged) 0cfa05a
+      last_reviewer_heading       : (unchanged) APPROVED  (refers
+                                   to last completed primitive)
+      done / remaining            : (unchanged) 29 / 5
+      last_error                  : null → prior_wake_builder_
+                                   dispatch_pid_2124637_produced_
+                                   1_byte_log_only_newline_no_
+                                   BUILDER_REPORT_no_source_files_
+                                   modified_treated_as_transient_
+                                   provider_runtime_failure_per_
+                                   QUOTA_AND_RESUME_POLICY_section
+                                   _7_re-dispatched_under_same_
+                                   prompt_in_this_wake
+      last_stop_reason            : wake_2026-05-24T04:00Z_committed
+                                   _scan_policy_futures_extremes_at
+                                   _0cfa05a_dispatched_builder_
+                                   round1_for_build_zcis_panel_no_
+                                   overlap_exit
+                                   →
+                                   wake_2026-05-24T04:15Z_observed_
+                                   prior_builder_silent_fail_
+                                   redispatched_builder_round1_for_
+                                   build_zcis_panel_no_overlap_exit
+      last_updated                : 2026-05-24T04:08:00Z →
+                                   2026-05-24T04:20:00Z
+
+- at: '2026-05-24T04:08:00Z'
+  kind: wake_2026-05-24T04:00Z_committed_scan_policy_futures_extremes_at_0cfa05a_dispatched_build_zcis_panel_builder_round1
+  text: |
+    Wake 2026-05-24T04:00Z completed two transitions:
+
+    1. Reviewer round 2 for build_order 29
+       (policy_futures__scan_policy_futures_extremes):
+       - engine                  : claude_fallback (sticky per
+                                   QUOTA_AND_RESUME_POLICY.md §10.3)
+       - prompt                  : /tmp/reviewer_prompt_scan_policy_
+                                   futures_extremes_round2.md
+       - log                     : /tmp/claude_reviewer_run_policy_
+                                   futures__scan_policy_futures_
+                                   extremes_round2.log (1551 bytes)
+       - runtime                 : ~60s wall (PID 2121827 exited
+                                   cleanly)
+       - parse_reviewer_log.py   :
+           heading                  : APPROVED
+           environment_failure      : false
+           reviewer_quota_exhausted : false
+       - findings                : ZERO dismissable, ZERO mandatory-fix
+                                   (clean approval — round-1 P10
+                                   docstring finding fixed on-disk;
+                                   reviewer verified no other file
+                                   touched in round 2 and no new
+                                   regression).
+       - 4-round cap status      : 2 substantive verdicts of 4 (within
+                                   cap; cap not triggered).
+
+    2. Commit + advance:
+       - commit                  : 0cfa05a feat(policy_futures): add
+                                   scan_policy_futures_extremes
+                                   primitive (ADR 0011 V1)
+       - HEAD                    : 0cfa05a on primitive_automation
+       - 19 files changed, 143,508 insertions, 15 deletions
+         (most of the volume is the parity fixture JSON; the diff stat
+         matches the round-2 builder report)
+       - catalog                 : build_order 29 status todo →
+                                   changes_required → done with
+                                   active_step=completed,
+                                   builder_round=2, review_round=2,
+                                   last_review_heading=APPROVED,
+                                   reviewer_engine=claude_fallback,
+                                   no dismissed_findings this primitive.
+                                   (commit_sha + committed_at will be
+                                   added retroactively in the next
+                                   primitive's catalog update —
+                                   mirrors the prior 80a26cd / 4f6dc3b
+                                   pattern where the previous
+                                   primitive's sha lands in the next
+                                   primitive's commit.)
+       - runtime state           : done 28→29, remaining 6→5,
+                                   last_successful_primitive →
+                                   policy_futures__scan_policy_futures_
+                                   extremes, last_successful_commit →
+                                   0cfa05a.
+
+    3. Next primitive selection (per BACKGROUND_EXECUTION_POLICY.md §3
+       priority order — in_progress → changes_required →
+       waiting_quota → todo):
+       - in_progress       : none
+       - changes_required  : none (just resolved)
+       - waiting_quota     : none
+       - todo (first)      : build_order 30
+                             inflation_swaps__build_zcis_panel
+
+    4. Pre-flight load_audit for build_order 30:
+       docker exec macro-tsdb psql -U quantuser -d macrodata -tAc
+         "SELECT playbook_name, status, ingested_at FROM
+          macro_data.load_audit WHERE playbook_name='inflation_swaps'
+          AND status='SUCCESS' ORDER BY ingested_at DESC LIMIT 1"
+       → 'inflation_swaps|SUCCESS|2026-04-09 19:11:25.434278+01'
+       verdict: PASS. Builder may dispatch.
+
+    5. Builder round 1 dispatch for build_zcis_panel:
+       engine               : Claude (run_claude_builder.sh)
+       wrapper              : automation/primitive_automation/
+                              run_claude_builder.sh
+       prompt               : /tmp/builder_prompt_build_zcis_panel_
+                              round1.md
+       log                  : /tmp/claude_builder_run_inflation_swaps__
+                              build_zcis_panel_round1.log
+       launcher PID         : 2124637 (nohup'd, disowned)
+       prompt scope         : Panel-shaped primitive; reference
+                              sovereign_yield_panel for the 4-file
+                              package + fetcher seam; reference
+                              shared/analytics/panel_assembly.py for
+                              the fetcher; PR12 methodology disclosure
+                              on the artifact lineage step; PR14 frozen
+                              wire summary fields; PR8 closed-family
+                              ZcisCurveFamily Literal in code; column
+                              key = security_name (catalog mandate);
+                              tests = compute + wiring + sql_validation
+                              triplet; Layer A + Layer B both
+                              mandatory; DB read-only.
+       branch               : primitive_automation.
+
+    Quota probe attempt this wake:
+      non-interactive /status remains unavailable per
+      QUOTA_AND_RESUME_POLICY.md §6; staying in probe_unavailable
+      fallback mode. reviewer_mode held at claude_fallback (sticky
+      per §10.3 — Codex probe still not feasible).
+
+    No-overlap evaluation (BACKGROUND_EXECUTION_POLICY.md §7 /
+    OPENCLAW_CRON_RUNBOOK.md §5):
+      this wake exits cleanly with the builder round-1 dispatch
+      in flight. The 15-min cron tick budget cannot absorb a
+      full panel-primitive build (sovereign_yield_panel
+      reference is a ~10k LOC tool package + tests; the ZCIS
+      analogue will take 15-30 min of Claude time). The next
+      cron wake will observe the builder log, parse the tail,
+      and dispatch the reviewer round 1.
+      verdict: EXIT CLEANLY.
+
+    Stop conditions evaluated:
+      - catalog exhausted             : NO (remaining=5, 1 in-flight)
+      - quota blocker                 : NO
+      - hard runtime/provider error   : NO
+      - human-required                : NO
+      - branch violation              : NO (primitive_automation)
+      - no-overlap violation          : avoided by exiting after
+                                        builder dispatch
+      - DB-validation path unavailable: NO (load_audit re-verified)
+      - max review rounds exceeded    : NO
+
+    Top-level state transitions this wake:
+      current_primitive     : policy_futures__scan_policy_futures_
+                              extremes → inflation_swaps__build_zcis_
+                              panel
+      current_primitive_tool_name : scan_policy_futures_extremes →
+                                   build_zcis_panel
+      current_step          : building → reviewing → committing →
+                              pre_flight_load_audit → building
+      last_successful_primitive   : policy_futures__futures_pack_
+                                   average_simple →
+                                   policy_futures__scan_policy_
+                                   futures_extremes
+      last_successful_commit      : 80a26cd → 0cfa05a
+      last_reviewer_heading       : CHANGES REQUIRED → APPROVED
+      done / remaining            : 28 / 6 → 29 / 5
+      last_stop_reason            : wake_2026-05-23T20:30Z_observed_
+                                    builder_round2_in_flight_layerB_
+                                    sql_validation_no_overlap_exit
+                                    →
+                                    wake_2026-05-24T04:00Z_committed_
+                                    scan_policy_futures_extremes_at_
+                                    0cfa05a_dispatched_builder_round1_
+                                    for_build_zcis_panel_no_overlap_
+                                    exit
+
 - at: '2026-05-24T04:00:30Z'
   kind: wake_2026-05-24T04:00Z_builder_round2_complete_reviewer_round2_dispatched_claude_fallback
   text: |

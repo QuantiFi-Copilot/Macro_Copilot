@@ -88,6 +88,16 @@ from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes.schemas imp
     ScanInflationSwapsExtremesResultRow,
 )
 
+# ZCIS Panel substrate — re-exported from the per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/build_zcis_panel/``).
+from rates_agent.inflation_swaps.tools.build_zcis_panel.schemas import (
+    BuildZcisPanelInput,
+    BuildZcisPanelOutput,
+    ZcisCurveFamily,
+    ZcisPanelCalendarPolicy,
+    ZcisPanelMissingDataPolicy,
+)
+
 
 __all__ = [
     # inflation_swap_rate_level
@@ -124,4 +134,10 @@ __all__ = [
     "ScanInflationSwapsExtremesInput",
     "ScanInflationSwapsExtremesOutput",
     "ScanInflationSwapsExtremesResultRow",
+    # build_zcis_panel
+    "BuildZcisPanelInput",
+    "BuildZcisPanelOutput",
+    "ZcisCurveFamily",
+    "ZcisPanelCalendarPolicy",
+    "ZcisPanelMissingDataPolicy",
 ]

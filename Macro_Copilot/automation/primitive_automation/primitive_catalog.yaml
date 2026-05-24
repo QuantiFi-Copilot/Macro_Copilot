@@ -1128,11 +1128,13 @@ primitives:
   - id: policy_futures__scan_policy_futures_extremes
     status: done
     build_order: 29
-    active_step: completed
+    active_step: committed_0cfa05a_feat_policy_futures_add_scan_policy_futures_extremes_primitive
     builder_round: 2
     review_round: 2
     last_review_heading: APPROVED
     reviewer_engine: claude_fallback
+    committed_at: "2026-05-24T04:06:00Z"
+    commit_sha: 0cfa05a
     instrument_family: policy_futures
     tool_name: scan_policy_futures_extremes
     category: desk_invariant_primitive
@@ -1167,8 +1169,13 @@ primitives:
       - synchronised last_price + volume + OI history across the policy-futures universe
 
   - id: inflation_swaps__build_zcis_panel
-    status: todo
+    status: done
     build_order: 30
+    active_step: completed
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
     instrument_family: inflation_swaps
     tool_name: build_zcis_panel
     category: desk_invariant_primitive
@@ -1177,7 +1184,7 @@ primitives:
       - inflation_swaps__inflation_swap_rate_level
     pre_flight_load_audit:
       - inflation_swaps
-    concept_summary: Wide multi-instrument Panel artifact of ZCIS rates across the universe (rows = dates, columns = security_name) — substrate for downstream regression / PCA / cross-sectional operators.
+    concept_summary: Wide multi-instrument Panel artifact of ZCIS rates across the universe (rows = dates, columns = vendor_ticker — security_name is universally NULL on live SCD2 rows for inflation_swaps) — substrate for downstream regression / PCA / cross-sectional operators.
     why_new_concept: A Panel is a structurally distinct artifact type from a Series. Composition (operators reading the panel) is the point. Plan §5 Group 3 #19.
     why_standard: Panel-shaped substrate is how every desk-side PCA / cross-curve work consumes ZCIS rates.
     required_playbooks:
@@ -1192,10 +1199,12 @@ primitives:
     reference_tools:
       - rates_agent/sovereign_bonds/tools/sovereign_yield_panel
     fetcher_surface:
-      - shared.analytics.panel_assembly.fetch_instrument_panel
+      - shared.analytics.panel_assembly.fetch_inflation_swap_panel_by_vendor_ticker
+      - shared.analytics.panel_assembly.fetch_inflation_swap_universe
     methodology_guardrails:
-      - Output must be a canonical Panel artifact with dates on the row axis and security_name on the column axis.
+      - Output must be a canonical Panel artifact with dates on the row axis and vendor_ticker on the column axis (security_name caveat disclosed inside the tool's __init__.py / compute.py / config.yaml / schemas.py / MCP docstring / methodology_card.security_name_caveat).
       - Methodology card must disclose alignment / fill / forward-fill conventions explicitly (PR12 source tag required).
+      - Universe helper MUST filter on pricing_type='zero_coupon_breakeven' so future YoY-swap rows do not silently flow through the ZCIS panel; the no-proxy guard lives at the ZCIS helper layer rather than in the generic fetch_instrument_panel.
     no_go_if_missing:
       - synchronised ZCIS yield_mid across the universe
 

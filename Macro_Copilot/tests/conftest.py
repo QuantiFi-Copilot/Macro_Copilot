@@ -88,4 +88,5 @@ collect_ignore = [
     "test_scan_inflation_linkers_extremes_sql_validation.py",
     "test_scan_inflation_swaps_extremes_sql_validation.py",
     "test_scan_policy_futures_extremes_sql_validation.py",
+    "test_build_zcis_panel_sql_validation.py",
 ]

@@ -11,11 +11,24 @@ schema) but agnostic to instrument family — the caller passes the
 ``(curve_family, tenor)`` pairs and per-pair ``field_name`` choices,
 and this module pivots into a wide DataFrame.
 
-Used by:
-  - ``rates_agent/sovereign_bonds/tools/sovereign_yield_panel`` (sovereign
-    curves only, default field = YLD_YTM_MID)
-  - ``rates_agent/ois/tools/ois_rate_panel`` (OIS curves only, default
-    field = PX_LAST) — future PR; same compute backend.
+Helper paths (currently shipped)
+--------------------------------
+- ``fetch_instrument_panel`` — pivots into wide DataFrame keyed by
+  ``<curve_family>_<tenor>``.  Used by
+  ``rates_agent/sovereign_bonds/tools/sovereign_yield_panel`` (sovereign
+  curves only, default field = YLD_YTM_MID).  Does NOT constrain on
+  ``pricing_type``; the caller (sovereign) is responsible for any
+  pricing-type filtering it needs.
+
+- ``fetch_inflation_swap_panel_by_vendor_ticker`` — ZCIS-specific
+  panel pivot keyed by ``vendor_ticker`` (e.g. ``'USSWIT1 Curncy'``,
+  ``'EUSWI10 Curncy'``, ``'BPSWIT10 Curncy'``).  Filters on
+  ``instrument_type='inflation_swap'`` AND
+  ``pricing_type='zero_coupon_breakeven'`` (the inflation-swap
+  no-proxy guard, mirroring ``inflation_swap_rate_level``'s
+  structural invariant) AND ``curve_family IN (...)`` AND
+  (optionally) ``tenor IN (...)``.  Used by
+  ``rates_agent/inflation_swaps/tools/build_zcis_panel``.
 
 Single source of truth: the per-agent tool-surface lives in the agent's
 folder; the SQL + Panel-construction logic lives here so the methodology
@@ -266,8 +279,269 @@ def apply_missing_data_policy(
     )
 
 
+# ============================================================================
+# INFLATION-SWAP PANEL FETCHER — pivots on vendor_ticker
+# ============================================================================
+#
+# ZCIS instruments are uniquely identified by ``vendor_ticker`` (the
+# canonical Bloomberg identifier, e.g. ``'USSWIT1 Curncy'``,
+# ``'EUSWI10 Curncy'``, ``'BPSWIT10 Curncy'``).  Per the
+# ``build_zcis_panel`` catalog entry the panel's column key SHOULD
+# be ``security_name``, but the ZCIS universe's
+# ``macro_data.instrument_metadata_history.security_name`` is
+# universally NULL on the live SCD2 rows (the
+# ``inflation_swaps.yml`` playbook maps ``SECURITY_DES`` to
+# ``security_name`` but the field is not populated).  Surfacing
+# NULL would be a dead column key; relabelling ``vendor_ticker``
+# under the ``security_name`` label would violate the no-proxy
+# rule.  Same no-proxy treatment ``scan_inflation_swaps_extremes``
+# applies (which surfaces ``vendor_ticker`` under its own name).
+#
+# The ``zero_coupon_breakeven`` ``pricing_type`` filter is the
+# structural no-proxy guard mirroring ``inflation_swap_rate_level``:
+# without it a future ingest of a different ZCIS pricing variant
+# (e.g. year-on-year inflation swaps) sharing a ``curve_family``
+# label would silently flow through.  ``instrument_type`` and
+# ``pricing_type`` are code-owned invariants (NOT YAML-tunable);
+# DESIGN_PRINCIPLES.md §5 — structural identity stays in code.
+
+
+def fetch_inflation_swap_panel_by_vendor_ticker(
+    engine: Engine,
+    *,
+    curve_families: Sequence[str],
+    tenors: Optional[Sequence[str]],
+    field_name: str,
+    start_date: date,
+    end_date: Optional[date] = None,
+    ffill_limit_days: int = 5,
+) -> pd.DataFrame:
+    """Fetch a wide ZCIS panel keyed by ``vendor_ticker``.
+
+    Parameters
+    ----------
+    engine :
+        Live SQLAlchemy engine.
+    curve_families :
+        Sequence of ZCIS curve families to include (e.g.
+        ``['USD_ZCIS', 'EUR_ZCIS', 'GBP_ZCIS']``).  Must be
+        non-empty; the caller's input-validation layer rejects
+        any non-ZCIS curve_family.
+    tenors :
+        Optional sequence of tenor identifiers to include
+        (e.g. ``['1Y', '5Y', '10Y']``).  ``None`` means
+        "all tenors present in the DB for the requested
+        curve_families".  Empty sequence behaves identically
+        to ``None``.
+    field_name :
+        Bloomberg field name for the ZCIS rate (e.g.
+        ``'PX_MID'``).  Caller resolves the per-query sentinel
+        against the YAML's ``default_zcis_rate_field``
+        convention before passing.
+    start_date :
+        Earliest ``trade_date`` to include (inclusive).
+    end_date :
+        Latest ``trade_date`` (inclusive).  ``None`` → include
+        every observation up to the latest in the DB.
+    ffill_limit_days :
+        Maximum holiday-gap to bridge via forward-fill per
+        column.  Matches the standard ``ffill_limit_days``
+        convention used by every other rates tool.  Set to 0
+        to disable forward-fill entirely.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide DataFrame with a ``DatetimeIndex`` (one row per
+        trading date) and one column per ZCIS instrument keyed
+        by its ``vendor_ticker``.  Column order is sorted by
+        ``(curve_family, tenor_year_fraction)`` so callers get
+        a deterministic, desk-readable layout.  Empty
+        DataFrame if no ZCIS row matches the filters.
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_inflation_swap_panel_by_vendor_ticker: "
+            "curve_families is empty."
+        )
+
+    # No string interpolation of user input — every filter value
+    # is a bound parameter.  ``= ANY(:list)`` is the parameterised
+    # equivalent of ``IN (...)``.
+    sql_params: Dict[str, object] = {
+        "instrument_type": "inflation_swap",
+        "pricing_type": "zero_coupon_breakeven",
+        "field_name": field_name,
+        "curve_families": list(curve_families),
+        "start_date": start_date.isoformat(),
+    }
+
+    tenor_filter = ""
+    if tenors:
+        sql_params["tenors"] = list(tenors)
+        tenor_filter = " AND v.tenor = ANY(:tenors)"
+
+    end_filter = ""
+    if end_date is not None:
+        sql_params["end_date"] = end_date.isoformat()
+        end_filter = " AND v.trade_date <= :end_date"
+
+    sql = text(
+        f"""
+        SELECT
+            v.trade_date,
+            v.curve_family,
+            v.tenor,
+            v.vendor_ticker,
+            v.field_value::double precision AS field_value
+        FROM macro_data.v_market_data_daily_enriched AS v
+        JOIN macro_data.instrument_master AS i
+          ON v.instrument_id = i.instrument_id
+        WHERE v.instrument_type = :instrument_type
+          AND (i.attributes ->> 'pricing_type') = :pricing_type
+          AND v.field_name      = :field_name
+          AND v.curve_family    = ANY(:curve_families)
+          AND v.tenor          IS NOT NULL
+          AND v.field_value    IS NOT NULL
+          AND v.vendor_ticker  IS NOT NULL
+          AND v.trade_date     >= :start_date{end_filter}{tenor_filter}
+        ORDER BY v.trade_date
+        """
+    )
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, sql_params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+
+    raw_df = pd.DataFrame(rows, columns=columns)
+    if raw_df.empty:
+        return pd.DataFrame()
+
+    # Build the column-order map: (curve_family, tenor_year_fraction)
+    # then vendor_ticker.  Reading off the actual rows means the
+    # caller does not need to hard-code the universe; new tenors /
+    # tickers added to ``instrument_master`` flow through.
+    instrument_meta = (
+        raw_df[["vendor_ticker", "curve_family", "tenor"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    # Convert tenor (e.g. '1Y', '10Y', '30Y') to integer years for
+    # sort stability.  Anything not in the ``<int>Y`` shape sorts
+    # to the end alphabetically as a safe fallback (no inflation
+    # swap tenor in the V1 universe deviates from this shape).
+    def _tenor_sort_key(tnr: str) -> Tuple[int, str]:
+        if isinstance(tnr, str) and tnr.endswith("Y") and tnr[:-1].isdigit():
+            return (int(tnr[:-1]), tnr)
+        return (10**9, str(tnr))
+
+    instrument_meta["_tenor_key"] = instrument_meta["tenor"].map(_tenor_sort_key)
+    instrument_meta = instrument_meta.sort_values(
+        by=["curve_family", "_tenor_key", "vendor_ticker"],
+        kind="mergesort",
+    )
+    ordered_tickers: List[str] = instrument_meta["vendor_ticker"].tolist()
+
+    # Pivot — one column per vendor_ticker.  ``aggfunc='first'``
+    # because the DB has exactly one row per
+    # (vendor_ticker, trade_date) for the same field_name (the
+    # enriched view dedups on the underlying ingest key).
+    wide = (
+        raw_df.pivot_table(
+            index="trade_date",
+            columns="vendor_ticker",
+            values="field_value",
+            aggfunc="first",
+        )
+        .sort_index()
+    )
+    wide.index = pd.DatetimeIndex(pd.to_datetime(wide.index))
+
+    # Reorder columns by the (curve_family, tenor_year) sort.  Any
+    # column missing from ``wide`` (no observations at all on the
+    # ticker) sticks as a fully-NaN column so downstream code can
+    # detect the gap explicitly rather than silently shrinking the
+    # panel.
+    for ticker in ordered_tickers:
+        if ticker not in wide.columns:
+            wide[ticker] = float("nan")
+    wide = wide[ordered_tickers]
+
+    if ffill_limit_days and ffill_limit_days > 0:
+        wide = wide.ffill(limit=ffill_limit_days)
+
+    return wide
+
+
+def fetch_inflation_swap_universe(
+    engine: Engine,
+    *,
+    curve_families: Sequence[str],
+) -> pd.DataFrame:
+    """Resolve the live ZCIS universe (instrument-level reference rows)
+    for the requested curve families.
+
+    Returns one row per (curve_family, tenor, vendor_ticker) with
+    the load-bearing reference columns the methodology card needs
+    (``underlying_index``, ``maturity_date``, and the JSONB-resident
+    ``inflation_index_family`` / ``index_lag`` / ``interpolation`` /
+    ``pricing_type``).  Filters identically to
+    ``fetch_inflation_swap_panel_by_vendor_ticker``'s no-proxy
+    guard (``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'``).
+
+    Used by ``build_zcis_panel`` to surface the per-column
+    reference metadata on the methodology card.  Caller filters
+    on ``is_active=TRUE`` so de-listed tickers (none today, but
+    the safety net is cheap) don't leak in.
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_inflation_swap_universe: curve_families is empty."
+        )
+
+    sql = text(
+        """
+        SELECT
+            i.curve_family,
+            i.tenor,
+            i.vendor_ticker,
+            i.underlying_index,
+            i.maturity_date,
+            i.attributes ->> 'pricing_type'           AS pricing_type,
+            i.attributes ->> 'inflation_index_family' AS inflation_index_family,
+            i.attributes ->> 'index_lag'              AS index_lag,
+            i.attributes ->> 'interpolation'          AS interpolation
+        FROM macro_data.instrument_master AS i
+        WHERE i.instrument_type = :instrument_type
+          AND (i.attributes ->> 'pricing_type') = :pricing_type
+          AND i.curve_family = ANY(:curve_families)
+          AND i.is_active = TRUE
+          AND i.tenor IS NOT NULL
+          AND i.vendor_ticker IS NOT NULL
+        ORDER BY i.curve_family, i.tenor, i.vendor_ticker
+        """
+    )
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sql,
+            {
+                "instrument_type": "inflation_swap",
+                "pricing_type": "zero_coupon_breakeven",
+                "curve_families": list(curve_families),
+            },
+        ).mappings().all()
+
+    return pd.DataFrame([dict(r) for r in rows])
+
+
 __all__ = [
     "fetch_instrument_panel",
+    "fetch_inflation_swap_panel_by_vendor_ticker",
+    "fetch_inflation_swap_universe",
     "infer_units_for_field",
     "apply_missing_data_policy",
 ]

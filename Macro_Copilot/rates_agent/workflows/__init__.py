@@ -328,6 +328,12 @@ from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
     ScanInflationSwapsExtremesOutput,
     calculate_scan_inflation_swaps_extremes,
 )
+from rates_agent.inflation_swaps.tools.build_zcis_panel import (
+    CONFIG_PATH as BUILD_ZCIS_PANEL_CONFIG_PATH,
+    BuildZcisPanelInput,
+    BuildZcisPanelOutput,
+    build_zcis_panel,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -1203,6 +1209,31 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         output_class=ScanInflationSwapsExtremesOutput,
         config_path=SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
         output_field_units={},
+    ),
+    # ---- ZCIS Panel substrate primitive (Plan §5 Group 3 #19) ----
+    #
+    # ``build_zcis_panel_tool`` emits a Panel artifact (rows =
+    # trade_date, columns = vendor_ticker) over the USD / EUR /
+    # GBP ZCIS universe.  Declares ``output_artifact_type="Panel"``
+    # so the executor picks ``tool_output_to_artifact_panel`` over
+    # the default Series bridge.  Mirrors the
+    # ``build_sovereign_yield_panel_tool`` registration.
+    #
+    # ``output_field_units`` declares the single ``panel`` field as
+    # PERCENT — the Panel's per-column ``units_by_column`` carries
+    # the authoritative per-leg unit tags (every ZCIS column is
+    # PERCENT since the V1 primitive emits a uniform field_name
+    # across the panel).
+    "build_zcis_panel_tool": PrimitiveSpec(
+        tool_name="build_zcis_panel_tool",
+        callable=build_zcis_panel,
+        input_class=BuildZcisPanelInput,
+        output_class=BuildZcisPanelOutput,
+        config_path=BUILD_ZCIS_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
     ),
 }
 
