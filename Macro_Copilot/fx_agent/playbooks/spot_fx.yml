@@ -1,8 +1,8 @@
 playbook_name: "spot_fx"
-playbook_version: "2.0"
+playbook_version: "3.0"
 asset_class: "fx"
 dataset_name: "spot_fx"
-description: "Daily G10 spot FX majors for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. Wave 1 extends coverage from 6 to 9 majors by adding NZDUSD, USDNOK, USDSEK (the missing Nordic / antipodean members of the G10 majors set)."
+description: "Daily G10 + EM spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. v2.0 (Wave 1) extended G10 coverage from 6 to 9 majors (added NZDUSD, USDNOK, USDSEK). v3.0 (Phase B / Wave 1.5) adds 9 EM majors (USDMXN, USDZAR, USDTRY, USDBRL, USDPLN, USDHUF, USDKRW, USDIDR, USDPHP) — uniform start_date 2000-01-01 across the full universe, validated against Bloomberg on 2026-05-25 (USDTRY confirmed Scenario A — clean back-adjusted series across the 1 Jan 2005 lira redenomination; all 9 EM pairs have PX_LAST available from ≤ 2000-01-03)."
 
 extraction:
   start_date: "2000-01-01"
@@ -100,3 +100,96 @@ universe:
     pair: "USDSEK"
     base_ccy: "USD"
     quote_ccy: "SEK"
+
+  # ============================================================
+  # Phase B / Wave 1.5 additions — EM majors (9 pairs)
+  # ------------------------------------------------------------
+  # Uniform start_date 2000-01-01 per Bloomberg verification
+  # 2026-05-25. USDTRY scenario A confirmed (clean back-adjusted
+  # across the 1 Jan 2005 lira redenomination — no 1,000,000x
+  # discontinuity). All 9 EM pairs have PX_LAST from <= 2000-01-03.
+  # market_scope="EM" and fx_family="EM_SPOT" segregate them from
+  # the G10 set so scan_fx_spot can filter by scope at the SQL
+  # layer with zero code change (Codex Q3 lock).
+  # ============================================================
+
+  - ticker: "USDMXN Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDMXN"
+    base_ccy: "USD"
+    quote_ccy: "MXN"
+
+  - ticker: "USDBRL Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "LATAM"
+    pair: "USDBRL"
+    base_ccy: "USD"
+    quote_ccy: "BRL"
+
+  - ticker: "USDZAR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDZAR"
+    base_ccy: "USD"
+    quote_ccy: "ZAR"
+
+  - ticker: "USDTRY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDTRY"
+    base_ccy: "USD"
+    quote_ccy: "TRY"
+
+  - ticker: "USDPLN Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDPLN"
+    base_ccy: "USD"
+    quote_ccy: "PLN"
+
+  - ticker: "USDHUF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "EMEA"
+    pair: "USDHUF"
+    base_ccy: "USD"
+    quote_ccy: "HUF"
+
+  - ticker: "USDKRW Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDKRW"
+    base_ccy: "USD"
+    quote_ccy: "KRW"
+
+  - ticker: "USDIDR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDIDR"
+    base_ccy: "USD"
+    quote_ccy: "IDR"
+
+  - ticker: "USDPHP Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDPHP"
+    base_ccy: "USD"
+    quote_ccy: "PHP"
