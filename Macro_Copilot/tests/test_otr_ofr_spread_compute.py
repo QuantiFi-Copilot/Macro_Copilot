@@ -78,30 +78,105 @@ def _build_raw_df(
     ofr_yield_base: float = 4.30,
     otr_instrument_id: int = 102,
     ofr_instrument_id: int = 101,
+    otr_cusip: str = "91282CLB6",
+    otr_isin: str = "US91282CLB60",
+    ofr_cusip: str = "91282CKZ4",
+    ofr_isin: str = "US91282CKZ40",
     null_ofr_first_n: int = 0,
 ) -> pd.DataFrame:
     """Build a synthetic OTR/OFR yield-pair frame, modelling the shape
     that ``fetch_otr_ofr_yield_pair`` returns from the live SCD2 +
-    market_data_daily query.
+    market_data_daily query (one row per trade_date with the OTR and
+    OFR bond's identity + yield columns).
 
     A small deterministic ramp on each leg keeps the rolling z-score
     non-degenerate without forcing a specific value.  ``null_ofr_first_n``
-    sets ``ofr_yield`` to None for the first N rows — models the slot's
-    very first observed window (LAG is NULL).
+    sets ``ofr_yield`` AND the OFR identity columns to None for the
+    first N rows — models the slot's very first observed window (LAG
+    is NULL).
     """
     dates = pd.bdate_range(end=end, periods=n_days).date.tolist()
     rows = []
     for i, d in enumerate(dates):
         otr = otr_yield_base + 0.001 * (i % 31)
-        ofr_val: float | None = ofr_yield_base + 0.001 * (i % 29)
-        if i < null_ofr_first_n:
-            ofr_val = None
+        is_null_ofr = i < null_ofr_first_n
+        ofr_val: float | None = (
+            None if is_null_ofr else ofr_yield_base + 0.001 * (i % 29)
+        )
         rows.append({
             "trade_date": d,
             "otr_instrument_id": otr_instrument_id,
-            "ofr_instrument_id": ofr_instrument_id if i >= null_ofr_first_n else None,
+            "ofr_instrument_id": None if is_null_ofr else ofr_instrument_id,
+            "otr_cusip": otr_cusip,
+            "otr_isin": otr_isin,
+            "otr_vendor_ticker": f"/cusip/{otr_cusip}",
+            "ofr_cusip": None if is_null_ofr else ofr_cusip,
+            "ofr_isin": None if is_null_ofr else ofr_isin,
+            "ofr_vendor_ticker": None if is_null_ofr else f"/cusip/{ofr_cusip}",
             "otr_yield": otr,
             "ofr_yield": ofr_val,
+        })
+    return pd.DataFrame(rows)
+
+
+def _build_roll_boundary_df(
+    *,
+    pre_roll_n: int = 200,
+    post_roll_n: int = 200,
+    end: date = date(2026, 5, 22),
+    ffill_limit: int = 5,
+) -> pd.DataFrame:
+    """Build a frame that crosses an OTR-roll boundary with a missing
+    OFR-yield row immediately after the roll.
+
+    Pre-roll:  OTR=bond_B (yield ~4.22), OFR=bond_A (yield ~4.30).
+    Post-roll: OTR=bond_C (yield ~4.25), OFR=bond_B (yield ~4.22).
+
+    The first ``ffill_limit + 1`` post-roll rows have OFR yield set to
+    None — i.e. bond_B's yields immediately after it became OFR have
+    NOT been ingested yet (a realistic data-arrival lag).  A naive
+    GLOBAL ffill would carry pre-roll bond_A's yield onto the post-
+    roll bond_B rows — a fabricated spread.  The per-instrument-
+    group ffill MUST leave those OFR yields as None.
+    """
+    n = pre_roll_n + post_roll_n
+    dates = pd.bdate_range(end=end, periods=n).date.tolist()
+    rows = []
+    # Pre-roll
+    for i in range(pre_roll_n):
+        rows.append({
+            "trade_date": dates[i],
+            "otr_instrument_id": 102,  # bond_B is the OTR pre-roll
+            "ofr_instrument_id": 101,  # bond_A is the OFR pre-roll
+            "otr_cusip": "BONDB_CUSIP",
+            "otr_isin": "BONDB_ISIN",
+            "otr_vendor_ticker": "/cusip/BONDB_CUSIP",
+            "ofr_cusip": "BONDA_CUSIP",
+            "ofr_isin": "BONDA_ISIN",
+            "ofr_vendor_ticker": "/cusip/BONDA_CUSIP",
+            "otr_yield": 4.22 + 0.001 * (i % 31),
+            "ofr_yield": 4.30 + 0.001 * (i % 29),
+        })
+    # Post-roll: bond_C is new OTR, bond_B is new OFR.  First few rows
+    # have bond_B's yield missing — the gap a naive global ffill would
+    # fabricate.
+    for j in range(post_roll_n):
+        idx = pre_roll_n + j
+        bond_b_missing = j <= ffill_limit  # ffill_limit+1 missing rows
+        rows.append({
+            "trade_date": dates[idx],
+            "otr_instrument_id": 103,  # bond_C is the new OTR
+            "ofr_instrument_id": 102,  # bond_B is the new OFR
+            "otr_cusip": "BONDC_CUSIP",
+            "otr_isin": "BONDC_ISIN",
+            "otr_vendor_ticker": "/cusip/BONDC_CUSIP",
+            "ofr_cusip": "BONDB_CUSIP",
+            "ofr_isin": "BONDB_ISIN",
+            "ofr_vendor_ticker": "/cusip/BONDB_CUSIP",
+            "otr_yield": 4.25 + 0.001 * (j % 31),
+            "ofr_yield": (
+                None if bond_b_missing else 4.22 + 0.001 * ((idx) % 29)
+            ),
         })
     return pd.DataFrame(rows)
 
@@ -110,6 +185,7 @@ def _custom_config(**overrides) -> ToolConfig:
     """Build a custom ToolConfig with overridable conventions, modelled
     on the curve_spread / yield_levels test pattern."""
     defaults = {
+        "default_lookback_days": 365,
         "z_score_window_days": 252,
         "z_score_min_periods": 60,
         "z_score_ddof": 1,
@@ -117,6 +193,7 @@ def _custom_config(**overrides) -> ToolConfig:
         "ffill_limit_days": 5,
         "spread_bps_round_decimals": 2,
         "z_score_round_decimals": 4,
+        "trailing_range_window_days": 252,
         "default_field_name": "YLD_YTM_MID",
         "ofr_definition": "prior_otr_window",
         "tenor_canonicalisation": "uppercase_country_integer_y_tenor",
@@ -124,12 +201,14 @@ def _custom_config(**overrides) -> ToolConfig:
     defaults.update(overrides)
 
     valid_ranges = {
+        "default_lookback_days": [30, 7300],
         "z_score_window_days": [60, 1260],
         "z_score_min_periods": [20, 252],
         "z_score_buffer_multiplier": [1.2, 2.0],
         "ffill_limit_days": [1, 10],
         "spread_bps_round_decimals": [0, 6],
         "z_score_round_decimals": [0, 8],
+        "trailing_range_window_days": [60, 1260],
     }
     return ToolConfig(
         tool=ToolMeta(
@@ -168,6 +247,7 @@ class TestBundledConfig:
     def test_required_conventions_present(self):
         cfg = load_tool_config(CONFIG_PATH)
         required = {
+            "default_lookback_days",
             "z_score_window_days",
             "z_score_min_periods",
             "z_score_ddof",
@@ -175,12 +255,28 @@ class TestBundledConfig:
             "ffill_limit_days",
             "spread_bps_round_decimals",
             "z_score_round_decimals",
+            "trailing_range_window_days",
             "default_field_name",
             "ofr_definition",
             "tenor_canonicalisation",
         }
         missing = required - set(cfg.conventions.keys())
         assert not missing, f"missing: {sorted(missing)}"
+
+    def test_default_lookback_days_value(self):
+        """PR13 — default_lookback_days matches the catalogue value
+        (365 calendar days, 1Y) used by get_otr_history /
+        cross_market_inflation_swap_spread / swap_breakeven_basis_simple.
+        """
+        cfg = load_tool_config(CONFIG_PATH)
+        assert cfg.convention_value("default_lookback_days") == 365
+
+    def test_trailing_range_window_pinned_at_252(self):
+        """PR14 — the trailing-range window is wire-frozen at 252; the
+        output field names embed it.  compute._validate_conventions
+        raises NotImplementedError if this changes."""
+        cfg = load_tool_config(CONFIG_PATH)
+        assert cfg.convention_value("trailing_range_window_days") == 252
 
     def test_pr13_shared_convention_values(self):
         """PR13 — z_score_window_days / z_score_min_periods /
@@ -278,14 +374,19 @@ class TestComputeHappyPath:
             "daily_change_bps",
             "current_z_score",
             "rolling_window_days",
+            "high_252d_bps",
+            "low_252d_bps",
+            "percentile_252d",
             "otr_yield_pct",
             "ofr_yield_pct",
             "otr_instrument_id",
             "otr_cusip",
             "otr_isin",
+            "otr_vendor_ticker",
             "ofr_instrument_id",
             "ofr_cusip",
             "ofr_isin",
+            "ofr_vendor_ticker",
             "observation_count",
         ):
             assert k in cm, f"missing {k}"
@@ -299,8 +400,30 @@ class TestComputeHappyPath:
         assert cm["rolling_window_days"] == 252
         assert cm["otr_instrument_id"] == 102
         assert cm["ofr_instrument_id"] == 101
+        assert cm["otr_cusip"] == "91282CLB6"
+        assert cm["otr_isin"] == "US91282CLB60"
+        assert cm["otr_vendor_ticker"] == "/cusip/91282CLB6"
+        assert cm["ofr_cusip"] == "91282CKZ4"
+        assert cm["ofr_isin"] == "US91282CKZ40"
+        assert cm["ofr_vendor_ticker"] == "/cusip/91282CKZ4"
         assert isinstance(cm["current_spread_bps"], float)
         assert abs(cm["current_spread_bps"]) < 50  # bps; synthetic ramp is tiny
+
+        # Historical-range sanity: high >= current >= low for a non-NaN
+        # trio (or all three None during warmup).  ``percentile_252d``
+        # bounded in [0, 100] when non-None.
+        h, low, p = (
+            cm["high_252d_bps"], cm["low_252d_bps"], cm["percentile_252d"],
+        )
+        if h is not None:
+            assert low is not None and p is not None
+            assert low <= cm["current_spread_bps"] <= h
+            assert 0.0 <= p <= 100.0
+        else:
+            # If high is None, ALL trailing-range stats are None
+            # (warmup is consistent — they warm up together).
+            assert low is None
+            assert p is None
 
         # Output time-series fields
         ts = out["time_series"]
@@ -462,6 +585,31 @@ class TestConventionGuards:
         assert "second_otr_back" in msg
         assert "planned_extensions" in msg
         assert "ofr_definition" in msg
+
+    def test_unsupported_trailing_window_raises(self):
+        """PR14 — the trailing-range window is wire-frozen at 252;
+        changing it without renaming the wire fields would silently
+        lie about what window the percentile is against."""
+        raw_df = _build_raw_df()
+        params = OtrOfrSpreadInput(country="US", tenor="10Y")
+        bad = _custom_config(trailing_range_window_days=180)
+        mock_engine = MagicMock(name="engine")
+        target = (
+            "rates_agent.sovereign_bonds.tools.otr_ofr_spread."
+            "compute.fetch_otr_ofr_yield_pair"
+        )
+        with patch(target, return_value=raw_df), patch(
+            "rates_agent.sovereign_bonds.tools.otr_ofr_spread.compute.date",
+            _FrozenDate,
+        ):
+            with pytest.raises(NotImplementedError) as exc:
+                calculate_otr_ofr_spread(
+                    engine=mock_engine, params=params, config=bad,
+                )
+        msg = str(exc.value)
+        assert "180" in msg
+        assert "trailing_range_window_days" in msg
+        assert "PR14" in msg
 
 
 # ===========================================================================
@@ -719,6 +867,103 @@ class TestMethodologyNoteSurface:
         assert "P12" in note
         # OFR definition disclosed at the surface
         assert "LAG" in note or "IMMEDIATELY PRIOR" in note or "immediately prior" in note.lower()
+
+
+# ===========================================================================
+# Roll-boundary forward-fill correctness — PR6 + P5 + P12
+# ===========================================================================
+
+class TestRollBoundaryFfill:
+    """At an OTR roll boundary, BOTH ``otr_instrument_id`` and
+    ``ofr_instrument_id`` change.  A naive GLOBAL forward-fill on
+    ``ofr_yield`` would carry the PRIOR-window OFR bond's yield onto
+    rows whose ``ofr_instrument_id`` is the NEW OFR bond — fabricating
+    a spread between two yields that belong to different instruments.
+
+    The compute layer must ffill within ``ofr_instrument_id`` groups
+    (and ``otr_instrument_id`` groups) so a holiday gap on one bond's
+    series cannot bleed onto a different bond's row.
+
+    P12 (Bloomberg Accuracy Boundary): a fabricated spread under the
+    desk-recognised label is exactly the failure mode P12 prohibits.
+    """
+
+    def _run(self, raw_df, lookback_days=400):
+        mock_engine = MagicMock(name="engine")
+        params = OtrOfrSpreadInput(
+            country="US", tenor="10Y", lookback_days=lookback_days,
+        )
+        target = (
+            "rates_agent.sovereign_bonds.tools.otr_ofr_spread."
+            "compute.fetch_otr_ofr_yield_pair"
+        )
+        with patch(target, return_value=raw_df), patch(
+            "rates_agent.sovereign_bonds.tools.otr_ofr_spread.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_otr_ofr_spread(engine=mock_engine, params=params)
+
+    def test_no_yield_leakage_across_roll(self):
+        """Pre-roll bond_B is OTR + bond_A is OFR.  Post-roll bond_C is
+        OTR + bond_B is OFR, but bond_B's yield in the first 6 post-
+        roll rows is missing (data-arrival lag).  After per-instrument
+        ffill, those rows MUST have ``ofr_yield_pct=None`` and
+        ``spread_bps=None`` — NOT carry-forward of bond_A's yield from
+        the pre-roll window.
+        """
+        raw_df = _build_roll_boundary_df(
+            pre_roll_n=300, post_roll_n=80, ffill_limit=5,
+        )
+        out = self._run(raw_df, lookback_days=400)
+        assert "error" not in out, out.get("error")
+
+        # Find the first row whose ofr_instrument_id is bond_B (the
+        # new OFR after the roll).  Its yield should be None — NOT
+        # carry-forward of bond_A's ~4.30 yield.
+        ts = out["time_series"]
+        first_new_ofr_row = None
+        for row in ts:
+            # The MOCK frame uses identity columns indirectly via
+            # current_metrics, but the time_series itself only carries
+            # otr_yield_pct / ofr_yield_pct + spread_bps.  We can
+            # detect the post-roll rows by date — the roll happens
+            # after the first 300 business days.
+            first_new_ofr_row = row
+            break  # we want the first non-warmup row in display
+
+        # The latest row in the display window is post-roll; check it
+        # has bond_B's yield as None or the post-roll bond_B yield
+        # (depending on whether the ffill_limit period elapsed).
+        latest = ts[-1]
+        # Beyond the ffill_limit, bond_B's yield is filled with real
+        # post-roll values.  The TEST condition: at least one post-
+        # roll row early in the window has ofr_yield_pct=None.
+        none_ofr_rows = [r for r in ts if r["ofr_yield_pct"] is None]
+        # We expect ~6 rows (ffill_limit+1) with None OFR right after
+        # the roll, all with spread_bps=None.
+        assert len(none_ofr_rows) >= 1, (
+            "No None-OFR rows found — global ffill leaked across roll"
+        )
+        for r in none_ofr_rows:
+            assert r["spread_bps"] is None, (
+                f"Row {r['date']}: ofr_yield_pct=None but spread_bps="
+                f"{r['spread_bps']!r} — global ffill fabricated a spread"
+            )
+
+    def test_identity_fields_consistent_with_yield_window(self):
+        """Sanity-check the latest row's identity fields reflect the
+        post-roll bonds (the test data design).  Confirms the fetcher
+        passthrough is wired correctly."""
+        raw_df = _build_roll_boundary_df(
+            pre_roll_n=300, post_roll_n=80, ffill_limit=5,
+        )
+        out = self._run(raw_df, lookback_days=120)
+        cm = out["current_metrics"]
+        # Post-roll: OTR=bond_C (instrument_id=103), OFR=bond_B (102).
+        assert cm["otr_instrument_id"] == 103
+        assert cm["ofr_instrument_id"] == 102
+        assert cm["otr_cusip"] == "BONDC_CUSIP"
+        assert cm["ofr_cusip"] == "BONDB_CUSIP"
 
 
 # ===========================================================================

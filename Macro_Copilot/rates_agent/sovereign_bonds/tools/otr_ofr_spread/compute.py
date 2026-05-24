@@ -73,6 +73,15 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 # block documents the path to widening this.
 _SUPPORTED_OFR_DEFINITION: str = "prior_otr_window"
 
+# Per PR14: ``trailing_range_window_days`` is embedded into the
+# output field names (``high_252d_bps``, ``low_252d_bps``,
+# ``percentile_252d``).  Changing the YAML value without renaming the
+# wire fields would silently lie about what window the percentile is
+# computed against.  The guard fires at compute() entry so an editor
+# of config.yaml gets a clear error rather than a silently mislabelled
+# output.  Same pattern as yield_levels' ``_FROZEN_TRAILING_WINDOW``.
+_FROZEN_TRAILING_WINDOW: int = 252
+
 
 # Per PR10: methodology_note surfaces TD #27 at the user-facing layer.
 # Constant string (string literal, unchanged across calls); keeping it
@@ -123,6 +132,19 @@ def _validate_conventions(config: ToolConfig) -> None:
             f"{_SUPPORTED_OFR_DEFINITION!r}.  Either restore the value "
             f"or implement the new branch in "
             f"shared.analytics.rates_fetch.fetch_otr_ofr_yield_pair."
+        )
+
+    trailing = config.convention_value("trailing_range_window_days")
+    if trailing != _FROZEN_TRAILING_WINDOW:
+        raise NotImplementedError(
+            f"trailing_range_window_days={trailing!r} is documented in this "
+            f"tool's config.yaml as a future-supported value (see "
+            f"methodology.planned_extensions) but is not yet implemented.  "
+            f"V1 supports only {_FROZEN_TRAILING_WINDOW} because the output "
+            f"field names (high_252d_bps, low_252d_bps, percentile_252d) "
+            f"embed the window length.  Changing this without renaming the "
+            f"wire fields would silently lie about what window the "
+            f"percentile is computed against (PR14)."
         )
 
 
@@ -233,13 +255,10 @@ def calculate_otr_ofr_spread(
         }
 
     # ------------------------------------------------------------------
-    # 3. Build the wide-format display frame
+    # 3. Build the display frame
     # ------------------------------------------------------------------
-    # The raw frame has one row per trade_date with otr_yield and (
-    # nullable) ofr_yield columns.  Forward-fill each leg up to
-    # ffill_limit days INDEPENDENTLY so a holiday gap on one leg does
-    # not propagate to the other (matches curve_spread's per-leg ffill
-    # in pivot_and_align_tenors).
+    # The raw frame has one row per trade_date with the OTR and OFR
+    # bonds' identity + yield columns.  Coerce types and dedupe by date.
     df = raw_df.copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"])
     df["otr_yield"] = pd.to_numeric(df["otr_yield"], errors="coerce")
@@ -248,15 +267,32 @@ def calculate_otr_ofr_spread(
     df = df.drop_duplicates(subset=["trade_date"], keep="last")
     df = df.set_index("trade_date")
 
-    # Per-leg forward-fill across holiday gaps.  Rows where the OTR
-    # yield is missing AND cannot be ffilled within the limit are
-    # dropped (cannot compute a spread without the OTR leg).  Rows
-    # where only the OFR leg is missing keep otr_yield and emit
-    # spread=None — that's honest absence for the slot's first-ever
-    # window (no prior bond exists in history).
-    df["otr_yield"] = df["otr_yield"].ffill(limit=ffill_limit)
-    df["ofr_yield"] = df["ofr_yield"].ffill(limit=ffill_limit)
+    # ---- Per-instrument forward-fill (roll-boundary correctness) ----
+    # Bridging up to ffill_limit days of holiday gaps WITHIN a single
+    # bond's coverage is desk-honest; bridging ACROSS a roll boundary
+    # would carry the prior bond's yield onto a row whose
+    # ``ofr_instrument_id`` (or ``otr_instrument_id``) is a different
+    # bond and that fabricates a spread.  Grouping the ffill by the
+    # row's identifier blocks that leakage so each bond's series is
+    # bridged in isolation.
+    #
+    # ``dropna=False`` keeps the LAG-is-NULL rows (the slot's first-
+    # ever observed window where ``ofr_instrument_id`` is None)
+    # grouped together, ffilling within the None-id group — which is
+    # a no-op because those rows have ofr_yield=None anyway.
+    df["otr_yield"] = df.groupby("otr_instrument_id", dropna=False)[
+        "otr_yield"
+    ].transform(lambda s: s.ffill(limit=ffill_limit))
+    df["ofr_yield"] = df.groupby("ofr_instrument_id", dropna=False)[
+        "ofr_yield"
+    ].transform(lambda s: s.ffill(limit=ffill_limit))
 
+    # Drop rows where the OTR leg is still missing after per-instrument
+    # ffill (cannot compute a spread without the OTR leg).  Rows where
+    # only the OFR leg is missing keep otr_yield and emit spread=None
+    # — that's honest absence for the slot's first-ever window (no
+    # prior bond exists in history) or for an OFR-bond holiday that
+    # exceeded ffill_limit.
     df = df.dropna(subset=["otr_yield"])
 
     if df.empty:
@@ -271,7 +307,7 @@ def calculate_otr_ofr_spread(
         }
 
     # ------------------------------------------------------------------
-    # 4. Compute spread_bps and rolling z-score
+    # 4. Compute spread_bps, rolling z-score, trailing-range stats
     # ------------------------------------------------------------------
     # spread_bps = (otr - ofr) * 100, rounded per convention.  Rows
     # where ofr_yield is None emit spread=None (Series subtraction
@@ -287,6 +323,30 @@ def calculate_otr_ofr_spread(
         min_periods=z_min_periods,
         ddof=z_ddof,
         round_decimals=zscore_round,
+    )
+
+    # Trailing-range stats: rolling max / min / percentile-rank over
+    # the trailing _FROZEN_TRAILING_WINDOW (252) trading days.  Window
+    # length is wire-frozen in the output field names per PR14; the
+    # convention guard above ensures the YAML can't drift the window
+    # without renaming the wire fields.  ``min_periods`` reuses
+    # z_score_min_periods so all three trailing stats warm up together
+    # — a row that has a z-score has high/low/percentile too, and a
+    # row in z-score warmup has those as None.
+    rolling = df["spread_bps"].rolling(
+        window=_FROZEN_TRAILING_WINDOW, min_periods=z_min_periods,
+    )
+    df["high_252d_bps"] = rolling.max().round(spread_round)
+    df["low_252d_bps"] = rolling.min().round(spread_round)
+    # Percentile rank — position of the current spread within the
+    # trailing range, in [0, 100].  Uses pandas' rolling-rank where
+    # available; falls back to a manual computation for compatibility.
+    df["percentile_252d"] = (
+        rolling.apply(
+            lambda s: _percentile_rank(s),
+            raw=True,
+        )
+        .round(2)
     )
 
     # ------------------------------------------------------------------
@@ -337,14 +397,19 @@ def calculate_otr_ofr_spread(
         daily_change_bps=daily_change,
         current_z_score=safe_float(latest.get("z_score")),
         rolling_window_days=z_window,
+        high_252d_bps=safe_float(latest.get("high_252d_bps")),
+        low_252d_bps=safe_float(latest.get("low_252d_bps")),
+        percentile_252d=safe_float(latest.get("percentile_252d"), decimals=2),
         otr_yield_pct=safe_float(latest.get("otr_yield")),
         ofr_yield_pct=safe_float(latest.get("ofr_yield")),
         otr_instrument_id=_optional_int(latest.get("otr_instrument_id")),
-        otr_cusip=None,  # CUSIP/ISIN identity is sourced separately if needed
-        otr_isin=None,   # — V1 surfaces only instrument_id; identity-string
+        otr_cusip=_str_or_none(latest.get("otr_cusip")),
+        otr_isin=_str_or_none(latest.get("otr_isin")),
+        otr_vendor_ticker=_str_or_none(latest.get("otr_vendor_ticker")),
         ofr_instrument_id=_optional_int(latest.get("ofr_instrument_id")),
-        ofr_cusip=None,  # lookup is a documented planned_extension (see YAML).
-        ofr_isin=None,
+        ofr_cusip=_str_or_none(latest.get("ofr_cusip")),
+        ofr_isin=_str_or_none(latest.get("ofr_isin")),
+        ofr_vendor_ticker=_str_or_none(latest.get("ofr_vendor_ticker")),
         observation_count=len(display_df),
     )
 
@@ -485,3 +550,49 @@ def _optional_int(value: Any) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _str_or_none(value: Any) -> Optional[str]:
+    """Coerce nullable identifier-string columns (CUSIP, ISIN,
+    vendor_ticker) to ``Optional[str]``.  Empty strings and NaN are
+    coerced to None — they reach the primitive only if instrument_master
+    has a malformed row, and the right shape on the wire is honest
+    absence.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = str(value).strip()
+    return s if s else None
+
+
+def _percentile_rank(window_values) -> float:
+    """Return the percentile rank of the LAST value in ``window_values``
+    within the trailing window, in ``[0.0, 100.0]``.
+
+    Computed as ``rank(last) / count`` × 100 with ties counted as
+    "at-or-below" — matching pandas' default ``method='average'``
+    behaviour but anchored at the trailing-window's last element.
+    NaN entries are excluded from both the rank and the count so a
+    short warmup window does not artificially compress the rank.
+
+    Returns ``nan`` when the window has fewer than 2 non-NaN values
+    (rank is undefined).  ``rolling().apply`` honours min_periods so
+    this branch fires only on degenerate windows where the spread is
+    None for almost every row.
+    """
+    import numpy as np
+    valid = window_values[~np.isnan(window_values)]
+    if len(valid) < 2:
+        return float("nan")
+    current = window_values[-1]
+    if np.isnan(current):
+        return float("nan")
+    # at-or-below count (inclusive of current) gives the canonical
+    # percentile-rank in [0, 100].
+    at_or_below = int((valid <= current).sum())
+    return 100.0 * at_or_below / len(valid)

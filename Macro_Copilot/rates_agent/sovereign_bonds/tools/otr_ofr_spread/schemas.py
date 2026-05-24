@@ -42,11 +42,14 @@ Validation layering
 PR14 — wire-format honesty
 --------------------------
 ``rolling_window_days: int`` is included in ``current_metrics`` to
-echo the z-score window used.  No output field name embeds the
-window length (no ``high_252d_bps``-style methodology-encoded names),
-so no NotImplementedError guard is needed on the z-score window
-convention.  If a future field name embeds the window, add the guard
-and update planned_extensions.
+echo the z-score window used.  The trailing-range fields
+``high_252d_bps`` / ``low_252d_bps`` / ``percentile_252d`` embed the
+trailing-range window (252 trading days) in their identifiers;
+``compute._validate_conventions`` raises NotImplementedError if the
+``trailing_range_window_days`` YAML convention is set to anything
+other than 252, so the wire field names cannot lie about what window
+they reflect.  Same wire-frozen pattern yield_levels uses for its
+trailing-range fields.
 """
 
 from __future__ import annotations
@@ -70,6 +73,30 @@ _TENOR_PATTERN = re.compile(r"^[1-9][0-9]*Y$")
 _COUNTRY_PATTERN = re.compile(r"^[A-Z]{2,3}$")
 
 
+def _bundled_default_lookback_days() -> int:
+    """Read the default lookback from the bundled ``config.yaml``.
+
+    Looked up lazily inside the field-default factory so circular-
+    import risk is zero (the schema doesn't import compute or
+    ToolConfig at module-load time; only the factory path touches
+    them).  Cached by the underlying ``load_tool_config`` so this is
+    a one-time cost.
+
+    Raises loudly when ``config.yaml`` cannot be loaded or the
+    ``default_lookback_days`` convention is missing — per P6 (no
+    silent failure) and P10 (single source of truth).  Same lazy-
+    lookup pattern as get_otr_history's schemas.py.
+    """
+    # Local imports to avoid a top-of-module cycle through compute.
+    from rates_agent.sovereign_bonds.tools.otr_ofr_spread.compute import (
+        CONFIG_PATH,
+    )
+    from shared.config import load_tool_config
+
+    cfg = load_tool_config(CONFIG_PATH)
+    return int(cfg.convention_value("default_lookback_days"))
+
+
 class OtrOfrSpreadInput(BaseModel):
     """Parameters the LLM extracts to query a single OTR/OFR slot."""
 
@@ -90,12 +117,15 @@ class OtrOfrSpreadInput(BaseModel):
         ),
     )
     lookback_days: int = Field(
-        default=365,
+        default_factory=_bundled_default_lookback_days,
         ge=30,
         le=7300,
         description=(
             "Calendar days of displayed history in the time_series "
-            "output.  Defaults to 365 (1 year).  The z-score rolling "
+            "output.  The bundled default is read from config.yaml's "
+            "``default_lookback_days`` convention (currently 365 — 1Y "
+            "calendar window; aligns with the existing catalogue value "
+            "for this shared key per PR13).  The z-score rolling "
             "window is always a fixed 252 trading days regardless of "
             "this value (config convention z_score_window_days)."
         ),
@@ -230,6 +260,44 @@ class OtrOfrSpreadCurrentMetrics(BaseModel):
         ),
     )
 
+    # ---------------------------------------------------------------
+    # Trailing-range stats (252 trading days) — historical-range
+    # disclosure required by the primitive brief.  Window length is
+    # embedded in the field names per PR14; the underlying convention
+    # ``trailing_range_window_days`` is wire-frozen at 252 via a
+    # NotImplementedError guard in compute._validate_conventions.
+    # Same wire-frozen pattern as yield_levels' high_252d_pct /
+    # low_252d_pct / percentile_252d fields.
+    # ---------------------------------------------------------------
+    high_252d_bps: Optional[float] = Field(
+        None,
+        description=(
+            "Highest OTR/OFR spread (in bps) observed over the "
+            "trailing 252 trading days at the as_of_date.  None when "
+            "the trailing window has fewer than the convention's "
+            "``z_score_min_periods`` valid spread observations (same "
+            "warmup gate as the z-score, so all three trailing stats "
+            "warm up together)."
+        ),
+    )
+    low_252d_bps: Optional[float] = Field(
+        None,
+        description=(
+            "Lowest OTR/OFR spread (in bps) observed over the trailing "
+            "252 trading days at the as_of_date.  Same warmup gate as "
+            "high_252d_bps."
+        ),
+    )
+    percentile_252d: Optional[float] = Field(
+        None,
+        description=(
+            "Percentile rank of the current OTR/OFR spread within its "
+            "own trailing 252-trading-day range, expressed in [0, 100].  "
+            "0 = at-or-below the trailing-window low; 100 = at-or-above "
+            "the trailing-window high.  None during warmup."
+        ),
+    )
+
     otr_yield_pct: Optional[float] = Field(
         None,
         description="Yield of the OTR bond at the as_of_date, in percent.",
@@ -252,27 +320,50 @@ class OtrOfrSpreadCurrentMetrics(BaseModel):
     )
     otr_cusip: Optional[str] = Field(
         None,
-        description="CUSIP of the OTR bond (NULL for non-US sovereigns).",
+        description=(
+            "CUSIP of the OTR bond at the as_of_date (NULL for "
+            "non-US sovereigns whose instrument_master row carries "
+            "ISIN only — see ADR 0003)."
+        ),
     )
     otr_isin: Optional[str] = Field(
         None,
-        description="ISIN of the OTR bond.",
+        description="ISIN of the OTR bond at the as_of_date.",
+    )
+    otr_vendor_ticker: Optional[str] = Field(
+        None,
+        description=(
+            "Canonical vendor_ticker of the OTR bond at the "
+            "as_of_date — e.g. ``/cusip/91282CKZ4`` or "
+            "``/isin/DE0001102648``."
+        ),
     )
 
     ofr_instrument_id: Optional[int] = Field(
         None,
         description=(
             "FK into macro_data.instrument_master for the OFR bond at "
-            "the as_of_date.  None when no prior SCD2 window exists."
+            "the as_of_date.  None when no prior SCD2 window exists "
+            "(slot's first-ever observed window)."
         ),
     )
     ofr_cusip: Optional[str] = Field(
         None,
-        description="CUSIP of the OFR bond (NULL for non-US sovereigns).",
+        description=(
+            "CUSIP of the OFR bond at the as_of_date.  None when no "
+            "prior SCD2 window exists, or the prior bond has NULL "
+            "CUSIP (non-US sovereigns)."
+        ),
     )
     ofr_isin: Optional[str] = Field(
         None,
-        description="ISIN of the OFR bond.",
+        description="ISIN of the OFR bond at the as_of_date.",
+    )
+    ofr_vendor_ticker: Optional[str] = Field(
+        None,
+        description=(
+            "Canonical vendor_ticker of the OFR bond at the as_of_date."
+        ),
     )
 
     observation_count: int = Field(

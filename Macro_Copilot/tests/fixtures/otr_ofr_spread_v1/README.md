@@ -16,13 +16,13 @@ shipped here lock in the primitive's output shape + numeric content
 for known inputs, so any future code change that breaks the snapshot
 contract fails the parity test loudly.
 
-## v1 fixture provenance — synthetic, not live-DB
+## v1 fixture provenance — SYNTHETIC, not live-DB (debt — not the intended end-state)
 
 The shipped v1 fixtures carry `capture.capture_method = "synthetic_v1"`.
 The `raw_rows` are NOT from a live-DB capture; they are deterministic
 synthetic OTR/OFR yield pairs designed to exercise:
 
-- the happy-path z-score warmup at full lookback (`us_10y_365d`);
+- the happy-path z-score + trailing-range warmup at full lookback (`us_10y_365d`);
 - the LAG=None branch where the slot's first observed window has no
   prior bond (`de_10y_180d_first_window`);
 - the empty-result honest-absence error envelope
@@ -30,10 +30,35 @@ synthetic OTR/OFR yield pairs designed to exercise:
 
 The `expected_output` was produced by running the primitive itself
 against those rows under a frozen wall-clock date (2026-05-22).  This
-is honest disclosure (P5) — these fixtures lock in regression
-behaviour but are **not** captured production output.
+is **honest disclosure (P5)** — these fixtures lock in regression
+behaviour but are **NOT captured production output**.
 
-**Why synthetic and not live-DB?**
+### ⚠️ Codex review (2026-05-22): PR15 stricter reading
+
+A reviewer flagged that PR15 reads literally as "every primitive ships
+with a parity fixture that **captures real production output**" —
+making synthetic fixtures non-conformant with the rule as written.
+The synthetic-fixture pattern shipped here is **inherited debt** from
+`get_otr_history`-v1 (PR #185, merged 2026-05-24), not a new precedent
+this primitive is establishing.  The honest position:
+
+- **Strict PR15 reading**: synthetic fixtures fail PR15 today; the
+  primitive should defer until live-DB capture is possible (AC8
+  stop-and-ask).
+- **Inherited-precedent reading**: `get_otr_history`-v1 shipped
+  synthetic with the same provenance disclosure and was approved,
+  so the pattern is operative; PR15 is being remediated incrementally
+  as the resolver fills the live DB.
+
+The mission instructions explicitly named this as the binding rule;
+the existing primitive 1 establishes the pattern; this primitive
+follows the pattern with the **same explicit P5 disclosure** so the
+synthetic vs live-DB distinction is loud, not hidden.  The path to
+live-DB replacement is unblocked the moment the resolver populates
+otr_history for the canonical regression slots; `_capture.py` is
+ready to run, and the parity test is agnostic to fixture provenance.
+
+### Why synthetic and not live-DB?
 
 Two blockers force the synthetic shape at v1 land:
 
@@ -43,12 +68,12 @@ Two blockers force the synthetic shape at v1 land:
    limited OTR data for the canonical regression slots.
 2. The cash-bond playbook (`sovereign_cash_bonds.yml`, ADR 0005) is
    itself rolling out, so per-CUSIP `YLD_YTM_MID` rows may not yet
-   cover the full 252-day rolling window for every slot the resolver
-   knows about.
+   cover the full 252-day rolling window (which the new trailing-
+   range stats also need) for every slot the resolver knows about.
 
 A captured fixture against the partly-populated DB would either be
-empty or carry incomplete z-score warmup — neither shape locks in
-useful regression behaviour.
+empty or carry incomplete z-score / trailing-range warmup — neither
+shape locks in useful regression behaviour.
 
 **Path to live-DB replacement.**  Once `otr_history` AND
 `market_data_daily` have full coverage for the canonical slots, the

@@ -71,14 +71,19 @@ def _well_formed_otr_ofr_output() -> dict:
             "daily_change_bps": -0.5,
             "current_z_score": -1.2,
             "rolling_window_days": 252,
+            "high_252d_bps": 1.5,
+            "low_252d_bps": -4.5,
+            "percentile_252d": 20.0,
             "otr_yield_pct": 4.25,
             "ofr_yield_pct": 4.2825,
             "otr_instrument_id": 102,
-            "otr_cusip": None,
-            "otr_isin": None,
+            "otr_cusip": "91282CLB6",
+            "otr_isin": "US91282CLB60",
+            "otr_vendor_ticker": "/cusip/91282CLB6",
             "ofr_instrument_id": 101,
-            "ofr_cusip": None,
-            "ofr_isin": None,
+            "ofr_cusip": "91282CKZ4",
+            "ofr_isin": "US91282CKZ40",
+            "ofr_vendor_ticker": "/cusip/91282CKZ4",
             "observation_count": 180,
         },
         "time_series": [
@@ -168,21 +173,21 @@ class TestMcpOtrOfrSpreadToolWiring:
 
     def test_default_lookback_days_matches_yaml(self):
         """The MCP wrapper's Python default for ``lookback_days`` MUST
-        match the YAML's documented default (365).  Same shadowing
-        anti-pattern the curve_move_classifier wrapper hit (b2605ee)."""
+        match the YAML's ``default_lookback_days`` convention so the
+        two layers don't disagree (PR7 + P10).  Same shadowing anti-
+        pattern the curve_move_classifier wrapper hit (b2605ee)."""
         from rates_agent.sovereign_bonds import mcp_server as mcp_module
+        from shared.config import load_tool_config
         import inspect
 
         sig = inspect.signature(mcp_module.calculate_otr_ofr_spread_tool)
         wrapper_default = sig.parameters["lookback_days"].default
-        # The YAML's Pydantic-default is 365; the wrapper must echo it.
-        from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
-            OtrOfrSpreadInput,
+        yaml_default = load_tool_config(OTR_OFR_SPREAD_CONFIG_PATH).convention_value(
+            "default_lookback_days"
         )
-        pydantic_default = OtrOfrSpreadInput.model_fields["lookback_days"].default
-        assert wrapper_default == pydantic_default, (
-            f"MCP wrapper default ({wrapper_default}) shadows Pydantic "
-            f"default ({pydantic_default}); align the wrapper or the schema."
+        assert wrapper_default == yaml_default, (
+            f"MCP wrapper default ({wrapper_default}) shadows YAML "
+            f"default ({yaml_default}); align the wrapper or the YAML."
         )
 
     def test_empty_field_name_sentinel_resolves_to_none(self):

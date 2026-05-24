@@ -186,15 +186,22 @@ def _sha256_hex(payload: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_IDENTITY_COLS = (
+    "otr_cusip", "otr_isin", "otr_vendor_ticker",
+    "ofr_cusip", "ofr_isin", "ofr_vendor_ticker",
+)
+
+
 def _replay_rows_to_df(raw_rows: list[dict]) -> pd.DataFrame:
     """Coerce the JSON-serialised rows back to the DataFrame shape the
     primitive's fetch_otr_ofr_yield_pair returns: ``date`` objects for
     ``trade_date``, ``int`` (nullable) for FK columns, ``float`` for
-    the yield columns.  ``None`` preserved for nullable columns.
+    the yield columns, ``str`` (nullable) for identity columns.
+    ``None`` preserved for nullable columns.
     """
     coerced = []
     for r in raw_rows:
-        coerced.append({
+        row = {
             "trade_date": date.fromisoformat(r["trade_date"]),
             "otr_instrument_id": int(r["otr_instrument_id"]),
             "ofr_instrument_id": (
@@ -209,7 +216,10 @@ def _replay_rows_to_df(raw_rows: list[dict]) -> pd.DataFrame:
                 float(r["ofr_yield"])
                 if r["ofr_yield"] is not None else None
             ),
-        })
+        }
+        for col in _IDENTITY_COLS:
+            row[col] = r.get(col)
+        coerced.append(row)
     return pd.DataFrame(coerced)
 
 

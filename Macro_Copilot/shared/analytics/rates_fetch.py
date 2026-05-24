@@ -656,6 +656,14 @@ def fetch_otr_transitions(
 # the desk-concept "OFR = the bond that was OTR immediately prior" is
 # defined in exactly one place (P10 — single source of truth).
 
+# NOTE on bind syntax: SQLAlchemy's text() bind regex is
+# ``(?<![:\w\x5c]):(\w+)(?!:)`` — the negative-lookahead ``(?!:)``
+# excludes ``:name::cast`` patterns from bind recognition.  Using
+# ``CAST(:window_start AS DATE)`` instead of ``:window_start::date``
+# is required for the binds to be substituted; the ``::``-shortcut
+# form is silently passed through to psycopg2 verbatim and PostgreSQL
+# raises a syntax error.  See the SQLAlchemy source for
+# ``TextClause._bind_params_regex`` if confirming.
 _FETCH_OTR_OFR_YIELD_PAIR_SQL = text(
     """
     WITH slot_windows AS (
@@ -689,6 +697,12 @@ _FETCH_OTR_OFR_YIELD_PAIR_SQL = text(
         d_otr.trade_date,
         dr.otr_instrument_id,
         dr.ofr_instrument_id,
+        i_otr.cusip          AS otr_cusip,
+        i_otr.isin           AS otr_isin,
+        i_otr.vendor_ticker  AS otr_vendor_ticker,
+        i_ofr.cusip          AS ofr_cusip,
+        i_ofr.isin           AS ofr_isin,
+        i_ofr.vendor_ticker  AS ofr_vendor_ticker,
         d_otr.field_value AS otr_yield,
         d_ofr.field_value AS ofr_yield
     FROM date_resolved dr
@@ -696,8 +710,12 @@ _FETCH_OTR_OFR_YIELD_PAIR_SQL = text(
       ON d_otr.instrument_id = dr.otr_instrument_id
      AND d_otr.field_name    = :field_name
      AND d_otr.trade_date BETWEEN
-         GREATEST(dr.window_effective_from, :window_start::date)
-         AND LEAST(dr.window_effective_to, :window_end::date)
+         GREATEST(dr.window_effective_from, CAST(:window_start AS DATE))
+         AND LEAST(dr.window_effective_to, CAST(:window_end AS DATE))
+    JOIN macro_data.instrument_master i_otr
+      ON i_otr.instrument_id = dr.otr_instrument_id
+    LEFT JOIN macro_data.instrument_master i_ofr
+      ON i_ofr.instrument_id = dr.ofr_instrument_id
     LEFT JOIN macro_data.market_data_daily d_ofr
       ON d_ofr.instrument_id = dr.ofr_instrument_id
      AND d_ofr.field_name    = :field_name
@@ -747,7 +765,16 @@ def fetch_otr_ofr_yield_pair(
     -------
     pd.DataFrame with columns
     ``['trade_date', 'otr_instrument_id', 'ofr_instrument_id',
+       'otr_cusip', 'otr_isin', 'otr_vendor_ticker',
+       'ofr_cusip', 'ofr_isin', 'ofr_vendor_ticker',
        'otr_yield', 'ofr_yield']``.
+
+    The CUSIP/ISIN/vendor_ticker columns come from
+    ``macro_data.instrument_master``; OFR identity columns are
+    ``None`` on the slot's first observed window (LAG is NULL — no
+    prior bond exists in history) and on rows where the OFR bond's
+    instrument_master row has NULL CUSIP/ISIN (non-US sovereigns
+    typically carry ISIN only).
 
     Empty DataFrame when no OTR window overlaps the lookback (honest
     absence per P6 — the pre-resolver-deployment shape documented in

@@ -68,6 +68,28 @@ tool:
 conventions:
 
   # ---------------------------------------------------------------------------
+  # Display window — default length the LLM-facing lookback_days
+  # input defaults to when the caller does not supply one.
+  # ---------------------------------------------------------------------------
+  # 365 calendar days = 1Y display window.  Matches the existing
+  # catalogue value of ``default_lookback_days`` (cross_market_inflation_swap_spread,
+  # swap_breakeven_basis_simple, get_otr_history) so PR13 cross-config
+  # consistency stays green.  The Pydantic-default factory on
+  # OtrOfrSpreadInput reads this value at schema-instantiation time so
+  # editing the YAML here actually changes the runtime default
+  # (P10 — single source of truth).
+  default_lookback_days:
+    value: 365
+    source: industry_standard_1y_window
+    rationale: >-
+      Calendar-day count for a 1-year rolling display window.  Same
+      shared-key value as get_otr_history / cross_market_inflation_swap_spread
+      / swap_breakeven_basis_simple — PR13 keeps the lint green.  This
+      controls only the *display* window; the z-score and trailing-
+      range windows are separate, 252-trading-day conventions.
+    valid_range: [30, 7300]
+
+  # ---------------------------------------------------------------------------
   # Z-score window length (trading days)
   # ---------------------------------------------------------------------------
   # 252-day trading-year rolling z-score, matching the rest of the rates
@@ -163,6 +185,30 @@ conventions:
       decimals are noise given the underlying yield precision.  Same as
       curve_spread.
     valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Trailing-range window (high / low / percentile) — wire-frozen at 252
+  # ---------------------------------------------------------------------------
+  # The output schema's field names ``high_252d_bps``, ``low_252d_bps``,
+  # ``percentile_252d`` embed the trailing-range window in their
+  # identifiers.  Changing this YAML value without renaming the wire
+  # fields would silently lie about what window the percentile is
+  # against.  compute._validate_conventions raises NotImplementedError
+  # if this is anything other than 252; methodology.planned_extensions
+  # documents the path to a configurable trailing window (schema
+  # migration + frontend update + parity fixture regen — PR14).
+  # Same convention shape as yield_levels.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for the trailing range (high / low /
+      percentile).  Embedded into the output field names per PR14;
+      compute layer guards against drift with NotImplementedError.
+      252 matches yield_levels / butterfly's trailing-range
+      convention so the spread's range stats are interpretable next
+      to yield-level range stats on the same desk dashboard.
+    valid_range: [60, 1260]
 
   # ---------------------------------------------------------------------------
   # Yield field name (default)
@@ -311,3 +357,11 @@ methodology:
       OFR — useful for very-recent-roll RV) or maturity-cohort
       grouping.  Compute layer guards with NotImplementedError today;
       widening adds a second SQL branch keyed on the convention value.
+    - >-
+      trailing_range_window_days: widen beyond 252 (the value embedded
+      into ``high_252d_bps`` / ``low_252d_bps`` / ``percentile_252d``
+      field names per PR14).  Path to configurability requires a
+      schema migration (rename the wire fields), a frontend update,
+      and parity-fixture regeneration; compute._validate_conventions
+      raises NotImplementedError if the value is changed without that
+      coordinated migration.
