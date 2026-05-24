@@ -38,6 +38,17 @@
 #   way INFLATION_LAG can. It is logged as technical debt
 #   (docs/technical_debt.md item #25) and added in a later work order — to be
 #   sourced from each debt office's index-linked-bond prospectus.
+#
+#   CONSEQUENCE for downstream primitives: the planned
+#   "linker_carry_with_seasonals" primitive (originally scoped as primitive 7
+#   of the easy-win batch) cannot honestly ship until BOTH (1) the seasonal-
+#   factors gap above and (2) TD #25's interpolation rule are closed.  The
+#   degraded "monthly-index-only, no interpolation, no seasonality" version
+#   would be a P12 / PR6 proxy violation and is explicitly rejected.  See
+#   docs/technical_debt.md §32 for the three-gap analysis (this playbook
+#   contributes blockers 2 and 3; blocker 1 is on inflation_indexed_bonds.yml).
+#   The downstream "carry_adjusted_breakeven" primitive (primitive 8) is
+#   transitively blocked via PR9 composition — docs/technical_debt.md §33.
 # ----------------------------------------------------------------------------
 #
 # `release_event_type` IS present — it is not vendor metadata, it is an
