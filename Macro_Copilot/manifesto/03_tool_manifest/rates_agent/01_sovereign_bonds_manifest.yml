@@ -122,6 +122,66 @@ tools:
       validate (TD #27a — forward-only) and are run against the live DB by
       the project operator.
 
+  - name: calculate_otr_ofr_spread
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_otr_ofr_spread_tool
+      schema: rates_agent/sovereign_bonds/tools/otr_ofr_spread/schemas.py::OtrOfrSpreadInput
+      compute: rates_agent/sovereign_bonds/tools/otr_ofr_spread/compute.py::calculate_otr_ofr_spread
+      config: rates_agent/sovereign_bonds/tools/otr_ofr_spread/config.yaml
+
+    one_liner: >-
+      Basis-point yield spread between the on-the-run (OTR) bond and the
+      first-off-the-run (OFR) bond for one (country, tenor) sovereign
+      cash-bond slot — the desk-standard rich-cheap / liquidity-premium
+      signal — plus its 252-trading-day rolling z-score and full
+      chartable time series.  Resolves OTR/OFR per trade-date from
+      macro_data.otr_history (ADR 0003) and pulls per-bond YLD_YTM_MID
+      from macro_data.market_data_daily; no Bloomberg-computed quantity
+      is recomputed (P12).
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored daily cash-bond yields,
+      with the OTR/OFR pair resolution sourced from the otr_history
+      SCD2 substrate (ADR 0007's resolver).  The methodology lives in
+      config.yaml; deterministic mode exposes no LLM-facing override
+      path for it.  No model inference, no scenario generation.
+      Categorical convention (ofr_definition) wire-frozen at the
+      compute layer until methodology.planned_extensions widens it.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_otr_history_tool
+      - calculate_curve_spread_tool
+      - get_yield_levels_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0003-cash-bond-substrate.md
+      - docs_revamped/05_decisions/0005-cash-bond-playbook-universe.md
+      - docs_revamped/05_decisions/0007-otr-resolver.md
+      - docs/technical_debt.md  # TD #27 — forward-only + detection-date
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.  SQL-validation
+      runner ships in tests/test_otr_ofr_spread_sql_validation.py and runs
+      against the live macro_data.otr_history + macro_data.market_data_daily
+      stack; parity fixture capture script ships in
+      tests/fixtures/otr_ofr_spread_v1/_capture.py.  Both require the
+      resolver to have populated otr_history AND sovereign_cash_bonds.yml
+      to have ingested per-CUSIP yields before they can validate (TD #27a
+      — forward-only) and are run against the live DB by the project
+      operator.
+
   # ---------------------------------------------------------------------------
   # CURVE SHAPE / SPREADS
   # ---------------------------------------------------------------------------

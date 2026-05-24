@@ -88,6 +88,12 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     YieldLevelOutput,
     get_yield_levels,
 )
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    OtrOfrSpreadOutput,
+    calculate_otr_ofr_spread,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -400,6 +406,17 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=YIELD_LEVELS_CONFIG_PATH,
         output_field_units={
             "time_series": "percent",
+        },
+    ),
+    "calculate_otr_ofr_spread_tool": PrimitiveSpec(
+        tool_name="calculate_otr_ofr_spread_tool",
+        callable=calculate_otr_ofr_spread,
+        input_class=OtrOfrSpreadInput,
+        output_class=OtrOfrSpreadOutput,
+        config_path=OTR_OFR_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
         },
     ),
 

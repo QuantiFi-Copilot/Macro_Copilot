@@ -101,6 +101,11 @@ from rates_agent.sovereign_bonds.tools.get_otr_history import (  # noqa: E402
     OtrHistoryInput,
     get_otr_history,
 )
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (  # noqa: E402
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    calculate_otr_ofr_spread,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -388,6 +393,100 @@ def get_otr_history_tool(
         )
 
     logger.info("Tool call complete: get_otr_history %s %s → %s",
+                params.country, params.tenor,
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 2c: calculate_otr_ofr_spread
+# ===========================================================================
+@mcp.tool()
+def calculate_otr_ofr_spread_tool(
+    country: str,
+    tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Calculate the OTR/OFR yield spread (on-the-run minus first-off-
+    the-run) for one (country, tenor) sovereign cash-bond slot, plus
+    its 1-year rolling z-score.
+
+    Use this tool when the user asks about:
+    - The on-the-run / off-the-run rich-cheap spread for a sovereign
+      slot (e.g. "what's the US 10Y OTR/OFR spread?")
+    - Auction-roll dynamics, OTR liquidity premium
+      (e.g. "how rich is the 10Y OTR vs the bond it displaced?")
+    - The historical z-score of the OTR/OFR spread
+      (e.g. "is the US 10Y OTR/OFR cheap vs its own history?")
+
+    Do NOT use this for the curve spread between two tenors (use
+    calculate_curve_spread_tool) or for the OTR transition LOG (use
+    get_otr_history_tool — this primitive answers "what's the
+    spread?", that one answers "which bonds were OTR when?").
+
+    Parameters
+    ----------
+    country : str
+        Sovereign country code.  Convention: uppercase ISO-3166-alpha-2
+        (e.g. 'US', 'DE', 'GB', 'JP', 'FR', 'IT', 'ES').
+    tenor : str
+        Canonical slot tenor.  Convention: integer-Y matching
+        sovereign_cash_bonds.yml ('2Y', '3Y', '5Y', '7Y', '10Y',
+        '20Y', '30Y').
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365 — 1 year).
+        The z-score rolling window is always a fixed 252 trading days
+        regardless of this value (config convention).
+    field_name : str, optional
+        Bloomberg field mnemonic for the cash-bond yield.  Empty
+        string is the wire-level sentinel meaning "use YAML default
+        (YLD_YTM_MID)".  See OtrOfrSpreadInput docstring for the
+        sentinel-to-None translation pattern.
+    """
+    # Translate the empty-string wire sentinel → None so the YAML
+    # default_field_name convention applies.  Same pattern as
+    # calculate_cross_market_spread_tool / curve_move_classifier
+    # (commit b2605ee).
+    resolved_field_name = field_name if field_name else None
+
+    try:
+        params = OtrOfrSpreadInput(
+            country=country,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=resolved_field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        otr_ofr_config = load_tool_config(OTR_OFR_SPREAD_CONFIG_PATH)
+        result = calculate_otr_ofr_spread(
+            engine=engine, params=params, config=otr_ofr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_otr_ofr_spread for %s %s",
+            params.country, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"OTR/OFR spread calculation failed for {params.country} "
+                      f"{params.tenor}: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: calculate_otr_ofr_spread %s %s → %s",
                 params.country, params.tenor,
                 "error" if "error" in result else "OK")
 

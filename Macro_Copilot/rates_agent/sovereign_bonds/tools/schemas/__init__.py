@@ -95,6 +95,16 @@ from rates_agent.sovereign_bonds.tools.get_otr_history.schemas import (
     OtrHistoryOutput,
 )
 
+# OTR/OFR spread — desk-recognised rich-cheap signal built on the
+# cash-bond substrate.  Bridge-composable (Series shape, snapshot +
+# canonical TimeSeries).  See otr_ofr_spread/schemas.py docstring.
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread.schemas import (
+    OtrOfrSpreadInput,
+    OtrOfrSpreadCurrentMetrics,
+    OtrOfrSpreadTimeSeriesRow,
+    OtrOfrSpreadOutput,
+)
+
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
     "YieldLevelInput", "YieldLevelMetrics", "YieldLevelOutput",
@@ -103,4 +113,5 @@ __all__ = [
     "CurveMoveInput", "CurveMoveCurrentMetrics", "CurveMoveOutput",
     "ScannerInput", "ScannerResultRow", "ScannerOutput",
     "OtrHistoryInput", "OtrHistoryCurrentMetrics", "OtrHistoryTransitionRow", "OtrHistoryOutput",
+    "OtrOfrSpreadInput", "OtrOfrSpreadCurrentMetrics", "OtrOfrSpreadTimeSeriesRow", "OtrOfrSpreadOutput",
 ]
