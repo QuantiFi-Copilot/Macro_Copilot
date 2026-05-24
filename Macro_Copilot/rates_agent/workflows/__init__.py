@@ -94,6 +94,12 @@ from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
     OtrOfrSpreadOutput,
     calculate_otr_ofr_spread,
 )
+from rates_agent.sovereign_bonds.tools.nfp_surprise import (
+    CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
+    NfpSurpriseInput,
+    NfpSurpriseOutput,
+    calculate_nfp_surprise,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -874,6 +880,23 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # Surprise is in PERCENT (percentage points of YoY CPI —
             # actual − consensus_median); z-score is unitless.
             "time_series_surprise": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_nfp_surprise_tool": PrimitiveSpec(
+        tool_name="calculate_nfp_surprise_tool",
+        callable=calculate_nfp_surprise,
+        input_class=NfpSurpriseInput,
+        output_class=NfpSurpriseOutput,
+        config_path=NFP_SURPRISE_CONFIG_PATH,
+        output_field_units={
+            # Surprise is in COUNT — thousands of jobs (NFP TCH Index
+            # convention).  The closed-enum closest match for an
+            # integer-count delta.  The TimeSeries description field
+            # carries the explicit 'thousands of jobs' label so
+            # downstream consumers do not infer the unit from the
+            # series_name.
+            "time_series_surprise": "count",
             "time_series_zscore": "z_score",
         },
     ),

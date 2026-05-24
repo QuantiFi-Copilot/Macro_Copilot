@@ -62,6 +62,7 @@ collect_ignore = [
     "test_get_otr_history_sql_validation.py",
     "test_otr_ofr_spread_sql_validation.py",
     "test_cpi_surprise_sql_validation.py",
+    "test_nfp_surprise_sql_validation.py",
     "test_real_yield_level_sql_validation.py",
     "test_breakeven_inflation_simple_sql_validation.py",
     "test_forward_breakeven_simple_sql_validation.py",

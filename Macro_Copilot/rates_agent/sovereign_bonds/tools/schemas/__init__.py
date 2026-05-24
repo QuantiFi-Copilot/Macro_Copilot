@@ -105,6 +105,17 @@ from rates_agent.sovereign_bonds.tools.otr_ofr_spread.schemas import (
     OtrOfrSpreadOutput,
 )
 
+# US NFP surprise (per-release actual − consensus_median + rolling
+# release-window z-score) — front-end Treasury desk concept.
+# Bridge-composable (snapshot + canonical TimeSeries).  See
+# nfp_surprise/schemas.py docstring.
+from rates_agent.sovereign_bonds.tools.nfp_surprise.schemas import (
+    NfpSurpriseInput,
+    NfpSurpriseCurrentMetrics,
+    NfpSurpriseTimeSeriesRow,
+    NfpSurpriseOutput,
+)
+
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
     "YieldLevelInput", "YieldLevelMetrics", "YieldLevelOutput",
@@ -114,4 +125,5 @@ __all__ = [
     "ScannerInput", "ScannerResultRow", "ScannerOutput",
     "OtrHistoryInput", "OtrHistoryCurrentMetrics", "OtrHistoryTransitionRow", "OtrHistoryOutput",
     "OtrOfrSpreadInput", "OtrOfrSpreadCurrentMetrics", "OtrOfrSpreadTimeSeriesRow", "OtrOfrSpreadOutput",
+    "NfpSurpriseInput", "NfpSurpriseCurrentMetrics", "NfpSurpriseTimeSeriesRow", "NfpSurpriseOutput",
 ]

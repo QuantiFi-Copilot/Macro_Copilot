@@ -183,6 +183,76 @@ tools:
       operator.
 
   # ---------------------------------------------------------------------------
+  # ECONOMIC-RELEASE SURPRISES (front-end macro reads)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_nfp_surprise
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: economic_release_surprises
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_nfp_surprise_tool
+      schema: rates_agent/sovereign_bonds/tools/nfp_surprise/schemas.py::NfpSurpriseInput
+      compute: rates_agent/sovereign_bonds/tools/nfp_surprise/compute.py::calculate_nfp_surprise
+      config: rates_agent/sovereign_bonds/tools/nfp_surprise/config.yaml
+
+    one_liner: >-
+      Per-release US nonfarm-payrolls (NFP) surprise series
+      (actual − consensus_median, in THOUSANDS of jobs) plus a
+      rolling z-score over a window of N RELEASES (NOT calendar
+      days).  Surprise is computed at the primitive layer per
+      ADR 0008 §2's P12 disclosure (event_calendar.surprise is
+      intentionally NULL by ingestion; Bloomberg ECO screen
+      reports the same number).  US-only, event_type=nfp — both
+      country and event_type are YAML-locked, no LLM-facing
+      instrument selector.  Lives under sovereign_bonds because
+      NFP is the macro print most directly read into the
+      2s/5s/10s front-end Treasury curve.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored event_calendar rows.
+      The methodology lives in config.yaml; deterministic mode
+      exposes no LLM-facing override path for it.  No model
+      inference, no scenario generation.  Categorical convention
+      (surprise_formula) wire-frozen at the compute layer until
+      methodology.planned_extensions widens it.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_cpi_surprise_tool
+      - get_yield_levels_tool
+      - calculate_curve_spread_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0004-event-calendar-substrate.md
+      - docs_revamped/05_decisions/0008-event-playbook-contract.md
+      - rates_agent/playbooks/economic_releases.yml
+      - docs/technical_debt.md  # TD #28 — D-econ release-date window limit
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.
+      Live-DB SQL validation green (single case: US — the only
+      country for this US-only primitive).  Parity fixtures
+      shipped at v1 land are live-DB captures
+      (capture_method = live_db_v1) — strict PR15 compliance
+      from day one (mirroring cpi_surprise's post-Codex-review
+      approach).  One synthetic v1 edge-case fixture
+      (empty_pre_extractor.json) pins the error-envelope shape
+      that the live DB cannot reproduce now that the US slot has
+      realised data.  Re-capture script ships at
+      tests/fixtures/nfp_surprise_v1/_capture.py for when the
+      event extractor's coverage advances (TD #28b history
+      backfill).
+
+  # ---------------------------------------------------------------------------
   # CURVE SHAPE / SPREADS
   # ---------------------------------------------------------------------------
 
