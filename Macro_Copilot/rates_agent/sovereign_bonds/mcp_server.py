@@ -106,6 +106,11 @@ from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (  # noqa: E402
     OtrOfrSpreadInput,
     calculate_otr_ofr_spread,
 )
+from rates_agent.sovereign_bonds.tools.nfp_surprise import (  # noqa: E402
+    CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
+    NfpSurpriseInput,
+    calculate_nfp_surprise,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -1744,6 +1749,89 @@ def calculate_breakeven_inflation_tool(
         "methodology_disclosures": result.get("methodology_disclosures", []),
     }
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: calculate_nfp_surprise
+# ===========================================================================
+@mcp.tool()
+def calculate_nfp_surprise_tool(
+    lookback_releases: int = 24,
+) -> str:
+    """Compute the per-release US NFP (nonfarm payrolls) surprise
+    series + rolling release-window z-score.
+
+    Surprise = ``actual − consensus_median`` per release (in
+    THOUSANDS of jobs) — the exact identity ADR 0008 §2 designates
+    as the primitive layer's P12-disclosed computation
+    (event_calendar.surprise is intentionally NULL by ingestion).
+
+    Use this tool when the user asks about:
+    - US NFP surprises ("what was the latest NFP surprise?")
+    - Headline-print history around NFP ("how big were the last 6
+      US payrolls surprises?")
+    - NFP-surprise z-score / standardisation ("is this print
+      surprisingly high vs the last 2 years?")
+    - Pre-/post-FOMC read-throughs (NFP is the front-end Treasury
+      curve's most-watched macro print)
+
+    Do NOT use this tool for:
+    - CPI surprises — use ``calculate_cpi_surprise_tool``
+      (event_type=cpi_yoy or hicp_yoy, inflation_swaps sub-agent).
+    - REVISIONS of prior NFP surprises — the well-known NFP caveat
+      (BLS revises the prior-month actual at the next release;
+      revision-adjusted surprise is a documented planned extension).
+    - Other US payroll-adjacent prints (ADP, ECI, JOLTs) — those
+      would be separate primitives (no other event_type currently
+      ingested).
+    - Non-US payroll equivalents — NFP is US-only; no comparable
+      series ships from ECB / BoE / BoJ regions.
+
+    Parameters
+    ----------
+    lookback_releases : int, optional
+        Number of realised releases of trailing history to display
+        (default 24 ≈ 2 years at monthly NFP cadence).  DISPLAY
+        WINDOW ONLY — not a methodology choice.  The rolling
+        z-score window is always fixed at ``release_z_window``
+        realised releases (24 by default), independent of this
+        parameter — same display-vs-z-window separation as
+        cpi_surprise / curve_spread / yield_levels.
+    """
+    try:
+        params = NfpSurpriseInput(lookback_releases=lookback_releases)
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        cfg = load_tool_config(NFP_SURPRISE_CONFIG_PATH)
+        result = calculate_nfp_surprise(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_nfp_surprise")
+        return json.dumps(
+            {"error": f"NFP surprise calculation failed: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: calculate_nfp_surprise → %s",
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

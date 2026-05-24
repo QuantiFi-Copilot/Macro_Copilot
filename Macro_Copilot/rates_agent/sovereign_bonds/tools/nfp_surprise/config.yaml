@@ -1,0 +1,338 @@
+# =============================================================================
+# calculate_nfp_surprise_tool — tool configuration
+# =============================================================================
+# Canonical record of conventions + methodology for the NFP-surprise
+# primitive (US nonfarm payrolls — the macro print most directly read
+# into the 2s/5s/10s front-end Treasury curve, which is why this
+# primitive lives under sovereign_bonds per PR3).
+#
+# Desk concept
+# ------------
+# For the US nonfarm-payrolls release series, the NFP surprise is the
+# per-release identity ``actual − consensus_median`` (in THOUSANDS of
+# jobs), plus a rolling z-score computed over the trailing N RELEASES
+# (NOT calendar days — releases happen monthly).
+#
+# Same shape as cpi_surprise but pinned to event_type=nfp / country=US:
+# single-country, single-event.  Per the brief, no LLM-facing knob
+# beyond the display window — both ``country`` and ``event_type`` are
+# YAML-locked here.  Reuses the
+# ``shared.analytics.events_fetch.fetch_economic_release_surprises``
+# helper built for cpi_surprise (PR4 parsimony at the substrate
+# layer).
+#
+# Data sources
+# ------------
+# - macro_data.event_calendar (ADR 0004) populated by
+#   rates_agent/playbooks/economic_releases.yml (ADR 0008) for
+#   event_type=nfp, country=US.  Bloomberg ticker "NFP TCH Index"
+#   ("Nonfarm Payrolls Total Change") reported in thousands of jobs.
+# - Typed columns ``actual`` + ``consensus_median`` are the load-
+#   bearing surprise inputs; ``surprise`` is INTENTIONALLY NULL on
+#   ingestion (ADR 0008 §2) and is the exact identity this primitive
+#   computes downstream WITH disclosure (P12).
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  Conventions are YAML-locked.  See
+# docs_revamped/02_components/primitive/README.md (PR7).
+# =============================================================================
+
+tool:
+  name: calculate_nfp_surprise_tool
+  domain: sovereign_bonds
+  description: |
+    Per-release US nonfarm payrolls (NFP) surprise series
+    (actual − consensus_median, in THOUSANDS of jobs) plus a
+    rolling z-score over the trailing N RELEASES.
+
+    Surprise is the exact identity ``actual − consensus_median``
+    computed on the wire here per ADR 0008 §2's P12 disclosure —
+    NOT a Bloomberg-supplied surprise field (the ingestion layer
+    intentionally leaves ``event_calendar.surprise`` NULL so the
+    primitive carries the identity).
+
+    Returns ``current_metrics`` (most-recent realised release's
+    surprise + z + actual + consensus_median + period +
+    release_date), ``time_series`` (chronological list of realised
+    releases with their surprise / z-score / actual /
+    consensus_median), ``time_series_surprise`` and
+    ``time_series_zscore`` (canonical TimeSeries shapes for the
+    primitive-to-operator bridge), and ``methodology_note``
+    (the well-known prior-month revisions caveat + the surprise-
+    identity disclosure + TD #28b release-date-window scope).
+
+    Honest absence per P5 + P6: when no realised release falls in
+    the requested window the response is an error envelope naming
+    the missing data — NEVER a fabricated surprise.  When a release
+    exists but Bloomberg has no consensus survey for it (which has
+    not happened for NFP historically but the wire shape supports
+    it for forward-compatibility), the row's surprise is None
+    rather than a fabricated zero.
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Display window — default number of releases the time-series shows
+  # ---------------------------------------------------------------------------
+  # 24 releases at monthly cadence ≈ 2 years of history — same shared-
+  # value convention as cpi_surprise's default_lookback_releases.
+  # PR13 cross-config consistency keys on the name; sharing the value
+  # keeps the lint green.
+  default_lookback_releases:
+    value: 24
+    source: team_judgment_pending_review
+    rationale: >-
+      24 releases ≈ 2Y at monthly NFP cadence.  Same value as
+      cpi_surprise's ``default_lookback_releases`` — PR13 cross-config
+      consistency keys on this shared name.  The brief explicitly
+      recommends 24 releases.  This primitive's LLM-facing
+      ``lookback_releases`` input defaults to this value via the
+      lazy-factory pattern; per-query overrides are honoured.
+    valid_range: [4, 200]
+
+  # ---------------------------------------------------------------------------
+  # Z-score window — number of RELEASES (NOT days)
+  # ---------------------------------------------------------------------------
+  # Same convention name AND value as cpi_surprise per PR13 — both
+  # surprise primitives use the same 24-release rolling-z window.
+  # The lint enforces equality across every primitive that declares
+  # ``release_z_window``.
+  release_z_window:
+    value: 24
+    source: industry_standard_release_window
+    rationale: >-
+      24 trailing realised releases ≈ 2 years of monthly NFP
+      observations.  Matches the canonical surprise-index z-score
+      convention used by Citi Economic Surprise / Bloomberg
+      Economic Surprise indices on monthly cadence.  Same shared
+      value as cpi_surprise.release_z_window — PR13 keeps the
+      lint green.
+    valid_range: [6, 60]
+
+  # ---------------------------------------------------------------------------
+  # Minimum realised releases before the rolling z-score is emitted
+  # ---------------------------------------------------------------------------
+  release_z_min_periods:
+    value: 6
+    source: team_judgment_pending_review
+    rationale: >-
+      6 realised releases ≈ 6 months of NFP history before the rolling
+      z-score is emitted.  Same value as cpi_surprise — PR13.
+    valid_range: [3, 24]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  release_z_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).  Matches
+      pandas' default and the industry convention.  Same value as
+      cpi_surprise and every other catalog rolling-z primitive.
+
+  # ---------------------------------------------------------------------------
+  # Calendar buffer for the fetch window (in DAYS) per release
+  # ---------------------------------------------------------------------------
+  release_fetch_buffer_days_per_release:
+    value: 35
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer per release added to the fetch window so
+      the rolling z-score is fully populated from the first
+      displayed release.  35 calendar days ≈ 30-day cadence + ~5d
+      holiday slip per release cycle.  Same value as cpi_surprise.
+    valid_range: [25, 45]
+
+  # ---------------------------------------------------------------------------
+  # Surprise formula — wire-frozen identity
+  # ---------------------------------------------------------------------------
+  surprise_formula:
+    value: actual_minus_consensus_median
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      Per ADR 0008 §2, the canonical surprise is the exact identity
+      actual − consensus_median.  The ingestion layer leaves
+      ``event_calendar.surprise`` NULL by design so the primitive
+      carries the P12-disclosed identity computation.  Categorical
+      convention wire-frozen at the compute layer until
+      methodology.planned_extensions widens it to support
+      standardised surprise (surprise / surprise_std_dev) or
+      revision-adjusted surprise.
+
+  # ---------------------------------------------------------------------------
+  # event_type — wire-locked to ``nfp``
+  # ---------------------------------------------------------------------------
+  # Per the brief: "single-country single-event.  If you find you need
+  # a knob, reconsider whether this is a primitive (PR5)."  event_type
+  # is therefore YAML-locked, not an LLM-facing input.  Adding another
+  # event_type would be a different primitive.
+  event_type:
+    value: nfp
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      Pinned to the ``event_type`` value stored in
+      macro_data.event_calendar for US nonfarm payrolls (per
+      rates_agent/playbooks/economic_releases.yml, Bloomberg ticker
+      "NFP TCH Index").  Wire-frozen — adding a different event_type
+      would be a different primitive (PR5 concept novelty).
+
+  # ---------------------------------------------------------------------------
+  # country — wire-locked to ``US``
+  # ---------------------------------------------------------------------------
+  # Same brief logic: NFP is US-only.  Wire-locked here for the same
+  # reason event_type is.  Other countries don't publish a directly
+  # comparable nonfarm payrolls series — Eurozone publishes
+  # unemployment / labour-market indicators on a different cadence and
+  # with different methodology.
+  country:
+    value: US
+    source: adr_0008_event_playbook_contract
+    rationale: >-
+      US-only.  The NFP TCH Index is a US Bureau of Labor Statistics
+      publication; there is no directly comparable nonfarm-payrolls
+      series in other regions.  Wire-frozen — adding another country
+      would require a different ticker / methodology / publication
+      cadence and would be a different primitive.
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — surprise (thousands of jobs)
+  # ---------------------------------------------------------------------------
+  # NFP TCH Index is reported in thousands of jobs (e.g. 200 = 200,000
+  # jobs).  Bloomberg / desk quotes the surprise to the nearest 1k
+  # (i.e. one whole thousand jobs).  Rounding to 0 decimals matches.
+  surprise_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Round NFP surprise to whole thousands of jobs (0 decimals).
+      Matches Bloomberg's ECO screen and desk quoting convention —
+      NFP surprises are quoted to the nearest 1k (e.g.
+      "+50k surprise").  CPI surprise rounds to 4 decimals of
+      percent because CPI YoY is reported in percentage points
+      (a different unit); NFP is reported in thousands of jobs
+      directly.
+    valid_range: [0, 3]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  release_z_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round z-score output to 4 decimals.  Display precision; further
+      decimals are noise given the underlying surprise precision.
+      Same value as cpi_surprise — PR13.
+    valid_range: [0, 8]
+
+methodology:
+  what_it_does: |
+    For the US nonfarm-payrolls release series:
+
+      1. Fetches every event_calendar row for
+         (event_type='nfp', country='US') in a calendar window large
+         enough to populate the rolling z-score warmup at the start
+         of the display window — via
+         ``shared.analytics.events_fetch.fetch_economic_release_surprises``.
+      2. Drops scheduled-placeholder rows (actual IS NULL) so only
+         realised releases contribute to the surprise series.
+      3. Computes ``surprise = actual − consensus_median`` per row,
+         rounded to the nearest 1k jobs.  Rows where
+         consensus_median is NULL (no survey — would not normally
+         happen for NFP but the wire shape supports it for
+         forward-compatibility) emit surprise=None — NOT a
+         fabricated zero.
+      4. Computes a rolling z-score over the trailing
+         ``release_z_window`` realised releases with
+         min_periods = ``release_z_min_periods``.  Releases inside
+         the warmup emit z_score=None.
+      5. Trims the series to the most-recent ``lookback_releases``
+         realised releases and surfaces:
+            - ``current_metrics``: latest realised release's
+              surprise + z + actual + consensus_median + period +
+              release_date.
+            - ``time_series``: bespoke wire shape for the frontend.
+            - ``time_series_surprise`` (units = COUNT) +
+              ``time_series_zscore`` (units = Z_SCORE) — canonical
+              TimeSeries shapes consumed by the upcoming
+              primitive-to-operator bridge.
+            - ``methodology_note``: surfaces ADR 0008's P12
+              disclosure + the well-known PRIOR-MONTH-REVISIONS
+              caveat + TD #28b release-date-window scope.
+
+  assumptions:
+    - "macro_data.event_calendar is populated by the event extractor
+       per ADR 0008.  Release-date window is bounded by Bloomberg's
+       ECO_RELEASE_DT_LIST surface (~1.5 years history + forward
+       scheduled — TD #28b / ADR 0008 §6).  Coverage pre-dating that
+       window is honest absence."
+    - "Surprise is the exact identity actual − consensus_median per
+       release, in thousands of jobs.  The ingestion layer
+       intentionally leaves event_calendar.surprise NULL (ADR 0008 §2)
+       so the identity is computed here at the primitive layer with
+       the P12 disclosure on the wire."
+    - "actual and consensus_median are stored in the same units
+       (thousands of jobs — Bloomberg's NFP TCH Index convention),
+       so the subtraction is a clean identity, NOT a unit-converted
+       derived field."
+    - "Scheduled-placeholder rows (actual IS NULL — release in the
+       future, or print not yet ingested) are dropped before the
+       surprise series is constructed."
+    - "PRIOR-MONTH REVISIONS — the well-known NFP caveat.  Each NFP
+       release re-states the prior month's actual via
+       ``revised_prior``; these revisions can be material (sometimes
+       larger than the headline surprise itself).  This primitive's
+       series carries the AS-RELEASED surprise — it does NOT
+       retroactively adjust prior surprise outputs when a revision
+       arrives.  The revision-adjusted view is a documented
+       follow-up under methodology.planned_extensions."
+    - "User-input lookback_releases controls *display* window; the
+       z-score window is fixed at release_z_window=24 regardless."
+
+  citations:
+    - "docs_revamped/05_decisions/0004-event-calendar-substrate.md
+       (event_calendar table + typed surprise-input columns)."
+    - "docs_revamped/05_decisions/0008-event-playbook-contract.md §2
+       (P12 disclosure: surprise is the exact identity
+       actual − consensus_median, computed by the primitive layer)."
+    - "rates_agent/playbooks/economic_releases.yml (NFP ingestion
+       for US under event_type=nfp, Bloomberg ticker 'NFP TCH Index')."
+    - "docs/technical_debt.md #28 / ADR 0008 §6 (D-econ v1
+       release-date window limit)."
+
+  planned_extensions:
+    - >-
+      Revision-adjusted NFP surprise — the desk-acknowledged caveat
+      this primitive does NOT close.  When a release publishes a
+      ``revised_prior`` that differs from the previous realised
+      release's ``actual``, the prior month's surprise can be
+      revised retroactively
+      (``revised_prior − consensus_median_of_prior``).  Today's
+      series is the AS-RELEASED surprise — NOT revision-adjusted.
+      A sibling primitive ``nfp_revision_surprise`` (or a method
+      enum if PR2 cohesion still holds) would surface the
+      revision-adjusted view alongside the as-released series.
+      The NFP-revisions issue is more material here than for CPI
+      because BLS payrolls revisions can themselves be tradeable
+      events.
+    - >-
+      Standardised surprise (z by survey dispersion).  The
+      ``surprise_std_dev`` column on event_calendar is the
+      *forecast* standard deviation of the survey at the time of
+      release — standardising ``surprise / surprise_std_dev``
+      produces a per-release "z-by-survey" complementing the
+      rolling-window z-score returned here.
+    - >-
+      surprise_formula: widen to support alternative definitions
+      (e.g. ``actual_minus_consensus_mean``, ``actual_minus_prior``).
+      Compute layer guards with NotImplementedError today; widening
+      adds a second branch keyed on the convention value.
+    - >-
+      D-econ deep history backfill (ADR 0008 §6 / TD #28b).
+      Today's release-date window is bounded by Bloomberg's
+      ECO_RELEASE_DT_LIST recent-past-plus-forward surface
+      (~1.5 years).  A backfill source would extend the historical
+      reach; no schema change in this primitive.

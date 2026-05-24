@@ -1,0 +1,582 @@
+{
+  "fixture_name": "us_nfp_16releases",
+  "tool_module": "rates_agent.sovereign_bonds.tools.nfp_surprise",
+  "tool_function": "calculate_nfp_surprise",
+  "capture": {
+    "captured_at": "2026-05-24T16:05:34Z",
+    "capture_method": "live_db_v1",
+    "database_name": "macrodata",
+    "frozen_today": "2026-05-24",
+    "raw_rows_count": 16,
+    "raw_rows_sha256": "4535220cb01d65d3e5309f3b4c27df935da1540b6171ee341a1a60e8ca3b43e7"
+  },
+  "input": {
+    "params": {
+      "lookback_releases": 16
+    },
+    "frozen_today": "2026-05-24",
+    "raw_rows": [
+      {
+        "event_id": 112,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-01-10",
+        "release_time": null,
+        "period": "2024-12-31",
+        "actual": 237.0,
+        "consensus_median": 165.0,
+        "consensus_high": 268.0,
+        "consensus_low": 100.0,
+        "prior": 134.0,
+        "revised_prior": null,
+        "surprise_std_dev": 26.0
+      },
+      {
+        "event_id": 113,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-02-07",
+        "release_time": null,
+        "period": "2025-01-31",
+        "actual": -48.0,
+        "consensus_median": 175.0,
+        "consensus_high": 240.0,
+        "consensus_low": 105.0,
+        "prior": 237.0,
+        "revised_prior": null,
+        "surprise_std_dev": 30.0
+      },
+      {
+        "event_id": 114,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-03-07",
+        "release_time": null,
+        "period": "2025-02-28",
+        "actual": 42.0,
+        "consensus_median": 160.0,
+        "consensus_high": 300.0,
+        "consensus_low": 30.0,
+        "prior": -48.0,
+        "revised_prior": null,
+        "surprise_std_dev": 34.0
+      },
+      {
+        "event_id": 115,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-04-04",
+        "release_time": null,
+        "period": "2025-03-31",
+        "actual": 67.0,
+        "consensus_median": 140.0,
+        "consensus_high": 200.0,
+        "consensus_low": 80.0,
+        "prior": 42.0,
+        "revised_prior": null,
+        "surprise_std_dev": 25.0
+      },
+      {
+        "event_id": 116,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-05-02",
+        "release_time": null,
+        "period": "2025-04-30",
+        "actual": 108.0,
+        "consensus_median": 138.0,
+        "consensus_high": 171.0,
+        "consensus_low": 50.0,
+        "prior": 67.0,
+        "revised_prior": null,
+        "surprise_std_dev": 27.0
+      },
+      {
+        "event_id": 117,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-06-06",
+        "release_time": null,
+        "period": "2025-05-31",
+        "actual": 13.0,
+        "consensus_median": 126.0,
+        "consensus_high": 190.0,
+        "consensus_low": 75.0,
+        "prior": 108.0,
+        "revised_prior": null,
+        "surprise_std_dev": 22.0
+      },
+      {
+        "event_id": 118,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-07-03",
+        "release_time": null,
+        "period": "2025-06-30",
+        "actual": -20.0,
+        "consensus_median": 106.0,
+        "consensus_high": 160.0,
+        "consensus_low": 70.0,
+        "prior": 13.0,
+        "revised_prior": null,
+        "surprise_std_dev": 18.0
+      },
+      {
+        "event_id": 119,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-08-01",
+        "release_time": null,
+        "period": "2025-07-31",
+        "actual": 64.0,
+        "consensus_median": 105.0,
+        "consensus_high": 170.0,
+        "consensus_low": 0.0,
+        "prior": -20.0,
+        "revised_prior": null,
+        "surprise_std_dev": 26.0
+      },
+      {
+        "event_id": 120,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-09-05",
+        "release_time": null,
+        "period": "2025-08-31",
+        "actual": -70.0,
+        "consensus_median": 75.0,
+        "consensus_high": 144.0,
+        "consensus_low": 0.0,
+        "prior": 64.0,
+        "revised_prior": null,
+        "surprise_std_dev": 20.0
+      },
+      {
+        "event_id": 121,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-11-20",
+        "release_time": null,
+        "period": "2025-10-31",
+        "actual": -140.0,
+        "consensus_median": -25.0,
+        "consensus_high": 93.0,
+        "consensus_low": -100.0,
+        "prior": 76.0,
+        "revised_prior": null,
+        "surprise_std_dev": 51.0
+      },
+      {
+        "event_id": 122,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2025-12-16",
+        "release_time": null,
+        "period": "2025-11-30",
+        "actual": 41.0,
+        "consensus_median": 50.0,
+        "consensus_high": 130.0,
+        "consensus_low": -20.0,
+        "prior": -140.0,
+        "revised_prior": null,
+        "surprise_std_dev": 30.0
+      },
+      {
+        "event_id": 123,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2026-01-09",
+        "release_time": null,
+        "period": "2025-12-31",
+        "actual": -17.0,
+        "consensus_median": 70.0,
+        "consensus_high": 155.0,
+        "consensus_low": 23.0,
+        "prior": 41.0,
+        "revised_prior": null,
+        "surprise_std_dev": 26.0
+      },
+      {
+        "event_id": 124,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2026-02-11",
+        "release_time": null,
+        "period": "2026-01-31",
+        "actual": 160.0,
+        "consensus_median": 65.0,
+        "consensus_high": 135.0,
+        "consensus_low": -10.0,
+        "prior": -17.0,
+        "revised_prior": null,
+        "surprise_std_dev": 26.0
+      },
+      {
+        "event_id": 125,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2026-03-06",
+        "release_time": null,
+        "period": "2026-02-28",
+        "actual": -156.0,
+        "consensus_median": 55.0,
+        "consensus_high": 113.0,
+        "consensus_low": -9.0,
+        "prior": 160.0,
+        "revised_prior": null,
+        "surprise_std_dev": 24.0
+      },
+      {
+        "event_id": 126,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2026-04-03",
+        "release_time": null,
+        "period": "2026-03-31",
+        "actual": 185.0,
+        "consensus_median": 65.0,
+        "consensus_high": 151.0,
+        "consensus_low": -16.0,
+        "prior": -156.0,
+        "revised_prior": null,
+        "surprise_std_dev": 27.0
+      },
+      {
+        "event_id": 127,
+        "event_type": "nfp",
+        "event_category": "economic_release",
+        "country": "US",
+        "currency": "USD",
+        "release_date": "2026-05-08",
+        "release_time": null,
+        "period": "2026-04-30",
+        "actual": 115.0,
+        "consensus_median": 65.0,
+        "consensus_high": 133.0,
+        "consensus_low": -15.0,
+        "prior": 185.0,
+        "revised_prior": null,
+        "surprise_std_dev": 30.0
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "release_date": "2026-05-08",
+      "country": "US",
+      "event_type": "nfp",
+      "period": "2026-04-30",
+      "surprise_label": "US NFP surprise",
+      "current_surprise_k_jobs": 50.0,
+      "current_z_score": 1.0586,
+      "release_z_window_releases": 24,
+      "current_actual_k_jobs": 115.0,
+      "current_consensus_median_k_jobs": 65.0,
+      "current_prior_k_jobs": 185.0,
+      "observation_count": 16
+    },
+    "time_series": [
+      {
+        "date": "2025-01-10",
+        "period": "2024-12-31",
+        "surprise_k_jobs": 72.0,
+        "z_score": null,
+        "actual_k_jobs": 237.0,
+        "consensus_median_k_jobs": 165.0
+      },
+      {
+        "date": "2025-02-07",
+        "period": "2025-01-31",
+        "surprise_k_jobs": -223.0,
+        "z_score": null,
+        "actual_k_jobs": -48.0,
+        "consensus_median_k_jobs": 175.0
+      },
+      {
+        "date": "2025-03-07",
+        "period": "2025-02-28",
+        "surprise_k_jobs": -118.0,
+        "z_score": null,
+        "actual_k_jobs": 42.0,
+        "consensus_median_k_jobs": 160.0
+      },
+      {
+        "date": "2025-04-04",
+        "period": "2025-03-31",
+        "surprise_k_jobs": -73.0,
+        "z_score": null,
+        "actual_k_jobs": 67.0,
+        "consensus_median_k_jobs": 140.0
+      },
+      {
+        "date": "2025-05-02",
+        "period": "2025-04-30",
+        "surprise_k_jobs": -30.0,
+        "z_score": null,
+        "actual_k_jobs": 108.0,
+        "consensus_median_k_jobs": 138.0
+      },
+      {
+        "date": "2025-06-06",
+        "period": "2025-05-31",
+        "surprise_k_jobs": -113.0,
+        "z_score": -0.3262,
+        "actual_k_jobs": 13.0,
+        "consensus_median_k_jobs": 126.0
+      },
+      {
+        "date": "2025-07-03",
+        "period": "2025-06-30",
+        "surprise_k_jobs": -126.0,
+        "z_score": -0.4225,
+        "actual_k_jobs": -20.0,
+        "consensus_median_k_jobs": 106.0
+      },
+      {
+        "date": "2025-08-01",
+        "period": "2025-07-31",
+        "surprise_k_jobs": -41.0,
+        "z_score": 0.4688,
+        "actual_k_jobs": 64.0,
+        "consensus_median_k_jobs": 105.0
+      },
+      {
+        "date": "2025-09-05",
+        "period": "2025-08-31",
+        "surprise_k_jobs": -145.0,
+        "z_score": -0.6756,
+        "actual_k_jobs": -70.0,
+        "consensus_median_k_jobs": 75.0
+      },
+      {
+        "date": "2025-11-20",
+        "period": "2025-10-31",
+        "surprise_k_jobs": -115.0,
+        "z_score": -0.3005,
+        "actual_k_jobs": -140.0,
+        "consensus_median_k_jobs": -25.0
+      },
+      {
+        "date": "2025-12-16",
+        "period": "2025-11-30",
+        "surprise_k_jobs": -9.0,
+        "z_score": 0.9444,
+        "actual_k_jobs": 41.0,
+        "consensus_median_k_jobs": 50.0
+      },
+      {
+        "date": "2026-01-09",
+        "period": "2025-12-31",
+        "surprise_k_jobs": -87.0,
+        "z_score": -0.0398,
+        "actual_k_jobs": -17.0,
+        "consensus_median_k_jobs": 70.0
+      },
+      {
+        "date": "2026-02-11",
+        "period": "2026-01-31",
+        "surprise_k_jobs": 95.0,
+        "z_score": 1.8851,
+        "actual_k_jobs": 160.0,
+        "consensus_median_k_jobs": 65.0
+      },
+      {
+        "date": "2026-03-06",
+        "period": "2026-02-28",
+        "surprise_k_jobs": -211.0,
+        "z_score": -1.4172,
+        "actual_k_jobs": -156.0,
+        "consensus_median_k_jobs": 55.0
+      },
+      {
+        "date": "2026-04-03",
+        "period": "2026-03-31",
+        "surprise_k_jobs": 120.0,
+        "z_score": 1.8179,
+        "actual_k_jobs": 185.0,
+        "consensus_median_k_jobs": 65.0
+      },
+      {
+        "date": "2026-05-08",
+        "period": "2026-04-30",
+        "surprise_k_jobs": 50.0,
+        "z_score": 1.0586,
+        "actual_k_jobs": 115.0,
+        "consensus_median_k_jobs": 65.0
+      }
+    ],
+    "time_series_surprise": {
+      "series_name": "us_nfp_surprise",
+      "units": "count",
+      "description": "Per-release nonfarm payrolls surprise for US (actual \u2212 consensus_median, in THOUSANDS of jobs \u2014 the Bloomberg 'NFP TCH Index' convention) over the displayed release window.  Closed-enum ``COUNT`` is the nearest matching unit for an integer-count delta; downstream consumers must treat the values as thousands of jobs, NOT raw counts.",
+      "rows": [
+        {
+          "date": "2025-01-10",
+          "value": 72.0
+        },
+        {
+          "date": "2025-02-07",
+          "value": -223.0
+        },
+        {
+          "date": "2025-03-07",
+          "value": -118.0
+        },
+        {
+          "date": "2025-04-04",
+          "value": -73.0
+        },
+        {
+          "date": "2025-05-02",
+          "value": -30.0
+        },
+        {
+          "date": "2025-06-06",
+          "value": -113.0
+        },
+        {
+          "date": "2025-07-03",
+          "value": -126.0
+        },
+        {
+          "date": "2025-08-01",
+          "value": -41.0
+        },
+        {
+          "date": "2025-09-05",
+          "value": -145.0
+        },
+        {
+          "date": "2025-11-20",
+          "value": -115.0
+        },
+        {
+          "date": "2025-12-16",
+          "value": -9.0
+        },
+        {
+          "date": "2026-01-09",
+          "value": -87.0
+        },
+        {
+          "date": "2026-02-11",
+          "value": 95.0
+        },
+        {
+          "date": "2026-03-06",
+          "value": -211.0
+        },
+        {
+          "date": "2026-04-03",
+          "value": 120.0
+        },
+        {
+          "date": "2026-05-08",
+          "value": 50.0
+        }
+      ]
+    },
+    "time_series_zscore": {
+      "series_name": "us_nfp_surprise_zscore",
+      "units": "z_score",
+      "description": "Rolling release-window z-score of the US NFP surprise series vs its own trailing window.",
+      "rows": [
+        {
+          "date": "2025-01-10",
+          "value": null
+        },
+        {
+          "date": "2025-02-07",
+          "value": null
+        },
+        {
+          "date": "2025-03-07",
+          "value": null
+        },
+        {
+          "date": "2025-04-04",
+          "value": null
+        },
+        {
+          "date": "2025-05-02",
+          "value": null
+        },
+        {
+          "date": "2025-06-06",
+          "value": -0.3262
+        },
+        {
+          "date": "2025-07-03",
+          "value": -0.4225
+        },
+        {
+          "date": "2025-08-01",
+          "value": 0.4688
+        },
+        {
+          "date": "2025-09-05",
+          "value": -0.6756
+        },
+        {
+          "date": "2025-11-20",
+          "value": -0.3005
+        },
+        {
+          "date": "2025-12-16",
+          "value": 0.9444
+        },
+        {
+          "date": "2026-01-09",
+          "value": -0.0398
+        },
+        {
+          "date": "2026-02-11",
+          "value": 1.8851
+        },
+        {
+          "date": "2026-03-06",
+          "value": -1.4172
+        },
+        {
+          "date": "2026-04-03",
+          "value": 1.8179
+        },
+        {
+          "date": "2026-05-08",
+          "value": 1.0586
+        }
+      ]
+    },
+    "methodology_note": "Source: macro_data.event_calendar (ADR 0004) populated by the economic-releases playbook per ADR 0008 (Bloomberg ticker 'NFP TCH Index').  Surprise is the EXACT IDENTITY ``actual \u2212 consensus_median`` (in thousands of jobs) \u2014 the ingestion layer intentionally leaves event_calendar.surprise NULL (ADR 0008 \u00a72) so the primitive layer carries the identity with the P12 disclosure on the wire (Bloomberg reports the same number; this primitive materialises a desk-recognised identity, NOT recomputed).  PRIOR-MONTH REVISIONS \u2014 the well-known NFP caveat.  Each NFP release re-states the prior month's actual via ``revised_prior``; these revisions can be material (sometimes larger than the headline surprise itself).  This series carries the AS-RELEASED surprise \u2014 it does NOT retroactively adjust prior surprise outputs when a revision arrives.  A revision-adjusted surprise primitive is a documented follow-up.  Scope: bounded by the ECO_RELEASE_DT_LIST release-date window (~1.5 years history + forward scheduled) per ADR 0008 \u00a76 / TD #28b \u2014 releases pre-dating that window return honest absence."
+  }
+}
