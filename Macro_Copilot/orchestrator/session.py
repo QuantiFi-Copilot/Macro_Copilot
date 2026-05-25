@@ -87,6 +87,7 @@ from orchestrator.contracts import (
 from orchestrator.domain_agent import DomainAgentSession
 from orchestrator.events import SessionEvent, extract_workspace_context
 from orchestrator.prompts import (
+    FX_SYSTEM_PROMPT,
     INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
     INFLATION_SWAPS_SYSTEM_PROMPT,
     OIS_SYSTEM_PROMPT,
@@ -115,6 +116,7 @@ _DOMAIN_PROMPTS: dict[Domain, str] = {
     Domain.OIS: OIS_SYSTEM_PROMPT,
     Domain.INFLATION_INDEXED_BONDS: INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
     Domain.INFLATION_SWAPS: INFLATION_SWAPS_SYSTEM_PROMPT,
+    Domain.FX: FX_SYSTEM_PROMPT,
 }
 
 
@@ -1900,6 +1902,7 @@ def _build_domain_boundaries(domains: list[Domain]) -> dict[Domain, str]:
         Domain.OIS: "OIS swaps",
         Domain.INFLATION_INDEXED_BONDS: "inflation-linked bonds (linkers)",
         Domain.INFLATION_SWAPS: "zero-coupon inflation swaps (ZCIS)",
+        Domain.FX: "G10 FX spot and forwards",
     }
     out: dict[Domain, str] = {}
     for d in domains:

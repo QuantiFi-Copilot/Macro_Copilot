@@ -1,0 +1,22 @@
+tool:
+  name: calculate_fx_forward_curve_tool
+  domain: fx_forwards
+  description: |
+    Scaffolded placeholder for an FX forward-curve primitive. Not exposed
+    through REST, MCP, workflows, or the Library catalogue yet.
+  category: desk_invariant_primitive
+
+conventions: {}
+
+methodology:
+  what_it_does: |
+    Planned primitive for reading and comparing FX forward curves across
+    standard tenors. This config is schema-valid so repository-wide tool
+    config discovery does not fail, but the compute path deliberately raises
+    NotImplementedError until data coverage and methodology are reviewed.
+  assumptions: []
+  citations: []
+  planned_extensions:
+    - "Define the forward-tenor universe and Bloomberg tickers."
+    - "Add Pydantic input/output schemas."
+    - "Implement compute(engine, params, config=None) and catalogue manifest entry."

@@ -292,6 +292,41 @@ export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
     ],
     sourceTool: 'calculate_cross_market_spread_tool',
   },
+
+  // ---- Pre-aggregated FX widgets (3) ----
+  fx_spot_snapshot: {
+    id: 'fx_spot_snapshot',
+    label: 'FX Spot Snapshot',
+    description:
+      'Single FX pair (EURUSD in V1) — current spot, 1D / 1W / 1M change, 252-day z-score and range. Backed by get_fx_spot_level.',
+    category: 'data',
+    defaultSize: 'medium',
+    allowedSizes: ['medium'],
+    parameterized: false,
+    sourceTool: 'get_fx_spot_level',
+  },
+  fx_scanner: {
+    id: 'fx_scanner',
+    label: 'FX Scanner',
+    description:
+      'Top FX pairs ranked by absolute rolling z-score with deterministic signal labels. Backed by scan_fx_spot.',
+    category: 'anomaly',
+    defaultSize: 'medium',
+    allowedSizes: ['medium'],
+    parameterized: false,
+    sourceTool: 'scan_fx_spot',
+  },
+  fx_carry: {
+    id: 'fx_carry',
+    label: 'FX Carry Monitor',
+    description:
+      'Cross-sectional forward-implied carry (default 1M tenor) for the G10 universe. Backed by calculate_fx_carry.',
+    category: 'analysis',
+    defaultSize: 'wide',
+    allowedSizes: ['wide'],
+    parameterized: false,
+    sourceTool: 'calculate_fx_carry',
+  },
 };
 
 /** Order in which widgets appear in the catalog modal. */
@@ -304,6 +339,9 @@ export const CATALOG_ORDER: string[] = [
   'yield_level',
   'spread_chart',
   'cross_market_spread',
+  'fx_spot_snapshot',
+  'fx_scanner',
+  'fx_carry',
 ];
 
 // ----------------------------------------------------------------------------

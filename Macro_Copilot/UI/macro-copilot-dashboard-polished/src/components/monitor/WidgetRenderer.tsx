@@ -23,6 +23,9 @@ import { CurveClassifierWidget } from './widgets/CurveClassifierWidget';
 import { YieldLevelWidget } from './widgets/YieldLevelWidget';
 import { SpreadChartWidget } from './widgets/SpreadChartWidget';
 import { CrossMarketSpreadWidget } from './widgets/CrossMarketSpreadWidget';
+import { FXSpotSnapshotWidget } from './widgets/FXSpotSnapshotWidget';
+import { FXScannerWidget } from './widgets/FXScannerWidget';
+import { FXCarryWidget } from './widgets/FXCarryWidget';
 
 type Props = {
   instance: WidgetInstance;
@@ -90,6 +93,12 @@ function Body({ instance }: { instance: WidgetInstance }) {
       return <SpreadChartWidget params={instance.params} />;
     case 'cross_market_spread':
       return <CrossMarketSpreadWidget params={instance.params} />;
+    case 'fx_spot_snapshot':
+      return <FXSpotSnapshotWidget />;
+    case 'fx_scanner':
+      return <FXScannerWidget />;
+    case 'fx_carry':
+      return <FXCarryWidget />;
     default:
       return (
         <WidgetError

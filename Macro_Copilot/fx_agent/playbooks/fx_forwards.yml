@@ -1,0 +1,78 @@
+playbook_name: "fx_forwards_1m"
+playbook_version: "1.0"
+asset_class: "fx"
+dataset_name: "fx_forwards_1m"
+description: "Daily G10 FX 1M forward points for carry and relative value analysis."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "forward_points_1m"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "EURUSD1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "EURUSD"
+    tenor: "1M"
+    base_ccy: "EUR"
+    quote_ccy: "USD"
+
+  - ticker: "GBPUSD1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "GBPUSD"
+    tenor: "1M"
+    base_ccy: "GBP"
+    quote_ccy: "USD"
+
+  - ticker: "USDJPY1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDJPY"
+    tenor: "1M"
+    base_ccy: "USD"
+    quote_ccy: "JPY"
+
+  - ticker: "AUDUSD1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "AUDUSD"
+    tenor: "1M"
+    base_ccy: "AUD"
+    quote_ccy: "USD"
+
+  - ticker: "USDCAD1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCAD"
+    tenor: "1M"
+    base_ccy: "USD"
+    quote_ccy: "CAD"
+
+  - ticker: "USDCHF1M Curncy"
+    instrument_type: "fx_forward"
+    fx_family: "G10_1M_FORWARDS"
+    market_scope: "G10"
+    region: "Global"
+    pair: "USDCHF"
+    tenor: "1M"
+    base_ccy: "USD"
+    quote_ccy: "CHF"

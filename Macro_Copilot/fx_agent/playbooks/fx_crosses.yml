@@ -1,0 +1,60 @@
+playbook_name: "fx_crosses"
+playbook_version: "1.0"
+asset_class: "fx"
+dataset_name: "fx_crosses"
+description: "G10 FX cross rates for relative value and cross-asset analysis."
+
+extraction:
+  start_date: "2005-01-01"
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "spot_last"
+    bloomberg_field: "PX_LAST"
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"
+
+universe:
+  - ticker: "EURGBP Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "EURGBP"
+    base_ccy: "EUR"
+    quote_ccy: "GBP"
+
+  - ticker: "EURJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "EURJPY"
+    base_ccy: "EUR"
+    quote_ccy: "JPY"
+
+  - ticker: "GBPJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "GBPJPY"
+    base_ccy: "GBP"
+    quote_ccy: "JPY"
+
+  - ticker: "AUDJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "AUDJPY"
+    base_ccy: "AUD"
+    quote_ccy: "JPY"
+
+  - ticker: "EURCHF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "EURCHF"
+    base_ccy: "EUR"
+    quote_ccy: "CHF"
+
+  - ticker: "AUDCAD Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    pair: "AUDCAD"
+    base_ccy: "AUD"
+    quote_ccy: "CAD"

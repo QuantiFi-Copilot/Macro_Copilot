@@ -85,10 +85,13 @@ export const CATEGORY_TONE: Record<string, 'data' | 'analysis' | 'anomaly'> = {
 export const SUB_AGENT_LABELS: Record<string, string> = {
   sovereign_bonds: 'Sovereign Bonds',
   ois:             'OIS',
+  spot:            'Spot',
+  forwards:        'Forwards',
 };
 
 export const AGENT_LABELS: Record<string, string> = {
   rates_agent: 'Rates Agent',
+  fx_agent:    'FX Agent',
 };
 
 export const BUCKET_LABELS: Record<string, string> = {

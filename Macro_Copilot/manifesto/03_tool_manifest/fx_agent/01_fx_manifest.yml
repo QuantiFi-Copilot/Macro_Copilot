@@ -1,0 +1,143 @@
+# =============================================================================
+# FX Agent — tool manifest
+# =============================================================================
+# Canonical source of truth for the first FX-agent tool catalogue entries.
+# Same schema as the Rates manifests. Each built entry must resolve to:
+# implementation code, Pydantic schema, compute function, and config.yaml
+# unless config is explicitly N/A for a scanner-style batch surface.
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # SPOT SNAPSHOTS
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_spot_level
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_spot_level_tool
+      schema: fx_agent/spot/tools/spot_levels/schemas.py::FXSpotLevelInput
+      compute: fx_agent/spot/tools/spot_levels/compute.py::get_fx_spot_level
+      config: fx_agent/spot/tools/spot_levels/config.yaml
+
+    one_liner: >-
+      Single-pair FX spot snapshot — latest spot, daily / weekly /
+      monthly percentage change, rolling 252-day z-score, trailing
+      252-day high / low / percentile, and observation count.
+
+    bucket_rationale: >-
+      Deterministic arithmetic over stored FX spot observations.
+      Methodology and display precision are YAML-locked; no model
+      inference and no LLM-facing override path in V1.
+
+    pm_overridable: []
+
+    related_tools:
+      - scan_fx_spot_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_monitor_card
+      - fx_spot_workspace
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Structurally aligned; Bloomberg ingestion / parity validation pending.
+
+  # ---------------------------------------------------------------------------
+  # SPOT SCREENING
+  # ---------------------------------------------------------------------------
+
+  - name: scan_fx_spot
+    domain: fx
+    sub_agent: spot
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_spot_tool
+      schema: fx_agent/spot/tools/schemas/__init__.py::FXScannerInput
+      compute: fx_agent/spot/tools/scanner.py::run_fx_scanner
+      config: N/A
+
+    one_liner: >-
+      Scans FX spot pairs in the database, ranks the top-N by absolute
+      rolling 252-day z-score, and returns spot, momentum, z-score, and
+      a deterministic signal label per row.
+
+    bucket_rationale: >-
+      Deterministic batch screen over stored FX spot observations.
+      Ranking and labels are pure arithmetic / rules; no model state.
+
+    pm_overridable:
+      - market_scope
+      - top_n
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_monitor_card
+      - fx_extremes_workspace
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Structurally aligned; scanner config extraction pending.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS / CARRY
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_fx_carry
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_carry_tool
+      schema: fx_agent/forwards/tools/fx_carry/schemas.py::FXCarryInput
+      compute: fx_agent/forwards/tools/fx_carry/compute.py::get_fx_carry
+      config: fx_agent/forwards/tools/fx_carry/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX forward carry snapshot — joins latest spot and
+      same-tenor forward-points observations, converts points into spot
+      units, and ranks pairs by annualized carry.
+
+    bucket_rationale: >-
+      Deterministic forward-points arithmetic over stored spot and
+      forward observations. Tenor-day, annualization, and points-divisor
+      conventions are YAML-locked.
+
+    pm_overridable:
+      - tenor
+
+    related_tools:
+      - get_fx_spot_level_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_forwards_workspace
+
+    references: []
+
+    built_date: 2026-05-20
+    validation_status: >-
+      Structurally aligned; Bloomberg ingestion / parity validation pending.
