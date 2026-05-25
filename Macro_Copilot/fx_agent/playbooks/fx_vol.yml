@@ -739,7 +739,6 @@ universe:
     pair: "USDCNH"
     tenor: "1W"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDCNHV1M Curncy"
     instrument_type: "fx_vol"
@@ -749,7 +748,6 @@ universe:
     pair: "USDCNH"
     tenor: "1M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDCNHV3M Curncy"
     instrument_type: "fx_vol"
@@ -759,7 +757,6 @@ universe:
     pair: "USDCNH"
     tenor: "3M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDCNHV6M Curncy"
     instrument_type: "fx_vol"
@@ -769,7 +766,6 @@ universe:
     pair: "USDCNH"
     tenor: "6M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDCNHV1Y Curncy"
     instrument_type: "fx_vol"
@@ -779,7 +775,6 @@ universe:
     pair: "USDCNH"
     tenor: "12M"                          # Internal semantics aligned with G10 (BBG ticker is V1Y)
     smile_point: "ATM"
-    vol_only: true
 
   # USDINR ATM vol (vol-only)
   - ticker: "USDINRV1W Curncy"
@@ -790,7 +785,6 @@ universe:
     pair: "USDINR"
     tenor: "1W"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDINRV1M Curncy"
     instrument_type: "fx_vol"
@@ -800,7 +794,6 @@ universe:
     pair: "USDINR"
     tenor: "1M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDINRV3M Curncy"
     instrument_type: "fx_vol"
@@ -810,7 +803,6 @@ universe:
     pair: "USDINR"
     tenor: "3M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDINRV6M Curncy"
     instrument_type: "fx_vol"
@@ -820,7 +812,6 @@ universe:
     pair: "USDINR"
     tenor: "6M"
     smile_point: "ATM"
-    vol_only: true
 
   - ticker: "USDINRV1Y Curncy"
     instrument_type: "fx_vol"
@@ -830,5 +821,4 @@ universe:
     pair: "USDINR"
     tenor: "12M"                          # Internal semantics aligned with G10 (BBG ticker is V1Y)
     smile_point: "ATM"
-    vol_only: true
 

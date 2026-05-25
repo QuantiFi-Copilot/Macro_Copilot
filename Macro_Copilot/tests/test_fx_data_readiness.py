@@ -53,18 +53,35 @@ DEFAULT_MAX_STALENESS_DAYS = 90
 OPTIONAL_METADATA_FIELDS = ("market_scope", "base_ccy", "quote_ccy", "fx_family", "region")
 
 # Phase B / Wave 1.5 — EM spot universe invariants (Codex-locked 2026-05-25).
-# These are tighter than the generic spot checks because the EM universe
-# was locked to exactly 9 pairs with a uniform start_date = 2000-01-03,
-# validated against Bloomberg on 2026-05-25. Any drift from these
-# invariants signals either an unintentional universe change, a partial
-# ingestion, or a regression in the manual-extraction pipeline.
+# Phase B / Wave 2 top-up (2026-05-25) added USDCNH + USDINR (under
+# fx_family='EM_SPOT' with spot_convention attribute) + USDCNY (under a
+# distinct fx_family='EM_SPOT_REFERENCE' to flag its non-tradable
+# onshore-PBOC-fix nature). The core 9 pairs keep the strict uniform
+# 2000-01-03 start_date assertion. The 2 EM_SPOT additions have
+# per-pair min_date overrides (CNH starts 2010-08-23, INR starts
+# 2000-01-03). EM_SPOT_REFERENCE is NOT validated by this gate's EM
+# section (different convention; downstream tools should filter it
+# out unless they specifically want the onshore fix series).
 EM_SPOT_PAIRS: tuple[str, ...] = (
     "USDMXN", "USDBRL", "USDZAR", "USDTRY",
     "USDPLN", "USDHUF", "USDKRW", "USDIDR", "USDPHP",
+    # v4.0 top-up additions (kept in EM_SPOT family because tradable /
+    # composite reference, not onshore-only)
+    "USDCNH", "USDINR",
 )
 EM_VALID_REGIONS: frozenset[str] = frozenset({"LATAM", "EMEA", "APAC"})
 EM_DEFAULT_MIN_DATE = date(2000, 1, 3)
+# Per-pair min_date overrides for the gate's strict assertion. Pairs not
+# in this dict use EM_DEFAULT_MIN_DATE (2000-01-03). USDCNH is the only
+# documented exception (offshore market launched late 2010).
+EM_PAIR_MIN_DATE_OVERRIDES: dict[str, date] = {
+    "USDCNH": date(2010, 8, 23),
+}
 EM_DEFAULT_MIN_ROWS_PER_PAIR = 6000
+# Per-pair row count overrides for pairs with documented shorter history.
+EM_PAIR_MIN_ROWS_OVERRIDES: dict[str, int] = {
+    "USDCNH": 4000,  # ~4106 actual (~2010-2026)
+}
 EM_REQUIRED_ATTRS: tuple[str, ...] = ("pair", "base_ccy", "quote_ccy")
 
 
@@ -374,7 +391,7 @@ def validate_em_spot_specifics(
     of the generic playbook+coverage checks. Codex-locked 2026-05-25 as
     Phase B's readiness contract:
 
-      - exactly the 9 expected EM pairs in the playbook (EM_SPOT_PAIRS),
+      - exactly the 11 expected EM_SPOT pairs (9 core + USDCNH + USDINR) in the playbook (EM_SPOT_PAIRS),
       - fx_family="EM_SPOT" and market_scope="EM" in DB for all 9
         (already enforced via OPTIONAL_METADATA_FIELDS — restated here
         for explicitness in case the optional check is silenced),
@@ -404,7 +421,7 @@ def validate_em_spot_specifics(
             bits.append(f"unexpected={sorted(extra)}")
         results.append(_fail("spot EM universe", "set mismatch: " + ", ".join(bits)))
         return results  # short-circuit — rest of the checks would be misleading
-    results.append(_pass("spot EM universe", "all 9 expected EM pairs present in playbook"))
+    results.append(_pass("spot EM universe", "all 11 expected EM_SPOT pairs (9 core + USDCNH + USDINR) present in playbook"))
 
     # 2-6. Per-pair invariants.
     bad_scope_or_family: list[str] = []
@@ -439,14 +456,27 @@ def validate_em_spot_specifics(
         coverage = coverage_by_ticker.get(ticker) or {}
         row_count = int(coverage.get("row_count") or 0)
         total_em_rows += row_count
-        if row_count < min_rows_per_pair:
-            short_history.append(f"{ticker}={row_count}")
+        # Per-pair override for min_rows (e.g. USDCNH has ~4106, less
+        # than the default 6000 because the CNH offshore market only
+        # launched in 2010-08).
+        pair_min_rows = EM_PAIR_MIN_ROWS_OVERRIDES.get(
+            str(item.get("pair") or ""), min_rows_per_pair
+        )
+        if row_count < pair_min_rows:
+            short_history.append(f"{ticker}={row_count} (expected >= {pair_min_rows})")
 
         min_date_val = coverage.get("min_date")
         if hasattr(min_date_val, "date"):
             min_date_val = min_date_val.date()
-        if min_date_val != expected_min_date:
-            wrong_min_date.append(f"{ticker}.min_date={min_date_val}")
+        # Per-pair override for min_date (e.g. USDCNH starts 2010-08-23,
+        # not the default 2000-01-03 like the other EM pairs).
+        pair_expected_min_date = EM_PAIR_MIN_DATE_OVERRIDES.get(
+            str(item.get("pair") or ""), expected_min_date
+        )
+        if min_date_val != pair_expected_min_date:
+            wrong_min_date.append(
+                f"{ticker}.min_date={min_date_val} (expected {pair_expected_min_date})"
+            )
 
     if bad_scope_or_family:
         results.append(
@@ -456,7 +486,7 @@ def validate_em_spot_specifics(
             )
         )
     else:
-        results.append(_pass("spot EM scope/family", "all 9 pairs market_scope='EM' fx_family='EM_SPOT'"))
+        results.append(_pass("spot EM scope/family", "all 11 EM_SPOT pairs market_scope='EM' fx_family='EM_SPOT'"))
 
     if bad_region:
         results.append(
@@ -466,7 +496,7 @@ def validate_em_spot_specifics(
             )
         )
     else:
-        results.append(_pass("spot EM region vocab", f"all 9 pairs region in {sorted(EM_VALID_REGIONS)}"))
+        results.append(_pass("spot EM region vocab", f"all 11 EM_SPOT pairs region in {sorted(EM_VALID_REGIONS)}"))
 
     if missing_required_attrs:
         results.append(
@@ -479,7 +509,7 @@ def validate_em_spot_specifics(
         results.append(
             _pass(
                 "spot EM required attrs",
-                f"{', '.join(EM_REQUIRED_ATTRS)} populated for all 9 pairs",
+                f"{', '.join(EM_REQUIRED_ATTRS)} populated for all 11 EM_SPOT pairs",
             )
         )
 
@@ -501,10 +531,17 @@ def validate_em_spot_specifics(
             )
         )
     else:
-        results.append(_pass("spot EM min_date", f"all 9 pairs start at {expected_min_date}"))
+        results.append(_pass(
+            "spot EM min_date",
+            f"all 11 EM_SPOT pairs start at expected min_date (9 core at {expected_min_date}, "
+            f"USDCNH at {EM_PAIR_MIN_DATE_OVERRIDES['USDCNH']} per BBG offshore launch)",
+        ))
 
     # INFO line — total rows reported but not pinned (will grow on re-extraction)
-    results.append(_pass("spot EM total rows (info)", f"{total_em_rows:,} rows across 9 pairs"))
+    results.append(_pass(
+        "spot EM total rows (info)",
+        f"{total_em_rows:,} rows across {len(EM_SPOT_PAIRS)} EM_SPOT pairs",
+    ))
 
     return results
 

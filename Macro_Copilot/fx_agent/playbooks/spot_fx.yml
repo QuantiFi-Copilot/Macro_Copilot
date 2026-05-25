@@ -1,8 +1,8 @@
 playbook_name: "spot_fx"
-playbook_version: "3.0"
+playbook_version: "4.0"
 asset_class: "fx"
 dataset_name: "spot_fx"
-description: "Daily G10 + EM spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. v2.0 (Wave 1) extended G10 coverage from 6 to 9 majors (added NZDUSD, USDNOK, USDSEK). v3.0 (Phase B / Wave 1.5) adds 9 EM majors (USDMXN, USDZAR, USDTRY, USDBRL, USDPLN, USDHUF, USDKRW, USDIDR, USDPHP) — uniform start_date 2000-01-01 across the full universe, validated against Bloomberg on 2026-05-25 (USDTRY confirmed Scenario A — clean back-adjusted series across the 1 Jan 2005 lira redenomination; all 9 EM pairs have PX_LAST available from ≤ 2000-01-03)."
+description: "Daily G10 + EM spot FX pairs for level monitoring, cross-sectional scanner, relative move analysis, and z-score monitoring. v2.0 (Wave 1) extended G10 coverage from 6 to 9 majors (added NZDUSD, USDNOK, USDSEK). v3.0 (Phase B / Wave 1.5) added 9 EM majors. v4.0 (BBG top-up 2026-05-25) adds 3 APAC NDF-currency spot references (USDCNH offshore tradable, USDINR composite reference, USDCNY onshore PBOC fix) to close a Phase D gap — NDF tools need a spot reference for the underlying currency. USDCNY uses a distinct fx_family='EM_SPOT_REFERENCE' to flag its non-tradable nature; tools that need tradable-spot-only should filter accordingly. Total: 32 spot_fx instruments."
 
 extraction:
   start_date: "2000-01-01"
@@ -193,3 +193,53 @@ universe:
     pair: "USDPHP"
     base_ccy: "USD"
     quote_ccy: "PHP"
+
+  # ============================================================
+  # v4.0 additions — APAC NDF-currency spot references (3 pairs)
+  # ------------------------------------------------------------
+  # Mini BBG top-up 2026-05-25 to close a Phase D gap: NDF tools
+  # (calculate_ndf_implied_carry) need a spot reference for the
+  # underlying currency. We had NDFs for CCN+ (CNY) and IRN+ (INR)
+  # but no spot for those underlyings. These 3 spots fill the gap.
+  #
+  # Conventions (Codex nuance — these are NOT all the same tradability):
+  # - USDCNH: free offshore tradable spot for CNH. Primary spot ref
+  #   for CCN+ NDF carry. Data starts 2010-08-23 (CNH offshore
+  #   market launched late 2010).
+  # - USDINR: USD-INR composite cross-rate. Standard reference for
+  #   IRN+ NDF carry analysis. Full 2000+ history.
+  # - USDCNY: ONSHORE PBOC fix-style reference, NOT a freely
+  #   tradable spot. Useful for NDF-vs-onshore-fix gap analysis but
+  #   downstream tools that need "tradable spot only" should filter
+  #   fx_family != 'EM_SPOT_REFERENCE'. Full 2000+ history.
+  # ============================================================
+
+  - ticker: "USDCNH Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+    spot_convention: "offshore_tradable"
+
+  - ticker: "USDINR Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    base_ccy: "USD"
+    quote_ccy: "INR"
+    spot_convention: "composite_reference"
+
+  - ticker: "USDCNY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "EM_SPOT_REFERENCE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNY"
+    base_ccy: "USD"
+    quote_ccy: "CNY"
+    spot_convention: "onshore_pboc_fix"
