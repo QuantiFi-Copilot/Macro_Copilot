@@ -31,14 +31,37 @@
 #
 # Sparse-grid limitation (acknowledged)
 # -------------------------------------
-# The current sovereign playbook ingests at most 8 benchmark tenors
-# per curve_family (1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y).  PCA on this
-# sparse grid recovers level / slope / curvature reliably (PC1, PC2,
-# PC3 typically account for >99% of variance), but PC3 stability and
-# the "humped curvature" interpretation are weaker than on a dense
-# individual-bond panel.  Documented under
-# methodology.planned_extensions; tools downstream of this one (e.g.
-# yield_change_attribution_pca) inherit the limitation.
+# Sovereign and OIS playbooks today ingest at most 8 benchmark tenors
+# per curve_family (1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y; OIS adds the
+# 1W/1M/2M/3M/6M/9M short end).  PCA on this sparse grid recovers
+# level / slope / curvature reliably (PC1, PC2, PC3 typically account
+# for >99% of variance), but PC3 stability and the "humped curvature"
+# interpretation are weaker than on a dense individual-bond panel.
+# Documented under methodology.planned_extensions; tools downstream
+# of this one (e.g. yield_change_attribution_pca) inherit the
+# limitation.
+#
+# Curve-family-agnostic scope (Round 3 Stage 2, work item A3 — PR5
+# coverage extension)
+# -----------------------------------------------------------------
+# This primitive accepts ANY tenor-keyed rates curve_family declared
+# in any playbook under rates_agent/playbooks/ — sovereign benchmarks
+# (UST / DE_BUND / IT_BTP / FR_OAT / ES_BONO / UK_GILT / JGB /
+# CANADA_GOVT / AU_GOVT), OIS curves (USD_SOFR_OIS / EUR_ESTR_OIS /
+# GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS), inflation swaps
+# (USD_ZCIS / EUR_ZCIS / GBP_ZCIS), and sovereign linker real-yield
+# curves (USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB).  The
+# PCA math itself is curve-family-agnostic; per-playbook field-name
+# discovery picks the right Bloomberg primary metric per curve
+# (sovereign + linker → YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID)
+# without caller intervention.  Per PR5 + PR3 + the primitive
+# runbook's "When NOT to use this runbook" rule, this is the
+# coverage-extension path — extending an existing primitive's
+# allowed input values — rather than shipping a sibling primitive
+# per curve_family.  The tool's residence stays under
+# rates_agent/sovereign_bonds/ because the sovereign desk owns the
+# concept by convention; cross-domain usage is a workflow-
+# composition concern, not a tool-residence question.
 # =============================================================================
 
 tool:
@@ -46,9 +69,12 @@ tool:
   domain: sovereign_bonds
   description: |
     Principal Component Analysis on the yield-CHANGES panel of a
-    single sovereign curve.  Returns per-component loadings (one row
-    per tenor), variance shares (and cumulative shares), per-row
-    factor scores time series, plus per-component quality metadata
+    single rates curve.  Accepts any curve_family declared in a
+    tenor-keyed playbook under rates_agent/playbooks/ (sovereign
+    benchmarks, OIS curves, inflation swaps, sovereign linker real-
+    yield curves).  Returns per-component loadings (one row per
+    tenor), variance shares (and cumulative shares), per-row factor
+    scores time series, plus per-component quality metadata
     (degenerate / sign_anchor_tied flags).  The first three
     components conventionally correspond to level, slope, and
     curvature for normal yield-curve data; that interpretation is
@@ -184,31 +210,56 @@ conventions:
     valid_range: [0, 8]
 
   # ---------------------------------------------------------------------------
-  # Default Bloomberg observation field
+  # Default Bloomberg observation field (final fallback)
   # ---------------------------------------------------------------------------
+  # Round 3 Stage 2 (A3): this value is now the FINAL fallback in the
+  # field-name resolution chain.  compute() resolves field_name in
+  # this priority order:
+  #   1. Explicit params.field_name (LLM / API caller override).
+  #   2. The owning playbook's target_metrics[0].bloomberg_field
+  #      (auto-discovered per curve_family — different per playbook:
+  #      sovereign + linker use YLD_YTM_MID; OIS uses PX_LAST; ZCIS
+  #      uses PX_MID).
+  #   3. This YAML value (preserved as YLD_YTM_MID so sovereign
+  #      callers see identical behaviour to the pre-A3 path —
+  #      sovereign_bonds.yml's target_metrics[0] IS YLD_YTM_MID).
   default_field_name:
     value: YLD_YTM_MID
     source: bloomberg_field_convention
     rationale: >-
       Mid yield-to-maturity is the canonical sovereign-yield
-      observation.  LLM/HTTP wrappers must use the empty/None
-      sentinel so this default flows through.
+      observation.  Retained as the FINAL fallback in compute()'s
+      field-name resolution chain; the primary path is per-playbook
+      auto-discovery (sovereign + linker → YLD_YTM_MID, OIS →
+      PX_LAST, ZCIS → PX_MID) so non-sovereign callers do not need
+      to know per-vendor field conventions.  LLM/HTTP wrappers must
+      use the empty/None sentinel so the resolution chain flows
+      through.
 
 methodology:
   what_it_does: |
-    Fits PCA on the yield-CHANGES panel of one sovereign curve:
+    Fits PCA on the yield-CHANGES panel of one rates curve.
+    Curve-family-agnostic: works on any curve_family declared in a
+    tenor-keyed playbook under rates_agent/playbooks/ (sovereign
+    benchmarks, OIS, ZCIS, sovereign linkers).
 
-      1. Fetch all (or caller-supplied) tenors of `curve_family`
-         over `lookback_days`.
-      2. ffill holiday gaps (up to ffill_limit_days).
-      3. Diff at `change_frequency` (daily or weekly) to build the
+      1. Look up the owning playbook for `curve_family` from the
+         multi-playbook index; use its tenor universe (or
+         caller-supplied subset).  Auto-discover the default
+         Bloomberg field from the playbook's
+         target_metrics[0].bloomberg_field.
+      2. Fetch all (or caller-supplied) tenors of `curve_family`
+         over `lookback_days` via the instrument-type-agnostic
+         shared.analytics.rates_fetch.fetch_tenor_group helper.
+      3. ffill holiday gaps (up to ffill_limit_days).
+      4. Diff at `change_frequency` (daily or weekly) to build the
          change panel.
-      4. Center per-tenor (subtract column means).
-      5. Run SVD on the centered panel.
-      6. Truncate to `n_components` and apply the locked sign
+      5. Center per-tenor (subtract column means).
+      6. Run SVD on the centered panel.
+      7. Truncate to `n_components` and apply the locked sign
          anchor (PC_k loading at longest tenor >= 0; tie-break
          documented above).
-      7. Detect degenerate components (variance share below floor)
+      8. Detect degenerate components (variance share below floor)
          and mark via component_metadata.
 
     Returns:
@@ -223,10 +274,11 @@ methodology:
        trend with factor structure and is a different statistical
        object — sibling tool documented under planned_extensions
        if needed."
-    - "Centered (mean-zero per tenor) but NOT scaled.  Yields are
-       already in consistent units across tenors, so covariance-
-       PCA is the canonical choice; correlation-PCA (scaled to
-       unit variance) is a sibling tool."
+    - "Centered (mean-zero per tenor) but NOT scaled.  Yields (or
+       par rates / breakevens for OIS / ZCIS) are already in
+       consistent units across tenors within one curve_family, so
+       covariance-PCA is the canonical choice; correlation-PCA
+       (scaled to unit variance) is a sibling tool."
     - "Sign convention: each PC's loading at the LONGEST tenor is
        non-negative.  Documented under conventions.sign_anchor.
        Alternative anchors are sibling tools (compute() raises
@@ -238,11 +290,19 @@ methodology:
        `pc1`, `pc2`, `pc3`, ...  Downstream consumers
        (yield_change_attribution_pca) MUST NOT assume the
        interpretation; they should consume the loadings as-is."
-    - "Sparse-grid limitation: with 8 benchmark tenors, PCA
-       recovers level + slope + curvature reliably but PC3+ are
-       sample-size sensitive.  Dense individual-bond panel work
-       requires the cusip-ingestion playbook extension —
-       documented under planned_extensions."
+    - "Curve-family-agnostic scope (Round 3 A3): the same code path
+       fits sovereign benchmark curves, OIS curves, ZCIS curves,
+       and sovereign linker real-yield curves.  The discovery
+       layer skips cash-bond playbooks (cusip-keyed, different code
+       path) and any playbook where (curve_family, tenor) is not
+       unique (e.g. bond_futures TY1/UXY1 collision per TD #11).
+       Sparse-grid limitation still applies per curve_family — see
+       the sparse-grid note in the file header."
+    - "Sparse-grid limitation: with the playbook's per-curve tenor
+       universe (typically 4-13 tenors), PCA recovers level + slope
+       + curvature reliably but PC3+ are sample-size sensitive.
+       Dense individual-bond panel work requires the cusip-ingestion
+       playbook extension — documented under planned_extensions."
     - "lookback_days controls fetch + fit window.  No separate
        'display' window; the factor scores time series spans the
        same dates as the centered change panel."

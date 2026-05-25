@@ -16,6 +16,47 @@ inference — it classifies one observed move over a fixed lookback.
 The earlier name is preserved nowhere; this commit migrates every
 caller in the same change.
 
+Curve-family-agnostic scope (Round 3 Stage 2, work item A4 — PR5
+coverage extension)
+-------------------------------------------------------------------
+The primitive accepts ANY tenor-keyed rates curve_family declared
+in any playbook under ``rates_agent/playbooks/``.  Today that
+covers sovereign benchmarks (UST / DE_BUND / IT_BTP / FR_OAT /
+ES_BONO / UK_GILT / JGB / CANADA_GOVT / AU_GOVT), OIS curves
+(USD_SOFR_OIS / EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_OIS / AUD_OIS /
+CAD_OIS), inflation swaps (USD_ZCIS / EUR_ZCIS / GBP_ZCIS), and
+sovereign linker real-yield curves (USD_TIPS / GBP_LINKER /
+EUR_FR_LINKER / CAD_RRB).  The 4-quadrant classification math is
+curve-family-agnostic — front-leg minus back-leg change in the
+underlying observation (yield, par rate, or breakeven) is the
+signal regardless of which family is being classified.  Per the
+primitive runbook's "When NOT to use this runbook" section, this is
+the PR5 coverage-extension path (extend an existing primitive's
+allowed input values) rather than shipping a sibling per family.
+
+Per-playbook field-name discovery
+---------------------------------
+Different playbooks declare different Bloomberg primary fields:
+sovereign benchmarks + linkers use ``YLD_YTM_MID``; OIS curves use
+``PX_LAST``; ZCIS curves use ``PX_MID``.  The primitive auto-
+discovers each curve_family's default field from the owning
+playbook's ``target_metrics[0].bloomberg_field`` so callers do not
+need to know the per-vendor field convention.  Resolution priority
+when ``params.field_name`` is None:
+  1. The owning playbook's ``target_metrics[0].bloomberg_field``.
+  2. The YAML ``default_field_name`` (preserved as a final fallback,
+     identical to sovereign's ``YLD_YTM_MID`` so legacy behaviour is
+     unchanged for sovereign callers).
+An explicit non-None ``params.field_name`` always wins.
+
+The discovery helpers below are a deliberate near-copy of the
+matching helpers in ``rates_agent/sovereign_bonds/tools/
+pca_yield_curve/compute.py`` (Round 3 A3).  A future cleanup PR
+will extract the shared logic to a single ``rates_agent/playbooks/``
+helper module once both A3 and A4 have landed independently;
+duplicating per-primitive for now keeps the A3 and A4 PRs
+independently reviewable + revertable.
+
 Convention -> primitive wiring
 ------------------------------
 Every methodology choice (parallel threshold, move threshold, fill
@@ -52,6 +93,9 @@ from rates_agent.sovereign_bonds.tools.curve_move_classifier.schemas import (
     CurveMoveOutput,
 )
 from shared.analytics.curve_move import classify_curve_move
+from shared.analytics.playbook_discovery import (
+    playbook_default_field_for_curve_family,
+)
 from shared.analytics.rates_fetch import fetch_tenor_group
 from shared.analytics.spreads import pivot_and_align_tenors, safe_float
 from shared.config import ToolConfig, load_tool_config
@@ -61,6 +105,13 @@ from shared.config import ToolConfig, load_tool_config
 # Public symbol so external callers can build their own ToolConfig
 # from the same source the tool uses.
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
+
+# The per-playbook field-name auto-discovery helper
+# (``playbook_default_field_for_curve_family``) lives in
+# ``shared.analytics.playbook_discovery`` — single source of truth
+# for the multi-playbook scanner (per P10).  Round 3 A3 (PR #195)
+# introduced the shared module; this A4 PR consumes it rather than
+# duplicating the scanner per-folder.
 
 
 # ============================================================================
@@ -164,14 +215,27 @@ def classify_curve_move_compute(
     }
 
     # ------------------------------------------------------------------
-    # Resolve field_name: caller's explicit value wins; None falls
-    # through to the YAML default.  This keeps default_field_name
-    # genuinely config-driven — editing it in config.yaml changes
-    # runtime behaviour for callers that don't pass an override.
+    # Field-name resolution (Round 3 A4 — curve-family-agnostic).
+    # Priority chain when params.field_name is None:
+    #   1. Explicit params.field_name (LLM / API caller override).
+    #   2. The owning playbook's target_metrics[0].bloomberg_field
+    #      (auto-discovered per curve_family — different per playbook:
+    #      sovereign + linker use YLD_YTM_MID, OIS uses PX_LAST, ZCIS
+    #      uses PX_MID).
+    #   3. The YAML's ``default_field_name`` (final fallback;
+    #      preserved as YLD_YTM_MID for sovereign backward compat —
+    #      sovereign_bonds.yml's target_metrics[0] is also
+    #      YLD_YTM_MID, so sovereign callers see no change in behaviour).
     # ------------------------------------------------------------------
-    field_name_resolved = (
-        params.field_name if params.field_name is not None else default_field_name
-    )
+    if params.field_name is not None:
+        field_name_resolved = params.field_name
+    else:
+        discovered_field = playbook_default_field_for_curve_family(
+            params.curve_family
+        )
+        field_name_resolved = (
+            discovered_field if discovered_field else default_field_name
+        )
 
     # ------------------------------------------------------------------
     # Honest placeholder — fail loudly on not-yet-implemented methods
@@ -321,10 +385,10 @@ def classify_curve_move_compute(
         description=_CLASSIFICATION_DESCRIPTIONS.get(classification, ""),
         front_tenor=params.front_tenor,
         back_tenor=params.back_tenor,
-        front_yield_current=safe_float(current_front),
-        back_yield_current=safe_float(current_back),
-        front_yield_prior=safe_float(prior_front),
-        back_yield_prior=safe_float(prior_back),
+        front_level_current=safe_float(current_front),
+        back_level_current=safe_float(current_back),
+        front_level_prior=safe_float(prior_front),
+        back_level_prior=safe_float(prior_back),
         front_change_bps=front_change_bps,
         back_change_bps=back_change_bps,
         spread_current_bps=current_spread_bps,

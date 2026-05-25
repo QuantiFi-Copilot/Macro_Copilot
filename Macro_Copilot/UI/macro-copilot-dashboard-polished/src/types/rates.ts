@@ -299,10 +299,17 @@ export type RegimeCurrentMetrics = {
   regime_description: string;
   front_tenor: string;
   back_tenor: string;
-  front_yield_current: number | null;
-  back_yield_current: number | null;
-  front_yield_prior: number | null;
-  back_yield_prior: number | null;
+  // PR14 wire-format honesty (Round 3 A4, post-Codex review):
+  // renamed from front_yield_current/etc. to front_level_current/etc.
+  // because classify_curve_move is now curve-family-agnostic and the
+  // underlying observation may be a sovereign yield, an OIS par rate,
+  // an inflation swap rate, or a linker real yield depending on the
+  // bound curve_family.  "Level" is the unit-agnostic name; the
+  // playbook owns the observation semantics.
+  front_level_current: number | null;
+  back_level_current: number | null;
+  front_level_prior: number | null;
+  back_level_prior: number | null;
   front_change_bps: number | null;
   back_change_bps: number | null;
   spread_current_bps: number | null;
