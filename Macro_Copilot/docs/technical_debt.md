@@ -462,6 +462,143 @@ EFFORT: Investigation: Small (~1 day to enumerate the bbg-api surface
        per consumer).
 
 
+### 35. attribution_decomposition V1 workflow template deferred — workflow-bridge gaps
+WHERE: shared/artifacts/adapters/from_time_series.py +
+       shared/workflow/executor.py (the workflow-bridge dispatch
+       layer that converts primitive output dicts into closed-family
+       artifact types for inter-node hand-off).
+WHAT:  The Round 3 Stage 2 A5 work item (per
+       tmp/primitive_expansion/phase2.md Step 4) called for a
+       canonical attribution_decomposition workflow template that
+       composes three named building blocks as DAG nodes:
+
+         pca_yield_curve  +  yield_change_attribution_pca  +  series_arithmetic
+
+       That literal composition is NOT satisfiable in the current
+       substrate.  The workflow bridge dispatches only TWO primitive
+       output shapes (see
+       shared/artifacts/adapters/from_time_series.py:357 — the
+       ``isinstance(ts_obj, TimeSeries)`` gate, and the matching
+       Panel adapter at ``tool_output_to_artifact_panel``):
+
+         (1) Single canonical ``TimeSeries`` field → ``Series``
+             artifact via ``tool_output_to_artifact_series``.
+         (2) Single ``Panel`` field → ``Panel`` artifact via
+             ``tool_output_to_artifact_panel`` (with the primitive's
+             ``PrimitiveSpec.output_artifact_type = "Panel"``).
+
+       The A5 building blocks emit shapes outside that pair:
+
+         - ``pca_yield_curve.time_series_factors`` is
+           ``List[TimeSeries]`` (one per principal component).  The
+           ``TimeSeries`` bridge rejects it
+           (``isinstance(ts_obj, TimeSeries)`` is False for a list).
+           No Panel re-shaping exists either — the components are
+           independent series, not a single multi-column panel.  The
+           natural closed-family artifact for this would be
+           ``SeriesSet`` (which already exists in
+           ``ARTIFACT_TYPE_NAMES``), but no
+           ``tool_output_to_artifact_series_set`` adapter is wired
+           into the executor.
+
+         - ``yield_change_attribution_pca.current_metrics`` is a
+           snapshot Pydantic model (per-PC contribution_bps,
+           residual_bps, loadings provenance, etc.).  There is no
+           canonical ``TimeSeries`` field — the snapshot dict has
+           no bridge-supported shape at all today.  The natural
+           closed-family artifact would be ``ScalarMetric`` (or a
+           new ``SnapshotResult`` artifact type — closed-family
+           extension per P8).
+
+       Consequence: a workflow template cannot legally include
+       either primitive as a DAG node.  Both can still be invoked
+       directly via the per-primitive MCP tools
+       (``calculate_pca_yield_curve_tool``,
+       ``calculate_yield_change_attribution_pca_tool``) — the gap
+       is workflow-level chaining only.
+
+       A V1 thin substitute template (cross-benchmark subtraction:
+       target_yield - benchmark_yield = residual) was prototyped on
+       branch round3-stage2-a5-attribution-decomposition (closed PR
+       #197); shipping it under the canonical
+       ``attribution_decomposition`` archetype was rejected on
+       Codex code review as a P1 / AC7 / AC8 violation — substituting
+       a nearby concept under the requested concept's name silently
+       teaches the LLM router that the substitute IS the canonical
+       attribution shape, and "decomposition sums to the input
+       change within tolerance" (the work order's A5 acceptance
+       criterion) holds only trivially for subtraction.  The honest
+       path is to defer the template entirely until the substrate
+       can carry the requested composition.
+IMPACT: The ``attribution_decomposition`` archetype slot remains
+       reserved-but-empty in ``WORKFLOW_ARCHETYPES`` until this
+       block clears.  No regression vs the pre-Round-3 state — the
+       slot was reserved-and-empty before too.  Downstream A5
+       deliverables that depended on the template (Library card,
+       per-template MCP wrapper, workflow gauntlet case) are also
+       deferred.  The two affected primitives remain individually
+       routable via the per-domain MCP servers.
+FIX:   Two substrate extensions, either of which would partially
+       unblock A5:
+
+         (a) ``tool_output_to_artifact_series_set`` adapter +
+             ``output_artifact_type = "SeriesSet"`` support on
+             ``PrimitiveSpec``.  Lifts ``pca_yield_curve``'s
+             ``time_series_factors`` into a closed-family
+             ``SeriesSet`` artifact with per-PC member names.
+             Downstream ``select_from_series_set`` then picks one PC
+             at a time; ``series_arithmetic`` operates on the
+             selected Series.  This unblocks "factor time series with
+             arithmetic transform" attribution shapes but does NOT
+             unblock the snapshot-decomposition shape.
+
+         (b) Snapshot-shape adapter (likely a new ``SnapshotResult``
+             ARTIFACT_TYPE per P8 closed-family extension) + matching
+             ``ScalarMetric``-or-similar artifact + an operator that
+             can consume snapshot decompositions (e.g. a new
+             ``compose_attribution`` operator that takes a snapshot's
+             component_contributions + a residual_bps scalar and
+             produces a downstream artifact).  Unblocks the canonical
+             yield_change_attribution_pca snapshot composition.
+
+       Either (a) or (b) is a non-trivial substrate change.  (a) is
+       smaller; (b) needs an ADR per P8.  A5's literal spec needs
+       BOTH (a) AND (b) to be fully satisfied.  The canonical V1
+       template after both extensions land would be a 5–7-node DAG
+       composing ``pca_yield_curve`` (via SeriesSet bridge) →
+       ``yield_change_attribution_pca`` (via Snapshot bridge) →
+       ``series_arithmetic`` (residual reconstruction +
+       sum-back-invariant check).
+
+       The work order's "decomposition sums to the input change
+       within tolerance" acceptance criterion can then be verified
+       honestly: total_change_bps == sum(per-PC contribution_bps) +
+       residual_bps within ``yield_change_attribution_pca``'s
+       declared tolerance.
+
+       Until (a) and (b) both land, the attribution_decomposition
+       archetype stays empty.  ``yield_change_attribution_pca``
+       remains fully usable as a standalone MCP tool.
+WHEN:  Before any future ``attribution_decomposition`` template
+       PR is opened.  Order: (a) first (smaller, no closed-family
+       extension); then ADR for the new artifact type; then (b);
+       then the canonical V1 template.
+EFFORT: (a) Medium (~3-5 days: new adapter in
+       shared/artifacts/adapters/, executor dispatch update, bridge
+       tests, primitive-spec wire-up on pca_yield_curve, end-to-end
+       template smoke).
+       (b) Medium-High (~1 week: ADR for new closed-family
+       artifact type, bridge adapter, executor dispatch, new operator
+       to consume snapshot, primitive-spec wire-up on
+       yield_change_attribution_pca, tests).
+       Canonical V1 template after both: Small (~1 day).
+SEE ALSO: The Stage 1 manifest-backfill PR (TD #34 sibling, merged
+       in #194) already lists the four event-primitive sub-agents'
+       manifests including the spot where the future
+       attribution_decomposition_workflow MCP tool wrapper will
+       land.
+
+
 ## MEDIUM — Fix within first quarter
 
 ### 10. Message history accumulation in orchestrator
