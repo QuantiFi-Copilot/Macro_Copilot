@@ -48,13 +48,20 @@ export type Payload =
  *    - ``generic_builder`` (PR2) — handled upstream by mounting the
  *      ``GenericPrimitiveBuilder``; runs via the schema-driven
  *      ``POST /tools/{name}/run`` endpoint, not a typed-detail GET.
+ *    - ``workflow_incompatible`` (Stage 1) — handled upstream by
+ *      mounting the ``UnsupportedKnownToolCanvas`` card with the
+ *      per-tool workflow-incompatible reason; no backend fetch
+ *      happens.  Excluding here keeps the narrowed type accurate.
  *    - ``unsupported_known`` (PR1) — handled upstream by mounting the
  *      ``UnsupportedKnownToolCanvas`` card; no backend fetch happens.
  *
  *  Exported so callers can gate before calling ``dispatchFetch``. */
 export type DecodedTypedPrimitive = Exclude<
   DecodedPrimitive,
-  { kind: 'builder' } | { kind: 'generic_builder' } | { kind: 'unsupported_known' }
+  | { kind: 'builder' }
+  | { kind: 'generic_builder' }
+  | { kind: 'workflow_incompatible' }
+  | { kind: 'unsupported_known' }
 >;
 
 export function isTypedPrimitive(
@@ -63,6 +70,7 @@ export function isTypedPrimitive(
   return (
     decoded.kind !== 'builder' &&
     decoded.kind !== 'generic_builder' &&
+    decoded.kind !== 'workflow_incompatible' &&
     decoded.kind !== 'unsupported_known'
   );
 }

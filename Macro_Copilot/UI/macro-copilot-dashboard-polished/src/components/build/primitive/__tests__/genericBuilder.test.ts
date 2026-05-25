@@ -65,12 +65,19 @@ function encodeContext(
 // RUNNABLE_PRIMITIVE_TOOLS — closed-set sanity
 // ----------------------------------------------------------------------------
 
-check('RUNNABLE_PRIMITIVE_TOOLS: contains exactly the 17 _PRIMITIVE_SPECS keys', () => {
-  // Verified against ``grep -E '^        tool_name=' rates_agent/workflows/__init__.py``
-  // at PR review time.  Adding a primitive to the backend MUST add it
-  // here too; the size assertion catches accidental omissions.
+check('RUNNABLE_PRIMITIVE_TOOLS: contains exactly the 52 _PRIMITIVE_SPECS keys (Stage 1)', () => {
+  // Stage 1 — RUNNABLE_PRIMITIVE_TOOLS expands from 34 to 52 to
+  // mirror backend ground truth on `build` today.
+  // Source of truth: grep -E "^\\s*tool_name=" rates_agent/workflows/__init__.py
+  // produces the same 52 entries (every key in _PRIMITIVE_SPECS).
+  //
+  // The size assertion catches both directions:
+  //   * Adding a primitive to the backend without updating this set
+  //     → assertion fails because the actual size exceeds expected.
+  //   * Removing a primitive from the frontend set without backend
+  //     coordination → some `for (const t of expected)` lookup fails.
   const expected = [
-    // Sovereign-bond domain
+    // Sovereign-bond domain (12)
     'build_sovereign_yield_panel_tool',
     'calculate_beta_adjusted_spread_tool',
     'calculate_breakeven_inflation_tool',
@@ -83,12 +90,49 @@ check('RUNNABLE_PRIMITIVE_TOOLS: contains exactly the 17 _PRIMITIVE_SPECS keys',
     'calculate_yield_change_attribution_pca_tool',
     'calculate_zscore_custom_tool',
     'get_yield_levels_tool',
-    // OIS domain
+    // OIS domain (5)
     'calculate_ois_cross_market_spread_tool',
     'calculate_ois_curve_spread_tool',
     'calculate_ois_forward_rate_tool',
     'compute_financing_rate_tool',
     'get_ois_rate_level_tool',
+    // Factory-ported (ADR 0013) — 1 OIS + 3 bond_futures + 9 policy_futures + 2 inflation_indexed + 2 inflation_swaps = 17
+    'calculate_ois_butterfly_tool',
+    'get_futures_price_level_tool',
+    'get_futures_volume_oi_tool',
+    'scan_bond_futures_extremes_tool',
+    'build_policy_futures_strip_panel_tool',
+    'get_scan_policy_futures_extremes_tool',
+    'policy_futures_get_futures_butterfly_simple_tool',
+    'policy_futures_get_futures_calendar_spread_tool',
+    'policy_futures_get_futures_cross_market_spread_tool',
+    'policy_futures_get_futures_pack_average_simple_tool',
+    'policy_futures_get_futures_price_level_tool',
+    'policy_futures_get_futures_strip_snapshot_tool',
+    'policy_futures_get_volume_open_interest_snapshot_tool',
+    'build_linker_panel_tool',
+    'scan_inflation_linkers_extremes_tool',
+    'build_zcis_panel_tool',
+    'scan_inflation_swaps_extremes_tool',
+    // Stage 1 net-new runnable primitives (18) — Phase-3 + PR #177
+    'calculate_otr_ofr_spread_tool',
+    'calculate_cpi_surprise_tool',
+    'calculate_nfp_surprise_tool',
+    'get_real_yield_level_tool',
+    'calculate_breakeven_inflation_simple_tool',
+    'calculate_forward_breakeven_simple_tool',
+    'calculate_breakeven_curve_spread_tool',
+    'calculate_cross_country_breakeven_spread_simple_tool',
+    'calculate_real_yield_curve_spread_tool',
+    'calculate_cross_country_real_yield_spread_simple_tool',
+    'calculate_real_yield_butterfly_tool',
+    'calculate_breakeven_butterfly_tool',
+    'calculate_inflation_swap_rate_level_tool',
+    'calculate_inflation_swap_curve_spread_tool',
+    'calculate_inflation_swap_forward_tool',
+    'calculate_cross_market_inflation_swap_spread_tool',
+    'calculate_swap_breakeven_basis_simple_tool',
+    'calculate_inflation_swap_butterfly_tool',
   ];
   assertEqual(
     RUNNABLE_PRIMITIVE_TOOLS.size,

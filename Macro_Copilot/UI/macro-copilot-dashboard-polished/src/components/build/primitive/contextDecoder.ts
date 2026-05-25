@@ -53,6 +53,7 @@ import { hasModelMetadata } from '@/lib/modelRegistry';
 import {
   isKnownBackendTool,
   isRunnablePrimitive,
+  isWorkflowIncompatibleTool,
   normalizeToolName,
 } from '@/lib/toolNames';
 
@@ -66,7 +67,7 @@ export type PrimitiveViewKind =
   | 'scanner'
   | 'forward';
 
-/** Result of decoding a ``?context=`` URL param.  Four discriminated
+/** Result of decoding a ``?context=`` URL param.  Five discriminated
  *  variants:
  *    - typed primitive (chart-bearing / scanner / regime / forward
  *      placeholder) — caller mounts ``VirtualPrimitiveCanvas`` with
@@ -80,11 +81,23 @@ export type PrimitiveViewKind =
  *      typed view (OIS curve / cross-market / forward, swap spread,
  *      breakeven, sovereign yield panel, financing rate, zscore_custom,
  *      OIS rate level).
+ *    - ``workflow_incompatible`` (Stage 1) — caller renders the
+ *      ``UnsupportedKnownToolCanvas`` card with the per-tool
+ *      workflow-incompatible reason.  The tool ships on the backend
+ *      (callable via MCP) but its output shape isn't a Series or
+ *      Panel artifact, so the generic builder's
+ *      ``POST /tools/{name}/run`` route returns the FastAPI
+ *      ``{"ok": false, "error": "..."}`` envelope (per
+ *      ``api/routes/workflows/execute.py``).  Distinct from
+ *      ``unsupported_known`` (paused / unbuilt) — the surface is the
+ *      same but the per-tool reason text explains the output-shape
+ *      gap rather than a missing implementation.
  *    - ``unsupported_known`` (PR1) — caller renders the
  *      ``UnsupportedKnownToolCanvas`` card so the user sees an honest
  *      "tool is real but Build has no run path yet" affordance instead
  *      of the orange decode-error card.  Reserved for known tools that
- *      AREN'T runnable through ``/tools/{name}/run`` (manifest-only).
+ *      AREN'T runnable through ``/tools/{name}/run`` (manifest-only,
+ *      paused).
  */
 export type DecodedPrimitive =
   | {
@@ -134,6 +147,21 @@ export type DecodedPrimitive =
        *  schema-driven form.  Lets fields whose schema type is
        *  ``object`` / ``array`` (e.g. ``regressor_specs``) seed
        *  correctly when Ask supplied them. */
+      paramsStructured: Record<string, unknown>;
+    }
+  | {
+      kind: 'workflow_incompatible';
+      /** Backend-canonical tool name.  The card surfaces this and the
+       *  per-tool ``UnsupportedKnownReason`` from ``toolNames.ts``
+       *  (mirrored from the backend's ``WORKFLOW_INCOMPATIBLE_TOOLS``
+       *  rationale). */
+      toolName: string;
+      /** Original params dict — preserved so a follow-up "Try in Ask"
+       *  affordance can hand the call back to the chat with the user's
+       *  intended args intact. */
+      params: Record<string, string>;
+      /** PR-B-β — full structured params, carried for symmetry with
+       *  the other variants. */
       paramsStructured: Record<string, unknown>;
     }
   | {
@@ -200,6 +228,15 @@ const BUILDER_PRIORITY = 100;
  *  builder, we surface the form. */
 const GENERIC_BUILDER_PRIORITY = 0.5;
 
+/** Stage 1 — workflow-incompatible routing sits between the generic
+ *  builder (a runnable surface) and the unsupported-known card (a
+ *  paused / unbuilt surface).  A workflow-incompatible tool is REAL
+ *  on the backend — it ships and can be called via MCP — so when
+ *  forced to pick between rendering its honest card vs the paused
+ *  card, we prefer it.  Still loses to every chart-bearing typed view
+ *  and to the generic builder. */
+const WORKFLOW_INCOMPATIBLE_PRIORITY = 0.25;
+
 /** Unsupported-known routing sits BELOW every typed-view priority and
  *  the generic builder, but ABOVE "drop entirely".  When a single
  *  context carries one chart primitive + one unsupported-known tool,
@@ -248,7 +285,24 @@ function decodeOne(
     };
   }
 
-  // 4. Known but not runnable (manifest-only, paused, or otherwise
+  // 4. Stage 1 — workflow-incompatible: the tool ships on the backend
+  //    (callable via MCP) but its output shape can't be lifted into a
+  //    ``Series`` / ``Panel`` artifact for the workflow bridge.  Calling
+  //    ``POST /tools/{name}/run`` would return the FastAPI ``{ok: false,
+  //    error: "..."}`` envelope, so we surface an honest unsupported
+  //    card instead of routing to the generic builder.  Per-tool reason
+  //    text mirrors the backend's ``WORKFLOW_INCOMPATIBLE_TOOLS``
+  //    rationale verbatim.
+  if (isWorkflowIncompatibleTool(canonical)) {
+    return {
+      kind: 'workflow_incompatible',
+      toolName: canonical,
+      params,
+      paramsStructured,
+    };
+  }
+
+  // 5. Known but not runnable (manifest-only, paused, or otherwise
   //    not in ``_PRIMITIVE_SPECS``) — surface the honest paused card
   //    rather than drop into the decode-error path.
   if (isKnownBackendTool(canonical)) {
@@ -260,7 +314,7 @@ function decodeOne(
     };
   }
 
-  // 5. Truly unknown — caller falls through to ``null`` handling
+  // 6. Truly unknown — caller falls through to ``null`` handling
   //    (decode-error card for single-best, drop from list for multi).
   return null;
 }
@@ -341,6 +395,8 @@ export function decodePrimitiveList(raw: string): DecodedPrimitive[] {
 function priorityOf(decoded: DecodedPrimitive): number {
   if (decoded.kind === 'builder') return BUILDER_PRIORITY;
   if (decoded.kind === 'generic_builder') return GENERIC_BUILDER_PRIORITY;
+  if (decoded.kind === 'workflow_incompatible')
+    return WORKFLOW_INCOMPATIBLE_PRIORITY;
   if (decoded.kind === 'unsupported_known') return UNSUPPORTED_KNOWN_PRIORITY;
   return VIEW_PRIORITY[decoded.kind];
 }

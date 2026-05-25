@@ -227,6 +227,22 @@ export function VirtualPrimitiveCanvas({
       />
     );
   }
+  // Stage 1 — workflow-incompatible: tool ships on the backend
+  // (callable via MCP) but its output shape can't be lifted into
+  // a ``Series`` / ``Panel`` artifact, so the generic builder's
+  // ``POST /tools/{name}/run`` route would return the FastAPI
+  // ``{ok: false, error: "..."}`` envelope.  Surface the honest
+  // unsupported card with the per-tool reason text mirroring the
+  // backend's ``WORKFLOW_INCOMPATIBLE_TOOLS`` rationale (sourced
+  // via ``unsupportedKnownReasonFor`` inside the canvas).
+  if (decoded.kind === 'workflow_incompatible') {
+    return (
+      <UnsupportedKnownToolCanvas
+        toolName={decoded.toolName}
+        params={decoded.params}
+      />
+    );
+  }
   // PR1 — known but NOT runnable (manifest-only / paused).  Render
   // the explicit "unsupported_known" card.  Reserved for tools
   // without a ``PrimitiveSpec`` entry, so attempting to run them
