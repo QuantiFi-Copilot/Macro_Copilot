@@ -1,8 +1,8 @@
 playbook_name: "fx_vol_smile"
-playbook_version: "1.0"
+playbook_version: "2.0"
 asset_class: "fx"
 dataset_name: "fx_vol_smile"
-description: "Daily FX implied volatility SMILE points (risk reversals + butterflies, 25-delta + 10-delta) across G10 and EM, at tenors 1M / 3M / 1Y. Combined G10 + EM in a single playbook per the Codex design (discriminator is market_scope, not file). Same unit family as fx_vol.yml (ATM) — vol points in percent for ATM-equivalent, signed for RR. Discovered + extracted in BBG batch 2026-05-25 (Preflight C established 1Y tenor format, NOT 12M). 156 instruments total: 72 G10 (6 pairs × 4 smile points × 3 tenors) + 84 EM (7 pairs × 4 smile points × 3 tenors). NOTE: USDIDR + USDPHP + USDCNH + USDINR smile NOT in this universe (illiquid or not tested in this BBG batch). Phase E smile tools will consume this substrate."
+description: "Daily FX implied volatility SMILE points (risk reversals + butterflies, 25-delta + 10-delta). Combined G10 + EM in a single playbook per Codex (discriminator is market_scope, not file). v1.0 seeded 156 instruments at tenors 1M / 3M / 1Y (72 G10 + 84 EM). v2.0 (Warehouse seeding 2026-05-25) adds USDCNH + USDINR smile at 1M / 3M / 1Y (24 new entries, fills the v1.0 EM-coverage gap) and EXTENDED tenors 1W + 6M for 13 pairs (6 G10 + 7 EM core MXN/BRL/ZAR/TRY/PLN/HUF/KRW; IDR/PHP excluded — sparse at 1W/6M per discovery) = 104 new entries. Total: 284 instruments. Same unit family as fx_vol.yml (ATM) — vol points in percent for ATM-equivalent, signed for RR. BBG convention 1Y is aliased to internal '12M' to match fx_vol convention; 1W / 6M kept verbatim. Phase E smile tools will consume this substrate."
 
 extraction:
   start_date: "2000-01-01"
@@ -1767,3 +1767,276 @@ universe:
     base_ccy: "USD"
     quote_ccy: "KRW"
 
+
+  # ============================================================
+  # v2.0 additions — CNH/INR smile (Warehouse seeding 2026-05-25)
+  # ------------------------------------------------------------
+  # Fills the v1.0 EM-coverage gap: USDCNH + USDINR were ATM-vol-
+  # only previously. 2 pairs x 4 deltas x 3 tenors = 24 entries.
+  # Tenors limited to 1M/3M/1Y (CNH/INR 1W/6M smile sparse per
+  # discovery). Internal '12M' for 1Y matches fx_vol convention.
+  # ============================================================
+
+  - ticker: "USDCNH25R1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "1M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH25R3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "3M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH25R1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "12M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH25B1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "1M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH25B3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "3M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH25B1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "12M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10R1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "1M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10R3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "3M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10R1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "12M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10B1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "1M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10B3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "3M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDCNH10B1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDCNH"
+    tenor: "12M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "CNH"
+
+  - ticker: "USDINR25R1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "1M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR25R3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "3M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR25R1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "12M"
+    smile_point: "25R"   # 25_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR25B1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "1M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR25B3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "3M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR25B1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "12M"
+    smile_point: "25B"   # 25_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10R1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "1M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10R3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "3M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10R1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "12M"
+    smile_point: "10R"   # 10_delta_risk_reversal
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10B1M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "1M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10B3M Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "3M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
+
+  - ticker: "USDINR10B1Y Curncy"
+    instrument_type: "fx_vol_smile"
+    fx_family: "EM_FX_VOL_SMILE"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDINR"
+    tenor: "12M"
+    smile_point: "10B"   # 10_delta_butterfly
+    base_ccy: "USD"
+    quote_ccy: "INR"
