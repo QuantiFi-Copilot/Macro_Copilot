@@ -173,7 +173,11 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         ),
         ticker_builder=_build_ndf_ticker,
         expected_sheet_count=25,
-        min_rows_per_sheet=1500,  # NDFs have shorter history (some from ~2007)
+        # NDFs have variable history — most start ~2000-2001, but BCN+1W
+        # only from 2017-11 and is frozen since 2024-08 (low liquidity at
+        # the BRL NDF 1W tenor). Threshold 1000 accepts BCN+1W while still
+        # failing-loud on substantially worse data.
+        min_rows_per_sheet=1000,
     ),
     "em_forwards": SubstrateConfig(
         name="em_forwards",
