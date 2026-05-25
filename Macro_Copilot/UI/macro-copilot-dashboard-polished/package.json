@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "typecheck:full": "tsc -p tsconfig.json --noEmit",
-    "test:build": "node scripts/run_build_tests.mjs"
+    "test:build": "node scripts/run_build_tests.mjs",
+    "test:modules": "node scripts/run_module_tests.mjs",
+    "test:registries": "node scripts/run_module_tests.mjs",
+    "test": "npm run test:build && npm run test:modules"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
