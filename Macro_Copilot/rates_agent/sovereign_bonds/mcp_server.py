@@ -719,21 +719,53 @@ def classify_curve_move_tool(
     six deterministic tags: BULL_STEEPENER, BEAR_STEEPENER,
     BULL_FLATTENER, BEAR_FLATTENER, PARALLEL_SHIFT, or TWIST.
 
+    Curve-family-agnostic (Round 3 Stage 2 A4 — PR5 coverage
+    extension).  Accepts any curve_family declared in a tenor-keyed
+    playbook under rates_agent/playbooks/:
+
+      - sovereign benchmarks: UST, DE_BUND, IT_BTP, FR_OAT, ES_BONO,
+        UK_GILT, JGB, CANADA_GOVT, AU_GOVT
+      - OIS curves: USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS,
+        JPY_OIS, AUD_OIS, CAD_OIS
+      - inflation swaps: USD_ZCIS, EUR_ZCIS, GBP_ZCIS
+      - sovereign linker real-yield curves: USD_TIPS, GBP_LINKER,
+        EUR_FR_LINKER, CAD_RRB
+
+    The 4-quadrant classification math is curve-family-agnostic;
+    per-playbook field auto-discovery picks the right Bloomberg
+    primary metric per curve_family (sovereign + linker →
+    YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID) so callers do not
+    need to know per-vendor field conventions.
+
     This is a single-observation classification — NOT a statistical
     persistence-state inference (which would justify the word "regime").
     Use it whenever the user asks about the nature of a curve move
     rather than just the numbers.
 
     Use this tool when the user asks about:
-    - Move type           (e.g. "Was today a bull steepener?")
-    - Curve dynamics      (e.g. "How has the Gilt curve moved this week?")
-    - Macro interpretation (e.g. "What kind of move are we seeing in Bunds?")
+    - Move type           (e.g. "Was today a bull steepener?",
+                           "Is the USD SOFR OIS curve bull-flattening?")
+    - Curve dynamics      (e.g. "How has the Gilt curve moved this week?",
+                           "What kind of move is the USD ZCIS curve seeing?")
+    - Macro interpretation (e.g. "What kind of move are we seeing in Bunds?",
+                           "Classify today's move in the EUR ESTR OIS curve.")
+
+    Output field naming (PR14 wire-format honesty)
+    ----------------------------------------------
+    The output's per-leg observation fields are named
+    ``front_level_current``, ``back_level_current``,
+    ``front_level_prior``, ``back_level_prior`` — NOT
+    ``front_yield_*`` / ``back_yield_*``.  "Level" is unit-agnostic
+    so the same field name carries a sovereign yield, an OIS par
+    rate, an inflation swap rate, or a linker real yield depending
+    on the bound curve_family.
 
     Parameters
     ----------
     curve_family : str
-        Curve identifier. Examples: 'UST', 'DE_BUND', 'UK_GILT', 'JGB',
-        'FR_OAT', 'IT_BTP', 'ES_BONO', 'CANADA_GOVT', 'AU_GOVT'.
+        Curve identifier.  Any tenor-keyed rates curve_family declared
+        in a playbook under rates_agent/playbooks/ (see the enumerated
+        families above).
     front_tenor : str, optional
         The front-end leg (default '2Y').
     back_tenor : str, optional
@@ -746,12 +778,14 @@ def classify_curve_move_tool(
         config.yaml.
     field_name : str, optional
         Bloomberg field mnemonic.  Leave as the default empty string ""
-        to use the tool's bundled ``default_field_name`` convention
-        from config.yaml (currently 'YLD_YTM_MID' for sovereigns).
-        Pass an explicit field name to override per call.  Mirrors the
-        empty-string sentinel pattern used by ``calculate_ois_forward_rate_tool``
-        for optional tenor/date inputs — MCP serialises only flat
-        scalars, so we use "" rather than None at the wire level.
+        so the per-playbook auto-discovery picks the right field per
+        curve_family (sovereign + linker → YLD_YTM_MID, OIS →
+        PX_LAST, ZCIS → PX_MID).  The YAML ``default_field_name``
+        (currently YLD_YTM_MID) is the final fallback — sovereign
+        callers see identical behaviour to the pre-A4 path because
+        both the YAML default and sovereign_bonds.yml's
+        target_metrics[0] are YLD_YTM_MID.  Mirrors the empty-string
+        sentinel pattern used by the rest of the rates roster.
     """
     # Translate the empty-string sentinel into a None that the schema
     # layer recognises and the compute layer resolves against the

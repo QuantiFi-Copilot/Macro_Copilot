@@ -91,8 +91,20 @@ class CurveMoveInput(BaseModel):
     curve_family: str = Field(
         ...,
         description=(
-            "Curve family identifier as stored in instrument_master. "
-            "Examples: 'UST', 'DE_BUND', 'UK_GILT', 'JGB', 'FR_OAT'."
+            "Curve family identifier as stored in instrument_master.  "
+            "Accepts any curve_family declared in a tenor-keyed "
+            "playbook under rates_agent/playbooks/ — sovereign "
+            "benchmarks ('UST', 'DE_BUND', 'IT_BTP', 'FR_OAT', "
+            "'ES_BONO', 'UK_GILT', 'JGB', 'CANADA_GOVT', 'AU_GOVT'), "
+            "OIS curves ('USD_SOFR_OIS', 'EUR_ESTR_OIS', "
+            "'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', 'CAD_OIS'), "
+            "inflation swaps ('USD_ZCIS', 'EUR_ZCIS', 'GBP_ZCIS'), and "
+            "sovereign linker real-yield curves ('USD_TIPS', "
+            "'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB').  The "
+            "4-quadrant classification math is curve-family-agnostic; "
+            "front-leg minus back-leg change in the underlying "
+            "observation (yield, par rate, or breakeven) is the "
+            "signal regardless of family."
         ),
     )
     front_tenor: str = Field(
@@ -116,9 +128,15 @@ class CurveMoveInput(BaseModel):
         default=None,
         description=(
             "Bloomberg observation field.  When None (default), the "
-            "tool falls through to ``default_field_name`` from "
-            "config.yaml (currently 'YLD_YTM_MID').  Pass an explicit "
-            "field name to override per query."
+            "tool auto-discovers the field from the owning playbook's "
+            "``target_metrics[0].bloomberg_field`` — different per "
+            "playbook: sovereign benchmarks + linkers use "
+            "'YLD_YTM_MID', OIS curves use 'PX_LAST', ZCIS curves use "
+            "'PX_MID'.  Falls through to the YAML's "
+            "``default_field_name`` ('YLD_YTM_MID') as a final "
+            "fallback so sovereign callers see identical behaviour to "
+            "the pre-A4 path.  Pass an explicit field name to override "
+            "per query."
         ),
     )
 
@@ -182,10 +200,48 @@ class CurveMoveCurrentMetrics(BaseModel):
 
     front_tenor: str
     back_tenor: str
-    front_yield_current: Optional[float] = Field(None, description="Current yield on the front leg (percent).")
-    back_yield_current: Optional[float] = Field(None, description="Current yield on the back leg (percent).")
-    front_yield_prior: Optional[float] = Field(None, description="Prior yield on the front leg (percent).")
-    back_yield_prior: Optional[float] = Field(None, description="Prior yield on the back leg (percent).")
+    # PR14 wire-format honesty (Round 3 A4, post-Codex review): the
+    # field names are ``_level_*`` (not ``_yield_*``) because this
+    # primitive is now curve-family-agnostic and the underlying
+    # observation may be a sovereign yield, an OIS par rate, an
+    # inflation swap rate, or a linker real yield depending on the
+    # bound ``curve_family``.  "Level" is the unit-agnostic name for
+    # the per-tenor observation; the description names the actual
+    # underlying per curve_family.
+    front_level_current: Optional[float] = Field(
+        None,
+        description=(
+            "Current level on the front leg (percent).  Underlying "
+            "observation depends on the bound curve_family: sovereign "
+            "yield, OIS par rate, inflation swap rate, or linker real "
+            "yield.  Field name is unit-agnostic; the playbook owns "
+            "the observation semantics."
+        ),
+    )
+    back_level_current: Optional[float] = Field(
+        None,
+        description=(
+            "Current level on the back leg (percent).  Underlying "
+            "observation depends on the bound curve_family — see "
+            "front_level_current."
+        ),
+    )
+    front_level_prior: Optional[float] = Field(
+        None,
+        description=(
+            "Prior level on the front leg (percent) at the start of "
+            "the lookback window.  Underlying observation depends on "
+            "the bound curve_family — see front_level_current."
+        ),
+    )
+    back_level_prior: Optional[float] = Field(
+        None,
+        description=(
+            "Prior level on the back leg (percent) at the start of "
+            "the lookback window.  Underlying observation depends on "
+            "the bound curve_family — see front_level_current."
+        ),
+    )
     front_change_bps: Optional[float] = Field(None, description="Change in the front leg over the lookback (bps).")
     back_change_bps: Optional[float] = Field(None, description="Change in the back leg over the lookback (bps).")
     spread_current_bps: Optional[float] = Field(None, description="Current spread (back − front) in bps.")

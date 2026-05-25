@@ -11,16 +11,50 @@
 # In V1 deterministic mode there is NO LLM-facing override path for
 # conventions; the LLM cannot ask for non-standard thresholds.  See
 # docs/architecture/tool_architecture.md.
+#
+# Curve-family-agnostic scope (Round 3 Stage 2, work item A4 — PR5
+# coverage extension)
+# -----------------------------------------------------------------
+# This primitive accepts ANY tenor-keyed rates curve_family declared
+# in any playbook under rates_agent/playbooks/ — sovereign benchmarks
+# (UST / DE_BUND / IT_BTP / FR_OAT / ES_BONO / UK_GILT / JGB /
+# CANADA_GOVT / AU_GOVT), OIS curves (USD_SOFR_OIS / EUR_ESTR_OIS /
+# GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS), inflation swaps
+# (USD_ZCIS / EUR_ZCIS / GBP_ZCIS), and sovereign linker real-yield
+# curves (USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB).  The
+# 4-quadrant classification math is curve-family-agnostic; per-
+# playbook field-name discovery picks the right Bloomberg primary
+# metric per curve (sovereign + linker → YLD_YTM_MID, OIS → PX_LAST,
+# ZCIS → PX_MID) without caller intervention.  Per PR5 + PR3 + the
+# primitive runbook's "When NOT to use this runbook" rule, this is
+# the coverage-extension path — extending an existing primitive's
+# allowed input values — rather than shipping a sibling primitive
+# per curve_family.  The tool's residence stays under
+# rates_agent/sovereign_bonds/ because the sovereign desk owns the
+# concept by convention; cross-domain usage is a workflow-
+# composition concern, not a tool-residence question.
+#
+# The BULL/BEAR/STEEPENER/FLATTENER/PARALLEL/TWIST taxonomy is
+# universally applicable to any yield-curve-like family — falling
+# rates are bullish (PC1 down), steepening means front rallies more
+# than back, etc.  The per-classification descriptions in compute.py
+# are written for fixed-income desks (mentioning "yields", "term
+# premium", "central bank repricing") and apply analogously to OIS
+# par rates and ZCIS breakevens; the description text is desk-
+# readable disclosure, not a structural typing claim.
 # =============================================================================
 
 tool:
   name: classify_curve_move_tool
   domain: sovereign_bonds
   description: |
-    Classify a two-point sovereign curve move over a discrete lookback
+    Classify a two-point rates curve move over a discrete lookback
     period (1d / 5d / 22d / 63d) into one of six canonical tags:
     BULL_STEEPENER, BEAR_STEEPENER, BULL_FLATTENER, BEAR_FLATTENER,
-    PARALLEL_SHIFT, TWIST.
+    PARALLEL_SHIFT, TWIST.  Accepts any curve_family declared in a
+    tenor-keyed playbook under rates_agent/playbooks/ (sovereign
+    benchmarks, OIS curves, inflation swaps, sovereign linker
+    real-yield curves).
 
 conventions:
 
@@ -65,13 +99,29 @@ conventions:
     valid_range: [1, 10]
 
   # ---------------------------------------------------------------------------
-  # Default Bloomberg observation field
+  # Default Bloomberg observation field (final fallback)
   # ---------------------------------------------------------------------------
+  # Round 3 Stage 2 (A4): this value is now the FINAL fallback in the
+  # field-name resolution chain.  compute() resolves field_name in
+  # this priority order:
+  #   1. Explicit params.field_name (LLM / API caller override).
+  #   2. The owning playbook's target_metrics[0].bloomberg_field
+  #      (auto-discovered per curve_family — different per playbook:
+  #      sovereign + linker use YLD_YTM_MID; OIS uses PX_LAST; ZCIS
+  #      uses PX_MID).
+  #   3. This YAML value (preserved as YLD_YTM_MID so sovereign
+  #      callers see identical behaviour to the pre-A4 path —
+  #      sovereign_bonds.yml's target_metrics[0] IS YLD_YTM_MID).
   default_field_name:
     value: YLD_YTM_MID
     source: bloomberg_field_convention
     rationale: >-
-      Mid yield-to-maturity is the canonical sovereign-yield observation.
+      Mid yield-to-maturity is the canonical sovereign-yield
+      observation.  Retained as the FINAL fallback in compute()'s
+      field-name resolution chain; the primary path is per-playbook
+      auto-discovery (sovereign + linker → YLD_YTM_MID, OIS →
+      PX_LAST, ZCIS → PX_MID) so non-sovereign callers do not need
+      to know per-vendor field conventions.
 
   # ---------------------------------------------------------------------------
   # Method for aggregating front-and-back leg moves into a "bull/bear"

@@ -62,22 +62,22 @@ export function RegimePrimitiveView({ payload }: Props) {
     },
     {
       label: `${cm.front_tenor} now`,
-      value: cm.front_yield_current?.toFixed(3) ?? '—',
+      value: cm.front_level_current?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
       label: `${cm.back_tenor} now`,
-      value: cm.back_yield_current?.toFixed(3) ?? '—',
+      value: cm.back_level_current?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
       label: `${cm.front_tenor} prior`,
-      value: cm.front_yield_prior?.toFixed(3) ?? '—',
+      value: cm.front_level_prior?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
       label: `${cm.back_tenor} prior`,
-      value: cm.back_yield_prior?.toFixed(3) ?? '—',
+      value: cm.back_level_prior?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
