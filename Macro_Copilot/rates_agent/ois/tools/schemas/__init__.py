@@ -82,6 +82,17 @@ from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
     WirpMeetingSnapshot,
 )
 
+# Asset-swap spread — per-bond INGESTED Bloomberg ASSET_SWAP_SPD_MID
+# (P12 boundary).  Distinct from swap_spread (which is the cross-
+# domain par-par approximation); both primitives' methodology cards
+# cite each other per the catalog guardrail.
+from rates_agent.ois.tools.asset_swap_spread.schemas import (
+    AssetSwapSpreadInput,
+    AssetSwapSpreadMetrics,
+    AssetSwapSpreadOutput,
+    AssetSwapSpreadUnavailableError,
+)
+
 # NOTE: meeting_pricing was removed.  The tool used linear interpolation
 # on par OIS swap rates to approximate central-bank meeting moves, which
 # produces a ramp where the market prices a step function — outputs drifted
@@ -123,4 +134,9 @@ __all__ = [
     "WirpMeetingPricingCurrentMetrics",
     "WirpMeetingSnapshot",
     "WirpMeetingPricingOutput",
+    # asset_swap_spread (per-bond INGEST)
+    "AssetSwapSpreadInput",
+    "AssetSwapSpreadMetrics",
+    "AssetSwapSpreadOutput",
+    "AssetSwapSpreadUnavailableError",
 ]

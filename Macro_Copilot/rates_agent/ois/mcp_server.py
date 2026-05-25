@@ -89,6 +89,12 @@ from rates_agent.ois.tools.wirp_meeting_pricing import (  # noqa: E402
     WirpMeetingPricingInput,
     calculate_wirp_meeting_pricing,
 )
+from rates_agent.ois.tools.asset_swap_spread import (  # noqa: E402
+    CONFIG_PATH as ASSET_SWAP_SPREAD_CONFIG_PATH,
+    AssetSwapSpreadInput,
+    AssetSwapSpreadUnavailableError,
+    get_asset_swap_spread,
+)
 from shared.config import load_tool_config  # noqa: E402
 
 logging.basicConfig(
@@ -1178,6 +1184,150 @@ def calculate_wirp_meeting_pricing_tool(
         "error" if "error" in result else "OK",
     )
 
+    return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 9: get_asset_swap_spread (per-bond INGEST — distinct from
+# TOOL 5 swap_spread which is the par-par approximation)
+# ===========================================================================
+@mcp.tool()
+def get_asset_swap_spread_tool(
+    vendor_ticker: str,
+    as_of_date: str = "",
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Per-bond INGESTED Bloomberg asset-swap spread
+    (``ASSET_SWAP_SPD_MID``) for one sovereign cash bond identified
+    by ``vendor_ticker`` (e.g. ``/isin/DE000BU22130``).
+
+    PURE INGEST (P12) — surfaces the vendor's source-of-record ASW
+    value VERBATIM (no rounding of the raw value).  NEVER recomputes
+    from STIR / OIS / discount factors.
+
+    DISTINCT from ``calculate_swap_spread_tool`` (TOOL 5) which is the
+    CROSS-DOMAIN par-par approximation
+    ``(sovereign_yield − ois_rate) × 100`` computed in-process.  Use
+    THIS tool when you have a specific cash bond and want its
+    truthful Bloomberg ASW; use ``calculate_swap_spread_tool`` when
+    you have a curve point and want the par-par approximation.
+
+    Use when the user asks about:
+    - The Bloomberg ASW on a specific bond (e.g. "what's the ASW on
+      ``/isin/DE000BU22130`` on 2026-05-21?")
+    - Per-bond ASW history (e.g. "10Y Bund OTR ASW over the past
+      year")
+    - Bond-specific RV vs OIS (e.g. "is this BTP cheaper to OIS
+      than the on-the-run?" — though the comparison primitive is a
+      separate composition)
+
+    Raises ``AssetSwapSpreadUnavailableError`` (typed P6 refusal —
+    converted to error envelope at this MCP boundary) on:
+    - ``vendor_ticker`` not in sovereign_cash_bonds universe
+    - NULL ASW on the requested ``as_of_date``
+    - empty result set for the lookback window
+
+    Parameters
+    ----------
+    vendor_ticker : str
+        Per-bond canonical key.  Convention: ``/isin/<ISIN>``
+        (e.g. ``/isin/DE000BU22130``, ``/isin/US91282CQQ77``).
+    as_of_date : str, optional
+        Optional explicit snapshot date in ISO format (YYYY-MM-DD).
+        Empty string "" (default) → latest mode (snapshot is the
+        most recent NON-NULL observation in the lookback window).
+        Supplied date → snapshot is for THAT date and NULL ASW
+        raises ``AssetSwapSpreadUnavailableError`` (no ffill).
+    lookback_days : int, optional
+        Calendar days of trailing ASW history (default 365).
+        Anchored to ``as_of_date`` when supplied, else to the
+        data's latest observation (not date.today()).
+    field_name : str, optional
+        Bloomberg field mnemonic.  Empty string "" (default) → use
+        the bundled ``default_field_name`` convention from
+        asset_swap_spread/config.yaml (currently
+        'ASSET_SWAP_SPD_MID').  Empty-string sentinel pattern.
+    """
+    # Translate empty-string sentinels into the right typed values.
+    # as_of_date: "" → None (latest mode); "YYYY-MM-DD" → date object.
+    # field_name: "" → None (YAML default flows through).
+    from datetime import date as _date_cls
+    as_of_date_arg = None
+    if as_of_date:
+        try:
+            as_of_date_arg = _date_cls.fromisoformat(as_of_date)
+        except ValueError as exc:
+            return json.dumps(
+                {"error": f"Invalid as_of_date={as_of_date!r}: must be ISO "
+                          f"YYYY-MM-DD or empty.  {exc}"},
+                default=str,
+            )
+    field_name_arg = field_name if field_name else None
+
+    try:
+        params = AssetSwapSpreadInput(
+            vendor_ticker=vendor_ticker,
+            as_of_date=as_of_date_arg,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_asset_swap_spread_tool] input validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_asset_swap_spread_tool] failed to connect to TimescaleDB"
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Load the bundled config explicitly so the dependency is
+    # observable at the wiring layer (PR7).  load_tool_config caches
+    # by path; free after first call.
+    try:
+        asw_config = load_tool_config(ASSET_SWAP_SPREAD_CONFIG_PATH)
+        result = get_asset_swap_spread(
+            engine=engine, params=params, config=asw_config,
+        )
+    except AssetSwapSpreadUnavailableError as exc:
+        # Typed P6 refusal — convert to error envelope at the
+        # transport boundary (no proxy, no fall-through).
+        logger.info(
+            "[get_asset_swap_spread_tool] typed refusal for %s: %s",
+            params.vendor_ticker, exc.reason[:80],
+        )
+        return json.dumps(
+            {"error": str(exc)},
+            default=str,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_asset_swap_spread_tool] unhandled error for %s",
+            params.vendor_ticker,
+        )
+        return json.dumps(
+            {"error": f"get_asset_swap_spread_tool failed for "
+             f"{params.vendor_ticker}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[get_asset_swap_spread_tool] tool call complete: %s → %s",
+        params.vendor_ticker, status,
+    )
     return json.dumps(result, default=str)
 
 

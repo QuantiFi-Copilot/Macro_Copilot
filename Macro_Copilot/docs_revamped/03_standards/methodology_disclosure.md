@@ -39,6 +39,7 @@ Every `defaults` entry in any `config.yaml` carries a `source` tag identifying *
 | `legacy_default_pre_pilot` | A pre-pilot default kept for compatibility; flagged for review |
 | `<primitive_name>_primitive_v1` | A primitive-specific default the substrate honours (e.g., `rolling_regression_primitive_v1`) |
 | `adr_<N>_<concept>` | The convention's authoritative source is a specific ADR; tag names the ADR number and the concept (e.g., `adr_0007_otr_canonicalisation` — the (country, tenor) canonicalisation rule established by ADR 0007's resolver design). Use when a convention exists *because* a specific ADR fixed it. |
+| `vendor_ingested` | The convention's value is a load-bearing P12 ingest-discipline commitment — the underlying data is the vendor's (e.g. Bloomberg's) source-of-record value, never recomputed by this primitive (e.g. `bloomberg_ingested_asw` for `rates_agent/ois/tools/asset_swap_spread/`'s `data_source_policy`). Used when a primitive needs to declare in YAML that its output is ingested-only and any drift would silently break the P12 boundary. |
 
 New tags require:
 1. An entry in this table (one line).

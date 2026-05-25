@@ -260,6 +260,69 @@ tools:
     validation_status: >-
       Not validated yet
 
+  - name: get_asset_swap_spread
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: get_asset_swap_spread_tool
+      schema: rates_agent/ois/tools/asset_swap_spread/schemas.py::AssetSwapSpreadInput
+      compute: rates_agent/ois/tools/asset_swap_spread/compute.py::get_asset_swap_spread
+      config: rates_agent/ois/tools/asset_swap_spread/config.yaml
+
+    one_liner: >-
+      Per-bond INGESTED Bloomberg ASSET_SWAP_SPD_MID for one sovereign
+      cash bond identified by vendor_ticker (e.g. /isin/DE000BU22130).
+      Pure INGEST primitive (P12) — surfaces the vendor's source-of-
+      record value VERBATIM with no rounding (SQL parity within 1e-9).
+      DISTINCT from calculate_swap_spread_tool (par-par approximation);
+      both methodology cards cross-reference per the catalog guardrail.
+      Snapshot + canonical TimeSeries (units = BPS) + level-stat
+      decoration.  Raises AssetSwapSpreadUnavailableError (typed P6
+      refusal) on NULL ASW for an explicit as_of_date / vendor_ticker
+      not in the sovereign_cash_bonds universe — no proxy, no fall-
+      through to swap_spread.
+
+    bucket_rationale: >-
+      Pure INGEST of a vendor source-of-record value, addressed by
+      vendor_ticker (per-bond canonical key against the
+      sovereign_cash_bonds.yml universe + ADR 0003 substrate).  No
+      model state; no computed approximation; no methodology beyond
+      the YAML-locked z-score / period-change / trailing-range
+      decoration.  The raw asw_spread value is preserved bit-exact
+      from the DB so the SQL-validation runner can assert 1e-9 parity
+      against a raw SELECT.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_swap_spread_tool       # par-par approximation; symmetric cite
+      - get_otr_history_tool             # which bond was OTR on a date
+      - get_yield_levels_tool            # generic yield on the curve
+      - calculate_ois_rate_level_tool    # OIS leg of the par-par approx
+
+    workflows: []
+
+    references:
+      - "rates_agent/playbooks/sovereign_cash_bonds.yml (universe + verified field)."
+      - "manifesto/01_instruments/rates_agent/07_sovereign_cash_bonds.md."
+      - "docs_revamped/05_decisions/0003-cash-bond-substrate.md."
+      - "docs_revamped/05_decisions/0005-cash-bond-playbook-universe.md."
+
+    built_date: 2026-05-25
+    validation_status: >-
+      Offline test triplet + parity fixture present (PR16 + PR15).
+      SQL validation against macro_data.market_data_daily —
+      ASSET_SWAP_SPD_MID per vendor_ticker — asserts 1e-9 parity
+      between Python output and raw SQL.  CAD government bonds carry
+      sparse ASW data (~2% of trading days per playbook header note 4)
+      — methodology_note discloses; rolling z-score may be empty for
+      CAD when the 60-observation floor is not met.
+
   # ---------------------------------------------------------------------------
   # CROSS-UNIVERSE SCREENING
   # ---------------------------------------------------------------------------
