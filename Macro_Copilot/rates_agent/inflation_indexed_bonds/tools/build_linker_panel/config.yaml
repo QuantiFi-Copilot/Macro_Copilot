@@ -1,0 +1,268 @@
+# =============================================================================
+# build_linker_panel — tool configuration
+# =============================================================================
+# Multi-instrument Panel of inflation-linker REAL yields across the
+# USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB universe (rows =
+# trade_date, columns = vendor_ticker).  Substrate primitive for
+# downstream cross-country / cross-tenor RV scanning, real-yield PCA,
+# and operator-shaped work (Plan §5 Group 3 #20).
+#
+# Same convention names + values as ``sovereign_yield_panel`` /
+# ``build_zcis_panel`` for the alignment / missing-data /
+# forward-fill knobs so the cross-tool ``shared.config.lint`` stays
+# clean.  The Bloomberg field default is ``YLD_YTM_MID`` — the same
+# canonical real-yield mid that ``real_yield_level`` and
+# ``scan_inflation_linkers_extremes`` consume from
+# ``v_market_data_daily_enriched``.
+#
+# Calendar policy default — ``business_days`` (matches the sibling
+# ``build_sovereign_yield_panel`` and ``build_zcis_panel``
+# convention value so the cross-tool ``shared.config.lint`` stays
+# clean).  The linker universe spans four distinct trading
+# calendars (US / UK / France / Canada) so a unioned ``business_
+# days`` filter (Mon-Fri only) IS a cross-region approximation;
+# the methodology card's ``cross_region_business_days_caveat``
+# field surfaces this explicitly, and the per-query opt-in
+# ``instrument_native`` is available for desks that want every
+# native session date through.
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time.  Bumping any value here is a deliberate
+# methodology change with downstream impact on every operator that
+# consumes the panel.
+# =============================================================================
+
+tool:
+  name: build_linker_panel_tool
+  domain: inflation_indexed_bonds
+  category: desk_invariant_primitive
+  description: |
+    Assemble a wide multi-instrument Panel of inflation-linker REAL
+    yields across the USD_TIPS / GBP_LINKER / EUR_FR_LINKER /
+    CAD_RRB curve families (rows = trade_date, columns =
+    vendor_ticker).  Pivots raw
+    ``macro_data.v_market_data_daily_enriched`` rows
+    (instrument_type='inflation_linker') into a date-indexed
+    DataFrame keyed by the canonical Bloomberg identifier of each
+    linker bond, ready for consumption by cross-country / cross-
+    tenor regression / PCA / RV operators.
+
+    Per the build_linker_panel catalog entry the column key would
+    ideally be ``security_name``; the inflation-linker universe's
+    ``instrument_metadata_history.security_name`` is universally
+    NULL on the live SCD2 rows (matching the no-proxy treatment
+    ``build_zcis_panel`` and ``scan_inflation_linkers_extremes``
+    apply — vendor_ticker is surfaced under its own honest name,
+    NOT relabelled as ``security_name``).  The Panel's column key
+    is therefore ``vendor_ticker`` (e.g. ``'GTII10 Govt'``,
+    ``'GTGBPII10Y Govt'``, ``'GTFRFII10Y Govt'``,
+    ``'GTCADII10Y Govt'``).  The methodology card discloses the
+    substitution explicitly so the desk reader knows the naming
+    did not silently swap labels.
+
+    INDEX-FAMILY MISMATCH (load-bearing): the four linker curve
+    families reference DIFFERENT inflation indices —
+    US_CPI_URBAN (USD_TIPS) / UK_RPI (GBP_LINKER) / EU_HICP
+    (EUR_FR_LINKER) / CAN_CPI (CAD_RRB).  Cross-country operators
+    consuming this panel see all four regimes side-by-side, NOT a
+    harmonised expected-inflation surface; the methodology card's
+    ``index_family_caveat`` field surfaces this on the wire.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field for inflation-linker legs
+  # ---------------------------------------------------------------------------
+  # Convention NAME matches every other inflation_indexed_bonds tool
+  # (``default_field_name``).  YLD_YTM_MID is the canonical mid
+  # real-yield-to-maturity observation for inflation linkers and
+  # matches the playbook's ``target_metrics`` mapping
+  # (``yield_mid`` → ``YLD_YTM_MID``).
+  default_field_name:
+    value: YLD_YTM_MID
+    source: industry_standard_mid_yield
+    rationale: >-
+      Mid yield-to-maturity is the canonical real-yield pricing
+      field for inflation linkers — same field every other
+      inflation_indexed_bonds tool (real_yield_level /
+      scan_inflation_linkers_extremes / real_yield_curve_spread)
+      reads from ``v_market_data_daily_enriched``.  The playbook's
+      ``target_metrics`` mapping pins ``yield_mid`` →
+      ``YLD_YTM_MID`` for inflation-linker rows.  LLM/HTTP
+      wrappers must use the empty/None sentinel so this default
+      flows through — see the curve_move_classifier
+      wrapper-shadowing fix (commit b2605ee) for the canonical
+      pattern.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps
+  # ---------------------------------------------------------------------------
+  # NAME-MATCH every other rates tool's ``ffill_limit_days`` and
+  # carry the SAME value so the cross-config lint stays clean.
+  ffill_limit_days:
+    value: 5
+    source: industry_standard_5d_ffill
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps so the panel has comparable observations across all
+      legs.  Identical to ``sovereign_yield_panel`` /
+      ``build_zcis_panel`` / ``real_yield_level`` / every other
+      rates tool; ``shared.config.lint`` enforces the match.  Set
+      to 0 to disable forward-fill entirely (strict-coverage
+      panels).  The desk-honest cross-country bridge for the
+      linker universe is particularly load-bearing because the
+      four curve families have different holiday calendars
+      (US Federal / UK Bank / France / Canadian) — a single
+      Mon-Fri filter would distort per-country coverage even
+      without the ffill bridge.
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Missing-data policy (after ffill)
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; ToolConfig's Convention schema
+  # only supports ``valid_range`` (numeric), so the allowed-values
+  # set is declared in the rationale text instead of a dedicated
+  # field — same convention every other ``rates_agent/*/tools/*/
+  # config.yaml`` follows for enum-shaped knobs.  Mirrors
+  # ``sovereign_yield_panel`` / ``build_zcis_panel``.
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``forward_fill_only`` (V1 default) — return the panel
+          as-is after the ffill_limit-day forward-fill.  Holes
+          remaining outside that bound are left as NaN; downstream
+          operators handle them.
+        - ``raise`` — strictest; any NaN cell after ffill halts
+          the compute path with the (date, column) of the first
+          miss.
+        - ``drop_rows_any_missing`` — shrinks the panel to
+          fully-observed dates only.  Useful for correlation /
+          regression / PCA panels that cannot tolerate per-leg
+          gaps.  Particularly aggressive on the linker universe
+          because the four trading calendars have different
+          holiday days — many otherwise-fine rows will drop.
+      Per-call override via ``BuildLinkerPanelInput.missing_data_policy``.
+
+  # ---------------------------------------------------------------------------
+  # Calendar policy
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; same enum-in-rationale pattern
+  # as ``default_missing_data_policy``.  Default value matches
+  # the sibling ``build_sovereign_yield_panel`` and
+  # ``build_zcis_panel`` configurations (``business_days``) so
+  # the cross-tool ``shared.config.lint`` stays clean.
+  #
+  # The multi-region linker universe spans four distinct trading
+  # calendars (US / UK / France / Canada), so a unioned Mon-Fri
+  # filter is a cross-region approximation; the methodology card's
+  # ``cross_region_business_days_caveat`` field surfaces this
+  # explicitly, and ``instrument_native`` is exposed as a per-query
+  # opt-in for desks that want every native session date through.
+  calendar_policy:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``business_days`` (V1 default; matches the sibling
+          build_zcis_panel + build_sovereign_yield_panel
+          convention value so the cross-tool config lint stays
+          clean) — restrict the output index to Mon-Fri
+          observations.  For the multi-region linker universe
+          this is a cross-region approximation; the methodology
+          card's ``cross_region_business_days_caveat`` field
+          surfaces the per-country holiday-calendar mismatch
+          (US / UK / France / Canada have different national
+          holidays, so a Mon-Fri filter still surfaces dates
+          that are holidays in one or more sessions).
+        - ``instrument_native`` (per-query opt-in) — pass through
+          every observed date verbatim from the DB.  Use for
+          multi-region full-universe queries where the desk
+          wants every native trading session surfaced
+          regardless of weekend / holiday alignment across the
+          four sessions, or when the panel will be merged with
+          a cross-calendar partner downstream.  Holiday-aware
+          per-curve_family calendars require a holiday-table
+          ingestion step not yet built (see
+          ``methodology.planned_extensions``).
+      Documented on the methodology card.
+
+methodology:
+
+  what_it_does: |
+    For each linker curve_family in the request (defaulting to the
+    full USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB universe)
+    fetches the ``default_field_name`` observations from
+    ``macro_data.v_market_data_daily_enriched`` ×
+    ``macro_data.instrument_master`` over ``[start_date, end_date]``
+    filtered by ``instrument_type='inflation_linker'`` (the
+    structural identity guard), pivots into a wide DataFrame keyed
+    by the bond's ``vendor_ticker`` (the canonical Bloomberg
+    identifier, e.g. ``'GTII10 Govt'``), forward-fills holiday
+    gaps up to ``ffill_limit_days``, applies the missing-data
+    policy, and emits a closed-family Panel artifact with
+    per-column PERCENT units inferred from the resolved field_name.
+
+  assumptions:
+    - "Linker real yields stored as percent in DB (e.g. 1.953 =
+       1.953% real).  Negative linker real yields are valid
+       across parts of the post-2020 GBP_LINKER / EUR_FR_LINKER
+       history; the panel surfaces them unchanged."
+    - "Every column carries the same ``field_name`` resolution
+       (V1: PER-BOND field overrides are NOT exposed — the
+       catalog limits this primitive's per-query knobs to
+       legitimate inputs; deviation belongs in a future primitive)."
+    - "Column order is sorted by ``(curve_family, maturity_date,
+       vendor_ticker)`` so the output Panel has a deterministic,
+       desk-readable layout regardless of input ordering.
+       Maturity_date is the desk-honest secondary sort because
+       linkers are per-bond instruments — each ticker is a
+       specific maturity, not a tenor pillar."
+    - "Closed-enum curve_family set — non-linker curve families
+       (sovereign ``UST`` / ``DE_BUND``, OIS ``USD_SOFR_OIS``,
+       ZCIS ``USD_ZCIS``, policy futures ``USD_RFR_STRIP``) are
+       rejected at input validation per the closed-family
+       discipline."
+    - "Universe scoping (which curve_families flowed into the
+       panel) is surfaced on the methodology card and on the wire
+       so downstream operators see what the panel covers.  The
+       per-curve-family inflation_index_family caveat
+       (US_CPI_URBAN / UK_RPI / EU_HICP / CAN_CPI) is surfaced
+       on the methodology card so cross-country operators do not
+       silently mix the four index regimes."
+
+  citations:
+    - "Plan §5 Group 3 #20 — Panel substrate primitive for
+      operator-shaped work (cross-country regression, real-yield
+      PCA, RV scanning at the row-vector level)."
+    - "build_zcis_panel (commit 32c386f) — the closest-in-time
+      Panel primitive; same vendor_ticker column-key idiom,
+      same MissingnessPolicy + Lineage discipline, same
+      methodology-card disclosure shape."
+    - "scan_inflation_linkers_extremes (commit 91a5714) — the
+      canonical reference for per-country inflation_index_family
+      caveats across the linker universe."
+
+  planned_extensions:
+    - "Per-bond field_name override (mixing YLD_YTM_MID with
+      YLD_YTM_BID / YLD_YTM_ASK on a single panel).  V1 emits the
+      same field on every leg by design; deviation belongs in a
+      future primitive."
+    - "Holiday-aware calendar policy per curve_family (US / UK /
+      France / Canada have different trading-day calendars; V1's
+      ``instrument_native`` default surfaces all native sessions
+      and the opt-in ``business_days`` unioned Mon-Fri policy is
+      a cross-region approximation).  Requires holiday-table
+      ingestion per country."
+    - "Frequency resampling (weekly / monthly closes for
+      lower-frequency operators)."
+    - "``security_name`` column key once
+      ``macro_data.instrument_metadata_history.security_name`` is
+      populated for the inflation-linker universe (currently
+      universally NULL on the live SCD2 rows; see methodology
+      card's ``security_name_caveat`` and the no-proxy precedent
+      in ``build_zcis_panel`` and ``scan_inflation_linkers_extremes``)."

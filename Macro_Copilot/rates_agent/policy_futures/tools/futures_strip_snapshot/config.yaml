@@ -1,0 +1,402 @@
+# =============================================================================
+# policy_futures.get_futures_strip_snapshot_tool — tool configuration
+# =============================================================================
+# All-strip-positions side-by-side snapshot for ONE policy-futures
+# curve_family (SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT). Per ADR 0013
+# the desk-recognised STIR-strip object is the whole strip — "the strip
+# is steep / flat / inverted" — not eight individual outright reads.
+# This primitive owns that concept: a single primitive that returns
+# one row per strip position with (raw_price, implied_rate_pct,
+# daily_change_implied_rate_pct, z_score_implied_rate, open_interest)
+# plus a per-row methodology card.
+#
+# V1 monitor under ``policy_futures`` (per ADR 0013 — strip-position-
+# keyed monitors). The output card disclosure makes the scope-limited
+# reading explicit (P5):
+#
+#   "Rolling-generic strip snapshot across positions 1..8 — NOT a
+#    CTD-of-futures-of-OIS curve. The CTD-implied-OIS path is not yet
+#    a primitive in this build (ADR 0013 V1 scope — policy_futures
+#    ships strip-position-keyed monitors only)."
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions. The LLM cannot ask for non-standard windows / thresholds
+# / strip-position subsets. The implied-rate conversion rule
+# (raw_price → implied_rate_pct, per leg) is driven OFF METADATA (the
+# per-strip ``instrument_master.attributes->>'inverse_pricing'`` flag
+# read via fetch_strip_position_reference) — NOT off a hardcoded list
+# in compute.py. Same convention pattern the sibling
+# futures_price_level / futures_calendar_spread / futures_butterfly_simple
+# tools use; the strip snapshot re-uses the conversion path verbatim.
+# All strip positions on a given curve_family must agree on the flag;
+# a mixed-flag universe is refused with the controlled-error envelope.
+# =============================================================================
+
+tool:
+  name: policy_futures_get_futures_strip_snapshot_tool
+  domain: policy_futures
+  description: |
+    Whole-strip side-by-side snapshot for ONE policy-futures
+    curve_family. Emits a ``snapshot`` list with one row per
+    configured strip position:
+
+      - ``strip_position``: 1-based strip slot index.
+
+      - ``contract_code``: strip-slot master stem (e.g. ``'SFR1'``).
+
+      - ``underlying_contract_code``: current-front underlying that
+        the slot resolves to AS OF the snapshot's ``as_of_date``.
+
+      - ``security_name`` / ``expiry_date`` / ``contract_size``: the
+        as_of-bounded SCD2 disclosure block per leg.
+
+      - ``raw_price``: latest aligned price in the contract's native
+        quote space (for SFR / ER / SFI: ``100 - rate``).
+
+      - ``implied_rate_pct``: desk-recognised implied rate in PERCENT,
+        derived from ``raw_price`` per the per-strip ``inverse_priced``
+        flag (when inverse: ``implied_rate_pct = 100 - raw_price``).
+
+      - ``daily_change_implied_rate_pct``: 1-trading-day raw
+        subtraction on the implied-rate axis (NOT *100; the implied-
+        rate delta is in PERCENT POINTS, not bps).
+
+      - ``z_score_implied_rate``: rolling 252-trading-day z-score of
+        the per-leg implied-rate level series.
+
+      - ``open_interest``: latest end-of-day open interest in
+        CONTRACTS (NOT notional) at the snapshot's ``as_of_date``.
+
+      - ``row_methodology_card``: per-row P5 disclosure stating the
+        underlying short-rate regime (RFR / IBOR) and the implied-rate
+        conversion rule for the row's curve_family.
+
+    The output also carries an output-level ``methodology_disclosure``
+    that names the curve_family, the inverse-pricing rule, the z-score
+    lookback window, and the rolling-generic-strip-snapshot scope-
+    limit caveat (rolls quarterly; NOT a CTD-of-futures-of-OIS read).
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days) — applied to the per-leg
+  # IMPLIED-RATE level series. Same convention as the sibling
+  # futures_price_level / volume_open_interest_snapshot /
+  # futures_calendar_spread / futures_butterfly_simple so cross-tool
+  # z-score reads are comparable across the policy_futures domain.
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window on each per-leg
+      implied-rate level series. Mirrors the sibling policy_futures
+      tools so a "is SFR1 implied rate elevated?" read off this
+      snapshot matches the standalone futures_price_level reading on
+      SFR1. Disclosed verbatim on every row's methodology card per
+      P5 + ADR 0013.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches futures_price_level /
+      futures_calendar_spread / futures_butterfly_simple /
+      volume_open_interest_snapshot.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated on every per-leg series from the
+      first displayed trading day. 1.5x trading-day window covers
+      weekends + holidays. Matches every other rates level primitive
+      in this codebase.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Daily-change offset (in trading-day rows after ffill + alignment)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back on the per-leg
+      aligned implied-rate series. Matches the daily-change convention
+      used by every other rates level primitive.
+    valid_range: [2, 5]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations on each leg
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps on each leg's series. Same as every other rates level
+      primitive in this codebase. Applied independently to each
+      strip position's series before the cross-leg date alignment
+      step.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation fields — price (last_price) + OI
+  # ---------------------------------------------------------------------------
+  # These are NOT input-schema knobs masquerading as YAML — they are
+  # field-name conventions owned by the YAML so an ingestion-side
+  # rename can be absorbed by a YAML edit rather than a code change.
+  # The LLM may override ``last_price`` / ``open_interest`` per query
+  # via the input's empty-string / None sentinel pattern; the YAML
+  # default flows through when no override is supplied.
+  default_price_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Last-traded price is the canonical observation. Maps onto the
+      playbook's ``last_price`` metric (bloomberg_field PX_LAST).
+      LLM/HTTP wrappers MUST use the empty-string / None sentinel so
+      this default flows through — same shadowing-fix pattern as
+      sovereign curve_move_classifier (commit b2605ee) /
+      futures_price_level / futures_calendar_spread /
+      futures_butterfly_simple.
+
+  default_open_interest_field:
+    value: OPEN_INT
+    source: bloomberg_field_convention
+    rationale: >-
+      Daily end-of-day open-interest mnemonic. Policy-futures playbook
+      ingests OPEN_INT alongside PX_LAST / PX_VOLUME — same fields the
+      sibling volume_open_interest_snapshot consumes.
+
+  # ---------------------------------------------------------------------------
+  # Strip positions to include in the snapshot (default: all 8).
+  # ---------------------------------------------------------------------------
+  # The V1 policy_futures playbook universe ingests strip positions
+  # 1..8 across SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT (whites =
+  # positions 1-4, reds = positions 5-8). This convention is the
+  # ordered list of positions the snapshot will return one row each
+  # for; configuring a SUBSET (e.g. [1,2,3,4] for whites-only) is
+  # honest truncation — the snapshot returns ONLY those rows. A
+  # superset that includes positions not present in the playbook
+  # universe will be REFUSED with the controlled-error envelope at
+  # compute() time (catalog standardness guardrail — no silent
+  # padding with "missing data" rows). The list is CSV-encoded in
+  # YAML because ``Convention.value`` is scalar (str / int / float);
+  # compute parses it into a tuple of ints at load time. Mirrors the
+  # CSV-encoded ``short_rate_regime_map`` pattern the siblings use.
+  strip_positions:
+    value: "1,2,3,4,5,6,7,8"
+    source: team_judgment_pending_review
+    rationale: >-
+      All 8 strip positions in the V1 playbook universe (whites
+      positions 1-4, reds positions 5-8). The strip snapshot's
+      desk-recognised reading is the WHOLE strip ("steep / flat /
+      inverted"); a subset is honest as long as the snapshot exports
+      EXACTLY the configured positions and refuses unknown positions
+      with the controlled-error envelope (no silent padding). Stored
+      as a CSV of positive integers because ``Convention.value`` is
+      scalar.
+
+  # ---------------------------------------------------------------------------
+  # Short-rate regime label per curve_family (RFR vs IBOR). Disclosure-
+  # only (P5 — does NOT alter computation). RFR = compounded daily
+  # risk-free rate (SOFR / SONIA); IBOR = unsecured 3M term IBOR
+  # (Euribor). Stored as a CSV of ``KEY=VALUE`` pairs because
+  # ``Convention.value`` is scalar; compute parses it into a dict at
+  # load time. Mirrors the sibling futures_price_level /
+  # futures_calendar_spread / futures_butterfly_simple /
+  # volume_open_interest_snapshot entries verbatim so the cross-tool
+  # disclosure reads the same across the policy_futures domain.
+  # ---------------------------------------------------------------------------
+  short_rate_regime_map:
+    value: "SOFR_FUT=RFR,SONIA_FUT=RFR,EUR_SHORT_RATE_FUT=IBOR"
+    source: team_judgment_pending_review
+    rationale: >-
+      Disclosure-only mapping (P5 — does NOT alter computation). RFR
+      vs IBOR labels the underlying short-rate object so a desk
+      reader knows what the implied rate means: a compounded daily
+      RFR (SOFR / SONIA) vs an unsecured 3M term IBOR (Euribor).
+      Stored as a CSV of ``KEY=VALUE`` pairs because
+      ``Convention.value`` is scalar; compute parses it into a dict
+      at load time. New families added to the playbook are added
+      here in the same PR — no hidden defaults.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to per-row raw_price,
+  # implied_rate_pct, daily_change_implied_rate_pct, z-score, and
+  # open_interest. Two separate price-vs-rate precisions because
+  # raw_price (futures-price space) and implied_rate_pct (percent
+  # space) have structurally different display contracts; same
+  # discipline the sibling futures_price_level uses.
+  # ---------------------------------------------------------------------------
+  raw_price_round_decimals:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Five decimals safely covers every quoted tick across the
+      policy-futures universe (SFR tick_size = 0.0025 / 0.005; ER /
+      SFI ticks 0.005). Matches the sibling futures_price_level
+      precision.
+    valid_range: [0, 8]
+
+  implied_rate_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for the implied rate in PERCENT (≈ 0.01 bp
+      precision). Matches the precision desks use to read STIR
+      implied rates without losing tick-derived resolution. Same
+      precision as futures_price_level / futures_calendar_spread /
+      futures_butterfly_simple's per-leg implied-rate fields.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches every other policy_futures /
+      bond_futures / sovereign rates monitor in this codebase.
+    valid_range: [0, 8]
+
+  open_interest_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Open interest is a whole-contract count. Round to 0 decimals
+      to surface the integer-valued count on the wire (the
+      underlying DB column is numeric(20,8); the original Bloomberg
+      OPEN_INT field IS an integer). Matches the sibling
+      volume_open_interest_snapshot precision.
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    Fetches all configured policy-futures strip-slot series for one
+    ``curve_family`` (the V1 default is the full strip,
+    ``strip_positions = [1, 2, ..., 8]``) — PX_LAST and OPEN_INT —
+    via two ``fetch_strip_group`` round-trips, converts each leg's
+    raw_price series to implied-rate space using the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes``,
+    cleans + ffills each per-strip series independently (ffill_limit
+    = 5 trading days), aligns the per-strip series on the
+    intersection of trading days, and returns a snapshot with one
+    row per configured strip position. Each row carries the per-leg
+    raw_price, implied_rate_pct, daily_change_implied_rate_pct (raw
+    subtraction; NOT bps multiplication), rolling 252-day z-score of
+    the per-leg implied-rate level, open_interest in contracts, the
+    as_of-bounded SCD2 disclosure block per leg, and a per-row
+    methodology card disclosing the underlying short-rate regime and
+    the implied-rate conversion rule.
+
+    The implied-rate conversion rule is driven off the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes`` —
+    NOT a hardcoded list in compute.py. All strip positions on the
+    requested ``curve_family`` must agree on the flag; a mixed-flag
+    universe is refused with the controlled-error envelope. The
+    methodology disclosure (output-level AND per-row) discloses the
+    short-rate regime (RFR / IBOR per curve_family), the inverse-
+    pricing rule, the z-score lookback window, and the rolling-
+    generic-strip-snapshot scope-limit caveat verbatim so a desk
+    reader cannot misread the sign or the unit.
+
+  assumptions:
+    - "Policy-futures strip slots are keyed by
+       ``(curve_family, strip_position)``. The strip snapshot is keyed
+       by ``(curve_family)`` plus the YAML's ``strip_positions``
+       list. The user picks ``curve_family``; the strip_positions
+       list is YAML-owned (V1 default: 1..8) and is NOT an LLM input
+       — see config.yaml's strip_positions block."
+    - "All configured strip positions on the requested
+       ``curve_family`` must agree on the per-strip ``inverse_pricing``
+       flag from ``instrument_master.attributes``. In V1 every
+       universe entry on SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT
+       carries ``inverse_pricing: true`` (verified against the
+       playbook), so the snapshot always returns
+       ``implied_rate_pct = 100 - raw_price`` per leg. A future
+       direct-priced family (e.g. TIIE_FUT) would just flip the
+       metadata flag and the snapshot would adjust per leg; no code
+       change required. A mixed-flag set within one curve_family is
+       refused with the controlled-error envelope."
+    - "The short-rate regime (RFR vs IBOR) is METHODOLOGY
+       DISCLOSURE — NOT a load-bearing computation choice. SOFR /
+       SONIA reference a compounded daily RFR (3-month look-back at
+       expiry); Euribor (EUR_SHORT_RATE_FUT) references an
+       unsecured 3M term IBOR. The methodology card surfaces the
+       regime label inline so consumers cannot mistake one for the
+       other. ADR 0013 V1 — these are kept as SEPARATE strip
+       universes per curve_family; the snapshot is per
+       curve_family, never mixing RFR + IBOR in one row set."
+    - "Each per-leg z-score lives on the IMPLIED-RATE axis (not the
+       raw-price axis). For inverse-priced strips the two axes are
+       monotone inversions, so z-scoring the raw price would flip
+       the sign of every 'extreme' reading relative to the rate.
+       Desks read the implied rate; the z follows the rate."
+    - "ADR 0013 V1 scope: this primitive is the rolling-generic
+       strip snapshot across all configured strip positions. The
+       CTD-of-futures-of-OIS curve (mapping the strip onto the OIS
+       forward curve) is NOT yet a primitive in this build — that
+       requires the CTD identification + OIS-curve interpolation
+       stack (Phase-4 per ADR 0013)."
+    - "Daily change AND z-score are computed on each per-leg series
+       independently; the snapshot's ``as_of_date`` is the latest
+       trading day on which ALL configured strip positions have a
+       value after cleaning + intersection. A leg missing a price
+       on the latest aligned date is bridged by ffill up to
+       ``ffill_limit_days``; beyond that the snapshot honestly
+       refuses with the controlled-error envelope rather than
+       padding."
+    - "as_of_date defaults to None — when supplied AND BEYOND any
+       configured strip position's last observed trade_date,
+       compute returns the controlled-error envelope (``{\"error\":
+       \"no scoreable strip: ...\"}``); the snapshot refuses to
+       silently re-label an unbounded read as a future-anchored
+       read (P5 / PR8 honest disclosure)."
+
+  citations:
+    - "ADR 0013 (docs_revamped/05_decisions/0013-futures-domain-agents.md)"
+    - "Catalog v2.1 PR14 (frozen field-name discipline: implied_rate_pct)"
+
+  planned_extensions:
+    - "Direct-priced policy-futures family support (e.g. TIIE_FUT).
+       No code change required — the implied-rate conversion is
+       metadata-driven; the regime map gets a YAML edit to add the
+       disclosure label, and the curve_family Literal in schemas.py
+       expands per a new ADR (P8 / PR8 closed-family discipline)."
+    - "Per-row strip-curvature shorthand (e.g. ``slope_1_8`` /
+       ``belly_curvature_1_4_8``) carried inline on the snapshot.
+       Today the desk gets the same information by composing
+       futures_calendar_spread / futures_butterfly_simple reads
+       alongside the snapshot; making the curvature shorthand a
+       single-call snapshot column is future work."
+    - "Cross-CB strip snapshot (SOFR vs SONIA vs Euribor side-by-
+       side). Today each curve_family gets its own snapshot — a
+       cross-CB merged view requires the benchmark-family-mismatch
+       disclosure on every row (catalog guardrail) and is its own
+       primitive in a future build."
+    - "CTD-of-futures-of-OIS strip snapshot (Phase-4 per ADR 0013).
+       Maps each strip slot's implied rate onto a calibrated OIS
+       forward curve; gated on the CTD identification + OIS-curve
+       interpolation stack landing as primitives. Until then the
+       per-row methodology card carries the rolling-generic-strip
+       caveat verbatim."

@@ -1,0 +1,401 @@
+# =============================================================================
+# scan_bond_futures_extremes_tool — tool configuration
+# =============================================================================
+# Morning bond-futures sweep across the rolling-generic universe — ranks
+# every (curve_family, contract_code) by absolute 252-day z-score across
+# four metrics (price level, 1-day price change, daily traded volume,
+# end-of-day open-interest level) and returns the top-N extremes per
+# metric.
+#
+# V1 monitor #3 under ``bond_futures`` (per ADR 0013 — bond_futures ships
+# monitors only until the D-repo + D-deliverable substrate lands). This
+# tool is the THIRD monitor, REPLACING the Phase-4 inter-commodity
+# DV01-weighted spread stack. The methodology card disclosure makes the
+# scope-limited reading explicit (catalog methodology guardrail, P5):
+#
+#   "Universe-wide front-month sweep, NOT an inter-commodity DV01-
+#    weighted spread (Phase-4 — gated on D-repo + D-deliverable per
+#    ADR 0013). Z-score lookback = 252 trading days. Rolling-generic
+#    price; CTD-implied yield is not yet a primitive in this build."
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# methodology conventions. The LLM can scope the scan (``curve_families``),
+# anchor it to a date (``as_of_date``), and set display thresholds
+# (``top_n``, ``min_abs_z_score``) but cannot alter the z-score window,
+# ddof, fill limit, fetch-window buffer multiplier, or the four field-
+# name mnemonics (PX_LAST / PX_VOLUME / OPEN_INT). The four metrics are
+# the concept; exposing them as inputs would be input-schema overreach
+# (PR9 / OPR8 — methodology knob masquerading as a per-query choice).
+# ``top_n`` and ``min_abs_z_score`` are optional with None-sentinel
+# defaults that fall through to the YAML conventions
+# ``default_top_n`` / ``default_min_abs_z_score`` — keeps display
+# thresholds YAML-locked per PR9 / PR10 while still allowing per-query
+# overrides at the input layer.
+# =============================================================================
+
+tool:
+  name: scan_bond_futures_extremes_tool
+  domain: bond_futures
+  description: |
+    Universe-wide front-month bond-futures sweep — ranks every
+    rolling-generic stem in the bond_futures universe (TY1 / UXY1 /
+    US1 / WN1 / TU1 / FV1 / RX1 / UB1 / DU1 / OE1 / G1 / JB1 / OAT1 /
+    IK1 / BTS1 / KOA1 / CN1 / YM1 / XM1) by absolute 252-day z-score
+    across four metrics:
+
+      - ``price`` — rolling-generic last-price LEVEL z-score.
+      - ``price_change`` — 1-trading-day price CHANGE z-score. The
+        "Δ" metric in the catalog wording — answers the desk question
+        "which contract moved most today, relative to its own daily-
+        change distribution?"
+      - ``volume`` — daily traded volume LEVEL z-score (in CONTRACTS).
+      - ``open_interest`` — end-of-day open-interest LEVEL z-score
+        (in CONTRACTS).
+
+    Returns the top-N extremes per metric, each row tagged with the
+    methodology disclosure so downstream consumers cannot mistake the
+    read for a tenor-anchored yield call or an inter-commodity
+    DV01-weighted spread.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days). The HEADLINE methodology
+  # disclosure required by the catalog guardrail — disclosed verbatim
+  # on the response's methodology_disclosure string and on every result
+  # row. Mirrors the same 1y_window convention used by yield_levels /
+  # ois rate_level / futures_price_level / futures_volume_oi so the
+  # scan's z-scores read the same way as the per-contract monitors.
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window. Same convention
+      as yield_levels / ois rate_level / futures_price_level /
+      futures_volume_oi. Desk reads of "is X stretched?" are
+      benchmarked against the trailing year — anchoring the scan's
+      z-scores here keeps cross-tool comparability. The MUST-DISCLOSE
+      window per the catalog's methodology guardrail (catalog entry
+      ``bond_futures__scan_bond_futures_extremes``).
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before a stem is included in the ranking
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches yield_levels / ois rate_level /
+      futures_price_level / futures_volume_oi. Stems with fewer
+      observations are SKIPPED in the ranking — never silently
+      promoted to "z = None" rows.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated for every stem on the as-of date.
+      1.5x trading-day window covers weekends + holidays. Matches
+      every other rates level primitive in this codebase.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # ΔPrice offset (in trading-day rows after ffill + alignment)
+  # ---------------------------------------------------------------------------
+  # Same convention as futures_price_level's daily_change_offset_rows:
+  # iloc[-1] vs iloc[-2] = 1 trading day back. Names a distinct
+  # convention key (``price_change_offset_rows`` rather than the shared
+  # ``daily_change_offset_rows``) because the scan's "price_change"
+  # metric is a 1-day delta SPECIFICALLY — exposing it under the
+  # generic name would invite the cross-config lint to bucket it with
+  # the per-row weekly / monthly offsets in futures_price_level. The
+  # value matches by convention but the role is metric-specific.
+  price_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back. Matches the daily
+      change convention used by every rates level primitive. The
+      "Δ" metric in the scan is a 1-day price change; the z-score
+      is computed on the rolling sequence of these 1-day changes.
+    valid_range: [2, 5]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps. Same as every other rates level primitive in this
+      codebase. Per-stem, applied independently to price / volume /
+      open-interest series before the per-stem intersection alignment.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg observation fields — NOT input-schema knobs.
+  # ---------------------------------------------------------------------------
+  # See ``schemas.py`` module docstring for the input-schema-overreach
+  # rationale. Mirrored from futures_price_level / futures_volume_oi
+  # so the scan reads exactly the same underlying observations as
+  # the per-contract monitors — guarantees the scan's "TY1 z = +2.3"
+  # equals the futures_price_level snapshot's z for TY1 (same data,
+  # same window, same method).
+  default_price_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Last-traded price is the canonical front-month price observation.
+      Mirrors futures_price_level's ``default_price_field``. An
+      ingestion-side rename (PX_LAST → PX_FUT_LAST etc.) can be absorbed
+      by a YAML edit rather than a code change; the LLM cannot ask for
+      a non-standard field per query.
+  default_volume_field:
+    value: PX_VOLUME
+    source: bloomberg_field_convention
+    rationale: >-
+      Daily traded volume mnemonic. Mirrors futures_volume_oi's
+      ``default_volume_field`` (PX_VOLUME). Bond-futures playbook
+      ingests PX_VOLUME alongside PX_LAST / OPEN_INT.
+  default_open_interest_field:
+    value: OPEN_INT
+    source: bloomberg_field_convention
+    rationale: >-
+      Daily end-of-day open-interest mnemonic. Mirrors
+      futures_volume_oi's ``default_open_interest_field`` (OPEN_INT).
+      Bond-futures playbook ingests OPEN_INT alongside PX_LAST /
+      PX_VOLUME.
+
+  # ---------------------------------------------------------------------------
+  # Bond-futures curve families recognised by the scanner
+  # ---------------------------------------------------------------------------
+  # The catalog's V1 scope (ADR 0013) is sovereign-bond futures only —
+  # explicitly EXCLUDES policy-futures curves (SOFR_FUT / SONIA_FUT /
+  # EUR_SHORT_RATE_FUT), which are strip-position-keyed and routed to
+  # the policy_futures domain agent. The LLM may scope to a subset via
+  # the ``curve_families`` input; this convention is the closed-family
+  # whitelist the input is validated against. Hardcoding here rather
+  # than discovering at runtime so a stray policy-futures stem
+  # (mis-labelled at ingestion) is REFUSED at schema-validation time
+  # rather than silently included in the scan.
+  bond_futures_curve_families:
+    value: "UST_FUT,DE_FUT,UK_FUT,JP_FUT,FR_FUT,IT_FUT,ES_FUT,CA_FUT,AU_FUT"
+    source: bloomberg_field_convention
+    rationale: >-
+      Closed family of sovereign-bond futures curve families per ADR
+      0011 (V1 monitors-only scope). Comma-separated string because
+      ``Convention.value`` is scalar (str). Excludes policy-futures
+      curves (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) which route
+      to the policy_futures agent. A new sovereign-bond futures curve
+      added to the playbook is added here in the same PR — the
+      whitelist is intentionally explicit, not discovery-based, so
+      mis-labelled stems cannot leak into the scan.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to each result row's snapshot values
+  # and z-scores. Mirrors the precisions used by the sibling per-
+  # contract monitors so a "TY1 price = 110.453125" from the scan
+  # equals "TY1 price = 110.453125" from futures_price_level on the
+  # same as-of date.
+  # ---------------------------------------------------------------------------
+  price_round_decimals:
+    value: 6
+    source: team_judgment_pending_review
+    rationale: >-
+      Six decimals safely covers every quoted tick across the bond-
+      futures universe (TY1 1/32 ≈ 0.03125, UB1 1/32 of 1% =
+      0.0003125, JB1 0.01, RX1 0.01, OAT1 0.01). Matches
+      futures_price_level's ``price_round_decimals``.
+    valid_range: [0, 8]
+
+  volume_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Volume is a whole-contract count. Round to 0 decimals to surface
+      the integer-valued count on the wire (matches
+      futures_volume_oi's ``volume_round_decimals``).
+    valid_range: [0, 4]
+
+  oi_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Open interest is a whole-contract count. Round to 0 decimals
+      (matches futures_volume_oi's ``oi_round_decimals``).
+    valid_range: [0, 4]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches yield_levels / ois rate_level /
+      futures_price_level / futures_volume_oi. The z-score is the
+      ranking key; preserving four decimals avoids ties from
+      coarse rounding when two stems have very similar z-scores.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Display-threshold defaults — YAML-owned per PR9 / PR10 (catalog
+  # guardrail). The LLM may STILL override either knob per query at the
+  # input layer; these conventions only kick in when the input is
+  # omitted (None-sentinel resolution inside compute). The valid_range
+  # mirrors the schema-level Field(ge=..., le=...) bound so an off-
+  # range YAML edit is caught by `python -m shared.config.lint` before
+  # it lands in production.
+  # ---------------------------------------------------------------------------
+  default_top_n:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Default number of extreme stems to return PER METRIC when the
+      LLM does not pass ``top_n`` explicitly. Five rows per metric ×
+      four metrics = 20 rows on a default morning-sweep call — enough
+      coverage to read the desk question "where is the universe
+      stretched today?" without flooding the response payload. The
+      hard ceiling (50 per metric) remains a schema-level Field
+      bound so an LLM cannot exceed it regardless of the YAML
+      default. Matches the team-judgment defaults on the sovereign
+      and OIS scanners' wire-default rows-per-screen choice.
+    valid_range: [1, 50]
+
+  default_min_abs_z_score:
+    value: 1.5
+    source: team_judgment_pending_review
+    rationale: >-
+      Default minimum absolute z-score floor when the LLM does not
+      pass ``min_abs_z_score`` explicitly. 1.5σ matches the sovereign
+      / OIS scanner team-judgment defaults — desk reads of "anything
+      stretched today?" want to surface the >=1.5σ moves and ignore
+      the noise band below. The non-negative bound (ge=0.0) remains
+      a schema-level Field invariant so an off-range YAML edit is
+      structurally caught by the load.
+    valid_range: [0.0, 10.0]
+
+methodology:
+  what_it_does: |
+    For every rolling-generic bond-futures stem in the bond_futures
+    universe (TY1 / UXY1 / US1 / WN1 / TU1 / FV1 / RX1 / UB1 / DU1 /
+    OE1 / G1 / JB1 / OAT1 / IK1 / BTS1 / KOA1 / CN1 / YM1 / XM1 by
+    default; scope-narrowable via ``curve_families`` input), fetches
+    the three rolling-generic series (PX_LAST / PX_VOLUME / OPEN_INT)
+    across the lookback window plus z-score buffer, cleans each
+    series (ffill bridges holidays up to 5 trading days), aligns the
+    three series per-stem on the intersection of trading days, and
+    computes a rolling 252-day z-score on four metrics:
+
+      - price LEVEL z-score (uses the cleaned price series),
+      - 1-day price CHANGE z-score (uses the diff of the cleaned
+        price series),
+      - volume LEVEL z-score (uses the cleaned volume series),
+      - open-interest LEVEL z-score (uses the cleaned OI series).
+
+    Stems with fewer than ``z_score_min_periods`` observations are
+    SKIPPED for that metric (never silently demoted to z=None). Within
+    each metric, ranks remaining stems by absolute z-score, applies
+    the ``min_abs_z_score`` filter, and returns the top ``top_n``
+    rows per metric — each row tagged with the methodology
+    disclosure (universe-wide front-month sweep; rolling-generic
+    price; z lookback 252d; ADR 0013 V1 monitors-only).
+
+  assumptions:
+    - "Universe-wide front-month sweep, NOT an inter-commodity
+       DV01-weighted spread (Phase-4 — gated on D-repo + D-deliverable
+       per ADR 0013). Output rows MUST carry the methodology
+       disclosure tag so downstream consumers cannot mistake the read
+       for a tenor-anchored yield call. The catalog's methodology
+       guardrail makes this disclosure load-bearing."
+    - "The four metrics (price level, 1-day price change, volume
+       level, open-interest level) are the CONCEPT — they are not
+       user-overridable. The four field mnemonics
+       (default_price_field / default_volume_field /
+       default_open_interest_field) are YAML-locked so an
+       ingestion-side rename can be absorbed by a YAML edit; the LLM
+       cannot ask for a non-standard set of metrics per query
+       (input-schema overreach per PR9)."
+    - "Bond-futures rolling-generics are keyed by
+       ``(curve_family, contract_code)`` where ``contract_code`` is
+       the playbook stem (TY1 / UXY1 / ...) — not the per-window
+       underlying contract (TYH6 / TYM6 / ...) that the enriched
+       view's contract_code column rotates through. The universe-
+       scan fetcher joins ``market_data_daily`` to
+       ``instrument_master`` directly and filters on
+       ``is_rolling_contract = TRUE`` AND the
+       ``bond_futures_curve_families`` whitelist (see
+       conventions block)."
+    - "ADR 0013 V1 monitors-only scope: this primitive is the third
+       and last monitor in the bond_futures V1 set. CTD identification,
+       gross / net basis, implied repo, DV01-weighted RV stack, and
+       inter-commodity spreads are documented-deferred Phase-4 work
+       gated on D-repo + D-deliverable data ingestion. The methodology
+       disclosure surfaces this limit on every row."
+    - "Fetch window is derived from YAML — not an LLM input. The
+       calendar-day buffer is ``z_score_window_days *
+       z_score_buffer_multiplier`` (currently 252 * 1.5 = 378 days),
+       which guarantees a fully-populated 252d rolling z-score for
+       every stem on the as-of date. Exposing the fetch window as an
+       LLM-controlled input would be a PR8 / OPR8 input-schema
+       overreach (methodology knob masquerading as a per-query
+       choice); reviewer round-1 mandatory-fix #2 made this
+       explicit. ``min_abs_z_score`` and ``top_n`` remain DISPLAY
+       thresholds (per-query inputs, both YAML-defaultable via the
+       ``default_min_abs_z_score`` / ``default_top_n`` conventions);
+       they do not change which stems are SCANNED, only which appear
+       in the ranked output."
+    - "``as_of_date`` anchors the scan to a specific trading day —
+       either the LLM-supplied date or, when omitted, the most-recent
+       shared trading day across the fetched universe (max trade_date
+       observed in the three field series after per-stem alignment).
+       Determinism: same as-of date + same DB state ⇒ same ranking.
+       Per-stem time series are CAPPED at the resolved as_of_date
+       before z-scoring so a future-dated row (e.g. a one-off
+       errant tick) cannot contaminate the trailing rolling stats.
+       Mirrors the futures_price_level / futures_volume_oi
+       'as_of = data's latest observation date, NOT date.today()'
+       convention."
+    - "Per-stem alignment: each (curve_family, contract_code) stem's
+       price / volume / OI series are intersected on shared trading
+       days BEFORE z-score computation. Stems where the three series
+       disagree on date support are aligned per-stem, never across
+       stems — a date hole on TY1 does not affect RX1's z-scores."
+
+  citations:
+    - "ADR 0013 (docs_revamped/05_decisions/0013-futures-domain-agents.md)"
+
+  planned_extensions:
+    - "Inter-commodity DV01-weighted spread scan (TY1 vs RX1, US1 vs
+       RX1, etc.). Requires D-repo + D-deliverable data ingestion;
+       Phase-4 work per ADR 0013. Until those land, this scan is the
+       honest universe-wide read; the inter-commodity DV01-spread
+       primitive will land as a separate tool with its own
+       methodology card."
+    - "Cross-contract roll-pressure (front-back OI migration) as a
+       distinct metric on the scan. Needs the next-contract series
+       joined to the front; not expressible on rolling-generic
+       single-stem data. Same Phase-4 gate as the DV01 stack."
+    - "Add a canonical TimeSeries-per-metric history output (rather
+       than just the snapshot top-N) once TimeSeriesUnits gains the
+       PRICE and CONTRACTS members (ADR-gated extension per P8).
+       Until then, the per-stem time_series histories are exposed
+       through the sibling futures_price_level / futures_volume_oi
+       primitives — composing them is the honest path for time-
+       series consumers."
