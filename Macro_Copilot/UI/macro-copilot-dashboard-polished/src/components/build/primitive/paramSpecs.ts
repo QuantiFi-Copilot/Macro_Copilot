@@ -57,6 +57,52 @@ const CURVE_FAMILIES: ParamSpec['options'] = [
   { value: 'JP_JGB', label: 'JGB · Japan' },
 ];
 
+// ----------------------------------------------------------------------------
+// Stage 1 — broadened curve-family list for the regime view only.
+// The backend's ``classify_curve_move_tool`` accepts any registered
+// ``curve_family`` (per backend PR5: it's curve-family-agnostic).
+// Other typed views (spread / cross_market / butterfly / yield) are
+// backed by sovereign-only typed-detail endpoints, so their
+// dropdowns intentionally stay narrow to avoid offering selections
+// that would 400 in the compute layer.
+
+const REGIME_CURVE_FAMILIES: ParamSpec['options'] = [
+  // Sovereign (the historical default set)
+  { value: 'UST', label: 'UST · US Treasury' },
+  { value: 'DE_BUND', label: 'BUND · Germany' },
+  { value: 'IT_BTP', label: 'BTP · Italy' },
+  { value: 'FR_OAT', label: 'OAT · France' },
+  { value: 'ES_BONO', label: 'BONO · Spain' },
+  { value: 'UK_GILT', label: 'GILT · UK' },
+  { value: 'JGB', label: 'JGB · Japan' },
+  { value: 'AU_GOVT', label: 'AU_GOVT · Australia' },
+  { value: 'CANADA_GOVT', label: 'CANADA_GOVT · Canada' },
+  // OIS
+  { value: 'USD_SOFR_OIS', label: 'USD SOFR OIS' },
+  { value: 'EUR_ESTR_OIS', label: 'EUR ESTR OIS' },
+  { value: 'GBP_SONIA_OIS', label: 'GBP SONIA OIS' },
+  { value: 'JPY_OIS', label: 'JPY OIS' },
+  { value: 'AUD_OIS', label: 'AUD OIS' },
+  { value: 'CAD_OIS', label: 'CAD OIS' },
+  // Inflation linkers
+  { value: 'USD_TIPS', label: 'USD_TIPS · US TIPS' },
+  { value: 'GBP_LINKER', label: 'GBP_LINKER · UK Linker' },
+  { value: 'EUR_FR_LINKER', label: 'EUR_FR_LINKER · France OATi' },
+  { value: 'CAD_RRB', label: 'CAD_RRB · Canada RRB' },
+  // ZCIS
+  { value: 'USD_ZCIS', label: 'USD_ZCIS · USD inflation swap' },
+  { value: 'EUR_ZCIS', label: 'EUR_ZCIS · EUR inflation swap' },
+  { value: 'GBP_ZCIS', label: 'GBP_ZCIS · GBP inflation swap' },
+  // Bond futures
+  { value: 'UST_FUT', label: 'UST_FUT · US bond futures' },
+  { value: 'DE_FUT', label: 'DE_FUT · German bond futures' },
+  { value: 'UK_FUT', label: 'UK_FUT · UK bond futures' },
+  // Policy futures
+  { value: 'SOFR_FUT', label: 'SOFR_FUT · SOFR futures' },
+  { value: 'EUR_SHORT_RATE_FUT', label: 'EUR_SHORT_RATE_FUT · Euribor/ESTR futures' },
+  { value: 'SONIA_FUT', label: 'SONIA_FUT · SONIA futures' },
+];
+
 const TENORS: ParamSpec['options'] = [
   { value: '2Y', label: '2Y' },
   { value: '3Y', label: '3Y' },
@@ -260,7 +306,12 @@ export function paramSpecsFor(kind: PrimitiveViewKind): ParamSpec[] {
         {
           key: 'curve_family',
           label: 'Curve',
-          options: CURVE_FAMILIES,
+          // Stage 1 — classify_curve_move_tool accepts any registered
+          // curve_family per backend PR5 broadening; expose the full
+          // list so users can classify inflation / ZCIS / futures
+          // regimes inline.  Other typed views stay sovereign-only
+          // (their underlying primitives are sovereign-specific).
+          options: REGIME_CURVE_FAMILIES,
           defaultValue: 'UST',
         },
         {

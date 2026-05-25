@@ -118,6 +118,16 @@ _MANIFEST_ONLY_BUILD_TOOLS: frozenset[str] = frozenset(
         "scan_extremes_tool",
         "classify_curve_move_tool",
         "scan_ois_extremes_tool",
+        # Stage 1 — workflow-incompatible tools.  Both ship in
+        # rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS but NOT in
+        # _PRIMITIVE_SPECS, so known_rates_primitives() doesn't return
+        # them.  The frontend renders the honest workflow_incompatible
+        # card (a subtype of UnsupportedKnownToolCanvas) for them, so
+        # they must pass the workspace gate — otherwise Ask traces
+        # that use them get no workspace_context block and "Open in
+        # Build" silently no-ops on the chat side.
+        "get_otr_history_tool",
+        "calculate_wirp_meeting_pricing_tool",
     }
 )
 

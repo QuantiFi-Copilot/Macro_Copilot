@@ -34,10 +34,13 @@ import {
   classifyWorkflow,
   isKnownBackendTool,
   isUnsupportedKnownTool,
+  isWorkflowIncompatibleTool,
   KNOWN_BACKEND_TOOLS,
   KNOWN_WORKFLOWS,
   normalizeToolName,
   PAUSED_WORKFLOWS,
+  RUNNABLE_PRIMITIVE_TOOLS,
+  WORKFLOW_INCOMPATIBLE_TOOLS,
   unsupportedKnownReasonFor,
 } from '@/lib/toolNames';
 
@@ -478,33 +481,85 @@ check('classifyWorkflow: unknown id → unknown', () => {
 // Registry sanity — every PR1 inventory entry is closed-set.
 // ----------------------------------------------------------------------------
 
-check('KNOWN_BACKEND_TOOLS contains the audited 21 names (17 reg + 3 manifest-only + 1 manifest-only-no-backend)', () => {
-  // 17 from rates_agent/workflows/__init__.py registry
-  // + 3 manifest tools with typed-detail endpoints (butterfly, classify, scan)
-  // + 1 manifest-only entry with NO backend implementation (scan_ois_extremes_tool)
-  // = 21 expected canonical names
+check('KNOWN_BACKEND_TOOLS contains the audited 58 names (52 runnable + 4 manifest-only + 2 workflow-incompatible)', () => {
+  // Stage 1 — KNOWN_BACKEND_TOOLS expands to mirror backend ground
+  // truth.  Composition:
+  //   * 52 entries from rates_agent.workflows._PRIMITIVE_SPECS
+  //     (every runnable primitive on `build` today, including the
+  //     34 already registered + the 18 net-new Stage 1 additions).
+  //   * 4 manifest-only tools with typed-detail endpoints OR paused
+  //     state (calculate_butterfly_tool, classify_curve_move_tool,
+  //     scan_extremes_tool, scan_ois_extremes_tool).
+  //   * 2 workflow-incompatible tools (get_otr_history_tool,
+  //     calculate_wirp_meeting_pricing_tool) — also in
+  //     WORKFLOW_INCOMPATIBLE_TOOLS, surfaced via the
+  //     'workflow_incompatible' decoder kind.
+  // = 58 expected canonical names.
   const expected = [
+    // Sovereign-bond primitives (12)
     'build_sovereign_yield_panel_tool',
     'calculate_beta_adjusted_spread_tool',
     'calculate_breakeven_inflation_tool',
-    'calculate_butterfly_tool',
     'calculate_cross_market_spread_tool',
     'calculate_curve_spread_tool',
     'calculate_half_life_tool',
-    'calculate_ois_cross_market_spread_tool',
-    'calculate_ois_curve_spread_tool',
-    'calculate_ois_forward_rate_tool',
     'calculate_pca_yield_curve_tool',
     'calculate_rolling_regression_tool',
     'calculate_swap_spread_tool',
     'calculate_yield_change_attribution_pca_tool',
     'calculate_zscore_custom_tool',
-    'classify_curve_move_tool',
+    'get_yield_levels_tool',
+    // OIS primitives (5)
+    'calculate_ois_cross_market_spread_tool',
+    'calculate_ois_curve_spread_tool',
+    'calculate_ois_forward_rate_tool',
     'compute_financing_rate_tool',
     'get_ois_rate_level_tool',
-    'get_yield_levels_tool',
+    // Manifest-only typed-view / paused (4)
+    'calculate_butterfly_tool',
+    'classify_curve_move_tool',
     'scan_extremes_tool',
     'scan_ois_extremes_tool',
+    // Factory-ported OIS / bond_futures / policy_futures / inflation (17)
+    'calculate_ois_butterfly_tool',
+    'get_futures_price_level_tool',
+    'get_futures_volume_oi_tool',
+    'scan_bond_futures_extremes_tool',
+    'build_policy_futures_strip_panel_tool',
+    'get_scan_policy_futures_extremes_tool',
+    'policy_futures_get_futures_butterfly_simple_tool',
+    'policy_futures_get_futures_calendar_spread_tool',
+    'policy_futures_get_futures_cross_market_spread_tool',
+    'policy_futures_get_futures_pack_average_simple_tool',
+    'policy_futures_get_futures_price_level_tool',
+    'policy_futures_get_futures_strip_snapshot_tool',
+    'policy_futures_get_volume_open_interest_snapshot_tool',
+    'build_linker_panel_tool',
+    'scan_inflation_linkers_extremes_tool',
+    'build_zcis_panel_tool',
+    'scan_inflation_swaps_extremes_tool',
+    // Stage 1 net-new runnable primitives (18)
+    'calculate_otr_ofr_spread_tool',
+    'calculate_cpi_surprise_tool',
+    'calculate_nfp_surprise_tool',
+    'get_real_yield_level_tool',
+    'calculate_breakeven_inflation_simple_tool',
+    'calculate_forward_breakeven_simple_tool',
+    'calculate_breakeven_curve_spread_tool',
+    'calculate_cross_country_breakeven_spread_simple_tool',
+    'calculate_real_yield_curve_spread_tool',
+    'calculate_cross_country_real_yield_spread_simple_tool',
+    'calculate_real_yield_butterfly_tool',
+    'calculate_breakeven_butterfly_tool',
+    'calculate_inflation_swap_rate_level_tool',
+    'calculate_inflation_swap_curve_spread_tool',
+    'calculate_inflation_swap_forward_tool',
+    'calculate_cross_market_inflation_swap_spread_tool',
+    'calculate_swap_breakeven_basis_simple_tool',
+    'calculate_inflation_swap_butterfly_tool',
+    // Stage 1 workflow-incompatible (2)
+    'get_otr_history_tool',
+    'calculate_wirp_meeting_pricing_tool',
   ];
   assertEqual(
     KNOWN_BACKEND_TOOLS.size,
@@ -513,6 +568,172 @@ check('KNOWN_BACKEND_TOOLS contains the audited 21 names (17 reg + 3 manifest-on
   );
   for (const t of expected) {
     assertTruthy(KNOWN_BACKEND_TOOLS.has(t), `missing: ${t}`);
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Stage 1 — WORKFLOW_INCOMPATIBLE_TOOLS registry + decoder coverage.
+// ----------------------------------------------------------------------------
+
+check('WORKFLOW_INCOMPATIBLE_TOOLS contains exactly the 2 Stage-1 entries', () => {
+  // classify_curve_move_tool is also workflow-incompatible on the
+  // backend BUT routes through a typed-view path on the frontend,
+  // so it stays out of this set per the decoder's priority order.
+  const expected = ['get_otr_history_tool', 'calculate_wirp_meeting_pricing_tool'];
+  assertEqual(
+    WORKFLOW_INCOMPATIBLE_TOOLS.size,
+    expected.length,
+    `set size (got ${WORKFLOW_INCOMPATIBLE_TOOLS.size}, expected ${expected.length})`,
+  );
+  for (const t of expected) {
+    assertTruthy(WORKFLOW_INCOMPATIBLE_TOOLS.has(t), `missing: ${t}`);
+  }
+});
+
+check('isWorkflowIncompatibleTool: positive cases', () => {
+  assertTruthy(
+    isWorkflowIncompatibleTool('get_otr_history_tool'),
+    'get_otr_history_tool',
+  );
+  assertTruthy(
+    isWorkflowIncompatibleTool('calculate_wirp_meeting_pricing_tool'),
+    'calculate_wirp_meeting_pricing_tool',
+  );
+});
+
+check('isWorkflowIncompatibleTool: negative cases', () => {
+  assertEqual(
+    isWorkflowIncompatibleTool('calculate_curve_spread_tool'),
+    false,
+    'typed-view tool is NOT workflow_incompatible',
+  );
+  assertEqual(
+    isWorkflowIncompatibleTool('classify_curve_move_tool'),
+    false,
+    'classify_curve_move is workflow-incompatible on backend but routes via typed view',
+  );
+  assertEqual(
+    isWorkflowIncompatibleTool('totally_made_up_tool'),
+    false,
+    'unknown tool is NOT workflow_incompatible',
+  );
+});
+
+check('decode: get_otr_history_tool → workflow_incompatible', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'get_otr_history_tool' }]),
+  );
+  assertEqual(out!.kind, 'workflow_incompatible', 'kind');
+  assertEqual(out!.toolName, 'get_otr_history_tool', 'toolName');
+});
+
+check('decode: calculate_wirp_meeting_pricing_tool → workflow_incompatible', () => {
+  const out = decodePrimitiveContext(
+    encodeContext([{ tool: 'calculate_wirp_meeting_pricing_tool' }]),
+  );
+  assertEqual(out!.kind, 'workflow_incompatible', 'kind');
+  assertEqual(out!.toolName, 'calculate_wirp_meeting_pricing_tool', 'toolName');
+});
+
+check('decode: workflow_incompatible + unsupported_known → workflow_incompatible wins (priority)', () => {
+  // workflow_incompatible (0.25) > unsupported_known (0).  A real
+  // shipped tool beats a paused / unbuilt one.
+  const out = decodePrimitiveContext(
+    encodeContext([
+      { tool: 'scan_ois_extremes_tool' },           // unsupported_known
+      { tool: 'get_otr_history_tool' },             // workflow_incompatible
+    ]),
+  );
+  assertEqual(out!.kind, 'workflow_incompatible', 'workflow_incompatible beats unsupported_known');
+});
+
+check('decode: generic_builder + workflow_incompatible → generic_builder wins (priority)', () => {
+  // Runnable surface beats unsupported surface.
+  const out = decodePrimitiveContext(
+    encodeContext([
+      { tool: 'get_otr_history_tool' },             // workflow_incompatible
+      { tool: 'calculate_swap_spread_tool' },       // generic_builder
+    ]),
+  );
+  assertEqual(out!.kind, 'generic_builder', 'generic_builder beats workflow_incompatible');
+});
+
+check('decode: typed-view + workflow_incompatible → typed-view wins (priority)', () => {
+  // A real chart beats every unsupported card.
+  const out = decodePrimitiveContext(
+    encodeContext([
+      { tool: 'get_otr_history_tool' },             // workflow_incompatible
+      { tool: 'calculate_curve_spread_tool' },      // typed view 'spread'
+    ]),
+  );
+  assertEqual(out!.kind, 'spread', 'typed-view beats workflow_incompatible');
+});
+
+check('decodeList: workflow_incompatible entries retained in order', () => {
+  const list = decodePrimitiveList(
+    encodeContext([
+      { tool: 'calculate_curve_spread_tool' },       // typed view
+      { tool: 'get_otr_history_tool' },              // workflow_incompatible
+      { tool: 'calculate_wirp_meeting_pricing_tool' }, // workflow_incompatible
+      { tool: 'scan_ois_extremes_tool' },            // unsupported_known
+    ]),
+  );
+  assertEqual(list.length, 4, 'four entries');
+  assertEqual(list[0].kind, 'spread', '0: typed view');
+  assertEqual(list[1].kind, 'workflow_incompatible', '1: workflow_incompatible');
+  assertEqual(list[2].kind, 'workflow_incompatible', '2: workflow_incompatible');
+  assertEqual(list[3].kind, 'unsupported_known', '3: unsupported_known');
+});
+
+check('unsupportedKnownReasonFor: workflow_incompatible tools have explicit copy', () => {
+  for (const t of ['get_otr_history_tool', 'calculate_wirp_meeting_pricing_tool']) {
+    const r = unsupportedKnownReasonFor(t);
+    assertTruthy(r.label.length > 0, `${t}: label`);
+    assertTruthy(r.reason.length > 0, `${t}: reason`);
+    assertTruthy(r.whatWorksNow.length > 0, `${t}: whatWorksNow`);
+    if (r.label === t) {
+      throw new Error(
+        `unsupportedKnownReasonFor(${t}) fell through to generic fallback`,
+      );
+    }
+  }
+});
+
+check('Stage 1: every net-new runnable primitive decodes to generic_builder', () => {
+  // Smoke check that the 18 net-new Stage 1 primitives all surface
+  // honestly through the schema-driven generic builder.  Any failure
+  // here means the primitive landed in RUNNABLE_PRIMITIVE_TOOLS but
+  // a higher-priority registry (TOOL_TO_VIEW / model registry) is
+  // claiming it — which would silently break the routing intent.
+  const stage1NetNew = [
+    'calculate_otr_ofr_spread_tool',
+    'calculate_cpi_surprise_tool',
+    'calculate_nfp_surprise_tool',
+    'get_real_yield_level_tool',
+    'calculate_breakeven_inflation_simple_tool',
+    'calculate_forward_breakeven_simple_tool',
+    'calculate_breakeven_curve_spread_tool',
+    'calculate_cross_country_breakeven_spread_simple_tool',
+    'calculate_real_yield_curve_spread_tool',
+    'calculate_cross_country_real_yield_spread_simple_tool',
+    'calculate_real_yield_butterfly_tool',
+    'calculate_breakeven_butterfly_tool',
+    'calculate_inflation_swap_rate_level_tool',
+    'calculate_inflation_swap_curve_spread_tool',
+    'calculate_inflation_swap_forward_tool',
+    'calculate_cross_market_inflation_swap_spread_tool',
+    'calculate_swap_breakeven_basis_simple_tool',
+    'calculate_inflation_swap_butterfly_tool',
+  ];
+  assertEqual(stage1NetNew.length, 18, 'Stage 1 net-new count');
+  for (const t of stage1NetNew) {
+    assertTruthy(
+      RUNNABLE_PRIMITIVE_TOOLS.has(t),
+      `${t}: in RUNNABLE_PRIMITIVE_TOOLS`,
+    );
+    const out = decodePrimitiveContext(encodeContext([{ tool: t }]));
+    assertEqual(out!.kind, 'generic_builder', `${t}: decodes to generic_builder`);
+    assertEqual(out!.toolName, t, `${t}: toolName preserved`);
   }
 });
 

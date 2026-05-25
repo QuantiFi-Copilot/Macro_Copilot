@@ -48,18 +48,29 @@ type Props = {
 export function MultiPrimitiveCanvas({ contextParam, askHandoff }: Props) {
   const list = useMemo(() => decodePrimitiveList(contextParam), [contextParam]);
 
-  // PR2 — three buckets in the multi-card grid:
+  // PR2 + Stage 1 — four buckets in the multi-card grid:
   //   - typed primitives (Spread / CrossMarket / Butterfly / Yield /
   //     Regime / Scanner / Forward) → chart-shaped MultiPrimitiveCard
   //   - generic-builder (PR2) → MultiGenericBuilderCard; click opens
   //     the schema-driven configure + run surface for the single tool
+  //   - workflow_incompatible (Stage 1) → MultiUnsupportedKnownCard;
+  //     tool ships but its output isn't bridge-compatible; surfaces
+  //     the same paused-style card with the per-tool reason text.
   //   - unsupported_known → MultiUnsupportedKnownCard; tool is paused
+  //     (manifest-only with no PrimitiveSpec entry).
   // Builder entries (rich analytical models) are filtered upstream by
   // ``decodePrimitiveList`` because they take the ``?builder=``
   // redirect path and don't belong in a primitive comparison grid.
   const typedCount = list.filter(isTypedPrimitive).length;
   const builderCount = list.filter((d) => d.kind === 'generic_builder').length;
-  const unsupportedCount = list.filter((d) => d.kind === 'unsupported_known').length;
+  // workflow_incompatible cards render via the same MultiUnsupportedKnownCard
+  // as paused cards — they're both unsupported-style surfaces with
+  // different per-tool reason text — so we count them together for
+  // the kicker / subtitle copy.
+  const unsupportedCount = list.filter(
+    (d) =>
+      d.kind === 'unsupported_known' || d.kind === 'workflow_incompatible',
+  ).length;
 
   // PR-B-β — count duplicate (toolName, params) signatures so each
   // repeated card can render a ``· call N of M`` chip.  Without the
@@ -113,8 +124,10 @@ export function MultiPrimitiveCanvas({ contextParam, askHandoff }: Props) {
               />
             );
           }
-          // ``decoded.kind === 'unsupported_known'`` — builder entries
-          // were filtered out by ``decodePrimitiveList``.
+          // ``decoded.kind === 'unsupported_known' | 'workflow_incompatible'``
+          // — both render through the same paused-style card with the
+          // per-tool reason text from ``unsupportedKnownReasonFor``.
+          // Builder entries were filtered out by ``decodePrimitiveList``.
           return (
             <MultiUnsupportedKnownCard
               key={key}

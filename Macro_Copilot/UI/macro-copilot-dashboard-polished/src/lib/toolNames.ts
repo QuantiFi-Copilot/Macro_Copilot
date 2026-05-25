@@ -161,6 +161,47 @@ export const KNOWN_BACKEND_TOOLS: ReadonlySet<string> = new Set<string>([
   // Factory-ported inflation_swaps primitives (ADR 0013)
   'build_zcis_panel_tool',
   'scan_inflation_swaps_extremes_tool',
+  // ----------------------------------------------------------------
+  // Stage 1 — backend-runnable primitives missing from the registry.
+  // These tools exist in ``rates_agent.workflows._PRIMITIVE_SPECS``
+  // on ``build`` today but were never added to the frontend
+  // registries.  Adding them here AND to ``RUNNABLE_PRIMITIVE_TOOLS``
+  // below routes them through the generic schema-driven builder
+  // (``GenericPrimitiveBuilder``) so the user can configure + execute
+  // them honestly from Library / Ask handoff.
+  // ----------------------------------------------------------------
+  // Phase-3 cash-bond + event primitives
+  'calculate_otr_ofr_spread_tool',
+  'calculate_cpi_surprise_tool',
+  'calculate_nfp_surprise_tool',
+  // PR #177 inflation_indexed_bonds primitives
+  'get_real_yield_level_tool',
+  'calculate_breakeven_inflation_simple_tool',
+  'calculate_forward_breakeven_simple_tool',
+  'calculate_breakeven_curve_spread_tool',
+  'calculate_cross_country_breakeven_spread_simple_tool',
+  'calculate_real_yield_curve_spread_tool',
+  'calculate_cross_country_real_yield_spread_simple_tool',
+  'calculate_real_yield_butterfly_tool',
+  'calculate_breakeven_butterfly_tool',
+  // PR #177 inflation_swaps primitives
+  'calculate_inflation_swap_rate_level_tool',
+  'calculate_inflation_swap_curve_spread_tool',
+  'calculate_inflation_swap_forward_tool',
+  'calculate_cross_market_inflation_swap_spread_tool',
+  'calculate_swap_breakeven_basis_simple_tool',
+  'calculate_inflation_swap_butterfly_tool',
+  // ----------------------------------------------------------------
+  // Stage 1 — workflow-incompatible tools (backend ships them in
+  // ``WORKFLOW_INCOMPATIBLE_TOOLS`` but they cannot be routed through
+  // ``/tools/{name}/run`` because their output shape isn't a Series
+  // or Panel.  Surface via the honest ``workflow_incompatible`` decoder
+  // kind, NOT the generic builder.  ``classify_curve_move_tool`` is
+  // also workflow-incompatible but already has a typed-view path
+  // (``regime``) so it's listed above.
+  // ----------------------------------------------------------------
+  'get_otr_history_tool',
+  'calculate_wirp_meeting_pricing_tool',
 ]);
 
 /** True when ``name`` (normalised) is a tool the backend / manifest
@@ -231,6 +272,34 @@ export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
   // Factory-ported inflation_swaps primitives (ADR 0013)
   'build_zcis_panel_tool',
   'scan_inflation_swaps_extremes_tool',
+  // ----------------------------------------------------------------
+  // Stage 1 — the 18 backend-runnable primitives that ship in
+  // ``_PRIMITIVE_SPECS`` on ``build`` today but were missing from
+  // the frontend registry.  All route through the generic
+  // schema-driven builder via the contextDecoder's
+  // ``isRunnablePrimitive`` branch.
+  // ----------------------------------------------------------------
+  // Phase-3 cash-bond + event primitives
+  'calculate_otr_ofr_spread_tool',
+  'calculate_cpi_surprise_tool',
+  'calculate_nfp_surprise_tool',
+  // PR #177 inflation_indexed_bonds primitives
+  'get_real_yield_level_tool',
+  'calculate_breakeven_inflation_simple_tool',
+  'calculate_forward_breakeven_simple_tool',
+  'calculate_breakeven_curve_spread_tool',
+  'calculate_cross_country_breakeven_spread_simple_tool',
+  'calculate_real_yield_curve_spread_tool',
+  'calculate_cross_country_real_yield_spread_simple_tool',
+  'calculate_real_yield_butterfly_tool',
+  'calculate_breakeven_butterfly_tool',
+  // PR #177 inflation_swaps primitives
+  'calculate_inflation_swap_rate_level_tool',
+  'calculate_inflation_swap_curve_spread_tool',
+  'calculate_inflation_swap_forward_tool',
+  'calculate_cross_market_inflation_swap_spread_tool',
+  'calculate_swap_breakeven_basis_simple_tool',
+  'calculate_inflation_swap_butterfly_tool',
 ]);
 
 /** True when the tool has a backend run endpoint (the FastAPI
@@ -242,6 +311,42 @@ export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
  *  only and return ``false`` here. */
 export function isRunnablePrimitive(name: string): boolean {
   return RUNNABLE_PRIMITIVE_TOOLS.has(normalizeToolName(name));
+}
+
+// ----------------------------------------------------------------------------
+// WORKFLOW_INCOMPATIBLE_TOOLS — Stage 1.
+// ----------------------------------------------------------------------------
+//
+// Mirrors the backend's ``rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS``
+// dict.  These primitives are REAL (callable via MCP, ship a tool
+// function) but their output shape is intentionally NOT bridge-
+// compatible (categorical labels, SCD2 transition logs, per-meeting
+// snapshots — none of which lift cleanly into a ``Series`` or
+// ``Panel`` artifact).  Calling ``POST /api/v1/tools/{name}/run``
+// against them returns the FastAPI ``{"ok": false, "error": ...}``
+// envelope (per ``api/routes/workflows/execute.py``) because the
+// primitive isn't in ``_PRIMITIVE_SPECS``.
+//
+// The frontend surfaces them via the ``workflow_incompatible``
+// contextDecoder kind so the user sees an honest unsupported card
+// instead of being routed into a generic builder that would fail.
+//
+// ``classify_curve_move_tool`` is also workflow-incompatible on the
+// backend but already has a typed-view path (``regime``) which the
+// contextDecoder selects before the workflow-incompatible check,
+// so it does NOT appear here.
+
+export const WORKFLOW_INCOMPATIBLE_TOOLS: ReadonlySet<string> = new Set<string>([
+  'get_otr_history_tool',
+  'calculate_wirp_meeting_pricing_tool',
+]);
+
+/** True when ``name`` (normalised) is in the workflow-incompatible
+ *  set — the tool ships on the backend but cannot be lifted into a
+ *  Series / Panel artifact for the generic builder.  Used by
+ *  ``contextDecoder`` to emit ``{kind: 'workflow_incompatible'}``. */
+export function isWorkflowIncompatibleTool(name: string): boolean {
+  return WORKFLOW_INCOMPATIBLE_TOOLS.has(normalizeToolName(name));
 }
 
 // ----------------------------------------------------------------------------
@@ -299,6 +404,22 @@ export const UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> =
       'Declared in the manifest but the backend has no live route yet — this tool is paused.',
     whatWorksNow:
       'Ask cannot run it today; the sovereign-bond scanner is the closest equivalent.',
+  },
+  // Stage 1 — workflow-incompatible reasons (mirror the backend's
+  // ``WORKFLOW_INCOMPATIBLE_TOOLS`` dict rationale verbatim).
+  get_otr_history_tool: {
+    label: 'OTR history (transition log)',
+    reason:
+      'SCD2 transition log + identifier snapshot (CUSIP / ISIN / vendor_ticker / maturity_date with effective_from / effective_to windows).  List-shaped categorical output, not a numeric Series or Panel; the workflow bridge cannot lift it into an artifact for composition.',
+    whatWorksNow:
+      'Ask can run it via MCP and surface the transition log inline; the typed-detail endpoint is forthcoming.',
+  },
+  calculate_wirp_meeting_pricing_tool: {
+    label: 'WIRP per-meeting pricing',
+    reason:
+      'List of per-meeting WIRP snapshots — each meeting carries identifier columns plus Bloomberg-ingested numeric fields surfaced verbatim per P12.  Output is the natural "N meeting snapshots" shape; not a single numeric Series or wide-format Panel; the bridge cannot dispatch it.',
+    whatWorksNow:
+      'Ask can run it via MCP and surface the meeting strip inline; the typed-detail endpoint is forthcoming.',
   },
 };
 
