@@ -143,6 +143,11 @@ def _build_vol_smile_ticker(g: Dict[str, str]) -> str:
     return f"{g['pair']}{g['delta']}{g['tenor']} Curncy"
 
 
+def _build_spot_topup_ticker(g: Dict[str, str]) -> str:
+    # sheet "USDCNH" → "USDCNH Curncy"  (spot top-up for CNH/CNY/INR)
+    return f"USD{g['ccy']} Curncy"
+
+
 SUBSTRATES: Dict[str, SubstrateConfig] = {
     "g10_forwards_long": SubstrateConfig(
         name="g10_forwards_long",
@@ -232,6 +237,28 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         ticker_builder=_build_vol_smile_ticker,
         expected_sheet_count=84,  # 7 EM pairs × 4 smile points × 3 tenors
         min_rows_per_sheet=300,  # EM smile sometimes has shorter history
+    ),
+    # Spot top-up: close a gap discovered after the BBG batch — CNY/INR
+    # have NDFs + vol but no spot. USDCNH (offshore tradable),
+    # USDCNY (onshore PBOC fix), USDINR (composite spot/reference) are
+    # ingested here so Phase D's calculate_ndf_implied_carry can compute
+    # NDF-vs-spot carry for CCN+ and IRN+. Extends spot_fx.yml (Codex's
+    # "single playbook" preference for same-shape data, same as Phase B
+    # EM spot extension). Combines existing 18 spot_fx rows + 3 new
+    # = 21 incoming vs 9 prior load (load_id=21) → 233% sanity pass.
+    "spot_topup": SubstrateConfig(
+        name="spot_topup",
+        playbook_name="spot_fx",  # extends spot_fx.yml
+        dataset_name="spot_fx",
+        instrument_type="fx_spot",
+        sheet_name_pattern=re.compile(r"^USD(?P<ccy>CNH|CNY|INR)$"),
+        ticker_builder=_build_spot_topup_ticker,
+        expected_sheet_count=3,
+        min_rows_per_sheet=500,  # USDCNH from ~2010-2011 (offshore launch)
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_spot' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
     ),
 }
 
