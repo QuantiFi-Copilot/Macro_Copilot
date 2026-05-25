@@ -88,7 +88,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
 
@@ -103,12 +105,14 @@ from rates_agent.inflation_indexed_bonds.tools.schemas import (  # noqa: E402
     BreakevenButterflyInput,
     BreakevenCurveSpreadInput,
     BreakevenInflationSimpleInput,
+    BuildLinkerPanelInput,
     CrossCountryBreakevenSpreadSimpleInput,
     CrossCountryRealYieldSpreadSimpleInput,
     ForwardBreakevenSimpleInput,
     RealYieldButterflyInput,
     RealYieldCurveSpreadInput,
     RealYieldLevelInput,
+    ScanInflationLinkersExtremesInput,
 )
 from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (  # noqa: E402
     CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
@@ -145,6 +149,14 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import ( 
 from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (  # noqa: E402
     CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
     get_real_yield_level,
+)
+from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes import (  # noqa: E402
+    CONFIG_PATH as SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+    calculate_scan_inflation_linkers_extremes,
+)
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel import (  # noqa: E402
+    CONFIG_PATH as BUILD_LINKER_PANEL_CONFIG_PATH,
+    build_linker_panel,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -2034,6 +2046,456 @@ def calculate_breakeven_butterfly_tool(
             canonical_rows,
             len(result.get("time_series_zscore", {}).get("rows", []) or []),
         )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 9: scan_inflation_linkers_extremes
+# ===========================================================================
+@mcp.tool()
+def get_scan_inflation_linkers_extremes_tool(
+    curve_families: str = "",
+    top_n: int = 0,
+    min_abs_z_score: float = -1.0,
+    as_of_date: str = "",
+) -> str:
+    """Scan the linker real-yield universe and rank
+    ``(curve_family, tenor)`` stems by absolute 252-day z-score of
+    real-yield LEVEL.  Returns the top-N extremes, each tagged with
+    the methodology disclosure (universe-wide linker real-yield
+    label, explicit z-score lookback window, INDEX-FAMILY +
+    MARKET-STRUCTURE caveats, ``morning screen, NOT a tactical
+    signal`` scope).
+
+    Use this tool when the user asks about:
+    - Morning linker sweeps             (e.g. "Where is the linker
+                                              curve stretched
+                                              today?")
+    - Universe-wide real-yield extremes (e.g. "Biggest real-yield
+                                              moves across TIPS +
+                                              gilt linkers today?")
+    - Cross-tenor real-yield extremes   (e.g. "Which linkers are at
+                                              1-year real-yield
+                                              highs / lows?")
+
+    Do NOT use this tool for:
+    - Nominal sovereign sweeps — use the sovereign_bonds agent's
+      scan_extremes_tool (different instrument_type).
+    - Inflation-swap (ZCIS) sweeps — those route to the
+      inflation_swaps agent.
+    - Bond-implied breakeven sweeps — the breakeven primitives are
+      separate concepts (this scan is on REAL yields, NOT
+      breakevens).
+    - A per-bond deep-dive — use the sibling
+      get_real_yield_level_tool for one (curve_family, tenor) at a
+      time.
+    - Curve shape / cross-country differential / butterfly — use the
+      sibling real_yield_curve_spread_tool /
+      cross_country_real_yield_spread_simple_tool /
+      real_yield_butterfly_tool primitives respectively.
+
+    ALWAYS preserve the methodology_disclosure field — present on
+    EVERY result row AND on the response — when relaying to the
+    user.  The catalog's methodology guardrail makes the per-row
+    disclosure load-bearing: the desk reader needs to see WHY a bond
+    ranked extreme (252d z-score on real-yield LEVEL, ranked across
+    heterogeneous index families and market structures, morning
+    screen scope).
+
+    Parameters
+    ----------
+    curve_families : str, optional
+        Comma-separated list of linker curve families to scan.  Empty
+        (default ``""``) = scan the full linker universe
+        (USD_TIPS, GBP_LINKER, EUR_FR_LINKER, CAD_RRB).  Pass a CSV
+        to narrow (e.g. ``"USD_TIPS,GBP_LINKER"`` for a US + UK
+        sweep).  MCP exposes flat scalars, so the wrapper accepts a
+        string and splits it before constructing the Pydantic input
+        — mirrors the bond_futures scan_bond_futures_extremes_tool
+        convention.  Nominal sovereign curve_families ('UST',
+        'DE_BUND', etc.) are REFUSED at schema-validation time per
+        the closed-family whitelist in config.yaml.
+    top_n : int, optional
+        Number of extreme stems to return.  MCP exposes flat
+        scalars, so the sentinel ``0`` (default) means "omit" and
+        falls through to the YAML's ``default_top_n`` convention
+        (currently 5) — keeps the default YAML-locked per PR9 /
+        PR10.  Pass an integer in [1, 50] to override per query;
+        the schema-layer bound rejects out-of-range values.
+    min_abs_z_score : float, optional
+        Minimum absolute z-score threshold for inclusion in the
+        ranking.  The sentinel ``-1.0`` (default) means "omit" and
+        falls through to the YAML's ``default_min_abs_z_score``
+        convention (currently 1.5).  Pass a non-negative float to
+        override per query; the schema-layer ``ge=0.0`` bound
+        stays as a structural invariant.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the scan to a
+        specific trading day.  Empty (default ``""``) = anchor to
+        the most-recent shared trading day across the fetched
+        universe (max trade_date observed after per-stem cleaning)
+        — same as-of resolution pattern as the sibling
+        bond_futures scan_bond_futures_extremes_tool and the
+        upstream per-bond real_yield_level primitive.  The fetch
+        window itself is methodology (derived from YAML:
+        z_score_window_days × z_score_buffer_multiplier, currently
+        252 × 1.5 = 378 calendar days) and is NOT an LLM input —
+        exposing ``lookback_days`` would be a PR8 / OPR8 input-
+        schema overreach.
+    """
+    # Parse the comma-separated curve_families CSV into a list (or
+    # None when empty).  Mirrors the bond_futures scanner wrapper.
+    parsed_families = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Sentinel resolution: the MCP boundary cannot carry None for
+    # int/float, so 0 / -1.0 mean "omit".  The schema's bounds would
+    # have rejected the sentinel values themselves, so translate to
+    # None BEFORE constructing the Pydantic input — preserves the
+    # schema's None → YAML-default fall-through.
+    top_n_arg: Optional[int] = top_n if top_n > 0 else None
+    min_abs_z_score_arg: Optional[float] = (
+        min_abs_z_score if min_abs_z_score >= 0.0 else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel.  Empty string ⇒ None
+    # (compute resolves to the most-recent shared trading day).  A
+    # malformed value is caught here and surfaced as a controlled-
+    # error envelope rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_scan_inflation_linkers_extremes_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-08'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = ScanInflationLinkersExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n_arg,
+            min_abs_z_score=min_abs_z_score_arg,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_scan_inflation_linkers_extremes_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_linkers_extremes_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path, so
+    # this is a free lookup after the first call within the MCP
+    # subprocess's lifetime.  Mirrors the bond_futures scanner
+    # wrapper.
+    try:
+        scan_config = load_tool_config(
+            SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_inflation_linkers_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_linkers_extremes_tool] unhandled "
+            "error for curve_families=%s",
+            params.curve_families,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "get_scan_inflation_linkers_extremes_tool failed: "
+                    f"{exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_rows = len(result.get("results", []) or [])
+    logger.info(
+        "[get_scan_inflation_linkers_extremes_tool] tool call "
+        "complete: curve_families=%s top_n=%r min_abs_z=%r as_of=%r "
+        "→ %s (%d rows)",
+        params.curve_families, params.top_n, params.min_abs_z_score,
+        params.as_of_date, status, n_rows,
+    )
+
+    return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 11: build_linker_panel
+# ===========================================================================
+@mcp.tool()
+def build_linker_panel_tool(
+    start_date: str,
+    end_date: str = "",
+    curve_families: str = "",
+    field_name: str = "",
+    calendar_policy: str = "",
+    missing_data_policy: str = "",
+) -> str:
+    """Assemble a wide multi-instrument Panel of inflation-linker
+    REAL yields across the USD_TIPS / GBP_LINKER / EUR_FR_LINKER /
+    CAD_RRB universe (rows = trade_date, columns = vendor_ticker).
+    Substrate primitive for cross-country / cross-tenor RV
+    scanning, real-yield PCA, and operators that need the full
+    linker real-yield surface as one object.
+
+    Use this tool when the user asks for:
+    - the full linker panel for a date window
+      (e.g. "Give me the USD+UK+France+Canada linker panel
+       2023-2024.")
+    - a cross-country / cross-bond linker dataset for downstream
+      regression or PCA
+      (e.g. "Build me the linker panel for the front-end so I can
+       run a cross-country real-rate PCA.")
+    - the substrate the desk's morning real-yield RV deck reads
+      off
+
+    Do NOT use this tool for:
+    - Per-bond linker reads — use ``get_real_yield_level_tool``.
+    - Per-curve real-yield spreads / butterflies / cross-country
+      differentials — use the sibling per-pillar / per-spread
+      tools (``calculate_real_yield_curve_spread_tool``,
+      ``calculate_real_yield_butterfly_tool``,
+      ``calculate_cross_country_real_yield_spread_simple_tool``).
+    - The morning linker extremes screen — use
+      ``get_scan_inflation_linkers_extremes_tool``.
+    - Bond-implied breakeven panels — those compose linker + nominal
+      and live as sibling breakeven primitives, not as a substrate
+      panel.
+    - Sovereign / OIS / ZCIS / policy-futures panels — those route
+      to the corresponding domain's panel primitive.
+
+    Column-key disclosure (load-bearing): Panel columns are keyed
+    by ``vendor_ticker`` (the canonical Bloomberg identifier,
+    e.g. ``'GTII10 Govt'`` for the USD_TIPS 10Y).  The catalog's
+    ideal column key is ``security_name``, but linker
+    ``instrument_metadata_history.security_name`` is universally
+    NULL on the live SCD2 rows — surfacing NULL would be a dead
+    column key; relabelling ``vendor_ticker`` under the
+    ``security_name`` label would be a no-proxy violation.
+    Methodology card's ``security_name_caveat`` field discloses
+    the substitution explicitly.
+
+    Index-family caveat (load-bearing): USD_TIPS / GBP_LINKER /
+    EUR_FR_LINKER / CAD_RRB reference DIFFERENT inflation indices
+    (US_CPI_URBAN / UK_RPI / EU_HICP / CAN_CPI) with different
+    index_lag and publication conventions; cross-country
+    operators reading this panel see all four regimes side-by-
+    side, NOT a harmonised expected-inflation surface.  The
+    methodology card's ``index_family_caveat`` +
+    ``curve_family_reference`` fields surface this on the wire.
+
+    Parameters
+    ----------
+    start_date : str
+        Earliest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.
+    end_date : str, optional
+        Latest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.  Empty (default) → include every
+        observation up to the latest in the DB.
+    curve_families : str, optional
+        Comma-separated list of inflation-linker curve families
+        to scope the panel.  Empty (default ``""``) = full
+        universe (USD_TIPS, GBP_LINKER, EUR_FR_LINKER, CAD_RRB).
+        Pass a CSV to narrow (e.g. ``"USD_TIPS,GBP_LINKER"`` for
+        a US + UK panel).  Non-linker curve families are REFUSED
+        at schema validation.
+    field_name : str, optional
+        Bloomberg observation field for the linker real yield.
+        Leave as the default empty string ``""`` to use the
+        bundled ``default_field_name`` convention from
+        build_linker_panel/config.yaml (currently
+        'YLD_YTM_MID').  Mirrors the empty-string sentinel
+        pattern used by every sibling inflation_indexed_bonds
+        tool.
+    calendar_policy : str, optional
+        Calendar policy override.  Empty (default) → resolved
+        from YAML (currently 'business_days' — matches the
+        sibling build_sovereign_yield_panel + build_zcis_panel
+        convention value; the multi-region linker calendar
+        caveat is surfaced on the methodology card via
+        ``cross_region_business_days_caveat``).  Pass
+        ``instrument_native`` per query to surface every native
+        session date across the four-region universe verbatim.
+        Allowed: ['business_days', 'instrument_native'].
+    missing_data_policy : str, optional
+        Missing-data policy override.  Empty (default) →
+        resolved from YAML.  Allowed: ['raise',
+        'forward_fill_only', 'drop_rows_any_missing'].
+    """
+    # Sentinel resolution — MCP exposes flat scalars, so empty
+    # strings mean "omit" and fall through to the YAML defaults.
+    # Same pattern every sibling inflation_indexed_bonds wrapper
+    # uses.
+    field_name_arg = field_name if field_name else None
+    calendar_policy_arg = calendar_policy if calendar_policy else None
+    missing_data_policy_arg = (
+        missing_data_policy if missing_data_policy else None
+    )
+
+    # Parse the CSV scoping knob.  Empty → None (full scope).
+    parsed_curve_families = None
+    if curve_families and curve_families.strip():
+        parsed_curve_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Parse the ISO date inputs.  ``start_date`` is required; an
+    # empty / malformed value is caught here and surfaced as a
+    # controlled-error envelope rather than a stacktrace.
+    try:
+        start_date_arg = date.fromisoformat(start_date.strip())
+    except (AttributeError, ValueError) as exc:
+        logger.warning(
+            "[build_linker_panel_tool] start_date parse failed: %s", exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"Invalid start_date {start_date!r}: must be ISO "
+                    f"YYYY-MM-DD (e.g. '2023-01-02'). Detail: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    end_date_arg: Optional[date]
+    if end_date and end_date.strip():
+        try:
+            end_date_arg = date.fromisoformat(end_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[build_linker_panel_tool] end_date parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid end_date {end_date!r}: must be ISO "
+                        f"YYYY-MM-DD (e.g. '2026-04-08'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        end_date_arg = None
+
+    try:
+        params = BuildLinkerPanelInput(
+            start_date=start_date_arg,
+            end_date=end_date_arg,
+            curve_families=parsed_curve_families,
+            field_name=field_name_arg,
+            calendar_policy=calendar_policy_arg,
+            missing_data_policy=missing_data_policy_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[build_linker_panel_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[build_linker_panel_tool] failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path,
+    # so this is a free lookup after the first call within the
+    # MCP subprocess's lifetime.
+    try:
+        blp_config = load_tool_config(BUILD_LINKER_PANEL_CONFIG_PATH)
+        result = build_linker_panel(
+            engine=engine, params=params, config=blp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[build_linker_panel_tool] unhandled error for "
+            "start=%s end=%s curve_families=%s",
+            params.start_date, params.end_date, params.curve_families,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "build_linker_panel_tool failed for "
+                    f"start={params.start_date} "
+                    f"end={params.end_date}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_cols = result.get("column_count", 0)
+    n_rows = result.get("row_count", 0)
+    logger.info(
+        "[build_linker_panel_tool] tool call complete: "
+        "start=%s end=%s curve_families=%s → %s "
+        "(rows=%d cols=%d)",
+        params.start_date, params.end_date, params.curve_families,
+        status, n_rows, n_cols,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Drop the typed Panel artifact before serialising for the
+    # LLM (full per-row payload blows the token budget).  The
+    # workflow executor's Panel bridge re-extracts the typed
+    # artifact from the primitive's direct return value, so
+    # nothing on that path depends on the MCP-visible payload.
+    llm_response: Dict[str, Any] = {
+        k: v for k, v in result.items() if k != "panel"
+    }
     return json.dumps(llm_response, default=str)
 
 

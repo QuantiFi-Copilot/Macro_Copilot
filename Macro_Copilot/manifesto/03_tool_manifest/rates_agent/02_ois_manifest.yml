@@ -445,3 +445,40 @@ tools:
     built_date: 2026-05-01
     validation_status: >-
       Not validated yet
+
+  - name: calculate_ois_butterfly
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: spreads
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_butterfly_tool
+      schema: rates_agent/ois/tools/calculate_ois_butterfly/schemas.py::OISButterflyInput
+      compute: rates_agent/ois/tools/calculate_ois_butterfly/compute.py::calculate_ois_butterfly
+      config: rates_agent/ois/tools/calculate_ois_butterfly/config.yaml
+
+    one_liner: >-
+      Same-curve 3-point butterfly (curvature) on a single OIS par-swap.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+

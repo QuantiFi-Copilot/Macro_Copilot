@@ -1,0 +1,5166 @@
+{
+  "fixture_name": "ty1_ust_fut_10y_365d",
+  "tool_module": "rates_agent.bond_futures.tools.futures_volume_oi",
+  "tool_function": "calculate_futures_volume_oi",
+  "capture": {
+    "captured_at": "2026-05-23T02:06:43Z",
+    "database_name": "macrodata",
+    "as_of_date": "2026-04-07",
+    "raw_volume_rows_count": 480,
+    "raw_oi_rows_count": 482,
+    "raw_rows_sha256": "fabb1be54f6dfbab121850cb2276b668f893a9796a269f364fae752fc24904b7"
+  },
+  "input": {
+    "params": {
+      "curve_family": "UST_FUT",
+      "contract_code": "TY1",
+      "lookback_days": 365
+    },
+    "frozen_today": "2026-05-23",
+    "raw_volume_rows": [
+      {
+        "trade_date": "2024-05-10",
+        "field_value": 1473969.0
+      },
+      {
+        "trade_date": "2024-05-13",
+        "field_value": 1216286.0
+      },
+      {
+        "trade_date": "2024-05-14",
+        "field_value": 1824374.0
+      },
+      {
+        "trade_date": "2024-05-15",
+        "field_value": 2721526.0
+      },
+      {
+        "trade_date": "2024-05-16",
+        "field_value": 1820317.0
+      },
+      {
+        "trade_date": "2024-05-17",
+        "field_value": 1290257.0
+      },
+      {
+        "trade_date": "2024-05-20",
+        "field_value": 1156162.0
+      },
+      {
+        "trade_date": "2024-05-21",
+        "field_value": 1502913.0
+      },
+      {
+        "trade_date": "2024-05-22",
+        "field_value": 2186516.0
+      },
+      {
+        "trade_date": "2024-05-23",
+        "field_value": 3996052.0
+      },
+      {
+        "trade_date": "2024-05-24",
+        "field_value": 3512151.0
+      },
+      {
+        "trade_date": "2024-05-28",
+        "field_value": 4805222.0
+      },
+      {
+        "trade_date": "2024-05-29",
+        "field_value": 2233059.0
+      },
+      {
+        "trade_date": "2024-05-30",
+        "field_value": 628261.0
+      },
+      {
+        "trade_date": "2024-05-31",
+        "field_value": 96326.0
+      },
+      {
+        "trade_date": "2024-06-03",
+        "field_value": 15504.0
+      },
+      {
+        "trade_date": "2024-06-04",
+        "field_value": 14941.0
+      },
+      {
+        "trade_date": "2024-06-05",
+        "field_value": 9175.0
+      },
+      {
+        "trade_date": "2024-06-06",
+        "field_value": 5388.0
+      },
+      {
+        "trade_date": "2024-06-07",
+        "field_value": 10077.0
+      },
+      {
+        "trade_date": "2024-06-10",
+        "field_value": 406.0
+      },
+      {
+        "trade_date": "2024-06-11",
+        "field_value": 6144.0
+      },
+      {
+        "trade_date": "2024-06-12",
+        "field_value": 7640.0
+      },
+      {
+        "trade_date": "2024-06-13",
+        "field_value": 2546.0
+      },
+      {
+        "trade_date": "2024-06-14",
+        "field_value": 1270.0
+      },
+      {
+        "trade_date": "2024-06-17",
+        "field_value": 1275.0
+      },
+      {
+        "trade_date": "2024-06-18",
+        "field_value": 103.0
+      },
+      {
+        "trade_date": "2024-06-20",
+        "field_value": 1722710.0
+      },
+      {
+        "trade_date": "2024-06-21",
+        "field_value": 1435596.0
+      },
+      {
+        "trade_date": "2024-06-24",
+        "field_value": 1193239.0
+      },
+      {
+        "trade_date": "2024-06-25",
+        "field_value": 1574033.0
+      },
+      {
+        "trade_date": "2024-06-26",
+        "field_value": 1869887.0
+      },
+      {
+        "trade_date": "2024-06-27",
+        "field_value": 1948452.0
+      },
+      {
+        "trade_date": "2024-06-28",
+        "field_value": 3146809.0
+      },
+      {
+        "trade_date": "2024-07-01",
+        "field_value": 2221764.0
+      },
+      {
+        "trade_date": "2024-07-02",
+        "field_value": 1719084.0
+      },
+      {
+        "trade_date": "2024-07-03",
+        "field_value": 1766051.0
+      },
+      {
+        "trade_date": "2024-07-05",
+        "field_value": 1979719.0
+      },
+      {
+        "trade_date": "2024-07-08",
+        "field_value": 1282523.0
+      },
+      {
+        "trade_date": "2024-07-09",
+        "field_value": 1622679.0
+      },
+      {
+        "trade_date": "2024-07-10",
+        "field_value": 1671220.0
+      },
+      {
+        "trade_date": "2024-07-11",
+        "field_value": 2754645.0
+      },
+      {
+        "trade_date": "2024-07-12",
+        "field_value": 1993977.0
+      },
+      {
+        "trade_date": "2024-07-15",
+        "field_value": 1879264.0
+      },
+      {
+        "trade_date": "2024-07-16",
+        "field_value": 2198585.0
+      },
+      {
+        "trade_date": "2024-07-17",
+        "field_value": 1811339.0
+      },
+      {
+        "trade_date": "2024-07-18",
+        "field_value": 1862237.0
+      },
+      {
+        "trade_date": "2024-07-19",
+        "field_value": 1573847.0
+      },
+      {
+        "trade_date": "2024-07-22",
+        "field_value": 1409017.0
+      },
+      {
+        "trade_date": "2024-07-23",
+        "field_value": 1402604.0
+      },
+      {
+        "trade_date": "2024-07-24",
+        "field_value": 2637572.0
+      },
+      {
+        "trade_date": "2024-07-25",
+        "field_value": 3055709.0
+      },
+      {
+        "trade_date": "2024-07-26",
+        "field_value": 1856623.0
+      },
+      {
+        "trade_date": "2024-07-29",
+        "field_value": 1565130.0
+      },
+      {
+        "trade_date": "2024-07-30",
+        "field_value": 1781389.0
+      },
+      {
+        "trade_date": "2024-07-31",
+        "field_value": 3268894.0
+      },
+      {
+        "trade_date": "2024-08-01",
+        "field_value": 3433253.0
+      },
+      {
+        "trade_date": "2024-08-02",
+        "field_value": 4296366.0
+      },
+      {
+        "trade_date": "2024-08-05",
+        "field_value": 3977072.0
+      },
+      {
+        "trade_date": "2024-08-06",
+        "field_value": 2774865.0
+      },
+      {
+        "trade_date": "2024-08-07",
+        "field_value": 2615001.0
+      },
+      {
+        "trade_date": "2024-08-08",
+        "field_value": 2433664.0
+      },
+      {
+        "trade_date": "2024-08-09",
+        "field_value": 1433071.0
+      },
+      {
+        "trade_date": "2024-08-12",
+        "field_value": 1577280.0
+      },
+      {
+        "trade_date": "2024-08-13",
+        "field_value": 1726759.0
+      },
+      {
+        "trade_date": "2024-08-14",
+        "field_value": 2029311.0
+      },
+      {
+        "trade_date": "2024-08-15",
+        "field_value": 2308793.0
+      },
+      {
+        "trade_date": "2024-08-16",
+        "field_value": 1717942.0
+      },
+      {
+        "trade_date": "2024-08-19",
+        "field_value": 1352232.0
+      },
+      {
+        "trade_date": "2024-08-20",
+        "field_value": 1626916.0
+      },
+      {
+        "trade_date": "2024-08-21",
+        "field_value": 2634704.0
+      },
+      {
+        "trade_date": "2024-08-22",
+        "field_value": 3456441.0
+      },
+      {
+        "trade_date": "2024-08-23",
+        "field_value": 3189187.0
+      },
+      {
+        "trade_date": "2024-08-26",
+        "field_value": 4044694.0
+      },
+      {
+        "trade_date": "2024-08-27",
+        "field_value": 6299327.0
+      },
+      {
+        "trade_date": "2024-08-28",
+        "field_value": 1816714.0
+      },
+      {
+        "trade_date": "2024-08-29",
+        "field_value": 361182.0
+      },
+      {
+        "trade_date": "2024-08-30",
+        "field_value": 33598.0
+      },
+      {
+        "trade_date": "2024-09-03",
+        "field_value": 17198.0
+      },
+      {
+        "trade_date": "2024-09-04",
+        "field_value": 8236.0
+      },
+      {
+        "trade_date": "2024-09-05",
+        "field_value": 7329.0
+      },
+      {
+        "trade_date": "2024-09-06",
+        "field_value": 3050.0
+      },
+      {
+        "trade_date": "2024-09-09",
+        "field_value": 4066.0
+      },
+      {
+        "trade_date": "2024-09-10",
+        "field_value": 1342.0
+      },
+      {
+        "trade_date": "2024-09-11",
+        "field_value": 1058.0
+      },
+      {
+        "trade_date": "2024-09-12",
+        "field_value": 782.0
+      },
+      {
+        "trade_date": "2024-09-13",
+        "field_value": 469.0
+      },
+      {
+        "trade_date": "2024-09-16",
+        "field_value": 2285.0
+      },
+      {
+        "trade_date": "2024-09-17",
+        "field_value": 2910.0
+      },
+      {
+        "trade_date": "2024-09-18",
+        "field_value": 405.0
+      },
+      {
+        "trade_date": "2024-09-19",
+        "field_value": 100.0
+      },
+      {
+        "trade_date": "2024-09-20",
+        "field_value": 1884141.0
+      },
+      {
+        "trade_date": "2024-09-23",
+        "field_value": 1834960.0
+      },
+      {
+        "trade_date": "2024-09-24",
+        "field_value": 2043257.0
+      },
+      {
+        "trade_date": "2024-09-25",
+        "field_value": 1697399.0
+      },
+      {
+        "trade_date": "2024-09-26",
+        "field_value": 2098994.0
+      },
+      {
+        "trade_date": "2024-09-27",
+        "field_value": 1961298.0
+      },
+      {
+        "trade_date": "2024-09-30",
+        "field_value": 2461714.0
+      },
+      {
+        "trade_date": "2024-10-01",
+        "field_value": 2565634.0
+      },
+      {
+        "trade_date": "2024-10-02",
+        "field_value": 1824431.0
+      },
+      {
+        "trade_date": "2024-10-03",
+        "field_value": 2060271.0
+      },
+      {
+        "trade_date": "2024-10-04",
+        "field_value": 3056066.0
+      },
+      {
+        "trade_date": "2024-10-07",
+        "field_value": 2482450.0
+      },
+      {
+        "trade_date": "2024-10-08",
+        "field_value": 1626785.0
+      },
+      {
+        "trade_date": "2024-10-09",
+        "field_value": 1677790.0
+      },
+      {
+        "trade_date": "2024-10-10",
+        "field_value": 2695481.0
+      },
+      {
+        "trade_date": "2024-10-11",
+        "field_value": 1485457.0
+      },
+      {
+        "trade_date": "2024-10-14",
+        "field_value": 718242.0
+      },
+      {
+        "trade_date": "2024-10-15",
+        "field_value": 1780932.0
+      },
+      {
+        "trade_date": "2024-10-16",
+        "field_value": 1540190.0
+      },
+      {
+        "trade_date": "2024-10-17",
+        "field_value": 1877074.0
+      },
+      {
+        "trade_date": "2024-10-18",
+        "field_value": 1539530.0
+      },
+      {
+        "trade_date": "2024-10-21",
+        "field_value": 2004525.0
+      },
+      {
+        "trade_date": "2024-10-22",
+        "field_value": 2321739.0
+      },
+      {
+        "trade_date": "2024-10-23",
+        "field_value": 1944719.0
+      },
+      {
+        "trade_date": "2024-10-24",
+        "field_value": 1995070.0
+      },
+      {
+        "trade_date": "2024-10-25",
+        "field_value": 1949563.0
+      },
+      {
+        "trade_date": "2024-10-28",
+        "field_value": 2056790.0
+      },
+      {
+        "trade_date": "2024-10-29",
+        "field_value": 2372559.0
+      },
+      {
+        "trade_date": "2024-10-30",
+        "field_value": 2755014.0
+      },
+      {
+        "trade_date": "2024-10-31",
+        "field_value": 3372923.0
+      },
+      {
+        "trade_date": "2024-11-01",
+        "field_value": 3154639.0
+      },
+      {
+        "trade_date": "2024-11-04",
+        "field_value": 2034586.0
+      },
+      {
+        "trade_date": "2024-11-05",
+        "field_value": 1911100.0
+      },
+      {
+        "trade_date": "2024-11-06",
+        "field_value": 4168617.0
+      },
+      {
+        "trade_date": "2024-11-07",
+        "field_value": 2960011.0
+      },
+      {
+        "trade_date": "2024-11-08",
+        "field_value": 2175011.0
+      },
+      {
+        "trade_date": "2024-11-11",
+        "field_value": 757689.0
+      },
+      {
+        "trade_date": "2024-11-12",
+        "field_value": 2207860.0
+      },
+      {
+        "trade_date": "2024-11-13",
+        "field_value": 2367189.0
+      },
+      {
+        "trade_date": "2024-11-14",
+        "field_value": 2313406.0
+      },
+      {
+        "trade_date": "2024-11-15",
+        "field_value": 2503718.0
+      },
+      {
+        "trade_date": "2024-11-18",
+        "field_value": 1430816.0
+      },
+      {
+        "trade_date": "2024-11-19",
+        "field_value": 2172126.0
+      },
+      {
+        "trade_date": "2024-11-20",
+        "field_value": 1945465.0
+      },
+      {
+        "trade_date": "2024-11-21",
+        "field_value": 3604589.0
+      },
+      {
+        "trade_date": "2024-11-22",
+        "field_value": 3672423.0
+      },
+      {
+        "trade_date": "2024-11-25",
+        "field_value": 4813867.0
+      },
+      {
+        "trade_date": "2024-11-26",
+        "field_value": 2106572.0
+      },
+      {
+        "trade_date": "2024-11-27",
+        "field_value": 571957.0
+      },
+      {
+        "trade_date": "2024-11-29",
+        "field_value": 31510.0
+      },
+      {
+        "trade_date": "2024-12-02",
+        "field_value": 33571.0
+      },
+      {
+        "trade_date": "2024-12-03",
+        "field_value": 11054.0
+      },
+      {
+        "trade_date": "2024-12-04",
+        "field_value": 8038.0
+      },
+      {
+        "trade_date": "2024-12-05",
+        "field_value": 1920.0
+      },
+      {
+        "trade_date": "2024-12-06",
+        "field_value": 3020.0
+      },
+      {
+        "trade_date": "2024-12-09",
+        "field_value": 1510.0
+      },
+      {
+        "trade_date": "2024-12-10",
+        "field_value": 274.0
+      },
+      {
+        "trade_date": "2024-12-11",
+        "field_value": 1454.0
+      },
+      {
+        "trade_date": "2024-12-12",
+        "field_value": 2450.0
+      },
+      {
+        "trade_date": "2024-12-13",
+        "field_value": 286.0
+      },
+      {
+        "trade_date": "2024-12-16",
+        "field_value": 335.0
+      },
+      {
+        "trade_date": "2024-12-17",
+        "field_value": 901.0
+      },
+      {
+        "trade_date": "2024-12-18",
+        "field_value": 377.0
+      },
+      {
+        "trade_date": "2024-12-19",
+        "field_value": 2609.0
+      },
+      {
+        "trade_date": "2024-12-20",
+        "field_value": 1686885.0
+      },
+      {
+        "trade_date": "2024-12-23",
+        "field_value": 1104605.0
+      },
+      {
+        "trade_date": "2024-12-24",
+        "field_value": 672210.0
+      },
+      {
+        "trade_date": "2024-12-26",
+        "field_value": 1018693.0
+      },
+      {
+        "trade_date": "2024-12-27",
+        "field_value": 989566.0
+      },
+      {
+        "trade_date": "2024-12-30",
+        "field_value": 1036401.0
+      },
+      {
+        "trade_date": "2024-12-31",
+        "field_value": 1185966.0
+      },
+      {
+        "trade_date": "2025-01-02",
+        "field_value": 1518823.0
+      },
+      {
+        "trade_date": "2025-01-03",
+        "field_value": 1115634.0
+      },
+      {
+        "trade_date": "2025-01-06",
+        "field_value": 1911409.0
+      },
+      {
+        "trade_date": "2025-01-07",
+        "field_value": 1975306.0
+      },
+      {
+        "trade_date": "2025-01-08",
+        "field_value": 2011218.0
+      },
+      {
+        "trade_date": "2025-01-09",
+        "field_value": 929110.0
+      },
+      {
+        "trade_date": "2025-01-10",
+        "field_value": 2708327.0
+      },
+      {
+        "trade_date": "2025-01-13",
+        "field_value": 1749843.0
+      },
+      {
+        "trade_date": "2025-01-14",
+        "field_value": 1774922.0
+      },
+      {
+        "trade_date": "2025-01-15",
+        "field_value": 2701553.0
+      },
+      {
+        "trade_date": "2025-01-16",
+        "field_value": 2404600.0
+      },
+      {
+        "trade_date": "2025-01-17",
+        "field_value": 1684662.0
+      },
+      {
+        "trade_date": "2025-01-21",
+        "field_value": 2192016.0
+      },
+      {
+        "trade_date": "2025-01-22",
+        "field_value": 1461780.0
+      },
+      {
+        "trade_date": "2025-01-23",
+        "field_value": 1604316.0
+      },
+      {
+        "trade_date": "2025-01-24",
+        "field_value": 1712361.0
+      },
+      {
+        "trade_date": "2025-01-27",
+        "field_value": 2872051.0
+      },
+      {
+        "trade_date": "2025-01-28",
+        "field_value": 1737620.0
+      },
+      {
+        "trade_date": "2025-01-29",
+        "field_value": 1945831.0
+      },
+      {
+        "trade_date": "2025-01-30",
+        "field_value": 1841303.0
+      },
+      {
+        "trade_date": "2025-01-31",
+        "field_value": 2741218.0
+      },
+      {
+        "trade_date": "2025-02-03",
+        "field_value": 2890747.0
+      },
+      {
+        "trade_date": "2025-02-04",
+        "field_value": 1922171.0
+      },
+      {
+        "trade_date": "2025-02-05",
+        "field_value": 2376219.0
+      },
+      {
+        "trade_date": "2025-02-06",
+        "field_value": 1964724.0
+      },
+      {
+        "trade_date": "2025-02-07",
+        "field_value": 2465327.0
+      },
+      {
+        "trade_date": "2025-02-10",
+        "field_value": 1385561.0
+      },
+      {
+        "trade_date": "2025-02-11",
+        "field_value": 1280172.0
+      },
+      {
+        "trade_date": "2025-02-12",
+        "field_value": 2918349.0
+      },
+      {
+        "trade_date": "2025-02-13",
+        "field_value": 2747968.0
+      },
+      {
+        "trade_date": "2025-02-14",
+        "field_value": 1931357.0
+      },
+      {
+        "trade_date": "2025-02-18",
+        "field_value": 1889269.0
+      },
+      {
+        "trade_date": "2025-02-19",
+        "field_value": 2635841.0
+      },
+      {
+        "trade_date": "2025-02-20",
+        "field_value": 2332461.0
+      },
+      {
+        "trade_date": "2025-02-21",
+        "field_value": 3590021.0
+      },
+      {
+        "trade_date": "2025-02-24",
+        "field_value": 4588117.0
+      },
+      {
+        "trade_date": "2025-02-25",
+        "field_value": 5598071.0
+      },
+      {
+        "trade_date": "2025-02-26",
+        "field_value": 2201257.0
+      },
+      {
+        "trade_date": "2025-02-27",
+        "field_value": 456329.0
+      },
+      {
+        "trade_date": "2025-02-28",
+        "field_value": 40292.0
+      },
+      {
+        "trade_date": "2025-03-03",
+        "field_value": 24895.0
+      },
+      {
+        "trade_date": "2025-03-04",
+        "field_value": 20690.0
+      },
+      {
+        "trade_date": "2025-03-05",
+        "field_value": 9145.0
+      },
+      {
+        "trade_date": "2025-03-06",
+        "field_value": 6317.0
+      },
+      {
+        "trade_date": "2025-03-07",
+        "field_value": 8439.0
+      },
+      {
+        "trade_date": "2025-03-10",
+        "field_value": 2226.0
+      },
+      {
+        "trade_date": "2025-03-11",
+        "field_value": 1291.0
+      },
+      {
+        "trade_date": "2025-03-12",
+        "field_value": 1420.0
+      },
+      {
+        "trade_date": "2025-03-13",
+        "field_value": 1827.0
+      },
+      {
+        "trade_date": "2025-03-14",
+        "field_value": 812.0
+      },
+      {
+        "trade_date": "2025-03-17",
+        "field_value": 1121.0
+      },
+      {
+        "trade_date": "2025-03-18",
+        "field_value": 708.0
+      },
+      {
+        "trade_date": "2025-03-19",
+        "field_value": 1749.0
+      },
+      {
+        "trade_date": "2025-03-20",
+        "field_value": 147.0
+      },
+      {
+        "trade_date": "2025-03-21",
+        "field_value": 1709864.0
+      },
+      {
+        "trade_date": "2025-03-24",
+        "field_value": 1491560.0
+      },
+      {
+        "trade_date": "2025-03-25",
+        "field_value": 1630966.0
+      },
+      {
+        "trade_date": "2025-03-26",
+        "field_value": 1728532.0
+      },
+      {
+        "trade_date": "2025-03-27",
+        "field_value": 2098828.0
+      },
+      {
+        "trade_date": "2025-03-28",
+        "field_value": 2440313.0
+      },
+      {
+        "trade_date": "2025-03-31",
+        "field_value": 2939461.0
+      },
+      {
+        "trade_date": "2025-04-01",
+        "field_value": 2637829.0
+      },
+      {
+        "trade_date": "2025-04-02",
+        "field_value": 3280446.0
+      },
+      {
+        "trade_date": "2025-04-03",
+        "field_value": 4419043.0
+      },
+      {
+        "trade_date": "2025-04-04",
+        "field_value": 5909934.0
+      },
+      {
+        "trade_date": "2025-04-07",
+        "field_value": 5938458.0
+      },
+      {
+        "trade_date": "2025-04-08",
+        "field_value": 4555093.0
+      },
+      {
+        "trade_date": "2025-04-09",
+        "field_value": 5565656.0
+      },
+      {
+        "trade_date": "2025-04-10",
+        "field_value": 3477955.0
+      },
+      {
+        "trade_date": "2025-04-11",
+        "field_value": 3493055.0
+      },
+      {
+        "trade_date": "2025-04-14",
+        "field_value": 1903624.0
+      },
+      {
+        "trade_date": "2025-04-15",
+        "field_value": 1962772.0
+      },
+      {
+        "trade_date": "2025-04-16",
+        "field_value": 1879966.0
+      },
+      {
+        "trade_date": "2025-04-17",
+        "field_value": 1399843.0
+      },
+      {
+        "trade_date": "2025-04-21",
+        "field_value": 1308194.0
+      },
+      {
+        "trade_date": "2025-04-22",
+        "field_value": 1435700.0
+      },
+      {
+        "trade_date": "2025-04-23",
+        "field_value": 2458444.0
+      },
+      {
+        "trade_date": "2025-04-24",
+        "field_value": 1509798.0
+      },
+      {
+        "trade_date": "2025-04-25",
+        "field_value": 1306813.0
+      },
+      {
+        "trade_date": "2025-04-28",
+        "field_value": 1341759.0
+      },
+      {
+        "trade_date": "2025-04-29",
+        "field_value": 1470102.0
+      },
+      {
+        "trade_date": "2025-04-30",
+        "field_value": 2696662.0
+      },
+      {
+        "trade_date": "2025-05-01",
+        "field_value": 1858910.0
+      },
+      {
+        "trade_date": "2025-05-02",
+        "field_value": 2164601.0
+      },
+      {
+        "trade_date": "2025-05-05",
+        "field_value": 1132802.0
+      },
+      {
+        "trade_date": "2025-05-06",
+        "field_value": 1351859.0
+      },
+      {
+        "trade_date": "2025-05-07",
+        "field_value": 1624092.0
+      },
+      {
+        "trade_date": "2025-05-08",
+        "field_value": 1816067.0
+      },
+      {
+        "trade_date": "2025-05-09",
+        "field_value": 1304833.0
+      },
+      {
+        "trade_date": "2025-05-12",
+        "field_value": 2139733.0
+      },
+      {
+        "trade_date": "2025-05-13",
+        "field_value": 1599843.0
+      },
+      {
+        "trade_date": "2025-05-14",
+        "field_value": 1793275.0
+      },
+      {
+        "trade_date": "2025-05-15",
+        "field_value": 1896192.0
+      },
+      {
+        "trade_date": "2025-05-16",
+        "field_value": 1520268.0
+      },
+      {
+        "trade_date": "2025-05-19",
+        "field_value": 1982919.0
+      },
+      {
+        "trade_date": "2025-05-20",
+        "field_value": 1806285.0
+      },
+      {
+        "trade_date": "2025-05-21",
+        "field_value": 2703320.0
+      },
+      {
+        "trade_date": "2025-05-22",
+        "field_value": 4241617.0
+      },
+      {
+        "trade_date": "2025-05-23",
+        "field_value": 3928904.0
+      },
+      {
+        "trade_date": "2025-05-27",
+        "field_value": 4341233.0
+      },
+      {
+        "trade_date": "2025-05-28",
+        "field_value": 1681784.0
+      },
+      {
+        "trade_date": "2025-05-29",
+        "field_value": 378925.0
+      },
+      {
+        "trade_date": "2025-05-30",
+        "field_value": 70959.0
+      },
+      {
+        "trade_date": "2025-06-02",
+        "field_value": 12227.0
+      },
+      {
+        "trade_date": "2025-06-03",
+        "field_value": 14227.0
+      },
+      {
+        "trade_date": "2025-06-04",
+        "field_value": 5526.0
+      },
+      {
+        "trade_date": "2025-06-05",
+        "field_value": 4339.0
+      },
+      {
+        "trade_date": "2025-06-06",
+        "field_value": 4524.0
+      },
+      {
+        "trade_date": "2025-06-09",
+        "field_value": 616.0
+      },
+      {
+        "trade_date": "2025-06-10",
+        "field_value": 1149.0
+      },
+      {
+        "trade_date": "2025-06-11",
+        "field_value": 1756.0
+      },
+      {
+        "trade_date": "2025-06-12",
+        "field_value": 4180.0
+      },
+      {
+        "trade_date": "2025-06-13",
+        "field_value": 4244.0
+      },
+      {
+        "trade_date": "2025-06-16",
+        "field_value": 860.0
+      },
+      {
+        "trade_date": "2025-06-17",
+        "field_value": 2901.0
+      },
+      {
+        "trade_date": "2025-06-18",
+        "field_value": 2510.0
+      },
+      {
+        "trade_date": "2025-06-20",
+        "field_value": 1787188.0
+      },
+      {
+        "trade_date": "2025-06-23",
+        "field_value": 1879463.0
+      },
+      {
+        "trade_date": "2025-06-24",
+        "field_value": 1865858.0
+      },
+      {
+        "trade_date": "2025-06-25",
+        "field_value": 1431141.0
+      },
+      {
+        "trade_date": "2025-06-26",
+        "field_value": 1844008.0
+      },
+      {
+        "trade_date": "2025-06-27",
+        "field_value": 1739692.0
+      },
+      {
+        "trade_date": "2025-06-30",
+        "field_value": 1973788.0
+      },
+      {
+        "trade_date": "2025-07-01",
+        "field_value": 1775748.0
+      },
+      {
+        "trade_date": "2025-07-02",
+        "field_value": 1641555.0
+      },
+      {
+        "trade_date": "2025-07-03",
+        "field_value": 1924606.0
+      },
+      {
+        "trade_date": "2025-07-07",
+        "field_value": 1436160.0
+      },
+      {
+        "trade_date": "2025-07-08",
+        "field_value": 1295943.0
+      },
+      {
+        "trade_date": "2025-07-09",
+        "field_value": 1566303.0
+      },
+      {
+        "trade_date": "2025-07-10",
+        "field_value": 1313407.0
+      },
+      {
+        "trade_date": "2025-07-11",
+        "field_value": 1270556.0
+      },
+      {
+        "trade_date": "2025-07-14",
+        "field_value": 1252841.0
+      },
+      {
+        "trade_date": "2025-07-15",
+        "field_value": 2102906.0
+      },
+      {
+        "trade_date": "2025-07-16",
+        "field_value": 2465104.0
+      },
+      {
+        "trade_date": "2025-07-17",
+        "field_value": 1458526.0
+      },
+      {
+        "trade_date": "2025-07-18",
+        "field_value": 1110364.0
+      },
+      {
+        "trade_date": "2025-07-21",
+        "field_value": 1279259.0
+      },
+      {
+        "trade_date": "2025-07-22",
+        "field_value": 1349631.0
+      },
+      {
+        "trade_date": "2025-07-23",
+        "field_value": 1418591.0
+      },
+      {
+        "trade_date": "2025-07-24",
+        "field_value": 1446353.0
+      },
+      {
+        "trade_date": "2025-07-25",
+        "field_value": 1163332.0
+      },
+      {
+        "trade_date": "2025-07-28",
+        "field_value": 1197186.0
+      },
+      {
+        "trade_date": "2025-07-29",
+        "field_value": 1763962.0
+      },
+      {
+        "trade_date": "2025-07-30",
+        "field_value": 1794648.0
+      },
+      {
+        "trade_date": "2025-07-31",
+        "field_value": 2076804.0
+      },
+      {
+        "trade_date": "2025-08-01",
+        "field_value": 2983381.0
+      },
+      {
+        "trade_date": "2025-08-04",
+        "field_value": 1960553.0
+      },
+      {
+        "trade_date": "2025-08-05",
+        "field_value": 1459626.0
+      },
+      {
+        "trade_date": "2025-08-06",
+        "field_value": 1662032.0
+      },
+      {
+        "trade_date": "2025-08-07",
+        "field_value": 1291048.0
+      },
+      {
+        "trade_date": "2025-08-08",
+        "field_value": 1033260.0
+      },
+      {
+        "trade_date": "2025-08-11",
+        "field_value": 993844.0
+      },
+      {
+        "trade_date": "2025-08-12",
+        "field_value": 1669474.0
+      },
+      {
+        "trade_date": "2025-08-13",
+        "field_value": 1408771.0
+      },
+      {
+        "trade_date": "2025-08-14",
+        "field_value": 1767055.0
+      },
+      {
+        "trade_date": "2025-08-15",
+        "field_value": 1400281.0
+      },
+      {
+        "trade_date": "2025-08-18",
+        "field_value": 1270179.0
+      },
+      {
+        "trade_date": "2025-08-19",
+        "field_value": 1152864.0
+      },
+      {
+        "trade_date": "2025-08-20",
+        "field_value": 1725902.0
+      },
+      {
+        "trade_date": "2025-08-21",
+        "field_value": 2664116.0
+      },
+      {
+        "trade_date": "2025-08-22",
+        "field_value": 3675155.0
+      },
+      {
+        "trade_date": "2025-08-25",
+        "field_value": 3408633.0
+      },
+      {
+        "trade_date": "2025-08-26",
+        "field_value": 3888574.0
+      },
+      {
+        "trade_date": "2025-08-27",
+        "field_value": 1549404.0
+      },
+      {
+        "trade_date": "2025-08-28",
+        "field_value": 411641.0
+      },
+      {
+        "trade_date": "2025-08-29",
+        "field_value": 46733.0
+      },
+      {
+        "trade_date": "2025-09-02",
+        "field_value": 21953.0
+      },
+      {
+        "trade_date": "2025-09-03",
+        "field_value": 16014.0
+      },
+      {
+        "trade_date": "2025-09-04",
+        "field_value": 5707.0
+      },
+      {
+        "trade_date": "2025-09-05",
+        "field_value": 4569.0
+      },
+      {
+        "trade_date": "2025-09-08",
+        "field_value": 2335.0
+      },
+      {
+        "trade_date": "2025-09-09",
+        "field_value": 3501.0
+      },
+      {
+        "trade_date": "2025-09-10",
+        "field_value": 740.0
+      },
+      {
+        "trade_date": "2025-09-11",
+        "field_value": 413.0
+      },
+      {
+        "trade_date": "2025-09-12",
+        "field_value": 670.0
+      },
+      {
+        "trade_date": "2025-09-15",
+        "field_value": 751.0
+      },
+      {
+        "trade_date": "2025-09-16",
+        "field_value": 472.0
+      },
+      {
+        "trade_date": "2025-09-17",
+        "field_value": 210.0
+      },
+      {
+        "trade_date": "2025-09-18",
+        "field_value": 430.0
+      },
+      {
+        "trade_date": "2025-09-19",
+        "field_value": 144.0
+      },
+      {
+        "trade_date": "2025-09-22",
+        "field_value": 1283787.0
+      },
+      {
+        "trade_date": "2025-09-23",
+        "field_value": 1509773.0
+      },
+      {
+        "trade_date": "2025-09-24",
+        "field_value": 1576936.0
+      },
+      {
+        "trade_date": "2025-09-25",
+        "field_value": 2421612.0
+      },
+      {
+        "trade_date": "2025-09-26",
+        "field_value": 1681227.0
+      },
+      {
+        "trade_date": "2025-09-29",
+        "field_value": 1174337.0
+      },
+      {
+        "trade_date": "2025-09-30",
+        "field_value": 2283043.0
+      },
+      {
+        "trade_date": "2025-10-01",
+        "field_value": 1992224.0
+      },
+      {
+        "trade_date": "2025-10-02",
+        "field_value": 1311442.0
+      },
+      {
+        "trade_date": "2025-10-03",
+        "field_value": 1188558.0
+      },
+      {
+        "trade_date": "2025-10-06",
+        "field_value": 1333430.0
+      },
+      {
+        "trade_date": "2025-10-07",
+        "field_value": 1476718.0
+      },
+      {
+        "trade_date": "2025-10-08",
+        "field_value": 1390188.0
+      },
+      {
+        "trade_date": "2025-10-09",
+        "field_value": 1307607.0
+      },
+      {
+        "trade_date": "2025-10-10",
+        "field_value": 2197869.0
+      },
+      {
+        "trade_date": "2025-10-13",
+        "field_value": 747830.0
+      },
+      {
+        "trade_date": "2025-10-14",
+        "field_value": 2196712.0
+      },
+      {
+        "trade_date": "2025-10-15",
+        "field_value": 1663081.0
+      },
+      {
+        "trade_date": "2025-10-16",
+        "field_value": 2606367.0
+      },
+      {
+        "trade_date": "2025-10-17",
+        "field_value": 2405640.0
+      },
+      {
+        "trade_date": "2025-10-20",
+        "field_value": 1199924.0
+      },
+      {
+        "trade_date": "2025-10-21",
+        "field_value": 1529378.0
+      },
+      {
+        "trade_date": "2025-10-22",
+        "field_value": 1692638.0
+      },
+      {
+        "trade_date": "2025-10-23",
+        "field_value": 1634132.0
+      },
+      {
+        "trade_date": "2025-10-24",
+        "field_value": 1908056.0
+      },
+      {
+        "trade_date": "2025-10-27",
+        "field_value": 1532817.0
+      },
+      {
+        "trade_date": "2025-10-28",
+        "field_value": 1622503.0
+      },
+      {
+        "trade_date": "2025-10-29",
+        "field_value": 1973964.0
+      },
+      {
+        "trade_date": "2025-10-30",
+        "field_value": 2220078.0
+      },
+      {
+        "trade_date": "2025-10-31",
+        "field_value": 2069050.0
+      },
+      {
+        "trade_date": "2025-11-03",
+        "field_value": 1277537.0
+      },
+      {
+        "trade_date": "2025-11-04",
+        "field_value": 1296733.0
+      },
+      {
+        "trade_date": "2025-11-05",
+        "field_value": 2206077.0
+      },
+      {
+        "trade_date": "2025-11-06",
+        "field_value": 2010395.0
+      },
+      {
+        "trade_date": "2025-11-07",
+        "field_value": 1729948.0
+      },
+      {
+        "trade_date": "2025-11-10",
+        "field_value": 1343501.0
+      },
+      {
+        "trade_date": "2025-11-11",
+        "field_value": 697132.0
+      },
+      {
+        "trade_date": "2025-11-12",
+        "field_value": 1589879.0
+      },
+      {
+        "trade_date": "2025-11-13",
+        "field_value": 1962071.0
+      },
+      {
+        "trade_date": "2025-11-14",
+        "field_value": 2526351.0
+      },
+      {
+        "trade_date": "2025-11-17",
+        "field_value": 1533082.0
+      },
+      {
+        "trade_date": "2025-11-18",
+        "field_value": 2456784.0
+      },
+      {
+        "trade_date": "2025-11-19",
+        "field_value": 2237131.0
+      },
+      {
+        "trade_date": "2025-11-20",
+        "field_value": 4064457.0
+      },
+      {
+        "trade_date": "2025-11-21",
+        "field_value": 4806903.0
+      },
+      {
+        "trade_date": "2025-11-24",
+        "field_value": 3785614.0
+      },
+      {
+        "trade_date": "2025-11-25",
+        "field_value": 2925975.0
+      },
+      {
+        "trade_date": "2025-11-26",
+        "field_value": 485602.0
+      },
+      {
+        "trade_date": "2025-11-28",
+        "field_value": 34908.0
+      },
+      {
+        "trade_date": "2025-12-01",
+        "field_value": 19224.0
+      },
+      {
+        "trade_date": "2025-12-02",
+        "field_value": 14125.0
+      },
+      {
+        "trade_date": "2025-12-03",
+        "field_value": 11037.0
+      },
+      {
+        "trade_date": "2025-12-04",
+        "field_value": 4570.0
+      },
+      {
+        "trade_date": "2025-12-05",
+        "field_value": 2952.0
+      },
+      {
+        "trade_date": "2025-12-08",
+        "field_value": 4291.0
+      },
+      {
+        "trade_date": "2025-12-09",
+        "field_value": 9002.0
+      },
+      {
+        "trade_date": "2025-12-10",
+        "field_value": 3351.0
+      },
+      {
+        "trade_date": "2025-12-11",
+        "field_value": 937.0
+      },
+      {
+        "trade_date": "2025-12-12",
+        "field_value": 761.0
+      },
+      {
+        "trade_date": "2025-12-15",
+        "field_value": 2017.0
+      },
+      {
+        "trade_date": "2025-12-16",
+        "field_value": 1340.0
+      },
+      {
+        "trade_date": "2025-12-17",
+        "field_value": 1054.0
+      },
+      {
+        "trade_date": "2025-12-18",
+        "field_value": 2845.0
+      },
+      {
+        "trade_date": "2025-12-19",
+        "field_value": 1720.0
+      },
+      {
+        "trade_date": "2025-12-22",
+        "field_value": 899455.0
+      },
+      {
+        "trade_date": "2025-12-23",
+        "field_value": 1271125.0
+      },
+      {
+        "trade_date": "2025-12-24",
+        "field_value": 634890.0
+      },
+      {
+        "trade_date": "2025-12-26",
+        "field_value": 774752.0
+      },
+      {
+        "trade_date": "2025-12-29",
+        "field_value": 1188578.0
+      },
+      {
+        "trade_date": "2025-12-30",
+        "field_value": 1058870.0
+      },
+      {
+        "trade_date": "2025-12-31",
+        "field_value": 1431810.0
+      },
+      {
+        "trade_date": "2026-01-02",
+        "field_value": 1268719.0
+      },
+      {
+        "trade_date": "2026-01-05",
+        "field_value": 1623829.0
+      },
+      {
+        "trade_date": "2026-01-06",
+        "field_value": 1752274.0
+      },
+      {
+        "trade_date": "2026-01-07",
+        "field_value": 2129436.0
+      },
+      {
+        "trade_date": "2026-01-08",
+        "field_value": 1836365.0
+      },
+      {
+        "trade_date": "2026-01-09",
+        "field_value": 2931712.0
+      },
+      {
+        "trade_date": "2026-01-12",
+        "field_value": 2242303.0
+      },
+      {
+        "trade_date": "2026-01-13",
+        "field_value": 2196512.0
+      },
+      {
+        "trade_date": "2026-01-14",
+        "field_value": 1904508.0
+      },
+      {
+        "trade_date": "2026-01-15",
+        "field_value": 1939518.0
+      },
+      {
+        "trade_date": "2026-01-16",
+        "field_value": 2599137.0
+      },
+      {
+        "trade_date": "2026-01-20",
+        "field_value": 3408278.0
+      },
+      {
+        "trade_date": "2026-01-21",
+        "field_value": 2398009.0
+      },
+      {
+        "trade_date": "2026-01-22",
+        "field_value": 1834555.0
+      },
+      {
+        "trade_date": "2026-01-23",
+        "field_value": 1797337.0
+      },
+      {
+        "trade_date": "2026-01-26",
+        "field_value": 1497834.0
+      },
+      {
+        "trade_date": "2026-01-27",
+        "field_value": 1643836.0
+      },
+      {
+        "trade_date": "2026-01-28",
+        "field_value": 1647199.0
+      },
+      {
+        "trade_date": "2026-01-29",
+        "field_value": 2303789.0
+      },
+      {
+        "trade_date": "2026-01-30",
+        "field_value": 3095215.0
+      },
+      {
+        "trade_date": "2026-02-02",
+        "field_value": 2525135.0
+      },
+      {
+        "trade_date": "2026-02-03",
+        "field_value": 1883750.0
+      },
+      {
+        "trade_date": "2026-02-04",
+        "field_value": 2005865.0
+      },
+      {
+        "trade_date": "2026-02-05",
+        "field_value": 3237297.0
+      },
+      {
+        "trade_date": "2026-02-06",
+        "field_value": 2255242.0
+      },
+      {
+        "trade_date": "2026-02-09",
+        "field_value": 1807589.0
+      },
+      {
+        "trade_date": "2026-02-10",
+        "field_value": 2450371.0
+      },
+      {
+        "trade_date": "2026-02-11",
+        "field_value": 3127690.0
+      },
+      {
+        "trade_date": "2026-02-12",
+        "field_value": 2494095.0
+      },
+      {
+        "trade_date": "2026-02-13",
+        "field_value": 3459260.0
+      },
+      {
+        "trade_date": "2026-02-17",
+        "field_value": 2906259.0
+      },
+      {
+        "trade_date": "2026-02-18",
+        "field_value": 1876066.0
+      },
+      {
+        "trade_date": "2026-02-19",
+        "field_value": 2078546.0
+      },
+      {
+        "trade_date": "2026-02-20",
+        "field_value": 4205283.0
+      },
+      {
+        "trade_date": "2026-02-23",
+        "field_value": 5729054.0
+      },
+      {
+        "trade_date": "2026-02-24",
+        "field_value": 4688483.0
+      },
+      {
+        "trade_date": "2026-02-25",
+        "field_value": 1825743.0
+      },
+      {
+        "trade_date": "2026-02-26",
+        "field_value": 453485.0
+      },
+      {
+        "trade_date": "2026-02-27",
+        "field_value": 76685.0
+      },
+      {
+        "trade_date": "2026-03-02",
+        "field_value": 48749.0
+      },
+      {
+        "trade_date": "2026-03-03",
+        "field_value": 40005.0
+      },
+      {
+        "trade_date": "2026-03-04",
+        "field_value": 12216.0
+      },
+      {
+        "trade_date": "2026-03-05",
+        "field_value": 18030.0
+      },
+      {
+        "trade_date": "2026-03-06",
+        "field_value": 10037.0
+      },
+      {
+        "trade_date": "2026-03-09",
+        "field_value": 6109.0
+      },
+      {
+        "trade_date": "2026-03-10",
+        "field_value": 1855.0
+      },
+      {
+        "trade_date": "2026-03-11",
+        "field_value": 1950.0
+      },
+      {
+        "trade_date": "2026-03-12",
+        "field_value": 5336.0
+      },
+      {
+        "trade_date": "2026-03-13",
+        "field_value": 1484.0
+      },
+      {
+        "trade_date": "2026-03-16",
+        "field_value": 1329.0
+      },
+      {
+        "trade_date": "2026-03-17",
+        "field_value": 1050.0
+      },
+      {
+        "trade_date": "2026-03-18",
+        "field_value": 1419.0
+      },
+      {
+        "trade_date": "2026-03-19",
+        "field_value": 1801.0
+      },
+      {
+        "trade_date": "2026-03-20",
+        "field_value": 78.0
+      },
+      {
+        "trade_date": "2026-03-23",
+        "field_value": 4388826.0
+      },
+      {
+        "trade_date": "2026-03-24",
+        "field_value": 3365185.0
+      },
+      {
+        "trade_date": "2026-03-25",
+        "field_value": 2793316.0
+      },
+      {
+        "trade_date": "2026-03-26",
+        "field_value": 2623200.0
+      },
+      {
+        "trade_date": "2026-03-27",
+        "field_value": 2608633.0
+      },
+      {
+        "trade_date": "2026-03-30",
+        "field_value": 2195876.0
+      },
+      {
+        "trade_date": "2026-03-31",
+        "field_value": 3156606.0
+      },
+      {
+        "trade_date": "2026-04-01",
+        "field_value": 2318868.0
+      },
+      {
+        "trade_date": "2026-04-02",
+        "field_value": 2146724.0
+      },
+      {
+        "trade_date": "2026-04-03",
+        "field_value": 483644.0
+      },
+      {
+        "trade_date": "2026-04-06",
+        "field_value": 1126863.0
+      },
+      {
+        "trade_date": "2026-04-07",
+        "field_value": 2139120.0
+      },
+      {
+        "trade_date": "2026-04-08",
+        "field_value": 2400112.0
+      }
+    ],
+    "raw_oi_rows": [
+      {
+        "trade_date": "2024-05-10",
+        "field_value": 4382680.0
+      },
+      {
+        "trade_date": "2024-05-13",
+        "field_value": 4386338.0
+      },
+      {
+        "trade_date": "2024-05-14",
+        "field_value": 4395741.0
+      },
+      {
+        "trade_date": "2024-05-15",
+        "field_value": 4393428.0
+      },
+      {
+        "trade_date": "2024-05-16",
+        "field_value": 4370493.0
+      },
+      {
+        "trade_date": "2024-05-17",
+        "field_value": 4328859.0
+      },
+      {
+        "trade_date": "2024-05-20",
+        "field_value": 4293412.0
+      },
+      {
+        "trade_date": "2024-05-21",
+        "field_value": 4264272.0
+      },
+      {
+        "trade_date": "2024-05-22",
+        "field_value": 4118875.0
+      },
+      {
+        "trade_date": "2024-05-23",
+        "field_value": 3218682.0
+      },
+      {
+        "trade_date": "2024-05-24",
+        "field_value": 2435276.0
+      },
+      {
+        "trade_date": "2024-05-28",
+        "field_value": 1028312.0
+      },
+      {
+        "trade_date": "2024-05-29",
+        "field_value": 358502.0
+      },
+      {
+        "trade_date": "2024-05-30",
+        "field_value": 111282.0
+      },
+      {
+        "trade_date": "2024-05-31",
+        "field_value": 92031.0
+      },
+      {
+        "trade_date": "2024-06-03",
+        "field_value": 11607.0
+      },
+      {
+        "trade_date": "2024-06-04",
+        "field_value": 10172.0
+      },
+      {
+        "trade_date": "2024-06-05",
+        "field_value": 8074.0
+      },
+      {
+        "trade_date": "2024-06-06",
+        "field_value": 7404.0
+      },
+      {
+        "trade_date": "2024-06-07",
+        "field_value": 3701.0
+      },
+      {
+        "trade_date": "2024-06-10",
+        "field_value": 3503.0
+      },
+      {
+        "trade_date": "2024-06-11",
+        "field_value": 1482.0
+      },
+      {
+        "trade_date": "2024-06-12",
+        "field_value": 1761.0
+      },
+      {
+        "trade_date": "2024-06-13",
+        "field_value": 1736.0
+      },
+      {
+        "trade_date": "2024-06-14",
+        "field_value": 722.0
+      },
+      {
+        "trade_date": "2024-06-17",
+        "field_value": 183.0
+      },
+      {
+        "trade_date": "2024-06-18",
+        "field_value": 51.0
+      },
+      {
+        "trade_date": "2024-06-20",
+        "field_value": 4324111.0
+      },
+      {
+        "trade_date": "2024-06-21",
+        "field_value": 4290687.0
+      },
+      {
+        "trade_date": "2024-06-24",
+        "field_value": 4333347.0
+      },
+      {
+        "trade_date": "2024-06-25",
+        "field_value": 4329185.0
+      },
+      {
+        "trade_date": "2024-06-26",
+        "field_value": 4342597.0
+      },
+      {
+        "trade_date": "2024-06-27",
+        "field_value": 4351566.0
+      },
+      {
+        "trade_date": "2024-06-28",
+        "field_value": 4326890.0
+      },
+      {
+        "trade_date": "2024-07-01",
+        "field_value": 4371090.0
+      },
+      {
+        "trade_date": "2024-07-02",
+        "field_value": 4373056.0
+      },
+      {
+        "trade_date": "2024-07-03",
+        "field_value": 4437086.0
+      },
+      {
+        "trade_date": "2024-07-05",
+        "field_value": 4467091.0
+      },
+      {
+        "trade_date": "2024-07-08",
+        "field_value": 4486285.0
+      },
+      {
+        "trade_date": "2024-07-09",
+        "field_value": 4500287.0
+      },
+      {
+        "trade_date": "2024-07-10",
+        "field_value": 4504170.0
+      },
+      {
+        "trade_date": "2024-07-11",
+        "field_value": 4586211.0
+      },
+      {
+        "trade_date": "2024-07-12",
+        "field_value": 4552377.0
+      },
+      {
+        "trade_date": "2024-07-15",
+        "field_value": 4512254.0
+      },
+      {
+        "trade_date": "2024-07-16",
+        "field_value": 4551108.0
+      },
+      {
+        "trade_date": "2024-07-17",
+        "field_value": 4558710.0
+      },
+      {
+        "trade_date": "2024-07-18",
+        "field_value": 4573822.0
+      },
+      {
+        "trade_date": "2024-07-19",
+        "field_value": 4571164.0
+      },
+      {
+        "trade_date": "2024-07-22",
+        "field_value": 4558211.0
+      },
+      {
+        "trade_date": "2024-07-23",
+        "field_value": 4578544.0
+      },
+      {
+        "trade_date": "2024-07-24",
+        "field_value": 4602784.0
+      },
+      {
+        "trade_date": "2024-07-25",
+        "field_value": 4643284.0
+      },
+      {
+        "trade_date": "2024-07-26",
+        "field_value": 4690274.0
+      },
+      {
+        "trade_date": "2024-07-29",
+        "field_value": 4706047.0
+      },
+      {
+        "trade_date": "2024-07-30",
+        "field_value": 4740387.0
+      },
+      {
+        "trade_date": "2024-07-31",
+        "field_value": 4791080.0
+      },
+      {
+        "trade_date": "2024-08-01",
+        "field_value": 4826875.0
+      },
+      {
+        "trade_date": "2024-08-02",
+        "field_value": 4895596.0
+      },
+      {
+        "trade_date": "2024-08-05",
+        "field_value": 4870017.0
+      },
+      {
+        "trade_date": "2024-08-06",
+        "field_value": 4854226.0
+      },
+      {
+        "trade_date": "2024-08-07",
+        "field_value": 4893743.0
+      },
+      {
+        "trade_date": "2024-08-08",
+        "field_value": 4878492.0
+      },
+      {
+        "trade_date": "2024-08-09",
+        "field_value": 4905201.0
+      },
+      {
+        "trade_date": "2024-08-12",
+        "field_value": 4900110.0
+      },
+      {
+        "trade_date": "2024-08-13",
+        "field_value": 4958362.0
+      },
+      {
+        "trade_date": "2024-08-14",
+        "field_value": 4996950.0
+      },
+      {
+        "trade_date": "2024-08-15",
+        "field_value": 4976768.0
+      },
+      {
+        "trade_date": "2024-08-16",
+        "field_value": 4978957.0
+      },
+      {
+        "trade_date": "2024-08-19",
+        "field_value": 4981492.0
+      },
+      {
+        "trade_date": "2024-08-20",
+        "field_value": 4992780.0
+      },
+      {
+        "trade_date": "2024-08-21",
+        "field_value": 4889268.0
+      },
+      {
+        "trade_date": "2024-08-22",
+        "field_value": 4236107.0
+      },
+      {
+        "trade_date": "2024-08-23",
+        "field_value": 3649977.0
+      },
+      {
+        "trade_date": "2024-08-26",
+        "field_value": 2539826.0
+      },
+      {
+        "trade_date": "2024-08-27",
+        "field_value": 1188246.0
+      },
+      {
+        "trade_date": "2024-08-28",
+        "field_value": 228505.0
+      },
+      {
+        "trade_date": "2024-08-29",
+        "field_value": 56288.0
+      },
+      {
+        "trade_date": "2024-08-30",
+        "field_value": 20473.0
+      },
+      {
+        "trade_date": "2024-09-03",
+        "field_value": 13625.0
+      },
+      {
+        "trade_date": "2024-09-04",
+        "field_value": 7430.0
+      },
+      {
+        "trade_date": "2024-09-05",
+        "field_value": 4137.0
+      },
+      {
+        "trade_date": "2024-09-06",
+        "field_value": 4021.0
+      },
+      {
+        "trade_date": "2024-09-09",
+        "field_value": 3936.0
+      },
+      {
+        "trade_date": "2024-09-10",
+        "field_value": 4629.0
+      },
+      {
+        "trade_date": "2024-09-11",
+        "field_value": 3663.0
+      },
+      {
+        "trade_date": "2024-09-12",
+        "field_value": 3410.0
+      },
+      {
+        "trade_date": "2024-09-13",
+        "field_value": 3269.0
+      },
+      {
+        "trade_date": "2024-09-16",
+        "field_value": 2613.0
+      },
+      {
+        "trade_date": "2024-09-17",
+        "field_value": 1828.0
+      },
+      {
+        "trade_date": "2024-09-18",
+        "field_value": 203.0
+      },
+      {
+        "trade_date": "2024-09-19",
+        "field_value": 59.0
+      },
+      {
+        "trade_date": "2024-09-20",
+        "field_value": 4883003.0
+      },
+      {
+        "trade_date": "2024-09-23",
+        "field_value": 4895124.0
+      },
+      {
+        "trade_date": "2024-09-24",
+        "field_value": 4941618.0
+      },
+      {
+        "trade_date": "2024-09-25",
+        "field_value": 4933085.0
+      },
+      {
+        "trade_date": "2024-09-26",
+        "field_value": 4959660.0
+      },
+      {
+        "trade_date": "2024-09-27",
+        "field_value": 4996436.0
+      },
+      {
+        "trade_date": "2024-09-30",
+        "field_value": 4951577.0
+      },
+      {
+        "trade_date": "2024-10-01",
+        "field_value": 4968320.0
+      },
+      {
+        "trade_date": "2024-10-02",
+        "field_value": 4927876.0
+      },
+      {
+        "trade_date": "2024-10-03",
+        "field_value": 4857685.0
+      },
+      {
+        "trade_date": "2024-10-04",
+        "field_value": 4892352.0
+      },
+      {
+        "trade_date": "2024-10-07",
+        "field_value": 4867835.0
+      },
+      {
+        "trade_date": "2024-10-08",
+        "field_value": 4827284.0
+      },
+      {
+        "trade_date": "2024-10-09",
+        "field_value": 4761625.0
+      },
+      {
+        "trade_date": "2024-10-10",
+        "field_value": 4739316.0
+      },
+      {
+        "trade_date": "2024-10-11",
+        "field_value": 4736096.0
+      },
+      {
+        "trade_date": "2024-10-14",
+        "field_value": 4711915.0
+      },
+      {
+        "trade_date": "2024-10-15",
+        "field_value": 4700712.0
+      },
+      {
+        "trade_date": "2024-10-16",
+        "field_value": 4694732.0
+      },
+      {
+        "trade_date": "2024-10-17",
+        "field_value": 4648117.0
+      },
+      {
+        "trade_date": "2024-10-18",
+        "field_value": 4691395.0
+      },
+      {
+        "trade_date": "2024-10-21",
+        "field_value": 4650842.0
+      },
+      {
+        "trade_date": "2024-10-22",
+        "field_value": 4652688.0
+      },
+      {
+        "trade_date": "2024-10-23",
+        "field_value": 4625119.0
+      },
+      {
+        "trade_date": "2024-10-24",
+        "field_value": 4619007.0
+      },
+      {
+        "trade_date": "2024-10-25",
+        "field_value": 4597544.0
+      },
+      {
+        "trade_date": "2024-10-28",
+        "field_value": 4640279.0
+      },
+      {
+        "trade_date": "2024-10-29",
+        "field_value": 4589527.0
+      },
+      {
+        "trade_date": "2024-10-30",
+        "field_value": 4626268.0
+      },
+      {
+        "trade_date": "2024-10-31",
+        "field_value": 4552678.0
+      },
+      {
+        "trade_date": "2024-11-01",
+        "field_value": 4580206.0
+      },
+      {
+        "trade_date": "2024-11-04",
+        "field_value": 4589153.0
+      },
+      {
+        "trade_date": "2024-11-05",
+        "field_value": 4544999.0
+      },
+      {
+        "trade_date": "2024-11-06",
+        "field_value": 4591198.0
+      },
+      {
+        "trade_date": "2024-11-07",
+        "field_value": 4565508.0
+      },
+      {
+        "trade_date": "2024-11-08",
+        "field_value": 4570487.0
+      },
+      {
+        "trade_date": "2024-11-11",
+        "field_value": 4565873.0
+      },
+      {
+        "trade_date": "2024-11-12",
+        "field_value": 4533832.0
+      },
+      {
+        "trade_date": "2024-11-13",
+        "field_value": 4532022.0
+      },
+      {
+        "trade_date": "2024-11-14",
+        "field_value": 4541660.0
+      },
+      {
+        "trade_date": "2024-11-15",
+        "field_value": 4538492.0
+      },
+      {
+        "trade_date": "2024-11-18",
+        "field_value": 4525185.0
+      },
+      {
+        "trade_date": "2024-11-19",
+        "field_value": 4413594.0
+      },
+      {
+        "trade_date": "2024-11-20",
+        "field_value": 4229119.0
+      },
+      {
+        "trade_date": "2024-11-21",
+        "field_value": 3538874.0
+      },
+      {
+        "trade_date": "2024-11-22",
+        "field_value": 2504449.0
+      },
+      {
+        "trade_date": "2024-11-25",
+        "field_value": 1121815.0
+      },
+      {
+        "trade_date": "2024-11-26",
+        "field_value": 319076.0
+      },
+      {
+        "trade_date": "2024-11-27",
+        "field_value": 101959.0
+      },
+      {
+        "trade_date": "2024-11-29",
+        "field_value": 90104.0
+      },
+      {
+        "trade_date": "2024-12-02",
+        "field_value": 31821.0
+      },
+      {
+        "trade_date": "2024-12-03",
+        "field_value": 18005.0
+      },
+      {
+        "trade_date": "2024-12-04",
+        "field_value": 17068.0
+      },
+      {
+        "trade_date": "2024-12-05",
+        "field_value": 16518.0
+      },
+      {
+        "trade_date": "2024-12-06",
+        "field_value": 15992.0
+      },
+      {
+        "trade_date": "2024-12-09",
+        "field_value": 15364.0
+      },
+      {
+        "trade_date": "2024-12-10",
+        "field_value": 15285.0
+      },
+      {
+        "trade_date": "2024-12-11",
+        "field_value": 15048.0
+      },
+      {
+        "trade_date": "2024-12-12",
+        "field_value": 14504.0
+      },
+      {
+        "trade_date": "2024-12-13",
+        "field_value": 14311.0
+      },
+      {
+        "trade_date": "2024-12-16",
+        "field_value": 14117.0
+      },
+      {
+        "trade_date": "2024-12-17",
+        "field_value": 13864.0
+      },
+      {
+        "trade_date": "2024-12-18",
+        "field_value": 13740.0
+      },
+      {
+        "trade_date": "2024-12-19",
+        "field_value": 13796.0
+      },
+      {
+        "trade_date": "2024-12-20",
+        "field_value": 4434017.0
+      },
+      {
+        "trade_date": "2024-12-23",
+        "field_value": 4442456.0
+      },
+      {
+        "trade_date": "2024-12-24",
+        "field_value": 4476069.0
+      },
+      {
+        "trade_date": "2024-12-26",
+        "field_value": 4529851.0
+      },
+      {
+        "trade_date": "2024-12-27",
+        "field_value": 4512949.0
+      },
+      {
+        "trade_date": "2024-12-30",
+        "field_value": 4539798.0
+      },
+      {
+        "trade_date": "2024-12-31",
+        "field_value": 4514173.0
+      },
+      {
+        "trade_date": "2025-01-02",
+        "field_value": 4545889.0
+      },
+      {
+        "trade_date": "2025-01-03",
+        "field_value": 4559292.0
+      },
+      {
+        "trade_date": "2025-01-06",
+        "field_value": 4575567.0
+      },
+      {
+        "trade_date": "2025-01-07",
+        "field_value": 4640732.0
+      },
+      {
+        "trade_date": "2025-01-08",
+        "field_value": 4693497.0
+      },
+      {
+        "trade_date": "2025-01-09",
+        "field_value": 4662169.0
+      },
+      {
+        "trade_date": "2025-01-10",
+        "field_value": 4677693.0
+      },
+      {
+        "trade_date": "2025-01-13",
+        "field_value": 4657700.0
+      },
+      {
+        "trade_date": "2025-01-14",
+        "field_value": 4701356.0
+      },
+      {
+        "trade_date": "2025-01-15",
+        "field_value": 4733981.0
+      },
+      {
+        "trade_date": "2025-01-16",
+        "field_value": 4740842.0
+      },
+      {
+        "trade_date": "2025-01-17",
+        "field_value": 4694593.0
+      },
+      {
+        "trade_date": "2025-01-21",
+        "field_value": 4742568.0
+      },
+      {
+        "trade_date": "2025-01-22",
+        "field_value": 4754573.0
+      },
+      {
+        "trade_date": "2025-01-23",
+        "field_value": 4765056.0
+      },
+      {
+        "trade_date": "2025-01-24",
+        "field_value": 4818730.0
+      },
+      {
+        "trade_date": "2025-01-27",
+        "field_value": 4864058.0
+      },
+      {
+        "trade_date": "2025-01-28",
+        "field_value": 4863112.0
+      },
+      {
+        "trade_date": "2025-01-29",
+        "field_value": 4914984.0
+      },
+      {
+        "trade_date": "2025-01-30",
+        "field_value": 4969360.0
+      },
+      {
+        "trade_date": "2025-01-31",
+        "field_value": 4877945.0
+      },
+      {
+        "trade_date": "2025-02-03",
+        "field_value": 4855543.0
+      },
+      {
+        "trade_date": "2025-02-04",
+        "field_value": 4877800.0
+      },
+      {
+        "trade_date": "2025-02-05",
+        "field_value": 4899920.0
+      },
+      {
+        "trade_date": "2025-02-06",
+        "field_value": 4881955.0
+      },
+      {
+        "trade_date": "2025-02-07",
+        "field_value": 4911751.0
+      },
+      {
+        "trade_date": "2025-02-10",
+        "field_value": 4885820.0
+      },
+      {
+        "trade_date": "2025-02-11",
+        "field_value": 4872897.0
+      },
+      {
+        "trade_date": "2025-02-12",
+        "field_value": 4817385.0
+      },
+      {
+        "trade_date": "2025-02-13",
+        "field_value": 4878057.0
+      },
+      {
+        "trade_date": "2025-02-14",
+        "field_value": 4874151.0
+      },
+      {
+        "trade_date": "2025-02-18",
+        "field_value": 4903621.0
+      },
+      {
+        "trade_date": "2025-02-19",
+        "field_value": 4729141.0
+      },
+      {
+        "trade_date": "2025-02-20",
+        "field_value": 4383958.0
+      },
+      {
+        "trade_date": "2025-02-21",
+        "field_value": 3722821.0
+      },
+      {
+        "trade_date": "2025-02-24",
+        "field_value": 2441674.0
+      },
+      {
+        "trade_date": "2025-02-25",
+        "field_value": 872346.0
+      },
+      {
+        "trade_date": "2025-02-26",
+        "field_value": 200869.0
+      },
+      {
+        "trade_date": "2025-02-27",
+        "field_value": 58761.0
+      },
+      {
+        "trade_date": "2025-02-28",
+        "field_value": 35383.0
+      },
+      {
+        "trade_date": "2025-03-03",
+        "field_value": 16341.0
+      },
+      {
+        "trade_date": "2025-03-04",
+        "field_value": 6999.0
+      },
+      {
+        "trade_date": "2025-03-05",
+        "field_value": 6239.0
+      },
+      {
+        "trade_date": "2025-03-06",
+        "field_value": 6028.0
+      },
+      {
+        "trade_date": "2025-03-07",
+        "field_value": 6143.0
+      },
+      {
+        "trade_date": "2025-03-10",
+        "field_value": 5572.0
+      },
+      {
+        "trade_date": "2025-03-11",
+        "field_value": 5433.0
+      },
+      {
+        "trade_date": "2025-03-12",
+        "field_value": 5253.0
+      },
+      {
+        "trade_date": "2025-03-13",
+        "field_value": 5082.0
+      },
+      {
+        "trade_date": "2025-03-14",
+        "field_value": 4759.0
+      },
+      {
+        "trade_date": "2025-03-17",
+        "field_value": 4071.0
+      },
+      {
+        "trade_date": "2025-03-18",
+        "field_value": 3599.0
+      },
+      {
+        "trade_date": "2025-03-19",
+        "field_value": 2506.0
+      },
+      {
+        "trade_date": "2025-03-20",
+        "field_value": 599.0
+      },
+      {
+        "trade_date": "2025-03-21",
+        "field_value": 4888778.0
+      },
+      {
+        "trade_date": "2025-03-24",
+        "field_value": 4877908.0
+      },
+      {
+        "trade_date": "2025-03-25",
+        "field_value": 4921333.0
+      },
+      {
+        "trade_date": "2025-03-26",
+        "field_value": 4930027.0
+      },
+      {
+        "trade_date": "2025-03-27",
+        "field_value": 4952115.0
+      },
+      {
+        "trade_date": "2025-03-28",
+        "field_value": 4939314.0
+      },
+      {
+        "trade_date": "2025-03-31",
+        "field_value": 4899400.0
+      },
+      {
+        "trade_date": "2025-04-01",
+        "field_value": 4891221.0
+      },
+      {
+        "trade_date": "2025-04-02",
+        "field_value": 4922495.0
+      },
+      {
+        "trade_date": "2025-04-03",
+        "field_value": 5002296.0
+      },
+      {
+        "trade_date": "2025-04-04",
+        "field_value": 4948546.0
+      },
+      {
+        "trade_date": "2025-04-07",
+        "field_value": 4934781.0
+      },
+      {
+        "trade_date": "2025-04-08",
+        "field_value": 4885507.0
+      },
+      {
+        "trade_date": "2025-04-09",
+        "field_value": 4847406.0
+      },
+      {
+        "trade_date": "2025-04-10",
+        "field_value": 4844130.0
+      },
+      {
+        "trade_date": "2025-04-11",
+        "field_value": 4769881.0
+      },
+      {
+        "trade_date": "2025-04-14",
+        "field_value": 4765968.0
+      },
+      {
+        "trade_date": "2025-04-15",
+        "field_value": 4755493.0
+      },
+      {
+        "trade_date": "2025-04-16",
+        "field_value": 4780421.0
+      },
+      {
+        "trade_date": "2025-04-17",
+        "field_value": 4736828.0
+      },
+      {
+        "trade_date": "2025-04-18",
+        "field_value": 4736828.0
+      },
+      {
+        "trade_date": "2025-04-21",
+        "field_value": 4750113.0
+      },
+      {
+        "trade_date": "2025-04-22",
+        "field_value": 4723198.0
+      },
+      {
+        "trade_date": "2025-04-23",
+        "field_value": 4735671.0
+      },
+      {
+        "trade_date": "2025-04-24",
+        "field_value": 4814940.0
+      },
+      {
+        "trade_date": "2025-04-25",
+        "field_value": 4868495.0
+      },
+      {
+        "trade_date": "2025-04-28",
+        "field_value": 4866159.0
+      },
+      {
+        "trade_date": "2025-04-29",
+        "field_value": 4863354.0
+      },
+      {
+        "trade_date": "2025-04-30",
+        "field_value": 4910246.0
+      },
+      {
+        "trade_date": "2025-05-01",
+        "field_value": 4921033.0
+      },
+      {
+        "trade_date": "2025-05-02",
+        "field_value": 4931083.0
+      },
+      {
+        "trade_date": "2025-05-05",
+        "field_value": 4960841.0
+      },
+      {
+        "trade_date": "2025-05-06",
+        "field_value": 4956188.0
+      },
+      {
+        "trade_date": "2025-05-07",
+        "field_value": 4932329.0
+      },
+      {
+        "trade_date": "2025-05-08",
+        "field_value": 4964960.0
+      },
+      {
+        "trade_date": "2025-05-09",
+        "field_value": 4942821.0
+      },
+      {
+        "trade_date": "2025-05-12",
+        "field_value": 4961839.0
+      },
+      {
+        "trade_date": "2025-05-13",
+        "field_value": 4946332.0
+      },
+      {
+        "trade_date": "2025-05-14",
+        "field_value": 4905591.0
+      },
+      {
+        "trade_date": "2025-05-15",
+        "field_value": 4917441.0
+      },
+      {
+        "trade_date": "2025-05-16",
+        "field_value": 4913670.0
+      },
+      {
+        "trade_date": "2025-05-19",
+        "field_value": 4868972.0
+      },
+      {
+        "trade_date": "2025-05-20",
+        "field_value": 4633676.0
+      },
+      {
+        "trade_date": "2025-05-21",
+        "field_value": 4264219.0
+      },
+      {
+        "trade_date": "2025-05-22",
+        "field_value": 3169115.0
+      },
+      {
+        "trade_date": "2025-05-23",
+        "field_value": 2499534.0
+      },
+      {
+        "trade_date": "2025-05-27",
+        "field_value": 973966.0
+      },
+      {
+        "trade_date": "2025-05-28",
+        "field_value": 301950.0
+      },
+      {
+        "trade_date": "2025-05-29",
+        "field_value": 75644.0
+      },
+      {
+        "trade_date": "2025-05-30",
+        "field_value": 43350.0
+      },
+      {
+        "trade_date": "2025-06-02",
+        "field_value": 32550.0
+      },
+      {
+        "trade_date": "2025-06-03",
+        "field_value": 19609.0
+      },
+      {
+        "trade_date": "2025-06-04",
+        "field_value": 17478.0
+      },
+      {
+        "trade_date": "2025-06-05",
+        "field_value": 13863.0
+      },
+      {
+        "trade_date": "2025-06-06",
+        "field_value": 13041.0
+      },
+      {
+        "trade_date": "2025-06-09",
+        "field_value": 12644.0
+      },
+      {
+        "trade_date": "2025-06-10",
+        "field_value": 12311.0
+      },
+      {
+        "trade_date": "2025-06-11",
+        "field_value": 11518.0
+      },
+      {
+        "trade_date": "2025-06-12",
+        "field_value": 8649.0
+      },
+      {
+        "trade_date": "2025-06-13",
+        "field_value": 8173.0
+      },
+      {
+        "trade_date": "2025-06-16",
+        "field_value": 5716.0
+      },
+      {
+        "trade_date": "2025-06-17",
+        "field_value": 3344.0
+      },
+      {
+        "trade_date": "2025-06-18",
+        "field_value": 1170.0
+      },
+      {
+        "trade_date": "2025-06-20",
+        "field_value": 4806569.0
+      },
+      {
+        "trade_date": "2025-06-23",
+        "field_value": 4850417.0
+      },
+      {
+        "trade_date": "2025-06-24",
+        "field_value": 4914480.0
+      },
+      {
+        "trade_date": "2025-06-25",
+        "field_value": 4939441.0
+      },
+      {
+        "trade_date": "2025-06-26",
+        "field_value": 5016950.0
+      },
+      {
+        "trade_date": "2025-06-27",
+        "field_value": 5041941.0
+      },
+      {
+        "trade_date": "2025-06-30",
+        "field_value": 5040148.0
+      },
+      {
+        "trade_date": "2025-07-01",
+        "field_value": 5045935.0
+      },
+      {
+        "trade_date": "2025-07-02",
+        "field_value": 5033500.0
+      },
+      {
+        "trade_date": "2025-07-03",
+        "field_value": 4957944.0
+      },
+      {
+        "trade_date": "2025-07-04",
+        "field_value": 4946323.0
+      },
+      {
+        "trade_date": "2025-07-07",
+        "field_value": 4933087.0
+      },
+      {
+        "trade_date": "2025-07-08",
+        "field_value": 4915665.0
+      },
+      {
+        "trade_date": "2025-07-09",
+        "field_value": 4916254.0
+      },
+      {
+        "trade_date": "2025-07-10",
+        "field_value": 4896647.0
+      },
+      {
+        "trade_date": "2025-07-11",
+        "field_value": 4881139.0
+      },
+      {
+        "trade_date": "2025-07-14",
+        "field_value": 4843970.0
+      },
+      {
+        "trade_date": "2025-07-15",
+        "field_value": 4889870.0
+      },
+      {
+        "trade_date": "2025-07-16",
+        "field_value": 4834099.0
+      },
+      {
+        "trade_date": "2025-07-17",
+        "field_value": 4795038.0
+      },
+      {
+        "trade_date": "2025-07-18",
+        "field_value": 4779358.0
+      },
+      {
+        "trade_date": "2025-07-21",
+        "field_value": 4789046.0
+      },
+      {
+        "trade_date": "2025-07-22",
+        "field_value": 4806137.0
+      },
+      {
+        "trade_date": "2025-07-23",
+        "field_value": 4806792.0
+      },
+      {
+        "trade_date": "2025-07-24",
+        "field_value": 4811091.0
+      },
+      {
+        "trade_date": "2025-07-25",
+        "field_value": 4806778.0
+      },
+      {
+        "trade_date": "2025-07-28",
+        "field_value": 4842034.0
+      },
+      {
+        "trade_date": "2025-07-29",
+        "field_value": 4936080.0
+      },
+      {
+        "trade_date": "2025-07-30",
+        "field_value": 4953659.0
+      },
+      {
+        "trade_date": "2025-07-31",
+        "field_value": 4930762.0
+      },
+      {
+        "trade_date": "2025-08-01",
+        "field_value": 4971901.0
+      },
+      {
+        "trade_date": "2025-08-04",
+        "field_value": 5075175.0
+      },
+      {
+        "trade_date": "2025-08-05",
+        "field_value": 5094292.0
+      },
+      {
+        "trade_date": "2025-08-06",
+        "field_value": 5108686.0
+      },
+      {
+        "trade_date": "2025-08-07",
+        "field_value": 5139598.0
+      },
+      {
+        "trade_date": "2025-08-08",
+        "field_value": 5152622.0
+      },
+      {
+        "trade_date": "2025-08-11",
+        "field_value": 5205642.0
+      },
+      {
+        "trade_date": "2025-08-12",
+        "field_value": 5225969.0
+      },
+      {
+        "trade_date": "2025-08-13",
+        "field_value": 5285294.0
+      },
+      {
+        "trade_date": "2025-08-14",
+        "field_value": 5239960.0
+      },
+      {
+        "trade_date": "2025-08-15",
+        "field_value": 5158534.0
+      },
+      {
+        "trade_date": "2025-08-18",
+        "field_value": 5052779.0
+      },
+      {
+        "trade_date": "2025-08-19",
+        "field_value": 5060915.0
+      },
+      {
+        "trade_date": "2025-08-20",
+        "field_value": 4797142.0
+      },
+      {
+        "trade_date": "2025-08-21",
+        "field_value": 4318943.0
+      },
+      {
+        "trade_date": "2025-08-22",
+        "field_value": 3644893.0
+      },
+      {
+        "trade_date": "2025-08-25",
+        "field_value": 2317629.0
+      },
+      {
+        "trade_date": "2025-08-26",
+        "field_value": 1092129.0
+      },
+      {
+        "trade_date": "2025-08-27",
+        "field_value": 259958.0
+      },
+      {
+        "trade_date": "2025-08-28",
+        "field_value": 47965.0
+      },
+      {
+        "trade_date": "2025-08-29",
+        "field_value": 32745.0
+      },
+      {
+        "trade_date": "2025-09-01",
+        "field_value": 32745.0
+      },
+      {
+        "trade_date": "2025-09-02",
+        "field_value": 21885.0
+      },
+      {
+        "trade_date": "2025-09-03",
+        "field_value": 6029.0
+      },
+      {
+        "trade_date": "2025-09-04",
+        "field_value": 4456.0
+      },
+      {
+        "trade_date": "2025-09-05",
+        "field_value": 3603.0
+      },
+      {
+        "trade_date": "2025-09-08",
+        "field_value": 2894.0
+      },
+      {
+        "trade_date": "2025-09-09",
+        "field_value": 3007.0
+      },
+      {
+        "trade_date": "2025-09-10",
+        "field_value": 2729.0
+      },
+      {
+        "trade_date": "2025-09-11",
+        "field_value": 2712.0
+      },
+      {
+        "trade_date": "2025-09-12",
+        "field_value": 2563.0
+      },
+      {
+        "trade_date": "2025-09-15",
+        "field_value": 2331.0
+      },
+      {
+        "trade_date": "2025-09-16",
+        "field_value": 2000.0
+      },
+      {
+        "trade_date": "2025-09-17",
+        "field_value": 1942.0
+      },
+      {
+        "trade_date": "2025-09-18",
+        "field_value": 1765.0
+      },
+      {
+        "trade_date": "2025-09-19",
+        "field_value": 1708.0
+      },
+      {
+        "trade_date": "2025-09-22",
+        "field_value": 5442415.0
+      },
+      {
+        "trade_date": "2025-09-23",
+        "field_value": 5474951.0
+      },
+      {
+        "trade_date": "2025-09-24",
+        "field_value": 5447682.0
+      },
+      {
+        "trade_date": "2025-09-25",
+        "field_value": 5484173.0
+      },
+      {
+        "trade_date": "2025-09-26",
+        "field_value": 5452089.0
+      },
+      {
+        "trade_date": "2025-09-29",
+        "field_value": 5436020.0
+      },
+      {
+        "trade_date": "2025-09-30",
+        "field_value": 5457806.0
+      },
+      {
+        "trade_date": "2025-10-01",
+        "field_value": 5466706.0
+      },
+      {
+        "trade_date": "2025-10-02",
+        "field_value": 5480087.0
+      },
+      {
+        "trade_date": "2025-10-03",
+        "field_value": 5475093.0
+      },
+      {
+        "trade_date": "2025-10-06",
+        "field_value": 5429056.0
+      },
+      {
+        "trade_date": "2025-10-07",
+        "field_value": 5394263.0
+      },
+      {
+        "trade_date": "2025-10-08",
+        "field_value": 5354836.0
+      },
+      {
+        "trade_date": "2025-10-09",
+        "field_value": 5388428.0
+      },
+      {
+        "trade_date": "2025-10-10",
+        "field_value": 5395305.0
+      },
+      {
+        "trade_date": "2025-10-13",
+        "field_value": 5395260.0
+      },
+      {
+        "trade_date": "2025-10-14",
+        "field_value": 5409869.0
+      },
+      {
+        "trade_date": "2025-10-15",
+        "field_value": 5409947.0
+      },
+      {
+        "trade_date": "2025-10-16",
+        "field_value": 5469075.0
+      },
+      {
+        "trade_date": "2025-10-17",
+        "field_value": 5435898.0
+      },
+      {
+        "trade_date": "2025-10-20",
+        "field_value": 5470305.0
+      },
+      {
+        "trade_date": "2025-10-21",
+        "field_value": 5481962.0
+      },
+      {
+        "trade_date": "2025-10-22",
+        "field_value": 5498246.0
+      },
+      {
+        "trade_date": "2025-10-23",
+        "field_value": 5486181.0
+      },
+      {
+        "trade_date": "2025-10-24",
+        "field_value": 5484080.0
+      },
+      {
+        "trade_date": "2025-10-27",
+        "field_value": 5496166.0
+      },
+      {
+        "trade_date": "2025-10-28",
+        "field_value": 5537673.0
+      },
+      {
+        "trade_date": "2025-10-29",
+        "field_value": 5572449.0
+      },
+      {
+        "trade_date": "2025-10-30",
+        "field_value": 5509193.0
+      },
+      {
+        "trade_date": "2025-10-31",
+        "field_value": 5478536.0
+      },
+      {
+        "trade_date": "2025-11-03",
+        "field_value": 5445139.0
+      },
+      {
+        "trade_date": "2025-11-04",
+        "field_value": 5434512.0
+      },
+      {
+        "trade_date": "2025-11-05",
+        "field_value": 5449874.0
+      },
+      {
+        "trade_date": "2025-11-06",
+        "field_value": 5447959.0
+      },
+      {
+        "trade_date": "2025-11-07",
+        "field_value": 5428848.0
+      },
+      {
+        "trade_date": "2025-11-10",
+        "field_value": 5421361.0
+      },
+      {
+        "trade_date": "2025-11-11",
+        "field_value": 5428925.0
+      },
+      {
+        "trade_date": "2025-11-12",
+        "field_value": 5458132.0
+      },
+      {
+        "trade_date": "2025-11-13",
+        "field_value": 5449299.0
+      },
+      {
+        "trade_date": "2025-11-14",
+        "field_value": 5393544.0
+      },
+      {
+        "trade_date": "2025-11-17",
+        "field_value": 5355733.0
+      },
+      {
+        "trade_date": "2025-11-18",
+        "field_value": 5091964.0
+      },
+      {
+        "trade_date": "2025-11-19",
+        "field_value": 4822030.0
+      },
+      {
+        "trade_date": "2025-11-20",
+        "field_value": 4143654.0
+      },
+      {
+        "trade_date": "2025-11-21",
+        "field_value": 3081384.0
+      },
+      {
+        "trade_date": "2025-11-24",
+        "field_value": 1821073.0
+      },
+      {
+        "trade_date": "2025-11-25",
+        "field_value": 444567.0
+      },
+      {
+        "trade_date": "2025-11-26",
+        "field_value": 180654.0
+      },
+      {
+        "trade_date": "2025-11-28",
+        "field_value": 87782.0
+      },
+      {
+        "trade_date": "2025-12-01",
+        "field_value": 78108.0
+      },
+      {
+        "trade_date": "2025-12-02",
+        "field_value": 66056.0
+      },
+      {
+        "trade_date": "2025-12-03",
+        "field_value": 60013.0
+      },
+      {
+        "trade_date": "2025-12-04",
+        "field_value": 49256.0
+      },
+      {
+        "trade_date": "2025-12-05",
+        "field_value": 35189.0
+      },
+      {
+        "trade_date": "2025-12-08",
+        "field_value": 34974.0
+      },
+      {
+        "trade_date": "2025-12-09",
+        "field_value": 28704.0
+      },
+      {
+        "trade_date": "2025-12-10",
+        "field_value": 26792.0
+      },
+      {
+        "trade_date": "2025-12-11",
+        "field_value": 8784.0
+      },
+      {
+        "trade_date": "2025-12-12",
+        "field_value": 8932.0
+      },
+      {
+        "trade_date": "2025-12-15",
+        "field_value": 8858.0
+      },
+      {
+        "trade_date": "2025-12-16",
+        "field_value": 6788.0
+      },
+      {
+        "trade_date": "2025-12-17",
+        "field_value": 6644.0
+      },
+      {
+        "trade_date": "2025-12-18",
+        "field_value": 5921.0
+      },
+      {
+        "trade_date": "2025-12-19",
+        "field_value": 5547.0
+      },
+      {
+        "trade_date": "2025-12-22",
+        "field_value": 5523194.0
+      },
+      {
+        "trade_date": "2025-12-23",
+        "field_value": 5568367.0
+      },
+      {
+        "trade_date": "2025-12-24",
+        "field_value": 5582083.0
+      },
+      {
+        "trade_date": "2025-12-26",
+        "field_value": 5512209.0
+      },
+      {
+        "trade_date": "2025-12-29",
+        "field_value": 5525388.0
+      },
+      {
+        "trade_date": "2025-12-30",
+        "field_value": 5499033.0
+      },
+      {
+        "trade_date": "2025-12-31",
+        "field_value": 5461347.0
+      },
+      {
+        "trade_date": "2026-01-02",
+        "field_value": 5496340.0
+      },
+      {
+        "trade_date": "2026-01-05",
+        "field_value": 5513165.0
+      },
+      {
+        "trade_date": "2026-01-06",
+        "field_value": 5530541.0
+      },
+      {
+        "trade_date": "2026-01-07",
+        "field_value": 5574958.0
+      },
+      {
+        "trade_date": "2026-01-08",
+        "field_value": 5575384.0
+      },
+      {
+        "trade_date": "2026-01-09",
+        "field_value": 5565231.0
+      },
+      {
+        "trade_date": "2026-01-12",
+        "field_value": 5615712.0
+      },
+      {
+        "trade_date": "2026-01-13",
+        "field_value": 5692885.0
+      },
+      {
+        "trade_date": "2026-01-14",
+        "field_value": 5637175.0
+      },
+      {
+        "trade_date": "2026-01-15",
+        "field_value": 5649291.0
+      },
+      {
+        "trade_date": "2026-01-16",
+        "field_value": 5744570.0
+      },
+      {
+        "trade_date": "2026-01-20",
+        "field_value": 5720688.0
+      },
+      {
+        "trade_date": "2026-01-21",
+        "field_value": 5713401.0
+      },
+      {
+        "trade_date": "2026-01-22",
+        "field_value": 5746254.0
+      },
+      {
+        "trade_date": "2026-01-23",
+        "field_value": 5650267.0
+      },
+      {
+        "trade_date": "2026-01-26",
+        "field_value": 5635096.0
+      },
+      {
+        "trade_date": "2026-01-27",
+        "field_value": 5652268.0
+      },
+      {
+        "trade_date": "2026-01-28",
+        "field_value": 5613288.0
+      },
+      {
+        "trade_date": "2026-01-29",
+        "field_value": 5601696.0
+      },
+      {
+        "trade_date": "2026-01-30",
+        "field_value": 5559927.0
+      },
+      {
+        "trade_date": "2026-02-02",
+        "field_value": 5536359.0
+      },
+      {
+        "trade_date": "2026-02-03",
+        "field_value": 5449166.0
+      },
+      {
+        "trade_date": "2026-02-04",
+        "field_value": 5460738.0
+      },
+      {
+        "trade_date": "2026-02-05",
+        "field_value": 5462012.0
+      },
+      {
+        "trade_date": "2026-02-06",
+        "field_value": 5445362.0
+      },
+      {
+        "trade_date": "2026-02-09",
+        "field_value": 5468616.0
+      },
+      {
+        "trade_date": "2026-02-10",
+        "field_value": 5419794.0
+      },
+      {
+        "trade_date": "2026-02-11",
+        "field_value": 5437581.0
+      },
+      {
+        "trade_date": "2026-02-12",
+        "field_value": 5454450.0
+      },
+      {
+        "trade_date": "2026-02-13",
+        "field_value": 5508798.0
+      },
+      {
+        "trade_date": "2026-02-17",
+        "field_value": 5453547.0
+      },
+      {
+        "trade_date": "2026-02-18",
+        "field_value": 5454568.0
+      },
+      {
+        "trade_date": "2026-02-19",
+        "field_value": 5414571.0
+      },
+      {
+        "trade_date": "2026-02-20",
+        "field_value": 4745612.0
+      },
+      {
+        "trade_date": "2026-02-23",
+        "field_value": 3266572.0
+      },
+      {
+        "trade_date": "2026-02-24",
+        "field_value": 1162307.0
+      },
+      {
+        "trade_date": "2026-02-25",
+        "field_value": 250841.0
+      },
+      {
+        "trade_date": "2026-02-26",
+        "field_value": 57925.0
+      },
+      {
+        "trade_date": "2026-02-27",
+        "field_value": 39764.0
+      },
+      {
+        "trade_date": "2026-03-02",
+        "field_value": 28999.0
+      },
+      {
+        "trade_date": "2026-03-03",
+        "field_value": 22940.0
+      },
+      {
+        "trade_date": "2026-03-04",
+        "field_value": 19005.0
+      },
+      {
+        "trade_date": "2026-03-05",
+        "field_value": 16128.0
+      },
+      {
+        "trade_date": "2026-03-06",
+        "field_value": 14331.0
+      },
+      {
+        "trade_date": "2026-03-09",
+        "field_value": 13608.0
+      },
+      {
+        "trade_date": "2026-03-10",
+        "field_value": 9985.0
+      },
+      {
+        "trade_date": "2026-03-11",
+        "field_value": 8872.0
+      },
+      {
+        "trade_date": "2026-03-12",
+        "field_value": 7411.0
+      },
+      {
+        "trade_date": "2026-03-13",
+        "field_value": 5581.0
+      },
+      {
+        "trade_date": "2026-03-16",
+        "field_value": 5315.0
+      },
+      {
+        "trade_date": "2026-03-17",
+        "field_value": 5368.0
+      },
+      {
+        "trade_date": "2026-03-18",
+        "field_value": 5209.0
+      },
+      {
+        "trade_date": "2026-03-19",
+        "field_value": 4981.0
+      },
+      {
+        "trade_date": "2026-03-20",
+        "field_value": 825.0
+      },
+      {
+        "trade_date": "2026-03-23",
+        "field_value": 5149245.0
+      },
+      {
+        "trade_date": "2026-03-24",
+        "field_value": 5161893.0
+      },
+      {
+        "trade_date": "2026-03-25",
+        "field_value": 5112519.0
+      },
+      {
+        "trade_date": "2026-03-26",
+        "field_value": 5165009.0
+      },
+      {
+        "trade_date": "2026-03-27",
+        "field_value": 5140713.0
+      },
+      {
+        "trade_date": "2026-03-30",
+        "field_value": 5159074.0
+      },
+      {
+        "trade_date": "2026-03-31",
+        "field_value": 5150647.0
+      },
+      {
+        "trade_date": "2026-04-01",
+        "field_value": 5126812.0
+      },
+      {
+        "trade_date": "2026-04-02",
+        "field_value": 5116476.0
+      },
+      {
+        "trade_date": "2026-04-03",
+        "field_value": 5124172.0
+      },
+      {
+        "trade_date": "2026-04-06",
+        "field_value": 5020532.0
+      },
+      {
+        "trade_date": "2026-04-07",
+        "field_value": 5118546.0
+      }
+    ],
+    "reference": {
+      "contract_code": "TY1",
+      "curve_family": "UST_FUT",
+      "tenor": "10Y",
+      "expiry_date": "2026-12-21",
+      "security_name": "TYZ6 COMB",
+      "quote_units": "points",
+      "contract_size": 100000.0
+    }
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-04-07",
+      "curve_family": "UST_FUT",
+      "contract_code": "TY1",
+      "tenor": "10Y",
+      "contract_size": 100000.0,
+      "expiry_date": "2026-12-21",
+      "security_name": "TYZ6 COMB",
+      "current_volume": 2139120.0,
+      "current_open_interest": 5118546.0,
+      "delta_open_interest_1d": 98014.0,
+      "oi_z_score": 0.6235,
+      "oi_high_252d": 5746254.0,
+      "oi_low_252d": 825.0,
+      "oi_percentile_252d": 89.1,
+      "volume_rolling_mean_22d": 1334967.0,
+      "volume_rolling_max_22d": 4388826.0,
+      "observation_count": 252
+    },
+    "time_series": [
+      {
+        "date": "2025-04-07",
+        "volume": 5938458.0,
+        "open_interest": 4934781.0
+      },
+      {
+        "date": "2025-04-08",
+        "volume": 4555093.0,
+        "open_interest": 4885507.0
+      },
+      {
+        "date": "2025-04-09",
+        "volume": 5565656.0,
+        "open_interest": 4847406.0
+      },
+      {
+        "date": "2025-04-10",
+        "volume": 3477955.0,
+        "open_interest": 4844130.0
+      },
+      {
+        "date": "2025-04-11",
+        "volume": 3493055.0,
+        "open_interest": 4769881.0
+      },
+      {
+        "date": "2025-04-14",
+        "volume": 1903624.0,
+        "open_interest": 4765968.0
+      },
+      {
+        "date": "2025-04-15",
+        "volume": 1962772.0,
+        "open_interest": 4755493.0
+      },
+      {
+        "date": "2025-04-16",
+        "volume": 1879966.0,
+        "open_interest": 4780421.0
+      },
+      {
+        "date": "2025-04-17",
+        "volume": 1399843.0,
+        "open_interest": 4736828.0
+      },
+      {
+        "date": "2025-04-21",
+        "volume": 1308194.0,
+        "open_interest": 4750113.0
+      },
+      {
+        "date": "2025-04-22",
+        "volume": 1435700.0,
+        "open_interest": 4723198.0
+      },
+      {
+        "date": "2025-04-23",
+        "volume": 2458444.0,
+        "open_interest": 4735671.0
+      },
+      {
+        "date": "2025-04-24",
+        "volume": 1509798.0,
+        "open_interest": 4814940.0
+      },
+      {
+        "date": "2025-04-25",
+        "volume": 1306813.0,
+        "open_interest": 4868495.0
+      },
+      {
+        "date": "2025-04-28",
+        "volume": 1341759.0,
+        "open_interest": 4866159.0
+      },
+      {
+        "date": "2025-04-29",
+        "volume": 1470102.0,
+        "open_interest": 4863354.0
+      },
+      {
+        "date": "2025-04-30",
+        "volume": 2696662.0,
+        "open_interest": 4910246.0
+      },
+      {
+        "date": "2025-05-01",
+        "volume": 1858910.0,
+        "open_interest": 4921033.0
+      },
+      {
+        "date": "2025-05-02",
+        "volume": 2164601.0,
+        "open_interest": 4931083.0
+      },
+      {
+        "date": "2025-05-05",
+        "volume": 1132802.0,
+        "open_interest": 4960841.0
+      },
+      {
+        "date": "2025-05-06",
+        "volume": 1351859.0,
+        "open_interest": 4956188.0
+      },
+      {
+        "date": "2025-05-07",
+        "volume": 1624092.0,
+        "open_interest": 4932329.0
+      },
+      {
+        "date": "2025-05-08",
+        "volume": 1816067.0,
+        "open_interest": 4964960.0
+      },
+      {
+        "date": "2025-05-09",
+        "volume": 1304833.0,
+        "open_interest": 4942821.0
+      },
+      {
+        "date": "2025-05-12",
+        "volume": 2139733.0,
+        "open_interest": 4961839.0
+      },
+      {
+        "date": "2025-05-13",
+        "volume": 1599843.0,
+        "open_interest": 4946332.0
+      },
+      {
+        "date": "2025-05-14",
+        "volume": 1793275.0,
+        "open_interest": 4905591.0
+      },
+      {
+        "date": "2025-05-15",
+        "volume": 1896192.0,
+        "open_interest": 4917441.0
+      },
+      {
+        "date": "2025-05-16",
+        "volume": 1520268.0,
+        "open_interest": 4913670.0
+      },
+      {
+        "date": "2025-05-19",
+        "volume": 1982919.0,
+        "open_interest": 4868972.0
+      },
+      {
+        "date": "2025-05-20",
+        "volume": 1806285.0,
+        "open_interest": 4633676.0
+      },
+      {
+        "date": "2025-05-21",
+        "volume": 2703320.0,
+        "open_interest": 4264219.0
+      },
+      {
+        "date": "2025-05-22",
+        "volume": 4241617.0,
+        "open_interest": 3169115.0
+      },
+      {
+        "date": "2025-05-23",
+        "volume": 3928904.0,
+        "open_interest": 2499534.0
+      },
+      {
+        "date": "2025-05-27",
+        "volume": 4341233.0,
+        "open_interest": 973966.0
+      },
+      {
+        "date": "2025-05-28",
+        "volume": 1681784.0,
+        "open_interest": 301950.0
+      },
+      {
+        "date": "2025-05-29",
+        "volume": 378925.0,
+        "open_interest": 75644.0
+      },
+      {
+        "date": "2025-05-30",
+        "volume": 70959.0,
+        "open_interest": 43350.0
+      },
+      {
+        "date": "2025-06-02",
+        "volume": 12227.0,
+        "open_interest": 32550.0
+      },
+      {
+        "date": "2025-06-03",
+        "volume": 14227.0,
+        "open_interest": 19609.0
+      },
+      {
+        "date": "2025-06-04",
+        "volume": 5526.0,
+        "open_interest": 17478.0
+      },
+      {
+        "date": "2025-06-05",
+        "volume": 4339.0,
+        "open_interest": 13863.0
+      },
+      {
+        "date": "2025-06-06",
+        "volume": 4524.0,
+        "open_interest": 13041.0
+      },
+      {
+        "date": "2025-06-09",
+        "volume": 616.0,
+        "open_interest": 12644.0
+      },
+      {
+        "date": "2025-06-10",
+        "volume": 1149.0,
+        "open_interest": 12311.0
+      },
+      {
+        "date": "2025-06-11",
+        "volume": 1756.0,
+        "open_interest": 11518.0
+      },
+      {
+        "date": "2025-06-12",
+        "volume": 4180.0,
+        "open_interest": 8649.0
+      },
+      {
+        "date": "2025-06-13",
+        "volume": 4244.0,
+        "open_interest": 8173.0
+      },
+      {
+        "date": "2025-06-16",
+        "volume": 860.0,
+        "open_interest": 5716.0
+      },
+      {
+        "date": "2025-06-17",
+        "volume": 2901.0,
+        "open_interest": 3344.0
+      },
+      {
+        "date": "2025-06-18",
+        "volume": 2510.0,
+        "open_interest": 1170.0
+      },
+      {
+        "date": "2025-06-20",
+        "volume": 1787188.0,
+        "open_interest": 4806569.0
+      },
+      {
+        "date": "2025-06-23",
+        "volume": 1879463.0,
+        "open_interest": 4850417.0
+      },
+      {
+        "date": "2025-06-24",
+        "volume": 1865858.0,
+        "open_interest": 4914480.0
+      },
+      {
+        "date": "2025-06-25",
+        "volume": 1431141.0,
+        "open_interest": 4939441.0
+      },
+      {
+        "date": "2025-06-26",
+        "volume": 1844008.0,
+        "open_interest": 5016950.0
+      },
+      {
+        "date": "2025-06-27",
+        "volume": 1739692.0,
+        "open_interest": 5041941.0
+      },
+      {
+        "date": "2025-06-30",
+        "volume": 1973788.0,
+        "open_interest": 5040148.0
+      },
+      {
+        "date": "2025-07-01",
+        "volume": 1775748.0,
+        "open_interest": 5045935.0
+      },
+      {
+        "date": "2025-07-02",
+        "volume": 1641555.0,
+        "open_interest": 5033500.0
+      },
+      {
+        "date": "2025-07-03",
+        "volume": 1924606.0,
+        "open_interest": 4957944.0
+      },
+      {
+        "date": "2025-07-07",
+        "volume": 1436160.0,
+        "open_interest": 4933087.0
+      },
+      {
+        "date": "2025-07-08",
+        "volume": 1295943.0,
+        "open_interest": 4915665.0
+      },
+      {
+        "date": "2025-07-09",
+        "volume": 1566303.0,
+        "open_interest": 4916254.0
+      },
+      {
+        "date": "2025-07-10",
+        "volume": 1313407.0,
+        "open_interest": 4896647.0
+      },
+      {
+        "date": "2025-07-11",
+        "volume": 1270556.0,
+        "open_interest": 4881139.0
+      },
+      {
+        "date": "2025-07-14",
+        "volume": 1252841.0,
+        "open_interest": 4843970.0
+      },
+      {
+        "date": "2025-07-15",
+        "volume": 2102906.0,
+        "open_interest": 4889870.0
+      },
+      {
+        "date": "2025-07-16",
+        "volume": 2465104.0,
+        "open_interest": 4834099.0
+      },
+      {
+        "date": "2025-07-17",
+        "volume": 1458526.0,
+        "open_interest": 4795038.0
+      },
+      {
+        "date": "2025-07-18",
+        "volume": 1110364.0,
+        "open_interest": 4779358.0
+      },
+      {
+        "date": "2025-07-21",
+        "volume": 1279259.0,
+        "open_interest": 4789046.0
+      },
+      {
+        "date": "2025-07-22",
+        "volume": 1349631.0,
+        "open_interest": 4806137.0
+      },
+      {
+        "date": "2025-07-23",
+        "volume": 1418591.0,
+        "open_interest": 4806792.0
+      },
+      {
+        "date": "2025-07-24",
+        "volume": 1446353.0,
+        "open_interest": 4811091.0
+      },
+      {
+        "date": "2025-07-25",
+        "volume": 1163332.0,
+        "open_interest": 4806778.0
+      },
+      {
+        "date": "2025-07-28",
+        "volume": 1197186.0,
+        "open_interest": 4842034.0
+      },
+      {
+        "date": "2025-07-29",
+        "volume": 1763962.0,
+        "open_interest": 4936080.0
+      },
+      {
+        "date": "2025-07-30",
+        "volume": 1794648.0,
+        "open_interest": 4953659.0
+      },
+      {
+        "date": "2025-07-31",
+        "volume": 2076804.0,
+        "open_interest": 4930762.0
+      },
+      {
+        "date": "2025-08-01",
+        "volume": 2983381.0,
+        "open_interest": 4971901.0
+      },
+      {
+        "date": "2025-08-04",
+        "volume": 1960553.0,
+        "open_interest": 5075175.0
+      },
+      {
+        "date": "2025-08-05",
+        "volume": 1459626.0,
+        "open_interest": 5094292.0
+      },
+      {
+        "date": "2025-08-06",
+        "volume": 1662032.0,
+        "open_interest": 5108686.0
+      },
+      {
+        "date": "2025-08-07",
+        "volume": 1291048.0,
+        "open_interest": 5139598.0
+      },
+      {
+        "date": "2025-08-08",
+        "volume": 1033260.0,
+        "open_interest": 5152622.0
+      },
+      {
+        "date": "2025-08-11",
+        "volume": 993844.0,
+        "open_interest": 5205642.0
+      },
+      {
+        "date": "2025-08-12",
+        "volume": 1669474.0,
+        "open_interest": 5225969.0
+      },
+      {
+        "date": "2025-08-13",
+        "volume": 1408771.0,
+        "open_interest": 5285294.0
+      },
+      {
+        "date": "2025-08-14",
+        "volume": 1767055.0,
+        "open_interest": 5239960.0
+      },
+      {
+        "date": "2025-08-15",
+        "volume": 1400281.0,
+        "open_interest": 5158534.0
+      },
+      {
+        "date": "2025-08-18",
+        "volume": 1270179.0,
+        "open_interest": 5052779.0
+      },
+      {
+        "date": "2025-08-19",
+        "volume": 1152864.0,
+        "open_interest": 5060915.0
+      },
+      {
+        "date": "2025-08-20",
+        "volume": 1725902.0,
+        "open_interest": 4797142.0
+      },
+      {
+        "date": "2025-08-21",
+        "volume": 2664116.0,
+        "open_interest": 4318943.0
+      },
+      {
+        "date": "2025-08-22",
+        "volume": 3675155.0,
+        "open_interest": 3644893.0
+      },
+      {
+        "date": "2025-08-25",
+        "volume": 3408633.0,
+        "open_interest": 2317629.0
+      },
+      {
+        "date": "2025-08-26",
+        "volume": 3888574.0,
+        "open_interest": 1092129.0
+      },
+      {
+        "date": "2025-08-27",
+        "volume": 1549404.0,
+        "open_interest": 259958.0
+      },
+      {
+        "date": "2025-08-28",
+        "volume": 411641.0,
+        "open_interest": 47965.0
+      },
+      {
+        "date": "2025-08-29",
+        "volume": 46733.0,
+        "open_interest": 32745.0
+      },
+      {
+        "date": "2025-09-02",
+        "volume": 21953.0,
+        "open_interest": 21885.0
+      },
+      {
+        "date": "2025-09-03",
+        "volume": 16014.0,
+        "open_interest": 6029.0
+      },
+      {
+        "date": "2025-09-04",
+        "volume": 5707.0,
+        "open_interest": 4456.0
+      },
+      {
+        "date": "2025-09-05",
+        "volume": 4569.0,
+        "open_interest": 3603.0
+      },
+      {
+        "date": "2025-09-08",
+        "volume": 2335.0,
+        "open_interest": 2894.0
+      },
+      {
+        "date": "2025-09-09",
+        "volume": 3501.0,
+        "open_interest": 3007.0
+      },
+      {
+        "date": "2025-09-10",
+        "volume": 740.0,
+        "open_interest": 2729.0
+      },
+      {
+        "date": "2025-09-11",
+        "volume": 413.0,
+        "open_interest": 2712.0
+      },
+      {
+        "date": "2025-09-12",
+        "volume": 670.0,
+        "open_interest": 2563.0
+      },
+      {
+        "date": "2025-09-15",
+        "volume": 751.0,
+        "open_interest": 2331.0
+      },
+      {
+        "date": "2025-09-16",
+        "volume": 472.0,
+        "open_interest": 2000.0
+      },
+      {
+        "date": "2025-09-17",
+        "volume": 210.0,
+        "open_interest": 1942.0
+      },
+      {
+        "date": "2025-09-18",
+        "volume": 430.0,
+        "open_interest": 1765.0
+      },
+      {
+        "date": "2025-09-19",
+        "volume": 144.0,
+        "open_interest": 1708.0
+      },
+      {
+        "date": "2025-09-22",
+        "volume": 1283787.0,
+        "open_interest": 5442415.0
+      },
+      {
+        "date": "2025-09-23",
+        "volume": 1509773.0,
+        "open_interest": 5474951.0
+      },
+      {
+        "date": "2025-09-24",
+        "volume": 1576936.0,
+        "open_interest": 5447682.0
+      },
+      {
+        "date": "2025-09-25",
+        "volume": 2421612.0,
+        "open_interest": 5484173.0
+      },
+      {
+        "date": "2025-09-26",
+        "volume": 1681227.0,
+        "open_interest": 5452089.0
+      },
+      {
+        "date": "2025-09-29",
+        "volume": 1174337.0,
+        "open_interest": 5436020.0
+      },
+      {
+        "date": "2025-09-30",
+        "volume": 2283043.0,
+        "open_interest": 5457806.0
+      },
+      {
+        "date": "2025-10-01",
+        "volume": 1992224.0,
+        "open_interest": 5466706.0
+      },
+      {
+        "date": "2025-10-02",
+        "volume": 1311442.0,
+        "open_interest": 5480087.0
+      },
+      {
+        "date": "2025-10-03",
+        "volume": 1188558.0,
+        "open_interest": 5475093.0
+      },
+      {
+        "date": "2025-10-06",
+        "volume": 1333430.0,
+        "open_interest": 5429056.0
+      },
+      {
+        "date": "2025-10-07",
+        "volume": 1476718.0,
+        "open_interest": 5394263.0
+      },
+      {
+        "date": "2025-10-08",
+        "volume": 1390188.0,
+        "open_interest": 5354836.0
+      },
+      {
+        "date": "2025-10-09",
+        "volume": 1307607.0,
+        "open_interest": 5388428.0
+      },
+      {
+        "date": "2025-10-10",
+        "volume": 2197869.0,
+        "open_interest": 5395305.0
+      },
+      {
+        "date": "2025-10-13",
+        "volume": 747830.0,
+        "open_interest": 5395260.0
+      },
+      {
+        "date": "2025-10-14",
+        "volume": 2196712.0,
+        "open_interest": 5409869.0
+      },
+      {
+        "date": "2025-10-15",
+        "volume": 1663081.0,
+        "open_interest": 5409947.0
+      },
+      {
+        "date": "2025-10-16",
+        "volume": 2606367.0,
+        "open_interest": 5469075.0
+      },
+      {
+        "date": "2025-10-17",
+        "volume": 2405640.0,
+        "open_interest": 5435898.0
+      },
+      {
+        "date": "2025-10-20",
+        "volume": 1199924.0,
+        "open_interest": 5470305.0
+      },
+      {
+        "date": "2025-10-21",
+        "volume": 1529378.0,
+        "open_interest": 5481962.0
+      },
+      {
+        "date": "2025-10-22",
+        "volume": 1692638.0,
+        "open_interest": 5498246.0
+      },
+      {
+        "date": "2025-10-23",
+        "volume": 1634132.0,
+        "open_interest": 5486181.0
+      },
+      {
+        "date": "2025-10-24",
+        "volume": 1908056.0,
+        "open_interest": 5484080.0
+      },
+      {
+        "date": "2025-10-27",
+        "volume": 1532817.0,
+        "open_interest": 5496166.0
+      },
+      {
+        "date": "2025-10-28",
+        "volume": 1622503.0,
+        "open_interest": 5537673.0
+      },
+      {
+        "date": "2025-10-29",
+        "volume": 1973964.0,
+        "open_interest": 5572449.0
+      },
+      {
+        "date": "2025-10-30",
+        "volume": 2220078.0,
+        "open_interest": 5509193.0
+      },
+      {
+        "date": "2025-10-31",
+        "volume": 2069050.0,
+        "open_interest": 5478536.0
+      },
+      {
+        "date": "2025-11-03",
+        "volume": 1277537.0,
+        "open_interest": 5445139.0
+      },
+      {
+        "date": "2025-11-04",
+        "volume": 1296733.0,
+        "open_interest": 5434512.0
+      },
+      {
+        "date": "2025-11-05",
+        "volume": 2206077.0,
+        "open_interest": 5449874.0
+      },
+      {
+        "date": "2025-11-06",
+        "volume": 2010395.0,
+        "open_interest": 5447959.0
+      },
+      {
+        "date": "2025-11-07",
+        "volume": 1729948.0,
+        "open_interest": 5428848.0
+      },
+      {
+        "date": "2025-11-10",
+        "volume": 1343501.0,
+        "open_interest": 5421361.0
+      },
+      {
+        "date": "2025-11-11",
+        "volume": 697132.0,
+        "open_interest": 5428925.0
+      },
+      {
+        "date": "2025-11-12",
+        "volume": 1589879.0,
+        "open_interest": 5458132.0
+      },
+      {
+        "date": "2025-11-13",
+        "volume": 1962071.0,
+        "open_interest": 5449299.0
+      },
+      {
+        "date": "2025-11-14",
+        "volume": 2526351.0,
+        "open_interest": 5393544.0
+      },
+      {
+        "date": "2025-11-17",
+        "volume": 1533082.0,
+        "open_interest": 5355733.0
+      },
+      {
+        "date": "2025-11-18",
+        "volume": 2456784.0,
+        "open_interest": 5091964.0
+      },
+      {
+        "date": "2025-11-19",
+        "volume": 2237131.0,
+        "open_interest": 4822030.0
+      },
+      {
+        "date": "2025-11-20",
+        "volume": 4064457.0,
+        "open_interest": 4143654.0
+      },
+      {
+        "date": "2025-11-21",
+        "volume": 4806903.0,
+        "open_interest": 3081384.0
+      },
+      {
+        "date": "2025-11-24",
+        "volume": 3785614.0,
+        "open_interest": 1821073.0
+      },
+      {
+        "date": "2025-11-25",
+        "volume": 2925975.0,
+        "open_interest": 444567.0
+      },
+      {
+        "date": "2025-11-26",
+        "volume": 485602.0,
+        "open_interest": 180654.0
+      },
+      {
+        "date": "2025-11-28",
+        "volume": 34908.0,
+        "open_interest": 87782.0
+      },
+      {
+        "date": "2025-12-01",
+        "volume": 19224.0,
+        "open_interest": 78108.0
+      },
+      {
+        "date": "2025-12-02",
+        "volume": 14125.0,
+        "open_interest": 66056.0
+      },
+      {
+        "date": "2025-12-03",
+        "volume": 11037.0,
+        "open_interest": 60013.0
+      },
+      {
+        "date": "2025-12-04",
+        "volume": 4570.0,
+        "open_interest": 49256.0
+      },
+      {
+        "date": "2025-12-05",
+        "volume": 2952.0,
+        "open_interest": 35189.0
+      },
+      {
+        "date": "2025-12-08",
+        "volume": 4291.0,
+        "open_interest": 34974.0
+      },
+      {
+        "date": "2025-12-09",
+        "volume": 9002.0,
+        "open_interest": 28704.0
+      },
+      {
+        "date": "2025-12-10",
+        "volume": 3351.0,
+        "open_interest": 26792.0
+      },
+      {
+        "date": "2025-12-11",
+        "volume": 937.0,
+        "open_interest": 8784.0
+      },
+      {
+        "date": "2025-12-12",
+        "volume": 761.0,
+        "open_interest": 8932.0
+      },
+      {
+        "date": "2025-12-15",
+        "volume": 2017.0,
+        "open_interest": 8858.0
+      },
+      {
+        "date": "2025-12-16",
+        "volume": 1340.0,
+        "open_interest": 6788.0
+      },
+      {
+        "date": "2025-12-17",
+        "volume": 1054.0,
+        "open_interest": 6644.0
+      },
+      {
+        "date": "2025-12-18",
+        "volume": 2845.0,
+        "open_interest": 5921.0
+      },
+      {
+        "date": "2025-12-19",
+        "volume": 1720.0,
+        "open_interest": 5547.0
+      },
+      {
+        "date": "2025-12-22",
+        "volume": 899455.0,
+        "open_interest": 5523194.0
+      },
+      {
+        "date": "2025-12-23",
+        "volume": 1271125.0,
+        "open_interest": 5568367.0
+      },
+      {
+        "date": "2025-12-24",
+        "volume": 634890.0,
+        "open_interest": 5582083.0
+      },
+      {
+        "date": "2025-12-26",
+        "volume": 774752.0,
+        "open_interest": 5512209.0
+      },
+      {
+        "date": "2025-12-29",
+        "volume": 1188578.0,
+        "open_interest": 5525388.0
+      },
+      {
+        "date": "2025-12-30",
+        "volume": 1058870.0,
+        "open_interest": 5499033.0
+      },
+      {
+        "date": "2025-12-31",
+        "volume": 1431810.0,
+        "open_interest": 5461347.0
+      },
+      {
+        "date": "2026-01-02",
+        "volume": 1268719.0,
+        "open_interest": 5496340.0
+      },
+      {
+        "date": "2026-01-05",
+        "volume": 1623829.0,
+        "open_interest": 5513165.0
+      },
+      {
+        "date": "2026-01-06",
+        "volume": 1752274.0,
+        "open_interest": 5530541.0
+      },
+      {
+        "date": "2026-01-07",
+        "volume": 2129436.0,
+        "open_interest": 5574958.0
+      },
+      {
+        "date": "2026-01-08",
+        "volume": 1836365.0,
+        "open_interest": 5575384.0
+      },
+      {
+        "date": "2026-01-09",
+        "volume": 2931712.0,
+        "open_interest": 5565231.0
+      },
+      {
+        "date": "2026-01-12",
+        "volume": 2242303.0,
+        "open_interest": 5615712.0
+      },
+      {
+        "date": "2026-01-13",
+        "volume": 2196512.0,
+        "open_interest": 5692885.0
+      },
+      {
+        "date": "2026-01-14",
+        "volume": 1904508.0,
+        "open_interest": 5637175.0
+      },
+      {
+        "date": "2026-01-15",
+        "volume": 1939518.0,
+        "open_interest": 5649291.0
+      },
+      {
+        "date": "2026-01-16",
+        "volume": 2599137.0,
+        "open_interest": 5744570.0
+      },
+      {
+        "date": "2026-01-20",
+        "volume": 3408278.0,
+        "open_interest": 5720688.0
+      },
+      {
+        "date": "2026-01-21",
+        "volume": 2398009.0,
+        "open_interest": 5713401.0
+      },
+      {
+        "date": "2026-01-22",
+        "volume": 1834555.0,
+        "open_interest": 5746254.0
+      },
+      {
+        "date": "2026-01-23",
+        "volume": 1797337.0,
+        "open_interest": 5650267.0
+      },
+      {
+        "date": "2026-01-26",
+        "volume": 1497834.0,
+        "open_interest": 5635096.0
+      },
+      {
+        "date": "2026-01-27",
+        "volume": 1643836.0,
+        "open_interest": 5652268.0
+      },
+      {
+        "date": "2026-01-28",
+        "volume": 1647199.0,
+        "open_interest": 5613288.0
+      },
+      {
+        "date": "2026-01-29",
+        "volume": 2303789.0,
+        "open_interest": 5601696.0
+      },
+      {
+        "date": "2026-01-30",
+        "volume": 3095215.0,
+        "open_interest": 5559927.0
+      },
+      {
+        "date": "2026-02-02",
+        "volume": 2525135.0,
+        "open_interest": 5536359.0
+      },
+      {
+        "date": "2026-02-03",
+        "volume": 1883750.0,
+        "open_interest": 5449166.0
+      },
+      {
+        "date": "2026-02-04",
+        "volume": 2005865.0,
+        "open_interest": 5460738.0
+      },
+      {
+        "date": "2026-02-05",
+        "volume": 3237297.0,
+        "open_interest": 5462012.0
+      },
+      {
+        "date": "2026-02-06",
+        "volume": 2255242.0,
+        "open_interest": 5445362.0
+      },
+      {
+        "date": "2026-02-09",
+        "volume": 1807589.0,
+        "open_interest": 5468616.0
+      },
+      {
+        "date": "2026-02-10",
+        "volume": 2450371.0,
+        "open_interest": 5419794.0
+      },
+      {
+        "date": "2026-02-11",
+        "volume": 3127690.0,
+        "open_interest": 5437581.0
+      },
+      {
+        "date": "2026-02-12",
+        "volume": 2494095.0,
+        "open_interest": 5454450.0
+      },
+      {
+        "date": "2026-02-13",
+        "volume": 3459260.0,
+        "open_interest": 5508798.0
+      },
+      {
+        "date": "2026-02-17",
+        "volume": 2906259.0,
+        "open_interest": 5453547.0
+      },
+      {
+        "date": "2026-02-18",
+        "volume": 1876066.0,
+        "open_interest": 5454568.0
+      },
+      {
+        "date": "2026-02-19",
+        "volume": 2078546.0,
+        "open_interest": 5414571.0
+      },
+      {
+        "date": "2026-02-20",
+        "volume": 4205283.0,
+        "open_interest": 4745612.0
+      },
+      {
+        "date": "2026-02-23",
+        "volume": 5729054.0,
+        "open_interest": 3266572.0
+      },
+      {
+        "date": "2026-02-24",
+        "volume": 4688483.0,
+        "open_interest": 1162307.0
+      },
+      {
+        "date": "2026-02-25",
+        "volume": 1825743.0,
+        "open_interest": 250841.0
+      },
+      {
+        "date": "2026-02-26",
+        "volume": 453485.0,
+        "open_interest": 57925.0
+      },
+      {
+        "date": "2026-02-27",
+        "volume": 76685.0,
+        "open_interest": 39764.0
+      },
+      {
+        "date": "2026-03-02",
+        "volume": 48749.0,
+        "open_interest": 28999.0
+      },
+      {
+        "date": "2026-03-03",
+        "volume": 40005.0,
+        "open_interest": 22940.0
+      },
+      {
+        "date": "2026-03-04",
+        "volume": 12216.0,
+        "open_interest": 19005.0
+      },
+      {
+        "date": "2026-03-05",
+        "volume": 18030.0,
+        "open_interest": 16128.0
+      },
+      {
+        "date": "2026-03-06",
+        "volume": 10037.0,
+        "open_interest": 14331.0
+      },
+      {
+        "date": "2026-03-09",
+        "volume": 6109.0,
+        "open_interest": 13608.0
+      },
+      {
+        "date": "2026-03-10",
+        "volume": 1855.0,
+        "open_interest": 9985.0
+      },
+      {
+        "date": "2026-03-11",
+        "volume": 1950.0,
+        "open_interest": 8872.0
+      },
+      {
+        "date": "2026-03-12",
+        "volume": 5336.0,
+        "open_interest": 7411.0
+      },
+      {
+        "date": "2026-03-13",
+        "volume": 1484.0,
+        "open_interest": 5581.0
+      },
+      {
+        "date": "2026-03-16",
+        "volume": 1329.0,
+        "open_interest": 5315.0
+      },
+      {
+        "date": "2026-03-17",
+        "volume": 1050.0,
+        "open_interest": 5368.0
+      },
+      {
+        "date": "2026-03-18",
+        "volume": 1419.0,
+        "open_interest": 5209.0
+      },
+      {
+        "date": "2026-03-19",
+        "volume": 1801.0,
+        "open_interest": 4981.0
+      },
+      {
+        "date": "2026-03-20",
+        "volume": 78.0,
+        "open_interest": 825.0
+      },
+      {
+        "date": "2026-03-23",
+        "volume": 4388826.0,
+        "open_interest": 5149245.0
+      },
+      {
+        "date": "2026-03-24",
+        "volume": 3365185.0,
+        "open_interest": 5161893.0
+      },
+      {
+        "date": "2026-03-25",
+        "volume": 2793316.0,
+        "open_interest": 5112519.0
+      },
+      {
+        "date": "2026-03-26",
+        "volume": 2623200.0,
+        "open_interest": 5165009.0
+      },
+      {
+        "date": "2026-03-27",
+        "volume": 2608633.0,
+        "open_interest": 5140713.0
+      },
+      {
+        "date": "2026-03-30",
+        "volume": 2195876.0,
+        "open_interest": 5159074.0
+      },
+      {
+        "date": "2026-03-31",
+        "volume": 3156606.0,
+        "open_interest": 5150647.0
+      },
+      {
+        "date": "2026-04-01",
+        "volume": 2318868.0,
+        "open_interest": 5126812.0
+      },
+      {
+        "date": "2026-04-02",
+        "volume": 2146724.0,
+        "open_interest": 5116476.0
+      },
+      {
+        "date": "2026-04-03",
+        "volume": 483644.0,
+        "open_interest": 5124172.0
+      },
+      {
+        "date": "2026-04-06",
+        "volume": 1126863.0,
+        "open_interest": 5020532.0
+      },
+      {
+        "date": "2026-04-07",
+        "volume": 2139120.0,
+        "open_interest": 5118546.0
+      }
+    ],
+    "methodology_disclosure": "OI z-score lookback = 252 trading days. This is rolling-generic open interest; the front-back OI migration is the positioning signal but the per-contract underlying rolls quarterly so the OI series mixes contracts across rolls (ADR 0013 \u2014 bond_futures V1 ships monitors only). The CTD identification, gross/net basis, implied repo, and DV01-weighted RV stack are Phase-4 work gated on D-repo + D-deliverable data ingestion."
+  }
+}

@@ -348,3 +348,76 @@ tools:
     built_date: 2026-05-21
     validation_status: >-
       Not validated yet
+
+  - name: scan_inflation_swaps_extremes
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: scanners
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: scan_inflation_swaps_extremes_tool
+      schema: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/schemas.py::ScanInflationSwapsExtremesInput
+      compute: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/compute.py::scan_inflation_swaps_extremes
+      config: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/config.yaml
+
+    one_liner: >-
+      Universe-wide ZCIS quoted-rate sweep — ranks every.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: build_zcis_panel
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: panels
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: build_zcis_panel_tool
+      schema: rates_agent/inflation_swaps/tools/build_zcis_panel/schemas.py::BuildZcisPanelInput
+      compute: rates_agent/inflation_swaps/tools/build_zcis_panel/compute.py::build_zcis_panel
+      config: rates_agent/inflation_swaps/tools/build_zcis_panel/config.yaml
+
+    one_liner: >-
+      Assemble a wide multi-instrument Panel of zero-coupon inflation.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+

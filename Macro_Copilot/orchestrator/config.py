@@ -103,6 +103,20 @@ MCP_SERVERS: dict = {
         "cwd": str(PROJECT_ROOT),
         "env": _MCP_SUBPROCESS_ENV,
     },
+    "policy_futures_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.policy_futures.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
+    "bond_futures_agent": {
+        "transport": "stdio",
+        "command": _PYTHON,
+        "args": ["-m", "rates_agent.bond_futures.mcp_server"],
+        "cwd": str(PROJECT_ROOT),
+        "env": _MCP_SUBPROCESS_ENV,
+    },
     # PR 9: workflow-template MCP server.  Distinct from the per-domain
     # primitive servers above — exposes DAG-shaped analyses
     # (event_study, regime_conditioned_relationship, ...) plus the
@@ -158,6 +172,12 @@ DOMAIN_MCP_SERVERS: dict = {
     },
     Domain.INFLATION_SWAPS: {
         "inflation_swaps": MCP_SERVERS["inflation_swaps_agent"],
+    },
+    Domain.POLICY_FUTURES: {
+        "policy_futures": MCP_SERVERS["policy_futures_agent"],
+    },
+    Domain.BOND_FUTURES: {
+        "bond_futures": MCP_SERVERS["bond_futures_agent"],
     },
 }
 

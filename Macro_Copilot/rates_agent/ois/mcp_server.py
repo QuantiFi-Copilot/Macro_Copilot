@@ -10,10 +10,11 @@ Tool surface
 ------------
 1. calculate_ois_rate_level_tool           — SOFR 2Y right now, z-score, range
 2. calculate_ois_curve_spread_tool         — SOFR 2s10s, ESTR 1s5s, etc.
-3. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
-4. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
-5. calculate_swap_spread_tool              — UST-SOFR, BUND-ESTR, GILT-SONIA — cross-domain
-6. scan_ois_extremes_tool                  — z-score screener across OIS universe
+3. calculate_ois_butterfly_tool            — SOFR 2s5s10s, ESTR 2s5s10s — same-curve curvature
+4. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
+5. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
+6. calculate_swap_spread_tool              — UST-SOFR, BUND-ESTR, GILT-SONIA — cross-domain
+7. scan_ois_extremes_tool                  — z-score screener across OIS universe
 
 Meeting-pricing was removed: the prior implementation approximated
 central-bank meeting moves by linearly interpolating par OIS rates,
@@ -51,12 +52,17 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.ois.tools.schemas import (  # noqa: E402
+    OISButterflyInput,
     OISCrossMarketSpreadInput,
     OISCurveSpreadInput,
     OISForwardRateInput,
     OISRateLevelInput,
     OISScannerInput,
     SwapSpreadInput,
+)
+from rates_agent.ois.tools.calculate_ois_butterfly import (  # noqa: E402
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    calculate_ois_butterfly,
 )
 from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
     CONFIG_PATH as OIS_CROSS_MARKET_SPREAD_CONFIG_PATH,
@@ -453,7 +459,159 @@ def calculate_ois_curve_spread_tool(
 
 
 # ===========================================================================
-# TOOL 3: calculate_ois_forward_rate
+# TOOL 3: calculate_ois_butterfly
+# ===========================================================================
+@mcp.tool()
+def calculate_ois_butterfly_tool(
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Calculate the 3-point butterfly (curvature) on a SINGLE OIS
+    par-swap curve (e.g. SOFR 2s5s10s, ESTR 2s5s10s, SONIA 2s5s10s),
+    plus its 1-year rolling z-score, trailing 252-day range, and the
+    two component wing spreads.
+
+    Math (FIXED simple-butterfly weighting — '50-50 wings', NOT
+    DV01-neutral):
+
+        butterfly_bps = (2 * belly_rate - short_rate - long_rate) * 100
+
+    Sign convention: POSITIVE = belly cheap (belly OIS rate HIGH
+    relative to the linear interpolation of the wings); NEGATIVE =
+    belly rich.
+
+    Use this tool when the user asks about:
+    - OIS curve curvature  (e.g. "What's the SOFR 2s5s10s butterfly?")
+    - Belly rich/cheap     (e.g. "Is the ESTR 5Y belly rich?")
+    - Curve shape beyond slope on the OIS / policy curve
+
+    Do NOT use this tool for:
+    - Sovereign-bond butterflies
+      → use calculate_butterfly_tool (sovereign).
+    - Cross-currency OIS butterflies
+      → not in V1; compose calculate_ois_cross_market_spread_tool
+        instead.
+    - DV01-neutral / PCA-neutral butterflies
+      → not in V1 (see config.yaml planned_extensions).
+
+    Parameters
+    ----------
+    curve_family : str
+        OIS curve identifier.  Closed-enum whitelist sourced from
+        rates_agent/playbooks/ois.yml: 'USD_SOFR_OIS', 'EUR_ESTR_OIS',
+        'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', 'CAD_OIS'.
+    short_tenor : str
+        The short wing, e.g. '2Y'.
+    belly_tenor : str
+        The belly (body), e.g. '5Y'.
+    long_tenor : str
+        The long wing, e.g. '10Y'.  All three tenors must be different.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does NOT
+        control the rolling z-score window or trailing range window —
+        those are config-driven (see
+        calculate_ois_butterfly/config.yaml).
+    field_name : str, optional
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_swap_rate_field`` convention
+        from calculate_ois_butterfly/config.yaml (currently
+        'PX_LAST').  Pass an explicit field name to override per call.
+        Mirrors the empty-string sentinel pattern used by every other
+        OIS wrapper.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_swap_rate_field``.  Without this, the LLM omitting
+    # field_name would always hit a hardcoded default regardless of
+    # what the YAML says — same shadowing pattern fixed for sovereign
+    # curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = OISButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_ois_butterfly_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_butterfly_tool] failed to connect to TimescaleDB"
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the OIS butterfly tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors the sovereign
+    # calculate_butterfly_tool wrapper exactly.
+    try:
+        bf_config = load_tool_config(OIS_BUTTERFLY_CONFIG_PATH)
+        result = calculate_ois_butterfly(
+            engine=engine, params=params, config=bf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_butterfly_tool] unhandled error for %s %s/%s/%s",
+            params.curve_family, params.short_tenor,
+            params.belly_tenor, params.long_tenor,
+        )
+        return json.dumps(
+            {"error": f"calculate_ois_butterfly_tool failed for "
+             f"{params.curve_family} {params.short_tenor}/"
+             f"{params.belly_tenor}/{params.long_tenor}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_ois_butterfly_tool] tool call complete: %s %s/%s/%s → %s",
+        params.curve_family, params.short_tenor,
+        params.belly_tenor, params.long_tenor, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the bespoke time_series list AND both canonical TimeSeries
+    # payloads from the LLM-facing response.  Frontend / future REST
+    # surfaces consume the full dict directly via the tool result;
+    # the LLM doesn't need every historical row to answer "where's
+    # the SOFR 2s5s10s butterfly?".
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_butterfly", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series") or [])
+    if bespoke_rows:
+        logger.info(
+            "[calculate_ois_butterfly_tool] withheld %d time_series rows from LLM context.",
+            bespoke_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4: calculate_ois_forward_rate
 # ===========================================================================
 @mcp.tool()
 def calculate_ois_forward_rate_tool(
@@ -604,7 +762,7 @@ def calculate_ois_forward_rate_tool(
 
 
 # ===========================================================================
-# TOOL 4: calculate_ois_cross_market_spread
+# TOOL 5: calculate_ois_cross_market_spread
 # ===========================================================================
 @mcp.tool()
 def calculate_ois_cross_market_spread_tool(
@@ -740,7 +898,7 @@ def calculate_ois_cross_market_spread_tool(
 
 
 # ===========================================================================
-# TOOL 5: calculate_swap_spread (cross-domain — sovereign vs OIS)
+# TOOL 6: calculate_swap_spread (cross-domain — sovereign vs OIS)
 # ===========================================================================
 @mcp.tool()
 def calculate_swap_spread_tool(
@@ -883,7 +1041,7 @@ def calculate_swap_spread_tool(
 
 
 # ===========================================================================
-# TOOL 6: scan_ois_extremes
+# TOOL 7: scan_ois_extremes
 # ===========================================================================
 @mcp.tool()
 def scan_ois_extremes_tool(
@@ -1179,7 +1337,6 @@ def calculate_wirp_meeting_pricing_tool(
     )
 
     return json.dumps(result, default=str)
-
 
 # ===========================================================================
 # ENTRY POINT

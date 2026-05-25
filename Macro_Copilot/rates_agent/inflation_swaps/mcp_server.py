@@ -74,7 +74,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
 
@@ -86,11 +88,13 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.inflation_swaps.tools.schemas import (  # noqa: E402
+    BuildZcisPanelInput,
     CrossMarketInflationSwapSpreadInput,
     InflationSwapButterflyInput,
     InflationSwapCurveSpreadInput,
     InflationSwapForwardInput,
     InflationSwapRateLevelInput,
+    ScanInflationSwapsExtremesInput,
     SwapBreakevenBasisSimpleInput,
 )
 from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (  # noqa: E402
@@ -116,6 +120,14 @@ from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (  # n
 from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (  # noqa: E402
     CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
     calculate_inflation_swap_butterfly,
+)
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (  # noqa: E402
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    calculate_scan_inflation_swaps_extremes,
+)
+from rates_agent.inflation_swaps.tools.build_zcis_panel import (  # noqa: E402
+    CONFIG_PATH as BUILD_ZCIS_PANEL_CONFIG_PATH,
+    build_zcis_panel,
 )
 from rates_agent.inflation_swaps.tools.cpi_surprise import (  # noqa: E402
     CONFIG_PATH as CPI_SURPRISE_CONFIG_PATH,
@@ -1277,6 +1289,460 @@ def calculate_inflation_swap_butterfly_tool(
 
 
 # ===========================================================================
+# TOOL 7: scan_inflation_swaps_extremes
+# ===========================================================================
+@mcp.tool()
+def get_scan_inflation_swaps_extremes_tool(
+    curve_families: str = "",
+    top_n: int = 0,
+    min_abs_z_score: float = -1.0,
+    as_of_date: str = "",
+) -> str:
+    """Scan the ZCIS (zero-coupon inflation swap) universe and rank
+    ``(curve_family, tenor)`` ZCIS pillars by absolute 252-day
+    z-score of their quoted-rate LEVEL.  Returns the top-N extremes,
+    each tagged with the methodology disclosure (universe-wide
+    ZCIS rate-level label, explicit z-score lookback window,
+    INDEX-FAMILY + MARKET-STRUCTURE caveats covering CPI-U / HICP /
+    RPI underlying-index heterogeneity and the inflation-derivatives
+    index-lag + interpolation conventions, ``morning screen, NOT a
+    tactical signal`` scope).
+
+    Use this tool when the user asks about:
+    - Morning ZCIS sweeps               (e.g. "Where is the ZCIS
+                                              curve stretched
+                                              today?")
+    - Universe-wide ZCIS rate extremes  (e.g. "Biggest inflation-
+                                              swap-rate moves across
+                                              USD / EUR / GBP today?")
+    - Cross-tenor ZCIS rate extremes    (e.g. "Which inflation swaps
+                                              are at 1-year ZCIS-rate
+                                              highs / lows?")
+
+    Do NOT use this tool for:
+    - Nominal sovereign sweeps — use the sovereign_bonds agent's
+      scan_extremes_tool (different instrument_type).
+    - Linker real-yield sweeps — those route to the
+      inflation_indexed_bonds agent's
+      ``get_scan_inflation_linkers_extremes_tool``.
+    - Bond-implied breakeven sweeps — the breakeven primitives are
+      separate concepts (this scan is on ZCIS QUOTED RATES, NOT
+      breakevens).
+    - A per-pillar deep-dive — use the sibling
+      ``calculate_inflation_swap_rate_level_tool`` for one
+      (curve_family, tenor) at a time.
+    - Curve shape / forward / butterfly / cross-market / swap-vs-
+      breakeven basis — use the sibling
+      ``calculate_inflation_swap_curve_spread_tool`` /
+      ``calculate_inflation_swap_forward_tool`` /
+      ``calculate_inflation_swap_butterfly_tool`` /
+      ``calculate_cross_market_inflation_swap_spread_tool`` /
+      ``calculate_swap_breakeven_basis_simple_tool`` primitives
+      respectively.
+
+    ALWAYS preserve the methodology_disclosure field — present on
+    EVERY result row AND on the response — when relaying to the
+    user.  The disclosure makes the scan's scope explicit: the
+    desk reader needs to see WHY a pillar ranked extreme (252d
+    z-score on ZCIS quoted-rate LEVEL, ranked across heterogeneous
+    underlying inflation indices and market-structure conventions,
+    morning screen scope).
+
+    Parameters
+    ----------
+    curve_families : str, optional
+        Comma-separated list of ZCIS curve families to scan.  Empty
+        (default ``""``) = scan the full ZCIS universe
+        (USD_ZCIS, EUR_ZCIS, GBP_ZCIS).  Pass a CSV to narrow
+        (e.g. ``"USD_ZCIS,EUR_ZCIS"`` for a US + EUR sweep).  MCP
+        exposes flat scalars, so the wrapper accepts a string and
+        splits it before constructing the Pydantic input — mirrors
+        the linker scan_inflation_linkers_extremes_tool / bond_futures
+        scan_bond_futures_extremes_tool convention.  Non-ZCIS
+        curve_families (nominal sovereign 'UST', linker 'USD_TIPS',
+        OIS 'USD_SOFR_OIS', etc.) are REFUSED at schema-validation
+        time per the closed-family whitelist in config.yaml.
+    top_n : int, optional
+        Number of extreme stems to return.  MCP exposes flat
+        scalars, so the sentinel ``0`` (default) means "omit" and
+        falls through to the YAML's ``default_top_n`` convention
+        (currently 5) — keeps the default YAML-locked per PR9 /
+        PR10.  Pass an integer in [1, 50] to override per query;
+        the schema-layer bound rejects out-of-range values.
+    min_abs_z_score : float, optional
+        Minimum absolute z-score threshold for inclusion in the
+        ranking.  The sentinel ``-1.0`` (default) means "omit" and
+        falls through to the YAML's ``default_min_abs_z_score``
+        convention (currently 1.5).  Pass a non-negative float to
+        override per query; the schema-layer ``ge=0.0`` bound
+        stays as a structural invariant.
+    as_of_date : str, optional
+        ISO-format date (YYYY-MM-DD) anchoring the scan to a
+        specific trading day.  Empty (default ``""``) = anchor to
+        the most-recent shared trading day across the fetched
+        universe (max trade_date observed after per-stem cleaning)
+        — same as-of resolution pattern as the sibling linker /
+        bond_futures scanners and the upstream per-pillar
+        inflation_swap_rate_level primitive.  The fetch window
+        itself is methodology (derived from YAML:
+        z_score_window_days × z_score_buffer_multiplier, currently
+        252 × 1.5 = 378 calendar days) and is NOT an LLM input —
+        exposing ``lookback_days`` would be a PR8 / OPR8 input-
+        schema overreach.
+    """
+    # Parse the comma-separated curve_families CSV into a list (or
+    # None when empty).  Mirrors the linker scanner wrapper.
+    parsed_families = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Sentinel resolution: the MCP boundary cannot carry None for
+    # int/float, so 0 / -1.0 mean "omit".  The schema's bounds would
+    # have rejected the sentinel values themselves, so translate to
+    # None BEFORE constructing the Pydantic input — preserves the
+    # schema's None → YAML-default fall-through.
+    top_n_arg: Optional[int] = top_n if top_n > 0 else None
+    min_abs_z_score_arg: Optional[float] = (
+        min_abs_z_score if min_abs_z_score >= 0.0 else None
+    )
+
+    # Parse the ISO-format as_of_date sentinel.  Empty string ⇒ None
+    # (compute resolves to the most-recent shared trading day).  A
+    # malformed value is caught here and surfaced as a controlled-
+    # error envelope rather than a stacktrace.
+    as_of_date_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_date_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[get_scan_inflation_swaps_extremes_tool] as_of_date "
+                "parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid as_of_date {as_of_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-08'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        as_of_date_arg = None
+
+    try:
+        params = ScanInflationSwapsExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n_arg,
+            min_abs_z_score=min_abs_z_score_arg,
+            as_of_date=as_of_date_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[get_scan_inflation_swaps_extremes_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_swaps_extremes_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path, so
+    # this is a free lookup after the first call within the MCP
+    # subprocess's lifetime.  Mirrors the linker scanner wrapper.
+    try:
+        scan_config = load_tool_config(
+            SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_inflation_swaps_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[get_scan_inflation_swaps_extremes_tool] unhandled "
+            "error for curve_families=%s",
+            params.curve_families,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "get_scan_inflation_swaps_extremes_tool failed: "
+                    f"{exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_rows = len(result.get("results", []) or [])
+    logger.info(
+        "[get_scan_inflation_swaps_extremes_tool] tool call "
+        "complete: curve_families=%s top_n=%r min_abs_z=%r as_of=%r "
+        "→ %s (%d rows)",
+        params.curve_families, params.top_n, params.min_abs_z_score,
+        params.as_of_date, status, n_rows,
+    )
+
+    return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 8: build_zcis_panel
+# ===========================================================================
+@mcp.tool()
+def build_zcis_panel_tool(
+    start_date: str,
+    end_date: str = "",
+    curve_families: str = "",
+    tenors: str = "",
+    field_name: str = "",
+    calendar_policy: str = "",
+    missing_data_policy: str = "",
+) -> str:
+    """Assemble a wide multi-instrument Panel of zero-coupon
+    inflation swap (ZCIS) rates across the USD_ZCIS / EUR_ZCIS /
+    GBP_ZCIS universe (rows = trade_date, columns = vendor_ticker).
+    Substrate primitive for cross-curve regression / PCA / RV
+    operators that need the full ZCIS rate surface as one object.
+
+    Use this tool when the user asks for:
+    - the full ZCIS panel for a date window
+      (e.g. "Give me the USD+EUR+GBP ZCIS panel 2023-2024.")
+    - a cross-curve / cross-tenor ZCIS dataset for downstream
+      regression or PCA
+      (e.g. "Build me the ZCIS panel for the 1Y-10Y front-end
+       so I can run cross-curve PCA.")
+    - the substrate the desk's morning ZCIS RV deck reads off
+
+    Do NOT use this tool for:
+    - Per-pillar ZCIS reads — use
+      ``calculate_inflation_swap_rate_level_tool``.
+    - Per-curve ZCIS spreads / forwards / butterflies — use the
+      sibling per-pillar / per-spread tools.
+    - The morning ZCIS extremes screen — use
+      ``get_scan_inflation_swaps_extremes_tool``.
+    - Sovereign / OIS / linker / policy-futures panels — those
+      route to the corresponding domain's panel primitive.
+
+    Column-key disclosure (load-bearing): Panel columns are keyed
+    by ``vendor_ticker`` (the canonical Bloomberg identifier,
+    e.g. ``'USSWIT10 Curncy'``).  The catalog's ideal column key
+    is ``security_name``, but ZCIS
+    ``instrument_metadata_history.security_name`` is universally
+    NULL on the live SCD2 rows — surfacing NULL would be a dead
+    column key; relabelling ``vendor_ticker`` under the
+    ``security_name`` label would be a no-proxy violation.
+    Methodology card's ``security_name_caveat`` field discloses
+    the substitution explicitly.
+
+    Index-family caveat (load-bearing): USD_ZCIS / EUR_ZCIS /
+    GBP_ZCIS reference DIFFERENT inflation indices (CPI-U /
+    HICP-xT / RPI) with different index_lag and interpolation
+    conventions; cross-curve operators reading this panel see
+    all three regimes side-by-side, NOT a harmonised
+    expected-inflation surface.  The methodology card's
+    ``index_family_caveat`` + ``curve_family_reference`` fields
+    surface this on the wire.
+
+    Parameters
+    ----------
+    start_date : str
+        Earliest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.
+    end_date : str, optional
+        Latest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.  Empty (default) → include every
+        observation up to the latest in the DB.
+    curve_families : str, optional
+        Comma-separated list of ZCIS curve families to scope the
+        panel.  Empty (default ``""``) = full universe
+        (USD_ZCIS, EUR_ZCIS, GBP_ZCIS).  Pass a CSV to narrow
+        (e.g. ``"USD_ZCIS,EUR_ZCIS"`` for a US+EUR panel).
+        Non-ZCIS curve families are REFUSED at schema validation.
+    tenors : str, optional
+        Comma-separated list of tenor identifiers to scope the
+        panel (e.g. ``"1Y,2Y,5Y,10Y"``).  Empty (default) =
+        every tenor present in the DB for the resolved
+        curve_families.
+    field_name : str, optional
+        Bloomberg observation field for the ZCIS rate.  Leave as
+        the default empty string ``""`` to use the bundled
+        ``default_zcis_rate_field`` convention from
+        build_zcis_panel/config.yaml (currently 'PX_MID').
+        Mirrors the empty-string sentinel pattern used by every
+        sibling inflation_swaps tool.
+    calendar_policy : str, optional
+        Calendar policy override.  Empty (default) → resolved
+        from YAML.  Allowed: ['business_days',
+        'instrument_native'].
+    missing_data_policy : str, optional
+        Missing-data policy override.  Empty (default) → resolved
+        from YAML.  Allowed: ['raise', 'forward_fill_only',
+        'drop_rows_any_missing'].
+    """
+    # Sentinel resolution — MCP exposes flat scalars, so empty
+    # strings mean "omit" and fall through to the YAML defaults.
+    # Same pattern every sibling inflation_swaps wrapper uses.
+    field_name_arg = field_name if field_name else None
+    calendar_policy_arg = calendar_policy if calendar_policy else None
+    missing_data_policy_arg = (
+        missing_data_policy if missing_data_policy else None
+    )
+
+    # Parse the CSV scoping knobs.  Empty → None (full scope).
+    parsed_curve_families = None
+    if curve_families and curve_families.strip():
+        parsed_curve_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+    parsed_tenors = None
+    if tenors and tenors.strip():
+        parsed_tenors = [
+            t.strip() for t in tenors.split(",") if t.strip()
+        ]
+
+    # Parse the ISO date inputs.  ``start_date`` is required; an
+    # empty / malformed value is caught here and surfaced as a
+    # controlled-error envelope rather than a stacktrace.
+    try:
+        start_date_arg = date.fromisoformat(start_date.strip())
+    except (AttributeError, ValueError) as exc:
+        logger.warning(
+            "[build_zcis_panel_tool] start_date parse failed: %s", exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"Invalid start_date {start_date!r}: must be ISO "
+                    f"YYYY-MM-DD (e.g. '2023-01-02'). Detail: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    end_date_arg: Optional[date]
+    if end_date and end_date.strip():
+        try:
+            end_date_arg = date.fromisoformat(end_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[build_zcis_panel_tool] end_date parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid end_date {end_date!r}: must be ISO "
+                        f"YYYY-MM-DD (e.g. '2024-06-28'). Detail: "
+                        f"{exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        end_date_arg = None
+
+    try:
+        params = BuildZcisPanelInput(
+            start_date=start_date_arg,
+            end_date=end_date_arg,
+            curve_families=parsed_curve_families,
+            tenors=parsed_tenors,
+            field_name=field_name_arg,
+            calendar_policy=calendar_policy_arg,
+            missing_data_policy=missing_data_policy_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[build_zcis_panel_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[build_zcis_panel_tool] failed to connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path,
+    # so this is a free lookup after the first call within the
+    # MCP subprocess's lifetime.
+    try:
+        bzp_config = load_tool_config(BUILD_ZCIS_PANEL_CONFIG_PATH)
+        result = build_zcis_panel(
+            engine=engine, params=params, config=bzp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[build_zcis_panel_tool] unhandled error for "
+            "start=%s end=%s curve_families=%s tenors=%s",
+            params.start_date, params.end_date,
+            params.curve_families, params.tenors,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "build_zcis_panel_tool failed for "
+                    f"start={params.start_date} "
+                    f"end={params.end_date}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_cols = result.get("column_count", 0)
+    n_rows = result.get("row_count", 0)
+    logger.info(
+        "[build_zcis_panel_tool] tool call complete: "
+        "start=%s end=%s curve_families=%s tenors=%s → %s "
+        "(rows=%d cols=%d)",
+        params.start_date, params.end_date,
+        params.curve_families, params.tenors,
+        status, n_rows, n_cols,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Drop the typed Panel artifact before serialising for the
+    # LLM (full per-row payload blows the token budget).  The
+    # workflow executor's Panel bridge re-extracts the typed
+    # artifact from the primitive's direct return value, so
+    # nothing on that path depends on the MCP-visible payload.
+    llm_response: Dict[str, Any] = {
+        k: v for k, v in result.items() if k != "panel"
+    }
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
 # TOOL 7: calculate_cpi_surprise
 # ===========================================================================
 @mcp.tool()
@@ -1367,7 +1833,6 @@ def calculate_cpi_surprise_tool(
                 "error" if "error" in result else "OK")
 
     return json.dumps(result, default=str)
-
 
 # ===========================================================================
 # ENTRY POINT

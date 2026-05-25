@@ -1,0 +1,502 @@
+# =============================================================================
+# scan_inflation_swaps_extremes_tool — tool configuration
+# =============================================================================
+# Morning sweep across the zero-coupon inflation swap (ZCIS) universe —
+# ranks every ``(curve_family, tenor)`` ZCIS pillar by absolute 252-day
+# z-score of its quoted ZCIS rate (mid) and returns the top-N
+# extremes.
+#
+# Concept honesty
+# ---------------
+# This is the universe-wide ZCIS RATE-LEVEL scan — the desk's morning
+# "where is the ZCIS curve stretched today?" screen, taken across
+# every ZCIS tenor pillar the playbook tracks. The scan ranks ZCIS
+# QUOTED RATES (NOT breakevens, NOT linker real yields, NOT a curve-
+# shape object, NOT a forward-inflation read). The catalog-listed
+# dependency (``inflation_swaps__inflation_swap_rate_level``) is the
+# per-pillar observation primitive this scan aggregates across the
+# universe.
+#
+# Catalog (build_order 25, id
+# ``inflation_swaps__scan_inflation_swaps_extremes``):
+#
+#   concept_summary: "Morning sweep across the ZCIS universe (21
+#     inflation swaps from inflation_swaps.yml), ranked by absolute
+#     252-day z-score."
+#
+#   methodology_guardrails:
+#     - "Methodology card must state the z-score lookback window
+#        explicitly."
+#
+# The guardrail is honoured by this tool: the z-score lookback
+# window is read from this YAML at runtime (the disclosure template
+# is parameterised on ``z_score_window_days``), and the
+# ``methodology_disclosure`` string is attached BOTH to the response-
+# level methodology card AND to every result row, mirroring the
+# linker-scanner / bond_futures-scanner precedent.
+#
+# Index-family + market-structure caveat (load-bearing)
+# -----------------------------------------------------
+# ZCIS markets across currencies reference DIFFERENT inflation
+# indices (US CPI-U non-seasonally adjusted for USD_ZCIS, Eurozone
+# HICP ex-tobacco for EUR_ZCIS, UK RPI for GBP_ZCIS) AND have
+# materially different market-structure characteristics (issuance
+# / dealer-quote liquidity, index-publication lag differences —
+# USD/EUR ZCIS use a 3M lag, GBP_ZCIS uses a 2M lag; daily vs
+# monthly interpolation conventions). A 252d z-score on a USD_ZCIS
+# 10Y rate therefore reads against a different underlying
+# distribution than a 252d z-score on a GBP_ZCIS 10Y rate; the
+# desk can usefully rank both within the same morning screen but
+# the methodology disclosure carries this caveat verbatim so a
+# downstream consumer cannot mistake the scan for an apples-to-
+# apples cross-market expected-inflation read. Mirrors the
+# ``cross_market_inflation_swap_spread`` precedent and the
+# per-pillar ``inflation_swap_rate_level`` primitive's cross-curve
+# comparability caveat.
+#
+# Single-metric ranking
+# ---------------------
+# The catalog's literal wording is "ranked by absolute 252-day
+# z-score" with ``required_metrics: [yield_mid]`` — one metric
+# (ZCIS quoted-rate LEVEL z-score). The sibling sovereign / OIS /
+# linker scanners ship single-metric rankings on the level z-score.
+# Mirroring the just-committed scan_inflation_linkers_extremes
+# precedent (a11c095), this scan ranks on a single metric and
+# carries ``daily_change_bps`` and ``monthly_change_bps`` as
+# per-row snapshot context (matching the sovereign / OIS / linker
+# scanner row shape) rather than as separate rankings. Do NOT
+# silently expand to a multi-metric ranking like
+# scan_bond_futures_extremes (whose catalog wording is different).
+#
+# Display thresholds
+# ------------------
+# ``top_n`` and ``min_abs_z_score`` are DISPLAY thresholds — they
+# control which stems appear in the ranked output, NOT which stems
+# are SCANNED. Their defaults live in this YAML and are read by
+# compute when the LLM omits them (None-sentinel resolution).
+# Mirrors the YAML-owned-default pattern the linker scanner and
+# bond_futures scanner already use — keeps the per-query input
+# optional while the methodology default lives in YAML per PR9 /
+# PR10.
+#
+# In V1 deterministic mode there is NO LLM-facing override for
+# methodology conventions. The LLM can scope the scan
+# (``curve_families``), anchor it to a date (``as_of_date``), and
+# set display thresholds (``top_n``, ``min_abs_z_score``) but cannot
+# alter the z-score window, ddof, fill limit, fetch-window buffer,
+# field mnemonic, or instrument_type.
+# =============================================================================
+
+tool:
+  name: scan_inflation_swaps_extremes_tool
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Universe-wide ZCIS quoted-rate sweep — ranks every
+    ``(curve_family, tenor)`` ZCIS pillar in the inflation_swaps
+    universe (USD_ZCIS / EUR_ZCIS / GBP_ZCIS by default; scope-
+    narrowable via ``curve_families``) by absolute 252-day rolling
+    z-score of its quoted ZCIS rate LEVEL.  Returns the top-N
+    extremes, each row tagged with the methodology disclosure
+    (universe-wide ZCIS rate-level scan; INDEX-FAMILY +
+    MARKET-STRUCTURE caveats including CPI-U / HICP / RPI
+    heterogeneity and the inflation-derivatives index-lag +
+    interpolation conventions; morning screen, NOT a tactical
+    trade signal).
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days) — the HEADLINE methodology
+  # disclosure required by the catalog guardrail. Disclosed verbatim
+  # on the response's methodology_disclosure string AND on every
+  # result row. Mirrors the same 1y_window convention used by
+  # inflation_swap_rate_level / inflation_swap_curve_spread /
+  # cross_market_inflation_swap_spread / every other rates level
+  # primitive — the cross-config lint enforces the match across the
+  # inflation-swaps family.
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Same convention
+      as inflation_swap_rate_level, inflation_swap_curve_spread,
+      inflation_swap_forward, cross_market_inflation_swap_spread,
+      swap_breakeven_basis_simple, inflation_swap_butterfly, and
+      every sovereign / OIS / linker rates level primitive.  Desk
+      reads of "is X stretched?" are benchmarked against the trailing
+      year — anchoring the scan's z-scores here keeps cross-tool
+      comparability with the upstream per-pillar
+      ``inflation_swap_rate_level`` primitive on the same as-of
+      date.  The MUST-DISCLOSE window per the catalog's methodology
+      guardrail.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before a stem is included in the ranking
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches inflation_swap_rate_level,
+      cross_market_inflation_swap_spread, sovereign yield_levels,
+      OIS rate_level, real_yield_level, and the linker /
+      bond_futures scanners.  Stems with fewer observations are
+      SKIPPED in the ranking — never silently promoted to
+      "z = None" rows.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated for every stem on the as-of date.
+      1.5x trading-day window covers weekends + holidays. Matches
+      every other rates level primitive in this codebase.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  # ``daily_change_bps`` and ``monthly_change_bps`` are surfaced on
+  # every output row as per-row snapshot context (matches the
+  # sovereign / OIS / linker scanner row shape). They are NOT separate
+  # rankings — the ranking key is the LEVEL z-score per the catalog.
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back. Matches every other
+      inflation-swaps tool's ``daily_change_offset_rows``.
+    valid_range: [2, 5]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+      Matches every other inflation-swaps tool's
+      ``monthly_change_offset_rows``.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps. Same as every other rates level primitive in this
+      codebase.  Per-stem, applied independently to each ZCIS pillar's
+      quoted-rate series before z-scoring.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg observation field — NOT an input-schema knob.
+  # ---------------------------------------------------------------------------
+  # ZCIS publishes its quoted-mid rate under the Bloomberg mnemonic
+  # ``PX_MID`` (NOT YLD_YTM_MID; the upstream
+  # ``inflation_swap_rate_level`` primitive's
+  # ``default_zcis_rate_field`` convention is also ``PX_MID``).
+  # Mirrored exactly here so the scan reads the same underlying
+  # observations as the per-pillar ``inflation_swap_rate_level``
+  # monitor — guarantees the scan's "USD_ZCIS 10Y z = +2.3" equals
+  # the per-pillar level snapshot's z for the same instrument on the
+  # same as_of_date.
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` (``yield_mid`` → ``PX_MID``).  Same name
+      as the upstream ``inflation_swap_rate_level`` primitive's
+      convention — the cross-config lint enforces the match across
+      the inflation-swaps family.  Distinct from
+      ``default_field_name`` (sovereign / linker YLD_YTM_MID); the
+      cross-config lint compares by convention NAME so the
+      rename keeps the two field families separately validated.
+
+  # ---------------------------------------------------------------------------
+  # ZCIS curve families recognised by the scanner
+  # ---------------------------------------------------------------------------
+  # Closed-family whitelist of the ZCIS curve families the V1 scan
+  # supports (sourced from ``rates_agent/playbooks/
+  # inflation_swaps.yml``). Hardcoded here rather than discovered at
+  # runtime so a stray non-ZCIS curve_family mis-routed by the LLM
+  # is REFUSED at schema-validation time rather than silently
+  # included. A new ZCIS curve added to the playbook is added here
+  # in the same PR.
+  inflation_swap_curve_families:
+    value: "USD_ZCIS,EUR_ZCIS,GBP_ZCIS"
+    source: bloomberg_field_convention
+    rationale: >-
+      Closed family of ZCIS curve families currently ingested via
+      the inflation_swaps playbook. Comma-separated string because
+      ``Convention.value`` is scalar (str). The whitelist is
+      intentionally explicit, not discovery-based, so a non-ZCIS
+      curve_family (e.g. nominal sovereign 'UST', linker
+      'USD_TIPS', OIS 'USD_SOFR_OIS') passed by the LLM is REFUSED
+      at the schema layer rather than silently swept into the scan.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to each result row's snapshot values
+  # and z-scores. Mirrors the precisions used by the sibling per-
+  # pillar ``inflation_swap_rate_level`` so a "USD_ZCIS 10Y
+  # zcis_rate_pct = 2.4500" from the scan equals "zcis_rate_pct =
+  # 2.4500" from inflation_swap_rate_level on the same as_of_date.
+  # ---------------------------------------------------------------------------
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the upstream
+      ``inflation_swap_rate_level`` / sovereign yield_levels /
+      OIS rate_level / linker real_yield_level conventions.
+      Cross-config lint enforces the match across the rates
+      surfaces.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals is the default ``compute_level_metrics`` uses
+      across the rates family.  The z-score is the ranking key;
+      preserving four decimals avoids ties from coarse rounding
+      when two ZCIS pillars have very similar z-scores.
+    valid_range: [0, 8]
+
+  bps_change_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals on bps change snapshots — matches sovereign /
+      OIS / linker / per-pillar inflation_swap_rate_level
+      conventions on bps display precision.  daily_change_bps and
+      monthly_change_bps are per-row snapshot context (NOT ranking
+      keys), so two-decimal bps precision is the right surface for
+      the desk reader.
+    valid_range: [0, 4]
+
+  # ---------------------------------------------------------------------------
+  # Display-threshold defaults — YAML-owned per PR9 / PR10. The LLM
+  # may STILL override either knob per query at the input layer;
+  # these conventions only kick in when the input is omitted
+  # (None-sentinel resolution inside compute). The valid_range
+  # mirrors the schema-level Field(ge=..., le=...) bound so an off-
+  # range YAML edit is caught by `python -m shared.config.lint`.
+  # ---------------------------------------------------------------------------
+  default_top_n:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Default number of extreme stems to return when the LLM does
+      not pass ``top_n`` explicitly. Five rows is enough coverage
+      to read the desk question "where is the ZCIS universe
+      stretched today?" without flooding the response. Matches the
+      linker / bond_futures scanner's ``default_top_n`` and the
+      sovereign / OIS scanner team-judgment wire-default rows-per-
+      screen choice. The hard ceiling (50) remains a schema-level
+      Field bound so an LLM cannot exceed it regardless of the
+      YAML default.
+    valid_range: [1, 50]
+
+  default_min_abs_z_score:
+    value: 1.5
+    source: team_judgment_pending_review
+    rationale: >-
+      Default minimum absolute z-score floor when the LLM does not
+      pass ``min_abs_z_score`` explicitly. 1.5σ matches the
+      sovereign / OIS / linker / bond_futures scanner conventions
+      — desk reads of "anything stretched today?" want to surface
+      the >=1.5σ moves and ignore the noise band below.  The
+      non-negative bound (ge=0.0) remains a schema-level Field
+      invariant so an off-range YAML edit is structurally caught
+      by the load.
+    valid_range: [0.0, 10.0]
+
+methodology:
+  what_it_does: |
+    For every ZCIS ``(curve_family, tenor)`` in the inflation_swaps
+    universe (USD_ZCIS / EUR_ZCIS / GBP_ZCIS by default; scope-
+    narrowable via ``curve_families`` input), fetches the ZCIS
+    quoted-rate series (Bloomberg ``PX_MID`` under
+    ``instrument_type='inflation_swap'``) across the lookback
+    window plus the YAML-owned z-score buffer, cleans each per-
+    stem series (ffill bridges holidays up to 5 trading days),
+    and computes the rolling 252-day z-score of the ZCIS quoted-
+    rate LEVEL.  Stems with fewer than ``z_score_min_periods``
+    aligned observations are SKIPPED (never silently demoted to
+    z=None).  Ranks remaining stems by absolute z-score, applies
+    the ``min_abs_z_score`` filter, and returns the top ``top_n``
+    rows — each row tagged with the methodology disclosure
+    (universe-wide ZCIS rate-level scan; explicit z-score lookback
+    window read from this YAML; INDEX-FAMILY +
+    MARKET-STRUCTURE caveats covering the CPI-U / HICP / RPI
+    underlying-index heterogeneity AND the inflation-derivatives
+    index-lag + interpolation conventions; morning screen, NOT a
+    tactical trade signal).  Per-row reference columns
+    (``maturity_date`` / ``underlying_index`` / ``vendor_ticker``)
+    are attached from the enriched view via the read-only
+    ``fetch_scan_universe_reference`` helper (extended in the same
+    PR with the ``underlying_index`` column already exposed
+    natively by ``v_market_data_daily_enriched``) so the desk
+    reader can identify the security AND see which inflation index
+    the row references without a second tool call.
+
+  assumptions:
+    - "Single-metric ranking on ZCIS quoted-rate LEVEL z-score per
+       the catalog's literal wording (``ranked by absolute 252-day
+       z-score`` with ``required_metrics: [yield_mid]``).
+       daily_change_bps and monthly_change_bps are surfaced on every
+       output row as per-row snapshot context (matching the
+       sovereign / OIS / linker scanner row shape) but are NOT
+       separate rankings.  The paired (level, change) ranking
+       design used by the bond_futures scanner is rejected here
+       because the inflation_swaps catalog enumerates one upstream
+       metric, not four."
+    - "ZCIS RATE-LEVEL scan, NOT a breakeven scan, NOT a linker
+       real-yield scan, NOT a curve-shape (curve spread / forward
+       / butterfly) scan, NOT an inflation-compensation scan.
+       Breakevens are owned by the
+       ``inflation_indexed_bonds.tools.breakeven_inflation_simple``
+       family; linker real yields are owned by the
+       ``inflation_indexed_bonds.tools.real_yield_level`` family;
+       ZCIS curve shape is owned by the sibling
+       ``inflation_swap_curve_spread`` / ``inflation_swap_forward``
+       / ``inflation_swap_butterfly`` primitives; ZCIS / breakeven
+       basis is owned by ``swap_breakeven_basis_simple``. The
+       methodology disclosure surfaces this scope explicitly per
+       the catalog's methodology guardrail."
+    - "INDEX-FAMILY MISMATCH (load-bearing): USD_ZCIS references
+       US CPI-U non-seasonally adjusted (``CPURNSA Index``),
+       EUR_ZCIS references Eurozone HICP ex-tobacco
+       (``CPTFEMU Index``), GBP_ZCIS references UK RPI
+       (``UKRPI Index``).  Ranking ZCIS-rate z-scores across this
+       heterogeneity is a useful morning screen but the desk reader
+       MUST interpret the output with that caveat in mind.  The
+       per-row ``underlying_index`` field surfaces the exact
+       Bloomberg index ticker the ZCIS contract references.
+       Mirrors the per-pillar
+       ``inflation_swap_rate_level``'s cross-curve comparability
+       caveat and the
+       ``cross_market_inflation_swap_spread`` disclosure language;
+       the scan does NOT harmonise indices."
+    - "MARKET-STRUCTURE MISMATCH (load-bearing): ZCIS markets
+       differ across currencies in index-publication-lag
+       conventions (USD_ZCIS uses a 3M lag with daily
+       interpolation, EUR_ZCIS uses a 3M lag with monthly
+       interpolation, GBP_ZCIS uses a 2M lag with monthly
+       interpolation), dealer-quote liquidity, and structural
+       basis vs the bond-implied breakeven curve.  A z-score
+       extreme on one market may reflect liquidity / structural
+       moves rather than pure inflation-expectations divergence;
+       surface accordingly."
+    - "Morning screen, NOT a tactical trade signal.  The scan
+       answers the desk question ``where is the ZCIS curve
+       stretched today?`` — it surfaces extremes for further
+       analysis (curve shape via inflation_swap_curve_spread,
+       forwards via inflation_swap_forward, cross-market reads
+       via cross_market_inflation_swap_spread, ZCIS / breakeven
+       basis via swap_breakeven_basis_simple, curvature via
+       inflation_swap_butterfly) rather than indicating a
+       directional trade.  The methodology disclosure surfaces
+       this scope explicitly per the catalog's methodology
+       guardrail."
+    - "Fetch window is derived from YAML — not an LLM input. The
+       calendar-day buffer is ``z_score_window_days *
+       z_score_buffer_multiplier`` (currently 252 * 1.5 = 378
+       days), which guarantees a fully-populated 252d rolling
+       z-score for every stem on the as-of date. Exposing the
+       fetch window as an LLM-controlled input would be a PR8 /
+       OPR8 input-schema overreach (methodology knob masquerading
+       as a per-query choice).  ``min_abs_z_score`` and ``top_n``
+       remain DISPLAY thresholds (per-query inputs, both YAML-
+       defaultable via the ``default_min_abs_z_score`` /
+       ``default_top_n`` conventions); they do not change which
+       stems are SCANNED, only which appear in the ranked
+       output."
+    - "``as_of_date`` anchors the scan to a specific trading day —
+       either the LLM-supplied date or, when omitted, the most-
+       recent shared trading day across the fetched universe (max
+       trade_date observed in the cleaned series after per-stem
+       cleaning).  Determinism: same as_of_date + same DB state
+       ⇒ same ranking.  Per-stem series are CAPPED at the
+       resolved as_of_date before z-scoring so a future-dated row
+       cannot contaminate the trailing rolling stats.  Mirrors
+       the linker / bond_futures scanner's deterministic-anchor
+       convention."
+    - "Per-row reference columns (maturity_date, underlying_index,
+       vendor_ticker) come from the enriched view directly via
+       the read-only ``fetch_scan_universe_reference`` helper.
+       The helper was EXTENDED in this PR with the
+       ``underlying_index`` column already exposed natively by
+       ``v_market_data_daily_enriched``; the change is additive
+       (existing call sites — the linker scanner — read only the
+       columns they need, so the projection extension is non-
+       breaking).  ``security_name`` is NOT surfaced: the ZCIS
+       universe's ``instrument_metadata_history.security_name`` is
+       universally NULL on the current DB snapshot (the playbook
+       maps SECURITY_DES → security_name but the field is not
+       populated on the live SCD2 rows).  Surfacing NULL on every
+       row would be dead-field noise; substituting
+       ``vendor_ticker`` for it under the ``security_name``
+       label would be a proxy violation per the no-proxy rule.
+       ``vendor_ticker`` is surfaced under its own name as the
+       Bloomberg-grade desk identifier (e.g. ``USSWIT10 Curncy``,
+       ``EUSWI10 Curncy``, ``BPSWIT10 Curncy``).  Same no-proxy
+       treatment the linker scanner applied to its identically-
+       NULL ``security_name`` column."
+
+  citations:
+    - "Plan §5 Group 1 #2 (catalog
+       ``inflation_swaps__scan_inflation_swaps_extremes``,
+       build_order 25)."
+    - "Catalog methodology guardrail: ``Methodology card must state
+       the z-score lookback window explicitly``."
+    - "Sibling disclosure precedent:
+       ``cross_market_inflation_swap_spread`` and the per-pillar
+       ``inflation_swap_rate_level`` — same INDEX-FAMILY +
+       MARKET-STRUCTURE caveats apply to the universe scan."
+
+  planned_extensions:
+    - "Pair the level-z ranking with a 1-day Δ-rate-z ranking (the
+       bond_futures-style multi-metric scan).  Requires a catalog
+       amendment naming the additional metric explicitly; the V1
+       catalog wording binds this primitive to one metric (ZCIS
+       rate level z) so a multi-metric expansion would widen
+       scope past the catalog entry — defer until the catalog
+       says so."
+    - "Surface ``security_name`` once the ZCIS universe's
+       ``instrument_metadata_history.security_name`` is populated
+       upstream (the playbook maps SECURITY_DES to security_name
+       but all ZCIS rows currently carry NULL on the live SCD2
+       table).  When that backfill lands, add ``security_name``
+       to the output row schema and to
+       ``fetch_scan_universe_reference``'s projection without
+       changing the surrounding ranking methodology."
+    - "Add an index-family-stratified ranking mode — group stems
+       by their underlying inflation index (CPI-U vs HICP vs
+       RPI) and rank within each group.  The data is already
+       available (``underlying_index`` surfaces the underlying
+       index Bloomberg ticker per row); a stratified ranking
+       mode is a future schema-additive output extension."

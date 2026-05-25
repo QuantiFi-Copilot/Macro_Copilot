@@ -139,6 +139,28 @@ export const KNOWN_BACKEND_TOOLS: ReadonlySet<string> = new Set<string>([
   // Manifest-declared, NO backend implementation yet (renders as
   // unsupported_known):
   'scan_ois_extremes_tool',
+  // Factory-ported OIS primitives (ADR 0013)
+  'calculate_ois_butterfly_tool',
+  // Factory-ported bond_futures primitives (ADR 0013)
+  'get_futures_price_level_tool',
+  'get_futures_volume_oi_tool',
+  'scan_bond_futures_extremes_tool',
+  // Factory-ported policy_futures primitives (ADR 0013)
+  'build_policy_futures_strip_panel_tool',
+  'get_scan_policy_futures_extremes_tool',
+  'policy_futures_get_futures_butterfly_simple_tool',
+  'policy_futures_get_futures_calendar_spread_tool',
+  'policy_futures_get_futures_cross_market_spread_tool',
+  'policy_futures_get_futures_pack_average_simple_tool',
+  'policy_futures_get_futures_price_level_tool',
+  'policy_futures_get_futures_strip_snapshot_tool',
+  'policy_futures_get_volume_open_interest_snapshot_tool',
+  // Factory-ported inflation_indexed_bonds primitives (ADR 0013)
+  'build_linker_panel_tool',
+  'scan_inflation_linkers_extremes_tool',
+  // Factory-ported inflation_swaps primitives (ADR 0013)
+  'build_zcis_panel_tool',
+  'scan_inflation_swaps_extremes_tool',
 ]);
 
 /** True when ``name`` (normalised) is a tool the backend / manifest
@@ -187,6 +209,28 @@ export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
   'calculate_ois_forward_rate_tool',
   'compute_financing_rate_tool',
   'get_ois_rate_level_tool',
+  // Factory-ported OIS primitives (ADR 0013)
+  'calculate_ois_butterfly_tool',
+  // Factory-ported bond_futures primitives (ADR 0013)
+  'get_futures_price_level_tool',
+  'get_futures_volume_oi_tool',
+  'scan_bond_futures_extremes_tool',
+  // Factory-ported policy_futures primitives (ADR 0013)
+  'build_policy_futures_strip_panel_tool',
+  'get_scan_policy_futures_extremes_tool',
+  'policy_futures_get_futures_butterfly_simple_tool',
+  'policy_futures_get_futures_calendar_spread_tool',
+  'policy_futures_get_futures_cross_market_spread_tool',
+  'policy_futures_get_futures_pack_average_simple_tool',
+  'policy_futures_get_futures_price_level_tool',
+  'policy_futures_get_futures_strip_snapshot_tool',
+  'policy_futures_get_volume_open_interest_snapshot_tool',
+  // Factory-ported inflation_indexed_bonds primitives (ADR 0013)
+  'build_linker_panel_tool',
+  'scan_inflation_linkers_extremes_tool',
+  // Factory-ported inflation_swaps primitives (ADR 0013)
+  'build_zcis_panel_tool',
+  'scan_inflation_swaps_extremes_tool',
 ]);
 
 /** True when the tool has a backend run endpoint (the FastAPI
