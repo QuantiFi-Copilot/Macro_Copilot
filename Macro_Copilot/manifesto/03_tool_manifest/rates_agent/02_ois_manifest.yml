@@ -393,3 +393,55 @@ tools:
       rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS with
       explicit rationale per the get_otr_history /
       classify_curve_move precedent.
+
+  # ---------------------------------------------------------------------------
+  # FINANCING-RATE PANEL (multi-method; backtest's financing input)
+  # ---------------------------------------------------------------------------
+
+  - name: compute_financing_rate
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: panel_assembly
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: compute_financing_rate_tool
+      schema: rates_agent/ois/tools/financing_rate/schemas.py::FinancingRateInput
+      compute: rates_agent/ois/tools/financing_rate/compute.py::compute_financing_rate
+      config: rates_agent/ois/tools/financing_rate/config.yaml
+
+    one_liner: >-
+      Daily financing-rate Panel keyed by `<curve_family>` for use as
+      the financing input to the backtest workflow's evaluate_trades
+      operator.  Multi-method primitive: V1 ships the
+      `overnight_index_proxy` method (uses the OIS overnight index as a
+      proxy for true overnight repo financing).  `term_repo_curve` and
+      `gc_special_blend` are declared in the closed-method enum and
+      refuse with NotImplementedError per PR11 — they unblock when
+      TD #29 (term GC repo) and TD #30 (CUSIP-level repo specials) land.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored OIS overnight-index
+      rates (the V1 `overnight_index_proxy` method).  No user-facing
+      model inference.  Multi-method primitive with single central
+      `method:` knob per PR8; unbuilt methods refuse loudly per PR11.
+
+    pm_overridable:
+      - method
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - build_sovereign_yield_panel_tool
+
+    workflows:
+      - backtest
+
+    references:
+      - docs/technical_debt.md  # TD #29 — term GC repo data
+      - docs/technical_debt.md  # TD #30 — CUSIP-level repo specials
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet

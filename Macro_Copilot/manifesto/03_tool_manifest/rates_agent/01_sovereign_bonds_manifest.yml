@@ -778,3 +778,104 @@ tools:
     built_date: 2026-05-01
     validation_status: >-
       Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # MULTI-INSTRUMENT PANEL ASSEMBLY (backtest's primary panel input)
+  # ---------------------------------------------------------------------------
+
+  - name: build_sovereign_yield_panel
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: panel_assembly
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: build_sovereign_yield_panel_tool
+      schema: rates_agent/sovereign_bonds/tools/sovereign_yield_panel/schemas.py::SovereignYieldPanelInput
+      compute: rates_agent/sovereign_bonds/tools/sovereign_yield_panel/compute.py::build_sovereign_yield_panel
+      config: rates_agent/sovereign_bonds/tools/sovereign_yield_panel/config.yaml
+
+    one_liner: >-
+      Wide multi-instrument Panel of sovereign yields keyed by
+      `<curve_family>_<tenor>` over a date range. Designed as the
+      backtest workflow's primary price-source panel — every cash leg
+      in a sovereign-family trade reads its time series from one row of
+      the assembled Panel.
+
+    bucket_rationale: >-
+      Deterministic multi-leg fetch over stored yields, no model state.
+      The SQL + Panel-assembly backbone lives in
+      shared/analytics/panel_assembly.py so a sibling per-domain panel
+      primitive (e.g. build_zcis_panel, build_linker_panel — both
+      planned in Phase 2 Step 5) can share the same backend.
+
+    pm_overridable:
+      - legs
+      - start_date
+      - end_date
+
+    related_tools:
+      - get_yield_levels_tool
+      - compute_financing_rate_tool
+
+    workflows:
+      - backtest
+
+    references:
+      - tmp/primitive_expansion/phase2.md  # Step 5 — per-domain panels
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # BOND-IMPLIED BREAKEVEN INFLATION (cross-domain composition: nominal − linker)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_breakeven_inflation
+    domain: rates
+    sub_agent: sovereign_bonds
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/sovereign_bonds/mcp_server.py
+      tool_function: calculate_breakeven_inflation_tool
+      schema: rates_agent/sovereign_bonds/tools/breakeven_inflation/schemas.py::BreakevenInflationInput
+      compute: rates_agent/sovereign_bonds/tools/breakeven_inflation/compute.py::calculate_breakeven_inflation
+      config: rates_agent/sovereign_bonds/tools/breakeven_inflation/config.yaml
+
+    one_liner: >-
+      Bond-implied breakeven inflation surfaced via the sovereign
+      sub-agent — nominal sovereign yield minus the matched-tenor
+      linker real yield in bps, with rolling 252-day z-score and a
+      full chartable time series. Sibling of
+      calculate_breakeven_inflation_simple_tool which is registered
+      under the inflation_indexed_bonds sub-agent; the sovereign-side
+      registration is preserved for backwards-compatible workflows
+      that already named this tool under the sovereign catalogue.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on a nominal sovereign yield series and a
+      linker real-yield series across two sub-agents' data slices.
+      Same z-score conventions as the other Bucket-1A simple-spread
+      primitives.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_inflation_simple_tool
+      - get_yield_levels_tool
+      - get_real_yield_level_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0006-inflation-domain-agents.md
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet

@@ -1,0 +1,38 @@
+# =============================================================================
+# Bond Futures — tool manifest
+# =============================================================================
+# Read by the Library page UI alongside the sibling per-agent manifests.
+# Each entry mirrors a tool actually registered in
+# ``rates_agent/bond_futures/mcp_server.py`` and the per-tool folder under
+# ``rates_agent/bond_futures/tools/<tool>/``. Adding a new tool to this
+# sub-agent = (1) implementation under tools/, (2) MCP registration in
+# mcp_server.py, (3) entry here.
+#
+# Bucket convention (shared across the rates_agent manifests):
+#   1A — strict deterministic arithmetic on stored market data; no
+#        user-facing model inference; conventions YAML-locked.
+#   1B — statistical model fits with bit-stable output on same input.
+#   2  — open-ended / scenario-generating / model-state tools.
+#        (`quality_option_value` is the first planned 2 primitive — Phase 4.)
+#
+# Round-3 Stage 1 (work item A10): this manifest was created as a
+# scaffold to close the manifest-coverage gap. The bond_futures
+# sub-agent (rates_agent/bond_futures/) does not yet exist as a code
+# package — primitives are planned to land in Phase 2 (futures monitors)
+# and Phase 4 (CTD / DV01 / basis stack) per the primitive-expansion
+# plan at tmp/primitive_expansion/phase2.md Step 3 + phase4.md Step 2.
+# Each newly-shipped bond_futures primitive will land its manifest row
+# in the same PR per the primitive runbook.
+#
+# Substrate prerequisites tracked in technical_debt.md:
+#   - TD #2  (instrument_metadata_history SCD2) — required before any
+#     rolling-contract bond-futures primitive can join market data to
+#     correct per-contract reference fields.
+#   - TD #11 (bond_futures duplicate (curve_family, tenor) keys —
+#     TY1/UXY1, US1/WN1) — must be disambiguated before any tenor-
+#     keyed bond-futures lookup ships.
+#   - TD #29 / TD #30 (D-repo sub-phases B + C) — required before the
+#     bond-futures basis / financing primitives can be honest.
+# =============================================================================
+
+tools: []
