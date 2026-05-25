@@ -1,15 +1,26 @@
 """Manual Bloomberg XLSX → parquet converter (generic, substrate-parameterised).
 
-Phase B Wave 2 / BBG batch (2026-05-25).
+Phase B Wave 2 / BBG batch (2026-05-25). Extended for BBG warehouse seeding
+session (2026-05-25 night) — supports 15 FX substrates total now.
 
-Generalised version of utils/manual_em_spot_to_parquet.py — supports 6
-FX substrates extracted in the 2026-05-25 BBG batch (Phase B Wave 2):
-
+Original BBG batch substrates (PR #198 + #203):
   - g10_forwards_long    (G10 forwards 2Y/5Y, extends fx_forwards.yml)
   - ndf                  (NDF outrights, new fx_ndf.yml)
   - em_forwards          (EM deliverable forward points, new fx_em_forwards.yml)
   - em_vol               (EM ATM vol, extends fx_vol.yml — incl. CNH/INR vol-only)
-  - vol_smile            (G10 + EM smile RR/BF, new fx_vol_smile.yml)
+  - vol_smile_g10        (G10 smile RR/BF, new fx_vol_smile.yml)
+  - vol_smile_em         (EM smile RR/BF, extends fx_vol_smile.yml)
+  - spot_topup           (CNH/CNY/INR spot top-up, extends spot_fx.yml)
+
+Warehouse seeding substrates (this PR — covers ~268 net-new instruments):
+  - macro_indices        (DXY, BBDXY, JPMVXYG7, JPMVXYEM — new fx_macro_indices.yml)
+  - em_ext_spot          (USDSGD/TWD/THB/CLP/COP/PEN spots, extends spot_fx.yml)
+  - em_ext_ndf           (TWD NDF NTN+, extends fx_ndf.yml)
+  - em_ext_forwards      (USDSGD/THB deliverable forwards, extends fx_em_forwards.yml)
+  - em_ext_vol           (6 new EM ATM vol pairs × 5 tenors, extends fx_vol.yml)
+  - atm_extended         (17 pairs × 5 extended tenors ON/2W/2M/9M/2Y, extends fx_vol.yml)
+  - cnhinr_smile         (CNH/INR × 4 deltas × 3 tenors, extends fx_vol_smile.yml)
+  - smile_extended       (13 pairs × 4 deltas × 2 new tenors 1W/6M, extends fx_vol_smile.yml)
 
 Same Codex garde-fous as Phase B EM spot:
   1. XLSX in read-only mode, never write back
@@ -148,6 +159,44 @@ def _build_spot_topup_ticker(g: Dict[str, str]) -> str:
     return f"USD{g['ccy']} Curncy"
 
 
+# ============================================================================
+# Warehouse seeding (2026-05-25) — 8 new substrate ticker builders
+# ============================================================================
+
+# Bloomberg suffix per macro-index code. DXY trades on the ICE futures
+# exchange but uses "Curncy" yellow-key by convention; the JPMVXY* and
+# BBDXY indices use "Index". Verified Phase 1 discovery 2026-05-25.
+_MACRO_INDEX_SUFFIX: Dict[str, str] = {
+    "DXY": "Curncy",
+    "BBDXY": "Index",
+    "JPMVXYG7": "Index",
+    "JPMVXYEM": "Index",
+}
+
+
+def _build_macro_index_ticker(g: Dict[str, str]) -> str:
+    # sheet "DXY" → "DXY Curncy" ; sheet "JPMVXYG7" → "JPMVXYG7 Index"
+    code = g["index_code"]
+    return f"{code} {_MACRO_INDEX_SUFFIX[code]}"
+
+
+def _build_em_ext_spot_ticker(g: Dict[str, str]) -> str:
+    # sheet "USDSGD" → "USDSGD Curncy"  (SGD/TWD/THB/CLP/COP/PEN spots)
+    return f"USD{g['ccy']} Curncy"
+
+
+def _build_em_ext_ndf_ticker(g: Dict[str, str]) -> str:
+    # sheet "NTN_1W" → "NTN+1W Curncy"  (TWD NDF)
+    return f"NTN+{g['tenor']} Curncy"
+
+
+# Note: atm_extended (sheet "EURUSD_VON" → "EURUSDVON Curncy") and
+# em_ext_forwards / em_ext_vol / cnhinr_smile / smile_extended REUSE the
+# existing _build_em_vol_ticker / _build_em_forwards_ticker /
+# _build_vol_smile_ticker builders — same f"{pair}V{tenor} Curncy" /
+# f"{pair}{tenor} Curncy" / f"{pair}{delta}{tenor} Curncy" output shape.
+
+
 SUBSTRATES: Dict[str, SubstrateConfig] = {
     "g10_forwards_long": SubstrateConfig(
         name="g10_forwards_long",
@@ -257,6 +306,184 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         min_rows_per_sheet=500,  # USDCNH from ~2010-2011 (offshore launch)
         combine_existing_filter=(
             "im.instrument_type = 'fx_spot' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+    # ====================================================================
+    # Warehouse seeding (2026-05-25) — 8 new substrates
+    # --------------------------------------------------------------------
+    # Strategic pivot from "minimum viable substrate" → "BBG data warehouse
+    # seeding while terminal is available". User plans many downstream
+    # tools, wants to avoid future surprise data gaps. Phase 1 discovery
+    # session validated which tickers BBG actually serves. Phase 2 extracted
+    # 8 XLSX files. This block wires the 8 substrates into the converter.
+    #
+    # Ordering for ingestion (sanity-gate friendly, attribute-refresh
+    # cascade aware):
+    #   1. macro_indices       (NEW playbook → no combine needed)
+    #   2. em_ext_spot         (extends spot_fx — 21 → 27 rows after merge)
+    #   3. em_ext_ndf          (extends fx_ndf — 25 → 30)
+    #   4. em_ext_forwards     (extends fx_em_forwards — 30 → 40)
+    #   5. em_ext_vol          (extends fx_vol — 85 → 115)
+    #   6. atm_extended        (extends fx_vol — 115 → 200, depends on #5
+    #                           landing first so combine fetches the freshly
+    #                           added 30 EM ATM tickers too)
+    #   7. cnhinr_smile        (extends fx_vol_smile — 156 → 180)
+    #   8. smile_extended      (extends fx_vol_smile — 180 → 284, same
+    #                           combine-after rationale as #6)
+    # Refresh metadata for the affected playbook after EACH ingest because
+    # the ingester wipes attributes (cross-playbook attribute lesson from
+    # PR #203).
+    # ====================================================================
+
+    "macro_indices": SubstrateConfig(
+        name="macro_indices",
+        playbook_name="fx_macro_indices",  # NEW playbook
+        dataset_name="fx_macro_indices",
+        instrument_type="fx_macro_index",
+        sheet_name_pattern=re.compile(r"^(?P<index_code>DXY|BBDXY|JPMVXYG7|JPMVXYEM)$"),
+        ticker_builder=_build_macro_index_ticker,
+        expected_sheet_count=4,
+        # DXY is back to ~1971 in BBG but the BDH start_date is bounded by
+        # the converter default 2000-01-01. JPMVXY* histories vary — JPMVXYG7
+        # is back to 1992, JPMVXYEM to 2007. Threshold 500 accepts the
+        # ~5000-row JPMVXYEM series.
+        min_rows_per_sheet=500,
+        # No combine — first load for fx_macro_indices, prior_count=0,
+        # sanity gate skipped.
+    ),
+
+    "em_ext_spot": SubstrateConfig(
+        name="em_ext_spot",
+        playbook_name="spot_fx",  # extends spot_fx.yml
+        dataset_name="spot_fx",
+        instrument_type="fx_spot",
+        sheet_name_pattern=re.compile(r"^USD(?P<ccy>SGD|TWD|THB|CLP|COP|PEN)$"),
+        ticker_builder=_build_em_ext_spot_ticker,
+        expected_sheet_count=6,
+        # SGD/TWD/THB full 2000+ history. CLP/COP/PEN should also be
+        # >4000 rows (verified discovery 2026-05-25). Threshold 4000 is
+        # conservative.
+        min_rows_per_sheet=4000,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_spot' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "em_ext_ndf": SubstrateConfig(
+        name="em_ext_ndf",
+        playbook_name="fx_ndf",  # extends fx_ndf.yml
+        dataset_name="fx_ndf",
+        instrument_type="fx_ndf",
+        sheet_name_pattern=re.compile(r"^NTN_(?P<tenor>1W|1M|3M|6M|12M)$"),
+        ticker_builder=_build_em_ext_ndf_ticker,
+        expected_sheet_count=5,
+        # TWD NDF (NTN+) histories vary by tenor. 1W is sparser than 12M
+        # (the standard NDF carry tenor); discovery showed all 4 tested
+        # tenors deliver. Threshold 1000 mirrors `ndf` substrate.
+        min_rows_per_sheet=1000,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_ndf' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "em_ext_forwards": SubstrateConfig(
+        name="em_ext_forwards",
+        playbook_name="fx_em_forwards",  # extends fx_em_forwards.yml
+        dataset_name="fx_em_forwards",
+        instrument_type="fx_forward",
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(SGD|THB))_(?P<tenor>1W|1M|3M|6M|12M)$"
+        ),
+        ticker_builder=_build_em_forwards_ticker,
+        expected_sheet_count=10,
+        # SGD/THB deliverable forwards have deep history back to ~2002-2003.
+        min_rows_per_sheet=4000,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_forward' "
+            "AND im.attributes->>'fx_family' = 'EM_FORWARDS' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "em_ext_vol": SubstrateConfig(
+        name="em_ext_vol",
+        playbook_name="fx_vol",  # extends fx_vol.yml
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(SGD|TWD|THB|CLP|COP|PEN))_V(?P<tenor>1W|1M|3M|6M|1Y)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,
+        expected_sheet_count=30,  # 6 currencies × 5 tenors
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "atm_extended": SubstrateConfig(
+        name="atm_extended",
+        playbook_name="fx_vol",  # extends fx_vol.yml (new tenors VON/V2W/V2M/V9M/V2Y)
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # Note: the 6-char regex `[A-Z]{6}` matches BOTH G10 (EURUSD,
+        # GBPUSD, USDJPY, AUDUSD, USDCAD, USDCHF) AND EM (USDMXN, USDBRL,
+        # USDZAR, USDTRY, USDPLN, USDHUF, USDKRW, USDIDR, USDPHP, USDCNH,
+        # USDINR). 17 pairs × 5 tenors = 85 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>[A-Z]{6})_V(?P<tenor>ON|2W|2M|9M|2Y)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,  # same f"{pair}V{tenor} Curncy"
+        expected_sheet_count=85,
+        # ATM vol histories at extended tenors (ON/2W/2M/9M/2Y) are
+        # typically thinner than the standard strip. Threshold 500 accepts
+        # the shortest series (likely USDCNH/USDINR extended tenors).
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "cnhinr_smile": SubstrateConfig(
+        name="cnhinr_smile",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # USDCNH + USDINR × 4 deltas × 3 tenors (1M/3M/1Y, no 1W/6M per
+        # discovery — CNH/INR smile sparse at the short/medium-edge tenors)
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(CNH|INR))_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=24,  # 2 pairs × 4 deltas × 3 tenors
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol_smile' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "smile_extended": SubstrateConfig(
+        name="smile_extended",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml (new tenors 1W + 6M)
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # 13 pairs (6 G10 + 7 EM: MXN/BRL/ZAR/TRY/PLN/HUF/KRW; no IDR/PHP
+        # because their 1W/6M smile is sparse per discovery) × 4 deltas
+        # × 2 tenors = 104 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>[A-Z]{6})_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1W|6M)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=104,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol_smile' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
