@@ -12,16 +12,18 @@
 
 ## Test categories
 
-The frontend test suite is organised into four categories:
+**Status today (Stage 0):** Only the **Surface contracts** category exists. `npm run test:build` runs via `scripts/run_build_tests.mjs`. The three other categories (per-module round-trips, registry derivation, cross-side parity) are **target-state Stage 2+** — they require `src/modules/` to exist, plus new `npm run` scripts in `package.json` and a `tools/check_module_parity.py` script. **None of those exist today.** This document specifies the target contract; the supporting tooling lands in Stage 2 alongside the first reference module.
 
-| Category | What it asserts | Files | CI command |
-|---|---|---|---|
-| **Per-module round-trips** | Module's spec ↔ folder ↔ surfaces ↔ THESIS consistency (FM11) | `src/modules/.../__tests__/module.spec.ts` | `npm run test:modules` |
-| **Registry derivation** | Central registries are pure derivations of `ALL_PRIMITIVE_MODULES`; no hand-authored entries | `src/lib/__tests__/registry_*.spec.ts` | `npm run test:registries` |
-| **Surface contracts** | Shared shells render correctly for representative inputs; per-tool surfaces honour their Prop contracts | `src/components/.../__tests__/*.spec.tsx` | `npm run test:build` |
-| **Parity (cross-side)** | Backend + frontend agree on the primitive / workflow set | `python tools/check_module_parity.py` | `make check-module-parity` |
+The frontend test suite is organised into four categories at target state:
 
-The default `npm test` runs all four. CI runs them in this order.
+| Category | What it asserts | Files | CI command | Status |
+|---|---|---|---|---|
+| **Per-module round-trips** | Module's spec ↔ folder ↔ surfaces ↔ THESIS consistency (FM11) | `src/modules/.../__tests__/module.spec.ts` | `npm run test:modules` | Target-state Stage 2+ |
+| **Registry derivation** | Central registries are pure derivations of `ALL_PRIMITIVE_MODULES`; no hand-authored entries | `src/lib/__tests__/registry_*.spec.ts` | `npm run test:registries` | Target-state Stage 2+ |
+| **Surface contracts** | Shared shells render correctly for representative inputs; per-tool surfaces honour their Prop contracts | `src/components/.../__tests__/*.spec.tsx` and `src/lib/__tests__/*.test.ts` | `npm run test:build` (today, via `scripts/run_build_tests.mjs`) | **Live today** |
+| **Parity (cross-side)** | Backend + frontend agree on the primitive / workflow set | `python tools/check_module_parity.py` | `make check-module-parity` | Target-state Stage 2+ |
+
+The default `npm test` (target-state) runs all four. CI runs them in this order. Today only `npm run test:build` exists.
 
 ## Category 1 — Per-module round-trip
 
@@ -172,16 +174,18 @@ assert backend_tools | deferred == frontend_modules, (
 
 The script runs in CI and is invoked via `make check-module-parity`. It is the structural guarantee against the registry-drift failure mode that produced the current 18-tool gap.
 
-## Mocking and fixtures
+## Mocking and fixtures (target-state)
 
-| Need | How |
+The mocking infrastructure below is **target-state Stage 2+**. Today the existing `npm run test:build` suite uses bespoke fixtures inside individual `__tests__` directories without a shared `src/__test-setup/` layer. The Stage 2 reference module (`calculate_cpi_surprise_tool`) introduces the shared infrastructure.
+
+| Need | How (target-state) |
 |---|---|
 | Mock backend API | MSW (Mock Service Worker) at the network boundary; configured in `src/__test-setup/msw-handlers.ts` |
 | Fixture artifact data | Per-shape factories in `src/__test-setup/fixtures/{series,panel,...}.ts` |
 | Mock WebSocket | A test-only `MockCopilotProvider` in `src/__test-setup/MockCopilotProvider.tsx` |
 | Render with router | `renderWithRouter` helper in `src/__test-setup/render.tsx` |
 
-Test setup files live in `src/__test-setup/`. They are imported only from test files; production code MUST NOT import from this directory.
+Test setup files live in `src/__test-setup/` (target-state). They are imported only from test files; production code MUST NOT import from this directory.
 
 ## Determinism
 
@@ -189,7 +193,7 @@ Tests MUST be deterministic. Specifically:
 
 - No `new Date()` without a clock mock.
 - No `Math.random()` without a seed.
-- No network calls (MSW intercepts everything).
+- No network calls (MSW intercepts everything, target-state once MSW lands).
 - No reliance on test execution order.
 
 Flaky tests are CI failures; they don't get retry-merged.
@@ -204,9 +208,11 @@ Snapshot tests are allowed but bounded:
 
 When a snapshot needs updating, the PR description names the reason (a new module shipped, a tier was added, etc.). Routine snapshot updates without explanation fail review.
 
-## Coverage targets
+## Coverage targets (target-state)
 
-Per-category targets (enforced by `vitest --coverage`):
+**Status today:** no coverage gate is enforced. Adding `vitest --coverage` and the targets below is target-state Stage 2+, paired with the introduction of `src/modules/` and the per-module round-trip tests.
+
+Per-category targets (enforced by `vitest --coverage`, target-state):
 
 | Category | Lines | Branches |
 |---|---|---|

@@ -10,6 +10,22 @@
 
 ---
 
+## Reading this document — current state vs target state
+
+This document describes the **target architecture** that [ADR 0014](../05_decisions/0014-frontend-module-architecture.md) sets. The codebase today is partway between the legacy page-organised shape and the target module-organised shape.
+
+| Section | Current today (Stage 0) | Target (Stage N) |
+|---|---|---|
+| Layered shape L6.1–L6.6 | L6.4–L6.6 exist; L6.1–L6.3 (`src/modules/`, derived registries) **do not yet exist** | All six layers exist |
+| `src/modules/` directory | Does not exist | One folder per primitive + workflow |
+| Central registries (`toolNames.ts`, `modelRegistry.ts`) | Hand-authored sets | Derived from `ALL_PRIMITIVE_MODULES` |
+| `tools/check_module_parity.py` | Does not exist | Required CI gate |
+| `npm run test:modules`, `npm run test:registries` | Do not exist | Standard test commands |
+| Page shells (`BuildShell`, `LibraryPage`, etc.) | Exist; some contain per-primitive branching | Exist; pure orchestration only |
+| Shared infrastructure (AutoRenderer, DagStrip, hooks, services) | Exists | Same; refactored to derive per-tool data from module specs |
+
+When a section says "the module loader exports X" or "the central registry is derived from Y", treat it as **target-state** unless explicitly qualified with "today" or "currently". The migration roadmap in [`../06_roadmap/frontend_migration.md`](../06_roadmap/frontend_migration.md) defines the staged path from current to target.
+
 ## Where the frontend sits
 
 The platform's five-layer architecture, from [`00_internal_architecture.md`](00_internal_architecture.md):
@@ -24,7 +40,7 @@ L5  Workflow templates     (rates_agent/workflows/<template>/)
 L6  Frontend               (UI/macro-copilot-dashboard-polished/)
 ```
 
-L6 is the frontend. It is a single-page React application (Vite + TypeScript + Tailwind + React Router) that reads from the L5/L4/L3/L2 stack through a thin REST + WebSocket boundary at the orchestrator. **The frontend has no direct access to L1–L4**; every backend interaction goes through `/api/v1/...` or the `/ws/copilot_chat` socket.
+L6 is the frontend. It is a single-page React application (Vite + TypeScript + Tailwind + React Router) that reads from the L5/L4/L3/L2 stack through a thin REST + WebSocket boundary at the orchestrator. **The frontend has no direct access to L1–L4**; every backend interaction goes through `/api/v1/...` (REST) or the `ws://<host>/api/chat` socket (`VITE_WS_URL`, default `ws://localhost:8000/api/chat`).
 
 ## The layered frontend
 
@@ -185,7 +201,7 @@ What modules contribute to Library: when a user clicks "Open in Build" from the 
 ```
 User types in Ask Composer
          ↓
-WebSocket /ws/copilot_chat  ──→  Backend supervisor + child + workflow router
+WebSocket ws://<host>/api/chat  ──→  Backend supervisor + child + workflow router
          ↓
 WebSocket message buffer (CopilotContext)
          ↓
@@ -268,7 +284,7 @@ The widget catalogue (`WIDGET_TYPES`) is derived from modules' `monitor_surface`
 
 `CopilotContext` (`src/context/CopilotContext.tsx`) is a singleton React provider mounted above `AppShell` (in `App.tsx`). It owns:
 
-- One WebSocket connection to `/ws/copilot_chat`.
+- One WebSocket connection to `ws://<host>/api/chat` (`VITE_WS_URL`, default `ws://localhost:8000/api/chat`).
 - A message buffer (`messages: CopilotMessage[]`).
 - The `sendMessage(content)` action.
 - `isThinking`, `connectionStatus`, and trace-step reconciliation.
@@ -291,7 +307,7 @@ After Stage N of the migration ([`../06_roadmap/frontend_migration.md`](../06_ro
 | `UNSUPPORTED_KNOWN_TOOLS` | modules where `tiers ∋ paused` | `ReadonlySet<string>` |
 | `UNSUPPORTED_KNOWN_REASONS` | per-module `unsupportedReason` field | `Record<string, UnsupportedKnownReason>` |
 | `KNOWN_TOOL_ALIASES` | per-module `aliases` field (rare; for manifest shorthand vs canonical mismatch) | `Record<string, string>` |
-| `KNOWN_WORKFLOWS` | workflow modules where `tiers ∋ active` | `ReadonlySet<string>` |
+| `KNOWN_WORKFLOWS` | workflow modules whose runtime-status tier is neither `paused` nor `deferred` (default-active derivation) | `ReadonlySet<string>` |
 | `PAUSED_WORKFLOWS` | workflow modules where `tiers ∋ paused` | `ReadonlySet<string>` |
 | `MODELS` (modelRegistry) | per-primitive-module `richModel` field | `ModelMetadata[]` |
 | `TOOL_TO_VIEW` (contextDecoder) | per-primitive-module `typedView` field | `Record<string, PrimitiveViewKind>` |
@@ -340,16 +356,18 @@ The frontend talks to the backend through exactly these surfaces:
 | Surface | Used for |
 |---|---|
 | `GET /api/v1/library/manifest` | Library catalogue (LibraryPage) |
+| `GET /api/v1/tools` | Full tool catalogue (used by WorkflowsCataloguePage) |
 | `GET /api/v1/tools/{name}` | ToolCard for one tool (Library drawer + GenericPrimitiveBuilder) |
 | `POST /api/v1/tools/{name}/run` | Run a runnable primitive (GenericPrimitiveBuilder + BuilderCanvas) |
 | `GET /api/v1/rates/yield-snapshot` etc. | Pre-aggregated rates monitor widgets |
 | `GET /api/v1/rates/detail/{type}` | Typed primitive detail (Spread / CrossMarket / Butterfly / Yield / Scanner / Regime) |
-| `GET /api/v1/workflows/catalogue` | Workflows catalogue (legacy) |
-| `POST /api/v1/workflows/run` | Run a workflow template |
+| `GET /api/v1/workflows` | Workflow template catalogue (WorkflowsCataloguePage) |
+| `GET /api/v1/workflows/{templateId}` | Single workflow card |
+| `POST /api/v1/workflows/{templateId}/run` | Run a workflow template |
 | `GET /api/v1/workspace/{slug}` | Workspace detail + replay (BuildCompleted) |
 | `GET /api/v1/artifacts/{hash}/payload` | Artifact payload (DAG node fetch) |
 | `GET /api/v1/artifacts/{hash}/replay` | Artifact replay (provenance reconstruction) |
-| `WS /ws/copilot_chat` | Realtime chat (CopilotContext) |
+| `WS ws://<host>/api/chat` (`VITE_WS_URL`, default `ws://localhost:8000/api/chat`) | Realtime chat (CopilotContext via `useCopilot`) |
 
 Every service file in `src/services/` wraps one of these endpoint families. Per FP13, services are domain-blind — they pass strings through. Per FP9, they do not recompute.
 

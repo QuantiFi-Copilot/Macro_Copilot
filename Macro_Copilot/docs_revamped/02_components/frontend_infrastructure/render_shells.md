@@ -22,13 +22,22 @@ A shared render shell is a finance-blind React component that any module can dro
 
 ## AutoRenderer
 
-**Path.** `src/components/shared/render/AutoRenderer.tsx`
+**Path today.** `src/components/build/model/renderers/AutoRenderer.tsx`. **Target-state Stage N+**: `src/components/shared/render/AutoRenderer.tsx` (moved under `shared/render/` per the SI3 canonical-location convention).
 
-**Purpose.** Per-artifact-type output rendering. Given a `PrimitiveRunResult` from `POST /api/v1/tools/{name}/run`, AutoRenderer dispatches on `output_artifact_type` and renders a KPI strip + time-series mini-charts + provenance footer.
+**Purpose.** Output rendering by shape inference. Given a raw `output` dict from `POST /api/v1/tools/{name}/run`, AutoRenderer picks scalar metrics (via `pickScalarMetrics`) into a KPI strip, picks time-series fields (via `pickTimeSeriesFields`) into a grid of mini-charts, and falls through to a raw-JSON card when neither is present.
 
-**Dispatch axis.** `result.output_artifact_type` ∈ `{Series, Panel, SeriesSet, EventSet, WindowedPanel, TradeSet}`.
+**Dispatch axis (today).** Field-shape inference over the raw output dict (scalar numbers → KPI; time-series-shaped lists → chart). **Target-state Stage N+:** explicit dispatch on a wire `output_artifact_type` field once the backend ships it as a stable contract.
 
-**Prop interface.**
+**Prop interface (today).**
+```ts
+type Output = Record<string, unknown>;
+
+export function AutoRenderer({ output }: { output: Output }) { /* ... */ }
+```
+
+The single `output` prop is the raw `PrimitiveRunResult` payload's output dict. There is no separate `result` / `toolCard` plumbing today — methodology surfacing happens via separate `MethodologyPanel` components rendered alongside.
+
+**Target-state prop interface (Stage N+, once `output_artifact_type` is a stable wire field):**
 ```ts
 type AutoRendererProps = {
   result: PrimitiveRunResult;
@@ -37,8 +46,10 @@ type AutoRendererProps = {
 };
 ```
 
+The migration from the current `({ output })` shape to the typed `({ result, toolCard })` shape is a Stage N+ refactor; module surfaces that delegate today pass `output` verbatim and adapt when the contract shifts.
+
 **Used by.**
-- `GenericPrimitiveBuilder` (the centre column of the generic builder).
+- `OutputCanvas` (which wraps both generic builder + rich-model builder paths).
 - `MultiPrimitiveCanvas` (one card per primitive).
 - Module surfaces that delegate to it (rare; most modules either use generic_builder OR ship custom build surfaces).
 

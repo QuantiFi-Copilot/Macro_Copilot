@@ -40,32 +40,50 @@ The composition:
 
 The Library reads from `GET /api/v1/library/manifest` exactly once on page load. The manifest is the backend's `manifesto/03_tool_manifest/` YAMLs, aggregated server-side into a typed response.
 
-`useLibraryManifest` returns:
+`useLibraryManifest` returns the typed response declared in [`src/types/library.ts`](../../../UI/macro-copilot-dashboard-polished/src/types/library.ts):
+
 ```ts
-type ManifestResponse = {
-  agents: Record<string, ManifestAgent>;
+type LibraryManifestResponse = {
+  agents: Record<string, AgentManifest>;
   total_tools: number;
 };
 
-type ManifestAgent = {
-  agent_id: string;
+type AgentManifest = {
+  agent: string;
   tool_count: number;
+  tools: ManifestTool[];
   sub_agent_counts: Record<string, number>;
   category_counts: Record<string, number>;
-  tools: ManifestTool[];
 };
 
 type ManifestTool = {
   name: string;
+  domain: string;
   sub_agent: string;
-  category: string;
+  bucket: string;             // "1A" | "1B" | "2"
+  category: string;           // see CATEGORY_LABELS in types/library.ts
+  status: string;
+  implementation: ToolImplementation;
   one_liner: string;
-  implementation: { tool_function: string };
-  methodology: { what_it_does: string; conventions: ToolConventionDescriptor[] };
+  bucket_rationale: string;
+  pm_overridable: string[];
   related_tools: string[];
   workflows: string[];
+  references: string[];
+  built_date: string;
+  validation_status: string;
+};
+
+type ToolImplementation = {
+  mcp_server: string;
+  tool_function: string;
+  schema_: string;            // YAML "schema"; renamed to schema_ to avoid Pydantic clash
+  compute: string;
+  config: string;
 };
 ```
+
+Methodology + conventions are NOT in the manifest payload today — those live in the per-tool `ToolCard` returned by `GET /api/v1/tools/{name}` (consumed by the `ToolDetailDrawer` when the user opens a card).
 
 Per FP4, the Library does NOT consult `ALL_PRIMITIVE_MODULES` for its catalogue — the *backend's* manifest is the source. Modules contribute to Library indirectly via the "Open in Build" CTA (which goes through the contextDecoder which DOES read derived registries).
 
@@ -75,7 +93,7 @@ Per FP4, the Library does NOT consult `ALL_PRIMITIVE_MODULES` for its catalogue 
 
 Six rounded pill buttons: rates_agent (live), fx_agent (soon), credit_agent (soon), macro_equity (soon), policy_agent (soon), pm_orch (soon). Live agents are clickable; "soon" agents are disabled with a "ships in a follow-up" tooltip.
 
-Counts come from the manifest (`agents[agent_id].tool_count`). Dimmed agents show "—".
+Counts come from the manifest (`agents[<agent_slug>].tool_count`, where `<agent_slug>` is the dict key — e.g. `agents['rates_agent'].tool_count`). Dimmed agents show "—".
 
 Adding a new agent requires:
 1. Backend ships the agent's manifest entry.
@@ -84,7 +102,7 @@ Adding a new agent requires:
 
 ### InstrumentStrip (sub-agent filter)
 
-Shows sub-agents within the active agent (sovereign_bonds, ois, inflation_indexed_bonds, inflation_swaps, bond_futures, policy_futures for rates_agent). Counts come from `agents[agent_id].sub_agent_counts`.
+Shows sub-agents within the active agent (sovereign_bonds, ois, inflation_indexed_bonds, inflation_swaps, bond_futures, policy_futures for rates_agent). Counts come from `agents[<agent_slug>].sub_agent_counts`.
 
 Labels come from `SUB_AGENT_LABELS` in `src/types/library.ts`. **A backend-emitted sub-agent slug without a matching label renders as raw snake_case** — the Codex audit finding that prompted FP7's honest-disclosure enforcement at this surface. The fix is to extend `SUB_AGENT_LABELS` whenever a new sub-agent ships.
 

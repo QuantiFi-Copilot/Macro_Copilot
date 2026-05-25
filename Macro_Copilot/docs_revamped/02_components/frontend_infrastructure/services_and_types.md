@@ -17,10 +17,10 @@ One service file per backend route family. The mapping:
 | Service | Wraps | Used by |
 |---|---|---|
 | `ratesApi.ts` | `/api/v1/rates/yield-snapshot`, `/api/v1/rates/curve-shapes`, `/api/v1/rates/scanner`, `/api/v1/rates/cross-market`, `/api/v1/rates/regimes`, `/api/v1/rates/detail/{type}` | Monitor widgets, typed primitive views |
-| `workflowsApi.ts` | `/api/v1/workflows/catalogue`, `/api/v1/workflows/run`, `/api/v1/tools/{name}` (ToolCard), `/api/v1/tools/{name}/run` (PrimitiveRunResult) | GenericPrimitiveBuilder, WorkflowsCataloguePage, BuilderCanvas |
+| `workflowsApi.ts` | `GET /api/v1/workflows` (catalogue), `GET /api/v1/workflows/{templateId}` (single card), `POST /api/v1/workflows/{templateId}/run`, `GET /api/v1/tools`, `GET /api/v1/tools/{name}` (ToolCard), `POST /api/v1/tools/{name}/run` (PrimitiveRunResult) | GenericPrimitiveBuilder, WorkflowsCataloguePage, BuilderCanvas |
 | `libraryApi.ts` | `/api/v1/library/manifest` | LibraryPage |
 | `workspaceApi.ts` | `/api/v1/workspace/{slug}`, `/api/v1/workspace/{slug}/replay`, `/api/v1/artifacts/{hash}/payload`, `/api/v1/artifacts/{hash}/replay`, `POST /api/v1/workspace` | BuildShell, useWorkspaceDetail hook |
-| `copilot.ts` | WebSocket `/ws/copilot_chat` | CopilotContext |
+| `copilot.ts` (today via `src/hooks/useCopilot.ts`) | WebSocket `ws://<host>/api/chat` (`VITE_WS_URL`, default `ws://localhost:8000/api/chat`) | CopilotContext |
 
 ### Service file shape
 
@@ -64,7 +64,7 @@ One type file per wire-shape family. The mapping:
 |---|---|---|
 | `rates.ts` | Rates aggregated + typed-detail response shapes (CurveShapeRow, ScannerRow, CrossMarketRow, RegimeRow, YieldSnapshotRow, etc.) | Monitor widgets, typed primitive views |
 | `workflows.ts` | `WorkflowCatalogueResponse`, `ToolCard`, `ToolCardEnvelope`, `ToolConventionDescriptor`, `ToolFieldDescriptor`, `PrimitiveRunResult`, `PrimitiveTimeSeriesRow`, `SeriesIndexKind`, `SlotDeclaration` | Workflows page, library drawer, GenericPrimitiveBuilder, BuilderCanvas |
-| `library.ts` | `ManifestResponse`, `ManifestTool`, `ManifestAgent`, `CATEGORY_LABELS`, `CATEGORY_TONE`, `SUB_AGENT_LABELS`, `AGENT_LABELS` | LibraryPage and its sub-components |
+| `library.ts` | `LibraryManifestResponse`, `AgentManifest`, `ManifestTool`, `ToolImplementation`, `CATEGORY_LABELS`, `CATEGORY_TONE`, `SUB_AGENT_LABELS`, `AGENT_LABELS` | LibraryPage and its sub-components |
 | `artifacts.ts` | Wire `Series`, `Panel`, `SeriesSet`, `EventSet`, `WindowedPanel`, `TradeSet`, `NamedArtifact`, `ArtifactSummary`, `ArtifactPayloadResponse`, `ArtifactReplayResponse` | AutoRenderer, per-type widgets, workspace replay |
 | `copilot.ts` | Closed-family `CopilotMessage` union, workflow result envelope, server-event envelopes | CopilotContext, AskPage, BuildShell |
 | `common.ts` | Shared scalar types: `IsoDate`, `Currency`, `TenorString`, `CurveFamily`, primitives like `Bps`, `Percent` | All other type files (the only cross-import allowed) |

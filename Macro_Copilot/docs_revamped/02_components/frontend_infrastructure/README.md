@@ -160,7 +160,7 @@ Module-internal Prop interfaces (used inside `surfaces/<Name>.tsx`) follow the s
 | `src/services/workflowsApi.ts` | `/api/v1/workflows/...` + `/api/v1/tools/...` |
 | `src/services/libraryApi.ts` | `/api/v1/library/...` |
 | `src/services/workspaceApi.ts` | `/api/v1/workspace/...` + `/api/v1/artifacts/...` |
-| `src/services/copilot.ts` | WebSocket `/ws/copilot_chat` (paired with `src/context/CopilotContext.tsx`) |
+| `src/services/copilot.ts` (today: WebSocket logic lives in `src/hooks/useCopilot.ts`; future-state extraction into a service file is planned) | WebSocket `ws://<host>/api/chat` (`VITE_WS_URL`, default `ws://localhost:8000/api/chat`); paired with `src/context/CopilotContext.tsx` |
 
 | Type file | Owns |
 |---|---|

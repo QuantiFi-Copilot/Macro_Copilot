@@ -26,7 +26,7 @@ The architectural decision is recorded in [`../../05_decisions/0014-frontend-mod
 | `UNSUPPORTED_KNOWN_TOOLS` | `src/lib/toolNames.ts` | `ReadonlySet<string>` | modules where `tiers ∋ paused` |
 | `UNSUPPORTED_KNOWN_REASONS` | `src/lib/toolNames.ts` | `Record<string, UnsupportedKnownReason>` | `{ [m.toolName]: m.unsupportedReason }` for every module with a non-null reason |
 | `KNOWN_TOOL_ALIASES` | `src/lib/toolNames.ts` | `Record<string, string>` | from per-module `aliases` field (rare; manifest shorthand vs canonical) |
-| `KNOWN_WORKFLOWS` | `src/lib/toolNames.ts` | `ReadonlySet<string>` | workflow modules where `tiers ∋ active` |
+| `KNOWN_WORKFLOWS` | `src/lib/toolNames.ts` | `ReadonlySet<string>` | workflow modules whose runtime-status tier is neither `paused` nor `deferred` (default-active derivation) |
 | `PAUSED_WORKFLOWS` | `src/lib/toolNames.ts` | `ReadonlySet<string>` | workflow modules where `tiers ∋ paused` |
 | `MODELS` | `src/lib/modelRegistry.ts` | `ModelMetadata[]` | modules where `richModel === true`; the entry shape is the module's `displayName`, `category`, `oneLineSummary`, `defaultParams`, `paramHints`, `interpretationCards` |
 | `TOOL_TO_VIEW` | `src/components/build/primitive/contextDecoder.ts` | `Record<string, PrimitiveViewKind>` | modules where `typedView !== null`; entry is `{ [m.toolName]: m.typedView }` |
@@ -118,7 +118,7 @@ The procedure is the reverse: ADR, remove the derivation, remove consumers (or m
 ## Open questions
 
 1. **Library category derivation.** Today `CATEGORY_LABELS` (in `src/types/library.ts`) is hand-authored. Should it derive from manifest data the backend exposes via `/api/v1/library/manifest`? Today: hand-authored — the labels are display strings, not data. Revisit when label drift becomes a recurring failure.
-2. **Workflow tier vocabulary.** Today workflows share the primitive tier set. Should `KNOWN_WORKFLOWS` derive from `tier ∋ active` (a new tier) instead of "any workflow module without `paused | deferred`"? Today: implicit derivation; revisit when N ≥ 5 workflow modules.
+2. **Workflow tier vocabulary.** Workflows share the primitive tier set; the default-active derivation ("any workflow module without `paused | deferred`") avoids adding an `active` tier that would offer no extra information. Revisit when N ≥ 5 workflow modules and the derivation becomes ambiguous in practice.
 
 ## Version log
 

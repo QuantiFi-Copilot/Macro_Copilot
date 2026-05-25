@@ -70,7 +70,7 @@ A module claims exactly one. The runtime status is what the user effectively get
 
 ### `workflow_incompatible`
 
-**Means.** The backend has the primitive in `WORKFLOW_INCOMPATIBLE_TOOLS` ([`rates_agent/workflows/__init__.py:393`](../../../rates_agent/workflows/__init__.py:393)). The primitive is real, shipped, callable via the MCP boundary — but its output shape is intentionally NOT bridge-compatible (categorical labels, list of meeting snapshots, SCD2 transition logs). The generic `POST /tools/{name}/run` path would 500 because the executor cannot lift the output into a `Series` or `Panel` artifact.
+**Means.** The backend has the primitive in the `WORKFLOW_INCOMPATIBLE_TOOLS` dict in [`rates_agent/workflows/__init__.py`](../../../rates_agent/workflows/__init__.py) (search for `WORKFLOW_INCOMPATIBLE_TOOLS`). The primitive is real, shipped, callable via the MCP boundary — but its output shape is intentionally NOT bridge-compatible (categorical labels, list of meeting snapshots, SCD2 transition logs). The generic `POST /tools/{name}/run` route in [`api/routes/workflows/execute.py`](../../../api/routes/workflows/execute.py) returns an HTTP 200 envelope `{"ok": false, "tool_name": "...", "error": "...", "known_tool_names": [...]}` for unregistered primitives — not a 500 — but the result is still useless to the user because there is no live execution path. The `workflow_incompatible` tier exists so the UI surfaces an honest paused/typed-detail card instead of routing the user into that empty envelope.
 
 Today the closed set is three tools:
 - `classify_curve_move_tool` — categorical regime label.
@@ -189,9 +189,9 @@ Capability tiers describe what bespoke UI the module ships beyond the runtime-st
 
 **When to claim.** The desk reads this tool at a glance every day; a Monitor bento card is the canonical surface. Examples: yield snapshot, curve spreads, cross-market spreads, scanner, event-feed.
 
-**When NOT to claim.** The tool is a Build-only deep-dive surface; a Monitor card would be either too dense or too thin to be useful.
+**When NOT to claim.** The tool is a Build-only deep-dive surface; a Monitor card would be either too dense or too thin to be useful. Also: NEVER claim alongside `deferred` — deferred modules ship no surfaces by definition.
 
-**Combines with.** Any runtime-status tier (yes, even `paused` — a paused tool MAY have a Monitor card that renders the paused state inline). With `deferred` is allowed but unusual.
+**Combines with.** Any runtime-status tier EXCEPT `deferred`. With `paused` is allowed (a paused tool MAY have a Monitor card that renders the paused state inline).
 
 **Anti-patterns.**
 - A Monitor widget that re-implements the Build surface in a smaller frame. Monitor surfaces serve a different purpose (at-a-glance daily read); they're not miniature Build surfaces.
@@ -242,7 +242,7 @@ Adding a new tier requires:
 
 1. An ADR in [`../../05_decisions/`](../../05_decisions/) recording the closed-family extension with rationale, alternatives considered, and migration plan for existing modules.
 2. An amendment to this file (a new section under the appropriate group) and to [`README.md`](README.md) (the FM3 quick-index table).
-3. An amendment to [`../../../UI/macro-copilot-dashboard-polished/src/modules/types.ts`](../../../UI/macro-copilot-dashboard-polished/src/modules/types.ts) extending the `SurfaceTier` union literal.
+3. An amendment to the `SurfaceTier` union literal in `src/modules/types.ts` (file does not exist today; lands in Stage 2 alongside the first reference module).
 4. A migration sweep across existing modules to either claim or explicitly NOT claim the new tier — drift between "the tier exists" and "no module ever claims it" is a P8 violation.
 
 The closed family exists to prevent UI-tier proliferation. Extensions are deliberate, ADR-recorded, and rare.
