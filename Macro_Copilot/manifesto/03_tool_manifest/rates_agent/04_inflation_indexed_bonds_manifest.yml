@@ -408,3 +408,76 @@ tools:
     built_date: 2026-05-21
     validation_status: >-
       Not validated yet
+
+  - name: scan_inflation_linkers_extremes
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: scanners
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: scan_inflation_linkers_extremes_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/schemas.py::ScanInflationLinkersExtremesInput
+      compute: rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/compute.py::scan_inflation_linkers_extremes
+      config: rates_agent/inflation_indexed_bonds/tools/scan_inflation_linkers_extremes/config.yaml
+
+    one_liner: >-
+      Universe-wide linker real-yield sweep — ranks every.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: build_linker_panel
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: panels
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: build_linker_panel_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/build_linker_panel/schemas.py::BuildLinkerPanelInput
+      compute: rates_agent/inflation_indexed_bonds/tools/build_linker_panel/compute.py::build_linker_panel
+      config: rates_agent/inflation_indexed_bonds/tools/build_linker_panel/config.yaml
+
+    one_liner: >-
+      Assemble a wide multi-instrument Panel of inflation-linker REAL.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+

@@ -35,4 +35,113 @@
 #     bond-futures basis / financing primitives can be honest.
 # =============================================================================
 
-tools: []
+tools:
+
+  - name: get_futures_price_level
+    domain: rates
+    sub_agent: bond_futures
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/bond_futures/mcp_server.py
+      tool_function: get_futures_price_level_tool
+      schema: rates_agent/bond_futures/tools/futures_price_level/schemas.py::FuturesPriceLevelInput
+      compute: rates_agent/bond_futures/tools/futures_price_level/compute.py::futures_price_level
+      config: rates_agent/bond_futures/tools/futures_price_level/config.yaml
+
+    one_liner: >-
+      Single rolling-generic bond-futures price level — emits a.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: get_futures_volume_oi
+    domain: rates
+    sub_agent: bond_futures
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/bond_futures/mcp_server.py
+      tool_function: get_futures_volume_oi_tool
+      schema: rates_agent/bond_futures/tools/futures_volume_oi/schemas.py::FuturesVolumeOIInput
+      compute: rates_agent/bond_futures/tools/futures_volume_oi/compute.py::futures_volume_oi
+      config: rates_agent/bond_futures/tools/futures_volume_oi/config.yaml
+
+    one_liner: >-
+      Single rolling-generic bond-futures volume + open-interest snapshot —.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: scan_bond_futures_extremes
+    domain: rates
+    sub_agent: bond_futures
+    bucket: 1A
+    category: scanners
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/bond_futures/mcp_server.py
+      tool_function: scan_bond_futures_extremes_tool
+      schema: rates_agent/bond_futures/tools/scan_bond_futures_extremes/schemas.py::ScanBondFuturesExtremesInput
+      compute: rates_agent/bond_futures/tools/scan_bond_futures_extremes/compute.py::scan_bond_futures_extremes
+      config: rates_agent/bond_futures/tools/scan_bond_futures_extremes/config.yaml
+
+    one_liner: >-
+      Universe-wide front-month bond-futures sweep — ranks every.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+

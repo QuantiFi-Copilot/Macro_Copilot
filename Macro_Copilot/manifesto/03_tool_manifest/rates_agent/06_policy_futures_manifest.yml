@@ -40,4 +40,329 @@
 #     market data to the right contract identity.
 # =============================================================================
 
-tools: []
+tools:
+
+  - name: policy_futures_get_futures_price_level
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_price_level_tool
+      schema: rates_agent/policy_futures/tools/futures_price_level/schemas.py::FuturesPriceLevelInput
+      compute: rates_agent/policy_futures/tools/futures_price_level/compute.py::futures_price_level
+      config: rates_agent/policy_futures/tools/futures_price_level/config.yaml
+
+    one_liner: >-
+      Single policy-futures strip-position price level — emits a.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_volume_open_interest_snapshot
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_volume_open_interest_snapshot_tool
+      schema: rates_agent/policy_futures/tools/volume_open_interest_snapshot/schemas.py::VolumeOpenInterestSnapshotInput
+      compute: rates_agent/policy_futures/tools/volume_open_interest_snapshot/compute.py::volume_open_interest_snapshot
+      config: rates_agent/policy_futures/tools/volume_open_interest_snapshot/config.yaml
+
+    one_liner: >-
+      Single policy-futures strip-position volume + open-interest.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_futures_calendar_spread
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: spreads
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_calendar_spread_tool
+      schema: rates_agent/policy_futures/tools/futures_calendar_spread/schemas.py::FuturesCalendarSpreadInput
+      compute: rates_agent/policy_futures/tools/futures_calendar_spread/compute.py::futures_calendar_spread
+      config: rates_agent/policy_futures/tools/futures_calendar_spread/config.yaml
+
+    one_liner: >-
+      Same-curve calendar spread on the policy-futures strip — emits a.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_futures_butterfly_simple
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: spreads
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_butterfly_simple_tool
+      schema: rates_agent/policy_futures/tools/futures_butterfly_simple/schemas.py::FuturesButterflySimpleInput
+      compute: rates_agent/policy_futures/tools/futures_butterfly_simple/compute.py::futures_butterfly_simple
+      config: rates_agent/policy_futures/tools/futures_butterfly_simple/config.yaml
+
+    one_liner: >-
+      Same-curve simple butterfly (3-point curvature) on the policy-.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_futures_cross_market_spread
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: spreads
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_cross_market_spread_tool
+      schema: rates_agent/policy_futures/tools/futures_cross_market_spread/schemas.py::FuturesCrossMarketSpreadInput
+      compute: rates_agent/policy_futures/tools/futures_cross_market_spread/compute.py::futures_cross_market_spread
+      config: rates_agent/policy_futures/tools/futures_cross_market_spread/config.yaml
+
+    one_liner: >-
+      Matched-strip cross-market implied-rate differential on the policy-.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_futures_strip_snapshot
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_strip_snapshot_tool
+      schema: rates_agent/policy_futures/tools/futures_strip_snapshot/schemas.py::FuturesStripSnapshotInput
+      compute: rates_agent/policy_futures/tools/futures_strip_snapshot/compute.py::futures_strip_snapshot
+      config: rates_agent/policy_futures/tools/futures_strip_snapshot/config.yaml
+
+    one_liner: >-
+      Whole-strip side-by-side snapshot for ONE policy-futures.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: policy_futures_get_futures_pack_average_simple
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: aggregates
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: policy_futures_get_futures_pack_average_simple_tool
+      schema: rates_agent/policy_futures/tools/futures_pack_average_simple/schemas.py::FuturesPackAverageSimpleInput
+      compute: rates_agent/policy_futures/tools/futures_pack_average_simple/compute.py::futures_pack_average_simple
+      config: rates_agent/policy_futures/tools/futures_pack_average_simple/config.yaml
+
+    one_liner: >-
+      Pack-average implied rate (arithmetic mean) for ONE policy-futures.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: get_scan_policy_futures_extremes
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: scanners
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: get_scan_policy_futures_extremes_tool
+      schema: rates_agent/policy_futures/tools/scan_policy_futures_extremes/schemas.py::ScanPolicyFuturesExtremesInput
+      compute: rates_agent/policy_futures/tools/scan_policy_futures_extremes/compute.py::scan_policy_futures_extremes
+      config: rates_agent/policy_futures/tools/scan_policy_futures_extremes/config.yaml
+
+    one_liner: >-
+      Universe-wide policy-futures strip scan — ranks every.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
+  - name: build_policy_futures_strip_panel
+    domain: rates
+    sub_agent: policy_futures
+    bucket: 1A
+    category: panels
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/policy_futures/mcp_server.py
+      tool_function: build_policy_futures_strip_panel_tool
+      schema: rates_agent/policy_futures/tools/build_policy_futures_strip_panel/schemas.py::BuildPolicyFuturesStripPanelInput
+      compute: rates_agent/policy_futures/tools/build_policy_futures_strip_panel/compute.py::build_policy_futures_strip_panel
+      config: rates_agent/policy_futures/tools/build_policy_futures_strip_panel/config.yaml
+
+    one_liner: >-
+      Assemble a wide multi-instrument Panel of policy-futures.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+
