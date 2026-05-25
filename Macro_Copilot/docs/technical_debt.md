@@ -349,6 +349,117 @@ WHEN:  After TD #32 and TD #27 both close.  Per user direction, the
 EFFORT: Small for the primitive itself once both substrate gaps are
        closed; the underlying ingestion work is captured under
        TD #32 + TD #27.
+SEE ALSO: TD #34 (FWCV-as-Bloomberg-Terminal-screen) is a separate but
+       reinforcing block on any carry-flavoured primitive that would
+       INGEST forwards/carry directly from Bloomberg rather than
+       composing them from substrate.
+
+
+### 34. FWCV forward/carry — not a Bloomberg data-API field; INGEST primitives blocked
+WHERE: rates_agent/sovereign_bonds/tools/ + rates_agent/ois/tools/
+       (three planned INGEST primitives do NOT exist; tracked in
+       tmp/primitive_expansion/phase3.md Step 3).
+WHAT:  Phase 3 Step 3 enumerates three INGEST primitives that must
+       read Bloomberg FWCV-derived forward rates and carry/roll fields
+       per sovereign + OIS curve:
+         - sovereign_forward_rate    (rates_agent/sovereign_bonds/)
+         - sovereign_carry_and_rolldown (rates_agent/sovereign_bonds/)
+         - ois_forward_carry         (rates_agent/ois/)
+
+       Per P12 these MUST be INGEST primitives — recomputing the FWCV
+       output from substrate yield pillars + a constructed financing
+       curve would be a proxy under the desk-recognised name, banned
+       outright. The Phase 3 plan therefore depends on FWCV values
+       being reachable through the Bloomberg data API (bdh / bdp /
+       bds).
+
+       A4 verification on the sovereign benchmark playbook
+       (sovereign_bonds.yml v1.3, header note quoted verbatim):
+
+         "FWCV forward/carry is likewise not a Bloomberg data-API
+         field — a separate access-pattern investigation, not part of
+         this playbook."
+
+       That probe established that FWCV is a Bloomberg Terminal screen
+       function (an interactive curve workspace), not a published bdh
+       / bdp / bds field. The standard ingestion pipeline
+       (utils/historical_extractor.py + utils/incremental_extractor.py
+       → parquet → GCS → ingestion/ingest_parquet.py) cannot reach it
+       under the current adapter shape.
+IMPACT: Three Phase 3 INGEST primitives are blocked at the data-
+       access layer, not at the schema, code, or methodology layer:
+         - sovereign_forward_rate — N-period forward rate at any
+           tenor anchor, source-of-record bootstrapped curve.
+         - sovereign_carry_and_rolldown — horizon carry + roll-down
+           per benchmark tenor, source-of-record Bloomberg FWCV.
+         - ois_forward_carry — analogue on the OIS leg per RFR family.
+
+       Downstream consequences:
+         - Phase 2's D-tenor-mesh (denser benchmark pillars) does NOT
+           unlock carry/roll on its own (Codex correction documented in
+           phase2.md §Step 6) — without FWCV the substrate has no
+           source-of-record path to ingest the carry values, so the
+           denser pillars improve only PCA precision + cross-sectional
+           density, not carry-trade analytics.
+         - TD #33's carry_adjusted_breakeven primitive (deferred
+           PR9-composition) inherits this block via its nominal leg:
+           the nominal-bond carry it consumes would itself be FWCV-
+           derived if INGEST were available.
+         - Phase 4's realistic-financing backtest (Step 5) is
+           independently blocked by D-repo (TD #29 + TD #30); FWCV is
+           a parallel block on the carry-side honesty story, not the
+           financing-side.
+FIX:   Investigation, not implementation. Four candidate unblock
+       paths to evaluate before any new primitive PR is opened:
+
+         (a) Bloomberg BCurveStrip API — the Bloomberg-provided curve-
+             strip endpoint (BLP-side equivalent of the FWCV screen).
+             If reachable from the bbg-api wheel currently used by
+             ingestion/, this is the lowest-friction path: a new
+             extractor mode + ingester route + carry/forward
+             time-series table. Per P7 / P12 the read still happens
+             only at L1 (no vendor-shape leakage to L2+).
+
+         (b) Third-party forwards feed — ICAP / Tullett Prebon / ICE
+             curve services that publish bootstrapped forward + carry
+             curves daily. License + adapter cost; introduces a
+             second L1 source for the same logical fact (per P7,
+             allowed iff the adapter contract is held identical).
+
+         (c) Terminal-export pipeline — manual / scheduled Bloomberg
+             Terminal export of the FWCV screen contents to a CSV or
+             parquet artifact that the existing ingester can pick up
+             from GCS. Highest operational fragility (a human-in-the-
+             loop step on the Bloomberg PC each cycle); only
+             acceptable as a stop-gap with a documented retire-by
+             date.
+
+         (d) Computed-with-disclosure path (NON-DEFAULT) — recompute
+             forwards / carry from substrate yields + a chosen
+             financing convention, expose ONLY behind an explicit
+             `analyst_override` knob per the P12 narrow allowance,
+             with full P5 disclosure on the methodology card. This is
+             explicitly NOT a substitute for INGEST under the
+             desk-recognised primitive name; it would ship as a
+             differently-named override primitive (e.g.
+             `compute_forward_from_pillars_override`) so a PM cannot
+             consume it on the wrong assumption.
+
+       The expected output of the investigation is an ADR in
+       docs_revamped/05_decisions/ that picks one of (a)/(b)/(c) as
+       the production path (with (d) reserved for the narrow
+       analyst-override case), then unblocks the three Phase 3
+       INGEST primitives.
+WHEN:  Before any Phase 3 Step 3 INGEST primitive PR is opened.
+       Until then, sovereign_forward_rate, sovereign_carry_and_rolldown
+       and ois_forward_carry stay deferred (and so does
+       TD #33's carry_adjusted_breakeven on its nominal leg).
+EFFORT: Investigation: Small (~1 day to enumerate the bbg-api surface
+       and probe BCurveStrip; ~1 day to evaluate vendor alternatives).
+       Production path: Medium-High (any of (a)/(b)/(c) is a new
+       extractor mode + new ingester route + new SCD2-or-time-series
+       schema for the carry/forward values + a small INGEST primitive
+       per consumer).
 
 
 ## MEDIUM — Fix within first quarter
