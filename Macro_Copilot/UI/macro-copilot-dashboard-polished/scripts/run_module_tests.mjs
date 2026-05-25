@@ -55,6 +55,10 @@ const ALIAS_AT = `--alias:@=${join(PROJECT_ROOT, 'src')}`;
 // ----------------------------------------------------------------------------
 
 function findTestFiles(roots) {
+  // Stage 3 extension — discovers BOTH ``*.test.ts`` (Stage 2 lib
+  // tests) AND ``*.spec.ts`` (per-module round-trip tests, named
+  // per the FM11 contract in
+  // ``docs_revamped/02_components/frontend_module/README.md``).
   const out = [];
   function walk(dir) {
     let entries;
@@ -68,7 +72,10 @@ function findTestFiles(roots) {
       const s = statSync(full);
       if (s.isDirectory()) {
         walk(full);
-      } else if (s.isFile() && name.endsWith('.test.ts')) {
+      } else if (
+        s.isFile() &&
+        (name.endsWith('.test.ts') || name.endsWith('.spec.ts'))
+      ) {
         out.push(full);
       }
     }

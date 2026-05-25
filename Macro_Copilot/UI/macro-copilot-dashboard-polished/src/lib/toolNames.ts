@@ -1,4 +1,20 @@
 // ============================================================================
+// Stage 3 hybrid derivation (see end of file)
+// ----------------------------------------------------------------------------
+// The four data registries below (KNOWN_BACKEND_TOOLS,
+// RUNNABLE_PRIMITIVE_TOOLS, UNSUPPORTED_KNOWN_TOOLS,
+// UNSUPPORTED_KNOWN_REASONS) became HYBRID at Stage 3: the existing
+// hand-authored literals are renamed ``_HAND_AUTHORED_*`` and a
+// module-derived contribution is computed from ``ALL_PRIMITIVE_MODULES``.
+// The public exports are the unions.  WORKFLOW_INCOMPATIBLE_TOOLS and
+// the workflow registry stay hand-authored only (preserves the Stage 1
+// decoder routing semantics — the module's tier-level classification
+// is bookkeeping, the decoder's set determines routing).
+// ============================================================================
+
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
+
+// ============================================================================
 // toolNames.ts — canonical tool-name normalisation + known-tool registry.
 // ----------------------------------------------------------------------------
 // Several surfaces refer to the same primitive by different name shapes:
@@ -110,7 +126,7 @@ export function isAliasedToolName(name: string): boolean {
  *  tool``, ``classify_curve_move_tool``, ``scan_extremes_tool``) which
  *  are NOT in the workflow primitive registry but have typed-detail
  *  endpoints on the rates API. */
-export const KNOWN_BACKEND_TOOLS: ReadonlySet<string> = new Set<string>([
+const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
   // Sovereign-bond primitives (backend registry)
   'build_sovereign_yield_panel_tool',
   'calculate_beta_adjusted_spread_tool',
@@ -204,6 +220,23 @@ export const KNOWN_BACKEND_TOOLS: ReadonlySet<string> = new Set<string>([
   'calculate_wirp_meeting_pricing_tool',
 ]);
 
+// Stage 3 — module-derived contribution.  Every module's toolName
+// joins KNOWN_BACKEND_TOOLS via the union below; today the modules
+// echo the hand-authored entries verbatim so the resulting set is
+// behaviour-identical to Stage 1.  From Stage 4a onward, as the
+// hand-authored entries shrink and the modules carry their own
+// surface refs, this derivation becomes the primary source.
+const _MODULE_DERIVED_KNOWN_BACKEND_TOOLS = new Set<string>(
+  ALL_PRIMITIVE_MODULES.map((m) => m.toolName),
+);
+
+/** Every tool name the backend / manifest declares.  Stage 3 hybrid:
+ *  union of hand-authored (Stage 1) + module-derived (Stage 3+). */
+export const KNOWN_BACKEND_TOOLS: ReadonlySet<string> = new Set<string>([
+  ..._HAND_AUTHORED_KNOWN_BACKEND_TOOLS,
+  ..._MODULE_DERIVED_KNOWN_BACKEND_TOOLS,
+]);
+
 /** True when ``name`` (normalised) is a tool the backend / manifest
  *  declares — i.e. NOT a truly-unknown / typo / hallucinated name.
  *  Build uses this to decide between the unsupported-known card and
@@ -230,7 +263,7 @@ export function isKnownBackendTool(name: string): boolean {
 // adding a primitive to the backend = add it here too (the
 // routingCoverage test asserts the count + names).
 
-export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
+const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
   // Sovereign-bond primitives in the workflow registry.
   'build_sovereign_yield_panel_tool',
   'calculate_beta_adjusted_spread_tool',
@@ -302,6 +335,21 @@ export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
   'calculate_inflation_swap_butterfly_tool',
 ]);
 
+// Stage 3 — module-derived contribution: every module that claims the
+// ``generic_runnable`` runtime-status tier.
+const _MODULE_DERIVED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>(
+  ALL_PRIMITIVE_MODULES
+    .filter((m) => m.tiers.includes('generic_runnable'))
+    .map((m) => m.toolName),
+);
+
+/** Every tool with a backend run endpoint.  Stage 3 hybrid: union of
+ *  hand-authored (Stage 1) + module-derived (Stage 3+). */
+export const RUNNABLE_PRIMITIVE_TOOLS: ReadonlySet<string> = new Set<string>([
+  ..._HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS,
+  ..._MODULE_DERIVED_RUNNABLE_PRIMITIVE_TOOLS,
+]);
+
 /** True when the tool has a backend run endpoint (the FastAPI
  *  ``POST /api/v1/tools/{name}/run`` surface, backed by
  *  ``rates_primitive_resolver``).  PR2 uses this to decide between
@@ -369,12 +417,26 @@ export function isWorkflowIncompatibleTool(name: string): boolean {
 // Membership here ⇒ Build renders the unsupported-known card with
 // the per-tool reason in ``UNSUPPORTED_KNOWN_REASONS`` below.
 
-export const UNSUPPORTED_KNOWN_TOOLS: ReadonlySet<string> = new Set<string>([
+const _HAND_AUTHORED_UNSUPPORTED_KNOWN_TOOLS = new Set<string>([
   // Manifest-declared but no backend implementation; clicking opens
   // an unsupported card explaining the gap.  No ``PrimitiveSpec`` ⇒
   // no ``POST /tools/{name}/run`` path ⇒ no generic builder ⇒ this
   // is the right surface.
   'scan_ois_extremes_tool',
+]);
+
+// Stage 3 — module-derived contribution: every module that claims the
+// ``paused`` runtime-status tier.
+const _MODULE_DERIVED_UNSUPPORTED_KNOWN_TOOLS = new Set<string>(
+  ALL_PRIMITIVE_MODULES
+    .filter((m) => m.tiers.includes('paused'))
+    .map((m) => m.toolName),
+);
+
+/** Every tool surfacing the unsupported-known card.  Stage 3 hybrid. */
+export const UNSUPPORTED_KNOWN_TOOLS: ReadonlySet<string> = new Set<string>([
+  ..._HAND_AUTHORED_UNSUPPORTED_KNOWN_TOOLS,
+  ..._MODULE_DERIVED_UNSUPPORTED_KNOWN_TOOLS,
 ]);
 
 export interface UnsupportedKnownReason {
@@ -397,7 +459,7 @@ export interface UnsupportedKnownReason {
  *  OIS rate level) were retired because those tools route through the
  *  generic schema-driven builder now.  Only the genuinely-paused
  *  ``scan_ois_extremes_tool`` survives. */
-export const UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> = {
+const _HAND_AUTHORED_UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> = {
   scan_ois_extremes_tool: {
     label: 'OIS extremes scanner',
     reason:
@@ -421,6 +483,29 @@ export const UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> =
     whatWorksNow:
       'Ask can run it via MCP and surface the meeting strip inline; the typed-detail endpoint is forthcoming.',
   },
+};
+
+// Stage 3 — module-derived contribution: every module that ships an
+// ``unsupportedReason``.  Hand-authored entries take precedence on
+// conflict (deterministic; matches the Stage 1 source-of-truth).  New
+// entries from modules surface for tools whose decoder routes to a
+// typed view at runtime (so the reason is documentation only); the
+// extra entries are harmless because the UnsupportedKnownToolCanvas
+// never mounts for them.
+const _MODULE_DERIVED_UNSUPPORTED_KNOWN_REASONS: Record<
+  string,
+  UnsupportedKnownReason
+> = Object.fromEntries(
+  ALL_PRIMITIVE_MODULES
+    .filter((m) => m.unsupportedReason != null)
+    .map((m) => [m.toolName, m.unsupportedReason as UnsupportedKnownReason]),
+);
+
+/** Per-tool copy for the unsupported-known card.  Stage 3 hybrid:
+ *  hand-authored entries WIN on conflict (Object.assign order). */
+export const UNSUPPORTED_KNOWN_REASONS: Record<string, UnsupportedKnownReason> = {
+  ..._MODULE_DERIVED_UNSUPPORTED_KNOWN_REASONS,
+  ..._HAND_AUTHORED_UNSUPPORTED_KNOWN_REASONS,
 };
 
 /** Returns the per-tool unsupported-known reason or a generic fallback

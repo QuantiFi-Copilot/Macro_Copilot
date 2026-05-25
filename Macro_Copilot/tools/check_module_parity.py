@@ -111,6 +111,26 @@ def read_backend_workflow_incompatible() -> set[str]:
     return set(WORKFLOW_INCOMPATIBLE_TOOLS.keys())
 
 
+def read_backend_manifest_only() -> set[str]:
+    """Import ``orchestrator.events._MANIFEST_ONLY_BUILD_TOOLS`` — the
+    closed set of tools that have a backend implementation (typed-detail
+    endpoint or workflow-incompatible) but aren't in ``_PRIMITIVE_SPECS``.
+    Stage 3 modules legitimately exist for these tools (e.g.
+    ``calculate_butterfly_tool``, ``scan_extremes_tool``,
+    ``scan_ois_extremes_tool``) so the parity check counts them as
+    real backend tools, not as frontend-orphans."""
+    sys.path.insert(0, str(REPO_ROOT))
+    try:
+        from orchestrator.events import _MANIFEST_ONLY_BUILD_TOOLS  # type: ignore
+    except ImportError as exc:
+        print(
+            f"error: could not import orchestrator.events._MANIFEST_ONLY_BUILD_TOOLS: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return set(_MANIFEST_ONLY_BUILD_TOOLS)
+
+
 # -----------------------------------------------------------------------------
 # Frontend ground-truth readers.
 # -----------------------------------------------------------------------------
@@ -172,9 +192,13 @@ def read_loader_imports() -> set[str]:
     # example import lines inside doc comments that the regex would
     # otherwise pick up as real imports.
     text = _strip_comments(text)
-    # Match: ``import { MODULE as <NAME> } from './primitives/<FOLDER>';``
+    # Match: ``import { MODULE as <NAME> } from './primitives/<FOLDER>/module';``
+    # (Stage 3 settled on the explicit ``/module`` path because the
+    # TypeScript Bundler resolver doesn't auto-resolve a bare folder
+    # path to ``module.ts``; only ``index.ts``.)  The optional ``/module``
+    # tail keeps the regex compatible with both shapes for safety.
     pattern = re.compile(
-        r"import\s*\{\s*MODULE\s+as\s+(\w+)\s*\}\s*from\s*['\"]\.\/(?:primitives|workflows)\/([\w\-]+)['\"]"
+        r"import\s*\{\s*MODULE\s+as\s+(\w+)\s*\}\s*from\s*['\"]\.\/(?:primitives|workflows)\/([\w\-]+)(?:\/module)?['\"]"
     )
     out: set[str] = set()
     for match in pattern.finditer(text):
@@ -299,7 +323,12 @@ def main() -> int:
     # ---- Read ground truth ----------------------------------------
     backend_runnable = read_backend_primitive_specs()
     backend_workflow_incompat = read_backend_workflow_incompatible()
-    backend_primitives = backend_runnable | backend_workflow_incompat
+    backend_manifest_only = read_backend_manifest_only()
+    # Union of all three — frontend modules may legitimately exist
+    # for any tool the backend recognises through ANY of these paths.
+    backend_primitives = (
+        backend_runnable | backend_workflow_incompat | backend_manifest_only
+    )
 
     frontend_primitive_folders = read_frontend_primitive_modules()
     loader_imports = read_loader_imports()
@@ -319,10 +348,11 @@ def main() -> int:
     print("=" * 72)
     print("Module parity check (Stage 2)")
     print("=" * 72)
-    print(f"  backend runnable primitives:       {len(backend_runnable):3d}")
-    print(f"  backend workflow_incompatible:     {len(backend_workflow_incompat):3d}")
-    print(f"  backend union (primitives total):  {len(backend_primitives):3d}")
-    print(f"  frontend primitive module folders: {len(frontend_primitive_folders):3d}")
+    print(f"  backend runnable primitives:        {len(backend_runnable):3d}")
+    print(f"  backend workflow_incompatible:      {len(backend_workflow_incompat):3d}")
+    print(f"  backend manifest_only_build:        {len(backend_manifest_only):3d}")
+    print(f"  backend union (primitives total):   {len(backend_primitives):3d}")
+    print(f"  frontend primitive module folders:  {len(frontend_primitive_folders):3d}")
     print(f"  Stage-4 refactor whitelist:        {len(STAGE_4_REFACTOR_WHITELIST):3d}")
     print(
         f"  backend tools not yet in module folders (after whitelist): "
