@@ -203,8 +203,14 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=55,  # 11 currencies × 5 tenors
         min_rows_per_sheet=500,  # CNH vol from ~2012, others variable
     ),
-    "vol_smile": SubstrateConfig(
-        name="vol_smile",
+    # Smile is split across 2 XLSX files (G10 and EM) but lands in ONE
+    # playbook fx_vol_smile.yml per Codex's call. Run twice: once with
+    # --substrate vol_smile_g10 and once with --substrate vol_smile_em.
+    # Both use playbook_name="fx_vol_smile" so they share the same audit
+    # lineage and refresh_instrument_metadata --playbook fx_vol_smile
+    # updates both batches in one pass.
+    "vol_smile_g10": SubstrateConfig(
+        name="vol_smile_g10",
         playbook_name="fx_vol_smile",
         dataset_name="fx_vol_smile",
         instrument_type="fx_vol_smile",
@@ -212,8 +218,20 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
             r"^(?P<pair>[A-Z]{6})_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)$"
         ),
         ticker_builder=_build_vol_smile_ticker,
-        expected_sheet_count=156,  # G10 (72) + EM (84) combined in fx_vol_smile.yml
-        min_rows_per_sheet=500,  # smile history variable, some EM smile from later
+        expected_sheet_count=72,  # 6 G10 pairs × 4 smile points × 3 tenors
+        min_rows_per_sheet=500,
+    ),
+    "vol_smile_em": SubstrateConfig(
+        name="vol_smile_em",
+        playbook_name="fx_vol_smile",
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD[A-Z]{3})_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=84,  # 7 EM pairs × 4 smile points × 3 tenors
+        min_rows_per_sheet=300,  # EM smile sometimes has shorter history
     ),
 }
 
