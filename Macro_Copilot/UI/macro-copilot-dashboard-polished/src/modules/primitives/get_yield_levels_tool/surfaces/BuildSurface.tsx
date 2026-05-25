@@ -17,21 +17,21 @@
 // ============================================================================
 
 import type { YieldLevelOutput } from '@/types/rates';
-import { PrimitiveChart, type PrimitiveChartPoint } from './PrimitiveChart';
+import { PrimitiveChart, type PrimitiveChartPoint } from '@/components/build/primitive/PrimitiveChart';
 import {
   PrimitiveMetrics,
   formatSigned,
   toneForChange,
   toneForZScore,
   type MetricItem,
-} from './PrimitiveMetrics';
-import { PrimitiveCanvasShell, ToolNameChip } from './PrimitiveCanvasShell';
+} from '@/components/build/primitive/PrimitiveMetrics';
+import { PrimitiveCanvasShell, ToolNameChip } from '@/components/build/primitive/PrimitiveCanvasShell';
 
 type Props = {
   payload: YieldLevelOutput;
 };
 
-export function YieldPrimitiveView({ payload }: Props) {
+function YieldPrimitiveView({ payload }: Props) {
   const { current_metrics: cm, time_series } = payload;
 
   // PR-E — map the canonical TimeSeries rows onto PrimitiveChart's
@@ -144,3 +144,5 @@ export function YieldPrimitiveView({ payload }: Props) {
     </PrimitiveCanvasShell>
   );
 }
+
+export default YieldPrimitiveView;

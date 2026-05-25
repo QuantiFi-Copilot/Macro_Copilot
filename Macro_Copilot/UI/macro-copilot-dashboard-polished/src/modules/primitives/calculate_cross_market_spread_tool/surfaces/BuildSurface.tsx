@@ -1,35 +1,35 @@
 // ============================================================================
-// ButterflyPrimitiveView — view for ``calculate_butterfly_tool``.
+// CrossMarketPrimitiveView — view for ``calculate_cross_market_spread_tool``.
 // ----------------------------------------------------------------------------
-// 3-leg curvature trade.  Reshell of the legacy ButterflyView onto
-// PrimitiveCanvasShell (phase R2).
+// Cross-market spread of two sovereign curves at a single tenor.  Reshell of
+// the legacy CrossMarketView onto PrimitiveCanvasShell (phase R2).
 // ============================================================================
 
-import type { ButterflyOutput } from '@/types/rates';
-import { PrimitiveChart, type PrimitiveChartPoint } from './PrimitiveChart';
+import type { CrossMarketSpreadOutput } from '@/types/rates';
+import { PrimitiveChart, type PrimitiveChartPoint } from '@/components/build/primitive/PrimitiveChart';
 import {
   PrimitiveZScoreChart,
   type PrimitiveZScorePoint,
-} from './PrimitiveZScoreChart';
+} from '@/components/build/primitive/PrimitiveZScoreChart';
 import {
   PrimitiveMetrics,
   formatSigned,
   toneForChange,
   toneForZScore,
   type MetricItem,
-} from './PrimitiveMetrics';
-import { PrimitiveCanvasShell, ToolNameChip } from './PrimitiveCanvasShell';
+} from '@/components/build/primitive/PrimitiveMetrics';
+import { PrimitiveCanvasShell, ToolNameChip } from '@/components/build/primitive/PrimitiveCanvasShell';
 
 type Props = {
-  payload: ButterflyOutput;
+  payload: CrossMarketSpreadOutput;
 };
 
-export function ButterflyPrimitiveView({ payload }: Props) {
+function CrossMarketPrimitiveView({ payload }: Props) {
   const { current_metrics: cm, time_series } = payload;
 
   const chartPoints: PrimitiveChartPoint[] = time_series.map((row) => ({
     date: row.date,
-    value: row.butterfly_bps,
+    value: row.spread_bps,
     z_score: row.z_score ?? null,
   }));
 
@@ -40,8 +40,8 @@ export function ButterflyPrimitiveView({ payload }: Props) {
 
   const items: MetricItem[] = [
     {
-      label: 'Butterfly',
-      value: cm.current_butterfly_bps?.toFixed(1) ?? '—',
+      label: 'Spread',
+      value: cm.current_spread_bps?.toFixed(1) ?? '—',
       unit: 'bps',
       emphasis: true,
     },
@@ -50,6 +50,18 @@ export function ButterflyPrimitiveView({ payload }: Props) {
       value: formatSigned(cm.daily_change_bps, 1),
       unit: 'bps',
       tone: toneForChange(cm.daily_change_bps),
+    },
+    {
+      label: 'Weekly Δ',
+      value: formatSigned(cm.weekly_change_bps, 1),
+      unit: 'bps',
+      tone: toneForChange(cm.weekly_change_bps),
+    },
+    {
+      label: 'Monthly Δ',
+      value: formatSigned(cm.monthly_change_bps, 1),
+      unit: 'bps',
+      tone: toneForChange(cm.monthly_change_bps),
     },
     {
       label: 'Z-score',
@@ -74,54 +86,39 @@ export function ButterflyPrimitiveView({ payload }: Props) {
       unit: 'bps',
     },
     {
-      label: 'Wing short',
-      value: cm.wing_short_bps?.toFixed(1) ?? '—',
-      unit: 'bps',
-    },
-    {
-      label: 'Wing long',
-      value: cm.wing_long_bps?.toFixed(1) ?? '—',
-      unit: 'bps',
-    },
-    {
-      label: 'Short yld',
-      value: cm.short_tenor_yield?.toFixed(3) ?? '—',
+      label: `${cm.curve_family_1} ${cm.tenor}`,
+      value: cm.curve_family_1_yield?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
-      label: 'Belly yld',
-      value: cm.belly_tenor_yield?.toFixed(3) ?? '—',
-      unit: '%',
-    },
-    {
-      label: 'Long yld',
-      value: cm.long_tenor_yield?.toFixed(3) ?? '—',
+      label: `${cm.curve_family_2} ${cm.tenor}`,
+      value: cm.curve_family_2_yield?.toFixed(3) ?? '—',
       unit: '%',
     },
   ];
 
   return (
     <PrimitiveCanvasShell
-      kicker="Primitive · Butterfly"
-      title={`${cm.curve_family} ${cm.butterfly_label}`}
-      subtitle="Belly-vs-wings curvature across three tenors."
+      kicker="Primitive · Cross-Market Spread"
+      title={`${cm.spread_label} · ${cm.tenor}`}
+      subtitle="Same-tenor spread between two sovereign curves."
       asOfDate={cm.as_of_date ?? null}
-      meta={<ToolNameChip tool="calculate_butterfly_tool" />}
+      meta={<ToolNameChip tool="calculate_cross_market_spread_tool" />}
       methodology={
         <p>
           <span className="font-medium text-fg-primary">
-            Butterfly = 2 × Belly yield − (Short yield + Long yield)
-          </span>, in basis points.  Positive values mean the belly is rich
-          relative to the wings; negative means cheap.  Z-score uses a{' '}
+            Spread = Curve₁ yield − Curve₂ yield
+          </span>{' '}
+          at the chosen tenor, in basis points. Rolling z-score uses a{' '}
           <span className="font-mono">{cm.rolling_window_days}-day</span>{' '}
-          rolling window.
+          window.  Source: Bloomberg mid-yield, NY-Fed trading-day calendar.
         </p>
       }
     >
       <section className="research-card overflow-hidden">
         <div className="px-5 pt-4 pb-1">
           <div className="kicker text-fg-muted">
-            {cm.curve_family} · {cm.butterfly_label}
+            {cm.spread_label} · {cm.tenor}
           </div>
         </div>
         <div className="px-2 pt-2">
@@ -129,9 +126,9 @@ export function ButterflyPrimitiveView({ payload }: Props) {
             data={chartPoints}
             unit="bps"
             valueDecimals={1}
-            tone="amber"
+            tone="blue"
             height={320}
-            seriesName={cm.butterfly_label}
+            seriesName={cm.spread_label}
           />
         </div>
         <div className="border-t border-line-subtle px-2 pt-1 pb-2">
@@ -143,8 +140,10 @@ export function ButterflyPrimitiveView({ payload }: Props) {
       </section>
 
       <section className="research-card px-5 py-4">
-        <PrimitiveMetrics items={items} title="Snapshot" desktopCols={6} />
+        <PrimitiveMetrics items={items} title="Snapshot" desktopCols={5} />
       </section>
     </PrimitiveCanvasShell>
   );
 }
+
+export default CrossMarketPrimitiveView;

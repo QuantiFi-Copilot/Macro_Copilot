@@ -6,14 +6,19 @@
 **Version:** v1 (Stage 3 scaffold)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `scan_extremes_tool` (workflow_incompatible)
-**Tier set:** `[workflow_incompatible]`
+**Tier set:** `[workflow_incompatible, custom_build_surface]`
 **Backend sub-agent:** `sovereign_bonds` · **Category:** `screening`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`workflow_incompatible`** — runtime-status tier only (Stage 3 minimal scaffold).
+- **`workflow_incompatible`** — runtime-status tier.
+- **`custom_build_surface`** — Stage 4a ships the typed view
+  (`scanner` kind) at `surfaces/BuildSurface.tsx`.  Routes via
+  ``MODULE.typedView = 'scanner'`` through the contextDecoder.  The
+  build canvas mounts the typed view directly with the typed-detail
+  endpoint payload.
   Backend recognises this tool but the workflow bridge cannot dispatch its output.
 
 (Capability tiers — `custom_build_surface`, `custom_preview_widget`, `monitor_surface`,

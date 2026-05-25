@@ -1,30 +1,31 @@
 // ============================================================================
-// CrossMarketPrimitiveView — view for ``calculate_cross_market_spread_tool``.
+// SpreadPrimitiveView — typed primitive view for ``calculate_curve_spread_tool``.
 // ----------------------------------------------------------------------------
-// Cross-market spread of two sovereign curves at a single tenor.  Reshell of
-// the legacy CrossMarketView onto PrimitiveCanvasShell (phase R2).
+// Restored from legacy SpreadView and reshelled onto PrimitiveCanvasShell so
+// the Ask→Build handoff for "what is the 2s10s spread" lands on a polished,
+// detailed Build view (mockup B level) rather than the empty shell.
 // ============================================================================
 
-import type { CrossMarketSpreadOutput } from '@/types/rates';
-import { PrimitiveChart, type PrimitiveChartPoint } from './PrimitiveChart';
+import type { CurveSpreadOutput } from '@/types/rates';
+import { PrimitiveChart, type PrimitiveChartPoint } from '@/components/build/primitive/PrimitiveChart';
 import {
   PrimitiveZScoreChart,
   type PrimitiveZScorePoint,
-} from './PrimitiveZScoreChart';
+} from '@/components/build/primitive/PrimitiveZScoreChart';
 import {
   PrimitiveMetrics,
   formatSigned,
   toneForChange,
   toneForZScore,
   type MetricItem,
-} from './PrimitiveMetrics';
-import { PrimitiveCanvasShell, ToolNameChip } from './PrimitiveCanvasShell';
+} from '@/components/build/primitive/PrimitiveMetrics';
+import { PrimitiveCanvasShell, ToolNameChip } from '@/components/build/primitive/PrimitiveCanvasShell';
 
 type Props = {
-  payload: CrossMarketSpreadOutput;
+  payload: CurveSpreadOutput;
 };
 
-export function CrossMarketPrimitiveView({ payload }: Props) {
+function SpreadPrimitiveView({ payload }: Props) {
   const { current_metrics: cm, time_series } = payload;
 
   const chartPoints: PrimitiveChartPoint[] = time_series.map((row) => ({
@@ -52,73 +53,57 @@ export function CrossMarketPrimitiveView({ payload }: Props) {
       tone: toneForChange(cm.daily_change_bps),
     },
     {
-      label: 'Weekly Δ',
-      value: formatSigned(cm.weekly_change_bps, 1),
-      unit: 'bps',
-      tone: toneForChange(cm.weekly_change_bps),
-    },
-    {
-      label: 'Monthly Δ',
-      value: formatSigned(cm.monthly_change_bps, 1),
-      unit: 'bps',
-      tone: toneForChange(cm.monthly_change_bps),
-    },
-    {
       label: 'Z-score',
       value: cm.current_z_score?.toFixed(2) ?? '—',
       tone: toneForZScore(cm.current_z_score),
-      subtext: `${cm.rolling_window_days}d`,
+      subtext: `${cm.rolling_window_days}d window`,
     },
     {
-      label: '252d %ile',
-      value:
-        cm.percentile_252d != null ? `${cm.percentile_252d.toFixed(0)}` : '—',
+      label: `${cm.spread_label.split('-')[0]?.trim() ?? 'Short'} yld`,
+      value: cm.short_tenor_yield?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
-      label: '252d high',
-      value: cm.high_252d_bps?.toFixed(1) ?? '—',
-      unit: 'bps',
-    },
-    {
-      label: '252d low',
-      value: cm.low_252d_bps?.toFixed(1) ?? '—',
-      unit: 'bps',
-    },
-    {
-      label: `${cm.curve_family_1} ${cm.tenor}`,
-      value: cm.curve_family_1_yield?.toFixed(3) ?? '—',
+      label: `${cm.spread_label.split('-')[1]?.trim() ?? 'Long'} yld`,
+      value: cm.long_tenor_yield?.toFixed(3) ?? '—',
       unit: '%',
     },
     {
-      label: `${cm.curve_family_2} ${cm.tenor}`,
-      value: cm.curve_family_2_yield?.toFixed(3) ?? '—',
-      unit: '%',
+      label: 'Observations',
+      value: time_series.length.toString(),
     },
   ];
 
   return (
     <PrimitiveCanvasShell
-      kicker="Primitive · Cross-Market Spread"
-      title={`${cm.spread_label} · ${cm.tenor}`}
-      subtitle="Same-tenor spread between two sovereign curves."
+      kicker="Primitive · Curve Spread"
+      title={`${cm.curve_family} ${cm.spread_label}`}
+      subtitle="Curve spread between two tenors of the same sovereign curve."
       asOfDate={cm.as_of_date ?? null}
-      meta={<ToolNameChip tool="calculate_cross_market_spread_tool" />}
+      meta={<ToolNameChip tool="calculate_curve_spread_tool" />}
       methodology={
-        <p>
-          <span className="font-medium text-fg-primary">
-            Spread = Curve₁ yield − Curve₂ yield
-          </span>{' '}
-          at the chosen tenor, in basis points. Rolling z-score uses a{' '}
-          <span className="font-mono">{cm.rolling_window_days}-day</span>{' '}
-          window.  Source: Bloomberg mid-yield, NY-Fed trading-day calendar.
-        </p>
+        <>
+          <p>
+            <span className="font-medium text-fg-primary">
+              Spread = Long-tenor yield − Short-tenor yield
+            </span>
+            , reported in basis points.  The rolling z-score uses a{' '}
+            <span className="font-mono">{cm.rolling_window_days}-day</span>{' '}
+            trailing window (sample mean / stdev), evaluated on each trading
+            day in the series.
+          </p>
+          <p className="mt-2 text-fg-muted">
+            Underlying field is mid-yield.  Source is Bloomberg; date index
+            follows the NY-Fed trading-day calendar.  Both legs use the same
+            day-count convention.
+          </p>
+        </>
       }
     >
       <section className="research-card overflow-hidden">
         <div className="px-5 pt-4 pb-1">
           <div className="kicker text-fg-muted">
-            {cm.spread_label} · {cm.tenor}
+            {cm.spread_label}
           </div>
         </div>
         <div className="px-2 pt-2">
@@ -140,8 +125,10 @@ export function CrossMarketPrimitiveView({ payload }: Props) {
       </section>
 
       <section className="research-card px-5 py-4">
-        <PrimitiveMetrics items={items} title="Snapshot" desktopCols={5} />
+        <PrimitiveMetrics items={items} title="Snapshot" desktopCols={6} />
       </section>
     </PrimitiveCanvasShell>
   );
 }
+
+export default SpreadPrimitiveView;

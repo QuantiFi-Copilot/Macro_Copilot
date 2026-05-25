@@ -127,36 +127,20 @@ export function isAliasedToolName(name: string): boolean {
  *  are NOT in the workflow primitive registry but have typed-detail
  *  endpoints on the rates API. */
 const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
-  // Sovereign-bond primitives (backend registry)
-  'build_sovereign_yield_panel_tool',
-  'calculate_beta_adjusted_spread_tool',
-  'calculate_breakeven_inflation_tool',
-  'calculate_cross_market_spread_tool',
-  'calculate_curve_spread_tool',
-  'calculate_half_life_tool',
-  'calculate_pca_yield_curve_tool',
-  'calculate_rolling_regression_tool',
-  'calculate_swap_spread_tool',
-  'calculate_yield_change_attribution_pca_tool',
-  'calculate_zscore_custom_tool',
-  'get_yield_levels_tool',
-  // OIS primitives (backend registry)
-  'calculate_ois_cross_market_spread_tool',
-  'calculate_ois_curve_spread_tool',
-  'calculate_ois_forward_rate_tool',
-  'compute_financing_rate_tool',
-  'get_ois_rate_level_tool',
-  // Manifest-declared tools that aren't in the workflow registry but
-  // ship typed-detail endpoints on the rates API (Build can render
-  // them via the existing typed primitive canvas):
-  'calculate_butterfly_tool',
-  'classify_curve_move_tool',
-  'scan_extremes_tool',
-  // Manifest-declared, NO backend implementation yet (renders as
-  // unsupported_known):
-  'scan_ois_extremes_tool',
-  // Factory-ported OIS primitives (ADR 0013)
-  'calculate_ois_butterfly_tool',
+  // ----------------------------------------------------------------
+  // Stage 4a — sovereign + OIS entries (build_sovereign_yield_panel,
+  // calculate_{beta_adjusted_spread, breakeven_inflation, butterfly,
+  // cross_market_spread, curve_spread, half_life, ois_butterfly,
+  // ois_cross_market_spread, ois_curve_spread, ois_forward_rate,
+  // pca_yield_curve, rolling_regression, swap_spread,
+  // yield_change_attribution_pca, zscore_custom}, classify_curve_move,
+  // compute_financing_rate, get_{ois_rate_level, yield_levels},
+  // scan_extremes, scan_ois_extremes) were removed from this hand-
+  // authored set.  Every removed entry now lives under
+  // src/modules/primitives/<name>/module.ts and the module-derived
+  // contribution below feeds them back into the union, so the public
+  // KNOWN_BACKEND_TOOLS export is unchanged.
+  // ----------------------------------------------------------------
   // Factory-ported bond_futures primitives (ADR 0013)
   'get_futures_price_level_tool',
   'get_futures_volume_oi_tool',
@@ -264,27 +248,14 @@ export function isKnownBackendTool(name: string): boolean {
 // routingCoverage test asserts the count + names).
 
 const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
-  // Sovereign-bond primitives in the workflow registry.
-  'build_sovereign_yield_panel_tool',
-  'calculate_beta_adjusted_spread_tool',
-  'calculate_breakeven_inflation_tool',
-  'calculate_cross_market_spread_tool',
-  'calculate_curve_spread_tool',
-  'calculate_half_life_tool',
-  'calculate_pca_yield_curve_tool',
-  'calculate_rolling_regression_tool',
-  'calculate_swap_spread_tool',
-  'calculate_yield_change_attribution_pca_tool',
-  'calculate_zscore_custom_tool',
-  'get_yield_levels_tool',
-  // OIS primitives in the workflow registry.
-  'calculate_ois_cross_market_spread_tool',
-  'calculate_ois_curve_spread_tool',
-  'calculate_ois_forward_rate_tool',
-  'compute_financing_rate_tool',
-  'get_ois_rate_level_tool',
-  // Factory-ported OIS primitives (ADR 0013)
-  'calculate_ois_butterfly_tool',
+  // ----------------------------------------------------------------
+  // Stage 4a — sovereign + OIS runnable entries (the 18 generic-
+  // runnable tools that used to live here verbatim) were removed.
+  // Each one now ships as a module under src/modules/primitives/
+  // with tiers including ``generic_runnable``; the module-derived
+  // contribution below feeds them back into the union, so the
+  // public RUNNABLE_PRIMITIVE_TOOLS export is unchanged.
+  // ----------------------------------------------------------------
   // Factory-ported bond_futures primitives (ADR 0013)
   'get_futures_price_level_tool',
   'get_futures_volume_oi_tool',
