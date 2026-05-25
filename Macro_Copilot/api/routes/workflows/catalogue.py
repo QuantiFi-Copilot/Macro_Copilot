@@ -41,6 +41,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 # Side-effect import — populates the substrate's template registry.
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401
 import rates_agent.workflows.event_study  # noqa: F401
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
 

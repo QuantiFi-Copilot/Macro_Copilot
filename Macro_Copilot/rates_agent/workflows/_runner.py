@@ -221,9 +221,43 @@ def _summarize_series(s: Series) -> Dict[str, Any]:
 
 
 def _summarize_series_set(s: SeriesSet) -> Dict[str, Any]:
-    return {
+    """Summarise a SeriesSet for the MCP envelope.
+
+    Includes per-key VALUES, not just keys + units + dates.  Without
+    the per-key values, a terminal SeriesSet would render to the user
+    as "4 keys + 0 numbers" and the cross-sectional screen would be
+    structurally invisible (Codex F2 on PR #201).  The values are
+    bounded — one float per key — so the payload size stays small
+    regardless of the input Series' row count.
+
+    Fields:
+      - ``latest_value_by_key`` — the LAST non-NaN value of each
+        member Series.  This is the desk's "current member value"
+        reading and is the canonical product of cross-sectional
+        screens (e.g. cross_sectional_screen, where each member's
+        Series is single-row and latest == only value).
+      - ``values_by_key`` — present only when EVERY member Series has
+        a single row (the cross_sectional_screen / summarize_series
+        terminal case).  Same float per key as ``latest_value_by_key``
+        in this case but named explicitly so the LLM-facing envelope
+        is unambiguous: "this is THE value, not a summary of a
+        longer series."  For multi-row SeriesSets the field is
+        omitted to keep the envelope bounded.
+    """
+    keys = s.keys()
+    latest_value_by_key: Dict[str, Optional[float]] = {}
+    n_rows_by_key: Dict[str, int] = {}
+    for k in keys:
+        member = s.get_series(k)
+        cleaned = member.payload.dropna()
+        n_rows_by_key[k] = int(len(member.payload))
+        latest_value_by_key[k] = (
+            _safe_float(cleaned.iloc[-1]) if len(cleaned) > 0 else None
+        )
+
+    out: Dict[str, Any] = {
         "type": "SeriesSet",
-        "keys": s.keys(),
+        "keys": keys,
         "units_by_key": {k: u.value for k, u in s.units_by_key.items()},
         "frequency": s.frequency,
         "n_rows": int(len(s.common_index)),
@@ -235,7 +269,17 @@ def _summarize_series_set(s: SeriesSet) -> Dict[str, Any]:
             s.common_index[-1].strftime("%Y-%m-%d")
             if len(s.common_index) > 0 else None
         ),
+        "latest_value_by_key": latest_value_by_key,
     }
+
+    # Single-row case (cross_sectional_screen + similar summary
+    # terminals): every member is exactly one row, so the "values"
+    # ARE the screen result.  Surface them as ``values_by_key`` (a
+    # distinct, unambiguous field name for the snapshot reading).
+    if all(n == 1 for n in n_rows_by_key.values()) and n_rows_by_key:
+        out["values_by_key"] = dict(latest_value_by_key)
+
+    return out
 
 
 def _summarize_event_set(e: EventSet) -> Dict[str, Any]:

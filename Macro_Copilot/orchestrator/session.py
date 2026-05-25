@@ -278,6 +278,7 @@ class CopilotSession:
         # template registry is populated before the router renders its
         # catalogue.
         try:
+            import rates_agent.workflows.cross_sectional_screen  # noqa: F401
             import rates_agent.workflows.event_study  # noqa: F401
             import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
         except Exception as exc:

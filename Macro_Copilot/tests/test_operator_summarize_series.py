@@ -130,6 +130,63 @@ class TestStatisticComputation:
         # count is the n_used after dropna.
         assert out.payload.iloc[0] == 3.0
 
+    def test_latest_returns_last_value(self):
+        """``latest`` returns the LAST non-NaN observation — the desk's
+        snapshot-at-as-of-date reading.  Added in PR-A8 follow-up
+        (Codex F1 on PR #201) so cross_sectional_screen can deliver a
+        true snapshot value rather than a window-mean proxy.
+        """
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0, 4.0, 5.0])
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(
+                statistic="latest", dispersion="none",
+            ),
+        )
+        assert len(out.payload) == 1
+        # ``latest`` returns the last value: 5.0 (NOT 3.0, the mean).
+        assert out.payload.iloc[0] == pytest.approx(5.0)
+
+    def test_latest_skips_trailing_nans(self):
+        """``latest`` operates on the dropna'd payload, so trailing
+        NaNs are skipped — the LAST FINITE observation is returned,
+        not the last positional cell."""
+        s = _make_series(
+            series_key="x",
+            values=[1.0, 2.0, 3.0, math.nan, math.nan],
+        )
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(
+                statistic="latest", dispersion="none",
+            ),
+        )
+        # 3.0 is the last finite observation; the two trailing NaNs
+        # would have been the positional last cells but are dropped.
+        assert out.payload.iloc[0] == pytest.approx(3.0)
+
+    def test_latest_with_single_observation(self):
+        """``latest`` is well-defined on a single-observation series
+        (n_used == 1 — same edge case ``count`` handles)."""
+        s = _make_series(series_key="x", values=[42.0])
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(
+                statistic="latest", dispersion="none",
+            ),
+        )
+        assert out.payload.iloc[0] == pytest.approx(42.0)
+
+    def test_latest_records_value_in_lineage(self):
+        """``central_value`` in lineage records the latest value, not
+        the mean.  Diagnostic clarity for downstream consumers."""
+        s = _make_series(series_key="x", values=[1.0, 2.0, 3.0, 4.0, 5.0])
+        out = summarize_series(
+            s, params=SummarizeSeriesParams(
+                statistic="latest", dispersion="none",
+            ),
+        )
+        head = out.lineage.steps[-1]
+        assert head.params["statistic"] == "latest"
+        assert head.params["central_value"] == pytest.approx(5.0)
+
 
 # ===========================================================================
 # 3. Sentinel date contract
