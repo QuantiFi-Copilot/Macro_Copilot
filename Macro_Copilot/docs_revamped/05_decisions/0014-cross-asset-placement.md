@@ -18,7 +18,7 @@ Three paths were proposed:
 2. **Scope a `rates_agent/cross_asset/` sub-agent** — same as (1) but as a sub-agent inside `rates_agent/` rather than a sibling. Same `Domain` closed-family extension cost (the enum lives at `orchestrator/contracts.py` regardless of where the package sits on the filesystem); only the directory hierarchy differs.
 3. **Defer entirely until a real cross-asset analysis is demanded.** No new agent, no new sub-agent, no new playbook. Cross-asset substrate stays out of `rates_agent/playbooks/`.
 
-A prior reviewer correction — referenced in the work order driving this ADR — said *"do NOT colonise `rates_agent/playbooks/` with non-rates instruments without an ADR."* That correction is precisely the forklore this ADR makes durable: silently dropping a `cross_asset_signals.yml` into the rates playbook tree (or adding a `time_series_vix` field next to a sovereign yield primitive's `time_series` field) would violate P11 on first read and accumulate P11 debt with every subsequent edit.
+A prior reviewer correction — referenced in the work order driving this ADR — said *"do NOT colonise `rates_agent/playbooks/` with non-rates instruments without an ADR."* That correction is precisely the folklore this ADR makes durable: silently dropping a `cross_asset_signals.yml` into the rates playbook tree (or adding a `time_series_vix` field next to a sovereign yield primitive's `time_series` field) would violate P11 on first read and accumulate P11 debt with every subsequent edit.
 
 ### What "cross-asset signals" means here
 
