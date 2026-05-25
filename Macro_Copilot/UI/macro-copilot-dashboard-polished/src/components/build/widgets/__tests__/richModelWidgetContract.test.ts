@@ -230,15 +230,39 @@ check('PR1: RichModelWidget no longer takes a Renderer prop', () => {
 // PR1 — each per-tool preview widget uses the new API
 // ----------------------------------------------------------------------------
 
-async function loadPreviewWidgetSource(name: string): Promise<string> {
+// Stage 4b — preview widgets now live in their owning module folder
+// under ``src/modules/primitives/<tool_name>/surfaces/PreviewWidget.tsx``
+// rather than the legacy ``src/components/build/widgets/<Name>PreviewWidget.tsx``.
+// The PR1 contract assertions still apply (each preview widget must
+// call ``RichModelWidget`` with the per-tool name + no Renderer prop);
+// only the file-path resolution had to change.
+const PREVIEW_WIDGETS_BY_TOOL: Array<{
+  toolName: string;
+  legacyLabel: string;
+}> = [
+  { toolName: 'calculate_pca_yield_curve_tool', legacyLabel: 'PcaPreviewWidget' },
+  {
+    toolName: 'calculate_rolling_regression_tool',
+    legacyLabel: 'RollingRegressionPreviewWidget',
+  },
+  {
+    toolName: 'calculate_yield_change_attribution_pca_tool',
+    legacyLabel: 'AttributionPreviewWidget',
+  },
+  { toolName: 'calculate_half_life_tool', legacyLabel: 'HalfLifePreviewWidget' },
+  {
+    toolName: 'calculate_beta_adjusted_spread_tool',
+    legacyLabel: 'BetaAdjustedSpreadPreviewWidget',
+  },
+];
+
+async function loadPreviewWidgetSource(toolName: string): Promise<string> {
   // @ts-expect-error - node-only.
   const fs = (await import('fs')) as NodeFs;
   const _g = globalThis as unknown as NodeGlobal;
   const cwd = _g.process?.cwd?.() ?? '.';
-  const candidates = [
-    `${cwd}/src/components/build/widgets/${name}`,
-    `./src/components/build/widgets/${name}`,
-  ];
+  const relPath = `src/modules/primitives/${toolName}/surfaces/PreviewWidget.tsx`;
+  const candidates = [`${cwd}/${relPath}`, `./${relPath}`];
   for (const p of candidates) {
     try {
       return fs.readFileSync(p, 'utf8');
@@ -246,13 +270,15 @@ async function loadPreviewWidgetSource(name: string): Promise<string> {
       // try next
     }
   }
-  throw new Error(`${name} not found`);
+  throw new Error(
+    `PreviewWidget for ${toolName} not found; tried:\n  ${candidates.join('\n  ')}`,
+  );
 }
 
 let _previewSrc: Record<string, string> = {};
 
 check('PR1: PcaPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
-  const src = _previewSrc['PcaPreviewWidget.tsx'];
+  const src = _previewSrc['calculate_pca_yield_curve_tool'];
   assertContains(
     src,
     'toolName="calculate_pca_yield_curve_tool"',
@@ -262,7 +288,7 @@ check('PR1: PcaPreviewWidget calls RichModelWidget with toolName + no Renderer',
 });
 
 check('PR1: RollingRegressionPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
-  const src = _previewSrc['RollingRegressionPreviewWidget.tsx'];
+  const src = _previewSrc['calculate_rolling_regression_tool'];
   assertContains(
     src,
     'toolName="calculate_rolling_regression_tool"',
@@ -272,7 +298,7 @@ check('PR1: RollingRegressionPreviewWidget calls RichModelWidget with toolName +
 });
 
 check('PR1: AttributionPreviewWidget calls RichModelWidget with toolName + no Renderer', () => {
-  const src = _previewSrc['AttributionPreviewWidget.tsx'];
+  const src = _previewSrc['calculate_yield_change_attribution_pca_tool'];
   assertContains(
     src,
     'toolName="calculate_yield_change_attribution_pca_tool"',
@@ -282,7 +308,7 @@ check('PR1: AttributionPreviewWidget calls RichModelWidget with toolName + no Re
 });
 
 check('PR1: HalfLifePreviewWidget exists + uses adapter via RichModelWidget', () => {
-  const src = _previewSrc['HalfLifePreviewWidget.tsx'];
+  const src = _previewSrc['calculate_half_life_tool'];
   assertContains(
     src,
     'toolName="calculate_half_life_tool"',
@@ -292,7 +318,7 @@ check('PR1: HalfLifePreviewWidget exists + uses adapter via RichModelWidget', ()
 });
 
 check('PR1: BetaAdjustedSpreadPreviewWidget exists + uses adapter via RichModelWidget', () => {
-  const src = _previewSrc['BetaAdjustedSpreadPreviewWidget.tsx'];
+  const src = _previewSrc['calculate_beta_adjusted_spread_tool'];
   assertContains(
     src,
     'toolName="calculate_beta_adjusted_spread_tool"',
@@ -302,19 +328,13 @@ check('PR1: BetaAdjustedSpreadPreviewWidget exists + uses adapter via RichModelW
 });
 
 check('PR1: no preview widget retains stale "re-runs the tool" docstring', () => {
-  for (const name of [
-    'PcaPreviewWidget.tsx',
-    'RollingRegressionPreviewWidget.tsx',
-    'AttributionPreviewWidget.tsx',
-    'HalfLifePreviewWidget.tsx',
-    'BetaAdjustedSpreadPreviewWidget.tsx',
-  ]) {
-    const src = _previewSrc[name];
-    assertNotContains(src, 're-runs the tool', `${name}: stale re-run comment`);
+  for (const { toolName, legacyLabel } of PREVIEW_WIDGETS_BY_TOOL) {
+    const src = _previewSrc[toolName];
+    assertNotContains(src, 're-runs the tool', `${legacyLabel}: stale re-run comment`);
     assertNotContains(
       src,
       'until the backend ships a payload',
-      `${name}: stale backend comment`,
+      `${legacyLabel}: stale backend comment`,
     );
   }
 });
@@ -326,16 +346,10 @@ check('PR1: no preview widget retains stale "re-runs the tool" docstring', () =>
 export async function runAllRichModelWidgetContractTests(): Promise<void> {
   _src = await loadRichModelWidgetSource();
   // Eagerly load every preview-widget source for the PR1 checks
-  // that need them.
-  const previewFiles = [
-    'PcaPreviewWidget.tsx',
-    'RollingRegressionPreviewWidget.tsx',
-    'AttributionPreviewWidget.tsx',
-    'HalfLifePreviewWidget.tsx',
-    'BetaAdjustedSpreadPreviewWidget.tsx',
-  ];
-  for (const f of previewFiles) {
-    _previewSrc[f] = await loadPreviewWidgetSource(f);
+  // that need them.  Stage 4b — keyed by canonical tool name; the
+  // file lives in the owning module's surfaces/ folder.
+  for (const { toolName } of PREVIEW_WIDGETS_BY_TOOL) {
+    _previewSrc[toolName] = await loadPreviewWidgetSource(toolName);
   }
   let passed = 0;
   let failed = 0;

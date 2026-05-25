@@ -15,10 +15,20 @@
 //
 // Per-tool overrides
 // ------------------
-// Tools that emit a generic artifact type (e.g. Series) but deserve
-// a specialised reading (PCA factor, rolling regression, attribution)
-// register under the per-tool registry.  Loaded AFTER the per-type
-// generics so a per-tool entry always wins when both apply.
+// Stage 4b — per-tool preview widgets that used to self-register from
+// ``./PcaPreviewWidget`` / ``./RollingRegressionPreviewWidget`` /
+// ``./AttributionPreviewWidget`` / ``./HalfLifePreviewWidget`` /
+// ``./BetaAdjustedSpreadPreviewWidget`` are now owned by their
+// modules under ``src/modules/primitives/<tool_name>/surfaces/PreviewWidget.tsx``.
+// This barrel walks ``ALL_PRIMITIVE_MODULES`` and registers every
+// module whose ``surfaces.preview`` is populated.  Loaded AFTER the
+// per-type generics so per-tool entries unambiguously win.
+//
+// Why the walker rather than per-file imports?  FP12 (page-shell
+// minimality) forbids files under ``src/components/{build,library,
+// monitor,ask,layout}`` from importing ``@/modules/primitives/<name>/``
+// directly.  ``ALL_PRIMITIVE_MODULES`` from ``@/modules`` is on the
+// loader's allowed-import list, so the walker is FP12-compliant.
 // ============================================================================
 
 import './SeriesWidget';
@@ -35,19 +45,39 @@ import './TradeSetWidget';
 // PR4 ``PanelWidget`` handles them.  See ``ScalarMetricWidget.tsx``
 // header for the re-enablement checklist.
 
-// Per-tool specialisations — registered after the per-type generics
-// so they unambiguously win the lookup priority.  Each widget is a
-// thin caller of ``RichModelWidget`` with a per-tool ``toolName``
-// prop; the persistent-artifact adapter handles all five model
-// tools end-to-end (no payload-shape mismatch — see
-// ``persistedModelAdapters.ts``).
-import './PcaPreviewWidget';
-import './RollingRegressionPreviewWidget';
-import './AttributionPreviewWidget';
-import './HalfLifePreviewWidget';
-import './BetaAdjustedSpreadPreviewWidget';
-
 import './FallbackWidget';
+
+// Module-driven per-tool preview registrations (Stage 4b).
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
+import {
+  registerToolRenderer,
+  type NodeRenderer,
+} from '@/components/build/lib/nodeRendererRegistry';
+
+// Attribution's persisted artifact can land as either ``Series`` (when
+// the workflow bridge lifts a time-series field) or ``Panel`` (when
+// it lifts the snapshot table).  The legacy ``AttributionPreviewWidget``
+// registered against both artifact types; preserve that dual
+// registration here.  Other rich-model preview widgets register
+// against ``Series`` only.
+const DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS = new Set<string>([
+  'calculate_yield_change_attribution_pca_tool',
+]);
+
+for (const m of ALL_PRIMITIVE_MODULES) {
+  const Preview = m.surfaces?.preview as NodeRenderer | undefined;
+  if (!Preview) continue;
+  registerToolRenderer(
+    { artifactType: 'Series', toolName: m.toolName },
+    Preview,
+  );
+  if (DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS.has(m.toolName)) {
+    registerToolRenderer(
+      { artifactType: 'Panel', toolName: m.toolName },
+      Preview,
+    );
+  }
+}
 
 export { SeriesWidget } from './SeriesWidget';
 export { SeriesSetWidget } from './SeriesSetWidget';
@@ -56,9 +86,4 @@ export { PanelWidget } from './PanelWidget';
 export { WindowedPanelWidget } from './WindowedPanelWidget';
 export { ScalarMetricWidget } from './ScalarMetricWidget';
 export { TradeSetWidget } from './TradeSetWidget';
-export { PcaPreviewWidget } from './PcaPreviewWidget';
-export { RollingRegressionPreviewWidget } from './RollingRegressionPreviewWidget';
-export { AttributionPreviewWidget } from './AttributionPreviewWidget';
-export { HalfLifePreviewWidget } from './HalfLifePreviewWidget';
-export { BetaAdjustedSpreadPreviewWidget } from './BetaAdjustedSpreadPreviewWidget';
 export { FallbackWidget } from './FallbackWidget';

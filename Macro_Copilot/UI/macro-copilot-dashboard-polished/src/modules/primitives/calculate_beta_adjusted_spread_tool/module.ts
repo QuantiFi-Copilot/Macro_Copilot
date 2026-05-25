@@ -1,18 +1,67 @@
 // ============================================================================
-// src/modules/primitives/calculate_beta_adjusted_spread_tool/module.ts — Stage 3 scaffold.
+// src/modules/primitives/calculate_beta_adjusted_spread_tool/module.ts — Stage 4b rich-model module.
 // ----------------------------------------------------------------------------
-// Minimum-viable module spec — declares only the runtime-status tier.
-// Stage 4 PRs add capability tiers (custom_build_surface, etc.) when the
-// matching surface code moves into this folder from its legacy location.
-// See THESIS.md for the design intent + planned Stage-4 capabilities.
+// Stage 4b — claims ``custom_build_surface`` + ``custom_preview_widget``;
+// sets ``richModel: true``; carries the full ``ModelMetadata`` block
+// that the central ``modelRegistry.MODELS`` array now derives from.
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
+import type { ModelMetadata } from '@/lib/modelRegistry';
+import {
+  DEFAULT_LOOKBACK_PRESETS,
+  DEFAULT_WINDOW_PRESETS,
+} from '@/lib/modelPresets';
+import BuildSurface from './surfaces/BuildSurface';
+import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_METADATA: ModelMetadata = {
+  toolName: 'calculate_beta_adjusted_spread_tool',
+  displayName: 'Beta-Adjusted Spread',
+  category: 'regression',
+  modelKind: 'time_series_model',
+  outputRenderer: 'series_panel',
+  oneLineSummary:
+    'Bivariate beta-adjusted RV: rolling hedge ratio of one yield on another, residual in bps, residual z-score.',
+  defaultParams: {
+    target_spec: { curve_family: 'IT_BTP', tenor: '10Y' },
+    hedge_spec: { curve_family: 'DE_BUND', tenor: '10Y' },
+    regression_window_days: '60',
+    lookback_days: '730',
+  },
+  paramHints: {
+    target_spec: { control: 'series_spec', label: 'Target series' },
+    hedge_spec: { control: 'series_spec', label: 'Hedge series' },
+    regression_window_days: {
+      control: 'window_slider',
+      label: 'Hedge-ratio window',
+      presets: DEFAULT_WINDOW_PRESETS,
+    },
+    lookback_days: {
+      control: 'lookback_slider',
+      label: 'Display lookback',
+      presets: DEFAULT_LOOKBACK_PRESETS,
+    },
+  },
+  interpretationCards: [
+    {
+      headline: 'How to read it',
+      body: 'Residual = target - beta × hedge. A residual z-score >2 means the bivariate spread is rich on its own history; <-2 means cheap. The hedge ratio time series itself is the signal when betas drift.',
+    },
+  ],
+};
 
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_beta_adjusted_spread_tool',
-  tiers: ['generic_runnable'],
+  tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
   displayName: 'beta_adjusted_spread',
   category: 'rolling_analytics',
-  oneLineSummary: 'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
+  oneLineSummary:
+    'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
+  richModel: true,
+  modelMetadata: MODEL_METADATA,
+  surfaces: {
+    build: BuildSurface,
+    preview: PreviewWidget,
+  },
 };

@@ -6,20 +6,30 @@
 **Version:** v1 (Stage 3 scaffold)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `calculate_rolling_regression_tool` (generic_runnable)
-**Tier set:** `[generic_runnable]`
+**Tier set:** `[generic_runnable, custom_build_surface, custom_preview_widget]`
 **Backend sub-agent:** `sovereign_bonds` · **Category:** `rolling_analytics`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier only (Stage 3 minimal scaffold).
-  Backend ships this primitive in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through the workflow bridge.
+- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive
+  in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through
+  the workflow bridge.
+- **`custom_build_surface`** (Stage 4b) — the rich-model Build canvas
+  (`BuilderCanvas` → `ModelWorkspacePage`).  `surfaces/BuildSurface.tsx`
+  ships in this folder as the canonical entry point; the page-shell still
+  mounts `BuilderCanvas` directly from BuildShell's `?builder=` branch
+  today, but the wrapper is the migration target once the page-shell
+  switches to module-driven mounting.
+- **`custom_preview_widget`** (Stage 4b) — the per-tool persisted-artifact
+  card driven by `RichModelWidget` (with this tool's per-tool adapter).
+  `surfaces/PreviewWidget.tsx` ships in this folder; the `widgets/index.ts`
+  barrel walks `ALL_PRIMITIVE_MODULES` and registers every populated
+  `surfaces.preview` into the per-tool `nodeRendererRegistry`.
 
-(Capability tiers — `custom_build_surface`, `custom_preview_widget`, `monitor_surface`,
-`ask_surface` — are NOT claimed in Stage 3.  The existing UI continues to render
-via the legacy page-folder code in `src/components/build/`, `src/components/monitor/`,
-etc.  Stage 4 PRs add capability tiers as surfaces move into this folder.)
+(`monitor_surface` and `ask_surface` are NOT claimed in Stage 4b.
+Adding them is a Stage 5+ feature PR, not a refactor.)
 
 ## 2. What does the user read off each surface?
 

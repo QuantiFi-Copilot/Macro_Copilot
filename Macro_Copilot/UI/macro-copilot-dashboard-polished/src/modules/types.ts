@@ -35,6 +35,10 @@ import type {
 import type {
   UnsupportedKnownReason as ToolUnsupportedKnownReason,
 } from '@/lib/toolNames';
+// Stage 4b — modules that ship rich-model surfaces carry the full
+// ``ModelMetadata`` block.  Type-only import keeps the
+// modules/types ↔ modelRegistry cycle erased at runtime.
+import type { ModelMetadata } from '@/lib/modelRegistry';
 
 // ---------------------------------------------------------------------------
 // SurfaceTier — closed family (FP3 / FM3).
@@ -286,18 +290,35 @@ export interface PrimitiveModuleSpec {
   // Stage 4a relaxation — ``build`` is typed as ``ComponentType<any>``
   // because typed-view tools (calculate_curve_spread_tool etc.) ship
   // their existing payload-shaped views (``{payload: <Output>}``) as
-  // the Build surface during the refactor.  Stage 5+ rich-builder
-  // surfaces conform to ``BuildSurfaceProps``; the strict typing
-  // returns once the typed-view migration completes (Stage N cleanup).
-  // ``preview`` / ``monitor`` / ``ask`` keep their strict types — they
-  // haven't started migrating yet.
+  // the Build surface during the refactor.  Stage 4b extends the
+  // relaxation to ``preview`` because the rich-model preview widgets
+  // consume the ``NodeRenderProps`` shape from the workspace's node-
+  // renderer registry — the strict ``PreviewWidgetProps`` interface
+  // is aspirational and will return in Stage N cleanup once every
+  // preview widget conforms.  ``monitor`` / ``ask`` keep their
+  // strict types — they haven't started migrating yet.
   // -------------------------------------------------------------------
   surfaces?: {
     build?: ComponentType<any>; // relaxed Stage 4a; aspirational ComponentType<BuildSurfaceProps>
-    preview?: ComponentType<PreviewWidgetProps>;
+    preview?: ComponentType<any>; // relaxed Stage 4b; aspirational ComponentType<PreviewWidgetProps>
     monitor?: ComponentType<MonitorWidgetProps>;
     ask?: ComponentType<AskCardProps>;
   };
+
+  // -------------------------------------------------------------------
+  // FM5b — rich-model metadata.  Stage 4b populates this on the 5
+  // rich-model primitives (PCA, rolling regression, attribution,
+  // half-life, beta-adjusted spread).  When set, the central
+  // ``modelRegistry.MODELS`` array derives this module's entry from
+  // here instead of carrying a duplicate hand-authored entry.
+  // ``richModel: true`` MUST also be set when ``modelMetadata`` is
+  // populated (a defensive invariant the parity check could pick up).
+  // -------------------------------------------------------------------
+  /** Rich-model metadata block.  Populated when the module ships
+   *  the rich-model builder surfaces (``BuilderCanvas`` +
+   *  ``RichModelWidget``); ``modelRegistry`` derives its ``MODELS``
+   *  array from these entries. */
+  modelMetadata?: ModelMetadata;
 
   // -------------------------------------------------------------------
   // FM6 — unsupported reason.  Required when tiers includes
