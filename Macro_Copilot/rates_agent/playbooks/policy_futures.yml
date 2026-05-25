@@ -1,5 +1,5 @@
 playbook_name: "policy_futures"
-playbook_version: "1.2"
+playbook_version: "1.3"
 asset_class: "rates"
 dataset_name: "policy_futures"
 description: "Daily rolling short-rate / policy futures (SOFR, Euribor, SONIA) across the first 8 listed contracts for central bank pricing and positioning proxies."
@@ -101,6 +101,42 @@ metadata_history:
                                                  # (CME), Euribor (ICE/ICF),
                                                  # SONIA (ICE/ICF)
 
+# ----------------------------------------------------------------------------
+# v1.3 (Round 3 — Stage 1, work item A1): delivery_month_type
+#
+# Per-row curve-family-level annotation declaring whether the strip is built
+# from quarterly-only delivery months (Mar / Jun / Sep / Dec) or contains
+# serial months (mixed in alongside quarterlies).
+#
+# Why this matters: the STIR `futures_pack_average_simple` primitive
+# (Phase 2 Step 2, row #7) needs to know whether averaging across N strip
+# positions corresponds to a contiguous block of equally-spaced contract
+# months. For quarterly-only strips (SOFR, SONIA) the answer is yes — a
+# whites-pack average (positions 1-4) covers roughly the next 12 months. For
+# mixed strips (Euribor / ER), the first 8 strip positions interleave serial
+# and quarterly months, so a fixed-position pack-average is not a clean
+# tenor-mapped read. Per PR11, the primitive must refuse-build for any curve
+# whose `delivery_month_type` is `serial` until a method-specific
+# resolution exists.
+#
+# Annotation discipline: curve-family-level, not per-current-rolling-position.
+# `delivery_month_type` declares the structural property of the strip, not the
+# instantaneous delivery month of the underlying contract at row N (which
+# rotates over time as contracts roll). A static playbook row cannot truthfully
+# encode the current rolling underlying's month at every future date —
+# attempting to do so would violate P10 (single source of truth) and require
+# Bloomberg verification per re-extraction.
+#
+#   SOFR_FUT          → quarterly (CME SOFR futures: Mar/Jun/Sep/Dec only)
+#   SONIA_FUT         → quarterly (ICE SONIA futures: Mar/Jun/Sep/Dec only)
+#   EUR_SHORT_RATE_FUT → serial    (ICE Euribor strip mixes serial + quarterly
+#                                   in the first 8 positions)
+#
+# Operationalises: P5 (honest disclosure of structural strip composition),
+# P10 (single source of truth — annotation lives on the playbook only),
+# PR3 (futures-monitor primitives consume this directly).
+# ----------------------------------------------------------------------------
+
 universe:
   # --------------------------------------------------------
   # United States (The Fed) - SOFR Futures Strip
@@ -113,6 +149,7 @@ universe:
     contract_code: "SFR1"
     inverse_pricing: true
     strip_position: 1
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR2 Comdty"
@@ -123,6 +160,7 @@ universe:
     contract_code: "SFR2"
     inverse_pricing: true
     strip_position: 2
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR3 Comdty"
@@ -133,6 +171,7 @@ universe:
     contract_code: "SFR3"
     inverse_pricing: true
     strip_position: 3
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR4 Comdty"
@@ -143,6 +182,7 @@ universe:
     contract_code: "SFR4"
     inverse_pricing: true
     strip_position: 4
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR5 Comdty"
@@ -153,6 +193,7 @@ universe:
     contract_code: "SFR5"
     inverse_pricing: true
     strip_position: 5
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR6 Comdty"
@@ -163,6 +204,7 @@ universe:
     contract_code: "SFR6"
     inverse_pricing: true
     strip_position: 6
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR7 Comdty"
@@ -173,6 +215,7 @@ universe:
     contract_code: "SFR7"
     inverse_pricing: true
     strip_position: 7
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFR8 Comdty"
@@ -183,6 +226,7 @@ universe:
     contract_code: "SFR8"
     inverse_pricing: true
     strip_position: 8
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   # --------------------------------------------------------
@@ -196,6 +240,7 @@ universe:
     contract_code: "ER1"
     inverse_pricing: true
     strip_position: 1
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER2 Comdty"
@@ -206,6 +251,7 @@ universe:
     contract_code: "ER2"
     inverse_pricing: true
     strip_position: 2
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER3 Comdty"
@@ -216,6 +262,7 @@ universe:
     contract_code: "ER3"
     inverse_pricing: true
     strip_position: 3
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER4 Comdty"
@@ -226,6 +273,7 @@ universe:
     contract_code: "ER4"
     inverse_pricing: true
     strip_position: 4
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER5 Comdty"
@@ -236,6 +284,7 @@ universe:
     contract_code: "ER5"
     inverse_pricing: true
     strip_position: 5
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER6 Comdty"
@@ -246,6 +295,7 @@ universe:
     contract_code: "ER6"
     inverse_pricing: true
     strip_position: 6
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER7 Comdty"
@@ -256,6 +306,7 @@ universe:
     contract_code: "ER7"
     inverse_pricing: true
     strip_position: 7
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   - ticker: "ER8 Comdty"
@@ -266,6 +317,7 @@ universe:
     contract_code: "ER8"
     inverse_pricing: true
     strip_position: 8
+    delivery_month_type: "serial"
     is_rolling_contract: true
 
   # --------------------------------------------------------
@@ -279,6 +331,7 @@ universe:
     contract_code: "SFI1"
     inverse_pricing: true
     strip_position: 1
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI2 Comdty"
@@ -289,6 +342,7 @@ universe:
     contract_code: "SFI2"
     inverse_pricing: true
     strip_position: 2
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI3 Comdty"
@@ -299,6 +353,7 @@ universe:
     contract_code: "SFI3"
     inverse_pricing: true
     strip_position: 3
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI4 Comdty"
@@ -309,6 +364,7 @@ universe:
     contract_code: "SFI4"
     inverse_pricing: true
     strip_position: 4
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI5 Comdty"
@@ -319,6 +375,7 @@ universe:
     contract_code: "SFI5"
     inverse_pricing: true
     strip_position: 5
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI6 Comdty"
@@ -329,6 +386,7 @@ universe:
     contract_code: "SFI6"
     inverse_pricing: true
     strip_position: 6
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI7 Comdty"
@@ -339,6 +397,7 @@ universe:
     contract_code: "SFI7"
     inverse_pricing: true
     strip_position: 7
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
 
   - ticker: "SFI8 Comdty"
@@ -349,4 +408,5 @@ universe:
     contract_code: "SFI8"
     inverse_pricing: true
     strip_position: 8
+    delivery_month_type: "quarterly"
     is_rolling_contract: true
