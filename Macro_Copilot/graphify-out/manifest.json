@@ -36,8 +36,8 @@
     "hash": "7be8afadc963be3671139fd8fbc0c7b7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/UI/macro-copilot-dashboard-polished/src/types/rates.ts": {
-    "mtime": 1778982035.3374732,
-    "hash": "1f5c78b193357b266889d2742674b8a1"
+    "mtime": 1779675284.512379,
+    "hash": "d6aa77a3185622e628d902d81aa8f1df"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/UI/macro-copilot-dashboard-polished/src/types/artifacts.ts": {
     "mtime": 1778982035.336643,
@@ -464,8 +464,8 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/mcp_server.py": {
-    "mtime": 1779368975.3272214,
-    "hash": "18da3b7c447497e7581dff0d93094615"
+    "mtime": 1779637607.664308,
+    "hash": "1fc2731dd4e27a3c277926ad70e1be74"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/__init__.py": {
     "mtime": 1779368975.3273509,
@@ -495,6 +495,18 @@
     "mtime": 1779368975.3280118,
     "hash": "18dbe65f3ba41bcfe70cb3b50e92b8dd"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/cpi_surprise/__init__.py": {
+    "mtime": 1779637607.6650295,
+    "hash": "0d1149e663ee9c740281c16bbfb91588"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/cpi_surprise/schemas.py": {
+    "mtime": 1779637607.666336,
+    "hash": "8e5e8254ab7cb1bb6cc5e44623c5e415"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/cpi_surprise/compute.py": {
+    "mtime": 1779637607.6653976,
+    "hash": "168c7755c3d4a9793eba2df71c57e1b7"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/__init__.py": {
     "mtime": 1779368975.3343549,
     "hash": "f88db1e9ebf9ad187db05ddfae657e28"
@@ -520,8 +532,8 @@
     "hash": "16cc9341be9abe41c72c24f6c2bc21f6"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/schemas/__init__.py": {
-    "mtime": 1779368975.3341005,
-    "hash": "d2a5e4df739eea93cc37666fa4450339"
+    "mtime": 1779637607.6669843,
+    "hash": "b404bf787b4bab46b97b2eca7c403bdb"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/__init__.py": {
     "mtime": 1779368975.330797,
@@ -672,8 +684,8 @@
     "hash": "acfb97411da07ced0dd5413f8c2527a9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/workflows/__init__.py": {
-    "mtime": 1779368975.335976,
-    "hash": "627a9877a0b4d12336fb852a7606b4de"
+    "mtime": 1779653270.691577,
+    "hash": "f6299399858a270c52383d7c18aba72f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/workflows/cli.py": {
     "mtime": 1778627721.4685886,
@@ -704,8 +716,8 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/mcp_server.py": {
-    "mtime": 1778982035.6328568,
-    "hash": "915ea52c38bf6b735a147f2e20238f95"
+    "mtime": 1779653270.6880214,
+    "hash": "ab04651a90eba8f2641570d353e7d498"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/scanner.py": {
     "mtime": 1776795500.7232366,
@@ -727,6 +739,18 @@
     "mtime": 1778982035.6330934,
     "hash": "a29afc1b2dbda3ebe4ea669977e77dca"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/wirp_meeting_pricing/__init__.py": {
+    "mtime": 1779653270.6894095,
+    "hash": "d1cfc2f80bf4509fde796051256178c1"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/wirp_meeting_pricing/schemas.py": {
+    "mtime": 1779653270.6910198,
+    "hash": "53eac855d7acbba80f3b3744913dc65e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/wirp_meeting_pricing/compute.py": {
+    "mtime": 1779653270.6897616,
+    "hash": "3efc272240e0bb34368e2e06f3f73769"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/rate_level/__init__.py": {
     "mtime": 1777904026.7040527,
     "hash": "9999ccf9d6d4251b5f8a9f4d5b7089a0"
@@ -744,8 +768,8 @@
     "hash": "c326264e01204a19347fb2cd8b21dfc9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/schemas/__init__.py": {
-    "mtime": 1777924732.7697427,
-    "hash": "07dfa2cbc1d00c4f934333c6f8ccb321"
+    "mtime": 1779653270.6890426,
+    "hash": "115514150e23bc01145fc0ae653e5680"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/cross_market_spread/__init__.py": {
     "mtime": 1777904026.697519,
@@ -816,8 +840,8 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/mcp_server.py": {
-    "mtime": 1778982035.6339831,
-    "hash": "d260ec7c37e201967bfb3810b7ec15f5"
+    "mtime": 1779675284.5173914,
+    "hash": "b8918e2f0574b699df7b99f460d7057c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/scanner.py": {
     "mtime": 1776786447.1483858,
@@ -851,6 +875,18 @@
     "mtime": 1777734186.7034485,
     "hash": "51d4b8f95ea7cf7ee1897e5e32097745"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/get_otr_history/__init__.py": {
+    "mtime": 1779629554.3321862,
+    "hash": "a5b99b87e264da3559032101e8e89234"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/get_otr_history/schemas.py": {
+    "mtime": 1779629554.3345468,
+    "hash": "4ee41c24cacdcb1a66c43e0a29851b06"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/get_otr_history/compute.py": {
+    "mtime": 1779629554.3328502,
+    "hash": "39efcd9929930299f4e88032a7c88616"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/sovereign_yield_panel/__init__.py": {
     "mtime": 1778982035.635276,
     "hash": "26007e14ff53ab817132799b41dde7a9"
@@ -880,20 +916,20 @@
     "hash": "f7b917930046a51b95a71814000a50c6"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/pca_yield_curve/schemas.py": {
-    "mtime": 1777775642.092952,
-    "hash": "05f83fb6e4cb6b33fc139c162bfecfd7"
+    "mtime": 1779675284.5284014,
+    "hash": "ed64b18d13f1780807971814ee46e66a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/pca_yield_curve/compute.py": {
-    "mtime": 1777775642.0919225,
-    "hash": "574ead40e5ff60fc953c4cbf8b3bff1b"
+    "mtime": 1779675284.5256884,
+    "hash": "da97c0dff548d1b86d8fa5e81ace1e8f"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/schemas/scanner.py": {
     "mtime": 1776642138.029113,
     "hash": "8135a8214616c46afa3feacc7bbf6270"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/schemas/__init__.py": {
-    "mtime": 1777673177.6245553,
-    "hash": "00dfa0687c75ff4455553766f71ee9ac"
+    "mtime": 1779640182.3302402,
+    "hash": "0bfb4b95816374fff20181b0fa1f1d19"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/__init__.py": {
     "mtime": 1777773682.8182669,
@@ -906,6 +942,18 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/compute.py": {
     "mtime": 1777775642.0939474,
     "hash": "d42498319faa367214bda694c0918770"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/otr_ofr_spread/__init__.py": {
+    "mtime": 1779634220.3516686,
+    "hash": "677a65a9059da88652340dea84b1a11f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/otr_ofr_spread/schemas.py": {
+    "mtime": 1779634220.353765,
+    "hash": "d65727672c5b328d285428ccc3bd5395"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/otr_ofr_spread/compute.py": {
+    "mtime": 1779634220.352497,
+    "hash": "d8cf86799d47f145784034bfc50f9869"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/cross_market_spread/__init__.py": {
     "mtime": 1777729284.5959835,
@@ -936,12 +984,24 @@
     "hash": "7202f6ba4de940d74d5c5186aadce821"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_move_classifier/schemas.py": {
-    "mtime": 1777904026.7089772,
-    "hash": "056a5e352582c95e85f0297723eef5a2"
+    "mtime": 1779675284.5236044,
+    "hash": "22424befc9dd5f3fe86feed4bc374ae9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_move_classifier/compute.py": {
-    "mtime": 1777647884.5448987,
-    "hash": "08bcb74e85dae4f5433905ca9b7ab27a"
+    "mtime": 1779675284.5199668,
+    "hash": "dc83377eda775f180cc41a0ac4b20ebd"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/nfp_surprise/__init__.py": {
+    "mtime": 1779640182.3275857,
+    "hash": "df807241e207296aa0c3f99f9a24f7e4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/nfp_surprise/schemas.py": {
+    "mtime": 1779640182.329298,
+    "hash": "ef15709cec54678989985774ba47a177"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/nfp_surprise/compute.py": {
+    "mtime": 1779640182.3279972,
+    "hash": "a6dc03ad8b990f840285161f8c63c475"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_spread/__init__.py": {
     "mtime": 1777593199.3374422,
@@ -1040,8 +1100,8 @@
     "hash": "f61eda2a740fbd70eba82c132b72b5f7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/conftest.py": {
-    "mtime": 1779368975.3380008,
-    "hash": "525544e427275f6cd5f246fd39209949"
+    "mtime": 1779653270.6927419,
+    "hash": "c6f0ae29c449136388d5158805b4cc1c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_beta_adjusted_spread_compute.py": {
     "mtime": 1777752440.4192622,
@@ -1059,6 +1119,10 @@
     "mtime": 1777904026.7464948,
     "hash": "2118d9c7aa9cfc9a41b7e5e9b0a62d8a"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_nfp_surprise_parity.py": {
+    "mtime": 1779640182.3361251,
+    "hash": "848801362ffc638918555b4d45ac6d81"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_ois_forward_rate_sql_validation.py": {
     "mtime": 1777904026.7479079,
     "hash": "41cb4bc09cfea9148368f0445b30980c"
@@ -1066,6 +1130,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_config.py": {
     "mtime": 1777904026.7497334,
     "hash": "56c6b59eadc5746e0321f5b3dec220a8"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_get_otr_history_sql_validation.py": {
+    "mtime": 1779629554.345553,
+    "hash": "731507b3711d2aa288f10c7dd4a4fad3"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cross_market_inflation_swap_spread_sql_validation.py": {
     "mtime": 1779368975.3497913,
@@ -1087,9 +1155,17 @@
     "mtime": 1778982035.6521738,
     "hash": "41d36e0287d90c9fc70f1f9546e00fe6"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cpi_surprise_sql_validation.py": {
+    "mtime": 1779637607.6722226,
+    "hash": "5657b49eecffbf4256260afa1a9a5310"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_pca_yield_curve_sql_validation.py": {
+    "mtime": 1779675284.5361223,
+    "hash": "5c5cd466e0a171741e3b9db8a47f4869"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_curve_move_classifier_compute.py": {
-    "mtime": 1777647884.5475903,
-    "hash": "05bdf0761c9ea9aa8a7534a5e97c03b4"
+    "mtime": 1779675284.5303328,
+    "hash": "99e334751a5f89960b548243129799c1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_breakeven_curve_spread_sql_validation.py": {
     "mtime": 1779368975.3414996,
@@ -1106,6 +1182,14 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_inflation_swap_rate_level_sql_validation.py": {
     "mtime": 1779368975.3569674,
     "hash": "a6e5a705c5c5b849921eb94b2f490789"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_otr_ofr_spread_sql_validation.py": {
+    "mtime": 1779634220.364721,
+    "hash": "acd1f4908f5ee15394a4c1dd21bdedef"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_wirp_meeting_pricing_sql_validation.py": {
+    "mtime": 1779653270.698299,
+    "hash": "b749925a9088cdf1ae0ef48486d97fc4"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_swap_breakeven_basis_simple_compute.py": {
     "mtime": 1779368975.3604336,
@@ -1159,9 +1243,17 @@
     "mtime": 1778982035.6518474,
     "hash": "a860f50379e89c06d0226d4def3eb77f"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cpi_surprise_wiring.py": {
+    "mtime": 1779637607.672565,
+    "hash": "f372d7fac42ea7179c0d155206aa5080"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_ois_forward_rate_compute.py": {
     "mtime": 1777904026.7468772,
     "hash": "8c723b2d946db5ec4dad502c6fb3833f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_wirp_meeting_pricing_parity.py": {
+    "mtime": 1779653270.697943,
+    "hash": "f292acf4d85c98aa15dc649a0bb695b7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_regression.py": {
     "mtime": 1777939302.6903713,
@@ -1203,6 +1295,10 @@
     "mtime": 1777939302.6911325,
     "hash": "2ac6f29a3628700e62f61a6945bb690d"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_get_otr_history_wiring.py": {
+    "mtime": 1779629554.3461592,
+    "hash": "c38ddb41cbcb6f9918e7617b06fa3eb6"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_artifacts.py": {
     "mtime": 1777905493.420369,
     "hash": "9f59cdb1190375eb854c779a06dcaf24"
@@ -1219,13 +1315,17 @@
     "mtime": 1779368975.3609638,
     "hash": "7d1cdefc076e78a55e51b92d0ea0a876"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_otr_ofr_spread_parity.py": {
+    "mtime": 1779634220.3641903,
+    "hash": "32ca58cdf29e10609ec1ad2c8d327d24"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_real_yield_butterfly_sql_validation.py": {
     "mtime": 1779368975.3586347,
     "hash": "9cf9ec176521eefc9785380f58aa4dc2"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_pca_yield_curve_compute.py": {
-    "mtime": 1777775642.0976562,
-    "hash": "6d68c80fd677bef22839a1a981f90c14"
+    "mtime": 1779675284.535436,
+    "hash": "716a7d3cde9825b7abf93099e5c4e1c5"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_real_yield_curve_spread_sql_validation.py": {
     "mtime": 1779368975.3589945,
@@ -1263,6 +1363,10 @@
     "mtime": 1779368975.3514414,
     "hash": "8d77c54033b6760c52f3d1dec25685ce"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_get_otr_history_compute.py": {
+    "mtime": 1779629554.3444605,
+    "hash": "51117b16a972ce5b04c47a1a0d586942"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_breakeven_butterfly_wiring.py": {
     "mtime": 1779368975.3408039,
     "hash": "39ff87b531aad5b8c94640a0dc921c89"
@@ -1287,6 +1391,14 @@
     "mtime": 1777775642.098503,
     "hash": "89c79fd5eb0ed4cf3c2468406ab71ee0"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_otr_ofr_spread_compute.py": {
+    "mtime": 1779634220.363447,
+    "hash": "394a7a98e11311f7be00d3fa208f087f"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_nfp_surprise_sql_validation.py": {
+    "mtime": 1779640182.3367774,
+    "hash": "ccb49c1a01bc36f03970a32882468826"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_breakeven_curve_spread_compute.py": {
     "mtime": 1779368975.3412664,
     "hash": "f3d1aa3347a3572fb397a8a04687c7af"
@@ -1299,9 +1411,17 @@
     "mtime": 1777904026.7408674,
     "hash": "028e122f86edd7250d28a3fabf1f8edd"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_wirp_meeting_pricing_wiring.py": {
+    "mtime": 1779653270.6988602,
+    "hash": "8ce4881f41c91302ce0d90236133a300"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_align_series.py": {
     "mtime": 1779368975.3387437,
     "hash": "1ccc9f37de12e772c85eb17bd24d44d7"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cpi_surprise_parity.py": {
+    "mtime": 1779637607.671833,
+    "hash": "631a612972e7f16585138a595eb3ff28"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_breakeven_curve_spread_wiring.py": {
     "mtime": 1779368975.341648,
@@ -1327,17 +1447,29 @@
     "mtime": 1778982035.6532173,
     "hash": "c1c862e57d8d0e2145e964bcea56213e"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_wirp_meeting_pricing_compute.py": {
+    "mtime": 1779653270.6967447,
+    "hash": "7542bb08c0367d40f259adb8616db9e8"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_orchestrator_domains.py": {
     "mtime": 1779368975.358415,
     "hash": "0412933aba5c126888d361ca7e56d688"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_curve_move_classifier_sql_validation.py": {
-    "mtime": 1777647884.5483794,
-    "hash": "d4273032ae9346a485db3df2aa669fbc"
+    "mtime": 1779675284.5313513,
+    "hash": "3396628ebf6fecd64c2e28450e87afab"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_butterfly_compute.py": {
     "mtime": 1777904026.7359476,
     "hash": "18b89a13e427c7eedcce78287ed43068"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_otr_ofr_spread_wiring.py": {
+    "mtime": 1779634220.3651528,
+    "hash": "37434999391de2d4d597d56ec60c2b45"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_get_otr_history_parity.py": {
+    "mtime": 1779629554.3451898,
+    "hash": "935e2235617deb8c9f2f82333431bf05"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cross_country_breakeven_spread_simple_wiring.py": {
     "mtime": 1779368975.3468058,
@@ -1350,6 +1482,14 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_ois_curve_spread_sql_validation.py": {
     "mtime": 1776817981.9312544,
     "hash": "916b24bb02fb642e1653440ca8db56d0"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cpi_surprise_compute.py": {
+    "mtime": 1779637607.6713533,
+    "hash": "cbc679effb2f752f3ad2a498abcb2290"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_nfp_surprise_compute.py": {
+    "mtime": 1779640182.3348663,
+    "hash": "e1c200ae57cf5045d95a98ab13750a70"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_cross_market_inflation_swap_spread_compute.py": {
     "mtime": 1779368975.3482847,
@@ -1483,6 +1623,10 @@
     "mtime": 1777939302.6918905,
     "hash": "69151a056714c7baa7a26536e2c27e3d"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_nfp_surprise_wiring.py": {
+    "mtime": 1779640182.3371882,
+    "hash": "987751120613460b9bd25b7cda108148"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_workflow_regime_conditioned_relationship.py": {
     "mtime": 1777941863.9492178,
     "hash": "14a1a660670f253a3893f585f3591448"
@@ -1520,8 +1664,8 @@
     "hash": "48ccc63f2744599a6f40c48d4a66f9f0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_curve_move_classifier_wiring.py": {
-    "mtime": 1777652179.0361614,
-    "hash": "3fd5074b25078d91101d34150c2e132d"
+    "mtime": 1779675284.5339425,
+    "hash": "40d907f7e85e33472037df310868b6a1"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_yield_change_attribution_pca_wiring.py": {
     "mtime": 1777773682.8251255,
@@ -1711,9 +1855,29 @@
     "mtime": 1779316659.9247274,
     "hash": "2090f452fff8c83e0a2acd95e74de526"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/wirp_meeting_pricing_v1/_capture.py": {
+    "mtime": 1779653270.6943777,
+    "hash": "4be907fa9f575dab532d27ff55bb218a"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/cpi_surprise_v1/_capture.py": {
+    "mtime": 1779637607.669075,
+    "hash": "1bbea50e69ac26e217857f7a4da0d1fe"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/curve_spread_v1/_capture.py": {
     "mtime": 1777594352.59353,
     "hash": "86ef5fd0a3ca778493b634104cb99885"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/get_otr_history_v1/_capture.py": {
+    "mtime": 1779629554.3415196,
+    "hash": "54a8b65c0ca471c37ef5d2e9da052930"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/nfp_surprise_v1/_capture.py": {
+    "mtime": 1779640182.3338099,
+    "hash": "8c2891f73809ff249f249f93b0222787"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/otr_ofr_spread_v1/_capture.py": {
+    "mtime": 1779634220.3587039,
+    "hash": "25947d489b0a22e7a733f797e5cd93e9"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/utils/render_effective_universe.py": {
     "mtime": 1779386463.1947122,
@@ -2007,6 +2171,10 @@
     "mtime": 1777588970.371505,
     "hash": "b75c6c17a79b57cbe8f841e827c357a0"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/playbook_discovery.py": {
+    "mtime": 1779675284.5292733,
+    "hash": "f0bc8ff5d6167a4224366faffc7b5e2a"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/curve_move.py": {
     "mtime": 1777645852.3778424,
     "hash": "4fb7557fa1a19a88b441231fc60a520a"
@@ -2020,12 +2188,16 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/rates_fetch.py": {
-    "mtime": 1779368975.3367722,
-    "hash": "ecc9120f286cae1126d6c17095c2f303"
+    "mtime": 1779653270.692328,
+    "hash": "278ab9e83bf45c38c7bff1808dc53356"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/stats.py": {
     "mtime": 1777765390.42841,
     "hash": "ecac8e69798f5ad394137b69bd4c3360"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/events_fetch.py": {
+    "mtime": 1779637607.667861,
+    "hash": "060750ffd6abe24beea5803a88d57812"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/analytics/levels.py": {
     "mtime": 1777729284.6044295,
@@ -2299,6 +2471,10 @@
     "mtime": 1779368975.3284323,
     "hash": "5d1c7ac50d174d5e6674e3843a8e6f0d"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/cpi_surprise/config.yaml": {
+    "mtime": 1779637607.6659124,
+    "hash": "158ff021e79681654d8d7a9eff0f1070"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/config.yaml": {
     "mtime": 1779368975.3353224,
     "hash": "932e8b0fbd21e1376ea0fef0ec72f398"
@@ -2376,8 +2552,8 @@
     "hash": "fbd7c079b39b6ff5f00dda753346f07c"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/inflation_indexed_bonds.yml": {
-    "mtime": 1779579049.541115,
-    "hash": "0de2e4efd27ab690c1cdba0f7533268d"
+    "mtime": 1779659223.1680603,
+    "hash": "51dee4e6e3e996756d9edc299b89cd37"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/economic_releases.yml": {
     "mtime": 1779403661.072886,
@@ -2392,16 +2568,16 @@
     "hash": "52cade960b3b7a5196f62722aa9134df"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/central_bank_meetings.yml": {
-    "mtime": 1779403674.0405357,
-    "hash": "cb088684c1dd81f580734e4900e6450b"
+    "mtime": 1779654605.328504,
+    "hash": "e0b999ed51c1e05e5a01fd03dd17b075"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/inflation_references.yml": {
-    "mtime": 1779308348.4793108,
-    "hash": "33c52784cb955dafdca51eb873f5179d"
+    "mtime": 1779659223.1692545,
+    "hash": "621fa24e167377525f4c86d5220471ec"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/policy_futures.yml": {
-    "mtime": 1779579067.2681942,
-    "hash": "8011a8ad0ffa62509b4513a107b5d637"
+    "mtime": 1779668438.2601335,
+    "hash": "364fca89028ac392f98f2c2ef4b49713"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/playbooks/inflation_swaps.yml": {
     "mtime": 1779579054.6860018,
@@ -2414,6 +2590,10 @@
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/financing_rate/config.yaml": {
     "mtime": 1778982035.6332011,
     "hash": "a3a35b5dd5e99cb9e7fcfde91962fcda"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/wirp_meeting_pricing/config.yaml": {
+    "mtime": 1779653270.6903214,
+    "hash": "356a3f555dbf35f8212ca2a03f70acaa"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/ois/tools/rate_level/config.yaml": {
     "mtime": 1777904026.7050688,
@@ -2447,6 +2627,10 @@
     "mtime": 1777734186.7059476,
     "hash": "2916a9d5a599fd71ece0196d243ad150"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/get_otr_history/config.yaml": {
+    "mtime": 1779629554.3332427,
+    "hash": "a1cf8374ff80d9db5df123bade9cc69a"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/sovereign_yield_panel/config.yaml": {
     "mtime": 1778982035.6356592,
     "hash": "cca3b5800da262d8c88e3f5a8242c6f0"
@@ -2456,12 +2640,16 @@
     "hash": "a18f32690e1fabc03cabf877b97c37eb"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/pca_yield_curve/config.yaml": {
-    "mtime": 1777767512.5988286,
-    "hash": "bee68bf9e9028ca7c105a52832129c8a"
+    "mtime": 1779675284.5271225,
+    "hash": "cd3761c2674bcd63d3c8261e034cb73a"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/yield_change_attribution_pca/config.yaml": {
     "mtime": 1777775642.0954576,
     "hash": "814cd84a997cb0d21a089a454a6a0b88"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/otr_ofr_spread/config.yaml": {
+    "mtime": 1779634220.3532872,
+    "hash": "dc0899b4dcb07a784452b0b1b607462e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/cross_market_spread/config.yaml": {
     "mtime": 1777729284.5967724,
@@ -2472,8 +2660,12 @@
     "hash": "9d419c4cdd1dc7df58c0535cf2edc954"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_move_classifier/config.yaml": {
-    "mtime": 1777729284.5981243,
-    "hash": "abb90e13d1f05547c11e3f7e4a67b94d"
+    "mtime": 1779675284.5217745,
+    "hash": "961a05331221b1327c189299221e2ac4"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/nfp_surprise/config.yaml": {
+    "mtime": 1779640182.3288562,
+    "hash": "a1470dd8352c826b455b05b0635998a8"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/rates_agent/sovereign_bonds/tools/curve_spread/config.yaml": {
     "mtime": 1777729284.5989244,
@@ -2491,9 +2683,29 @@
     "mtime": 1777904026.7111201,
     "hash": "2c5794196f71f72d3ccc062fdb9b900e"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/wirp_meeting_pricing_v1/README.md": {
+    "mtime": 1779653270.693598,
+    "hash": "314c7a48d6e4c8ba236480470441087d"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/cpi_surprise_v1/README.md": {
+    "mtime": 1779637607.6686149,
+    "hash": "d09758ff6cba49b434fc1fb1622c5958"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/curve_spread_v1/README.md": {
     "mtime": 1777585800.683406,
     "hash": "e86d8b947802aee5870d75bd21dd3664"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/get_otr_history_v1/README.md": {
+    "mtime": 1779629554.3411024,
+    "hash": "07e7a2ab246a402858fc4edeb54b7263"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/nfp_surprise_v1/README.md": {
+    "mtime": 1779640182.3330066,
+    "hash": "e9c28903ea34a4f20a1861ecd8f3a30e"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/tests/fixtures/otr_ofr_spread_v1/README.md": {
+    "mtime": 1779634220.357837,
+    "hash": "6cb1997fc11487612cdc00e2eb3814f6"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/utils/temp_rendered/wirp.yml": {
     "mtime": 1779578956.8160944,
@@ -2552,7 +2764,7 @@
     "hash": "d02bc2b14dd242c8b5d76468ca6cafba"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1779626967.8917918,
+    "mtime": 1779679724.948559,
     "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
@@ -2568,8 +2780,8 @@
     "hash": "b5be26de4a54d526813a6a9fece20485"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/technical_debt.md": {
-    "mtime": 1779592436.0244792,
-    "hash": "64858f96a9de3d8e7a588bb87018fcb9"
+    "mtime": 1779675284.5142598,
+    "hash": "0d89570d73de671b8a0aa4790b61734b"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/core_principles.md": {
     "mtime": 1776813015.3737729,
@@ -2656,8 +2868,8 @@
     "hash": "533d5f532ad70669b36726f999eb70e4"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/03_standards/methodology_disclosure.md": {
-    "mtime": 1779067921.9555664,
-    "hash": "456cf607adc42610c0c5f49cb4da4604"
+    "mtime": 1779637607.663153,
+    "hash": "75a33c0d74b2088100c7ff408b05ffe7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/03_standards/naming_conventions.md": {
     "mtime": 1779067655.2132337,
@@ -2723,6 +2935,10 @@
     "mtime": 1779385272.233242,
     "hash": "cfff734293fe14f94e042351236c719d"
   },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/05_decisions/0012-event-primitive-placement.md": {
+    "mtime": 1779668438.2534544,
+    "hash": "155cd9c3d6b8c581d022d15bc66d41d4"
+  },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs_revamped/05_decisions/0011-futures-deliverables-substrate.md": {
     "mtime": 1779577090.912835,
     "hash": "50d0cc02a9d405ce5c3132504ecb7837"
@@ -2776,12 +2992,28 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/01_sovereign_bonds_manifest.yml": {
-    "mtime": 1778982035.6296966,
-    "hash": "48f384fdc25ce929deaaf0e356d42cff"
+    "mtime": 1779668438.2543545,
+    "hash": "342bbc0693725a1b7941a9f71d276083"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/06_policy_futures_manifest.yml": {
+    "mtime": 1779668438.2581902,
+    "hash": "a6a3ef0d8564d03f9c1809885527bc15"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/05_inflation_swaps_manifest.yml": {
+    "mtime": 1779668438.257364,
+    "hash": "1a60168e84799bfbd67e739db31b8130"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/03_bond_futures_manifest.yml": {
+    "mtime": 1779668438.2560077,
+    "hash": "1c22e6c008ed6a4ea7cf916f9844b765"
+  },
+  "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/04_inflation_indexed_bonds_manifest.yml": {
+    "mtime": 1779668438.256692,
+    "hash": "da8e053c556ffc597e8da04e7e5e3577"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/03_tool_manifest/rates_agent/02_ois_manifest.yml": {
-    "mtime": 1778982035.6298978,
-    "hash": "190bff3b5ec675f7a5614f46db5ca259"
+    "mtime": 1779668438.2553616,
+    "hash": "04813633af32c981a8e71c3341a5ef2b"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/manifesto/01_instruments/rates_agent/00_rates_universe_map.md": {
     "mtime": 1777221181.6359615,
