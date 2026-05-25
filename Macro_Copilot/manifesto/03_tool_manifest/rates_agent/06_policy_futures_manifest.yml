@@ -1,0 +1,43 @@
+# =============================================================================
+# Policy / STIR Futures — tool manifest
+# =============================================================================
+# Read by the Library page UI alongside the sibling per-agent manifests.
+# Each entry mirrors a tool actually registered in
+# ``rates_agent/policy_futures/mcp_server.py`` and the per-tool folder
+# under ``rates_agent/policy_futures/tools/<tool>/``. Adding a new tool
+# to this sub-agent = (1) implementation under tools/, (2) MCP
+# registration in mcp_server.py, (3) entry here.
+#
+# Bucket convention (shared across the rates_agent manifests):
+#   1A — strict deterministic arithmetic on stored market data; no
+#        user-facing model inference; conventions YAML-locked.
+#   1B — statistical model fits with bit-stable output on same input.
+#   2  — open-ended / scenario-generating / model-state tools. (None
+#        currently planned for this sub-agent.)
+#
+# Round-3 Stage 1 (work item A10): this manifest was created as a
+# scaffold to close the manifest-coverage gap. The policy_futures
+# sub-agent (rates_agent/policy_futures/) does not yet exist as a code
+# package — primitives are planned to land in Phase 2 Step 2 per the
+# primitive-expansion plan at tmp/primitive_expansion/phase2.md, with
+# 8 planned tools: futures_price_level, futures_strip_snapshot,
+# volume_open_interest_snapshot, futures_calendar_spread,
+# futures_butterfly_simple, futures_cross_market_spread,
+# futures_pack_average_simple, scan_policy_futures_extremes. Each
+# newly-shipped primitive lands its manifest row in the same PR per
+# the primitive runbook.
+#
+# Substrate dependency tracked here:
+#   - The `futures_pack_average_simple` primitive depends on the
+#     `delivery_month_type` annotation on each universe row in
+#     rates_agent/playbooks/policy_futures.yml. The annotation landed
+#     alongside this file (Round 3 Stage 1, work item A1; playbook
+#     bumped to v1.3). Per PR11 the primitive will refuse-build for
+#     `EUR_SHORT_RATE_FUT` (which contains serial-month strip
+#     positions) until method-specific resolution is documented.
+#   - TD #2 (instrument_metadata_history SCD2) — STIR strip-position
+#     primitives need per-contract effective dating to join historical
+#     market data to the right contract identity.
+# =============================================================================
+
+tools: []

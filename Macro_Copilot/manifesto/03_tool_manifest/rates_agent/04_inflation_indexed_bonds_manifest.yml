@@ -1,0 +1,410 @@
+# =============================================================================
+# Inflation-Indexed Bonds — tool manifest
+# =============================================================================
+# Read by the Library page UI alongside the sibling per-agent manifests.
+# Each entry mirrors a tool actually registered in
+# ``rates_agent/inflation_indexed_bonds/mcp_server.py`` and the per-tool
+# folder under ``rates_agent/inflation_indexed_bonds/tools/<tool>/``.
+# Adding a new tool to this sub-agent = (1) implementation under tools/,
+# (2) MCP registration in mcp_server.py, (3) entry here. The Library is
+# rendered from this YAML — no hardcoding tool-by-tool in the frontend.
+#
+# Bucket convention (shared across the rates_agent manifests):
+#   1A  — strict deterministic arithmetic on stored market data; no
+#         user-facing model inference; conventions YAML-locked.
+#   1B  — statistical model fits (rolling OLS, PCA, OU/AR(1)) where
+#         the user picks a window or factor count but the solver +
+#         conventions are YAML-locked; bit-stable on same input.
+#   2   — open-ended / scenario-generating / model-state tools.
+#         (Not yet shipped in this sub-agent.)
+#
+# Domain residence rationale (PR3, ADR 0006):
+#   This file covers sovereign-linker primitives — real-yield levels +
+#   bond-implied breakeven inflation. Distinct from inflation_swaps
+#   (zero-coupon inflation swap primitives, manifest 05_). Linkers and
+#   ZCIS share an instrument family ("inflation") but the desk owners,
+#   underlying instruments, and curve families are disjoint; they are
+#   two separate sub-agents per the ADR-0006 closed-family extension.
+#
+# Round-3 Stage 1 (work item A10): this manifest was created to close
+# the gap between the 9 registered inflation_indexed_bonds primitives
+# (shipped on the inflation-domain reconciliation PR, ADR 0006) and
+# the Library catalogue. Prior to this file, those tools were not
+# surfaceable on the Library page.
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # SINGLE-TENOR REAL-YIELD LEVELS
+  # ---------------------------------------------------------------------------
+
+  - name: get_real_yield_level
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: get_real_yield_level_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/real_yield_level/schemas.py::RealYieldLevelInput
+      compute: rates_agent/inflation_indexed_bonds/tools/real_yield_level/compute.py::get_real_yield_level
+      config: rates_agent/inflation_indexed_bonds/tools/real_yield_level/config.yaml
+
+    one_liner: >-
+      Single-tenor sovereign-linker real-yield snapshot — current yield,
+      daily / weekly / monthly change in bps, rolling 252-day z-score,
+      trailing 252-day high / low / percentile, and full chartable time
+      series. Linker analogue of get_yield_levels.
+
+    bucket_rationale: >-
+      Deterministic rolling z-score over stored daily real yields on the
+      linker generic-ticker universe. Fixed 252-day window; conventions
+      YAML-locked; no model inference and no LLM-facing override path in
+      V1. `instrument_type='inflation_linker'` filter guards the linker
+      universe per the ADR-0006 isolation rationale.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_inflation_simple_tool
+      - calculate_real_yield_curve_spread_tool
+      - get_yield_levels_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0006-inflation-domain-agents.md
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # BOND-IMPLIED BREAKEVEN INFLATION (nominal − linker real yield)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_breakeven_inflation_simple
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_breakeven_inflation_simple_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/schemas.py::BreakevenInflationSimpleInput
+      compute: rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/compute.py::calculate_breakeven_inflation_simple
+      config: rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/config.yaml
+
+    one_liner: >-
+      Bond-implied breakeven inflation at a matched (country, tenor) —
+      nominal sovereign yield minus the linker real yield in bps, with
+      rolling 252-day z-score, period changes and a full chartable time
+      series. The "simple" name denotes the unadjusted nominal − real
+      pairing (no carry / seasonals adjustment, which would be the
+      TD #32 / TD #33 carry-adjusted primitive).
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two stored yield series. Methodology
+      pinned in config.yaml; no model state. Same z-score conventions as
+      the other Bucket-1A simple-spread primitives.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_real_yield_level_tool
+      - get_yield_levels_tool
+      - calculate_forward_breakeven_simple_tool
+      - calculate_inflation_swap_rate_level_tool
+
+    workflows: []
+
+    references:
+      - docs/technical_debt.md  # TD #32 — carry-adjusted breakeven blocker
+      - docs/technical_debt.md  # TD #33 — composition cascade
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_forward_breakeven_simple
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_forward_breakeven_simple_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/schemas.py::ForwardBreakevenSimpleInput
+      compute: rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/compute.py::calculate_forward_breakeven_simple
+      config: rates_agent/inflation_indexed_bonds/tools/forward_breakeven_simple/config.yaml
+
+    one_liner: >-
+      Forward bond-implied breakeven (e.g. 5Y5Y breakeven) computed
+      from two spot bond-implied breakeven legs. The "simple" name
+      denotes the textbook log-additive forward construction without
+      carry / seasonals adjustments.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two stored breakeven series. The
+      forward construction is closed-form per the config; no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_inflation_simple_tool
+      - calculate_inflation_swap_forward_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_breakeven_curve_spread
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_breakeven_curve_spread_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/schemas.py::BreakevenCurveSpreadInput
+      compute: rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/compute.py::calculate_breakeven_curve_spread
+      config: rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/config.yaml
+
+    one_liner: >-
+      Basis-point spread between two tenors of one country's
+      bond-implied breakeven curve (e.g. US 2s10s breakeven) with rolling
+      252-day z-score, daily change, and a full chartable time series.
+      Breakeven-curve analogue of calculate_curve_spread.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two breakeven legs. Same z-score
+      conventions as the sovereign curve_spread tool, applied to
+      breakeven curves. Fixed 1Y rolling window; no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_inflation_simple_tool
+      - calculate_inflation_swap_curve_spread_tool
+      - calculate_curve_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_cross_country_breakeven_spread_simple
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_cross_country_breakeven_spread_simple_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/schemas.py::CrossCountryBreakevenSpreadSimpleInput
+      compute: rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/compute.py::calculate_cross_country_breakeven_spread_simple
+      config: rates_agent/inflation_indexed_bonds/tools/cross_country_breakeven_spread_simple/config.yaml
+
+    one_liner: >-
+      Cross-country bond-implied breakeven spread (e.g. US TIPS vs
+      Gilt linker 10Y) — country-A breakeven minus country-B breakeven
+      at a matched tenor, with rolling 252-day z-score and a full
+      chartable time series. The "simple" name denotes the unadjusted
+      cross-country pairing (no FX adjustment).
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two stored breakeven series across
+      countries. Same z-score conventions as cross_market_spread.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_inflation_simple_tool
+      - calculate_cross_market_inflation_swap_spread_tool
+      - calculate_cross_market_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # REAL-YIELD CURVE SHAPE
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_real_yield_curve_spread
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_real_yield_curve_spread_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/schemas.py::RealYieldCurveSpreadInput
+      compute: rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/compute.py::calculate_real_yield_curve_spread
+      config: rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/config.yaml
+
+    one_liner: >-
+      Basis-point spread between two tenors of one country's linker
+      real-yield curve (e.g. US TIPS 5s30s) with rolling 252-day z-score,
+      daily change, and a full chartable time series. Real-yield
+      analogue of calculate_curve_spread.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two real-yield legs. Same z-score
+      conventions as the nominal sovereign curve_spread.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_real_yield_level_tool
+      - calculate_real_yield_butterfly_tool
+      - calculate_curve_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_cross_country_real_yield_spread_simple
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_cross_country_real_yield_spread_simple_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/schemas.py::CrossCountryRealYieldSpreadSimpleInput
+      compute: rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/compute.py::calculate_cross_country_real_yield_spread_simple
+      config: rates_agent/inflation_indexed_bonds/tools/cross_country_real_yield_spread_simple/config.yaml
+
+    one_liner: >-
+      Cross-country sovereign-linker real-yield spread (e.g. US TIPS vs
+      UK linker 10Y) — country-A real yield minus country-B real yield
+      at a matched tenor, with rolling 252-day z-score. The "simple"
+      name denotes the unadjusted cross-country pairing (no FX
+      adjustment).
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two real-yield series across countries.
+      Same z-score conventions as cross_market_spread.
+
+    pm_overridable: []
+
+    related_tools:
+      - get_real_yield_level_tool
+      - calculate_cross_country_breakeven_spread_simple_tool
+      - calculate_cross_market_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_real_yield_butterfly
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_real_yield_butterfly_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/schemas.py::RealYieldButterflyInput
+      compute: rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/compute.py::calculate_real_yield_butterfly
+      config: rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/config.yaml
+
+    one_liner: >-
+      Three-point real-yield butterfly with fixed 50-50 weights
+      (e.g. US TIPS 2s5s10s butterfly) and rolling 252-day z-score.
+      Real-yield analogue of calculate_butterfly.
+
+    bucket_rationale: >-
+      Deterministic 50-50-weighted butterfly arithmetic on three real-
+      yield legs. PR8 single central knob (lookback display window);
+      weights are YAML-locked per the sibling sovereign butterfly tool.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_real_yield_curve_spread_tool
+      - calculate_breakeven_butterfly_tool
+      - calculate_butterfly_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_breakeven_butterfly
+    domain: rates
+    sub_agent: inflation_indexed_bonds
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_indexed_bonds/mcp_server.py
+      tool_function: calculate_breakeven_butterfly_tool
+      schema: rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/schemas.py::BreakevenButterflyInput
+      compute: rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/compute.py::calculate_breakeven_butterfly
+      config: rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/config.yaml
+
+    one_liner: >-
+      Three-point bond-implied breakeven butterfly with fixed 50-50
+      weights (e.g. US 2s5s10s breakeven butterfly) and rolling 252-day
+      z-score. Breakeven analogue of calculate_butterfly.
+
+    bucket_rationale: >-
+      Deterministic 50-50-weighted butterfly arithmetic on three
+      breakeven legs. PR8 single central knob; weights YAML-locked per
+      the sibling sovereign + real-yield butterfly tools.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_breakeven_curve_spread_tool
+      - calculate_real_yield_butterfly_tool
+      - calculate_inflation_swap_butterfly_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet

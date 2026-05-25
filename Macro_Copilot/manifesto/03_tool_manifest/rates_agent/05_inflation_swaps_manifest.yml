@@ -1,0 +1,350 @@
+# =============================================================================
+# Inflation Swaps — tool manifest
+# =============================================================================
+# Read by the Library page UI.  Each entry mirrors the corresponding
+# tool actually registered in `rates_agent/inflation_swaps/mcp_server.py`
+# and the per-tool folder under `rates_agent/inflation_swaps/tools/<tool>/`.
+# Adding a new inflation-swaps tool = (1) implementation under tools/,
+# (2) MCP registration in mcp_server.py, (3) entry here. The Library
+# page is rendered from this YAML — no hardcoding in the frontend.
+#
+# History note: this file was bootstrapped by the cpi_surprise primitive
+# (primitive 3 of the 8-easy-win batch) and originally shipped with only
+# the cpi_surprise entry; the six other registered inflation-swap
+# primitives (rate_level, curve_spread, forward, cross-market spread,
+# breakeven-basis-simple, butterfly) lived in an instrument doc but
+# lacked manifest entries. Round 3 Stage 1 (work item A10) closed that
+# debt — all 7 currently-registered inflation_swaps primitives now have
+# manifest rows. The filename was also renumbered from `03_` to `05_`
+# in the same PR so the per-agent numeric prefix reflects the planned
+# sub-agent layout (03_bond_futures, 04_inflation_indexed_bonds,
+# 05_inflation_swaps, 06_policy_futures).
+#
+# Bucket convention (same as sovereign_bonds_manifest.yml):
+#   1A — strict deterministic arithmetic on stored market / event data
+#        with no user-facing model inference; conventions YAML-locked.
+#   1B — statistical model fits (rolling OLS, PCA, OU/AR(1)) where the
+#        user picks a window/factor count but solver + conventions are
+#        YAML-locked; bit-stable on same input.
+#   2  — open-ended / scenario-generating / model-state tools (none
+#        shipped yet).
+# =============================================================================
+
+tools:
+  # ---------------------------------------------------------------------------
+  # ECONOMIC-RELEASE SURPRISES
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_cpi_surprise
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: economic_release_surprises
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_cpi_surprise_tool
+      schema: rates_agent/inflation_swaps/tools/cpi_surprise/schemas.py::CpiSurpriseInput
+      compute: rates_agent/inflation_swaps/tools/cpi_surprise/compute.py::calculate_cpi_surprise
+      config: rates_agent/inflation_swaps/tools/cpi_surprise/config.yaml
+
+    one_liner: >-
+      Per-release CPI surprise series (actual − consensus_median, in
+      percentage points of YoY CPI) for one country's headline CPI YoY
+      print, plus a rolling z-score over a window of N RELEASES (NOT
+      calendar days — releases happen monthly, so day-based windows are
+      the wrong unit).  US/UK/JP query event_type=cpi_yoy; EU queries
+      event_type=hicp_yoy (the eurozone HICP equivalent of CPI YoY).
+      Surprise is computed at the primitive layer per ADR 0008 §2's
+      P12 disclosure (event_calendar.surprise is intentionally NULL
+      by ingestion); Bloomberg's ECO screen reports the same number.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored event_calendar rows.
+      The methodology lives in config.yaml; deterministic mode exposes
+      no LLM-facing override path for it.  No model inference, no
+      scenario generation.  Categorical convention (surprise_formula)
+      wire-frozen at the compute layer until methodology.planned_extensions
+      widens it.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_inflation_swap_curve_spread_tool
+      - calculate_breakeven_inflation_simple_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0004-event-calendar-substrate.md
+      - docs_revamped/05_decisions/0008-event-playbook-contract.md
+      - rates_agent/playbooks/economic_releases.yml
+      - docs/technical_debt.md  # TD #28 — D-econ release-date window limit
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.
+      Live-DB SQL validation green: US / EU / UK / JP all PASS
+      row-for-row against macro_data.event_calendar (run via
+      tests/test_cpi_surprise_sql_validation.py).  Parity fixtures
+      shipped at v1 land are live-DB captures (capture_method =
+      live_db_v1) for the four canonical countries — strict PR15
+      compliance.  One synthetic v1 edge-case fixture
+      (empty_pre_extractor.json) pins the error-envelope shape that
+      the live DB cannot reproduce now that all four supported
+      countries have realised data.  The
+      tests/fixtures/cpi_surprise_v1/_capture.py script remains for
+      future re-capture when the event extractor's coverage
+      advances (TD #28b history backfill).
+
+  # ---------------------------------------------------------------------------
+  # SINGLE-TENOR ZCIS LEVELS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_inflation_swap_rate_level
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_inflation_swap_rate_level_tool
+      schema: rates_agent/inflation_swaps/tools/inflation_swap_rate_level/schemas.py::InflationSwapRateLevelInput
+      compute: rates_agent/inflation_swaps/tools/inflation_swap_rate_level/compute.py::calculate_inflation_swap_rate_level
+      config: rates_agent/inflation_swaps/tools/inflation_swap_rate_level/config.yaml
+
+    one_liner: >-
+      Single-pillar zero-coupon inflation swap (ZCIS) rate snapshot —
+      current rate, daily / weekly / monthly change in bps, rolling
+      252-day z-score, trailing 252-day high / low / percentile, and a
+      full chartable time series. ZCIS analogue of get_ois_rate_level.
+
+    bucket_rationale: >-
+      Deterministic rolling z-score over stored daily ZCIS rates.
+      Fixed 252-day window; conventions YAML-locked; no model inference
+      and no LLM-facing override path in V1.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_curve_spread_tool
+      - calculate_cross_market_inflation_swap_spread_tool
+      - calculate_breakeven_inflation_simple_tool
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0006-inflation-domain-agents.md
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # ZCIS CURVE SHAPE
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_inflation_swap_curve_spread
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_inflation_swap_curve_spread_tool
+      schema: rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/schemas.py::InflationSwapCurveSpreadInput
+      compute: rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/compute.py::calculate_inflation_swap_curve_spread
+      config: rates_agent/inflation_swaps/tools/inflation_swap_curve_spread/config.yaml
+
+    one_liner: >-
+      Basis-point spread between two tenors of one country's ZCIS
+      curve (e.g. USD ZCIS 2s10s) with rolling 252-day z-score, daily
+      change, and a full chartable time series. ZCIS analogue of
+      calculate_ois_curve_spread.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two ZCIS legs. Same z-score
+      conventions as the sovereign / OIS curve_spread tools.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_inflation_swap_butterfly_tool
+      - calculate_breakeven_curve_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_inflation_swap_butterfly
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: curve_shape
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_inflation_swap_butterfly_tool
+      schema: rates_agent/inflation_swaps/tools/inflation_swap_butterfly/schemas.py::InflationSwapButterflyInput
+      compute: rates_agent/inflation_swaps/tools/inflation_swap_butterfly/compute.py::calculate_inflation_swap_butterfly
+      config: rates_agent/inflation_swaps/tools/inflation_swap_butterfly/config.yaml
+
+    one_liner: >-
+      Three-point ZCIS butterfly with fixed 50-50 weights (e.g. USD
+      ZCIS 2s5s10s butterfly) and rolling 252-day z-score. ZCIS
+      analogue of calculate_butterfly.
+
+    bucket_rationale: >-
+      Deterministic 50-50-weighted butterfly arithmetic on three ZCIS
+      legs. PR8 single central knob; weights YAML-locked per the
+      sibling sovereign + real-yield butterfly tools.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_curve_spread_tool
+      - calculate_breakeven_butterfly_tool
+      - calculate_real_yield_butterfly_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_inflation_swap_forward
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: forwards_classify
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_inflation_swap_forward_tool
+      schema: rates_agent/inflation_swaps/tools/inflation_swap_forward/schemas.py::InflationSwapForwardInput
+      compute: rates_agent/inflation_swaps/tools/inflation_swap_forward/compute.py::calculate_inflation_swap_forward
+      config: rates_agent/inflation_swaps/tools/inflation_swap_forward/config.yaml
+
+    one_liner: >-
+      Forward inflation swap rate (e.g. 5Y5Y inflation) computed from
+      two spot ZCIS legs via closed-form forward construction. ZCIS
+      analogue of calculate_ois_forward_rate.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two ZCIS rate series. Forward
+      construction is closed-form per the config; no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_forward_breakeven_simple_tool
+      - calculate_ois_forward_rate_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # CROSS-MARKET RV
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_cross_market_inflation_swap_spread
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_cross_market_inflation_swap_spread_tool
+      schema: rates_agent/inflation_swaps/tools/cross_market_inflation_swap_spread/schemas.py::CrossMarketInflationSwapSpreadInput
+      compute: rates_agent/inflation_swaps/tools/cross_market_inflation_swap_spread/compute.py::calculate_cross_market_inflation_swap_spread
+      config: rates_agent/inflation_swaps/tools/cross_market_inflation_swap_spread/config.yaml
+
+    one_liner: >-
+      Cross-country ZCIS spread (e.g. USD ZCIS vs EUR ZCIS 10Y) — one
+      market's ZCIS rate minus another's at a matched tenor, with
+      rolling 252-day z-score and a full chartable time series.
+
+    bucket_rationale: >-
+      Deterministic arithmetic on two ZCIS series across markets.
+      Same z-score conventions as cross_market_spread.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_cross_country_breakeven_spread_simple_tool
+      - calculate_cross_market_spread_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_swap_breakeven_basis_simple
+    domain: rates
+    sub_agent: inflation_swaps
+    bucket: 1A
+    category: cross_market_rv
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/inflation_swaps/mcp_server.py
+      tool_function: calculate_swap_breakeven_basis_simple_tool
+      schema: rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/schemas.py::SwapBreakevenBasisSimpleInput
+      compute: rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/compute.py::calculate_swap_breakeven_basis_simple
+      config: rates_agent/inflation_swaps/tools/swap_breakeven_basis_simple/config.yaml
+
+    one_liner: >-
+      Swap-vs-bond inflation basis (e.g. USD ZCIS 10Y minus US TIPS
+      bond-implied breakeven 10Y) — the cleanest read of the swap-bond
+      inflation pricing gap. The "simple" name denotes the unadjusted
+      pairing (no carry / seasonals adjustment).
+
+    bucket_rationale: >-
+      Deterministic arithmetic on one ZCIS leg and one bond-implied
+      breakeven leg. Same z-score conventions as cross_market_spread;
+      no model state.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_inflation_swap_rate_level_tool
+      - calculate_breakeven_inflation_simple_tool
+
+    workflows: []
+
+    references: []
+
+    built_date: 2026-05-21
+    validation_status: >-
+      Not validated yet
