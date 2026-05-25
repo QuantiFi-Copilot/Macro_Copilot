@@ -6,14 +6,19 @@
 **Version:** v1 (Stage 3 scaffold)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `calculate_curve_spread_tool` (generic_runnable)
-**Tier set:** `[generic_runnable]`
+**Tier set:** `[generic_runnable, custom_build_surface]`
 **Backend sub-agent:** `sovereign_bonds` · **Category:** `curve_shape`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier only (Stage 3 minimal scaffold).
+- **`generic_runnable`** — runtime-status tier.
+- **`custom_build_surface`** — Stage 4a ships the typed view
+  (`spread` kind) at `surfaces/BuildSurface.tsx`.  Routes via
+  ``MODULE.typedView = 'spread'`` through the contextDecoder.  The
+  build canvas mounts the typed view directly with the typed-detail
+  endpoint payload.
   Backend ships this primitive in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through the workflow bridge.
 
 (Capability tiers — `custom_build_surface`, `custom_preview_widget`, `monitor_surface`,

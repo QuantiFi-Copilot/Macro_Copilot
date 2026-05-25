@@ -9,8 +9,8 @@
 import { useNavigate } from 'react-router-dom';
 import type { ScannerResponse } from '@/types/rates';
 import { cn } from '@/utils/cn';
-import { formatSigned } from './PrimitiveMetrics';
-import { PrimitiveCanvasShell, ToolNameChip } from './PrimitiveCanvasShell';
+import { formatSigned } from '@/components/build/primitive/PrimitiveMetrics';
+import { PrimitiveCanvasShell, ToolNameChip } from '@/components/build/primitive/PrimitiveCanvasShell';
 
 type Props = {
   payload: ScannerResponse;
@@ -46,7 +46,7 @@ function signalBadgeClass(signal: string): string {
   return 'border-line-soft bg-white/[0.03] text-fg-secondary';
 }
 
-export function ScannerPrimitiveView({ payload }: Props) {
+function ScannerPrimitiveView({ payload }: Props) {
   const navigate = useNavigate();
   const { summary, results } = payload;
   const asOfDate = results[0]?.as_of_date ?? null;
@@ -166,3 +166,5 @@ export function ScannerPrimitiveView({ payload }: Props) {
     </PrimitiveCanvasShell>
   );
 }
+
+export default ScannerPrimitiveView;

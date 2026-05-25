@@ -282,9 +282,18 @@ export interface PrimitiveModuleSpec {
   // FM8 — surface references.  Only present for claimed capability
   // tiers.  Each value is a React component matching the matching
   // surface-prop interface above.
+  //
+  // Stage 4a relaxation — ``build`` is typed as ``ComponentType<any>``
+  // because typed-view tools (calculate_curve_spread_tool etc.) ship
+  // their existing payload-shaped views (``{payload: <Output>}``) as
+  // the Build surface during the refactor.  Stage 5+ rich-builder
+  // surfaces conform to ``BuildSurfaceProps``; the strict typing
+  // returns once the typed-view migration completes (Stage N cleanup).
+  // ``preview`` / ``monitor`` / ``ask`` keep their strict types — they
+  // haven't started migrating yet.
   // -------------------------------------------------------------------
   surfaces?: {
-    build?: ComponentType<BuildSurfaceProps>;
+    build?: ComponentType<any>; // relaxed Stage 4a; aspirational ComponentType<BuildSurfaceProps>
     preview?: ComponentType<PreviewWidgetProps>;
     monitor?: ComponentType<MonitorWidgetProps>;
     ask?: ComponentType<AskCardProps>;

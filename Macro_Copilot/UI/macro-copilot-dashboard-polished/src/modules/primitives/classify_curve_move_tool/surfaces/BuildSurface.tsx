@@ -13,8 +13,8 @@ import {
   formatSigned,
   toneForChange,
   type MetricItem,
-} from './PrimitiveMetrics';
-import { PrimitiveCanvasShell, ToolNameChip } from './PrimitiveCanvasShell';
+} from '@/components/build/primitive/PrimitiveMetrics';
+import { PrimitiveCanvasShell, ToolNameChip } from '@/components/build/primitive/PrimitiveCanvasShell';
 
 type Props = {
   payload: RegimeOutput;
@@ -31,7 +31,7 @@ function regimeAccent(tag: string): { badgeClass: string } {
   return { badgeClass: 'border-line-soft bg-white/[0.03] text-fg-secondary' };
 }
 
-export function RegimePrimitiveView({ payload }: Props) {
+function RegimePrimitiveView({ payload }: Props) {
   const { current_metrics: cm } = payload;
   const accent = regimeAccent(cm.regime_tag);
 
@@ -143,3 +143,5 @@ export function RegimePrimitiveView({ payload }: Props) {
     </PrimitiveCanvasShell>
   );
 }
+
+export default RegimePrimitiveView;

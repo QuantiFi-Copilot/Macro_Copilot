@@ -56,6 +56,7 @@ import {
   isWorkflowIncompatibleTool,
   normalizeToolName,
 } from '@/lib/toolNames';
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
 /** Closed family of typed primitive views supported on Build today. */
 export type PrimitiveViewKind =
@@ -180,26 +181,28 @@ export type DecodedPrimitive =
     };
 
 /** Map MCP tool names → typed primitive view kinds.  Adding a new entry
- *  is a single-line change here + a new view component + one branch in
- *  the dispatcher.  Names are the BACKEND-CANONICAL prefixed form;
- *  manifest shorthand is resolved by ``normalizeToolName`` before lookup.
+ *  used to be a one-line change here; Stage 4a makes the map derive
+ *  from the module loader so the per-module ``MODULE.typedView`` field
+ *  is the single source of truth.  Adding a new typed view now =
+ *  add the module folder under ``src/modules/primitives/<name>/`` +
+ *  set ``MODULE.typedView`` to the kind + ship ``surfaces/BuildSurface.tsx``.
  *
  *  PR2 — ``calculate_ois_forward_rate_tool`` used to map here to a
  *  no-op ``forward`` placeholder view.  Now that the generic schema-
  *  driven builder can configure + execute any runnable primitive,
  *  the forward rate routes through it directly (real curve / tenor /
  *  date controls + a working run path).  The ``forward`` typed view
- *  is kept around for the placeholder kind but no tool maps to it
- *  today; PR3+ can revive the entry when a bespoke
- *  ``/detail/forward`` endpoint ships. */
-const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = {
-  calculate_curve_spread_tool: 'spread',
-  calculate_cross_market_spread_tool: 'cross_market',
-  calculate_butterfly_tool: 'butterfly',
-  get_yield_levels_tool: 'yield',
-  classify_curve_move_tool: 'regime',
-  scan_extremes_tool: 'scanner',
-};
+ *  is kept around for the placeholder kind but no module declares it
+ *  today; PR3+ can revive the entry by setting a module's
+ *  ``typedView: 'forward'`` once a bespoke ``/detail/forward``
+ *  endpoint ships. */
+const TOOL_TO_VIEW: Record<string, PrimitiveViewKind> = Object.fromEntries(
+  ALL_PRIMITIVE_MODULES
+    .filter((m): m is typeof m & { typedView: PrimitiveViewKind } =>
+      m.typedView != null,
+    )
+    .map((m) => [m.toolName, m.typedView]),
+);
 
 /** Priority when context carries multiple tools.  Chart-bearing
  *  primitives win over scanner-tabular over regime-classification over

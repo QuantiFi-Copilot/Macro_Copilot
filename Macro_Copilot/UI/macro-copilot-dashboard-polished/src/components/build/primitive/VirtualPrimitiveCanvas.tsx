@@ -44,15 +44,16 @@ import {
 } from './paramSpecs';
 import { MissingParamsCard } from './MissingParamsCard';
 import { PrimitiveParamControls } from './PrimitiveParamControls';
-import { SpreadPrimitiveView } from './SpreadPrimitiveView';
-import { CrossMarketPrimitiveView } from './CrossMarketPrimitiveView';
-import { ButterflyPrimitiveView } from './ButterflyPrimitiveView';
-import { YieldPrimitiveView } from './YieldPrimitiveView';
-import { RegimePrimitiveView } from './RegimePrimitiveView';
-import { ScannerPrimitiveView } from './ScannerPrimitiveView';
 import { ForwardPrimitiveView } from './ForwardPrimitiveView';
 import { UnsupportedKnownToolCanvas } from './UnsupportedKnownToolCanvas';
 import { GenericPrimitiveBuilder } from './GenericPrimitiveBuilder';
+// Stage 4a — typed-view components are owned by their module folders
+// now.  The page-shell minimality rule (FP12) forbids importing
+// ``@/modules/primitives/<name>/`` directly from anything under
+// ``src/components/{build,library,monitor,ask,layout}``, so the
+// dispatcher below resolves the BuildSurface component via the
+// module-spec lookup instead of direct per-tool imports.
+import { getPrimitiveModule } from '@/modules';
 
 // ----------------------------------------------------------------------------
 // Component
@@ -285,7 +286,7 @@ export function VirtualPrimitiveCanvas({
   } else if (isLoading || !payload) {
     body = <LoadingCanvas kind={decoded.kind} />;
   } else {
-    body = <PrimitiveDispatcher payload={payload} />;
+    body = <PrimitiveDispatcher payload={payload} toolName={decoded.toolName} />;
   }
 
   return (
@@ -304,24 +305,51 @@ export function VirtualPrimitiveCanvas({
 // ----------------------------------------------------------------------------
 // View dispatcher
 // ----------------------------------------------------------------------------
+//
+// Stage 4a — the dispatcher used to import each typed view file directly
+// (``import { SpreadPrimitiveView } from './SpreadPrimitiveView'`` …).
+// The typed-view components have moved into their owning module folders
+// (e.g. ``src/modules/primitives/calculate_curve_spread_tool/surfaces/
+// BuildSurface.tsx``) and FP12 forbids page-shell files from importing
+// ``@/modules/primitives/<name>/`` directly.  Resolution flow:
+//
+//   1. Look up the PrimitiveModuleSpec by the decoded tool name.
+//   2. Read ``module.surfaces.build`` — the typed-view component.
+//   3. Render it with the same ``payload`` prop the legacy dispatcher
+//      passed.
+//
+// ``forward`` is the one remaining direct render — no tool maps to it
+// today (calculate_ois_forward_rate_tool routes through the generic
+// builder per the contextDecoder PR2 comment) so there's no module to
+// own the placeholder, and ForwardPrimitiveView still lives alongside
+// the dispatcher.
 
-function PrimitiveDispatcher({ payload }: { payload: Payload }) {
-  switch (payload.kind) {
-    case 'spread':
-      return <SpreadPrimitiveView payload={payload.data} />;
-    case 'cross_market':
-      return <CrossMarketPrimitiveView payload={payload.data} />;
-    case 'butterfly':
-      return <ButterflyPrimitiveView payload={payload.data} />;
-    case 'yield':
-      return <YieldPrimitiveView payload={payload.data} />;
-    case 'regime':
-      return <RegimePrimitiveView payload={payload.data} />;
-    case 'scanner':
-      return <ScannerPrimitiveView payload={payload.data} />;
-    case 'forward':
-      return <ForwardPrimitiveView />;
+function PrimitiveDispatcher({
+  payload,
+  toolName,
+}: {
+  payload: Payload;
+  toolName: string;
+}) {
+  if (payload.kind === 'forward') {
+    return <ForwardPrimitiveView />;
   }
+  const moduleSpec = getPrimitiveModule(toolName);
+  const BuildSurface = moduleSpec?.surfaces?.build;
+  if (!BuildSurface) {
+    return (
+      <DispatchError
+        toolName={toolName}
+        kind={payload.kind}
+        reason={
+          moduleSpec
+            ? `Module '${toolName}' does not declare a Build surface for kind '${payload.kind}'.`
+            : `No module registered for tool '${toolName}'.`
+        }
+      />
+    );
+  }
+  return <BuildSurface payload={payload.data} />;
 }
 
 // ----------------------------------------------------------------------------
@@ -394,6 +422,35 @@ function DecodeError({ contextParam }: { contextParam: string }) {
             The link from Ask carries a tool context Build doesn't recognise
             yet.  Open the Ask answer again, or start a new analysis from the
             empty state below.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DispatchError({
+  toolName,
+  kind,
+  reason,
+}: {
+  toolName: string;
+  kind: PrimitiveViewKind;
+  reason: string;
+}) {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center px-6">
+      <div className="card flex max-w-[520px] items-start gap-3 px-5 py-4">
+        <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-300" />
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-semibold text-fg-primary">
+            Could not render {prettyKind(kind)}
+          </div>
+          <div className="mt-1 font-mono text-[10.5px] text-fg-muted">
+            {toolName}
+          </div>
+          <div className="mt-2 text-[11.5px] leading-[1.5] text-fg-secondary">
+            {reason}
           </div>
         </div>
       </div>
