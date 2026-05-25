@@ -69,7 +69,7 @@ interchangeable. Honest single-source-of-truth disclosure (P10):
    helpers must filter the master directly. See the in-file section
    comments at the strip-aware block (L544–587) and the
    ``ROLLING-GENERIC FUTURES`` block (L748–810) for the full
-   rationale, and ``ADR 0011`` for the bond-futures V1 scope.
+   rationale, and ``ADR 0013`` for the bond-futures V1 scope.
 
 3. **Strip-position reference helpers** — do **NOT** go through the
    enriched view either. They query ``instrument_master`` with a
@@ -1177,7 +1177,7 @@ def fetch_cross_market_strip(
 # To fetch a rolling-generic series we therefore join ``market_data_daily``
 # to ``instrument_master`` directly and filter on the master stem. This is
 # the read-side analogue of the ``contract_code`` disambiguator named in
-# TD#11; see also ADR 0011 §"Bond futures".
+# TD#11; see also ADR 0013 §"Bond futures".
 
 _FETCH_ROLLING_GENERIC_SERIES_SQL = text("""
     SELECT
@@ -1332,7 +1332,7 @@ def fetch_rolling_generic_reference(
 # Universe-scan analogue of ``fetch_rolling_generic_series``. Returns
 # every (curve_family, contract_code) rolling-generic stem's series for
 # one field across the named curve families, in ONE query. Used by the
-# bond-futures morning-extremes scanner (V1 monitor #3 per ADR 0011 —
+# bond-futures morning-extremes scanner (V1 monitor #3 per ADR 0013 —
 # ``rates_agent.bond_futures.tools.scan_bond_futures_extremes``); the
 # per-stem ``fetch_rolling_generic_series`` would otherwise force the
 # scanner into one round-trip per stem per field (19 stems × 3 fields =
@@ -1410,7 +1410,7 @@ def fetch_rolling_generic_universe_series(
     (``market_data_daily JOIN instrument_master``) on
     ``is_rolling_contract = TRUE`` and the named ``curve_families`` —
     so for the bond-futures scanner's typical call (curve_families =
-    sovereign-bond futures families per ADR 0011, ``tenor IS NOT
+    sovereign-bond futures families per ADR 0013, ``tenor IS NOT
     NULL`` excludes the policy-futures strip-position-keyed rows
     that have NULL tenor on instrument_master). Returns every stem's
     series in one query; the caller groups by

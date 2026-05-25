@@ -13,7 +13,7 @@
 #   "Rolling-generic strip read at strip_position_short=N1 minus
 #    strip_position_long=N2 — NOT a CTD-of-futures-of-OIS curve. The
 #    CTD-implied-OIS path is not yet a primitive in this build (ADR
-#    0011 V1 scope). Sign convention: short leg minus long leg
+#    0013 V1 scope). Sign convention: short leg minus long leg
 #    (fronter minus backer)."
 #
 # The catalog's methodology guardrail for this primitive forbids

@@ -1,7 +1,7 @@
 """Pydantic schemas for the policy_futures futures_calendar_spread tool.
 
 V1 calendar-spread primitive for the ``policy_futures`` domain (ADR
-0011) — same-curve implied-rate spread between two strip-position
+0013) — same-curve implied-rate spread between two strip-position
 slots on one ``curve_family`` (e.g. ``SOFR_FUT`` strip_position 1 vs
 strip_position 2, ``EUR_SHORT_RATE_FUT`` strip 1 vs strip 4, etc.).
 

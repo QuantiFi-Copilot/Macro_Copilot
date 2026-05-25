@@ -202,7 +202,7 @@ conventions:
     source: bloomberg_field_convention
     rationale: >-
       Closed family of sovereign-bond futures curve families per ADR
-      0011 (V1 monitors-only scope). Comma-separated string because
+      0013 (V1 monitors-only scope). Comma-separated string because
       ``Convention.value`` is scalar (str). Excludes policy-futures
       curves (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) which route
       to the policy_futures agent. A new sovereign-bond futures curve

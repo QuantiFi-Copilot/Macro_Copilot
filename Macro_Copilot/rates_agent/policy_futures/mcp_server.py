@@ -1597,7 +1597,7 @@ def get_futures_pack_average_simple_tool(
     # Pass the bundled config explicitly so the config dependency is
     # observable here (PR14). Mirrors the sibling
     # get_futures_butterfly_simple_tool exactly. Catches the
-    # ADR-0011 V1 EUR_SHORT_RATE_FUT NotImplementedError refusal
+    # ADR-0013 V1 EUR_SHORT_RATE_FUT NotImplementedError refusal
     # separately so the LLM sees a clean {"error": "..."} envelope
     # naming the missing delivery_month_type metadata rather than a
     # stack trace.

@@ -317,7 +317,7 @@ methodology:
       operator-shaped work (cross-CB pricing comparison, strip-
       curve PCA, RV scanning at the curve_family × strip_position
       level)."
-    - "ADR 0013 V1 (docs_revamped/05_decisions/0011-futures-
+    - "ADR 0013 V1 (docs_revamped/05_decisions/0013-futures-
       domain-agents.md) — policy_futures domain scope, the
       EUR_SHORT_RATE_FUT Buba-mix refusal discipline on
       aggregated outputs, the rolling-generic strip
@@ -367,7 +367,7 @@ methodology:
       ``units_by_column`` (today's str-only contract makes the
       flat encoding the honest path)."
     - "CTD-of-futures-of-OIS strip panel (Phase-4 per ADR
-      0011).  Maps each strip slot's implied rate onto a
+      0013).  Maps each strip slot's implied rate onto a
       calibrated OIS forward curve; gated on the CTD
       identification + OIS-curve interpolation stack landing as
       primitives.  Until then the methodology card carries the

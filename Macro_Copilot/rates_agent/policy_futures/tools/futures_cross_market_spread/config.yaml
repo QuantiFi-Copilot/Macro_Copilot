@@ -482,6 +482,6 @@ methodology:
        calendar mapping + the WIRP-time-series substrate (ADR
        0009). NOT a V1 primitive."
     - "CTD-of-futures-of-OIS cross-market spread (Phase-4 per ADR
-       0011). Maps the strip differential onto a calibrated OIS
+       0013). Maps the strip differential onto a calibrated OIS
        forward-rate differential. Gated on the CTD identification
        + OIS-curve interpolation stack landing as primitives."

@@ -245,7 +245,7 @@ def _build_methodology_disclosure(
             f"= {short_rate_regime_a}; leg B ({curve_family_b}) = "
             f"{short_rate_regime_b}. MIXED-REGIME PAIR (RFR vs IBOR) "
             f"— surfaced explicitly per the catalog guardrail (ADR "
-            f"0011); this primitive does NOT collapse mixed-regime "
+            f"0013); this primitive does NOT collapse mixed-regime "
             f"pairs into a pack-average. The implied rate on the RFR "
             f"leg references a compounded daily risk-free rate "
             f"(SOFR / SONIA); the implied rate on the IBOR leg "

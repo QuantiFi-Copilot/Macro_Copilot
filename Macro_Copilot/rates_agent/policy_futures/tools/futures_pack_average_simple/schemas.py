@@ -1,7 +1,7 @@
 """Pydantic schemas for the policy_futures futures_pack_average_simple tool.
 
 V1 pack-average primitive for the ``policy_futures`` domain (ADR
-0011) — four same-curve strip slots (whites = strip positions 1-4,
+0013) — four same-curve strip slots (whites = strip positions 1-4,
 reds = strip positions 5-8) combined into an implied-rate pack
 average using the canonical SIMPLE ARITHMETIC MEAN weighting:
 

@@ -388,7 +388,7 @@ class ScanPolicyFuturesExtremesInput(BaseModel):
             raise ValueError(
                 f"curve_families={invalid!r} are not in the "
                 f"policy-futures closed-family whitelist (per ADR "
-                f"0011 V1 monitors-only scope). Allowed: "
+                f"0013 V1 monitors-only scope). Allowed: "
                 f"{allowed!r}. Bond-futures curves (UST_FUT / "
                 "DE_FUT / ...) route to the bond_futures agent. "
                 "Sovereign curves (UST / DE_BUND / ...) route to "

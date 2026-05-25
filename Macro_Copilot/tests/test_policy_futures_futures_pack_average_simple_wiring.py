@@ -352,7 +352,7 @@ class TestEurShortRateFutRefusedAtMcp:
         parsed = json.loads(output_json)
         assert "error" in parsed
         # Envelope must carry the playbook-metadata unblock reason
-        # AND the ADR-0011 citation so the desk reader can follow
+        # AND the ADR-0013 citation so the desk reader can follow
         # the disclosure trail without inspecting the source.
         assert "delivery_month_type" in parsed["error"]
         assert "ADR 0013" in parsed["error"]

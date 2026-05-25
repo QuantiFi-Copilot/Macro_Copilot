@@ -333,7 +333,7 @@ def calculate_futures_pack_average_simple(
     Raises
     ------
     NotImplementedError
-        When ``curve_family`` is in the ADR-0011-V1 refusal set
+        When ``curve_family`` is in the ADR-0013-V1 refusal set
         (currently ``{EUR_SHORT_RATE_FUT}``) because the playbook
         does not yet carry per-row ``delivery_month_type`` metadata.
         The MCP wrapper catches this and serialises a clean
@@ -367,7 +367,7 @@ def calculate_futures_pack_average_simple(
             f"refuse mixed packs with a clearer error. Until that "
             f"playbook metadata lands, the refusal here is the "
             f"honest behaviour (see ADR 0013 — "
-            f"docs_revamped/05_decisions/0011-futures-domain-"
+            f"docs_revamped/05_decisions/0013-futures-domain-"
             f"agents.md — and the methodology.planned_extensions "
             f"block in this tool's config.yaml for the unblock "
             f"path). SOFR_FUT and SONIA_FUT pack averages build "

@@ -23,7 +23,7 @@ generic price caveat)"). The disclosure includes:
     runtime; not hardcoded — same pattern as the bond_futures /
     inflation_swaps scanners),
   - the per-row RFR-vs-IBOR regime caveat per curve_family per ADR
-    0011 (SOFR_FUT / SONIA_FUT = RFR; EUR_SHORT_RATE_FUT = IBOR),
+    0013 (SOFR_FUT / SONIA_FUT = RFR; EUR_SHORT_RATE_FUT = IBOR),
   - the inverse-pricing rule (metadata-driven),
   - the rolling-generic strip-snapshot caveat (per-contract
     underlying rolls quarterly),
