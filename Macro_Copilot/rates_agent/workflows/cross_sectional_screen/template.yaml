@@ -1,0 +1,406 @@
+# =============================================================================
+# cross_sectional_screen — canonical fixed-arity (N=4) cross-sectional screen
+# =============================================================================
+# Opens the cross_sectional_screen archetype with its first template.  Per
+# ADR 0013 (docs_revamped/05_decisions/0013-cross-sectional-screen-output-shape.md):
+# Option A verdict (SeriesSet-carried screen, no closed-family extension).
+#
+# The archetype's canonical question shape — per the workflow-template
+# runbook's archetype table — is:
+#
+#   "Across universe U, which instruments rank highest on metric M as of
+#    date D?"
+#
+# The V1 template binds a fixed-arity universe of FOUR members.  Each member
+# supplies a Series via slot-substituted (tool_name, output_field, params)
+# triple per WT3 — the operator substrate is asset-class-blind, the
+# asset-class specificity lives in the caller's primitive choice.  Each
+# member's Series is collapsed to a single-row summary at the sentinel date
+# 1900-01-01 via summarize_series; the four summaries are joined via
+# align_series whose output_keys slot carries caller-supplied member labels,
+# producing the terminal SeriesSet.
+#
+# Why fixed-arity N=4
+# -------------------
+# Templates have static topology (WT7 — node IDs and edges are
+# template-author-locked literal YAML).  V1 hardcodes N=4 because the operator
+# substrate has no fan-out / map-over-universe mechanism today.  Per ADR 0013
+# §"Decision 2" + WT5, sibling templates of the same archetype can ship later
+# for N=8 / N=16 universes, or for Panel-primitive shapes once a per-column-
+# Panel operator (e.g. summarize_panel) is promoted per OPR4.
+#
+# Ranking is deferred
+# -------------------
+# The terminal SeriesSet carries four single-row Series at the same sentinel
+# date.  Reading the SeriesSet's four values and forming a ranking judgment
+# is a desk concern at V1; the substrate does not embed rank order in the
+# artifact.  Adding a RankedResult artifact + rank operator is the Option-B
+# closed-family extension explicitly rejected by ADR 0013 §"Alternatives (B)".
+# This is a documented P5 limitation surfaced on the TemplateCard's
+# description below.
+#
+# Canonical V1 binding (cross-country 10Y z-score snapshot)
+# ---------------------------------------------------------
+#   member_1_tool_name:     zscore_custom_tool
+#   member_1_params:        {curve_family: UST, tenor: "10Y",
+#                            z_score_window_days: 252, lookback_days: 30}
+#   member_1_output_field:  time_series_zscore
+#
+#   member_2_tool_name:     zscore_custom_tool
+#   member_2_params:        {curve_family: DE_BUND, tenor: "10Y",
+#                            z_score_window_days: 252, lookback_days: 30}
+#   member_2_output_field:  time_series_zscore
+#
+#   member_3_tool_name:     zscore_custom_tool
+#   member_3_params:        {curve_family: UK_GILT, tenor: "10Y",
+#                            z_score_window_days: 252, lookback_days: 30}
+#   member_3_output_field:  time_series_zscore
+#
+#   member_4_tool_name:     zscore_custom_tool
+#   member_4_params:        {curve_family: JGB, tenor: "10Y",
+#                            z_score_window_days: 252, lookback_days: 30}
+#   member_4_output_field:  time_series_zscore
+#
+#   member_labels:          ["UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y"]
+#   statistic:              mean        # default; mean over a short lookback
+#                                        # approximates a "snapshot at as-of"
+#                                        # reading.  Caller can override.
+#
+# Reading the terminal
+# --------------------
+# The desk reads SeriesSet({UST_10Y: 1.8, BUND_10Y: 0.3, GILT_10Y: -1.2,
+# JGB_10Y: 2.1}) and identifies JGB_10Y as the most z-score-stretched, GILT_10Y
+# as the most depressed.  Rank is the desk's read; the substrate's job is to
+# stage the four comparable values with their methodology lineage attached.
+#
+# Snapshot vs window-mean
+# -----------------------
+# summarize_series.statistic ∈ {mean, median, std, sum, count}; there is no
+# "latest" option in V1.  For a true snapshot at as-of date, bind each
+# member's lookback_days to a short window (e.g. 1–5 trading days) so the
+# mean equals (or near-equals) the latest value.  This is a documented
+# caller-side discipline; encoding it in the template (via a literal
+# lookback_days) would defeat the WT8 slot-as-only-knob principle.
+#
+# Topology-locked methodology (NOT exposed as slots) — per WT8
+# ------------------------------------------------------------
+#   - summarize_series.dispersion = "std"  (always-report-dispersion
+#                                            discipline; mirrors
+#                                            conditional_aggregate's V1
+#                                            convention)
+#   - align_series.join_policy = "inner"   (single sentinel date by
+#                                            construction — inner is the
+#                                            only meaningful join)
+#   - align_series.fill_policy = "raw"     (no imputation of missing values)
+#   - align_series.require_matching_frequency = false  (summarize_series'
+#                                            output Series has a frequency
+#                                            tag that may differ across
+#                                            member primitives; the choice
+#                                            is recorded in lineage so
+#                                            mixed-frequency members surface
+#                                            honestly)
+#   - align_series.require_matching_missingness = false  (each member's
+#                                            upstream primitive may carry a
+#                                            different missingness policy
+#                                            (e.g. UST vs JGB); the choice
+#                                            is recorded in lineage)
+#
+# Why these are NOT slots: each is intrinsic to the archetype's identity.
+# A future sibling template that needed a different join policy or a
+# different dispersion would ship as its own YAML per WT5 — never as a
+# variant slot inside this template.
+#
+# Asset-class-blindness (WT3 + WT15)
+# ----------------------------------
+# Every member's tool_name + params + output_field is a {$slot: ...}
+# reference — the operator substrate (4 × summarize_series + 1 ×
+# align_series) is asset-class-blind by construction.  The mandatory
+# instrument-agnostic test (WT15 layer 4) binds four synthetic
+# Series-emitting primitives via a local PrimitiveResolver and verifies the
+# template runs end-to-end producing a typed SeriesSet — same Pattern A as
+# tests/test_workflow_event_study.py.
+
+template_id: cross_sectional_screen
+archetype: cross_sectional_screen
+description: >-
+  Cross-sectional dislocation monitor across a fixed-arity 4-member
+  universe.  Each member supplies a Series via slot-bound primitive
+  selection; the template summarises each member's Series at a single
+  sentinel date (1900-01-01) and emits a SeriesSet keyed by caller-supplied
+  member labels.  The four-value SeriesSet is the desk's "rank by metric"
+  surface — ranking itself is deferred to a future per-column-Panel
+  operator path per ADR 0013 §"Deferred future paths".  Pair with
+  z-score-emitting member primitives (e.g. zscore_custom_tool) and a
+  short member-side lookback_days to approximate a snapshot-at-as-of-date
+  reading.
+
+# Structural cues the LLM router matches against prompts.  Multiple cues
+# = OR pattern.  Per WT14: 4–10 cues, each ≤120 chars, desk vocabulary,
+# disjoint from the cues declared by event_study and
+# regime_conditioned_relationship templates.
+archetype_signature:
+  - "rank a small set of curves by recent metric"
+  - "which 10Y sovereigns look most stretched today"
+  - "cross-sectional z-score scan across N curves"
+  - "dislocation monitor for a basket of instruments"
+  - "compare current metric across multiple curve families"
+  - "which spreads are most extended right now"
+  - "snapshot RV scan across a curated universe"
+
+slot_schema:
+
+  # ---------------------------------------------------------------------------
+  # Member 1
+  # ---------------------------------------------------------------------------
+
+  - name: member_1_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits member 1's Series.  Any
+      TimeSeries-emitting primitive whose output_field can be lifted to a
+      typed Series artifact via the standard bridge.  Canonical V1
+      binding: zscore_custom_tool with curve_family=UST, tenor='10Y'.
+
+  - name: member_1_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for member 1's primitive.  The primitive's *Input
+      Pydantic validator catches field-level errors at execution time.
+
+  - name: member_1_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of member 1's primitive output to lift.  For
+      a snapshot-at-as-of reading, prefer z-score-typed fields (e.g.
+      time_series_zscore) paired with a short member-side lookback so the
+      summary mean ≈ the latest value.
+
+  # ---------------------------------------------------------------------------
+  # Member 2
+  # ---------------------------------------------------------------------------
+
+  - name: member_2_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits member 2's Series.  See
+      member_1_tool_name for the contract; canonical V1 binding uses the
+      same tool with a different curve_family (e.g. DE_BUND).
+
+  - name: member_2_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for member 2's primitive.
+
+  - name: member_2_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of member 2's primitive output to lift.
+
+  # ---------------------------------------------------------------------------
+  # Member 3
+  # ---------------------------------------------------------------------------
+
+  - name: member_3_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits member 3's Series.
+
+  - name: member_3_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for member 3's primitive.
+
+  - name: member_3_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of member 3's primitive output to lift.
+
+  # ---------------------------------------------------------------------------
+  # Member 4
+  # ---------------------------------------------------------------------------
+
+  - name: member_4_tool_name
+    type: str
+    required: true
+    description: >-
+      MCP tool name of the primitive that emits member 4's Series.
+
+  - name: member_4_params
+    type: dict
+    required: true
+    description: >-
+      Complete *Input dict for member 4's primitive.
+
+  - name: member_4_output_field
+    type: str
+    required: true
+    description: >-
+      Which time_series* field of member 4's primitive output to lift.
+
+  # ---------------------------------------------------------------------------
+  # Cross-member knobs
+  # ---------------------------------------------------------------------------
+
+  - name: member_labels
+    type: list
+    required: true
+    description: >-
+      Ordered list of EXACTLY 4 caller-controlled member labels (strings)
+      in declaration order [member_1, member_2, member_3, member_4].  Used
+      as the align_series node's output_keys so the terminal SeriesSet's
+      per-key dicts carry desk-meaningful names (e.g. ["UST_10Y",
+      "BUND_10Y", "GILT_10Y", "JGB_10Y"]).  align_series enforces
+      length-matches-input-count (4) and uniqueness at bind / execution
+      time; mis-shaped lists raise a typed error before any downstream
+      consumer sees a malformed SeriesSet.
+
+  - name: statistic
+    type: str
+    required: false
+    default: mean
+    description: >-
+      Aggregator passed to every summarize_series node.  Closed-enum
+      values from SummarizeSeriesParams: {mean, median, std, sum, count}.
+      Default 'mean' — average of the member's input Series over its
+      lookback window.  For a 'snapshot at as-of date' reading, bind each
+      member's primitive with a short lookback_days (e.g. 1–5 trading
+      days) so the mean ≈ today's value.  No 'latest' option exists in
+      summarize_series V1; the short-lookback pattern is the documented
+      caller-side approximation.
+
+# DAG topology — locked.  Slots fill node params; topology is fixed.
+#
+# 9-node DAG.  Four parallel primitive members feed four parallel summary
+# nodes; the four summaries join via a single align_series whose output is
+# the terminal SeriesSet:
+#
+#   member_1 ──> summary_1 ──┐
+#   member_2 ──> summary_2 ──┤
+#                             ├─> screen (align_series, terminal)
+#   member_3 ──> summary_3 ──┤
+#   member_4 ──> summary_4 ──┘
+#
+# Terminal artifact: SeriesSet (4 single-row Series at sentinel 1900-01-01,
+# keyed by member_labels).
+nodes:
+
+  # ---- Member primitives (4 parallel branches) ----
+
+  - kind: primitive
+    node_id: member_1
+    tool_name: {$slot: member_1_tool_name}
+    output_field: {$slot: member_1_output_field}
+    params: {$slot: member_1_params}
+
+  - kind: primitive
+    node_id: member_2
+    tool_name: {$slot: member_2_tool_name}
+    output_field: {$slot: member_2_output_field}
+    params: {$slot: member_2_params}
+
+  - kind: primitive
+    node_id: member_3
+    tool_name: {$slot: member_3_tool_name}
+    output_field: {$slot: member_3_output_field}
+    params: {$slot: member_3_params}
+
+  - kind: primitive
+    node_id: member_4
+    tool_name: {$slot: member_4_tool_name}
+    output_field: {$slot: member_4_output_field}
+    params: {$slot: member_4_params}
+
+  # ---- Per-member summary at sentinel date 1900-01-01 ----
+
+  - kind: operator
+    node_id: summary_1
+    operator_name: summarize_series
+    params:
+      statistic: {$slot: statistic}
+      dispersion: std                  # template-locked: always-report-dispersion
+
+  - kind: operator
+    node_id: summary_2
+    operator_name: summarize_series
+    params:
+      statistic: {$slot: statistic}
+      dispersion: std
+
+  - kind: operator
+    node_id: summary_3
+    operator_name: summarize_series
+    params:
+      statistic: {$slot: statistic}
+      dispersion: std
+
+  - kind: operator
+    node_id: summary_4
+    operator_name: summarize_series
+    params:
+      statistic: {$slot: statistic}
+      dispersion: std
+
+  # ---- Terminal: align the 4 summaries into a SeriesSet keyed by member_labels ----
+
+  - kind: operator
+    node_id: screen
+    operator_name: align_series
+    params:
+      join_policy: inner                       # template-locked: single sentinel index
+      fill_policy: raw                         # template-locked: no imputation
+      # Each summarize_series output Series may carry a different frequency
+      # tag / missingness policy depending on the member primitive's upstream
+      # cleaning.  Inner-joining at the single sentinel date is well-defined
+      # regardless, and the choice is recorded honestly in lineage.
+      require_matching_frequency: false
+      require_matching_missingness: false
+      output_keys: {$slot: member_labels}      # caller-controlled member names
+
+edges:
+
+  # member_n -> summary_n (4 parallel branches)
+  - source_node_id: member_1
+    target_node_id: summary_1
+    target_input_slot: series
+
+  - source_node_id: member_2
+    target_node_id: summary_2
+    target_input_slot: series
+
+  - source_node_id: member_3
+    target_node_id: summary_3
+    target_input_slot: series
+
+  - source_node_id: member_4
+    target_node_id: summary_4
+    target_input_slot: series
+
+  # summary_n -> screen (align_series.series_list: List[Series], 4 edges aggregate)
+  - source_node_id: summary_1
+    target_node_id: screen
+    target_input_slot: series_list
+
+  - source_node_id: summary_2
+    target_node_id: screen
+    target_input_slot: series_list
+
+  - source_node_id: summary_3
+    target_node_id: screen
+    target_input_slot: series_list
+
+  - source_node_id: summary_4
+    target_node_id: screen
+    target_input_slot: series_list
+
+literal_bindings: []
+
+terminal_node_id: screen

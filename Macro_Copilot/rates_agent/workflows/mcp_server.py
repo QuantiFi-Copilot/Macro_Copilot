@@ -93,6 +93,7 @@ from database.database import get_db_engine  # noqa: E402
 # data prerequisites land.
 #
 #   import rates_agent.workflows.backtest  # noqa: F401, E402
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
 
@@ -451,6 +452,117 @@ def regime_conditioned_relationship_workflow(
         "regression_min_periods": regression_min_periods,
         "high_threshold": high_threshold,
         "low_threshold": low_threshold,
+    }
+    envelope = run_template(template_id, slot_values, engine=engine)
+    return json.dumps(envelope, default=str)
+
+
+@mcp.tool()
+def cross_sectional_screen_workflow(
+    member_1_tool_name: str,
+    member_1_params: dict,
+    member_1_output_field: str,
+    member_2_tool_name: str,
+    member_2_params: dict,
+    member_2_output_field: str,
+    member_3_tool_name: str,
+    member_3_params: dict,
+    member_3_output_field: str,
+    member_4_tool_name: str,
+    member_4_params: dict,
+    member_4_output_field: str,
+    member_labels: list,
+    statistic: str = "mean",
+) -> str:
+    """Execute the cross_sectional_screen workflow: a fixed-arity 4-member
+    dislocation monitor.  Each member supplies a Series via slot-bound
+    primitive selection; the template summarises each member's Series at
+    a single sentinel date and emits a SeriesSet keyed by caller-supplied
+    member labels.
+
+    The four-value SeriesSet is the desk's "rank by metric" surface —
+    ranking-by-value is a desk read at V1 (ADR 0013 §"Deferred future
+    paths"); the substrate does not embed rank order in the artifact.
+
+    Use this tool when the user asks:
+      - "Which 10Y sovereigns look most stretched today?"
+      - "Rank a small set of curves by recent metric."
+      - "Cross-sectional z-score scan across N curves."
+      - "Dislocation monitor for a basket of instruments."
+      - "Compare current metric across multiple curve families."
+      - "Which spreads are most extended right now?"
+      - "Snapshot RV scan across a curated universe."
+
+    Canonical V1 binding (cross-country 10Y z-score snapshot):
+      member_1_tool_name     = "calculate_zscore_custom_tool"
+      member_1_params        = {"curve_family": "UST", "tenor": "10Y",
+                                "z_score_window_days": 252,
+                                "lookback_days": 30}
+      member_1_output_field  = "time_series_zscore"
+      member_2_tool_name     = "calculate_zscore_custom_tool"
+      member_2_params        = {"curve_family": "DE_BUND", "tenor": "10Y",
+                                "z_score_window_days": 252,
+                                "lookback_days": 30}
+      member_2_output_field  = "time_series_zscore"
+      member_3_tool_name     = "calculate_zscore_custom_tool"
+      member_3_params        = {"curve_family": "UK_GILT", "tenor": "10Y",
+                                "z_score_window_days": 252,
+                                "lookback_days": 30}
+      member_3_output_field  = "time_series_zscore"
+      member_4_tool_name     = "calculate_zscore_custom_tool"
+      member_4_params        = {"curve_family": "JGB", "tenor": "10Y",
+                                "z_score_window_days": 252,
+                                "lookback_days": 30}
+      member_4_output_field  = "time_series_zscore"
+      member_labels          = ["UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y"]
+      statistic              = "mean"
+
+    Snapshot vs window-mean
+    -----------------------
+    summarize_series.statistic ∈ {mean, median, std, sum, count}; there
+    is no "latest" option in V1.  For a true snapshot at as-of date,
+    bind each member's lookback_days short (e.g. 1–5 trading days) so
+    the mean equals (or near-equals) the latest value.
+
+    Parameters
+    ----------
+    member_{1..4}_tool_name : str
+        MCP tool name of the primitive emitting member N's Series.  Any
+        TimeSeries-emitting primitive registered in
+        ``rates_primitive_resolver``.
+    member_{1..4}_params : dict
+        Complete *Input dict for member N's primitive.
+    member_{1..4}_output_field : str
+        Which time_series* field of member N's primitive output to lift.
+    member_labels : list
+        Ordered list of EXACTLY 4 caller-controlled member labels
+        (strings) in declaration order.  Used as the terminal
+        ``align_series`` node's ``output_keys`` so the SeriesSet's
+        per-key dicts carry desk-meaningful names (e.g. ["UST_10Y",
+        "BUND_10Y", "GILT_10Y", "JGB_10Y"]).
+    statistic : str, optional
+        Aggregator passed to every summarize_series node.  Closed-enum
+        values: {mean, median, std, sum, count}.  Default "mean".
+    """
+    template_id = "cross_sectional_screen"
+    engine, err = _engine_or_error_envelope(template_id)
+    if err is not None:
+        return err
+    slot_values = {
+        "member_1_tool_name": member_1_tool_name,
+        "member_1_params": member_1_params,
+        "member_1_output_field": member_1_output_field,
+        "member_2_tool_name": member_2_tool_name,
+        "member_2_params": member_2_params,
+        "member_2_output_field": member_2_output_field,
+        "member_3_tool_name": member_3_tool_name,
+        "member_3_params": member_3_params,
+        "member_3_output_field": member_3_output_field,
+        "member_4_tool_name": member_4_tool_name,
+        "member_4_params": member_4_params,
+        "member_4_output_field": member_4_output_field,
+        "member_labels": member_labels,
+        "statistic": statistic,
     }
     envelope = run_template(template_id, slot_values, engine=engine)
     return json.dumps(envelope, default=str)
