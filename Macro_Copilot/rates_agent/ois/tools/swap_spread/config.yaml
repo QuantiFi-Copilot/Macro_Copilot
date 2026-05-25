@@ -282,6 +282,31 @@ methodology:
        bond-level metadata, add a ``convention: [par_par,
        present_value_asw]`` knob with PV_ASW computed when caller
        opts in."
+    - "PR4 SYMMETRIC CROSS-REFERENCE TO asset_swap_spread (catalog
+       guardrail — both primitives' methodology cards cite each
+       other).  ``rates_agent/ois/tools/asset_swap_spread/`` is the
+       per-bond INGESTED Bloomberg ASW: ``ASSET_SWAP_SPD_MID``
+       surfaced VERBATIM (P12 vendor-ingest discipline, source tag
+       ``vendor_ingested``).  THIS primitive (swap_spread) is the
+       cross-domain par-par approximation
+       ``(sovereign_yield - ois_rate) * 100`` computed in-process.
+       The two primitives are NOT interchangeable:
+       (1) Granularity — asset_swap_spread is per-bond (vendor_ticker
+       key against the sovereign_cash_bonds universe); swap_spread
+       is per (curve_family, tenor) on the GT-generic curve.
+       (2) Source — asset_swap_spread surfaces the vendor's
+       source-of-record per P12; swap_spread is a computed
+       approximation.
+       (3) Error — the par-par approximation error vs the true
+       Bloomberg ASW is typically 1-3 bps for liquid sovereigns but
+       can grow to 10+ bps for off-the-run / high-coupon bonds
+       (PR 21 disclosure above).
+       Choose asset_swap_spread when a specific cash-bond ASW is
+       needed and the bond is in the sovereign_cash_bonds universe;
+       choose swap_spread when a curve view is needed or the
+       per-bond Bloomberg field is unavailable.  The symmetric cite
+       FROM asset_swap_spread points back here under that primitive's
+       methodology.assumptions."
 
   citations: []
 

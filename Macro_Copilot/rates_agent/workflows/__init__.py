@@ -70,6 +70,12 @@ from rates_agent.ois.tools.swap_spread import (
     SwapSpreadOutput,
     calculate_swap_spread,
 )
+from rates_agent.ois.tools.asset_swap_spread import (
+    CONFIG_PATH as ASSET_SWAP_SPREAD_CONFIG_PATH,
+    AssetSwapSpreadInput,
+    AssetSwapSpreadOutput,
+    get_asset_swap_spread,
+)
 from rates_agent.sovereign_bonds.tools.curve_spread import (
     CONFIG_PATH as SOV_CURVE_SPREAD_CONFIG_PATH,
     CurveSpreadInput,
@@ -403,6 +409,21 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             # single day").  See SwapSpreadOutput.time_series_change_zscore
             # docstring + the swap_spread compute change_zscore builder.
             "time_series_change_zscore": "z_score",
+        },
+    ),
+    # Per-bond INGEST — distinct from swap_spread (par-par
+    # approximation).  Both primitives' methodology cards cite each
+    # other per the catalog guardrail.  Output is snapshot +
+    # canonical TimeSeries with RAW bit-exact ASW values for SQL
+    # parity within 1e-9.
+    "get_asset_swap_spread_tool": PrimitiveSpec(
+        tool_name="get_asset_swap_spread_tool",
+        callable=get_asset_swap_spread,
+        input_class=AssetSwapSpreadInput,
+        output_class=AssetSwapSpreadOutput,
+        config_path=ASSET_SWAP_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series": "bps",
         },
     ),
     # ---- Sovereign domain ----

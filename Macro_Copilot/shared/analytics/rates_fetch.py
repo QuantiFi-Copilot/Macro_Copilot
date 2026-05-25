@@ -279,6 +279,167 @@ def fetch_single_tenor(
 
 
 # ============================================================================
+# ONE BOND (vendor_ticker keyed), ONE FIELD
+# ============================================================================
+#
+# Per-bond fetcher addressed by ``vendor_ticker`` (the canonical per-bond
+# key, e.g. ``/isin/DE000BU22130``).  Distinct from ``fetch_single_tenor``
+# which keys by ``(curve_family, tenor)`` against a possibly-rolling
+# universe: this helper targets a SPECIFIC instrument row in
+# ``instrument_master`` and pulls its time-series field values.  Used
+# today by ``rates_agent/ois/tools/asset_swap_spread/`` to fetch
+# ``ASSET_SWAP_SPD_MID`` per cash bond; reusable for any future
+# per-bond ingest primitive that addresses by vendor_ticker.
+#
+# Optional ``instrument_type`` filter narrows the matched instrument
+# row to a known type (e.g. ``'sovereign_cash_bond'``) so the fetcher
+# cannot silently return rows from a same-vendor_ticker but
+# different-instrument-type row (defence-in-depth — vendor_ticker has
+# a uniqueness index on ``instrument_master`` today, but the filter
+# protects against a future relaxation).
+#
+# Optional ``end_date`` adds an upper bound for explicit-window queries
+# (``as_of_date`` semantics on the calling primitive).  Default ``None``
+# (no upper bound) reproduces the open-ended ``trade_date >= start_date``
+# shape used by every other single-series fetcher.
+
+_FETCH_SINGLE_BOND_SQL = text("""
+    SELECT
+        d.trade_date,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.vendor_ticker = :vendor_ticker
+      AND d.field_name    = :field_name
+      AND d.trade_date   >= :start_date
+    ORDER BY d.trade_date
+""")
+
+
+_FETCH_SINGLE_BOND_TYPED_SQL = text("""
+    SELECT
+        d.trade_date,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.vendor_ticker  = :vendor_ticker
+      AND i.instrument_type = :instrument_type
+      AND d.field_name     = :field_name
+      AND d.trade_date    >= :start_date
+    ORDER BY d.trade_date
+""")
+
+
+_FETCH_SINGLE_BOND_ENDED_SQL = text("""
+    SELECT
+        d.trade_date,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.vendor_ticker = :vendor_ticker
+      AND d.field_name    = :field_name
+      AND d.trade_date   >= :start_date
+      AND d.trade_date   <= :end_date
+    ORDER BY d.trade_date
+""")
+
+
+_FETCH_SINGLE_BOND_TYPED_ENDED_SQL = text("""
+    SELECT
+        d.trade_date,
+        d.field_value
+    FROM macro_data.market_data_daily d
+    JOIN macro_data.instrument_master i
+      ON d.instrument_id = i.instrument_id
+    WHERE i.vendor_ticker  = :vendor_ticker
+      AND i.instrument_type = :instrument_type
+      AND d.field_name     = :field_name
+      AND d.trade_date    >= :start_date
+      AND d.trade_date    <= :end_date
+    ORDER BY d.trade_date
+""")
+
+
+def fetch_single_bond_series(
+    engine: Engine,
+    *,
+    vendor_ticker: str,
+    field_name: str,
+    start_date: date,
+    end_date: Optional[date] = None,
+    instrument_type: Optional[str] = None,
+) -> pd.DataFrame:
+    """Fetch a single ``(vendor_ticker, field_name)`` time series.
+
+    Returns a long-format DataFrame with columns
+    ``['trade_date', 'field_value']`` sorted ascending by trade_date.
+    Empty DataFrame when no rows match.
+
+    Parameters
+    ----------
+    engine : Engine
+        Live SQLAlchemy engine.
+    vendor_ticker : str
+        The bond's canonical key (e.g. ``/isin/DE000BU22130``).
+    field_name : str
+        Bloomberg field mnemonic stored in ``market_data_daily.field_name``
+        (e.g. ``'ASSET_SWAP_SPD_MID'``).
+    start_date : date
+        Inclusive lower bound on ``trade_date``.
+    end_date : Optional[date]
+        Optional inclusive upper bound on ``trade_date``.  When None
+        (default), the query is open-ended (every row at or after
+        ``start_date``).
+    instrument_type : Optional[str]
+        Optional defence-in-depth filter on
+        ``instrument_master.instrument_type`` (e.g.
+        ``'sovereign_cash_bond'``).  When supplied, the matched
+        instrument row must carry the named type — guarantees the
+        fetcher cannot return a row whose vendor_ticker is reused
+        across instrument types in a future schema relaxation.
+        Default ``None`` adds no instrument-type filter.
+
+    The function reads ``macro_data.market_data_daily`` JOIN
+    ``macro_data.instrument_master`` directly (NOT through
+    ``v_market_data_daily_enriched``) because:
+      1. The view is gated on ``is_rolling_contract`` for the SCD2
+         metadata overlay — irrelevant for cash bonds (non-rolling)
+         which means a direct JOIN is no slower.
+      2. The vendor_ticker filter applies on instrument_master, so
+         we need the JOIN regardless of which surface we hit.
+      3. Reading market_data_daily directly preserves the RAW
+         ``field_value`` precision (no view-side casts) — important
+         for the asset_swap_spread INGEST contract where the SQL
+         validation runner asserts 1e-9 parity on the raw value.
+    """
+    params: Dict[str, object] = {
+        "vendor_ticker": vendor_ticker,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if end_date is None and instrument_type is None:
+        sql = _FETCH_SINGLE_BOND_SQL
+    elif end_date is None:
+        sql = _FETCH_SINGLE_BOND_TYPED_SQL
+        params["instrument_type"] = instrument_type
+    elif instrument_type is None:
+        sql = _FETCH_SINGLE_BOND_ENDED_SQL
+        params["end_date"] = end_date.isoformat()
+    else:
+        sql = _FETCH_SINGLE_BOND_TYPED_ENDED_SQL
+        params["instrument_type"] = instrument_type
+        params["end_date"] = end_date.isoformat()
+    with engine.connect() as conn:
+        result = conn.execute(sql, params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+    return pd.DataFrame(rows, columns=columns)
+
+
+# ============================================================================
 # TWO CURVES, ONE TENOR
 # ============================================================================
 

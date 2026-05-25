@@ -1,0 +1,82 @@
+{
+  "fixture_name": "us_10y_latest_mode",
+  "tool_module": "rates_agent.ois.tools.asset_swap_spread",
+  "tool_function": "get_asset_swap_spread",
+  "capture": {
+    "captured_at": "2026-05-25T13:42:04Z",
+    "capture_method": "synthetic_v1",
+    "frozen_today": "2026-05-25",
+    "raw_rows_count": 3,
+    "raw_rows_sha256": "83ab44fad8059769cb62287707347315538b528ec2639d2f91f656e1f88d07d8"
+  },
+  "input": {
+    "params": {
+      "vendor_ticker": "/isin/US91282CQQ77",
+      "lookback_days": 60
+    },
+    "frozen_today": "2026-05-25",
+    "identity_row": {
+      "country": "US",
+      "currency": "USD",
+      "cusip": "91282CQQ7",
+      "isin": "US91282CQQ77",
+      "maturity_date": "2036-05-15",
+      "instrument_type": "sovereign_cash_bond"
+    },
+    "raw_rows": [
+      {
+        "trade_date": "2026-05-19",
+        "field_value": 42.137
+      },
+      {
+        "trade_date": "2026-05-20",
+        "field_value": 42.218
+      },
+      {
+        "trade_date": "2026-05-21",
+        "field_value": 42.295
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-05-21",
+      "vendor_ticker": "/isin/US91282CQQ77",
+      "country": "US",
+      "currency": "USD",
+      "cusip": "91282CQQ7",
+      "isin": "US91282CQQ77",
+      "maturity_date": "2036-05-15",
+      "current_asw_spread_bps": 42.295,
+      "daily_change_bps": 7.7,
+      "weekly_change_bps": null,
+      "monthly_change_bps": null,
+      "z_score": null,
+      "high_252d_bps": 42.3,
+      "low_252d_bps": 42.14,
+      "percentile_252d": 96.9,
+      "observation_count": 3,
+      "lookback_days": 60
+    },
+    "time_series": {
+      "series_name": "asw_spread_isin_us91282cqq77",
+      "units": "bps",
+      "description": "INGESTED Bloomberg asset-swap spread (ASSET_SWAP_SPD_MID) for /isin/US91282CQQ77 over the display window.  RAW values preserved bit-exact from macro_data.market_data_daily \u2014 no rounding so SQL parity within 1e-9 holds against a raw SELECT.  P12 INGEST \u2014 never recomputed.",
+      "rows": [
+        {
+          "date": "2026-05-19",
+          "value": 42.137
+        },
+        {
+          "date": "2026-05-20",
+          "value": 42.218
+        },
+        {
+          "date": "2026-05-21",
+          "value": 42.295
+        }
+      ]
+    },
+    "methodology_note": "Source: ``ASSET_SWAP_SPD_MID`` ingested from Bloomberg per the ``sovereign_cash_bonds`` playbook (verified 2026-05-21, A4-4 probe). P12 INGEST primitive \u2014 the per-bond ASW value is the vendor's source-of-record number, surfaced VERBATIM with no rounding (SQL parity within 1e-9 holds).  NEVER recomputed from OIS forwards / discount factors / par-par arithmetic.  Distinct from ``rates_agent/ois/tools/swap_spread/`` which IS a par-par approximation over OIS forwards (see this tool's config.yaml header for the side-by-side and the symmetric ``related_primitives`` cite in swap_spread/config.yaml).  CAD government bonds carry sparse ASW data (~2% of trading days per playbook header note 4); the rolling z-score may be empty for CAD when the 60-observation floor is not met \u2014 that is honest absence (P5), not a pipeline error.  NULL ``ASSET_SWAP_SPD_MID`` on an explicit ``as_of_date`` raises ``AssetSwapSpreadUnavailableError`` (typed P6 refusal \u2014 no ffill, no proxy, no fall-through).  ``security_name`` and ``issuer`` reference fields are universally NULL on cash-bond rows in the live SCD2 substrate \u2014 P5 disclosed in ``methodology.field_availability_caveat`` of config.yaml; callers can derive a bond label from vendor_ticker + country + maturity_date."
+  }
+}
