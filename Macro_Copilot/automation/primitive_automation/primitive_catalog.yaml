@@ -1211,11 +1211,13 @@ primitives:
   - id: inflation_linkers__build_linker_panel
     status: done
     build_order: 31
-    active_step: ready_to_commit_round_1
+    active_step: committed_95f0e0f_feat_inflation_indexed_bonds_add_build_linker_panel_primitive
     builder_round: 1
     review_round: 1
     last_review_heading: APPROVED
     reviewer_engine: claude_fallback
+    committed_at: "2026-05-24T07:02:30Z"
+    commit_sha: 95f0e0f
     dismissed_findings:
       - round: 1
         reviewer_engine: claude_fallback
@@ -1281,8 +1283,57 @@ primitives:
       - synchronised linker yield_mid across the universe
 
   - id: policy_futures__build_policy_futures_strip_panel
-    status: todo
+    status: done
     build_order: 32
+    active_step: ready_to_commit_round_1
+    builder_round: 1
+    review_round: 1
+    last_review_heading: APPROVED
+    reviewer_engine: claude_fallback
+    dismissed_findings:
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          The ffill_limit_days.source = industry_standard_5d_ffill tag
+          is not in the registered list at
+          docs/architecture/methodology_sources.md. This is pre-existing
+          repo debt — the prior approved build_linker_panel
+          (commit 95f0e0f) introduced the tag without registering it,
+          and the registry doc explicitly says "enforced socially — by
+          code review and CI lint — not by code" until the strict-enum
+          tightening lands. The cross-config lint passes. Same for
+          operator_v1_default (used on multiple Panel primitives).
+          Recommend registering both tags in a separate housekeeping
+          PR; not a build-time blocker for this primitive.
+        reason_dismissed: |
+          Reviewer explicitly self-classified as "Soft observations
+          (not blockers)" and the verdict line is unambiguous APPROVED.
+          Falls into the Review adjudication rule's dismissable category
+          (registry housekeeping repo-wide debt pre-existing on the
+          parent commit 95f0e0f for build_linker_panel — not this
+          primitive's correctness, methodology, wiring, wire-shape, or
+          testing). Two source tags need registry registration in a
+          separate housekeeping PR; recording here so the housekeeping
+          batch has an audit trail. No re-dispatch.
+      - round: 1
+        reviewer_engine: claude_fallback
+        finding: |
+          The main fetcher SQL on v_market_data_daily_enriched filters
+          on instrument_type and field_name but relies on the
+          universe-meta join (is_rolling_contract = TRUE) to constrain
+          the cell set — effectively rolling-only because every panel
+          column is dispatched off the universe meta. SQL validation
+          matches cell-by-cell within 1e-9, so any rolling/non-rolling
+          leakage would have surfaced. Acceptable.
+        reason_dismissed: |
+          Reviewer explicitly classified as "Acceptable" inside the
+          "Soft observations (not blockers)" section, and validated by
+          the in-container SQL parity (3/3 cases match within 1e-9
+          against an independent raw-SQL DISTINCT-ON pivot). Falls into
+          the Review adjudication rule's dismissable category (style /
+          structural-shape observation with no correctness or
+          methodology impact, explicitly proven harmless by the
+          deterministic cross-check). No re-dispatch.
     instrument_family: policy_futures
     tool_name: build_policy_futures_strip_panel
     category: desk_invariant_primitive

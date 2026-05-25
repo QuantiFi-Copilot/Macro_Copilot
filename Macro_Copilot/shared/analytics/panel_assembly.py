@@ -827,12 +827,325 @@ def fetch_linker_universe(
     return pd.DataFrame([dict(r) for r in rows])
 
 
+# ============================================================================
+# POLICY-FUTURES STRIP PANEL FETCHER — pivots on (curve_family,
+# strip_position) encoded as a flat string column key.
+# ============================================================================
+#
+# Policy-futures strip instruments are uniquely identified by
+# ``(curve_family, strip_position)`` — the V1 playbook universe
+# (rates_agent/playbooks/policy_futures.yml) ships three families
+# (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) × eight strip positions
+# (1..8) = 24 rolling-generic stems.  The desk-recognised reading is
+# the whole 3-curve-family × 8-strip-position matrix, side-by-side
+# per date (Plan §5 Group 3 #21).
+#
+# Column-key encoding (load-bearing)
+# ----------------------------------
+# The Panel typed artifact's ``units_by_column`` is declared
+# ``Dict[str, TimeSeriesUnits]``: Pydantic v2 strictly enforces str
+# keys and ``Panel`` validates that ``set(units_by_column.keys()) ==
+# set(payload.columns)``.  A literal ``pd.MultiIndex`` over
+# ``(curve_family, strip_position)`` tuples therefore cannot live on
+# the artifact without breaking that contract.  We encode the
+# 2-level key into a flat string ``"<CURVE_FAMILY>|<STRIP_POSITION>"``
+# (e.g. ``"SOFR_FUT|1"``, ``"EUR_SHORT_RATE_FUT|8"``) so the Panel
+# artifact's column axis is honest str-keyed AND every column carries
+# BOTH pieces of information visibly inline.  The ``|`` separator does
+# not appear in any V1 ``curve_family`` literal or in any strip-
+# position integer.  Callers that need the decomposition split the
+# key on ``|`` and cast position to ``int``; the build_policy_futures_
+# strip_panel primitive's methodology card surfaces the
+# ``column_axis_encoding`` rule explicitly + lists the per-column
+# ``{column_key, curve_family, strip_position, vendor_ticker}``
+# decomposition under ``curve_family_reference``.
+#
+# Structural identity guard
+# -------------------------
+# The fetcher constrains on
+# ``instrument_type='policy_future'`` (the structural identity
+# guard).  Without it a future ingest of a different
+# instrument_type sharing a ``curve_family`` label would silently
+# flow through.  Same discipline ``fetch_inflation_swap_panel_by_
+# vendor_ticker`` / ``fetch_linker_panel_by_vendor_ticker`` apply.
+# Inverse-pricing handling (``implied_rate_pct = 100 - raw_price``
+# for inverse-priced strips) is owned by the per-tool ``compute.py``
+# layer — the fetcher returns raw last_price observations so the
+# fetcher stays mechanism-agnostic and the inverse-pricing flag is
+# resolved off ``instrument_master.attributes`` (P5 / P6 — metadata-
+# driven, no hidden methodology in code).
+
+
+def _strip_panel_column_key(curve_family: str, strip_position: int) -> str:
+    """Encode ``(curve_family, strip_position)`` as the canonical flat
+    column key ``"<CURVE_FAMILY>|<STRIP_POSITION>"``.
+
+    The ``|`` separator does not appear in any V1 ``curve_family``
+    literal (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT) or in any
+    integer strip-position render.  Used by the build_policy_futures_
+    strip_panel primitive AND by the SQL-validation runner so the
+    two cannot drift.  Public so external callers (validator, future
+    operators that consume the panel by column key) can build the
+    same key without re-implementing the encoding.
+    """
+    return f"{curve_family}|{int(strip_position)}"
+
+
+def fetch_policy_futures_strip_panel(
+    engine: Engine,
+    *,
+    curve_families: Sequence[str],
+    strip_positions: Sequence[int],
+    field_name: str,
+    start_date: date,
+    end_date: Optional[date] = None,
+    ffill_limit_days: int = 5,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Fetch a wide policy-futures strip panel keyed by the
+    ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` flat string encoding +
+    the per-(curve_family, strip_position) universe metadata.
+
+    Parameters
+    ----------
+    engine :
+        Live SQLAlchemy engine.
+    curve_families :
+        Sequence of policy-futures curve families to include
+        (e.g. ``['SOFR_FUT', 'SONIA_FUT', 'EUR_SHORT_RATE_FUT']``).
+        Must be non-empty; the caller's input-validation layer
+        rejects any non-policy-futures curve_family.
+    strip_positions :
+        Sequence of integer strip positions to include
+        (e.g. ``[1, 2, 3, 4, 5, 6, 7, 8]`` for the full strip).
+        Must be non-empty; the caller's input-validation layer
+        rejects out-of-range positions.
+    field_name :
+        Bloomberg field name for the policy-futures price (e.g.
+        ``'PX_LAST'``).  Caller resolves the per-query sentinel
+        against the YAML's ``default_price_field`` convention
+        before passing.  The fetcher returns RAW field values —
+        inverse-pricing handling (``implied_rate_pct = 100 -
+        raw_price``) is owned by the per-tool ``compute.py``
+        layer so the fetcher stays mechanism-agnostic.
+    start_date :
+        Earliest ``trade_date`` to include (inclusive).
+    end_date :
+        Latest ``trade_date`` (inclusive).  ``None`` → include
+        every observation up to the latest in the DB.
+    ffill_limit_days :
+        Maximum holiday-gap to bridge via forward-fill per
+        column.  Matches the standard ``ffill_limit_days``
+        convention used by every other rates tool.  Set to 0 to
+        disable forward-fill entirely.
+
+    Returns
+    -------
+    panel_df : pd.DataFrame
+        Wide DataFrame with a ``DatetimeIndex`` (one row per
+        trading date in the fetched window) and one column per
+        ``(curve_family, strip_position)`` cell, keyed by the
+        flat ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` string
+        encoding.  Column ordering follows the caller-supplied
+        ``curve_families`` × ``strip_positions`` Cartesian
+        product so the wire is deterministic.  Empty DataFrame
+        if no policy-futures row matches the filters.
+    universe_meta : pd.DataFrame
+        One row per ``(curve_family, strip_position)`` cell with
+        ``vendor_ticker``, ``contract_code``, ``country``,
+        ``currency``, the JSONB-resident ``inverse_pricing``
+        flag, and the ``instrument_master.is_active`` /
+        ``is_rolling_contract`` invariants.  Empty DataFrame if
+        no policy-futures instrument matches the filters.
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_policy_futures_strip_panel: curve_families is empty."
+        )
+    if not strip_positions:
+        raise ValueError(
+            "fetch_policy_futures_strip_panel: strip_positions is empty."
+        )
+
+    sql_params: Dict[str, object] = {
+        "instrument_type": "policy_future",
+        "field_name": field_name,
+        "curve_families": list(curve_families),
+        "strip_positions": [int(p) for p in strip_positions],
+        "start_date": start_date.isoformat(),
+    }
+
+    end_filter = ""
+    if end_date is not None:
+        sql_params["end_date"] = end_date.isoformat()
+        end_filter = " AND v.trade_date <= :end_date"
+
+    sql = text(
+        f"""
+        SELECT
+            v.trade_date,
+            v.curve_family,
+            (v.attributes->>'strip_position')::int AS strip_position,
+            v.field_value::double precision        AS field_value
+        FROM macro_data.v_market_data_daily_enriched AS v
+        WHERE v.instrument_type = :instrument_type
+          AND v.field_name      = :field_name
+          AND v.curve_family    = ANY(:curve_families)
+          AND (v.attributes->>'strip_position')::int = ANY(:strip_positions)
+          AND v.field_value    IS NOT NULL
+          AND v.trade_date     >= :start_date{end_filter}
+        ORDER BY v.trade_date
+        """
+    )
+
+    with engine.connect() as conn:
+        result = conn.execute(sql, sql_params)
+        rows = result.fetchall()
+        columns = list(result.keys())
+
+    universe_meta = fetch_policy_futures_strip_universe(
+        engine=engine,
+        curve_families=curve_families,
+        strip_positions=strip_positions,
+    )
+
+    if not rows:
+        return pd.DataFrame(), universe_meta
+
+    raw_df = pd.DataFrame(rows, columns=columns)
+
+    # Build the deterministic ordered list of (curve_family,
+    # strip_position) column keys.  Cartesian product over the
+    # caller-supplied curve_families × strip_positions so the wire
+    # ordering is stable AND reproducible across runs (P4 +
+    # determinism contract).  Missing cells (no observations at
+    # all on a given (curve_family, strip_position) pair) stay as
+    # fully-NaN columns so the caller's empty-column detection can
+    # surface them explicitly.
+    sorted_positions = sorted(int(p) for p in strip_positions)
+    ordered_cells: List[Tuple[str, int]] = [
+        (cf, pos)
+        for cf in curve_families
+        for pos in sorted_positions
+    ]
+    ordered_columns: List[str] = [
+        _strip_panel_column_key(cf, pos) for cf, pos in ordered_cells
+    ]
+
+    # Encode the long-format raw frame's (curve_family,
+    # strip_position) pairs into the flat column key BEFORE the
+    # pivot so we can pivot on a single column.  ``aggfunc='first'``
+    # because the DB has exactly one row per
+    # (curve_family, strip_position, trade_date) for the same
+    # field_name (the enriched view dedups on the underlying ingest
+    # key).
+    raw_df["_col_key"] = [
+        _strip_panel_column_key(cf, int(pos))
+        for cf, pos in zip(raw_df["curve_family"], raw_df["strip_position"])
+    ]
+    wide = (
+        raw_df.pivot_table(
+            index="trade_date",
+            columns="_col_key",
+            values="field_value",
+            aggfunc="first",
+        )
+        .sort_index()
+    )
+    wide.index = pd.DatetimeIndex(pd.to_datetime(wide.index))
+
+    # Reorder columns by the Cartesian (curve_family,
+    # strip_position) ordering above.  Any column missing from
+    # ``wide`` (no observations at all on the cell) sticks as a
+    # fully-NaN column so downstream code can detect the gap
+    # explicitly rather than silently shrinking the panel.
+    for col in ordered_columns:
+        if col not in wide.columns:
+            wide[col] = float("nan")
+    wide = wide[ordered_columns]
+
+    if ffill_limit_days and ffill_limit_days > 0:
+        wide = wide.ffill(limit=ffill_limit_days)
+
+    return wide, universe_meta
+
+
+def fetch_policy_futures_strip_universe(
+    engine: Engine,
+    *,
+    curve_families: Sequence[str],
+    strip_positions: Sequence[int],
+) -> pd.DataFrame:
+    """Resolve the live policy-futures strip universe (instrument-
+    level reference rows) for the requested
+    ``(curve_family, strip_position)`` cells.
+
+    Returns one row per ``(curve_family, strip_position)`` with the
+    load-bearing reference columns the methodology card needs
+    (``vendor_ticker``, ``contract_code``, ``country``,
+    ``currency``, and the JSONB-resident ``inverse_pricing`` flag).
+    Filters identically to ``fetch_policy_futures_strip_panel``'s
+    ``instrument_type='policy_future'`` AND
+    ``is_rolling_contract=TRUE`` guards so the universe meta and the
+    panel cannot drift.
+
+    Used by ``build_policy_futures_strip_panel`` to surface the
+    per-(curve_family, strip_position) reference metadata on the
+    methodology card AND to derive the per-curve-family
+    inverse-pricing flag used by the implied-rate conversion.
+    """
+    if not curve_families:
+        raise ValueError(
+            "fetch_policy_futures_strip_universe: curve_families is empty."
+        )
+    if not strip_positions:
+        raise ValueError(
+            "fetch_policy_futures_strip_universe: strip_positions is empty."
+        )
+
+    sql = text(
+        """
+        SELECT
+            i.curve_family,
+            (i.attributes->>'strip_position')::int  AS strip_position,
+            i.vendor_ticker,
+            i.contract_code,
+            i.country,
+            i.currency,
+            (i.attributes->>'inverse_pricing')::bool AS inverse_pricing
+        FROM macro_data.instrument_master AS i
+        WHERE i.instrument_type      = :instrument_type
+          AND i.is_rolling_contract  = TRUE
+          AND i.is_active            = TRUE
+          AND i.curve_family         = ANY(:curve_families)
+          AND (i.attributes->>'strip_position')::int = ANY(:strip_positions)
+        ORDER BY i.curve_family,
+                 (i.attributes->>'strip_position')::int,
+                 i.vendor_ticker
+        """
+    )
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sql,
+            {
+                "instrument_type": "policy_future",
+                "curve_families": list(curve_families),
+                "strip_positions": [int(p) for p in strip_positions],
+            },
+        ).mappings().all()
+
+    return pd.DataFrame([dict(r) for r in rows])
+
+
 __all__ = [
     "fetch_instrument_panel",
     "fetch_inflation_swap_panel_by_vendor_ticker",
     "fetch_inflation_swap_universe",
     "fetch_linker_panel_by_vendor_ticker",
     "fetch_linker_universe",
+    "fetch_policy_futures_strip_panel",
+    "fetch_policy_futures_strip_universe",
+    "_strip_panel_column_key",
     "infer_units_for_field",
     "apply_missing_data_policy",
 ]

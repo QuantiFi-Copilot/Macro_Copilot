@@ -1170,6 +1170,7 @@ class TestResolverCompleteness:
             "policy_futures_get_futures_strip_snapshot_tool",
             "policy_futures_get_futures_pack_average_simple_tool",
             "get_scan_policy_futures_extremes_tool",
+            "build_policy_futures_strip_panel_tool",
         }
         missing = canonical_set - registered
         assert not missing, (

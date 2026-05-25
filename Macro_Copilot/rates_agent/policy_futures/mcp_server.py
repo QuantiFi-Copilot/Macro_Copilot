@@ -75,6 +75,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from rates_agent.policy_futures.tools.build_policy_futures_strip_panel import (  # noqa: E402
+    CONFIG_PATH as BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+    BuildPolicyFuturesStripPanelInput,
+    build_policy_futures_strip_panel,
+)
 from rates_agent.policy_futures.tools.futures_butterfly_simple import (  # noqa: E402
     CONFIG_PATH as FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
     FuturesButterflySimpleInput,
@@ -1902,6 +1907,330 @@ def get_scan_policy_futures_extremes_tool(
     )
 
     return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 9: build_policy_futures_strip_panel
+# ===========================================================================
+@mcp.tool()
+def build_policy_futures_strip_panel_tool(
+    start_date: str,
+    end_date: str = "",
+    curve_families: str = "",
+    strip_positions: str = "",
+    field_name: str = "",
+    calendar_policy: str = "",
+    missing_data_policy: str = "",
+) -> str:
+    """Assemble a wide multi-instrument Panel of policy-futures
+    IMPLIED RATES (PERCENT) across the SOFR_FUT / SONIA_FUT /
+    EUR_SHORT_RATE_FUT universe × strip positions 1..8 (rows =
+    trade_date, columns = encoded
+    ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` cells).  Substrate
+    primitive for cross-CB pricing comparison, strip-curve PCA,
+    RV scanning at the curve_family × strip_position level, and
+    operators that need the full policy-futures implied-rate
+    surface as one object (Plan §5 Group 3 #21).
+
+    Use this tool when the user asks for:
+    - the full policy-futures strip panel for a date window
+      (e.g. "Build me the SOFR + SONIA + Euribor strip panel for
+       2024.")
+    - a cross-CB strip dataset for downstream regression / PCA
+      (e.g. "Give me the 3-CB strip panel so I can run a cross-
+       CB strip-shape PCA.")
+    - the substrate the desk's morning STIR-RV deck reads off
+
+    Do NOT use this tool for:
+    - A SINGLE (curve_family, strip_position) implied-rate read —
+      use ``get_futures_price_level_tool``.
+    - A 2-leg same-curve calendar spread (e.g. SFR1-SFR2) — use
+      the sibling ``get_futures_calendar_spread_tool``.
+    - A 3-leg simple butterfly — use the sibling
+      ``get_futures_butterfly_simple_tool``.
+    - A cross-CB matched-strip spread (e.g. SOFR vs Euribor on
+      one strip position) — use the sibling
+      ``get_futures_cross_market_spread_tool``.
+    - A whole-strip side-by-side snapshot for ONE curve_family —
+      use the sibling ``get_futures_strip_snapshot_tool`` (per-
+      curve, single anchor with current values + rolling stats).
+    - A whites / reds pack average — use the sibling
+      ``get_futures_pack_average_simple_tool``.  Note that
+      pack-average tool REFUSES EUR_SHORT_RATE_FUT (PR11
+      NotImplementedError); this Panel tool DOES include
+      EUR_SHORT_RATE_FUT raw rows (Buba mix preserved as
+      substrate, no aggregation).
+    - The morning policy-futures extremes scan — use the sibling
+      ``get_scan_policy_futures_extremes_tool``.
+    - Bond futures (TY1 / RX1 / JB1 / ...) — bond_futures domain
+      has its own primitives; this tool is policy-futures (STIR)
+      only.
+    - Cash sovereign / OIS / ZCIS / linker panels — those route
+      to the corresponding domain's panel primitive.
+
+    Column-axis encoding disclosure (load-bearing): Panel columns
+    are keyed by the FLAT STRING encoding
+    ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` (e.g. ``"SOFR_FUT|1"``,
+    ``"EUR_SHORT_RATE_FUT|8"``).  The desk-recognised
+    2-dimensional read is the (curve_family, strip_position)
+    matrix; the closed-family ``Panel`` artifact's
+    ``units_by_column`` is declared ``Dict[str,
+    TimeSeriesUnits]`` (Pydantic v2 enforces str keys), so a
+    literal ``pd.MultiIndex`` over tuples would break the typed-
+    boundary contract.  The flat encoding preserves BOTH pieces
+    of information; the methodology card's
+    ``column_axis_encoding`` + ``curve_family_reference`` fields
+    surface the per-column ``(curve_family, strip_position,
+    vendor_ticker)`` decomposition.
+
+    Inverse-pricing handling (load-bearing): the Panel's value
+    field is ``implied_rate_pct`` (PERCENT, PR14-frozen name).
+    For each (curve_family, strip_position) cell the implied
+    rate is derived from ``raw_price`` per the per-curve-family
+    ``inverse_pricing`` flag from
+    ``instrument_master.attributes``: inverse-priced (all V1
+    universe) ⇒ ``implied_rate_pct = 100 - raw_price``; direct-
+    priced (none in V1) ⇒ ``implied_rate_pct = raw_price``.
+
+    Per-curve-family RFR vs IBOR caveat (load-bearing): SOFR_FUT
+    (US compounded daily SOFR — RFR), SONIA_FUT (UK compounded
+    daily SONIA — RFR), EUR_SHORT_RATE_FUT (Euro area unsecured
+    3M term Euribor — IBOR).  Cross-CB consumers MUST NOT mix
+    the RFR strips with the IBOR Euribor strip in one read
+    without naming the regime difference explicitly — the
+    methodology card's ``curve_family_reference`` block carries
+    this caveat inline per curve_family.
+
+    EUR_SHORT_RATE_FUT preservation: the Euribor strip's Buba
+    serial+quarterly mix is PRESERVED RAW in the Panel — no
+    averaging, no row-dropping per ADR 0011's substrate-mandate
+    guard.  The sibling ``futures_pack_average_simple`` tool
+    REFUSES this curve_family because a 4-leg average mixes
+    structurally different delivery cadences; the Panel
+    primitive has no aggregation step so the substrate stays
+    honest and the methodology card discloses the mix.
+
+    Parameters
+    ----------
+    start_date : str
+        Earliest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.
+    end_date : str, optional
+        Latest trade_date to include (inclusive), ISO format
+        ``YYYY-MM-DD``.  Empty (default) → include every
+        observation up to the latest in the DB.
+    curve_families : str, optional
+        Comma-separated list of policy-futures curve families to
+        scope the panel.  Empty (default ``""``) = full universe
+        (SOFR_FUT, SONIA_FUT, EUR_SHORT_RATE_FUT).  Pass a CSV to
+        narrow (e.g. ``"SOFR_FUT,SONIA_FUT"`` for a RFR-only
+        panel).  Non-policy-futures curve families are REFUSED at
+        schema validation.
+    strip_positions : str, optional
+        Comma-separated list of integer strip positions (1..8) to
+        scope the panel.  Empty (default ``""``) = the full strip
+        (1, 2, 3, 4, 5, 6, 7, 8).  Pass a CSV to narrow (e.g.
+        ``"1,2,3,4"`` for whites-only).  Out-of-range integers
+        are REFUSED at schema validation per the closed-family
+        discipline.
+    field_name : str, optional
+        Bloomberg observation field for the policy-futures price
+        series.  Leave as the default empty string ``""`` to use
+        the bundled ``default_price_field`` convention from
+        build_policy_futures_strip_panel/config.yaml (currently
+        'PX_LAST').  Mirrors the empty-string sentinel pattern
+        used by every sibling policy_futures wrapper.
+    calendar_policy : str, optional
+        Calendar policy override.  Empty (default) → resolved
+        from YAML (currently 'business_days' — matches the
+        sibling Panel primitives' convention value; the multi-
+        region policy-futures calendar caveat is surfaced on the
+        methodology card via
+        ``cross_region_business_days_caveat``).  Pass
+        ``instrument_native`` per query to surface every native
+        session date across the three-region universe verbatim.
+        Allowed: ['business_days', 'instrument_native'].
+    missing_data_policy : str, optional
+        Missing-data policy override.  Empty (default) → resolved
+        from YAML.  Allowed: ['raise', 'forward_fill_only',
+        'drop_rows_any_missing'].
+    """
+    # Sentinel resolution — MCP exposes flat scalars, so empty
+    # strings mean "omit" and fall through to the YAML defaults.
+    # Same pattern every sibling policy_futures wrapper uses.
+    field_name_arg = field_name if field_name else None
+    calendar_policy_arg = (
+        calendar_policy if calendar_policy else None
+    )
+    missing_data_policy_arg = (
+        missing_data_policy if missing_data_policy else None
+    )
+
+    # Parse the curve_families CSV scoping knob.  Empty → None
+    # (full scope).
+    parsed_curve_families: Optional[list] = None
+    if curve_families and curve_families.strip():
+        parsed_curve_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    # Parse the strip_positions CSV scoping knob.  Empty → None
+    # (full scope).  Malformed integer entries fail the int()
+    # coercion below and surface as a controlled-error envelope.
+    parsed_strip_positions: Optional[list] = None
+    if strip_positions and strip_positions.strip():
+        try:
+            parsed_strip_positions = [
+                int(p.strip())
+                for p in strip_positions.split(",")
+                if p.strip()
+            ]
+        except ValueError as exc:
+            logger.warning(
+                "[build_policy_futures_strip_panel_tool] "
+                "strip_positions parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid strip_positions "
+                        f"{strip_positions!r}: must be a CSV of "
+                        "integers in 1..8 (e.g. '1,2,3,4'). "
+                        f"Detail: {exc}"
+                    )
+                },
+                default=str,
+            )
+
+    # Parse the ISO date inputs.  ``start_date`` is required; an
+    # empty / malformed value is caught here and surfaced as a
+    # controlled-error envelope rather than a stacktrace.
+    try:
+        start_date_arg = date.fromisoformat(start_date.strip())
+    except (AttributeError, ValueError) as exc:
+        logger.warning(
+            "[build_policy_futures_strip_panel_tool] start_date "
+            "parse failed: %s", exc,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"Invalid start_date {start_date!r}: must be "
+                    f"ISO YYYY-MM-DD (e.g. '2023-01-02'). "
+                    f"Detail: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    end_date_arg: Optional[date]
+    if end_date and end_date.strip():
+        try:
+            end_date_arg = date.fromisoformat(end_date.strip())
+        except ValueError as exc:
+            logger.warning(
+                "[build_policy_futures_strip_panel_tool] "
+                "end_date parse failed: %s", exc,
+            )
+            return json.dumps(
+                {
+                    "error": (
+                        f"Invalid end_date {end_date!r}: must be "
+                        f"ISO YYYY-MM-DD (e.g. '2026-04-08'). "
+                        f"Detail: {exc}"
+                    )
+                },
+                default=str,
+            )
+    else:
+        end_date_arg = None
+
+    try:
+        params = BuildPolicyFuturesStripPanelInput(
+            start_date=start_date_arg,
+            end_date=end_date_arg,
+            curve_families=parsed_curve_families,
+            strip_positions=parsed_strip_positions,
+            field_name=field_name_arg,
+            calendar_policy=calendar_policy_arg,
+            missing_data_policy=missing_data_policy_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[build_policy_futures_strip_panel_tool] input "
+            "validation failed: %s",
+            exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[build_policy_futures_strip_panel_tool] failed to "
+            "connect to TimescaleDB",
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the bundled config explicitly so the dependency is
+    # observable here (PR14).  load_tool_config caches by path,
+    # so this is a free lookup after the first call within the
+    # MCP subprocess's lifetime.  Mirrors the sibling Panel
+    # primitives (build_zcis_panel / build_linker_panel /
+    # build_sovereign_yield_panel) exactly.
+    try:
+        bpfsp_config = load_tool_config(
+            BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+        )
+        result = build_policy_futures_strip_panel(
+            engine=engine, params=params, config=bpfsp_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[build_policy_futures_strip_panel_tool] unhandled "
+            "error for start=%s end=%s curve_families=%s "
+            "strip_positions=%s",
+            params.start_date, params.end_date,
+            params.curve_families, params.strip_positions,
+        )
+        return json.dumps(
+            {
+                "error": (
+                    "build_policy_futures_strip_panel_tool "
+                    f"failed for start={params.start_date} "
+                    f"end={params.end_date}: {exc}"
+                )
+            },
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    n_cols = result.get("column_count", 0)
+    n_rows = result.get("row_count", 0)
+    logger.info(
+        "[build_policy_futures_strip_panel_tool] tool call "
+        "complete: start=%s end=%s curve_families=%s "
+        "strip_positions=%s → %s (rows=%d cols=%d)",
+        params.start_date, params.end_date, params.curve_families,
+        params.strip_positions, status, n_rows, n_cols,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Drop the typed Panel artifact before serialising for the
+    # LLM (full per-row payload blows the token budget).  The
+    # workflow executor's Panel bridge re-extracts the typed
+    # artifact from the primitive's direct return value, so
+    # nothing on that path depends on the MCP-visible payload.
+    llm_response = {k: v for k, v in result.items() if k != "panel"}
+    return json.dumps(llm_response, default=str)
 
 
 # ===========================================================================

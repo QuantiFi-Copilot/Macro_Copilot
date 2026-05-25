@@ -484,21 +484,25 @@ class TestWorkflowRegistration:
 # ===========================================================================
 # Pack-average was the 7th wrapper to land; the scan-extremes primitive
 # (catalog id ``policy_futures__scan_policy_futures_extremes``,
-# build_order 29) added the 8th. The cross-domain count assertion
-# tracks the policy_futures MCP surface as a whole — it lives in the
-# pack-average wiring test for historical reasons (pack-average was
-# the last of the per-strip / curve-shape primitives before the
-# scanner landed), but the assertion is domain-wide rather than
-# pack-average-specific. Bumping the expected set to 8 is the
-# minimal wiring touchpoint the scanner's landing requires.
+# build_order 29) added the 8th; the build_policy_futures_strip_panel
+# primitive (catalog id
+# ``policy_futures__build_policy_futures_strip_panel``, build_order
+# 32) added the 9th. The cross-domain count assertion tracks the
+# policy_futures MCP surface as a whole — it lives in the pack-average
+# wiring test for historical reasons (pack-average was the last of the
+# per-strip / curve-shape primitives before the scanner landed), but
+# the assertion is domain-wide rather than pack-average-specific.
+# Bumping the expected set to 9 is the minimal wiring touchpoint the
+# panel primitive's landing requires.
 
 class TestMcpToolCount:
-    def test_policy_futures_mcp_module_exposes_eight_tools(self):
-        """After the scan-extremes primitive lands (V1 monitor #8),
-        the policy_futures MCP module must expose exactly 8
-        ``@mcp.tool()``-decorated wrappers (price_level, volume_oi,
-        calendar_spread, butterfly_simple, cross_market_spread,
-        strip_snapshot, pack_average_simple, scan_extremes)."""
+    def test_policy_futures_mcp_module_exposes_nine_tools(self):
+        """After the build_policy_futures_strip_panel primitive
+        lands (V1 substrate #9), the policy_futures MCP module must
+        expose exactly 9 ``@mcp.tool()``-decorated wrappers
+        (price_level, volume_oi, calendar_spread, butterfly_simple,
+        cross_market_spread, strip_snapshot, pack_average_simple,
+        scan_extremes, build_policy_futures_strip_panel)."""
         from rates_agent.policy_futures import mcp_server as mcp_module
         wrappers = sorted(
             name for name in dir(mcp_module)
@@ -515,4 +519,5 @@ class TestMcpToolCount:
             "get_futures_strip_snapshot_tool",
             "get_futures_pack_average_simple_tool",
             "get_scan_policy_futures_extremes_tool",
+            "build_policy_futures_strip_panel_tool",
         ]), wrappers

@@ -160,6 +160,12 @@ from rates_agent.policy_futures.tools.scan_policy_futures_extremes import (
     ScanPolicyFuturesExtremesOutput,
     calculate_scan_policy_futures_extremes,
 )
+from rates_agent.policy_futures.tools.build_policy_futures_strip_panel import (
+    CONFIG_PATH as BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+    BuildPolicyFuturesStripPanelInput,
+    BuildPolicyFuturesStripPanelOutput,
+    build_policy_futures_strip_panel,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -1263,6 +1269,36 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         input_class=BuildLinkerPanelInput,
         output_class=BuildLinkerPanelOutput,
         config_path=BUILD_LINKER_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    # ---- Policy-futures strip Panel substrate primitive
+    # ---- (Plan §5 Group 3 #21) ----
+    #
+    # ``build_policy_futures_strip_panel_tool`` emits a Panel
+    # artifact (rows = trade_date, columns = flat
+    # ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` encoded keys, values =
+    # ``implied_rate_pct`` PERCENT) over the SOFR_FUT / SONIA_FUT
+    # / EUR_SHORT_RATE_FUT universe × strip positions 1..8.
+    # Declares ``output_artifact_type="Panel"`` so the executor
+    # picks ``tool_output_to_artifact_panel`` over the default
+    # Series bridge.  Mirrors the build_sovereign_yield_panel_tool
+    # / build_zcis_panel_tool / build_linker_panel_tool
+    # registrations.
+    #
+    # ``output_field_units`` declares the single ``panel`` field
+    # as PERCENT — the Panel's per-column ``units_by_column``
+    # carries the authoritative per-cell unit tags (every cell on
+    # this primitive is the implied_rate_pct in PERCENT because
+    # the value field is uniform across the panel).
+    "build_policy_futures_strip_panel_tool": PrimitiveSpec(
+        tool_name="build_policy_futures_strip_panel_tool",
+        callable=build_policy_futures_strip_panel,
+        input_class=BuildPolicyFuturesStripPanelInput,
+        output_class=BuildPolicyFuturesStripPanelOutput,
+        config_path=BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
         output_field_units={
             "panel": "percent",
         },

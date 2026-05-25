@@ -2,22 +2,22 @@ version: '2.0'
 branch: primitive_automation
 backend: coding-agent
 orchestrator_status: processing
-current_primitive: inflation_linkers__build_linker_panel
-current_primitive_tool_name: build_linker_panel
+current_primitive: policy_futures__build_policy_futures_strip_panel
+current_primitive_tool_name: build_policy_futures_strip_panel
 current_step: committing
-last_successful_primitive: inflation_swaps__build_zcis_panel
-last_successful_commit: 32c386f
+last_successful_primitive: policy_futures__build_policy_futures_strip_panel
+last_successful_commit: 95f0e0f
 last_reviewer_heading: APPROVED
-last_stop_reason: wake_2026-05-24T07:00Z_build_linker_panel_round1_reviewer_APPROVED_with_two_dismissable_nits_committing
+last_stop_reason: wake_2026-05-25T01:15Z_reviewer_round1_completed_APPROVED_claude_fallback_committing_then_selecting_next_primitive
 last_error: null
-last_updated: '2026-05-24T07:01:30Z'
-done: 30
+last_updated: '2026-05-25T01:15:30Z'
+done: 32
 blocked: 0
-remaining: 4
+remaining: 2
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_fresh: false
-quota_note: 'wake 2026-05-24T06:45Z observed round-1 builder for build_linker_panel completed cleanly between the 06:30Z wake and this wake. Wrapper PID 2160798 and worker PID 2160806 both NOT alive. Log /tmp/claude_builder_run_inflation_linkers__build_linker_panel_round1.log grew from 0 B (at 06:30Z) to 10548 B (mtime 06:32Z, ~2 min after the 06:30Z observation). BUILDER REPORT present with overall=ready_for_review. Claims 4-file primitive package + MCP wrapper + schemas re-exports + workflow PrimitiveSpec + panel_assembly.py two new helpers (fetch_linker_panel_by_vendor_ticker + fetch_linker_universe) + PR16 triplet all green (compute 15 tests + wiring 35 tests + sql_validation 3 cases = 61 offline triplet + 425 inflation_swaps regression + 532 inflation_indexed_bonds regression + 115 sovereign+workflow regression + 486 policy+bond_futures regression = 1619 offline tests PASS) + Layer B DB-backed SQL validation 3/3 PASS in rates-agent-dev container + cross-tool build_zcis_panel SQL validation 3/3 PASS (additive helpers did not perturb the ZCIS path) + shared.config.lint EXIT 0 + pre_flight load_audit SUCCESS row verified for inflation_indexed_bonds (2026-04-09T01:14:17.381415+01). Builder flagged ONE deviation for reviewer adjudication. Catalog declares fetcher_surface=[fetch_instrument_panel] but builder added two linker-specific helpers (same pattern as build_zcis_panel commit 32c386f). Builder also bumped tests/test_workflow_event_study.py canonical_set from a stale 32-tool baseline to 48-tool current registry (claims includes the new tool plus 15 pre-existing un-back-filled registrations). Composed reviewer prompt at /tmp/reviewer_prompt_build_linker_panel_round1.md (~14 KB) naming the primitive, the BUILDER REPORT location, the fetcher_surface adjudication, the canonical_set bump verification ask, the known-caveats list, and the on-disk file paths. Dispatched run_claude_reviewer.sh via nohup+disown at 2026-05-24T06:47Z. Initial wrapper PID 2178781 and worker PID 2178789 died silently (~2 min after dispatch; log was 1 byte newline only — likely an stdin-closure issue from the orchestrator launch shell since the wrapper''s claude --print did not have explicit </dev/null). Re-dispatched the same wrapper at 2026-05-24T06:50Z with explicit </dev/null on the wrapper: new wrapper PID 2181004, claude --print --model opus --effort xhigh --permission-mode bypassPermissions worker PID 2181013 (parent 2181004), elapsed 5s at last probe, STAT R (running). Branch guard PASS at dispatch (launcher.out: OK on allowed branch primitive_automation). Log path /tmp/claude_reviewer_run_inflation_linkers__build_linker_panel_round1.log currently 0 B (expected per claude --print buffered stdout). reviewer_mode sticky claude_fallback per §10.3 (non-interactive Codex /status still unavailable). quota_state probe_unavailable. Exiting cleanly per BACKGROUND_EXECUTION_POLICY §1 (cron exists to wake every */15; reviewer worker is detached and will outlive this wake; next cron wake at 07:00Z will re-check PID + log per feedback_builder_silent_log_signal.md analogue rules and either parse the verdict via parse_reviewer_log.py + apply Review-adjudication rule + commit on APPROVED/approved-with-dismissals OR send findings back to builder on CHANGES REQUIRED OR exit cleanly again if worker still alive).'
+quota_note: 'wake 2026-05-25T00:15Z reconciles the prior wake chain (2026-05-24 sequence ended at 07:07Z when the post-commit dispatch for build_policy_futures_strip_panel hit Claude weekly limits — log /tmp/claude_builder_run_build_policy_futures_strip_panel_round1.log captured 47 bytes "You''re out of extra usage · resets 10am (UTC)"). build_linker_panel was successfully committed as 95f0e0f at 2026-05-24T07:03:53Z (verified via git log + git show --stat including all four 4-file primitive package members + MCP wrapper + schemas hub + workflow registration + tests/conftest.py + workflow_event_study canonical_set bump + shared/analytics/panel_assembly.py two additive helpers + the four tests files — file set matches the BUILDER REPORT exactly). Catalog still has a small uncommitted post-commit bookkeeping delta on the build_linker_panel entry (active_step ready_to_commit_round_1 -> committed_95f0e0f_..., committed_at + commit_sha fields appended) — this will fold into the next primitive''s commit per the established pattern. Done count bumped 30 -> 31; remaining 4 -> 3. Codex /status and Claude /status both return non-terminal errors from non-interactive automation (Codex: "stdin is not a terminal"; Claude: "/status isn''t available in this environment") — proceed in QUOTA_AND_RESUME_POLICY §6 runtime-enforced quota mode. The 10am UTC reset on 2026-05-24 has passed ~14 hours ago, so the prior Claude weekly-limit signal is presumed cleared; verification happens via the provider''s actual response to this wake''s dispatch. Pre-flight load_audit check executed for policy_futures: SUCCESS row at 2026-05-20T08:14:28.129099+01 in macro_data.load_audit (additional historical SUCCESS row at 2026-04-09T01:21:53.65495+01 — both pre-date the build window) — pre-flight PASS. Builder prompt at /tmp/builder_prompt_build_policy_futures_strip_panel_round1.md (22803 B, prepared by the 07:07Z wake before the weekly-limit hit) is reused verbatim — its contents are still authoritative against the current catalog entry, the three sibling Panel primitives (sovereign_yield_panel, build_zcis_panel commit 32c386f, build_linker_panel commit 95f0e0f), ADR 0011 V1, the policy_futures playbook 3-curve-family × 8-strip-position universe, and the additive panel_assembly.py + rates_fetch.py helper-signature regression test. Truncating the 47-byte stale builder log and re-dispatching run_claude_builder.sh via nohup+disown with explicit </dev/null on this wake. reviewer_mode stays sticky claude_fallback per §10.3 (non-interactive Codex /status still unavailable; prior primitive build_linker_panel completed cleanly under claude_fallback but the symmetric-recovery condition "fresh Codex quota probe at or above the §4 threshold" cannot be established without a probe). Exiting cleanly per BACKGROUND_EXECUTION_POLICY §1 once the builder is alive: cron exists to wake every */15; the next cron wake will re-check the builder''s PID + log per feedback_builder_silent_log_signal.md analogue rules and either compose the reviewer prompt + dispatch the reviewer (BUILDER REPORT present) OR exit cleanly again (worker still alive) OR mark the primitive waiting_quota (provider quota refusal).'
 reviewer_mode: claude_fallback
 reviewer_mode_history:
 - at: '2026-05-23T04:18:00Z'
@@ -45,6 +45,880 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+- at: '2026-05-25T01:15:30Z'
+  kind: wake_2026-05-25T01:15Z_build_policy_futures_strip_panel_round1_reviewer_completed_APPROVED_claude_fallback_committing_then_selecting_next
+  text: |
+    Cron wake fired at 2026-05-25T01:15Z (15 min after the 01:00Z wake
+    that dispatched the reviewer). Branch guard PASS
+    (primitive_automation via check_branch.sh from the repo root).
+
+    Re-read the full primitive-automation policy package:
+    ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md.
+
+    Reviewer worker liveness probe (this wake, 2026-05-25T01:15Z):
+      ps -p 2493591 (worker) : NOT FOUND (exited)
+      ps -p 2493583 (wrapper): NOT FOUND (exited)
+      ps -p 2493582 (outer)  : NOT FOUND (exited)
+      log file size          : 6838 B
+      log mtime              : 2026-05-25T01:12Z
+
+    parse_reviewer_log.py /tmp/claude_reviewer_run_build_policy_
+    futures_strip_panel_round1.log:
+      {"ok": true,
+       "heading": "APPROVED",
+       "environment_failure": false,
+       "reviewer_quota_exhausted": false,
+       "log_file": "/tmp/claude_reviewer_run_build_policy_
+                    futures_strip_panel_round1.log"}
+
+    Reviewer verdict: clean APPROVED. All 15 enumerated adjudication
+    points PASS (PR4 standardness vs siblings; ADR 0011 raw-Buba-mix
+    preservation; inverse-pricing metadata-driven + honesty refusal;
+    PR14 frozen panel_value_field implied_rate_pct; PR8 input
+    discipline extra=forbid; closed-family discipline at schema
+    layer; PR9/PR10 YAML-vs-code split; PR12 methodology disclosure;
+    cross-tool drift protection — 8 helper signatures byte-identical;
+    TestResolverCompleteness canonical_set 49; TestMcpToolCount 8→9;
+    no DB mutation; PR16 triplet shape — compute 29 + wiring 54 +
+    sql_validation 3/3 in-container PASS; column-axis encoding
+    tradeoff disclosed; branch + commit hygiene). Reviewer re-ran
+    Layer A (83 PASS) + Layer B (3/3 in-container PASS against live
+    DB read-only) + config lint (no convention drift) + workflow
+    resolver completeness (6 PASS) + policy_futures sibling sweep
+    (490 PASS).
+
+    Review adjudication (per Review adjudication rule):
+      Mandatory-fix findings: NONE. Reviewer verdict line is
+      unambiguous "APPROVED" — not "CHANGES REQUIRED".
+
+      Soft observations (reviewer self-classified as "not blockers"):
+
+      1. ffill_limit_days.source = industry_standard_5d_ffill and
+         operator_v1_default not registered at
+         docs/architecture/methodology_sources.md. Reviewer notes the
+         tag was introduced by the prior approved build_linker_panel
+         (commit 95f0e0f) without registering it, and the registry
+         doc explicitly says "enforced socially — by code review and
+         CI lint — not by code" until strict-enum tightening lands.
+         Cross-config lint passes. → Dismissable: registry housekeeping
+         repo-wide debt pre-existing on the parent commit, not this
+         primitive's correctness. Logged in catalog dismissed_findings
+         for the housekeeping batch's audit trail. Reviewer
+         recommended a separate housekeeping PR; that is the right
+         path.
+
+      2. Main fetcher SQL on v_market_data_daily_enriched relies on
+         the universe-meta join (is_rolling_contract = TRUE) to
+         constrain the cell set. SQL validation matches cell-by-cell
+         within 1e-9, so any rolling/non-rolling leakage would have
+         surfaced. Reviewer explicitly labels "Acceptable". →
+         Dismissable: structural-shape observation proven harmless by
+         the deterministic in-container parity cross-check. Logged in
+         catalog dismissed_findings.
+
+      Both dismissals are recorded in the catalog entry's
+      dismissed_findings list per dismissal hygiene (Review
+      adjudication rule).
+
+    Done-definition check:
+      §1 genuinely new primitive concept: YES — Panel substrate
+        distinct from futures_strip_snapshot (per-curve single-anchor
+        snapshot) and futures_pack_average_simple (aggregated pack
+        output). The 3-curve × 8-strip-position wide artifact is the
+        canonical Panel pattern lifted into policy_futures, parallel
+        to sovereign_yield_panel / build_zcis_panel / build_linker_
+        panel.
+      §2 standardness honest: YES — desk_invariant_primitive, all
+        methodology in YAML + methodology card, dependency chain
+        visible via fetcher_surface declarations, no proxy.
+      §3 four-file package: YES — __init__.py 3461 B + config.yaml
+        19714 B + schemas.py 16970 B + compute.py 29616 B all
+        present.
+      §4 YAML owns conventions: YES — default_price_field,
+        ffill_limit_days, default_missing_data_policy, calendar_
+        policy all in conventions block.
+      §5 code owns invariants: YES — column-axis encoding,
+        inverse-pricing math, refusal envelope, raw-row preservation,
+        Cartesian column ordering, RFR/IBOR regime map all in
+        compute.py.
+      §6 production callers wired: YES — MCP wrapper updated, schemas
+        hub re-export added, config loaded explicitly, sentinel
+        behavior preserved.
+      §7 repo integration: YES — workflow PrimitiveSpec registration,
+        output_field_units, tests/conftest.py SQL validator
+        collect_ignore, canonical_set bump on test_workflow_event_
+        study, TestMcpToolCount 8→9 on test_policy_futures_futures_
+        pack_average_simple_wiring (renamed test method per the
+        established pattern).
+      §8 tests meaningful: YES — PR16 triplet (29 compute + 54
+        wiring + 3 sql_validation tests). SQL validator independently
+        reproduces the Python computation via raw-SQL DISTINCT-ON
+        pivot + per-cell inverse-pricing conversion joined off
+        instrument_master, matching within 1e-9.
+      §9 both test layers pass: YES — Layer A 83/83 (this tool's
+        compute + wiring) + 1051 cross-domain regression, Layer B
+        3/3 in-container against live DB read-only.
+      §10 config lint passes: YES — no convention drift detected.
+      §11 reviewer approves: YES — clean APPROVED.
+      §12 branch rule intact: YES — primitive_automation throughout;
+        no branch switching during this build or this wake.
+      §13 DB not mutated: YES — every fetcher_surface helper is
+        SELECT-only; the two new panel_assembly.py helpers and the
+        SQL validator _BASELINE_SQL are all read-only; no
+        INSERT/UPDATE/DELETE/UPSERT/DDL in the diff.
+      §14 no hidden honesty debt: YES — methodology card carries
+        every load-bearing caveat (RFR/IBOR per curve_family,
+        inverse-pricing handling, EUR Buba-mix per ADR 0011,
+        cross-region business-days, rolling-generic strip caveat,
+        column-axis encoding tradeoff with MultiIndex planned-
+        extension).
+
+    Wake actions (this wake):
+      1. Verified branch primitive_automation via check_branch.sh
+         (run from repo root).
+      2. Re-read full policy package.
+      3. Probed reviewer worker liveness + log size (exited with
+         6838 B output).
+      4. Ran parse_reviewer_log.py — clean APPROVED, no environment
+         failure, no quota exhaustion.
+      5. Adjudicated soft observations as dismissable per Review
+         adjudication rule + dismissal hygiene; logged in catalog
+         entry dismissed_findings.
+      6. Updated catalog entry policy_futures__build_policy_futures_
+         strip_panel from status: todo to status: done with active_
+         step ready_to_commit_round_1, builder_round 1, review_round
+         1, last_review_heading APPROVED, reviewer_engine claude_
+         fallback, dismissed_findings block.
+      7. Updated runtime state top fields: orchestrator_status
+         processing → processing (still), current_step reviewing →
+         committing, last_successful_primitive bumped, last_stop_
+         reason rewritten, last_updated bumped, done 31 → 32,
+         remaining 3 → 2.
+      8. Next steps in this wake: commit on primitive_automation
+         (commit message format matches the established pattern
+         feat(<domain>): add <tool_name> primitive), then select
+         next eligible primitive (ois__asset_swap_spread build_order
+         33), run pre-flight load_audit for sovereign_cash_bonds,
+         and dispatch the builder.
+
+    Quota probe (preferred /status path): non-interactive automation
+    still cannot enter the CLI status surface for either Claude or
+    Codex. Proceeding in QUOTA_AND_RESUME_POLICY §6 runtime-enforced
+    quota mode. Reviewer round-1 produced a complete verdict
+    successfully on claude_fallback, which is positive evidence
+    Claude quota remains adequate. reviewer_mode stays sticky
+    claude_fallback per §10.3 (Codex /status probe unavailable
+    non-interactively so symmetric-recovery condition cannot be
+    established; over-using Claude is not a correctness problem).
+
+- at: '2026-05-25T01:05:00Z'
+  kind: wake_2026-05-25T01:00Z_build_policy_futures_strip_panel_round1_builder_completed_BUILDER_REPORT_emitted_reviewer_round1_dispatched_claude_fallback_exit_clean_no_overlap
+  text: |
+    Cron wake fired at 2026-05-25T01:00Z (15 min after the 00:45Z
+    observe-only wake; 42 min after the 00:18Z round-1 builder
+    dispatch). Branch guard PASS (primitive_automation via
+    automation/primitive_automation/check_branch.sh, executed
+    from the repo root).
+
+    Re-read the full primitive-automation policy package:
+    ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md,
+    REVIEWER_PROMPT.md, run_claude_reviewer.sh,
+    parse_reviewer_log.py, and the head of
+    primitive_runtime_state.yaml (top fields + most-recent
+    status_notes entry from the 00:45Z observe-only wake).
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__build_policy_futures_
+                              strip_panel
+      current_step          : building (round-1 builder dispatched
+                              by wake 00:15Z at 00:18Z via
+                              run_claude_builder.sh; wrapper PID
+                              2478680, worker PID 2478688; log
+                              file /tmp/claude_builder_run_build_
+                              policy_futures_strip_panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 31
+      blocked               : 0
+      remaining             : 3
+
+    Builder worker liveness probe (this wake, 2026-05-25T01:01Z):
+      ps -p 2478680 (wrapper) : NOT FOUND (exited)
+      ps -p 2478688 (worker)  : NOT FOUND (exited)
+      log file size           : 8257 B (BUILDER REPORT emitted)
+      log mtime               : 2026-05-25T00:50Z (single emit at
+                                ~32 minutes into the dispatch)
+
+    BUILDER REPORT analysis (cat /tmp/claude_builder_run_build_
+    policy_futures_strip_panel_round1.log):
+      - 4-file package present at rates_agent/policy_futures/
+        tools/build_policy_futures_strip_panel/ (__init__.py 3461 B,
+        config.yaml 19714 B, schemas.py 16970 B, compute.py 29616 B)
+      - PR16 triplet present (tests/test_build_policy_futures_
+        strip_panel_compute.py + _wiring.py + _sql_validation.py)
+      - Wiring: rates_agent/policy_futures/mcp_server.py +
+        rates_agent/policy_futures/tools/schemas/__init__.py +
+        rates_agent/workflows/__init__.py +
+        shared/analytics/panel_assembly.py (two new helpers +
+        internal _strip_panel_column_key; __all__ extended; 5
+        pre-existing helper signatures byte-identical) +
+        tests/conftest.py (sql_validation collect_ignore entry) +
+        tests/test_workflow_event_study.py (canonical_set bumped
+        to 49) + tests/test_policy_futures_futures_pack_average_
+        simple_wiring.py (TestMcpToolCount 8 → 9, renamed
+        test_..._exposes_eight_tools → test_..._exposes_nine_tools)
+      - Layer A: 83/83 PR16 triplet PASS; 1051 cross-domain
+        regression PASS; shared.config.lint PASS (no convention
+        drift). Two pre-existing test_swap_spread_wiring.py
+        failures disclosed as reproducing on parent 95f0e0f
+        without this build — unrelated, out of scope.
+      - Layer B (docker exec rates-agent-dev): 3/3 PASS — SOFR_FUT
+        full strip, SONIA_FUT full strip (inverse-pricing verified
+        against DB), all-three-curve-families 3×8 = 24 cells
+        (EUR_SHORT_RATE_FUT raw Buba mix preserved per ADR 0011 —
+        no NotImplementedError, no row-drop, no silent averaging;
+        cell-by-cell PERCENT match within 1e-9 vs independent
+        raw-SQL DISTINCT-ON pivot + per-cell inverse-pricing
+        conversion joined off instrument_master).
+      - Compliance statements: P10 DB-safety (SELECT-only), §12
+        branch-safety (no switch/commit/push), PR4 standardness
+        (substrate distinct from snapshot/pack), PR8 closed-family
+        + input discipline (rejects UST/USD_ZCIS/UST_FUT + out-of-
+        range strip; no aspirational knobs), PR9/PR10 YAML-vs-code
+        split, PR11 honest refusal (mixed-inverse-pricing within
+        ONE curve_family), PR12 methodology disclosure
+        (per-curve-family RFR/IBOR caveat + column-axis encoding
+        + cross-region business-days + rolling-generic strip
+        caveat + EUR Buba-mix caveat citing
+        futures_pack_average_simple), PR14 frozen wire fields
+        (implied_rate_pct + _panel artifact dropped on LLM-facing
+        JSON), ADR 0011 V1 discipline preserved, 8 fetcher
+        signatures byte-identical, column-axis encoding tradeoff
+        (Pydantic v2 str-key constraint, MultiIndex planned-
+        extension gated on Panel typed-artifact tuple-key
+        support).
+
+    On-disk evidence (this wake, 2026-05-25T01:01Z):
+      git status -s : confirms 9 modified + 4 untracked paths
+                      matching the BUILDER REPORT exactly
+                      (M automation/primitive_automation/{primitive_
+                        catalog.yaml, primitive_runtime_state.yaml}
+                       M rates_agent/policy_futures/mcp_server.py
+                       M rates_agent/policy_futures/tools/schemas/
+                         __init__.py
+                       M rates_agent/workflows/__init__.py
+                       M shared/analytics/panel_assembly.py
+                       M tests/conftest.py
+                       M tests/test_policy_futures_futures_pack_
+                         average_simple_wiring.py
+                       M tests/test_workflow_event_study.py
+                       ?? rates_agent/policy_futures/tools/
+                          build_policy_futures_strip_panel/
+                       ?? tests/test_build_policy_futures_strip_
+                          panel_{compute,sql_validation,wiring}.py)
+      git HEAD      : 95f0e0f (unchanged from prior wake — commit
+                      gate is reviewer approval per §commit-rule)
+      load_audit    : policy_futures SUCCESS at 2026-05-20
+                      08:14:28.129099+01 (also historical 2026-04-09
+                      01:21:53.65495+01) — pre-flight PASS, both
+                      rows pre-date this build (read-only docker exec
+                      macro-tsdb psql probe)
+
+    Quota probe (preferred /status path): non-interactive automation
+    cannot enter the CLI status surface for either Claude or Codex
+    (Claude /status returns "isn't available in this environment";
+    Codex /status returns "stdin is not a terminal"). Proceeding
+    in QUOTA_AND_RESUME_POLICY §6 runtime-enforced quota mode.
+    Builder round-1 produced a complete BUILDER REPORT with both
+    Layer A (1051/1051) and Layer B (3/3) green, which is positive
+    evidence Claude weekly-limit recovered post the 2026-05-24
+    10:00Z reset.
+
+    Reviewer dispatch (this wake, 2026-05-25T01:04Z):
+      Mode             : claude_fallback (sticky per §10.3 — non-
+                         interactive Codex /status still unavailable,
+                         symmetric-recovery condition for Codex
+                         cannot be established)
+      Wrapper          : automation/primitive_automation/run_claude_
+                         reviewer.sh
+      Prompt           : /tmp/reviewer_prompt_build_policy_futures_
+                         strip_panel_round1.md (12451 B; covers
+                         catalog entry, pre-flight evidence, BUILDER
+                         REPORT pointer, claimed-files manifest,
+                         15 load-bearing adjudication questions
+                         per REVIEWER_PROMPT.md + this primitive's
+                         specifics)
+      Log              : /tmp/claude_reviewer_run_build_policy_
+                         futures_strip_panel_round1.log
+      Dispatch method  : nohup bash run_claude_reviewer.sh ...
+                         </dev/null >wrapper.out 2>&1 & disown
+                         (matches established pattern for
+                         long-running workers; non-blocking,
+                         survives wake exit)
+      Worker liveness  : PID 2493591 alive (claude --print --model
+                         opus --effort xhigh --permission-mode
+                         bypassPermissions), STAT S, elapsed ~10s
+                         at wake exit; wrapper bash PID 2493583
+                         alive; outer bash PID 2493582 alive
+      Log at exit      : 0 B (claude --print buffered stdout —
+                         expected; matches builder-side pattern)
+
+    Exit decision per BACKGROUND_EXECUTION_POLICY §1 + §7
+    no-overlap: reviewer is alive and consuming Claude quota;
+    a second simultaneous orchestrator wake would create
+    overlapping mutators of catalog/runtime state which is
+    explicitly forbidden. The next cron wake at 01:15Z will:
+      (a) re-check the branch guard
+      (b) re-read this policy package
+      (c) probe reviewer worker liveness and log size
+      (d) IF reviewer exited AND log has content → run
+          parse_reviewer_log.py and apply Reviewer result rule
+          + Review adjudication rule
+      (e) IF reviewer alive AND no findings yet → exit cleanly
+          again (this loop continues every 15 min until verdict)
+      (f) IF reviewer log shows quota-exhausted marker (per
+          QUOTA_AND_RESUME_POLICY §10.2) AND we're in
+          claude_fallback → set last_stop_reason: all_reviewer_
+          engines_quota_exhausted, mark waiting_quota, stop
+          cleanly (DO NOT invent a verdict)
+
+    Catalog state unchanged this wake (current primitive still
+    in_progress; commit gate is reviewer verdict).
+    Counts unchanged: done=31, blocked=0, remaining=3.
+    reviewer_mode unchanged: claude_fallback (sticky).
+    quota_state unchanged: probe_unavailable.
+    orchestrator_status unchanged: processing (reviewer in flight).
+
+- at: '2026-05-25T00:45:55Z'
+  kind: wake_2026-05-25T00:45Z_observe_only_build_policy_futures_strip_panel_round1_builder_still_in_flight_compute_py_and_pycache_freshening_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-25T00:45Z (15 min after the prior
+    00:30Z observe-only wake; 27 min after the 00:18Z round-1
+    dispatch). Branch guard PASS (primitive_automation via
+    automation/primitive_automation/check_branch.sh, executed
+    from the repo root).
+
+    Re-read the full primitive-automation policy package:
+    ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, PRE_FLIGHT_LOAD_AUDIT.md,
+    NO_GO_RULES.md, DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md, and the
+    head of primitive_runtime_state.yaml (top fields + most-
+    recent status_notes entry from the 00:30Z observe-only wake).
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__build_policy_futures_
+                              strip_panel
+      current_step          : building (round-1 builder dispatched
+                              by wake 00:15Z at 00:18Z via
+                              run_claude_builder.sh; wrapper PID
+                              2478680, worker PID 2478688; log
+                              file /tmp/claude_builder_run_build_
+                              policy_futures_strip_panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 31
+      blocked               : 0
+      remaining             : 3
+
+    Builder worker liveness probe (this wake, 2026-05-25T00:45:55Z):
+      ps -p 2478680 (wrapper) : STAT S, ELAPSED 25:52 (alive,
+                                bash run_claude_builder.sh)
+      ps -p 2478688 (worker)  : STAT Sl, ELAPSED 25:52 (alive,
+                                claude --print --model opus
+                                --effort xhigh --permission-mode
+                                bypassPermissions; full 2478688
+                                cmdline visible — model=opus,
+                                effort=xhigh, prompt is the
+                                build_policy_futures_strip_panel
+                                round-1 contract reused verbatim
+                                from /tmp/builder_prompt_build_
+                                policy_futures_strip_panel_round1.md)
+      log file size           : 0 B (unchanged from 00:20Z creation)
+      log mtime               : 2026-05-25T00:20Z (creation; no
+                                stdout flushed — expected per
+                                claude --print buffered stdout
+                                semantics; matches the prior
+                                observe-only wake's read)
+
+    On-disk evidence the build is producing real work AND has
+    advanced beyond the prior wake (NOT a silent failure):
+      git status -s            : M automation/primitive_automation/
+                                   primitive_catalog.yaml
+                                 M automation/primitive_automation/
+                                   primitive_runtime_state.yaml
+                                 M rates_agent/policy_futures/
+                                   mcp_server.py              (NEW
+                                   since 00:30Z wake — MCP wrapper
+                                   for the new primitive being
+                                   wired)
+                                 M rates_agent/policy_futures/
+                                   tools/schemas/__init__.py  (NEW
+                                   since 00:30Z wake — schemas hub
+                                   re-export being wired)
+                                 M rates_agent/workflows/
+                                   __init__.py                (NEW
+                                   since 00:30Z wake — workflow
+                                   PrimitiveSpec registration being
+                                   added)
+                                 M shared/analytics/panel_assembly.py
+                                 M tests/conftest.py            (NEW
+                                   since 00:30Z wake — SQL
+                                   validator collect_ignore entry
+                                   being added)
+                                 M tests/test_workflow_event_study.py
+                                                                (NEW
+                                   since 00:30Z wake — canonical_set
+                                   bump for the new tool name)
+                                 ?? rates_agent/policy_futures/
+                                   tools/build_policy_futures_
+                                   strip_panel/
+                                 ?? tests/test_build_policy_
+                                   futures_strip_panel_compute.py
+                                                                (NEW
+                                   since 00:30Z wake — PR16 triplet
+                                   member #1)
+                                 ?? tests/test_build_policy_
+                                   futures_strip_panel_sql_
+                                   validation.py               (NEW
+                                   since 00:30Z wake — PR16
+                                   triplet member #3)
+                                 ?? tests/test_build_policy_
+                                   futures_strip_panel_wiring.py
+                                                                (NEW
+                                   since 00:30Z wake — PR16
+                                   triplet member #2)
+      tool package contents    : __init__.py 3461 B mtime 00:30
+                                   (unchanged since 00:30Z wake)
+                                 config.yaml 19714 B mtime 00:31
+                                   (NEW since 00:30Z wake — YAML
+                                   conventions block written)
+                                 schemas.py 16970 B mtime 00:32
+                                   (NEW since 00:30Z wake — input/
+                                   output Pydantic models written)
+                                 compute.py 29616 B mtime 00:41
+                                   (NEW since 00:30Z wake; mtime
+                                   ~5 minutes before this probe —
+                                   the main 29-KB compute body
+                                   landed recently)
+                                 __pycache__/ mtime 00:41
+                                   (NEW since 00:30Z wake — Python
+                                   bytecode compiled, indicating
+                                   the new package has been
+                                   IMPORTED by either the builder
+                                   running pytest or the builder
+                                   running an import smoke check)
+      git HEAD                 : 95f0e0f Macro Agent Bot 2026-05-24
+                                 07:03:53 +0000 feat(inflation_
+                                 indexed_bonds): add build_linker_
+                                 panel primitive (unchanged from
+                                 prior wake — no commits during
+                                 this wake)
+
+    Diagnosis per feedback_builder_silent_log_signal.md:
+      "When a primitive-factory builder dispatched via
+      run_claude_builder.sh shows an empty (0-byte or 1-byte
+      newline) log, DO NOT immediately declare it a silent
+      provider failure. The truthful diagnosis requires BOTH:
+        (a) the worker PID has EXITED (not just the launcher PID),
+            AND
+        (b) ZERO source files have been modified since the dispatch
+            timestamp.
+      If the worker PID is still alive, or any source file under
+      the repo (especially under shared/analytics/, rates_agent/
+      <family>/tools/, tests/, or rates_agent/workflows/) has a
+      fresh mtime, the build is in flight — exit cleanly per
+      BACKGROUND_EXECUTION_POLICY §7 no-overlap and let the next
+      wake re-check."
+
+      Both prongs are violated in the failure direction with even
+      stronger evidence than the prior wake:
+        (a) worker PID 2478688 is STAT Sl alive at 25:52 elapsed
+        (b) six source files modified AND four source files
+            created NEW since the 00:30Z probe, including the
+            full PR16 triplet test scaffold, the MCP wrapper
+            wiring, the schemas hub re-export, the workflow
+            registration, the conftest.py SQL validator
+            collect_ignore, and the canonical_set bump on test_
+            workflow_event_study — AND compute.py + __pycache__
+            both freshened at 00:41 (i.e., the build is now in
+            the test-running / import-smoking phase, beyond pure
+            file authoring)
+
+      Build is IN FLIGHT and progressing through the wiring +
+      test phase. Do NOT re-dispatch. Do NOT kill the worker.
+      Exit cleanly per BACKGROUND_EXECUTION_POLICY §7 no-overlap.
+
+    Wake actions (this wake):
+      1. Verified branch primitive_automation via check_branch.sh
+         (run from repo root).
+      2. Read the full primitive-automation policy package.
+      3. Surveyed builder worker liveness + on-disk source-file
+         mtimes + git state.
+      4. Applied feedback_builder_silent_log_signal.md heuristic:
+         builder IN FLIGHT (worker alive AND files landing AND
+         progressing into the wiring + test phase based on
+         compute.py + __pycache__ + new triplet test files).
+      5. Updated primitive_runtime_state.yaml top fields:
+         last_stop_reason rewritten; last_updated bumped to
+         2026-05-25T00:45:55Z. orchestrator_status, current_
+         primitive, current_step, reviewer_mode, quota_state,
+         done/blocked/remaining counts all unchanged (the wake
+         is observe-only).
+      6. Wake exits cleanly per BACKGROUND_EXECUTION_POLICY §1
+         + §7: cron exists to wake every */15; the builder worker
+         is detached and will outlive this wake; next cron wake
+         at 01:00Z will re-check PID + log per the same heuristic
+         and either:
+           - compose the reviewer prompt + dispatch the reviewer
+             (BUILDER REPORT present in log, worker exited
+             cleanly), OR
+           - exit cleanly again (worker still alive AND/OR files
+             still being touched), OR
+           - mark the primitive waiting_quota per QUOTA_AND_
+             RESUME_POLICY §7 (provider quota refusal: worker
+             exited with empty log AND zero source files touched
+             since dispatch).
+
+    No catalog mutation this wake. The build_policy_futures_strip_
+    panel entry remains in_progress / active_step builder_round_1_
+    dispatched_2026-05-25T00_18Z; updating it now would race the
+    builder worker (no-overlap §7). The catalog yaml + runtime
+    state yaml were both already in the "M" (modified, unstaged)
+    state from the prior wake's bookkeeping — this wake adds only
+    a top-fields delta + this status_notes entry to the runtime
+    state file, leaving the catalog yaml byte-identical to its
+    prior-wake form.
+
+- at: '2026-05-25T00:30:30Z'
+  kind: wake_2026-05-25T00:30Z_observe_only_build_policy_futures_strip_panel_round1_builder_in_flight_files_landing_on_disk_no_overlap_exit
+  text: |
+    Cron wake fired at 2026-05-25T00:30Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh).
+
+    Re-read ORCHESTRATOR_PROMPT.md, DESIGN_PRINCIPLES.md,
+    STANDARD_TOOL_AND_YAML_RULES.md, PRIMITIVE_BUILD_RULES.md,
+    TESTING_AND_DB_VALIDATION_POLICY.md, NO_GO_RULES.md,
+    DONE_DEFINITION.md, REPO_REFERENCE_MAP.md,
+    QUOTA_AND_RESUME_POLICY.md, BACKGROUND_EXECUTION_POLICY.md,
+    DISCORD_STATUS_POLICY.md, OPENCLAW_CRON_RUNBOOK.md, and the
+    head of primitive_runtime_state.yaml (top fields + tail of
+    last status_notes entry from the 00:15Z dispatch wake).
+
+    State at wake start:
+      orchestrator_status   : processing
+      current_primitive     : policy_futures__build_policy_futures_
+                              strip_panel
+      current_step          : building (round-1 builder dispatched
+                              by wake 00:15Z at 00:18Z via
+                              run_claude_builder.sh; wrapper PID
+                              2478680, worker PID 2478688; log
+                              file /tmp/claude_builder_run_build_
+                              policy_futures_strip_panel_round1.log)
+      reviewer_mode         : claude_fallback (sticky per §10.3)
+      quota_state           : probe_unavailable
+      done                  : 31
+      blocked               : 0
+      remaining             : 3
+
+    Builder worker liveness probe:
+      ps -p 2478680 (wrapper) : STAT S, ELAPSED 10:52 (alive,
+                                bash run_claude_builder.sh)
+      ps -p 2478688 (worker)  : STAT Sl, ELAPSED 10:52 (alive,
+                                claude --print --model opus
+                                --effort xhigh --permission-mode
+                                bypassPermissions)
+      log file size           : 0 B
+      log mtime               : 2026-05-25T00:20Z (creation; no
+                                stdout flushed yet — expected per
+                                claude --print buffered stdout
+                                semantics + feedback memory
+                                feedback_builder_silent_log_signal.md)
+
+    On-disk evidence the build is producing real work (NOT a
+    silent failure):
+      git status -s            : M automation/primitive_automation/
+                                   primitive_catalog.yaml
+                                 M automation/primitive_automation/
+                                   primitive_runtime_state.yaml
+                                 M shared/analytics/panel_assembly.py
+                                 ?? rates_agent/policy_futures/tools/
+                                   build_policy_futures_strip_panel/
+      git diff --stat          : shared/analytics/panel_assembly.py
+                                 +313 lines (new helpers being added
+                                 for the policy_futures strip panel)
+      new tool package         : rates_agent/policy_futures/tools/
+                                 build_policy_futures_strip_panel/
+                                 __init__.py 3461 B
+                                 mtime 2026-05-25T00:30:04Z
+                                 (written ~26 seconds before this
+                                 probe — the four-file primitive
+                                 package is materialising in real
+                                 time)
+      panel_assembly.py mtime  : 2026-05-25T00:28:53Z (modified
+                                 ~1m 11s before this probe)
+      git HEAD                 : 95f0e0f Macro Agent Bot 2026-05-24
+                                 07:03:53 +0000 feat(inflation_
+                                 indexed_bonds): add build_linker_
+                                 panel primitive (unchanged from
+                                 prior wake — no commits during this
+                                 wake)
+
+    Diagnosis per feedback_builder_silent_log_signal.md:
+      "When a primitive-factory builder dispatched via
+      run_claude_builder.sh shows an empty (0-byte or 1-byte
+      newline) log, DO NOT immediately declare it a silent
+      provider failure. The truthful diagnosis requires BOTH:
+        (a) the worker PID has EXITED (not just the launcher PID),
+            AND
+        (b) ZERO source files have been modified since the dispatch
+            timestamp.
+      If the worker PID is still alive, or any source file under
+      the repo (especially under shared/analytics/, rates_agent/
+      <family>/tools/, tests/, or rates_agent/workflows/) has a
+      fresh mtime, the build is in flight — exit cleanly per
+      BACKGROUND_EXECUTION_POLICY §7 no-overlap and let the next
+      wake re-check."
+
+      Both prongs are violated in the failure direction:
+        (a) worker PID 2478688 is STAT Sl alive at 10:52 elapsed
+        (b) panel_assembly.py +313 lines AND new tool package
+            folder with __init__.py 3461 B both fresh
+
+      Build is IN FLIGHT. Do NOT re-dispatch. Do NOT kill the
+      worker. Exit cleanly per BACKGROUND_EXECUTION_POLICY §7
+      no-overlap.
+
+    Wake actions (this wake):
+      1. Verified branch primitive_automation via check_branch.sh
+         (run from repo root).
+      2. Read the full primitive-automation policy package.
+      3. Surveyed builder worker liveness + on-disk source-file
+         mtimes + git state.
+      4. Applied feedback_builder_silent_log_signal.md heuristic:
+         builder IN FLIGHT (worker alive AND files landing).
+      5. Updated primitive_runtime_state.yaml top fields:
+         last_stop_reason rewritten; last_updated bumped to
+         2026-05-25T00:30:30Z. orchestrator_status, current_
+         primitive, current_step, reviewer_mode, quota_state,
+         done/blocked/remaining counts all unchanged (the wake
+         is observe-only).
+      6. Wake exits cleanly per BACKGROUND_EXECUTION_POLICY §1
+         + §7: cron exists to wake every */15; the builder worker
+         is detached and will outlive this wake; next cron wake
+         at 00:45Z will re-check PID + log per the same heuristic
+         and either:
+           - compose the reviewer prompt + dispatch the reviewer
+             (BUILDER REPORT present in log, worker exited
+             cleanly), OR
+           - exit cleanly again (worker still alive AND/OR files
+             still being touched), OR
+           - mark the primitive waiting_quota per QUOTA_AND_
+             RESUME_POLICY §7 (provider quota refusal: worker
+             exited with empty log AND zero source files touched
+             since dispatch).
+
+    No catalog mutation this wake. The build_policy_futures_strip_
+    panel entry remains in_progress / active_step builder_round_1_
+    dispatched_2026-05-25T00_18Z; updating it now would race the
+    builder worker (no-overlap §7).
+
+- at: '2026-05-25T00:20:30Z'
+  kind: wake_2026-05-25T00:15Z_reconcile_build_linker_panel_committed_95f0e0f_redispatch_build_policy_futures_strip_panel_round1_after_claude_weekly_reset
+  text: |
+    Cron wake fired at 2026-05-25T00:15Z. Branch guard PASS
+    (primitive_automation via automation/primitive_automation/
+    check_branch.sh).
+
+    Reconciliation findings (since 07:01:30Z state snapshot):
+      git log -1                 : 95f0e0f Macro Agent Bot
+                                   2026-05-24 07:03:53 +0000
+                                   feat(inflation_indexed_bonds):
+                                   add build_linker_panel primitive
+      git show 95f0e0f --stat    : 16 files changed; full 4-file
+                                   primitive package + MCP wrapper +
+                                   schemas hub + workflow registration +
+                                   tests/conftest.py + workflow_event_
+                                   study canonical_set bump + shared/
+                                   analytics/panel_assembly.py two
+                                   additive helpers + tests triplet
+                                   (compute + wiring + sql_validation)
+                                   + primitive_catalog.yaml +
+                                   primitive_runtime_state.yaml. Matches
+                                   the BUILDER REPORT file set exactly.
+      git diff --stat            : small uncommitted post-commit
+                                   bookkeeping delta on the
+                                   build_linker_panel catalog entry
+                                   (active_step ->
+                                   committed_95f0e0f_..., committed_at
+                                   + commit_sha appended). This will
+                                   fold into the next primitive's
+                                   commit per established pattern.
+      done count                 : 30 -> 31 (build_linker_panel just
+                                   shipped)
+      remaining                  : 4 -> 3 (build_policy_futures_strip_
+                                   panel, ois__asset_swap_spread,
+                                   inflation_swaps__realized_vs_
+                                   implied_inflation)
+
+    Prior wake chain (2026-05-24 sequence) terminal observations:
+      07:07:08Z                  : prior wake composed builder prompt
+                                   /tmp/builder_prompt_build_policy_
+                                   futures_strip_panel_round1.md
+                                   (22803 B; comprehensive — names
+                                   the catalog entry, ADR 0011 V1,
+                                   the three sibling Panel primitives,
+                                   the 9 required design decisions,
+                                   the PR16 triplet contract, Layer A/B
+                                   expectations, DB safety, branch +
+                                   commit safety, output discipline).
+      07:07:42Z                  : prior wake dispatched
+                                   run_claude_builder.sh and the worker
+                                   returned 47 B "You're out of extra
+                                   usage · resets 10am (UTC)" before
+                                   producing any BUILDER REPORT. Claude
+                                   weekly quota refusal at the wrapper
+                                   layer.
+
+    Quota probe (this wake, 00:16Z–00:17Z):
+      `claude --print --model opus "/status"` -> "/status isn't
+        available in this environment." (per Claude CLI design)
+      `codex /status` -> "Error: stdin is not a terminal"
+      Both /status surfaces unreachable from non-interactive
+      automation. Proceeding in QUOTA_AND_RESUME_POLICY §6 runtime-
+      enforced quota mode. 10am UTC reset on 2026-05-24 passed ~14h
+      ago; the prior 5-hour/weekly refusal is presumed cleared and
+      will be verified through this wake's actual dispatch response.
+
+    Pre-flight load_audit check:
+      docker exec macro-tsdb psql -U quantuser -d macrodata -tAc
+        "SELECT playbook_name, status, ingested_at FROM
+         macro_data.load_audit WHERE playbook_name IN ('policy_futures',
+         'rates_agent/playbooks/policy_futures.yml') AND status =
+         'SUCCESS' ORDER BY ingested_at DESC LIMIT 5"
+      -> policy_futures|SUCCESS|2026-05-20 08:14:28.129099+01
+      -> policy_futures|SUCCESS|2026-04-09 01:21:53.65495+01
+      pre_flight load_audit PASS — both SUCCESS rows pre-date any
+      build window the SQL validation would query.
+
+    Selection:
+      orchestrator_status        : processing
+      current_primitive          : policy_futures__build_policy_futures_
+                                   strip_panel (catalog build_order 32,
+                                   first remaining `todo` per
+                                   BACKGROUND_EXECUTION_POLICY §3
+                                   selection order — no in_progress /
+                                   changes_required / waiting_quota
+                                   entries exist)
+      current_step               : building
+      reviewer_mode              : claude_fallback (sticky per §10.3 —
+                                   prior primitive build_linker_panel
+                                   completed cleanly under
+                                   claude_fallback but the symmetric-
+                                   recovery condition "fresh Codex
+                                   quota probe at or above the §4
+                                   threshold" cannot be established
+                                   without a probe; over-using Claude
+                                   is not a correctness problem)
+
+    Builder dispatch:
+      log truncated              : /tmp/claude_builder_run_build_
+                                   policy_futures_strip_panel_round1.
+                                   log truncated 47 B -> 0 B
+      dispatch                   : nohup bash automation/primitive_
+                                   automation/run_claude_builder.sh
+                                   /tmp/builder_prompt_build_policy_
+                                   futures_strip_panel_round1.md
+                                   /tmp/claude_builder_run_build_
+                                   policy_futures_strip_panel_round1.
+                                   log </dev/null >/tmp/claude_builder_
+                                   launcher_build_policy_futures_strip_
+                                   panel_round1.out 2>&1 & disown
+                                   (explicit </dev/null per the
+                                   feedback memory on the 06:47Z
+                                   silent-fail incident from the
+                                   build_linker_panel reviewer
+                                   dispatch — the wrapper's claude
+                                   --print needs explicit stdin
+                                   closure or it dies silently)
+      wrapper PID                : 2478680 (bash run_claude_builder.sh)
+      worker PID                 : 2478688 (claude --print --model opus
+                                   --effort xhigh --permission-mode
+                                   bypassPermissions)
+      worker parent              : 2478680 (matches wrapper)
+      branch guard               : PASS at dispatch (launcher.out:
+                                   "OK: on allowed branch
+                                   'primitive_automation'.")
+      log path                   : /tmp/claude_builder_run_build_policy_
+                                   futures_strip_panel_round1.log
+                                   (currently 0 B — expected per
+                                   claude --print buffered stdout
+                                   semantics; the wrapper's `tee`
+                                   only flushes once claude --print
+                                   produces text)
+
+    Wake actions (this wake):
+      1. Verified branch primitive_automation via check_branch.sh.
+      2. Read ORCHESTRATOR_PROMPT.md + DESIGN_PRINCIPLES.md +
+         STANDARD_TOOL_AND_YAML_RULES.md + PRIMITIVE_BUILD_RULES.md +
+         TESTING_AND_DB_VALIDATION_POLICY.md + NO_GO_RULES.md +
+         DONE_DEFINITION.md + REPO_REFERENCE_MAP.md + QUOTA_AND_
+         RESUME_POLICY.md + BACKGROUND_EXECUTION_POLICY.md + DISCORD_
+         STATUS_POLICY.md + OPENCLAW_CRON_RUNBOOK.md + PRE_FLIGHT_
+         LOAD_AUDIT.md.
+      3. Read the top of primitive_runtime_state.yaml + the
+         build_order 32 / 33 / 34 catalog entries.
+      4. Verified git state: 95f0e0f shipped at 07:03:53Z; uncommitted
+         catalog bookkeeping delta on the build_linker_panel entry
+         left to be folded into the next primitive's commit.
+      5. Probed Claude + Codex /status — both unavailable from
+         non-interactive automation; proceeded in §6 runtime-enforced
+         quota mode.
+      6. Ran the pre-flight load_audit SELECT for policy_futures
+         playbook — PASS (SUCCESS row 2026-05-20T08:14:28.129099+01).
+      7. Updated primitive_runtime_state.yaml top fields:
+         orchestrator_status processing; current_primitive ->
+         policy_futures__build_policy_futures_strip_panel;
+         current_primitive_tool_name -> build_policy_futures_strip_
+         panel; current_step -> building; last_successful_primitive
+         -> inflation_linkers__build_linker_panel; last_successful_
+         commit -> 95f0e0f; done 30 -> 31; remaining 4 -> 3;
+         last_stop_reason rewritten; last_updated -> 2026-05-25T00:18:00Z;
+         quota_note rewritten.
+      8. Reused /tmp/builder_prompt_build_policy_futures_strip_
+         panel_round1.md (22803 B — still authoritative against the
+         current catalog entry + the three sibling Panel primitives +
+         ADR 0011 V1 + the policy_futures playbook universe +
+         the additive panel_assembly.py + rates_fetch.py helper-
+         signature regression test contract).
+      9. Truncated stale builder log to 0 B.
+     10. Dispatched run_claude_builder.sh via nohup+disown with
+         explicit </dev/null (wrapper PID 2478680, worker PID 2478688,
+         worker STAT R running, branch guard PASS at dispatch).
+     11. Exiting cleanly per BACKGROUND_EXECUTION_POLICY §1 (cron
+         exists to wake every */15; the builder worker is detached
+         and will outlive this wake; next cron wake will re-check
+         PID + log per feedback_builder_silent_log_signal.md rules
+         and either compose the reviewer prompt + dispatch the
+         reviewer (BUILDER REPORT present) OR exit cleanly again
+         (worker still alive) OR mark the primitive waiting_quota
+         (provider quota refusal)).
+
 - at: '2026-05-24T07:01:30Z'
   kind: wake_2026-05-24T07:00Z_build_linker_panel_round1_reviewer_APPROVED_with_two_dismissable_nits_committing
   text: |
