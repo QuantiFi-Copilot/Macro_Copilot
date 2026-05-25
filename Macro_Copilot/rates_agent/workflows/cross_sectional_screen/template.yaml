@@ -62,9 +62,12 @@
 #   member_4_output_field:  time_series_zscore
 #
 #   member_labels:          ["UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y"]
-#   statistic:              mean        # default; mean over a short lookback
-#                                        # approximates a "snapshot at as-of"
-#                                        # reading.  Caller can override.
+#   statistic:              latest      # default; emits the LAST non-NaN
+#                                        # observation per member (the desk's
+#                                        # snapshot-at-as-of-date reading).
+#                                        # Caller can override to mean / median
+#                                        # / std / sum / count for a window-
+#                                        # average or dispersion read.
 #
 # Reading the terminal
 # --------------------
@@ -73,14 +76,22 @@
 # as the most depressed.  Rank is the desk's read; the substrate's job is to
 # stage the four comparable values with their methodology lineage attached.
 #
-# Snapshot vs window-mean
-# -----------------------
-# summarize_series.statistic ∈ {mean, median, std, sum, count}; there is no
-# "latest" option in V1.  For a true snapshot at as-of date, bind each
-# member's lookback_days to a short window (e.g. 1–5 trading days) so the
-# mean equals (or near-equals) the latest value.  This is a documented
-# caller-side discipline; encoding it in the template (via a literal
-# lookback_days) would defeat the WT8 slot-as-only-knob principle.
+# Snapshot vs window-aggregate
+# ----------------------------
+# Default ``statistic`` = ``latest`` — each member's terminal value is its
+# LAST non-NaN observation, giving the true "as-of date" snapshot.  This is
+# the desk's primary reading; ranking is a desk read of the four snapshot
+# values (the substrate does not embed rank order in the artifact per ADR
+# 0013).  Codex F1 (PR #201) flagged that the V1 template originally
+# defaulted to ``mean`` and tried to approximate a snapshot via "1-5 day
+# lookback" caller discipline — incompatible with ``zscore_custom``'s
+# ``lookback_days >= 30`` constraint.  Adding ``latest`` to
+# ``summarize_series`` (a finance-blind operator-method extension; opt-in,
+# backward-compatible) is the honest fix.
+#
+# Callers wanting a window-aggregate read (e.g. "average z-score over the
+# past month") opt in by overriding the ``statistic`` slot to ``mean`` or
+# ``median``.
 #
 # Topology-locked methodology (NOT exposed as slots) — per WT8
 # ------------------------------------------------------------
@@ -129,10 +140,13 @@ description: >-
   sentinel date (1900-01-01) and emits a SeriesSet keyed by caller-supplied
   member labels.  The four-value SeriesSet is the desk's "rank by metric"
   surface — ranking itself is deferred to a future per-column-Panel
-  operator path per ADR 0013 §"Deferred future paths".  Pair with
-  z-score-emitting member primitives (e.g. zscore_custom_tool) and a
-  short member-side lookback_days to approximate a snapshot-at-as-of-date
-  reading.
+  operator path per ADR 0013 §"Deferred future paths".  Default
+  ``statistic=latest`` makes each member's terminal value the LAST non-NaN
+  observation of the member's input Series — the desk's true snapshot-at-
+  as-of-date reading.  Override to ``mean`` / ``median`` for a window-
+  average read.  Pair with z-score-emitting member primitives (e.g.
+  ``calculate_zscore_custom_tool`` with ``time_series_zscore``) for the
+  canonical cross-sectional z-score scan.
 
 # Structural cues the LLM router matches against prompts.  Multiple cues
 # = OR pattern.  Per WT14: 4–10 cues, each ≤120 chars, desk vocabulary,
@@ -266,16 +280,18 @@ slot_schema:
   - name: statistic
     type: str
     required: false
-    default: mean
+    default: latest
     description: >-
       Aggregator passed to every summarize_series node.  Closed-enum
-      values from SummarizeSeriesParams: {mean, median, std, sum, count}.
-      Default 'mean' — average of the member's input Series over its
-      lookback window.  For a 'snapshot at as-of date' reading, bind each
-      member's primitive with a short lookback_days (e.g. 1–5 trading
-      days) so the mean ≈ today's value.  No 'latest' option exists in
-      summarize_series V1; the short-lookback pattern is the documented
-      caller-side approximation.
+      values from SummarizeSeriesParams: {mean, median, std, sum, count,
+      latest}.  Default 'latest' — emits each member's LAST non-NaN
+      observation (the desk's snapshot-at-as-of-date reading).  Override
+      to 'mean' / 'median' for a window-average read across the member's
+      input lookback; override to 'std' for a window-dispersion read.
+      The 'latest' option was added to summarize_series in PR-A8
+      follow-up (Codex F1 on PR #201) precisely so this template can
+      deliver a true snapshot without the dishonest "set lookback short"
+      caller discipline the V1 draft originally suggested.
 
 # DAG topology — locked.  Slots fill node params; topology is fixed.
 #

@@ -88,6 +88,7 @@ from orchestrator import config as _orchestrator_config  # noqa: F401, E402
 # Importing each template package triggers ``register_template`` via
 # its __init__.py.  Required so ``list_workflows()`` /
 # ``WorkflowRouter`` see every template.
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
 

@@ -25,7 +25,7 @@ The plan's bottom line: *"Default to the cheapest architectural path; extend the
 
 Three operator-substrate facts shape the verdict:
 
-1. **No `rank` operator exists.** `OPERATOR_REGISTRY` (`shared/workflow/registry.py`) lists 13 operators: `align_series`, `select_from_series_set`, `series_arithmetic`, `threshold_events`, `event_windows`, `conditional_aggregate`, `apply_mask`, `rolling_regression`, `summarize_series`, `construct_trades`, `evaluate_trades`, `summarize_trades`. None of them produces a ranked output. Adding one would be an open-catalogue addition (`OPERATOR_REGISTRY` is not a closed family per [`03_standards/closed_family_discipline.md`](../03_standards/closed_family_discipline.md) §2) but still requires the operator to pass the OPR1–OPR16 admission gate — non-trivial scope and not in Stage 4.
+1. **No `rank` operator exists.** `OPERATOR_REGISTRY` (`shared/workflow/registry.py`) lists 12 operators: `align_series`, `select_from_series_set`, `series_arithmetic`, `threshold_events`, `event_windows`, `conditional_aggregate`, `apply_mask`, `rolling_regression`, `summarize_series`, `construct_trades`, `evaluate_trades`, `summarize_trades`. None of them produces a ranked output. Adding one would be an open-catalogue addition (`OPERATOR_REGISTRY` is not a closed family per [`03_standards/closed_family_discipline.md`](../03_standards/closed_family_discipline.md) §2) but still requires the operator to pass the OPR1–OPR16 admission gate — non-trivial scope and not in Stage 4.
 2. **No per-column `Panel` transform operator exists.** `series_arithmetic` operates on `Series`, not `Panel`; `summarize_series` operates on `Series`, not `Panel`. The plan's literal topology (*"panel primitive → `series_arithmetic` to compute the cross-sectional metric per row → `zscore_custom` → some form of 'rank by z' → terminal artifact"*) is not buildable today: `series_arithmetic` cannot reduce a `Panel` cross-sectionally because the operator's contract is two-Series binary arithmetic, and `zscore_custom` is a primitive that operates on a single curve_family+tenor — not a `Panel`-shaped operator.
 3. **Templates have fixed topology (WT7).** There is no fan-out / map-over-universe mechanism in V1 — the DAG node count and edge count are template-author-locked. A universe-of-N screen must hardcode N into the YAML or rely on a single primitive whose `*Input` carries the universe (e.g. `sovereign_yield_panel`'s `legs` list, max 20).
 
@@ -63,12 +63,12 @@ A universe size > 20 will eventually require either (a) a new operator that cons
 This ADR makes no closed-family changes:
 
 - `ARTIFACT_TYPE_NAMES` stays at six members (`Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, `TradeSet`). No `RankedResult` is admitted.
-- `OPERATOR_REGISTRY` stays at 13 operators. No `rank` operator is added.
+- `OPERATOR_REGISTRY` stays at 12 operators. No `rank` operator is added. (A finance-blind method extension to one existing operator — adding the `"latest"` value to `SummarizeSeriesParams.statistic` per Codex F1 on PR #201 — is a within-operator open-catalogue change that does not affect the registry's entry count; the operator's existing default of `"mean"` is preserved so every existing caller stays byte-identical. The template's `statistic` slot defaults to `"latest"` to deliver an honest snapshot-at-as-of-date reading.)
 - `WORKFLOW_ARCHETYPES` stays at five members — `cross_sectional_screen` was already in the tuple as a forward declaration; this ADR records the admission of its first template per WT2, not an enum extension.
 
 ### 4. The substrate's `WorkflowResult.terminal_artifact` union already carries `SeriesSet`.
 
-Per [`shared/workflow/result.py`](../../shared/workflow/result.py) and the workflow-template README's "What this is not" boundary, the executor's terminal-artifact union is `Series | SeriesSet | EventSet | Panel | WindowedPanel`. `SeriesSet` is supported. The MCP envelope summarisation in `rates_agent/workflows/_runner.py` already handles `SeriesSet` (the `regime_conditioned_relationship` template's `relationship` node emits `SeriesSet` as an intermediate; the `compare` terminal is `Series`). The terminal `SeriesSet` for `cross_sectional_screen` requires no executor or runner changes.
+Per [`shared/workflow/result.py`](../../shared/workflow/result.py) and the workflow-template README's "What this is not" boundary, the executor's terminal-artifact union is `Series | SeriesSet | EventSet | Panel | WindowedPanel`. `SeriesSet` is supported. The MCP envelope summarisation in `rates_agent/workflows/_runner.py` was extended in PR-A8 follow-up to include per-key VALUES (`values_by_key` for single-row SeriesSet, `latest_value_by_key` always) — without that, a terminal SeriesSet would have rendered to the user as 4 keys + zero numbers, structurally invisible to the desk (Codex F2 on PR #201). The extension is additive and backward-compatible.
 
 ### 5. Ranking interpretation is a UI / desk concern at V1; it is not a substrate artifact.
 
@@ -131,7 +131,7 @@ After this ADR lands and PR-A8 is merged:
 1. `rates_agent/workflows/cross_sectional_screen/template.yaml` exists; `template.archetype == "cross_sectional_screen"`; `template.terminal_node_id == "screen"` and the `screen` node is an `align_series` operator emitting a `SeriesSet`.
 2. `tests/test_workflow_cross_sectional_screen.py` covers all five WT15 layers; the topology-archetype-fit gate uses the allow-list `{"summarize_series", "align_series"}` (no `event_windows`, no `apply_mask`, no `rolling_regression`, no `evaluate_trades`).
 3. `ARTIFACT_TYPE_NAMES` in `shared/workflow/registry.py` is unchanged (six members).
-4. `OPERATOR_REGISTRY` in `shared/workflow/registry.py` is unchanged (13 operators).
+4. `OPERATOR_REGISTRY` in `shared/workflow/registry.py` is unchanged (12 operators).  `SummarizeSeriesParams.statistic` is extended from 5 to 6 closed-enum values (added `"latest"`) per Codex F1 on PR #201 — a within-operator method extension that is finance-blind, opt-in, and backward-compatible.  No platform-level closed family is changed.
 5. `WORKFLOW_ARCHETYPES` in `shared/workflow/template.py` is unchanged (five members, with `cross_sectional_screen` now backed by a real template).
 6. `rates_agent/workflows/mcp_server.py` and `api/routes/workflows/catalogue.py` both import `rates_agent.workflows.cross_sectional_screen` per WT16.
 

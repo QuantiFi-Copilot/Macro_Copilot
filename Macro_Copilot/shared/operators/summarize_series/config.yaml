@@ -18,8 +18,15 @@ defaults:
       regime relationship analyses (mean β over the regime sample).
       ``median`` is the robust alternative; ``std``/``sum``/``count``
       cover the dispersion / aggregation cases when the central
-      tendency is not the deliverable.
-    valid_values: [mean, median, std, sum, count]
+      tendency is not the deliverable.  ``latest`` returns the last
+      non-NaN observation — the desk's snapshot-at-as-of-date reading;
+      added in PR-A8 follow-up so the ``cross_sectional_screen``
+      template can deliver a true snapshot value rather than a
+      window-mean proxy.  The operator's default stays ``mean`` so
+      every existing caller (regime_conditioned_relationship) is
+      unaffected; callers wanting a snapshot opt in by setting
+      ``statistic=latest``.
+    valid_values: [mean, median, std, sum, count, latest]
 
   dispersion:
     value: std
@@ -43,7 +50,10 @@ methodology:
          and any per-regime no-coverage gaps would otherwise bias
          the statistic).
       2. Applies the chosen ``statistic`` — mean / median / std /
-         sum / count — on the cleaned payload.
+         sum / count / latest — on the cleaned payload.  ``latest``
+         returns the LAST non-NaN observation in input order (the
+         desk's snapshot reading); the other statistics aggregate
+         across the full cleaned payload.
       3. Computes the chosen ``dispersion`` (std / mad) on the
          same cleaned payload, OR records "none" when dispersion
          is suppressed.

@@ -154,10 +154,18 @@ relationship between A and B differ across regimes", "compare beta \
 distributions across high vs low regimes", "split-sample regression \
 analysis by regime".
 
-These cues map to template_ids ``event_study`` and \
-``regime_conditioned_relationship`` respectively.  When in doubt, \
-read the catalogue's ``archetype_signature`` cues — they are the \
-template authors' own phrasing.
+- Cross-sectional-screen cues: "which 10Y sovereigns look most \
+stretched today", "rank a small set of curves by recent metric", \
+"cross-sectional z-score scan across N curves", "dislocation monitor \
+for a basket of instruments", "compare current metric across \
+multiple curve families", "snapshot RV scan across a curated \
+universe".
+
+These cues map to template_ids ``event_study``, \
+``regime_conditioned_relationship``, and ``cross_sectional_screen`` \
+respectively.  When in doubt, read the catalogue's \
+``archetype_signature`` cues — they are the template authors' own \
+phrasing.
 """
 
 

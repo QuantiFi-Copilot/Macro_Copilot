@@ -70,6 +70,14 @@ def _compute_statistic(values: pd.Series, statistic: str) -> float:
         return float(values.sum())
     if statistic == "count":
         return float(len(values))
+    if statistic == "latest":
+        # Last non-NaN observation in input order.  ``values`` was
+        # already ``dropna``-cleaned at the caller, so ``.iloc[-1]``
+        # is the most recent finite observation — the desk's
+        # "snapshot at as-of date" reading.  Added in PR-A8 follow-up
+        # so cross_sectional_screen can deliver a true snapshot rather
+        # than a window-average proxy (Codex F1 on PR #201).
+        return float(values.iloc[-1])
     raise SummarizeSeriesError(
         f"summarize_series: unsupported statistic={statistic!r}."
     )

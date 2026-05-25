@@ -306,7 +306,7 @@ class TestSlotBinding:
             },
             "member_4_output_field": "time_series_zscore",
             "member_labels": ["UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y"],
-            "statistic": "mean",
+            "statistic": "latest",
         }
         defaults.update(overrides)
         return defaults
@@ -351,11 +351,23 @@ class TestSlotBinding:
             t.bind(bad)
 
     def test_statistic_default_applied_when_omitted(self):
-        """``statistic`` is optional with default ``mean``."""
+        """``statistic`` is optional with default ``latest`` — the
+        desk's snapshot-at-as-of-date reading.  Default changed from
+        ``mean`` to ``latest`` in PR-A8 follow-up (Codex F1 on PR #201)
+        when ``latest`` was added to summarize_series."""
         t = load_cross_sectional_screen_template()
         partial = self._full_slot_values()
         partial.pop("statistic")
         wf = t.bind(partial)
+        summary_1 = next(n for n in wf.nodes if n.node_id == "summary_1")
+        assert summary_1.params["statistic"] == "latest"
+
+    def test_statistic_override_to_mean_still_works(self):
+        """Callers wanting a window-average read can override the
+        default by passing ``statistic='mean'`` explicitly.  Pins the
+        non-default path so the override surface stays exercised."""
+        t = load_cross_sectional_screen_template()
+        wf = t.bind(self._full_slot_values(statistic="mean"))
         summary_1 = next(n for n in wf.nodes if n.node_id == "summary_1")
         assert summary_1.params["statistic"] == "mean"
 
@@ -416,7 +428,7 @@ class TestEndToEndRealRates:
             },
             "member_4_output_field": "time_series_zscore",
             "member_labels": ["UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y"],
-            "statistic": "mean",
+            "statistic": "latest",
         }
 
     def test_workflow_validates_with_real_resolver(self):
@@ -479,6 +491,66 @@ class TestEndToEndRealRates:
             "summary_1", "summary_2", "summary_3", "summary_4",
             "screen",
         }
+
+    def test_envelope_includes_member_values_by_key(self):
+        """Codex F2 fix verification: the MCP envelope returned by
+        ``run_template`` must include the actual member values, not
+        just keys + units + dates.  Without this fix, a terminal
+        SeriesSet would render to the LLM/user as "4 keys + 0 numbers"
+        — the screen's product would be structurally invisible.
+
+        Asserts both ``values_by_key`` (single-row case, the desk's
+        snapshot reading) and ``latest_value_by_key`` (always present)
+        are populated in the envelope's terminal_artifact summary."""
+        from rates_agent.workflows._runner import run_template_with_resolver
+
+        # Re-register after the autouse fixture's clear_template_registry()
+        # call.  ``run_template_with_resolver`` resolves the template by id
+        # against the substrate's process-wide registry — unlike the other
+        # tests in this class which call ``execute_workflow`` directly on a
+        # bound Workflow.
+        import rates_agent.workflows.cross_sectional_screen as css_module
+        css_module.register()
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.zscore_custom.compute.fetch_single_tenor",
+            return_value=_synthetic_yield_levels_df(),
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.zscore_custom.compute.date",
+            _FrozenDate,
+        ):
+            envelope = run_template_with_resolver(
+                template_id="cross_sectional_screen",
+                slot_values=self._slot_values(),
+                engine=None,
+                primitive_resolver=rates_primitive_resolver,
+                persist=False,
+            )
+
+        assert envelope["ok"] is True, envelope.get("error")
+        terminal = envelope["terminal_artifact"]
+        assert terminal["type"] == "SeriesSet"
+        # n_rows = 1 (single-row sentinel-aligned summaries).
+        assert terminal["n_rows"] == 1
+        # latest_value_by_key is ALWAYS present for SeriesSet terminals.
+        latest = terminal["latest_value_by_key"]
+        assert set(latest.keys()) == {
+            "UST_10Y", "BUND_10Y", "GILT_10Y", "JGB_10Y",
+        }
+        for k, v in latest.items():
+            assert isinstance(v, float), (
+                f"latest_value_by_key[{k!r}]={v!r} must be a float; "
+                f"got {type(v).__name__}"
+            )
+        # values_by_key is also present because every member is single-
+        # row (the cross_sectional_screen / summarize_series terminal
+        # case).  Single-row case ⇒ values == latest values.
+        assert "values_by_key" in terminal, (
+            "Single-row SeriesSet terminal must expose values_by_key "
+            "(Codex F2 fix); got terminal keys: "
+            f"{sorted(terminal.keys())}"
+        )
+        assert terminal["values_by_key"] == latest
 
 
 # ===========================================================================
