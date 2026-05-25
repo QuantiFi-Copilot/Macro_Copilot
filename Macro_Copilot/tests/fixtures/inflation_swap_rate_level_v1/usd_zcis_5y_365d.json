@@ -1,0 +1,6235 @@
+{
+  "fixture_name": "usd_zcis_5y_365d",
+  "tool_module": "rates_agent.inflation_swaps.tools.inflation_swap_rate_level",
+  "tool_function": "calculate_inflation_swap_rate_level",
+  "capture": {
+    "captured_at": "2026-05-25T17:45:39Z",
+    "database_name": "macrodata",
+    "as_of_date": "2026-05-22",
+    "raw_rows_count": 516,
+    "raw_rows_sha256": "6bb8e17606d44a6c77de25a8873e31d5cb2f745d95699594da88f6cd50be9161"
+  },
+  "input": {
+    "params": {
+      "curve_family": "USD_ZCIS",
+      "tenor": "5Y",
+      "lookback_days": 365,
+      "field_name": null
+    },
+    "frozen_today": "2026-05-25",
+    "raw_rows": [
+      {
+        "trade_date": "2024-05-13",
+        "field_value": 2.517,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-14",
+        "field_value": 2.507,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-15",
+        "field_value": 2.49,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-16",
+        "field_value": 2.499,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-17",
+        "field_value": 2.5288,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-20",
+        "field_value": 2.5375,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-21",
+        "field_value": 2.533,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-22",
+        "field_value": 2.531,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-23",
+        "field_value": 2.516,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-24",
+        "field_value": 2.5284,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-28",
+        "field_value": 2.5605,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-29",
+        "field_value": 2.577,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-30",
+        "field_value": 2.5695,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-05-31",
+        "field_value": 2.5672,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-03",
+        "field_value": 2.55,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-04",
+        "field_value": 2.516,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-05",
+        "field_value": 2.508,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-06",
+        "field_value": 2.488,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-07",
+        "field_value": 2.507,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-10",
+        "field_value": 2.51,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-11",
+        "field_value": 2.486,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-12",
+        "field_value": 2.4097,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-13",
+        "field_value": 2.3918,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-14",
+        "field_value": 2.3703,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-17",
+        "field_value": 2.413,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-18",
+        "field_value": 2.4233,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-19",
+        "field_value": 2.4233,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-20",
+        "field_value": 2.461,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-21",
+        "field_value": 2.432,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-24",
+        "field_value": 2.42,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-25",
+        "field_value": 2.4135,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-26",
+        "field_value": 2.4588,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-27",
+        "field_value": 2.471,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-06-28",
+        "field_value": 2.515,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-01",
+        "field_value": 2.545,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-02",
+        "field_value": 2.517,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-03",
+        "field_value": 2.4797,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-05",
+        "field_value": 2.478,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-08",
+        "field_value": 2.476,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-09",
+        "field_value": 2.472,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-10",
+        "field_value": 2.4813,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-11",
+        "field_value": 2.427,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-12",
+        "field_value": 2.4,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-15",
+        "field_value": 2.441,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-16",
+        "field_value": 2.4375,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-17",
+        "field_value": 2.4362,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-18",
+        "field_value": 2.4338,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-19",
+        "field_value": 2.425,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-22",
+        "field_value": 2.4153,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-23",
+        "field_value": 2.4003,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-24",
+        "field_value": 2.395,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-25",
+        "field_value": 2.385,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-26",
+        "field_value": 2.3725,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-29",
+        "field_value": 2.3813,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-30",
+        "field_value": 2.3705,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-07-31",
+        "field_value": 2.3857,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-01",
+        "field_value": 2.3245,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-02",
+        "field_value": 2.1817,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-05",
+        "field_value": 2.198,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-06",
+        "field_value": 2.249,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-07",
+        "field_value": 2.2333,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-08",
+        "field_value": 2.261,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-09",
+        "field_value": 2.2425,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-12",
+        "field_value": 2.242,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-13",
+        "field_value": 2.225,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-14",
+        "field_value": 2.212,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-15",
+        "field_value": 2.268,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-16",
+        "field_value": 2.2313,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-19",
+        "field_value": 2.226,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-20",
+        "field_value": 2.2238,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-21",
+        "field_value": 2.22,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-22",
+        "field_value": 2.2563,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-23",
+        "field_value": 2.2938,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-26",
+        "field_value": 2.316,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-27",
+        "field_value": 2.318,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-28",
+        "field_value": 2.3176,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-29",
+        "field_value": 2.329,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-08-30",
+        "field_value": 2.309,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-03",
+        "field_value": 2.26,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-04",
+        "field_value": 2.1888,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-05",
+        "field_value": 2.1625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-06",
+        "field_value": 2.1525,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-09",
+        "field_value": 2.162,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-10",
+        "field_value": 2.15,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-11",
+        "field_value": 2.186,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-12",
+        "field_value": 2.2145,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-13",
+        "field_value": 2.2228,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-16",
+        "field_value": 2.231,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-17",
+        "field_value": 2.252,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-18",
+        "field_value": 2.2573,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-19",
+        "field_value": 2.33,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-20",
+        "field_value": 2.322,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-23",
+        "field_value": 2.3208,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-24",
+        "field_value": 2.341,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-25",
+        "field_value": 2.3365,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-26",
+        "field_value": 2.3188,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-27",
+        "field_value": 2.3138,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-09-30",
+        "field_value": 2.344,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-01",
+        "field_value": 2.346,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-02",
+        "field_value": 2.359,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-03",
+        "field_value": 2.361,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-04",
+        "field_value": 2.3863,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-07",
+        "field_value": 2.451,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-08",
+        "field_value": 2.45,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-09",
+        "field_value": 2.46,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-10",
+        "field_value": 2.51,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-11",
+        "field_value": 2.5225,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-15",
+        "field_value": 2.465,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-16",
+        "field_value": 2.457,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-17",
+        "field_value": 2.487,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-18",
+        "field_value": 2.4765,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-21",
+        "field_value": 2.481,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-22",
+        "field_value": 2.501,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-23",
+        "field_value": 2.4762,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-24",
+        "field_value": 2.4335,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-25",
+        "field_value": 2.4258,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-28",
+        "field_value": 2.4288,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-29",
+        "field_value": 2.44,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-30",
+        "field_value": 2.5099,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-10-31",
+        "field_value": 2.51,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-01",
+        "field_value": 2.513,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-04",
+        "field_value": 2.455,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-05",
+        "field_value": 2.482,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-06",
+        "field_value": 2.611,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-07",
+        "field_value": 2.571,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-08",
+        "field_value": 2.5792,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-11",
+        "field_value": 2.5792,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-12",
+        "field_value": 2.5833,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-13",
+        "field_value": 2.574,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-14",
+        "field_value": 2.5513,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-15",
+        "field_value": 2.54,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-18",
+        "field_value": 2.552,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-19",
+        "field_value": 2.5567,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-20",
+        "field_value": 2.565,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-21",
+        "field_value": 2.559,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-22",
+        "field_value": 2.5612,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-25",
+        "field_value": 2.4935,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-26",
+        "field_value": 2.4928,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-27",
+        "field_value": 2.47,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-28",
+        "field_value": 2.47,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-11-29",
+        "field_value": 2.4625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-02",
+        "field_value": 2.457,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-03",
+        "field_value": 2.505,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-04",
+        "field_value": 2.485,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-05",
+        "field_value": 2.468,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-06",
+        "field_value": 2.4408,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-09",
+        "field_value": 2.44,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-10",
+        "field_value": 2.4646,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-11",
+        "field_value": 2.5,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-12",
+        "field_value": 2.4975,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-13",
+        "field_value": 2.511,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-16",
+        "field_value": 2.471,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-17",
+        "field_value": 2.4513,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-18",
+        "field_value": 2.444,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-19",
+        "field_value": 2.413,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-20",
+        "field_value": 2.4179,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-23",
+        "field_value": 2.4638,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-24",
+        "field_value": 2.4743,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-26",
+        "field_value": 2.4623,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-27",
+        "field_value": 2.4606,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-30",
+        "field_value": 2.43,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2024-12-31",
+        "field_value": 2.4509,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-02",
+        "field_value": 2.4507,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-03",
+        "field_value": 2.451,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-06",
+        "field_value": 2.4555,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-07",
+        "field_value": 2.4963,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-08",
+        "field_value": 2.5238,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-09",
+        "field_value": 2.5246,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-10",
+        "field_value": 2.571,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-13",
+        "field_value": 2.609,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-14",
+        "field_value": 2.599,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-15",
+        "field_value": 2.57,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-16",
+        "field_value": 2.555,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-17",
+        "field_value": 2.5768,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-21",
+        "field_value": 2.529,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-22",
+        "field_value": 2.5397,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-23",
+        "field_value": 2.577,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-24",
+        "field_value": 2.5558,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-27",
+        "field_value": 2.5342,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-28",
+        "field_value": 2.561,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-29",
+        "field_value": 2.564,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-30",
+        "field_value": 2.544,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-01-31",
+        "field_value": 2.594,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-03",
+        "field_value": 2.598,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-04",
+        "field_value": 2.62,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-05",
+        "field_value": 2.6,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-06",
+        "field_value": 2.585,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-07",
+        "field_value": 2.6013,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-10",
+        "field_value": 2.6163,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-11",
+        "field_value": 2.6592,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-12",
+        "field_value": 2.6588,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-13",
+        "field_value": 2.645,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-14",
+        "field_value": 2.615,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-18",
+        "field_value": 2.6362,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-19",
+        "field_value": 2.6475,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-20",
+        "field_value": 2.6473,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-21",
+        "field_value": 2.5835,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-24",
+        "field_value": 2.5699,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-25",
+        "field_value": 2.5412,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-26",
+        "field_value": 2.5213,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-27",
+        "field_value": 2.5338,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-02-28",
+        "field_value": 2.545,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-03",
+        "field_value": 2.543,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-04",
+        "field_value": 2.5163,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-05",
+        "field_value": 2.498,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-06",
+        "field_value": 2.473,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-07",
+        "field_value": 2.4878,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-10",
+        "field_value": 2.4543,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-11",
+        "field_value": 2.46,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-12",
+        "field_value": 2.4928,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-13",
+        "field_value": 2.445,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-14",
+        "field_value": 2.461,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-17",
+        "field_value": 2.4478,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-18",
+        "field_value": 2.445,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-19",
+        "field_value": 2.4875,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-20",
+        "field_value": 2.505,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-21",
+        "field_value": 2.4992,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-24",
+        "field_value": 2.523,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-25",
+        "field_value": 2.5323,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-26",
+        "field_value": 2.5513,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-27",
+        "field_value": 2.5963,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-28",
+        "field_value": 2.5698,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-03-31",
+        "field_value": 2.57,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-01",
+        "field_value": 2.533,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-02",
+        "field_value": 2.5355,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-03",
+        "field_value": 2.506,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-04",
+        "field_value": 2.3638,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-07",
+        "field_value": 2.347,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-08",
+        "field_value": 2.3923,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-09",
+        "field_value": 2.4808,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-10",
+        "field_value": 2.307,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-11",
+        "field_value": 2.382,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-14",
+        "field_value": 2.394,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-15",
+        "field_value": 2.355,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-16",
+        "field_value": 2.3205,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-17",
+        "field_value": 2.3951,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-18",
+        "field_value": 2.394,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-21",
+        "field_value": 2.3595,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-22",
+        "field_value": 2.4215,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-23",
+        "field_value": 2.4785,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-24",
+        "field_value": 2.508,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-25",
+        "field_value": 2.477,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-28",
+        "field_value": 2.476,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-29",
+        "field_value": 2.445,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-04-30",
+        "field_value": 2.4638,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-01",
+        "field_value": 2.468,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-02",
+        "field_value": 2.476,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-05",
+        "field_value": 2.492,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-06",
+        "field_value": 2.5038,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-07",
+        "field_value": 2.4913,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-08",
+        "field_value": 2.5365,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-09",
+        "field_value": 2.55,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-12",
+        "field_value": 2.5043,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-13",
+        "field_value": 2.554,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-14",
+        "field_value": 2.593,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-15",
+        "field_value": 2.55,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-16",
+        "field_value": 2.5788,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-19",
+        "field_value": 2.568,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-20",
+        "field_value": 2.565,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-21",
+        "field_value": 2.5743,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-22",
+        "field_value": 2.578,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-23",
+        "field_value": 2.5637,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-27",
+        "field_value": 2.5585,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-28",
+        "field_value": 2.5589,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-29",
+        "field_value": 2.558,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-05-30",
+        "field_value": 2.5415,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-02",
+        "field_value": 2.55,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-03",
+        "field_value": 2.534,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-04",
+        "field_value": 2.485,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-05",
+        "field_value": 2.481,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-06",
+        "field_value": 2.517,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-09",
+        "field_value": 2.515,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-10",
+        "field_value": 2.5,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-11",
+        "field_value": 2.474,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-12",
+        "field_value": 2.45,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-13",
+        "field_value": 2.481,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-16",
+        "field_value": 2.504,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-17",
+        "field_value": 2.52,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-18",
+        "field_value": 2.524,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-19",
+        "field_value": 2.524,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-20",
+        "field_value": 2.5407,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-23",
+        "field_value": 2.4923,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-24",
+        "field_value": 2.4705,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-25",
+        "field_value": 2.477,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-26",
+        "field_value": 2.487,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-27",
+        "field_value": 2.5035,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-06-30",
+        "field_value": 2.49,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-01",
+        "field_value": 2.515,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-02",
+        "field_value": 2.548,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-03",
+        "field_value": 2.5815,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-07",
+        "field_value": 2.6185,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-08",
+        "field_value": 2.6088,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-09",
+        "field_value": 2.59,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-10",
+        "field_value": 2.598,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-11",
+        "field_value": 2.6475,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-14",
+        "field_value": 2.6613,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-15",
+        "field_value": 2.6775,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-16",
+        "field_value": 2.689,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-17",
+        "field_value": 2.7188,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-18",
+        "field_value": 2.704,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-21",
+        "field_value": 2.702,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-22",
+        "field_value": 2.6802,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-23",
+        "field_value": 2.6537,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-24",
+        "field_value": 2.6838,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-25",
+        "field_value": 2.6652,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-28",
+        "field_value": 2.672,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-29",
+        "field_value": 2.6778,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-30",
+        "field_value": 2.6798,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-07-31",
+        "field_value": 2.6537,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-01",
+        "field_value": 2.5885,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-04",
+        "field_value": 2.611,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-05",
+        "field_value": 2.606,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-06",
+        "field_value": 2.604,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-07",
+        "field_value": 2.6353,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-08",
+        "field_value": 2.662,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-11",
+        "field_value": 2.6773,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-12",
+        "field_value": 2.654,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-13",
+        "field_value": 2.649,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-14",
+        "field_value": 2.6678,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-15",
+        "field_value": 2.651,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-18",
+        "field_value": 2.6398,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-19",
+        "field_value": 2.616,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-20",
+        "field_value": 2.625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-21",
+        "field_value": 2.6585,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-22",
+        "field_value": 2.698,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-25",
+        "field_value": 2.6993,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-26",
+        "field_value": 2.7218,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-27",
+        "field_value": 2.735,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-28",
+        "field_value": 2.721,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-08-29",
+        "field_value": 2.7065,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-02",
+        "field_value": 2.704,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-03",
+        "field_value": 2.6798,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-04",
+        "field_value": 2.6563,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-05",
+        "field_value": 2.6415,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-08",
+        "field_value": 2.6338,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-09",
+        "field_value": 2.645,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-10",
+        "field_value": 2.62,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-11",
+        "field_value": 2.6143,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-12",
+        "field_value": 2.627,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-15",
+        "field_value": 2.62,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-16",
+        "field_value": 2.625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-17",
+        "field_value": 2.6573,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-18",
+        "field_value": 2.67,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-19",
+        "field_value": 2.648,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-22",
+        "field_value": 2.631,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-23",
+        "field_value": 2.649,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-24",
+        "field_value": 2.659,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-25",
+        "field_value": 2.6678,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-26",
+        "field_value": 2.665,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-29",
+        "field_value": 2.635,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-09-30",
+        "field_value": 2.644,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-01",
+        "field_value": 2.614,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-02",
+        "field_value": 2.592,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-03",
+        "field_value": 2.5997,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-06",
+        "field_value": 2.61,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-07",
+        "field_value": 2.619,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-08",
+        "field_value": 2.624,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-09",
+        "field_value": 2.614,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-10",
+        "field_value": 2.5633,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-14",
+        "field_value": 2.542,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-15",
+        "field_value": 2.541,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-16",
+        "field_value": 2.509,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-17",
+        "field_value": 2.514,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-20",
+        "field_value": 2.501,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-21",
+        "field_value": 2.511,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-22",
+        "field_value": 2.535,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-23",
+        "field_value": 2.545,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-24",
+        "field_value": 2.5218,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-27",
+        "field_value": 2.502,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-28",
+        "field_value": 2.506,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-29",
+        "field_value": 2.5038,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-30",
+        "field_value": 2.509,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-10-31",
+        "field_value": 2.531,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-03",
+        "field_value": 2.5275,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-04",
+        "field_value": 2.5165,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-05",
+        "field_value": 2.5149,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-06",
+        "field_value": 2.4827,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-07",
+        "field_value": 2.4917,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-10",
+        "field_value": 2.505,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-11",
+        "field_value": 2.5038,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-12",
+        "field_value": 2.476,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-13",
+        "field_value": 2.482,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-14",
+        "field_value": 2.485,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-17",
+        "field_value": 2.47,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-18",
+        "field_value": 2.4563,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-19",
+        "field_value": 2.46,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-20",
+        "field_value": 2.4313,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-21",
+        "field_value": 2.4148,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-24",
+        "field_value": 2.3797,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-25",
+        "field_value": 2.4088,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-26",
+        "field_value": 2.406,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-27",
+        "field_value": 2.4063,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-11-28",
+        "field_value": 2.4012,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-01",
+        "field_value": 2.41,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-02",
+        "field_value": 2.4025,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-03",
+        "field_value": 2.409,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-04",
+        "field_value": 2.4345,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-05",
+        "field_value": 2.437,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-08",
+        "field_value": 2.434,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-09",
+        "field_value": 2.43,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-10",
+        "field_value": 2.431,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-11",
+        "field_value": 2.427,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-12",
+        "field_value": 2.429,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-15",
+        "field_value": 2.403,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-16",
+        "field_value": 2.3625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-17",
+        "field_value": 2.372,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-18",
+        "field_value": 2.3575,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-19",
+        "field_value": 2.3625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-22",
+        "field_value": 2.3488,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-23",
+        "field_value": 2.35,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-24",
+        "field_value": 2.3397,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-25",
+        "field_value": 2.3375,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-26",
+        "field_value": 2.318,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-29",
+        "field_value": 2.31,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-30",
+        "field_value": 2.316,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2025-12-31",
+        "field_value": 2.3362,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-01",
+        "field_value": 2.336,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-02",
+        "field_value": 2.353,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-05",
+        "field_value": 2.3668,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-06",
+        "field_value": 2.365,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-07",
+        "field_value": 2.364,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-08",
+        "field_value": 2.3725,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-09",
+        "field_value": 2.376,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-12",
+        "field_value": 2.408,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-13",
+        "field_value": 2.4075,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-14",
+        "field_value": 2.393,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-15",
+        "field_value": 2.396,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-16",
+        "field_value": 2.4075,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-20",
+        "field_value": 2.423,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-21",
+        "field_value": 2.4588,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-22",
+        "field_value": 2.4413,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-23",
+        "field_value": 2.468,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-26",
+        "field_value": 2.474,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-27",
+        "field_value": 2.5113,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-28",
+        "field_value": 2.528,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-29",
+        "field_value": 2.535,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-01-30",
+        "field_value": 2.53,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-02",
+        "field_value": 2.514,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-03",
+        "field_value": 2.513,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-04",
+        "field_value": 2.489,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-05",
+        "field_value": 2.4375,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-06",
+        "field_value": 2.463,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-09",
+        "field_value": 2.473,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-10",
+        "field_value": 2.452,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-11",
+        "field_value": 2.462,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-12",
+        "field_value": 2.431,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-13",
+        "field_value": 2.38,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-17",
+        "field_value": 2.3645,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-18",
+        "field_value": 2.3883,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-19",
+        "field_value": 2.3975,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-20",
+        "field_value": 2.3913,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-23",
+        "field_value": 2.3485,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-24",
+        "field_value": 2.354,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-25",
+        "field_value": 2.3853,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-26",
+        "field_value": 2.391,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-02-27",
+        "field_value": 2.361,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-02",
+        "field_value": 2.4155,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-03",
+        "field_value": 2.4278,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-04",
+        "field_value": 2.414,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-05",
+        "field_value": 2.458,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-06",
+        "field_value": 2.5218,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-09",
+        "field_value": 2.465,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-10",
+        "field_value": 2.498,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-11",
+        "field_value": 2.525,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-12",
+        "field_value": 2.56,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-13",
+        "field_value": 2.5425,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-16",
+        "field_value": 2.528,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-17",
+        "field_value": 2.574,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-18",
+        "field_value": 2.64,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-19",
+        "field_value": 2.5885,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-20",
+        "field_value": 2.59,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-23",
+        "field_value": 2.495,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-24",
+        "field_value": 2.475,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-25",
+        "field_value": 2.481,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-26",
+        "field_value": 2.53,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-27",
+        "field_value": 2.5238,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-30",
+        "field_value": 2.534,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-03-31",
+        "field_value": 2.511,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-01",
+        "field_value": 2.519,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-02",
+        "field_value": 2.5603,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-03",
+        "field_value": 2.5928,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-06",
+        "field_value": 2.5833,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-07",
+        "field_value": 2.575,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-08",
+        "field_value": 2.5375,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-09",
+        "field_value": 2.5537,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-10",
+        "field_value": 2.5838,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-13",
+        "field_value": 2.6008,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-14",
+        "field_value": 2.5773,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-15",
+        "field_value": 2.591,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-16",
+        "field_value": 2.5868,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-17",
+        "field_value": 2.544,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-20",
+        "field_value": 2.551,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-21",
+        "field_value": 2.584,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-22",
+        "field_value": 2.599,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-23",
+        "field_value": 2.6535,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-24",
+        "field_value": 2.67,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-27",
+        "field_value": 2.7038,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-28",
+        "field_value": 2.7063,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-29",
+        "field_value": 2.74,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-04-30",
+        "field_value": 2.7546,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-01",
+        "field_value": 2.7656,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-04",
+        "field_value": 2.802,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-05",
+        "field_value": 2.7466,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-06",
+        "field_value": 2.6625,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-07",
+        "field_value": 2.6945,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-08",
+        "field_value": 2.7025,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-11",
+        "field_value": 2.754,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-12",
+        "field_value": 2.776,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-13",
+        "field_value": 2.764,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-14",
+        "field_value": 2.7423,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-15",
+        "field_value": 2.78,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-18",
+        "field_value": 2.744,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-19",
+        "field_value": 2.749,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-20",
+        "field_value": 2.6865,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-21",
+        "field_value": 2.6508,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      },
+      {
+        "trade_date": "2026-05-22",
+        "field_value": 2.6288,
+        "vendor_ticker": "USSWIT5 Curncy",
+        "pricing_type": "zero_coupon_breakeven",
+        "inflation_index_family": "US_CPI_URBAN",
+        "index_lag": "3M",
+        "interpolation": "Daily",
+        "underlying_index": "CPURNSA Index"
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-05-22",
+      "curve_family": "USD_ZCIS",
+      "tenor": "5Y",
+      "zcis_rate_pct": 2.6288,
+      "daily_change_bps": -2.2,
+      "weekly_change_bps": -15.12,
+      "monthly_change_bps": -2.47,
+      "z_score": 0.753,
+      "high_252d_pct": 2.802,
+      "low_252d_pct": 2.31,
+      "percentile_252d": 64.8,
+      "observation_count": 256,
+      "inflation_index_family": "US_CPI_URBAN",
+      "index_lag": "3M",
+      "interpolation": "Daily",
+      "underlying_index": "CPURNSA Index",
+      "methodology_label": "ZCIS rate level for a single (curve_family, tenor) curve pillar\nread directly from\n``macro_data.instrument_master`` \u00d7 ``macro_data.v_market_data_daily_enriched``\nfiltered by ``instrument_type='inflation_swap'`` AND\n``pricing_type='zero_coupon_breakeven'`` AND ``curve_family=?``\nAND ``tenor=?``.  Returns the current rate, period changes\n(daily / weekly / monthly), rolling z-score against the 252-day\nwindow, trailing range stats (high / low / percentile within\nthe trailing 252 days), the observation count over the user's\nlookback_days window, AND the load-bearing reference metadata\n``inflation_index_family`` / ``index_lag`` / ``interpolation``\n/ ``underlying_index`` so a desk reader can interpret the level\nhonestly: USD_ZCIS references US_CPI_URBAN with a 3M lag and\ndaily interpolation; EUR_ZCIS references EU_HICP (ex-tobacco)\nwith a 3M lag and monthly interpolation; GBP_ZCIS references\nUK_RPI with a 2M lag and monthly interpolation \u2014 these\nconventions are NOT comparable cross-curve without harmonising\nthem.  Plus the canonical ``time_series`` payload over the\ndisplayed window."
+    },
+    "time_series": {
+      "series_name": "usd_zcis_5y_zcis_rate",
+      "units": "percent",
+      "description": "Historical zero-coupon inflation swap (ZCIS) rates for USD_ZCIS 5Y over the display window (cleaned, ffill'd; rounded to 4 decimals to match current_metrics.zcis_rate_pct exactly at the latest row).  Reference: inflation_index_family='US_CPI_URBAN', index_lag='3M', interpolation='Daily'.  These conventions differ across USD_ZCIS / EUR_ZCIS / GBP_ZCIS \u2014 cross-curve comparisons are NOT pure expected-inflation differentials without harmonising them.",
+      "rows": [
+        {
+          "date": "2025-05-22",
+          "value": 2.578
+        },
+        {
+          "date": "2025-05-23",
+          "value": 2.5637
+        },
+        {
+          "date": "2025-05-27",
+          "value": 2.5585
+        },
+        {
+          "date": "2025-05-28",
+          "value": 2.5589
+        },
+        {
+          "date": "2025-05-29",
+          "value": 2.558
+        },
+        {
+          "date": "2025-05-30",
+          "value": 2.5415
+        },
+        {
+          "date": "2025-06-02",
+          "value": 2.55
+        },
+        {
+          "date": "2025-06-03",
+          "value": 2.534
+        },
+        {
+          "date": "2025-06-04",
+          "value": 2.485
+        },
+        {
+          "date": "2025-06-05",
+          "value": 2.481
+        },
+        {
+          "date": "2025-06-06",
+          "value": 2.517
+        },
+        {
+          "date": "2025-06-09",
+          "value": 2.515
+        },
+        {
+          "date": "2025-06-10",
+          "value": 2.5
+        },
+        {
+          "date": "2025-06-11",
+          "value": 2.474
+        },
+        {
+          "date": "2025-06-12",
+          "value": 2.45
+        },
+        {
+          "date": "2025-06-13",
+          "value": 2.481
+        },
+        {
+          "date": "2025-06-16",
+          "value": 2.504
+        },
+        {
+          "date": "2025-06-17",
+          "value": 2.52
+        },
+        {
+          "date": "2025-06-18",
+          "value": 2.524
+        },
+        {
+          "date": "2025-06-19",
+          "value": 2.524
+        },
+        {
+          "date": "2025-06-20",
+          "value": 2.5407
+        },
+        {
+          "date": "2025-06-23",
+          "value": 2.4923
+        },
+        {
+          "date": "2025-06-24",
+          "value": 2.4705
+        },
+        {
+          "date": "2025-06-25",
+          "value": 2.477
+        },
+        {
+          "date": "2025-06-26",
+          "value": 2.487
+        },
+        {
+          "date": "2025-06-27",
+          "value": 2.5035
+        },
+        {
+          "date": "2025-06-30",
+          "value": 2.49
+        },
+        {
+          "date": "2025-07-01",
+          "value": 2.515
+        },
+        {
+          "date": "2025-07-02",
+          "value": 2.548
+        },
+        {
+          "date": "2025-07-03",
+          "value": 2.5815
+        },
+        {
+          "date": "2025-07-07",
+          "value": 2.6185
+        },
+        {
+          "date": "2025-07-08",
+          "value": 2.6088
+        },
+        {
+          "date": "2025-07-09",
+          "value": 2.59
+        },
+        {
+          "date": "2025-07-10",
+          "value": 2.598
+        },
+        {
+          "date": "2025-07-11",
+          "value": 2.6475
+        },
+        {
+          "date": "2025-07-14",
+          "value": 2.6613
+        },
+        {
+          "date": "2025-07-15",
+          "value": 2.6775
+        },
+        {
+          "date": "2025-07-16",
+          "value": 2.689
+        },
+        {
+          "date": "2025-07-17",
+          "value": 2.7188
+        },
+        {
+          "date": "2025-07-18",
+          "value": 2.704
+        },
+        {
+          "date": "2025-07-21",
+          "value": 2.702
+        },
+        {
+          "date": "2025-07-22",
+          "value": 2.6802
+        },
+        {
+          "date": "2025-07-23",
+          "value": 2.6537
+        },
+        {
+          "date": "2025-07-24",
+          "value": 2.6838
+        },
+        {
+          "date": "2025-07-25",
+          "value": 2.6652
+        },
+        {
+          "date": "2025-07-28",
+          "value": 2.672
+        },
+        {
+          "date": "2025-07-29",
+          "value": 2.6778
+        },
+        {
+          "date": "2025-07-30",
+          "value": 2.6798
+        },
+        {
+          "date": "2025-07-31",
+          "value": 2.6537
+        },
+        {
+          "date": "2025-08-01",
+          "value": 2.5885
+        },
+        {
+          "date": "2025-08-04",
+          "value": 2.611
+        },
+        {
+          "date": "2025-08-05",
+          "value": 2.606
+        },
+        {
+          "date": "2025-08-06",
+          "value": 2.604
+        },
+        {
+          "date": "2025-08-07",
+          "value": 2.6353
+        },
+        {
+          "date": "2025-08-08",
+          "value": 2.662
+        },
+        {
+          "date": "2025-08-11",
+          "value": 2.6773
+        },
+        {
+          "date": "2025-08-12",
+          "value": 2.654
+        },
+        {
+          "date": "2025-08-13",
+          "value": 2.649
+        },
+        {
+          "date": "2025-08-14",
+          "value": 2.6678
+        },
+        {
+          "date": "2025-08-15",
+          "value": 2.651
+        },
+        {
+          "date": "2025-08-18",
+          "value": 2.6398
+        },
+        {
+          "date": "2025-08-19",
+          "value": 2.616
+        },
+        {
+          "date": "2025-08-20",
+          "value": 2.625
+        },
+        {
+          "date": "2025-08-21",
+          "value": 2.6585
+        },
+        {
+          "date": "2025-08-22",
+          "value": 2.698
+        },
+        {
+          "date": "2025-08-25",
+          "value": 2.6993
+        },
+        {
+          "date": "2025-08-26",
+          "value": 2.7218
+        },
+        {
+          "date": "2025-08-27",
+          "value": 2.735
+        },
+        {
+          "date": "2025-08-28",
+          "value": 2.721
+        },
+        {
+          "date": "2025-08-29",
+          "value": 2.7065
+        },
+        {
+          "date": "2025-09-02",
+          "value": 2.704
+        },
+        {
+          "date": "2025-09-03",
+          "value": 2.6798
+        },
+        {
+          "date": "2025-09-04",
+          "value": 2.6563
+        },
+        {
+          "date": "2025-09-05",
+          "value": 2.6415
+        },
+        {
+          "date": "2025-09-08",
+          "value": 2.6338
+        },
+        {
+          "date": "2025-09-09",
+          "value": 2.645
+        },
+        {
+          "date": "2025-09-10",
+          "value": 2.62
+        },
+        {
+          "date": "2025-09-11",
+          "value": 2.6143
+        },
+        {
+          "date": "2025-09-12",
+          "value": 2.627
+        },
+        {
+          "date": "2025-09-15",
+          "value": 2.62
+        },
+        {
+          "date": "2025-09-16",
+          "value": 2.625
+        },
+        {
+          "date": "2025-09-17",
+          "value": 2.6573
+        },
+        {
+          "date": "2025-09-18",
+          "value": 2.67
+        },
+        {
+          "date": "2025-09-19",
+          "value": 2.648
+        },
+        {
+          "date": "2025-09-22",
+          "value": 2.631
+        },
+        {
+          "date": "2025-09-23",
+          "value": 2.649
+        },
+        {
+          "date": "2025-09-24",
+          "value": 2.659
+        },
+        {
+          "date": "2025-09-25",
+          "value": 2.6678
+        },
+        {
+          "date": "2025-09-26",
+          "value": 2.665
+        },
+        {
+          "date": "2025-09-29",
+          "value": 2.635
+        },
+        {
+          "date": "2025-09-30",
+          "value": 2.644
+        },
+        {
+          "date": "2025-10-01",
+          "value": 2.614
+        },
+        {
+          "date": "2025-10-02",
+          "value": 2.592
+        },
+        {
+          "date": "2025-10-03",
+          "value": 2.5997
+        },
+        {
+          "date": "2025-10-06",
+          "value": 2.61
+        },
+        {
+          "date": "2025-10-07",
+          "value": 2.619
+        },
+        {
+          "date": "2025-10-08",
+          "value": 2.624
+        },
+        {
+          "date": "2025-10-09",
+          "value": 2.614
+        },
+        {
+          "date": "2025-10-10",
+          "value": 2.5633
+        },
+        {
+          "date": "2025-10-14",
+          "value": 2.542
+        },
+        {
+          "date": "2025-10-15",
+          "value": 2.541
+        },
+        {
+          "date": "2025-10-16",
+          "value": 2.509
+        },
+        {
+          "date": "2025-10-17",
+          "value": 2.514
+        },
+        {
+          "date": "2025-10-20",
+          "value": 2.501
+        },
+        {
+          "date": "2025-10-21",
+          "value": 2.511
+        },
+        {
+          "date": "2025-10-22",
+          "value": 2.535
+        },
+        {
+          "date": "2025-10-23",
+          "value": 2.545
+        },
+        {
+          "date": "2025-10-24",
+          "value": 2.5218
+        },
+        {
+          "date": "2025-10-27",
+          "value": 2.502
+        },
+        {
+          "date": "2025-10-28",
+          "value": 2.506
+        },
+        {
+          "date": "2025-10-29",
+          "value": 2.5038
+        },
+        {
+          "date": "2025-10-30",
+          "value": 2.509
+        },
+        {
+          "date": "2025-10-31",
+          "value": 2.531
+        },
+        {
+          "date": "2025-11-03",
+          "value": 2.5275
+        },
+        {
+          "date": "2025-11-04",
+          "value": 2.5165
+        },
+        {
+          "date": "2025-11-05",
+          "value": 2.5149
+        },
+        {
+          "date": "2025-11-06",
+          "value": 2.4827
+        },
+        {
+          "date": "2025-11-07",
+          "value": 2.4917
+        },
+        {
+          "date": "2025-11-10",
+          "value": 2.505
+        },
+        {
+          "date": "2025-11-11",
+          "value": 2.5038
+        },
+        {
+          "date": "2025-11-12",
+          "value": 2.476
+        },
+        {
+          "date": "2025-11-13",
+          "value": 2.482
+        },
+        {
+          "date": "2025-11-14",
+          "value": 2.485
+        },
+        {
+          "date": "2025-11-17",
+          "value": 2.47
+        },
+        {
+          "date": "2025-11-18",
+          "value": 2.4563
+        },
+        {
+          "date": "2025-11-19",
+          "value": 2.46
+        },
+        {
+          "date": "2025-11-20",
+          "value": 2.4313
+        },
+        {
+          "date": "2025-11-21",
+          "value": 2.4148
+        },
+        {
+          "date": "2025-11-24",
+          "value": 2.3797
+        },
+        {
+          "date": "2025-11-25",
+          "value": 2.4088
+        },
+        {
+          "date": "2025-11-26",
+          "value": 2.406
+        },
+        {
+          "date": "2025-11-27",
+          "value": 2.4063
+        },
+        {
+          "date": "2025-11-28",
+          "value": 2.4012
+        },
+        {
+          "date": "2025-12-01",
+          "value": 2.41
+        },
+        {
+          "date": "2025-12-02",
+          "value": 2.4025
+        },
+        {
+          "date": "2025-12-03",
+          "value": 2.409
+        },
+        {
+          "date": "2025-12-04",
+          "value": 2.4345
+        },
+        {
+          "date": "2025-12-05",
+          "value": 2.437
+        },
+        {
+          "date": "2025-12-08",
+          "value": 2.434
+        },
+        {
+          "date": "2025-12-09",
+          "value": 2.43
+        },
+        {
+          "date": "2025-12-10",
+          "value": 2.431
+        },
+        {
+          "date": "2025-12-11",
+          "value": 2.427
+        },
+        {
+          "date": "2025-12-12",
+          "value": 2.429
+        },
+        {
+          "date": "2025-12-15",
+          "value": 2.403
+        },
+        {
+          "date": "2025-12-16",
+          "value": 2.3625
+        },
+        {
+          "date": "2025-12-17",
+          "value": 2.372
+        },
+        {
+          "date": "2025-12-18",
+          "value": 2.3575
+        },
+        {
+          "date": "2025-12-19",
+          "value": 2.3625
+        },
+        {
+          "date": "2025-12-22",
+          "value": 2.3488
+        },
+        {
+          "date": "2025-12-23",
+          "value": 2.35
+        },
+        {
+          "date": "2025-12-24",
+          "value": 2.3397
+        },
+        {
+          "date": "2025-12-25",
+          "value": 2.3375
+        },
+        {
+          "date": "2025-12-26",
+          "value": 2.318
+        },
+        {
+          "date": "2025-12-29",
+          "value": 2.31
+        },
+        {
+          "date": "2025-12-30",
+          "value": 2.316
+        },
+        {
+          "date": "2025-12-31",
+          "value": 2.3362
+        },
+        {
+          "date": "2026-01-01",
+          "value": 2.336
+        },
+        {
+          "date": "2026-01-02",
+          "value": 2.353
+        },
+        {
+          "date": "2026-01-05",
+          "value": 2.3668
+        },
+        {
+          "date": "2026-01-06",
+          "value": 2.365
+        },
+        {
+          "date": "2026-01-07",
+          "value": 2.364
+        },
+        {
+          "date": "2026-01-08",
+          "value": 2.3725
+        },
+        {
+          "date": "2026-01-09",
+          "value": 2.376
+        },
+        {
+          "date": "2026-01-12",
+          "value": 2.408
+        },
+        {
+          "date": "2026-01-13",
+          "value": 2.4075
+        },
+        {
+          "date": "2026-01-14",
+          "value": 2.393
+        },
+        {
+          "date": "2026-01-15",
+          "value": 2.396
+        },
+        {
+          "date": "2026-01-16",
+          "value": 2.4075
+        },
+        {
+          "date": "2026-01-20",
+          "value": 2.423
+        },
+        {
+          "date": "2026-01-21",
+          "value": 2.4588
+        },
+        {
+          "date": "2026-01-22",
+          "value": 2.4413
+        },
+        {
+          "date": "2026-01-23",
+          "value": 2.468
+        },
+        {
+          "date": "2026-01-26",
+          "value": 2.474
+        },
+        {
+          "date": "2026-01-27",
+          "value": 2.5113
+        },
+        {
+          "date": "2026-01-28",
+          "value": 2.528
+        },
+        {
+          "date": "2026-01-29",
+          "value": 2.535
+        },
+        {
+          "date": "2026-01-30",
+          "value": 2.53
+        },
+        {
+          "date": "2026-02-02",
+          "value": 2.514
+        },
+        {
+          "date": "2026-02-03",
+          "value": 2.513
+        },
+        {
+          "date": "2026-02-04",
+          "value": 2.489
+        },
+        {
+          "date": "2026-02-05",
+          "value": 2.4375
+        },
+        {
+          "date": "2026-02-06",
+          "value": 2.463
+        },
+        {
+          "date": "2026-02-09",
+          "value": 2.473
+        },
+        {
+          "date": "2026-02-10",
+          "value": 2.452
+        },
+        {
+          "date": "2026-02-11",
+          "value": 2.462
+        },
+        {
+          "date": "2026-02-12",
+          "value": 2.431
+        },
+        {
+          "date": "2026-02-13",
+          "value": 2.38
+        },
+        {
+          "date": "2026-02-17",
+          "value": 2.3645
+        },
+        {
+          "date": "2026-02-18",
+          "value": 2.3883
+        },
+        {
+          "date": "2026-02-19",
+          "value": 2.3975
+        },
+        {
+          "date": "2026-02-20",
+          "value": 2.3913
+        },
+        {
+          "date": "2026-02-23",
+          "value": 2.3485
+        },
+        {
+          "date": "2026-02-24",
+          "value": 2.354
+        },
+        {
+          "date": "2026-02-25",
+          "value": 2.3853
+        },
+        {
+          "date": "2026-02-26",
+          "value": 2.391
+        },
+        {
+          "date": "2026-02-27",
+          "value": 2.361
+        },
+        {
+          "date": "2026-03-02",
+          "value": 2.4155
+        },
+        {
+          "date": "2026-03-03",
+          "value": 2.4278
+        },
+        {
+          "date": "2026-03-04",
+          "value": 2.414
+        },
+        {
+          "date": "2026-03-05",
+          "value": 2.458
+        },
+        {
+          "date": "2026-03-06",
+          "value": 2.5218
+        },
+        {
+          "date": "2026-03-09",
+          "value": 2.465
+        },
+        {
+          "date": "2026-03-10",
+          "value": 2.498
+        },
+        {
+          "date": "2026-03-11",
+          "value": 2.525
+        },
+        {
+          "date": "2026-03-12",
+          "value": 2.56
+        },
+        {
+          "date": "2026-03-13",
+          "value": 2.5425
+        },
+        {
+          "date": "2026-03-16",
+          "value": 2.528
+        },
+        {
+          "date": "2026-03-17",
+          "value": 2.574
+        },
+        {
+          "date": "2026-03-18",
+          "value": 2.64
+        },
+        {
+          "date": "2026-03-19",
+          "value": 2.5885
+        },
+        {
+          "date": "2026-03-20",
+          "value": 2.59
+        },
+        {
+          "date": "2026-03-23",
+          "value": 2.495
+        },
+        {
+          "date": "2026-03-24",
+          "value": 2.475
+        },
+        {
+          "date": "2026-03-25",
+          "value": 2.481
+        },
+        {
+          "date": "2026-03-26",
+          "value": 2.53
+        },
+        {
+          "date": "2026-03-27",
+          "value": 2.5238
+        },
+        {
+          "date": "2026-03-30",
+          "value": 2.534
+        },
+        {
+          "date": "2026-03-31",
+          "value": 2.511
+        },
+        {
+          "date": "2026-04-01",
+          "value": 2.519
+        },
+        {
+          "date": "2026-04-02",
+          "value": 2.5603
+        },
+        {
+          "date": "2026-04-03",
+          "value": 2.5928
+        },
+        {
+          "date": "2026-04-06",
+          "value": 2.5833
+        },
+        {
+          "date": "2026-04-07",
+          "value": 2.575
+        },
+        {
+          "date": "2026-04-08",
+          "value": 2.5375
+        },
+        {
+          "date": "2026-04-09",
+          "value": 2.5537
+        },
+        {
+          "date": "2026-04-10",
+          "value": 2.5838
+        },
+        {
+          "date": "2026-04-13",
+          "value": 2.6008
+        },
+        {
+          "date": "2026-04-14",
+          "value": 2.5773
+        },
+        {
+          "date": "2026-04-15",
+          "value": 2.591
+        },
+        {
+          "date": "2026-04-16",
+          "value": 2.5868
+        },
+        {
+          "date": "2026-04-17",
+          "value": 2.544
+        },
+        {
+          "date": "2026-04-20",
+          "value": 2.551
+        },
+        {
+          "date": "2026-04-21",
+          "value": 2.584
+        },
+        {
+          "date": "2026-04-22",
+          "value": 2.599
+        },
+        {
+          "date": "2026-04-23",
+          "value": 2.6535
+        },
+        {
+          "date": "2026-04-24",
+          "value": 2.67
+        },
+        {
+          "date": "2026-04-27",
+          "value": 2.7038
+        },
+        {
+          "date": "2026-04-28",
+          "value": 2.7063
+        },
+        {
+          "date": "2026-04-29",
+          "value": 2.74
+        },
+        {
+          "date": "2026-04-30",
+          "value": 2.7546
+        },
+        {
+          "date": "2026-05-01",
+          "value": 2.7656
+        },
+        {
+          "date": "2026-05-04",
+          "value": 2.802
+        },
+        {
+          "date": "2026-05-05",
+          "value": 2.7466
+        },
+        {
+          "date": "2026-05-06",
+          "value": 2.6625
+        },
+        {
+          "date": "2026-05-07",
+          "value": 2.6945
+        },
+        {
+          "date": "2026-05-08",
+          "value": 2.7025
+        },
+        {
+          "date": "2026-05-11",
+          "value": 2.754
+        },
+        {
+          "date": "2026-05-12",
+          "value": 2.776
+        },
+        {
+          "date": "2026-05-13",
+          "value": 2.764
+        },
+        {
+          "date": "2026-05-14",
+          "value": 2.7423
+        },
+        {
+          "date": "2026-05-15",
+          "value": 2.78
+        },
+        {
+          "date": "2026-05-18",
+          "value": 2.744
+        },
+        {
+          "date": "2026-05-19",
+          "value": 2.749
+        },
+        {
+          "date": "2026-05-20",
+          "value": 2.6865
+        },
+        {
+          "date": "2026-05-21",
+          "value": 2.6508
+        },
+        {
+          "date": "2026-05-22",
+          "value": 2.6288
+        }
+      ]
+    }
+  }
+}
