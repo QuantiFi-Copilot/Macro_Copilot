@@ -1,11 +1,43 @@
 """
-compute.py — PCA on the yield-CHANGES panel of one sovereign curve.
+compute.py — PCA on the yield-CHANGES panel of one rates curve.
 
 Fifth tool of the v6 sprint.  Built on
 ``shared.analytics.stats.pca_yield_changes`` — the SVD math has a
 single authoritative implementation.  Future siblings (correlation
 PCA, sparse PCA, robust PCA) will share the primitive's surface
 where they overlap.
+
+Curve-family-agnostic scope (Round 3 Stage 2, work item A3 — PR5
+coverage extension)
+-------------------------------------------------------------------
+The primitive accepts ANY tenor-keyed rates curve_family declared
+in any playbook under ``rates_agent/playbooks/``.  Today that
+covers sovereign benchmarks (UST / DE_BUND / IT_BTP / FR_OAT /
+ES_BONO / UK_GILT / JGB / CANADA_GOVT / AU_GOVT), OIS curves
+(USD_SOFR_OIS / EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_OIS / AUD_OIS /
+CAD_OIS), inflation swaps (USD_ZCIS / EUR_ZCIS / GBP_ZCIS), and
+sovereign linker real-yield curves (USD_TIPS / GBP_LINKER /
+EUR_FR_LINKER / CAD_RRB).  The PCA math itself is curve-family
+agnostic — the SVD operates on whatever centered-yield-change panel
+the fetcher returns.  Per the primitive runbook's "When NOT to use
+this runbook" section, this is the PR5 coverage-extension path
+(extend an existing primitive's allowed input values) rather than
+shipping a sibling per curve family.
+
+Per-playbook field-name discovery
+---------------------------------
+Different playbooks declare different Bloomberg primary fields:
+sovereign benchmarks + linkers use ``YLD_YTM_MID``; OIS curves use
+``PX_LAST``; ZCIS curves use ``PX_MID``.  The primitive auto-
+discovers each curve_family's default field from the owning
+playbook's ``target_metrics[0].bloomberg_field`` so callers do not
+need to know the per-vendor field convention.  Resolution priority
+when ``params.field_name`` is None:
+  1. The owning playbook's ``target_metrics[0].bloomberg_field``.
+  2. The YAML ``default_field_name`` (preserved as a final fallback,
+     identical to sovereign's ``YLD_YTM_MID`` so legacy behaviour is
+     unchanged for sovereign callers).
+An explicit non-None ``params.field_name`` always wins.
 
 Determinism boundary (A13)
 --------------------------
@@ -56,13 +88,11 @@ all live inside compute()'s namespace; tests patch them at
 from __future__ import annotations
 
 import math
-from functools import lru_cache
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-import yaml
 from sqlalchemy.engine import Engine
 
 from rates_agent.sovereign_bonds.tools.pca_yield_curve.schemas import (
@@ -72,6 +102,12 @@ from rates_agent.sovereign_bonds.tools.pca_yield_curve.schemas import (
     PcaYieldCurveMetrics,
     PcaYieldCurveOutput,
     VarianceShareRow,
+)
+from shared.analytics.playbook_discovery import (
+    PLAYBOOK_ROOT,
+    playbook_default_field_for_curve_family,
+    playbook_tenors_for_curve_family,
+    tenor_to_years,
 )
 from shared.analytics.rates_fetch import fetch_tenor_group
 from shared.analytics.spreads import pivot_and_align_tenors
@@ -83,9 +119,16 @@ from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 # Bundled config — public symbol so external callers can build a
 # ToolConfig from the same source the tool uses.
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
-PLAYBOOK_PATH: Path = (
-    Path(__file__).resolve().parents[3] / "playbooks" / "sovereign_bonds.yml"
-)
+
+# PLAYBOOK_ROOT, playbook_curve_family_index(),
+# playbook_tenors_for_curve_family(), and
+# playbook_default_field_for_curve_family() are imported above from
+# shared.analytics.playbook_discovery — the single source of truth
+# for the multi-playbook scanner (per P10).  This module previously
+# defined those helpers locally (Round 3 A3 v1, PR #195 first
+# revision); they were extracted to shared/ on Codex review to
+# prevent the Round 3 A4 sibling primitive (classify_curve_move)
+# from duplicating the same scanner per-folder.
 
 
 # Locked structural-choice value.  compute() raises NotImplementedError
@@ -149,62 +192,12 @@ def _round_or_none(value: Any, decimals: int) -> Optional[float]:
 
 
 def _tenor_to_years(t: str) -> float:
-    """Best-effort numeric tenor sort key.  Handles the canonical
-    sovereign tenors (1Y, 2Y, 5Y, 10Y, 20Y, 30Y); falls back to
-    string sort for anything unrecognized so the routine never
-    crashes on an unexpected tenor label."""
-    s = t.strip().upper()
-    if s.endswith("Y"):
-        try:
-            return float(s[:-1])
-        except ValueError:
-            pass
-    if s.endswith("M"):
-        try:
-            return float(s[:-1]) / 12.0
-        except ValueError:
-            pass
-    return float("inf")  # unknown — push to the end (deterministic)
-
-
-def _resolve_field_name(
-    explicit: Optional[str], default: str,
-) -> str:
-    return explicit if explicit is not None else default
-
-
-@lru_cache(maxsize=1)
-def _playbook_curve_family_tenors() -> Dict[str, List[str]]:
-    """Load the sovereign playbook's tenor universe by curve_family."""
-    with PLAYBOOK_PATH.open("r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
-
-    out: Dict[str, List[str]] = {}
-    for item in raw.get("universe", []):
-        curve_family = item.get("curve_family")
-        tenor = item.get("tenor")
-        if not curve_family or not tenor:
-            continue
-        out.setdefault(str(curve_family), []).append(str(tenor))
-
-    return {
-        curve_family: sorted(
-            list(dict.fromkeys(tenors)),
-            key=_tenor_to_years,
-        )
-        for curve_family, tenors in out.items()
-    }
-
-
-def _playbook_tenors_for_curve_family(curve_family: str) -> List[str]:
-    """Return the playbook tenor universe for one sovereign curve."""
-    tenors = _playbook_curve_family_tenors().get(curve_family)
-    if not tenors:
-        raise ValueError(
-            f"Missing curve '{curve_family}' in the sovereign playbook.  "
-            "PCA requires a playbook-defined tenor universe."
-        )
-    return list(tenors)
+    """Backward-compatible re-export of the shared utility so any
+    test that previously patched
+    ``rates_agent.sovereign_bonds.tools.pca_yield_curve.compute
+    ._tenor_to_years`` keeps working.  The canonical implementation
+    lives in ``shared.analytics.playbook_discovery.tenor_to_years``."""
+    return tenor_to_years(t)
 
 
 # ============================================================================
@@ -216,17 +209,25 @@ def calculate_pca_yield_curve(
     params: PcaYieldCurveInput,
     config: Optional[ToolConfig] = None,
 ) -> Dict[str, Any]:
-    """Run PCA on the yield-changes panel of one sovereign curve and
-    return the loadings + variance shares + factor scores.
+    """Run PCA on the yield-changes panel of one rates curve and return
+    the loadings + variance shares + factor scores.
+
+    Accepts any ``curve_family`` declared in any tenor-keyed playbook
+    under ``rates_agent/playbooks/`` — sovereign benchmarks, OIS
+    curves, inflation swaps, and sovereign linker real-yield curves
+    all share the same PCA code path.  See module docstring's
+    "Curve-family-agnostic scope" block.
 
     Parameters
     ----------
     engine : Engine
         Live SQLAlchemy engine connected to TimescaleDB.
     params : PcaYieldCurveInput
-        Validated input.  ``field_name=None`` resolves against the
-        YAML's ``default_field_name``.  ``tenors=None`` uses all
-        available tenors discovered in the fetched panel.
+        Validated input.  ``field_name=None`` resolves to the owning
+        playbook's ``target_metrics[0].bloomberg_field`` first, then
+        falls back to the YAML's ``default_field_name``.  ``tenors=
+        None`` uses all available tenors discovered in the fetched
+        panel.
     config : ToolConfig, optional
         Bundled config.yaml is auto-loaded when None.
 
@@ -249,7 +250,23 @@ def calculate_pca_yield_curve(
     factor_dec = conv["factor_dec"]
     default_field = conv["default_field_name"]
 
-    field_name_resolved = _resolve_field_name(params.field_name, default_field)
+    # Field-name resolution priority:
+    #   1. Explicit params.field_name (LLM / API caller override).
+    #   2. The owning playbook's target_metrics[0].bloomberg_field
+    #      (auto-discovered from rates_agent/playbooks/ — different
+    #      per playbook: sovereign + linker use YLD_YTM_MID, OIS uses
+    #      PX_LAST, ZCIS uses PX_MID).
+    #   3. The YAML's ``default_field_name`` (final fallback;
+    #      preserved as YLD_YTM_MID for sovereign backward compat).
+    if params.field_name is not None:
+        field_name_resolved = params.field_name
+    else:
+        discovered_field = playbook_default_field_for_curve_family(
+            params.curve_family
+        )
+        field_name_resolved = (
+            discovered_field if discovered_field else default_field
+        )
 
     # ------------------------------------------------------------------
     # 1. Resolve the exact tenor universe this fit is allowed to use.
@@ -260,7 +277,7 @@ def calculate_pca_yield_curve(
     #    validated rather than silently altered by data availability.
     # ------------------------------------------------------------------
     try:
-        playbook_tenors = _playbook_tenors_for_curve_family(params.curve_family)
+        playbook_tenors = playbook_tenors_for_curve_family(params.curve_family)
     except ValueError as exc:
         return {"error": str(exc)}
 

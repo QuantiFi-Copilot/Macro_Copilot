@@ -1323,7 +1323,26 @@ def pca_yield_curve_tool(
     change_frequency: Literal["daily", "weekly"] = "daily",
     field_name: str = "",
 ) -> str:
-    """Run PCA on the yield-CHANGES panel of one sovereign curve.
+    """Run PCA on the yield-CHANGES panel of one rates curve.
+
+    Curve-family-agnostic (Round 3 Stage 2 A3 — PR5 coverage
+    extension).  Accepts any curve_family declared in a tenor-keyed
+    playbook under rates_agent/playbooks/:
+
+      - sovereign benchmarks: UST, DE_BUND, IT_BTP, FR_OAT, ES_BONO,
+        UK_GILT, JGB, CANADA_GOVT, AU_GOVT
+      - OIS curves: USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS,
+        JPY_OIS, AUD_OIS, CAD_OIS
+      - inflation swaps: USD_ZCIS, EUR_ZCIS, GBP_ZCIS
+      - sovereign linker real-yield curves: USD_TIPS, GBP_LINKER,
+        EUR_FR_LINKER, CAD_RRB
+
+    The PCA fitting math is curve-family-agnostic — the SVD operates
+    on whatever centered observation-change panel the playbook
+    declares.  Per-playbook field auto-discovery picks the right
+    Bloomberg primary metric per curve_family (sovereign + linker →
+    YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID) so callers do not
+    need to know the per-vendor field convention.
 
     Returns per-component loadings (one row per tenor), variance
     shares (and cumulative shares), per-row factor scores time
@@ -1336,17 +1355,25 @@ def pca_yield_curve_tool(
 
     Use this tool when the user asks about:
     - Curve factor structure  (e.g. "Run PCA on the UST curve over
-      the last 5 years.")
+      the last 5 years.", "PCA on the USD SOFR OIS curve.", "PCA
+      on the USD ZCIS inflation breakeven curve.")
     - Level/slope/curvature shares (e.g. "How much variance does
-      level explain in BTP yield changes?")
-    - Loadings for a downstream attribution (the next sprint tool,
-      yield_change_attribution_pca, consumes the loadings via
+      level explain in BTP yield changes?", "Decompose the OIS
+      curve into factors.")
+    - Loadings for a downstream attribution (the
+      yield_change_attribution_pca tool consumes the loadings via
       paste-from-prior-tool).
 
     Parameters
     ----------
     curve_family : str
-        Sovereign curve identifier — e.g. 'UST', 'DE_BUND', 'IT_BTP'.
+        Curve identifier — any tenor-keyed rates curve_family
+        declared in a playbook under rates_agent/playbooks/ (see
+        the enumerated families above).  PCA fits on the
+        curve_family's observation-changes panel regardless of
+        whether the underlying instrument is a sovereign yield, an
+        OIS par rate, an inflation swap rate, or a linker real
+        yield.
     tenors : List[str], optional
         Subset of tenor labels.  When None (default), use all
         playbook-configured tenors of the curve_family.  When supplied
@@ -1360,14 +1387,21 @@ def pca_yield_curve_tool(
         observation-count guard remains authoritative.
     n_components : int, optional
         Number of components to return (default 3).  Constrained to
-        [1, 8].
+        [1, 8].  Smaller-universe curves (e.g. USD_TIPS at 4 tenors)
+        cap n_components at that tenor count and the primitive
+        returns a controlled error envelope if exceeded.
     change_frequency : str, optional
         'daily' (default) or 'weekly'.  Frequency at which to take
-        yield differences before fitting PCA.
+        observation differences before fitting PCA.
     field_name : str, optional
         Bloomberg field mnemonic.  Leave as the default empty
-        string "" to use the bundled ``default_field_name`` from
-        pca_yield_curve/config.yaml (currently 'YLD_YTM_MID').
+        string "" so the per-playbook auto-discovery picks the
+        right field per curve_family (sovereign + linker →
+        YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID).  The YAML
+        ``default_field_name`` (currently YLD_YTM_MID) is the
+        final fallback — sovereign callers see identical behaviour
+        to the pre-A3 path because both the YAML default and
+        sovereign_bonds.yml's target_metrics[0] are YLD_YTM_MID.
         Mirrors the empty-string sentinel pattern used by the rest
         of the rates roster.
     """
