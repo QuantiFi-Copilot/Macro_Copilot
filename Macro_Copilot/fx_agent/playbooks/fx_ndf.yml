@@ -1,8 +1,8 @@
 playbook_name: "fx_ndf"
-playbook_version: "1.0"
+playbook_version: "2.0"
 asset_class: "fx"
 dataset_name: "fx_ndf"
-description: "Daily NDF (Non-Deliverable Forward) outrights for the 5 canonical NDF currency pairs (USDCNY, USDINR, USDBRL, USDKRW, USDIDR) across the standard tenor strip (1W, 1M, 3M, 6M, 12M). Unit is OUTRIGHT (not forward points like deliverable G10 forwards): the value is the implied USD/XXX rate at the forward date, same order of magnitude as spot. Convention discovered in BBG Phase 1 (2026-05-25). Created in Phase B BBG batch; substrate parallel to fx_forwards.yml but with different unit + different ticker family (`<NDF_CODE>+<TENOR> Curncy` vs `<PAIR><TENOR> Curncy`). Phase D will build tools on top of this substrate (calculate_ndf_implied_carry, scan_ndf_carry)."
+description: "Daily NDF (Non-Deliverable Forward) outrights across the standard tenor strip (1W, 1M, 3M, 6M, 12M). v1.0 seeded 5 canonical NDF pairs (USDCNY=CCN+, USDINR=IRN+, USDBRL=BCN+, USDKRW=KWN+, USDIDR=IHN+). v2.0 (Warehouse seeding 2026-05-25) adds USDTWD=NTN+ for the 6th major Asia NDF, bringing the universe to 30 outrights (6 pairs x 5 tenors). Unit is OUTRIGHT (not forward points like deliverable G10 forwards): the value is the implied USD/XXX rate at the forward date, same order of magnitude as spot. Convention discovered in BBG Phase 1 (2026-05-25). Substrate parallel to fx_forwards.yml but with different unit + different ticker family (`<NDF_CODE>+<TENOR> Curncy` vs `<PAIR><TENOR> Curncy`). Phase D tools (calculate_ndf_implied_carry, scan_ndf_carry) operate on this substrate."
 
 extraction:
   start_date: "2000-01-01"
@@ -314,3 +314,68 @@ universe:
     base_ccy: "USD"
     quote_ccy: "IDR"
     ndf_code: "IHN+"
+
+  # ============================================================
+  # TWD NDF — NTN+ family (Taiwan dollar NDF)
+  # ------------------------------------------------------------
+  # v2.0 (Warehouse seeding 2026-05-25). Underlying pair USDTWD.
+  # Spot reference now in spot_fx.yml v5.0. Full 2000+ history at
+  # all 5 tenors per Phase 2 extraction (6698-6826 rows). TWD is
+  # NDF only — Taiwan central bank restricts deliverable FX, so
+  # offshore investors trade NDF. NTN+ is the standard BBG NDF
+  # outright family for TWD (parallel to CCN+ for CNY).
+  # ============================================================
+  - ticker: "NTN+1W Curncy"
+    instrument_type: "fx_ndf"
+    fx_family: "EM_NDF"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    tenor: "1W"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+    ndf_code: "NTN+"
+
+  - ticker: "NTN+1M Curncy"
+    instrument_type: "fx_ndf"
+    fx_family: "EM_NDF"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    tenor: "1M"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+    ndf_code: "NTN+"
+
+  - ticker: "NTN+3M Curncy"
+    instrument_type: "fx_ndf"
+    fx_family: "EM_NDF"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    tenor: "3M"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+    ndf_code: "NTN+"
+
+  - ticker: "NTN+6M Curncy"
+    instrument_type: "fx_ndf"
+    fx_family: "EM_NDF"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    tenor: "6M"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+    ndf_code: "NTN+"
+
+  - ticker: "NTN+12M Curncy"
+    instrument_type: "fx_ndf"
+    fx_family: "EM_NDF"
+    market_scope: "EM"
+    region: "APAC"
+    pair: "USDTWD"
+    tenor: "12M"
+    base_ccy: "USD"
+    quote_ccy: "TWD"
+    ndf_code: "NTN+"
