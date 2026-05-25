@@ -4,12 +4,11 @@ Pins Codex's Phase B test coverage contract (validated 2026-05-25):
 
 - G10 scope returns exactly 9 columns (G10 majors only — crosses
   excluded via fx_family filter).
-- EM scope returns exactly 9 columns (EM majors).
+- EM scope returns exactly 17 columns (EM tradable/reference spots;
+  excludes USDCNY because it is fx_family=EM_SPOT_REFERENCE).
 - G10_CROSSES scope returns exactly 11 columns.
-- ALL scope returns 29 columns (9 G10 + 9 EM + 11 G10 crosses) —
-  note this is larger than the "18 spot_fx" sanity total because
-  the readiness gate's "18" explicitly filtered to {G10_SPOT, EM_SPOT}
-  families, while ALL here means every fx_spot row.
+- ALL scope returns 38 columns (9 G10 + 17 EM + 1 CNY onshore
+  reference + 11 G10 crosses) — ALL means every fx_spot row.
 - Columns are pair names (e.g. "EURUSD"), NOT vendor tickers
   (e.g. "EURUSD Curncy").
 - min/max date are preserved through the pivot + missing-data policy
@@ -63,7 +62,9 @@ _EXPECTED_G10_PAIRS = frozenset({
 })
 _EXPECTED_EM_PAIRS = frozenset({
     "USDMXN", "USDBRL", "USDZAR", "USDTRY", "USDPLN",
-    "USDHUF", "USDKRW", "USDIDR", "USDPHP",
+    "USDHUF", "USDKRW", "USDIDR", "USDPHP", "USDCNH",
+    "USDINR", "USDSGD", "USDTWD", "USDTHB", "USDCLP",
+    "USDCOP", "USDPEN",
 })
 
 
@@ -104,14 +105,14 @@ def main() -> int:
         _assert_pair_set(out["columns"], _EXPECTED_G10_PAIRS, "G10")
     check("G10 returns 9 pairs (majors only, crosses excluded)", check_g10_count)
 
-    # --- 2. EM scope returns exactly 9 columns
+    # --- 2. EM scope returns exactly 17 columns
     def check_em_count():
         out = calculate_fx_panel(
             engine, FXPanelInput(market_scope="EM", start_date=recent_start)
         )
-        assert out["n_pairs"] == 9, f"expected 9, got {out['n_pairs']}"
+        assert out["n_pairs"] == 17, f"expected 17, got {out['n_pairs']}"
         _assert_pair_set(out["columns"], _EXPECTED_EM_PAIRS, "EM")
-    check("EM returns 9 pairs", check_em_count)
+    check("EM returns 17 pairs", check_em_count)
 
     # --- 3. G10_CROSSES scope returns 11 columns
     def check_crosses_count():
@@ -129,13 +130,13 @@ def main() -> int:
             )
     check("G10_CROSSES returns 11 pairs in G10 currency set", check_crosses_count)
 
-    # --- 4. ALL scope returns 29 columns
+    # --- 4. ALL scope returns 38 columns
     def check_all_count():
         out = calculate_fx_panel(
             engine, FXPanelInput(market_scope="ALL", start_date=recent_start)
         )
-        assert out["n_pairs"] == 29, f"expected 29 (9+9+11), got {out['n_pairs']}"
-    check("ALL returns 29 pairs (9 G10 + 9 EM + 11 crosses)", check_all_count)
+        assert out["n_pairs"] == 38, f"expected 38 (9+17+1+11), got {out['n_pairs']}"
+    check("ALL returns 38 pairs (9 G10 + 17 EM + 1 ref + 11 crosses)", check_all_count)
 
     # --- 5. Columns are pair names, not vendor tickers
     def check_columns_are_pairs():

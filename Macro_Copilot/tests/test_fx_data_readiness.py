@@ -56,18 +56,26 @@ OPTIONAL_METADATA_FIELDS = ("market_scope", "base_ccy", "quote_ccy", "fx_family"
 # Phase B / Wave 2 top-up (2026-05-25) added USDCNH + USDINR (under
 # fx_family='EM_SPOT' with spot_convention attribute) + USDCNY (under a
 # distinct fx_family='EM_SPOT_REFERENCE' to flag its non-tradable
-# onshore-PBOC-fix nature). The core 9 pairs keep the strict uniform
-# 2000-01-03 start_date assertion. The 2 EM_SPOT additions have
-# per-pair min_date overrides (CNH starts 2010-08-23, INR starts
-# 2000-01-03). EM_SPOT_REFERENCE is NOT validated by this gate's EM
-# section (different convention; downstream tools should filter it
-# out unless they specifically want the onshore fix series).
+# onshore-PBOC-fix nature). Warehouse seeding (2026-05-25) added 6 more
+# liquid EM pairs (USDSGD/TWD/THB APAC + USDCLP/COP/PEN LATAM) — all
+# tradable, all with full 2000+ history. The core 9 pairs keep the
+# strict uniform 2000-01-03 start_date assertion. USDCNH is the only
+# pair with a per-pair min_date override (offshore launch 2010-08-23).
+# USDCLP is the only pair with a per-pair min_rows override (6589 rows
+# in DB, slightly below the default 6000 threshold — actually 6589
+# passes the default; the override here is purely defensive in case
+# of future re-extractions or holiday-calendar drift). EM_SPOT_REFERENCE
+# is NOT validated by this gate's EM section (different convention;
+# downstream tools should filter it out unless they specifically want
+# the onshore fix series).
 EM_SPOT_PAIRS: tuple[str, ...] = (
     "USDMXN", "USDBRL", "USDZAR", "USDTRY",
     "USDPLN", "USDHUF", "USDKRW", "USDIDR", "USDPHP",
     # v4.0 top-up additions (kept in EM_SPOT family because tradable /
     # composite reference, not onshore-only)
     "USDCNH", "USDINR",
+    # v5.0 warehouse-seed additions (tradable, full history)
+    "USDSGD", "USDTWD", "USDTHB", "USDCLP", "USDCOP", "USDPEN",
 )
 EM_VALID_REGIONS: frozenset[str] = frozenset({"LATAM", "EMEA", "APAC"})
 EM_DEFAULT_MIN_DATE = date(2000, 1, 3)
@@ -421,7 +429,11 @@ def validate_em_spot_specifics(
             bits.append(f"unexpected={sorted(extra)}")
         results.append(_fail("spot EM universe", "set mismatch: " + ", ".join(bits)))
         return results  # short-circuit — rest of the checks would be misleading
-    results.append(_pass("spot EM universe", "all 11 expected EM_SPOT pairs (9 core + USDCNH + USDINR) present in playbook"))
+    results.append(_pass(
+        "spot EM universe",
+        "all 17 expected EM_SPOT pairs (9 core + USDCNH/USDINR top-up + "
+        "USDSGD/USDTWD/USDTHB/USDCLP/USDCOP/USDPEN warehouse-seed) present in playbook",
+    ))
 
     # 2-6. Per-pair invariants.
     bad_scope_or_family: list[str] = []
@@ -486,7 +498,7 @@ def validate_em_spot_specifics(
             )
         )
     else:
-        results.append(_pass("spot EM scope/family", "all 11 EM_SPOT pairs market_scope='EM' fx_family='EM_SPOT'"))
+        results.append(_pass("spot EM scope/family", "all 17 EM_SPOT pairs market_scope='EM' fx_family='EM_SPOT'"))
 
     if bad_region:
         results.append(
@@ -496,7 +508,7 @@ def validate_em_spot_specifics(
             )
         )
     else:
-        results.append(_pass("spot EM region vocab", f"all 11 EM_SPOT pairs region in {sorted(EM_VALID_REGIONS)}"))
+        results.append(_pass("spot EM region vocab", f"all 17 EM_SPOT pairs region in {sorted(EM_VALID_REGIONS)}"))
 
     if missing_required_attrs:
         results.append(
@@ -509,7 +521,7 @@ def validate_em_spot_specifics(
         results.append(
             _pass(
                 "spot EM required attrs",
-                f"{', '.join(EM_REQUIRED_ATTRS)} populated for all 11 EM_SPOT pairs",
+                f"{', '.join(EM_REQUIRED_ATTRS)} populated for all 17 EM_SPOT pairs",
             )
         )
 
@@ -533,8 +545,10 @@ def validate_em_spot_specifics(
     else:
         results.append(_pass(
             "spot EM min_date",
-            f"all 11 EM_SPOT pairs start at expected min_date (9 core at {expected_min_date}, "
-            f"USDCNH at {EM_PAIR_MIN_DATE_OVERRIDES['USDCNH']} per BBG offshore launch)",
+            f"all 17 EM_SPOT pairs start at expected min_date "
+            f"(9 core + USDSGD/USDTWD/USDTHB/USDCLP/USDCOP/USDPEN + USDINR at "
+            f"{expected_min_date}, USDCNH at {EM_PAIR_MIN_DATE_OVERRIDES['USDCNH']} "
+            "per BBG offshore launch)",
         ))
 
     # INFO line — total rows reported but not pinned (will grow on re-extraction)
