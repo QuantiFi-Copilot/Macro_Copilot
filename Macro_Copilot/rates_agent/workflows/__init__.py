@@ -262,6 +262,108 @@ from rates_agent.inflation_swaps.tools.cpi_surprise import (
     CpiSurpriseOutput,
     calculate_cpi_surprise,
 )
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel import (
+    CONFIG_PATH as BUILD_LINKER_PANEL_CONFIG_PATH,
+    BuildLinkerPanelInput,
+    BuildLinkerPanelOutput,
+    build_linker_panel,
+)
+from rates_agent.policy_futures.tools.build_policy_futures_strip_panel import (
+    CONFIG_PATH as BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+    BuildPolicyFuturesStripPanelInput,
+    BuildPolicyFuturesStripPanelOutput,
+    build_policy_futures_strip_panel,
+)
+from rates_agent.inflation_swaps.tools.build_zcis_panel import (
+    CONFIG_PATH as BUILD_ZCIS_PANEL_CONFIG_PATH,
+    BuildZcisPanelInput,
+    BuildZcisPanelOutput,
+    build_zcis_panel,
+)
+from rates_agent.ois.tools.calculate_ois_butterfly import (
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    OISButterflyInput,
+    OISButterflyOutput,
+    calculate_ois_butterfly,
+)
+from rates_agent.bond_futures.tools.futures_price_level import (
+    CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    FuturesPriceLevelOutput,
+    calculate_futures_price_level,
+)
+from rates_agent.bond_futures.tools.futures_volume_oi import (
+    CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
+    FuturesVolumeOIInput,
+    FuturesVolumeOIOutput,
+    calculate_futures_volume_oi,
+)
+from rates_agent.policy_futures.tools.scan_policy_futures_extremes import (
+    CONFIG_PATH as POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+    ScanPolicyFuturesExtremesInput,
+    ScanPolicyFuturesExtremesOutput,
+    calculate_scan_policy_futures_extremes,
+)
+from rates_agent.policy_futures.tools.futures_butterfly_simple import (
+    CONFIG_PATH as POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+    FuturesButterflySimpleInput,
+    FuturesButterflySimpleOutput,
+    calculate_futures_butterfly_simple,
+)
+from rates_agent.policy_futures.tools.futures_calendar_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+    FuturesCalendarSpreadInput,
+    FuturesCalendarSpreadOutput,
+    calculate_futures_calendar_spread,
+)
+from rates_agent.policy_futures.tools.futures_cross_market_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+    FuturesCrossMarketSpreadInput,
+    FuturesCrossMarketSpreadOutput,
+    calculate_futures_cross_market_spread,
+)
+from rates_agent.policy_futures.tools.futures_pack_average_simple import (
+    CONFIG_PATH as POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+    FuturesPackAverageSimpleInput,
+    FuturesPackAverageSimpleOutput,
+    calculate_futures_pack_average_simple,
+)
+from rates_agent.policy_futures.tools.futures_price_level import (
+    CONFIG_PATH as POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput as PolicyFuturesPriceLevelInput,
+    FuturesPriceLevelOutput as PolicyFuturesPriceLevelOutput,
+    calculate_futures_price_level as calculate_policy_futures_price_level,
+)
+from rates_agent.policy_futures.tools.futures_strip_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+    FuturesStripSnapshotInput,
+    FuturesStripSnapshotOutput,
+    calculate_futures_strip_snapshot,
+)
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+    VolumeOpenInterestSnapshotInput,
+    VolumeOpenInterestSnapshotOutput,
+    calculate_volume_open_interest_snapshot,
+)
+from rates_agent.bond_futures.tools.scan_bond_futures_extremes import (
+    CONFIG_PATH as SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+    ScanBondFuturesExtremesInput,
+    ScanBondFuturesExtremesOutput,
+    calculate_scan_bond_futures_extremes,
+)
+from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+    ScanInflationLinkersExtremesInput,
+    ScanInflationLinkersExtremesOutput,
+    calculate_scan_inflation_linkers_extremes,
+)
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    calculate_scan_inflation_swaps_extremes,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
 
 
@@ -919,6 +1021,176 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series_surprise": "count",
             "time_series_zscore": "z_score",
         },
+    ),
+    "build_linker_panel_tool": PrimitiveSpec(
+        tool_name="build_linker_panel_tool",
+        callable=build_linker_panel,
+        input_class=BuildLinkerPanelInput,
+        output_class=BuildLinkerPanelOutput,
+        config_path=BUILD_LINKER_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "build_policy_futures_strip_panel_tool": PrimitiveSpec(
+        tool_name="build_policy_futures_strip_panel_tool",
+        callable=build_policy_futures_strip_panel,
+        input_class=BuildPolicyFuturesStripPanelInput,
+        output_class=BuildPolicyFuturesStripPanelOutput,
+        config_path=BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "build_zcis_panel_tool": PrimitiveSpec(
+        tool_name="build_zcis_panel_tool",
+        callable=build_zcis_panel,
+        input_class=BuildZcisPanelInput,
+        output_class=BuildZcisPanelOutput,
+        config_path=BUILD_ZCIS_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "calculate_ois_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_ois_butterfly_tool",
+        callable=calculate_ois_butterfly,
+        input_class=OISButterflyInput,
+        output_class=OISButterflyOutput,
+        config_path=OIS_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen butterfly row list — frontend
+            # consumes ``butterfly_bps`` per row, so the unit is BPS
+            # (mirrors sovereign butterfly / inflation_swap_butterfly /
+            # OIS curve_spread BPS-on-the-wire convention for curve-
+            # shape views, even though the underlying OIS rates are
+            # quoted in PERCENT).
+            "time_series": "bps",
+            # Canonical TimeSeries: OIS butterfly history in BPS,
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "get_futures_price_level_tool": PrimitiveSpec(
+        tool_name="get_futures_price_level_tool",
+        callable=calculate_futures_price_level,
+        input_class=FuturesPriceLevelInput,
+        output_class=FuturesPriceLevelOutput,
+        config_path=FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "get_futures_volume_oi_tool": PrimitiveSpec(
+        tool_name="get_futures_volume_oi_tool",
+        callable=calculate_futures_volume_oi,
+        input_class=FuturesVolumeOIInput,
+        output_class=FuturesVolumeOIOutput,
+        config_path=FUTURES_VOLUME_OI_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "get_scan_policy_futures_extremes_tool": PrimitiveSpec(
+        tool_name="get_scan_policy_futures_extremes_tool",
+        callable=calculate_scan_policy_futures_extremes,
+        input_class=ScanPolicyFuturesExtremesInput,
+        output_class=ScanPolicyFuturesExtremesOutput,
+        config_path=POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_butterfly_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_butterfly_simple_tool",
+        callable=calculate_futures_butterfly_simple,
+        input_class=FuturesButterflySimpleInput,
+        output_class=FuturesButterflySimpleOutput,
+        config_path=POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_calendar_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_calendar_spread_tool",
+        callable=calculate_futures_calendar_spread,
+        input_class=FuturesCalendarSpreadInput,
+        output_class=FuturesCalendarSpreadOutput,
+        config_path=POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_cross_market_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_cross_market_spread_tool",
+        callable=calculate_futures_cross_market_spread,
+        input_class=FuturesCrossMarketSpreadInput,
+        output_class=FuturesCrossMarketSpreadOutput,
+        config_path=POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_pack_average_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_pack_average_simple_tool",
+        callable=calculate_futures_pack_average_simple,
+        input_class=FuturesPackAverageSimpleInput,
+        output_class=FuturesPackAverageSimpleOutput,
+        config_path=POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_pack_average": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_price_level_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_price_level_tool",
+        callable=calculate_policy_futures_price_level,
+        input_class=PolicyFuturesPriceLevelInput,
+        output_class=PolicyFuturesPriceLevelOutput,
+        config_path=POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_strip_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_strip_snapshot_tool",
+        callable=calculate_futures_strip_snapshot,
+        input_class=FuturesStripSnapshotInput,
+        output_class=FuturesStripSnapshotOutput,
+        config_path=POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_volume_open_interest_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_volume_open_interest_snapshot_tool",
+        callable=calculate_volume_open_interest_snapshot,
+        input_class=VolumeOpenInterestSnapshotInput,
+        output_class=VolumeOpenInterestSnapshotOutput,
+        config_path=POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_bond_futures_extremes_tool": PrimitiveSpec(
+        tool_name="scan_bond_futures_extremes_tool",
+        callable=calculate_scan_bond_futures_extremes,
+        input_class=ScanBondFuturesExtremesInput,
+        output_class=ScanBondFuturesExtremesOutput,
+        config_path=SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_inflation_linkers_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_linkers_extremes_tool",
+        callable=calculate_scan_inflation_linkers_extremes,
+        input_class=ScanInflationLinkersExtremesInput,
+        output_class=ScanInflationLinkersExtremesOutput,
+        config_path=SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_inflation_swaps_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_swaps_extremes_tool",
+        callable=calculate_scan_inflation_swaps_extremes,
+        input_class=ScanInflationSwapsExtremesInput,
+        output_class=ScanInflationSwapsExtremesOutput,
+        config_path=SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
     ),
 }
 

@@ -51,6 +51,20 @@ from rates_agent.ois.tools.cross_market_spread.schemas import (
     OISCrossMarketSpreadTimeSeriesRow,
 )
 
+# OIS butterfly (same-curve 3-point curvature) — re-exported from
+# the per-tool-folder package
+# (``rates_agent/ois/tools/calculate_ois_butterfly/``).  The schemas
+# hub stays as the legacy import surface for callers / tests; new
+# code should prefer ``from
+# rates_agent.ois.tools.calculate_ois_butterfly import
+# OISButterflyInput``.
+from rates_agent.ois.tools.calculate_ois_butterfly.schemas import (
+    OISButterflyCurrentMetrics,
+    OISButterflyInput,
+    OISButterflyOutput,
+    OISButterflyTimeSeriesRow,
+)
+
 # Swap spread (cross-domain — one sovereign leg + one OIS leg) —
 # re-exported from the per-tool-folder package
 # (``rates_agent/ois/tools/swap_spread/``).  This is the FIRST cross-
@@ -69,17 +83,6 @@ from rates_agent.ois.tools.schemas.scanner import (
     OISScannerInput,
     OISScannerOutput,
     OISScannerResultRow,
-)
-
-# WIRP per-meeting pricing — INGEST primitive surfacing Bloomberg's
-# WIRP-screen fields per ADR 0009 (P12 boundary).  List-shaped
-# categorical output — registered in WORKFLOW_INCOMPATIBLE_TOOLS
-# (not bridge-composable in V1).
-from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
-    WirpMeetingPricingCurrentMetrics,
-    WirpMeetingPricingInput,
-    WirpMeetingPricingOutput,
-    WirpMeetingSnapshot,
 )
 
 # NOTE: meeting_pricing was removed.  The tool used linear interpolation
@@ -109,6 +112,11 @@ __all__ = [
     "OISCrossMarketSpreadInput",
     "OISCrossMarketSpreadOutput",
     "OISCrossMarketSpreadTimeSeriesRow",
+    # ois butterfly (same-curve 3-point curvature)
+    "OISButterflyCurrentMetrics",
+    "OISButterflyInput",
+    "OISButterflyOutput",
+    "OISButterflyTimeSeriesRow",
     # swap_spread (cross-domain)
     "SwapSpreadCurrentMetrics",
     "SwapSpreadInput",
@@ -118,9 +126,11 @@ __all__ = [
     "OISScannerInput",
     "OISScannerOutput",
     "OISScannerResultRow",
-    # wirp_meeting_pricing
-    "WirpMeetingPricingInput",
-    "WirpMeetingPricingCurrentMetrics",
-    "WirpMeetingSnapshot",
-    "WirpMeetingPricingOutput",
 ]
+
+from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
+    WirpMeetingPricingCurrentMetrics,
+    WirpMeetingPricingInput,
+    WirpMeetingPricingOutput,
+    WirpMeetingSnapshot,
+)

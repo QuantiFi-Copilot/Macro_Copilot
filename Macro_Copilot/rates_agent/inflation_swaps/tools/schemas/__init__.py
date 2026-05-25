@@ -79,17 +79,23 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly.schemas import (
     InflationSwapButterflyTimeSeriesRow,
 )
 
-# CPI surprise (per-release actual − consensus_median, plus rolling
-# release-window z-score) — re-exported from the per-tool-folder
-# package
-# (``rates_agent/inflation_swaps/tools/cpi_surprise/``).  Bridge-
-# composable (snapshot + canonical TimeSeries) so registered in
-# ``rates_agent/workflows/__init__.py`` ``_PRIMITIVE_SPECS``.
-from rates_agent.inflation_swaps.tools.cpi_surprise.schemas import (
-    CpiSurpriseCurrentMetrics,
-    CpiSurpriseInput,
-    CpiSurpriseOutput,
-    CpiSurpriseTimeSeriesRow,
+# Inflation-swap universe-wide extremes scan — re-exported from the
+# per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/``).
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes.schemas import (
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    ScanInflationSwapsExtremesResultRow,
+)
+
+# ZCIS Panel substrate — re-exported from the per-tool-folder package
+# (``rates_agent/inflation_swaps/tools/build_zcis_panel/``).
+from rates_agent.inflation_swaps.tools.build_zcis_panel.schemas import (
+    BuildZcisPanelInput,
+    BuildZcisPanelOutput,
+    ZcisCurveFamily,
+    ZcisPanelCalendarPolicy,
+    ZcisPanelMissingDataPolicy,
 )
 
 
@@ -124,9 +130,21 @@ __all__ = [
     "InflationSwapButterflyCurrentMetrics",
     "InflationSwapButterflyTimeSeriesRow",
     "InflationSwapButterflyOutput",
-    # cpi_surprise
-    "CpiSurpriseInput",
-    "CpiSurpriseCurrentMetrics",
-    "CpiSurpriseTimeSeriesRow",
-    "CpiSurpriseOutput",
+    # scan_inflation_swaps_extremes
+    "ScanInflationSwapsExtremesInput",
+    "ScanInflationSwapsExtremesOutput",
+    "ScanInflationSwapsExtremesResultRow",
+    # build_zcis_panel
+    "BuildZcisPanelInput",
+    "BuildZcisPanelOutput",
+    "ZcisCurveFamily",
+    "ZcisPanelCalendarPolicy",
+    "ZcisPanelMissingDataPolicy",
 ]
+
+from rates_agent.inflation_swaps.tools.cpi_surprise.schemas import (
+    CpiSurpriseCurrentMetrics,
+    CpiSurpriseInput,
+    CpiSurpriseOutput,
+    CpiSurpriseTimeSeriesRow,
+)
