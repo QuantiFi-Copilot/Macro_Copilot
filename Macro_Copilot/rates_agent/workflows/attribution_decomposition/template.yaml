@@ -1,0 +1,314 @@
+# =============================================================================
+# attribution_decomposition — V1 cross-benchmark attribution template
+# =============================================================================
+# Round 3 Stage 2, work item A5.  First template registered under the
+# ``attribution_decomposition`` archetype (reserved in
+# ``WORKFLOW_ARCHETYPES`` since the workflow-template substrate landed,
+# forward-declared without a canonical V1 template).
+#
+# Canonical question shape (V1)
+# ------------------------------
+# "What part of the TARGET curve's yield level is NOT explained by the
+# BENCHMARK anchor curve?"  Decomposes target.level = benchmark.level +
+# residual.level.  The residual time series IS the local /
+# country-specific component the desk reads as the curve's "own story"
+# vs the global benchmark anchor.
+#
+# Canonical V1 bindings
+# ---------------------
+# UST country-specific component:
+#   target_curve_family:    UST
+#   target_tenor:           "10Y"
+#   benchmark_curve_family: USD_SOFR_OIS         # anchor = USD swap curve
+#   benchmark_tenor:        "10Y"
+#   lookback_days:          1825                 # ~5 years
+#
+# Italy-Germany spread decomposition (BTP local component):
+#   target_curve_family:    IT_BTP
+#   target_tenor:           "10Y"
+#   benchmark_curve_family: DE_BUND              # anchor = Bund
+#   benchmark_tenor:        "10Y"
+#
+# DAG topology (6 nodes — locked)
+# -------------------------------
+#
+#   target_yield ─┐
+#                 ├─ align ─┬─ target_aligned ─┐
+#   bench_yield  ─┘         │                   │
+#                           └─ bench_aligned  ──┴─> residual (terminal)
+#
+# ``residual`` = ``series_arithmetic(op=subtract,
+#                                    left=target_aligned,
+#                                    right=bench_aligned)``
+#
+# Topology-locked methodology (NOT exposed as slots, by design)
+# -------------------------------------------------------------
+#   - align_series.join_policy = inner  — only dates with BOTH inputs
+#   - align_series.fill_policy = raw    — no imputation; mismatched
+#                                         calendars are honoured
+#   - align_series.require_matching_frequency = true
+#   - align_series.require_matching_missingness = false — different
+#                                         curve_families may carry
+#                                         different ffill_limit policies;
+#                                         alignment records the
+#                                         resolution in lineage
+#   - align_series.output_keys = [target, benchmark] — template-locked
+#                                         SeriesSet member names so the
+#                                         downstream select_from_series_set
+#                                         nodes don't need to know each
+#                                         primitive's bridge-derived
+#                                         series_key (cf. event_study
+#                                         Codex P2 follow-up to PR #87).
+#   - series_arithmetic.op = subtract   — the attribution operator
+#
+# Substrate-realistic V1 scope (per the work order's A5 caveats)
+# --------------------------------------------------------------
+# The work order calls for an attribution_decomposition template that
+# composes pca_yield_curve + yield_change_attribution_pca +
+# series_arithmetic.  That literal composition is NOT satisfiable in
+# V1 because the workflow bridge only dispatches single-TimeSeries
+# and Panel primitive outputs (see
+# shared/artifacts/adapters/from_time_series.py:357):
+#
+#   - pca_yield_curve emits time_series_factors as a List[TimeSeries]
+#     — the bridge's isinstance(ts_obj, TimeSeries) check rejects it.
+#   - yield_change_attribution_pca emits a snapshot dict
+#     (current_metrics) with no canonical TimeSeries field — same
+#     bridge rejection.
+#
+# The bridge extension that would unblock the canonical PCA-driven
+# composition (SeriesSet bridge for List[TimeSeries] primitive
+# outputs; ScalarMetric bridge for snapshot decomposition) is tracked
+# as substrate tech debt.  Until it lands, this V1 template
+# exercises the attribution-decomposition CONCEPT (target = benchmark
+# + residual; sum-back invariant trivially holds) using
+# bridge-compatible primitives only.  ``yield_change_attribution_pca``
+# remains fully available as a standalone MCP tool for snapshot
+# PCA-loadings decomposition at a specific date.
+#
+# Variants of this archetype (PCA-driven attribution, butterfly
+# attribution, factor attribution) ship as separate templates under
+# the same ``attribution_decomposition`` archetype once the bridge
+# extensions land — per the V1 1-template-per-archetype discipline
+# in WT5, future siblings register beside this V1 template, not as
+# internal switches.
+# =============================================================================
+
+template_id: attribution_decomposition
+archetype: attribution_decomposition
+description: >-
+  Cross-benchmark attribution: decompose a target curve's yield level
+  series into a benchmark-anchor component and a residual component
+  via aligned subtraction.  The residual is the per-date country-
+  or curve-family-specific deviation from the global benchmark anchor
+  — answers "what part of the TARGET curve's level is NOT explained
+  by the BENCHMARK anchor's level?".  V1 substrate scope is the
+  thin subtraction shape; the canonical PCA-loadings attribution
+  requires substrate extensions that the V1 bridge does not yet
+  support (see template.yaml header for details).
+
+# Structural cues the future ``route_to_template`` LLM step matches
+# against prompts.  Per workflow_architecture.md, each template's
+# archetype_signature lists the prompt shapes that should route to it.
+archetype_signature:
+  - "decompose target yield into benchmark plus residual"
+  - "country-specific component of yield level"
+  - "what part of X's yield is NOT explained by benchmark"
+  - "local component vs global benchmark anchor"
+  - "attribute target curve level to benchmark drift"
+  - "BTP local component above Bund anchor"
+
+slot_schema:
+
+  # -------------------------------------------------------------------------
+  # TARGET — the curve being decomposed.
+  # -------------------------------------------------------------------------
+
+  - name: target_curve_family
+    type: str
+    required: true
+    description: >-
+      Curve family for the TARGET leg of the attribution (the curve
+      whose level we're decomposing into "explained by benchmark" +
+      "residual").  Any tenor-keyed rates curve_family declared in a
+      playbook under rates_agent/playbooks/ — sovereign benchmarks,
+      OIS curves, ZCIS curves, sovereign linker real-yield curves.
+
+  - name: target_tenor
+    type: str
+    required: true
+    description: >-
+      Tenor on the target curve (e.g. '10Y', '5Y').  The benchmark
+      tenor below can be the same (canonical attribution) or
+      different (cross-tenor attribution — a sibling template might
+      ship later with stricter tenor-coherence rules).
+
+  - name: target_output_field
+    type: str
+    required: false
+    default: time_series
+    description: >-
+      Which TimeSeries field of get_yield_levels_tool's output to
+      lift.  Default 'time_series' (the canonical yield-level series).
+      Other emissions like 'time_series_zscore' produce
+      attributions of the z-scored level instead — desk-meaningful
+      but a different attribution semantic.
+
+  # -------------------------------------------------------------------------
+  # BENCHMARK — the anchor curve we attribute the target against.
+  # -------------------------------------------------------------------------
+
+  - name: benchmark_curve_family
+    type: str
+    required: true
+    description: >-
+      Curve family for the BENCHMARK anchor (e.g. 'USD_SOFR_OIS' as
+      the anchor for UST sovereign attribution; 'DE_BUND' as the
+      anchor for IT_BTP / FR_OAT / ES_BONO peripheral-spread
+      attribution).  Must be a tenor-keyed rates curve_family
+      declared in a playbook under rates_agent/playbooks/.
+
+  - name: benchmark_tenor
+    type: str
+    required: true
+    description: >-
+      Tenor on the benchmark curve.  Canonical attribution uses the
+      SAME tenor as the target (e.g. UST 10Y vs USD_SOFR_OIS 10Y).
+      Cross-tenor combinations are permitted by the substrate but
+      change the analytical interpretation — the residual then
+      conflates curve-shape effects with the family-specific
+      component.
+
+  - name: benchmark_output_field
+    type: str
+    required: false
+    default: time_series
+    description: >-
+      Which TimeSeries field of get_yield_levels_tool's output to
+      lift for the benchmark leg.  Default 'time_series' — should
+      typically match target_output_field so the subtraction is
+      unit-coherent.
+
+  # -------------------------------------------------------------------------
+  # Window.
+  # -------------------------------------------------------------------------
+
+  - name: lookback_days
+    type: int
+    required: false
+    default: 1825
+    description: >-
+      Calendar-day fetch window for both legs.  Default 1825 (~5
+      years) — the typical desk attribution window.  Both legs use
+      the same lookback so the alignment step doesn't drop
+      observations asymmetrically.
+
+# DAG topology — locked.  Slots fill node params; the topology
+# itself is fixed (no slot-controlled rewiring) per WT7.
+nodes:
+
+  # Target yield series.
+  - kind: primitive
+    node_id: target_yield
+    tool_name: get_yield_levels_tool
+    output_field: {$slot: target_output_field}
+    params:
+      curve_family: {$slot: target_curve_family}
+      tenor: {$slot: target_tenor}
+      lookback_days: {$slot: lookback_days}
+
+  # Benchmark anchor yield series.
+  - kind: primitive
+    node_id: bench_yield
+    tool_name: get_yield_levels_tool
+    output_field: {$slot: benchmark_output_field}
+    params:
+      curve_family: {$slot: benchmark_curve_family}
+      tenor: {$slot: benchmark_tenor}
+      lookback_days: {$slot: lookback_days}
+
+  # Align target + benchmark onto a common DatetimeIndex.  Same
+  # cross-calendar genericity pattern as the event_study template's
+  # alignment branch: inner-join, no imputation, mismatched
+  # missingness policies allowed but recorded in lineage.
+  - kind: operator
+    node_id: align
+    operator_name: align_series
+    params:
+      join_policy: inner                  # template-locked
+      fill_policy: raw                    # template-locked: no imputation
+      require_matching_frequency: true    # template-locked
+      require_matching_missingness: false # template-locked: cross-family
+                                          # bindings may carry different
+                                          # ffill_limit policies; the
+                                          # alignment step records the
+                                          # resolution in lineage
+      output_keys: [target, benchmark]    # template-locked SeriesSet
+                                          # member names so downstream
+                                          # select_from_series_set
+                                          # references work without
+                                          # leaking each primitive's
+                                          # bridge-derived series_key
+                                          # into the slot surface
+
+  - kind: operator
+    node_id: target_aligned
+    operator_name: select_from_series_set
+    params:
+      series_key: target                  # template-locked: matches
+                                          # align.output_keys[0]
+
+  - kind: operator
+    node_id: bench_aligned
+    operator_name: select_from_series_set
+    params:
+      series_key: benchmark               # template-locked: matches
+                                          # align.output_keys[1]
+
+  # The attribution operator — target.level - benchmark.level
+  # per date produces the residual / local component time series.
+  # series_arithmetic.unit_validator enforces unit coherence
+  # (both inputs must share TimeSeriesUnits) so an accidental
+  # mismatch (e.g. BPS target vs PERCENT benchmark) is rejected
+  # at validate time.
+  - kind: operator
+    node_id: residual
+    operator_name: series_arithmetic
+    params:
+      op: subtract                        # template-locked: attribution
+                                          # is target - benchmark; reverse
+                                          # would be a sibling template
+
+edges:
+
+  # target + bench → align (List[Series] aggregation slot per
+  # WT11's list-shaped slot rules).
+  - source_node_id: target_yield
+    target_node_id: align
+    target_input_slot: series_list
+
+  - source_node_id: bench_yield
+    target_node_id: align
+    target_input_slot: series_list
+
+  # align (SeriesSet) → select_from_series_set ×2
+  - source_node_id: align
+    target_node_id: target_aligned
+    target_input_slot: series_set
+
+  - source_node_id: align
+    target_node_id: bench_aligned
+    target_input_slot: series_set
+
+  # The two aligned Series → series_arithmetic (subtract)
+  - source_node_id: target_aligned
+    target_node_id: residual
+    target_input_slot: left
+
+  - source_node_id: bench_aligned
+    target_node_id: residual
+    target_input_slot: right
+
+literal_bindings: []
+
+terminal_node_id: residual

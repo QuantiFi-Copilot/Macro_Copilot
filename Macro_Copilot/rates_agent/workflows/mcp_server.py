@@ -93,6 +93,7 @@ from database.database import get_db_engine  # noqa: E402
 # data prerequisites land.
 #
 #   import rates_agent.workflows.backtest  # noqa: F401, E402
+import rates_agent.workflows.attribution_decomposition  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
 
@@ -451,6 +452,99 @@ def regime_conditioned_relationship_workflow(
         "regression_min_periods": regression_min_periods,
         "high_threshold": high_threshold,
         "low_threshold": low_threshold,
+    }
+    envelope = run_template(template_id, slot_values, engine=engine)
+    return json.dumps(envelope, default=str)
+
+
+@mcp.tool()
+def attribution_decomposition_workflow(
+    target_curve_family: str,
+    target_tenor: str,
+    benchmark_curve_family: str,
+    benchmark_tenor: str,
+    lookback_days: int = 1825,
+    target_output_field: str = "time_series",
+    benchmark_output_field: str = "time_series",
+) -> str:
+    """Execute the canonical attribution_decomposition workflow:
+    decompose a target curve's yield level series into a benchmark-
+    anchor component and a residual / country-specific component
+    via aligned subtraction.  The terminal Series is the per-date
+    residual that represents the target's local component above /
+    below the benchmark anchor.
+
+    Use this tool when the user asks:
+      - "What part of UST 10Y's level is NOT explained by the OIS
+        curve?" → target=UST/10Y, benchmark=USD_SOFR_OIS/10Y.
+      - "Decompose Italy 10Y into Bund + BTP local component."
+        → target=IT_BTP/10Y, benchmark=DE_BUND/10Y.
+      - "Show me the country-specific component of TIPS real yields."
+        → target=USD_TIPS/10Y, benchmark=UST/10Y (or another linker
+        anchor — Round 3 A4 enables PCA / classification on any
+        rates curve_family).
+      - "Local residual above global benchmark anchor."
+
+    Canonical V1 binding (UST country-specific component):
+      target_curve_family:    "UST"
+      target_tenor:           "10Y"
+      benchmark_curve_family: "USD_SOFR_OIS"
+      benchmark_tenor:        "10Y"
+      lookback_days:          1825
+
+    V1 substrate scope
+    ------------------
+    This template uses simple subtraction attribution (target =
+    benchmark + residual; the sum-back invariant trivially holds).
+    The canonical PCA-loadings attribution (decompose a yield
+    change into per-PC contributions + residual) requires substrate
+    extensions — the workflow bridge today only dispatches single-
+    TimeSeries and Panel primitive outputs, so neither
+    ``pca_yield_curve`` (List[TimeSeries] output) nor
+    ``yield_change_attribution_pca`` (snapshot dict output) can
+    currently participate as DAG nodes.  The
+    ``calculate_yield_change_attribution_pca_tool`` MCP tool
+    remains fully available for standalone snapshot decomposition;
+    the workflow-level PCA composition is tracked as substrate
+    tech debt.
+
+    Parameters
+    ----------
+    target_curve_family : str
+        Curve family for the TARGET leg (e.g. 'UST', 'IT_BTP',
+        'USD_TIPS').  Any tenor-keyed rates curve_family in a
+        playbook under rates_agent/playbooks/.
+    target_tenor : str
+        Tenor on the target curve (e.g. '10Y').
+    benchmark_curve_family : str
+        Curve family for the BENCHMARK anchor (e.g. 'USD_SOFR_OIS',
+        'DE_BUND', 'UST').
+    benchmark_tenor : str
+        Tenor on the benchmark curve.  Canonical attribution uses
+        the SAME tenor as the target.
+    lookback_days : int, optional
+        Calendar-day fetch window for both legs.  Default 1825 (~5y).
+    target_output_field : str, optional
+        Which TimeSeries field of get_yield_levels_tool to lift for
+        the target.  Default 'time_series'.
+    benchmark_output_field : str, optional
+        Which TimeSeries field of get_yield_levels_tool to lift for
+        the benchmark.  Default 'time_series'.  Should typically
+        match target_output_field for unit coherence at the
+        subtraction step.
+    """
+    template_id = "attribution_decomposition"
+    engine, err = _engine_or_error_envelope(template_id)
+    if err is not None:
+        return err
+    slot_values = {
+        "target_curve_family": target_curve_family,
+        "target_tenor": target_tenor,
+        "target_output_field": target_output_field,
+        "benchmark_curve_family": benchmark_curve_family,
+        "benchmark_tenor": benchmark_tenor,
+        "benchmark_output_field": benchmark_output_field,
+        "lookback_days": lookback_days,
     }
     envelope = run_template(template_id, slot_values, engine=engine)
     return json.dumps(envelope, default=str)
