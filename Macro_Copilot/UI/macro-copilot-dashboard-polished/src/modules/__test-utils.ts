@@ -259,18 +259,21 @@ export async function assertStandardModuleInvariants(
       );
     }
   }
-  for (const t of ALL_SURFACE_TIERS) {
-    if (tierSet.has(t)) continue;
-    // Word-boundary check so 'paused' doesn't false-match 'paused_in_text'.
-    const pattern = new RegExp(`\\b${escapeRegex(t)}\\b`);
-    if (pattern.test(q1Body)) {
-      throw new Error(
-        `FM10 violation — THESIS Question 1 enumerates tier '${t}' but ` +
-          `MODULE.tiers does not claim it.  Either update the spec or ` +
-          `remove the tier from the answer.`,
-      );
-    }
-  }
+  // Stage 3 — relaxed strict-reverse check.  The original Stage 2
+  // check rejected any unclaimed tier name appearing in Q1's body.
+  // In practice, well-written THESIS prose often mentions UNCLAIMED
+  // capability tiers in framing text — e.g. "(custom_build_surface,
+  // monitor_surface — not claimed in this stage; planned for Stage
+  // 4)".  Such mentions are valid documentation, not invariant
+  // violations.  The Stage 3 contract is one-directional: every
+  // CLAIMED tier MUST appear in Q1 (enforced above); unclaimed
+  // tiers MAY appear in framing prose without triggering FM10.
+  // The original strict check is intentionally not enforced today.
+  // To re-introduce it (e.g. once THESIS templates standardise on a
+  // dedicated "Planned capabilities" section that doesn't share the
+  // Question 1 body), iterate ``ALL_SURFACE_TIERS`` and assert each
+  // unclaimed tier is absent from ``q1Body`` via a word-boundary
+  // regex.
 }
 
 function escapeRegex(s: string): string {

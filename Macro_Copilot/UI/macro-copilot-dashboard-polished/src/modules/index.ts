@@ -1,39 +1,25 @@
 // ============================================================================
-// src/modules/index.ts — central loader barrel (Stage 2).
+// src/modules/index.ts — central loader barrel.
 // ----------------------------------------------------------------------------
-// The single point that imports every module's pure-spec ``MODULE``
-// export and exposes them as two ordered arrays:
+// Stage 3 — populated with all 58 primitive module imports + entries
+// in ``ALL_PRIMITIVE_MODULES``.  Each module's spec is a pure value
+// (FM7); the loader has zero side effects.
 //
-//   - ``ALL_PRIMITIVE_MODULES``  — every primitive module's spec.
-//   - ``ALL_WORKFLOW_MODULES``   — every workflow-template module's spec.
+// Adding a module = one import line + one array entry, alphabetised by
+// tool_name.  The per-module round-trip test (``__tests__/module.spec.ts``
+// in each module folder) + the loader-presence test
+// (``src/lib/__tests__/loaderPresence.test.ts``) catch drift.
 //
-// Stage 2 lands the barrel with both arrays EMPTY.  No module folders
-// exist under ``src/modules/primitives/`` or ``src/modules/workflows/``
-// today; those land per the Stage 3+ schedule in
-// docs_revamped/06_roadmap/frontend_migration.md.
-//
-// The lookup helpers (``getPrimitiveModule`` / ``getWorkflowModule``)
-// are exported so future consumers can resolve a module by its
-// backend-canonical identifier without touching the array literal.
-//
-// Stage-2 contract (FP4 / FP5 / FM12)
-// -----------------------------------
-// - PURE values only.  No mutation, no side-effect imports, no
-//   top-level function calls beyond the spec collection itself.
-// - One import per module, ALPHABETISED by tool_name / template_id
-//   (the loader-presence test asserts this in Stage 3+).
-// - Adding a module = one import line + one array entry.  The
-//   per-module round-trip test (FM11) catches drift between the
-//   spec, the folder, and the loader.
-//
-// Backwards compatibility
-// -----------------------
-// Nothing else in the running UI imports from this barrel yet.  The
-// existing central registries in src/lib/toolNames.ts and
-// src/lib/modelRegistry.ts continue to be hand-authored through
-// Stage 4a/4b/4c.  When those stages migrate primitives into module
-// folders, the registries gradually derive from this barrel; Stage N
-// flips the "no hand-authored registries" CI gate to fully enforce.
+// Stage 3 reality
+// ---------------
+// All 58 modules ship with the MINIMUM-VIABLE shape — just the runtime-
+// status tier.  Capability tiers + surface refs land in Stage 4a/4b/4c
+// as the legacy surface code moves into each module folder.  The
+// hybrid-derivation wiring in src/lib/toolNames.ts unions module-
+// derived sets with the Stage 1 hand-authored entries; today the
+// derived sets contribute the same tool names already in the hand-
+// authored entries, so the resulting central registries are
+// behaviour-identical to Stage 1.
 // ============================================================================
 
 import type {
@@ -42,27 +28,71 @@ import type {
 } from './types';
 
 // ----------------------------------------------------------------------------
-// Module imports (one per module — alphabetised by tool_name / template_id).
+// Primitive module imports — alphabetised by tool_name.
 // ----------------------------------------------------------------------------
-//
-// STAGE 2 — both lists are intentionally empty.  Modules land per the
-// Stage 3+ schedule.  The empty case is the most important shape to
-// get right: the loader-presence test asserts that ``find src/modules/{primitives,workflows}
-// -name module.ts`` returns the same set of tool_names / template_ids
-// as the import block below.  With zero entries on each side, the
-// invariant is trivially satisfied.
-//
-// When Stage 3 begins, each new module folder adds a line like:
-//
-//   import { MODULE as calculate_cpi_surprise_tool } from './primitives/calculate_cpi_surprise_tool';
-//
-// — and a matching entry in the ``ALL_PRIMITIVE_MODULES`` array below.
-// The per-module round-trip test (Stage 3+) verifies the import name
-// matches the folder name and the spec's ``toolName``.
 
-// (no primitive module imports yet — Stage 3+ adds them here)
+import { MODULE as build_linker_panel_tool } from './primitives/build_linker_panel_tool/module';
+import { MODULE as build_policy_futures_strip_panel_tool } from './primitives/build_policy_futures_strip_panel_tool/module';
+import { MODULE as build_sovereign_yield_panel_tool } from './primitives/build_sovereign_yield_panel_tool/module';
+import { MODULE as build_zcis_panel_tool } from './primitives/build_zcis_panel_tool/module';
+import { MODULE as calculate_beta_adjusted_spread_tool } from './primitives/calculate_beta_adjusted_spread_tool/module';
+import { MODULE as calculate_breakeven_butterfly_tool } from './primitives/calculate_breakeven_butterfly_tool/module';
+import { MODULE as calculate_breakeven_curve_spread_tool } from './primitives/calculate_breakeven_curve_spread_tool/module';
+import { MODULE as calculate_breakeven_inflation_simple_tool } from './primitives/calculate_breakeven_inflation_simple_tool/module';
+import { MODULE as calculate_breakeven_inflation_tool } from './primitives/calculate_breakeven_inflation_tool/module';
+import { MODULE as calculate_butterfly_tool } from './primitives/calculate_butterfly_tool/module';
+import { MODULE as calculate_cpi_surprise_tool } from './primitives/calculate_cpi_surprise_tool/module';
+import { MODULE as calculate_cross_country_breakeven_spread_simple_tool } from './primitives/calculate_cross_country_breakeven_spread_simple_tool/module';
+import { MODULE as calculate_cross_country_real_yield_spread_simple_tool } from './primitives/calculate_cross_country_real_yield_spread_simple_tool/module';
+import { MODULE as calculate_cross_market_inflation_swap_spread_tool } from './primitives/calculate_cross_market_inflation_swap_spread_tool/module';
+import { MODULE as calculate_cross_market_spread_tool } from './primitives/calculate_cross_market_spread_tool/module';
+import { MODULE as calculate_curve_spread_tool } from './primitives/calculate_curve_spread_tool/module';
+import { MODULE as calculate_forward_breakeven_simple_tool } from './primitives/calculate_forward_breakeven_simple_tool/module';
+import { MODULE as calculate_half_life_tool } from './primitives/calculate_half_life_tool/module';
+import { MODULE as calculate_inflation_swap_butterfly_tool } from './primitives/calculate_inflation_swap_butterfly_tool/module';
+import { MODULE as calculate_inflation_swap_curve_spread_tool } from './primitives/calculate_inflation_swap_curve_spread_tool/module';
+import { MODULE as calculate_inflation_swap_forward_tool } from './primitives/calculate_inflation_swap_forward_tool/module';
+import { MODULE as calculate_inflation_swap_rate_level_tool } from './primitives/calculate_inflation_swap_rate_level_tool/module';
+import { MODULE as calculate_nfp_surprise_tool } from './primitives/calculate_nfp_surprise_tool/module';
+import { MODULE as calculate_ois_butterfly_tool } from './primitives/calculate_ois_butterfly_tool/module';
+import { MODULE as calculate_ois_cross_market_spread_tool } from './primitives/calculate_ois_cross_market_spread_tool/module';
+import { MODULE as calculate_ois_curve_spread_tool } from './primitives/calculate_ois_curve_spread_tool/module';
+import { MODULE as calculate_ois_forward_rate_tool } from './primitives/calculate_ois_forward_rate_tool/module';
+import { MODULE as calculate_otr_ofr_spread_tool } from './primitives/calculate_otr_ofr_spread_tool/module';
+import { MODULE as calculate_pca_yield_curve_tool } from './primitives/calculate_pca_yield_curve_tool/module';
+import { MODULE as calculate_real_yield_butterfly_tool } from './primitives/calculate_real_yield_butterfly_tool/module';
+import { MODULE as calculate_real_yield_curve_spread_tool } from './primitives/calculate_real_yield_curve_spread_tool/module';
+import { MODULE as calculate_rolling_regression_tool } from './primitives/calculate_rolling_regression_tool/module';
+import { MODULE as calculate_swap_breakeven_basis_simple_tool } from './primitives/calculate_swap_breakeven_basis_simple_tool/module';
+import { MODULE as calculate_swap_spread_tool } from './primitives/calculate_swap_spread_tool/module';
+import { MODULE as calculate_wirp_meeting_pricing_tool } from './primitives/calculate_wirp_meeting_pricing_tool/module';
+import { MODULE as calculate_yield_change_attribution_pca_tool } from './primitives/calculate_yield_change_attribution_pca_tool/module';
+import { MODULE as calculate_zscore_custom_tool } from './primitives/calculate_zscore_custom_tool/module';
+import { MODULE as classify_curve_move_tool } from './primitives/classify_curve_move_tool/module';
+import { MODULE as compute_financing_rate_tool } from './primitives/compute_financing_rate_tool/module';
+import { MODULE as get_futures_price_level_tool } from './primitives/get_futures_price_level_tool/module';
+import { MODULE as get_futures_volume_oi_tool } from './primitives/get_futures_volume_oi_tool/module';
+import { MODULE as get_ois_rate_level_tool } from './primitives/get_ois_rate_level_tool/module';
+import { MODULE as get_otr_history_tool } from './primitives/get_otr_history_tool/module';
+import { MODULE as get_real_yield_level_tool } from './primitives/get_real_yield_level_tool/module';
+import { MODULE as get_scan_policy_futures_extremes_tool } from './primitives/get_scan_policy_futures_extremes_tool/module';
+import { MODULE as get_yield_levels_tool } from './primitives/get_yield_levels_tool/module';
+import { MODULE as policy_futures_get_futures_butterfly_simple_tool } from './primitives/policy_futures_get_futures_butterfly_simple_tool/module';
+import { MODULE as policy_futures_get_futures_calendar_spread_tool } from './primitives/policy_futures_get_futures_calendar_spread_tool/module';
+import { MODULE as policy_futures_get_futures_cross_market_spread_tool } from './primitives/policy_futures_get_futures_cross_market_spread_tool/module';
+import { MODULE as policy_futures_get_futures_pack_average_simple_tool } from './primitives/policy_futures_get_futures_pack_average_simple_tool/module';
+import { MODULE as policy_futures_get_futures_price_level_tool } from './primitives/policy_futures_get_futures_price_level_tool/module';
+import { MODULE as policy_futures_get_futures_strip_snapshot_tool } from './primitives/policy_futures_get_futures_strip_snapshot_tool/module';
+import { MODULE as policy_futures_get_volume_open_interest_snapshot_tool } from './primitives/policy_futures_get_volume_open_interest_snapshot_tool/module';
+import { MODULE as scan_bond_futures_extremes_tool } from './primitives/scan_bond_futures_extremes_tool/module';
+import { MODULE as scan_extremes_tool } from './primitives/scan_extremes_tool/module';
+import { MODULE as scan_inflation_linkers_extremes_tool } from './primitives/scan_inflation_linkers_extremes_tool/module';
+import { MODULE as scan_inflation_swaps_extremes_tool } from './primitives/scan_inflation_swaps_extremes_tool/module';
+import { MODULE as scan_ois_extremes_tool } from './primitives/scan_ois_extremes_tool/module';
 
+// ----------------------------------------------------------------------------
 // (no workflow module imports yet — Stage 7+ adds them here)
+// ----------------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 // Public exports — the derived registries read from these arrays.
@@ -70,53 +100,90 @@ import type {
 
 /** Every primitive module the loader knows about, in stable
  *  alphabetical order.  Pure data — derived sets in
- *  ``src/lib/toolNames.ts`` (target-state Stage N+) will compute
- *  ``KNOWN_BACKEND_TOOLS`` / ``RUNNABLE_PRIMITIVE_TOOLS`` /
- *  ``WORKFLOW_INCOMPATIBLE_TOOLS`` / ``UNSUPPORTED_KNOWN_TOOLS`` /
- *  ``UNSUPPORTED_KNOWN_REASONS`` from this array. */
+ *  ``src/lib/toolNames.ts`` union these spec-derived contributions
+ *  with the Stage 1 hand-authored entries through the migration. */
 export const ALL_PRIMITIVE_MODULES: ReadonlyArray<PrimitiveModuleSpec> = [
-  // (no entries yet — Stage 3+ adds modules here)
+  build_linker_panel_tool,
+  build_policy_futures_strip_panel_tool,
+  build_sovereign_yield_panel_tool,
+  build_zcis_panel_tool,
+  calculate_beta_adjusted_spread_tool,
+  calculate_breakeven_butterfly_tool,
+  calculate_breakeven_curve_spread_tool,
+  calculate_breakeven_inflation_simple_tool,
+  calculate_breakeven_inflation_tool,
+  calculate_butterfly_tool,
+  calculate_cpi_surprise_tool,
+  calculate_cross_country_breakeven_spread_simple_tool,
+  calculate_cross_country_real_yield_spread_simple_tool,
+  calculate_cross_market_inflation_swap_spread_tool,
+  calculate_cross_market_spread_tool,
+  calculate_curve_spread_tool,
+  calculate_forward_breakeven_simple_tool,
+  calculate_half_life_tool,
+  calculate_inflation_swap_butterfly_tool,
+  calculate_inflation_swap_curve_spread_tool,
+  calculate_inflation_swap_forward_tool,
+  calculate_inflation_swap_rate_level_tool,
+  calculate_nfp_surprise_tool,
+  calculate_ois_butterfly_tool,
+  calculate_ois_cross_market_spread_tool,
+  calculate_ois_curve_spread_tool,
+  calculate_ois_forward_rate_tool,
+  calculate_otr_ofr_spread_tool,
+  calculate_pca_yield_curve_tool,
+  calculate_real_yield_butterfly_tool,
+  calculate_real_yield_curve_spread_tool,
+  calculate_rolling_regression_tool,
+  calculate_swap_breakeven_basis_simple_tool,
+  calculate_swap_spread_tool,
+  calculate_wirp_meeting_pricing_tool,
+  calculate_yield_change_attribution_pca_tool,
+  calculate_zscore_custom_tool,
+  classify_curve_move_tool,
+  compute_financing_rate_tool,
+  get_futures_price_level_tool,
+  get_futures_volume_oi_tool,
+  get_ois_rate_level_tool,
+  get_otr_history_tool,
+  get_real_yield_level_tool,
+  get_scan_policy_futures_extremes_tool,
+  get_yield_levels_tool,
+  policy_futures_get_futures_butterfly_simple_tool,
+  policy_futures_get_futures_calendar_spread_tool,
+  policy_futures_get_futures_cross_market_spread_tool,
+  policy_futures_get_futures_pack_average_simple_tool,
+  policy_futures_get_futures_price_level_tool,
+  policy_futures_get_futures_strip_snapshot_tool,
+  policy_futures_get_volume_open_interest_snapshot_tool,
+  scan_bond_futures_extremes_tool,
+  scan_extremes_tool,
+  scan_inflation_linkers_extremes_tool,
+  scan_inflation_swaps_extremes_tool,
+  scan_ois_extremes_tool,
 ];
 
 /** Every workflow module the loader knows about, in stable
- *  alphabetical order.  Pure data — derived sets
- *  ``KNOWN_WORKFLOWS`` / ``PAUSED_WORKFLOWS`` will compute from
- *  this array at Stage N+. */
+ *  alphabetical order.  Stage 7+ populates this. */
 export const ALL_WORKFLOW_MODULES: ReadonlyArray<WorkflowModuleSpec> = [
-  // (no entries yet — Stage 7+ adds modules here)
+  // (no entries yet — Stage 7+ adds workflow modules here)
 ];
 
 // ----------------------------------------------------------------------------
 // Lookup helpers.
 // ----------------------------------------------------------------------------
-//
-// O(n) linear searches over the module arrays.  With O(100) modules
-// at steady state this is well within the noise floor of any caller.
-// Memoising into a Map would add complexity for no measurable benefit
-// (and would require care around hot-reload during development).
 
 /** Resolve a primitive module by its backend-canonical ``tool_name``.
- *  Returns ``undefined`` when no module declares that tool.
- *
- *  Stage 2: always returns ``undefined`` (arrays are empty).
- *  Stage 3+: returns the matching module spec.
- *
- *  Callers MUST normalise manifest shorthand BEFORE calling — use
- *  ``normalizeToolName`` from ``@/lib/toolNames``.  This function does
- *  NOT normalise internally to keep the lookup pure (separation of
- *  concerns: identity normalisation lives in toolNames; module
- *  lookup lives here). */
+ *  Returns ``undefined`` when no module declares that tool.  Callers
+ *  MUST normalise manifest shorthand BEFORE calling — use
+ *  ``normalizeToolName`` from ``@/lib/toolNames``. */
 export function getPrimitiveModule(
   toolName: string,
 ): PrimitiveModuleSpec | undefined {
   return ALL_PRIMITIVE_MODULES.find((m) => m.toolName === toolName);
 }
 
-/** Resolve a workflow module by its backend-canonical ``template_id``.
- *  Returns ``undefined`` when no module declares that template.
- *
- *  Stage 2: always returns ``undefined`` (arrays are empty).
- *  Stage 7+: returns the matching workflow spec. */
+/** Resolve a workflow module by its backend-canonical ``template_id``. */
 export function getWorkflowModule(
   templateId: string,
 ): WorkflowModuleSpec | undefined {
@@ -126,15 +193,6 @@ export function getWorkflowModule(
 // ----------------------------------------------------------------------------
 // Type re-exports.
 // ----------------------------------------------------------------------------
-//
-// Surfaces that consume module specs via the lookup helpers also
-// need the type definitions to narrow safely.  Re-exporting here
-// gives callers one import path:
-//
-//   import { getPrimitiveModule, type PrimitiveModuleSpec } from '@/modules';
-//
-// — instead of two (the helper from this file + the type from
-// ``./types``).
 
 export type {
   PrimitiveModuleSpec,
