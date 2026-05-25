@@ -297,13 +297,20 @@ register()
 
 ### Step 5 — Wire the template into the user-facing surface(s)
 
-The template's own `__init__.py` self-registers with the substrate at import (per WT16), but **whether the user-facing router and the REST catalogue see it is a separate decision**. The agent's `<agent>/workflows/__init__.py` is NOT an auto-import barrel; it does not enumerate every template. Instead, two user-facing entry points control the LLM-facing and API-facing catalogues, and each one imports templates explicitly:
+The template's own `__init__.py` self-registers with the substrate at import (per WT16), but **whether the user-facing router, the REST catalogue, the chat session, the CLI, and the LLM-router's desk-phrasing taxonomy see it is a separate decision**. The agent's `<agent>/workflows/__init__.py` is NOT an auto-import barrel; it does not enumerate every template. Instead, **five user-facing surfaces** control visibility, and each one imports templates explicitly. Skipping any one of them is a real wiring gap that the substrate cannot catch — the template will be invisible to whichever surface was omitted.
+
+The five surfaces, in the order a new template should reach them:
+
+#### 5a. MCP server — `rates_agent/workflows/mcp_server.py`
+
+The stdio-MCP entry point that exposes workflow tools to the orchestrator. Without this import, the LLM cannot invoke the template via MCP.
 
 ```python
-# rates_agent/workflows/mcp_server.py — the MCP/LLM router surface.
+# rates_agent/workflows/mcp_server.py
 
 # Side-effect imports trigger each template's register() and make
 # it routable by the LLM.  Explicit, not auto-discovered.
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401, E402
 import rates_agent.workflows.event_study  # noqa: F401, E402
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
 import rates_agent.workflows.<new_template_id>  # noqa: F401, E402     # ← added
@@ -314,17 +321,93 @@ import rates_agent.workflows.<new_template_id>  # noqa: F401, E402     # ← add
 # When pausing a template, document the rationale in a comment.
 ```
 
-```python
-# api/routes/workflows/catalogue.py — the REST/MCP catalogue surface.
+Add a matching `@mcp.tool()` wrapper for the template at the bottom of the file — one thin function per template, mirroring the existing `event_study_workflow` / `regime_conditioned_relationship_workflow` shape.
 
+#### 5b. REST catalogue — `api/routes/workflows/catalogue.py`
+
+The REST-API catalogue endpoint that exposes `GET /workflows`, `GET /workflows/{template_id}`. Without this import, API callers cannot see the template.
+
+```python
+# api/routes/workflows/catalogue.py
+
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401
 import rates_agent.workflows.event_study  # noqa: F401
 import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
 import rates_agent.workflows.<new_template_id>  # noqa: F401              # ← added
 ```
 
-For a new template that should be user-facing from day one, add the import to *both* surfaces. For a template that is genuinely paused (data prerequisites missing, archetype not yet user-ready, etc.), leave the user-facing imports out *and document the reason* in a comment block at the entry point (cf. the backtest comment in `mcp_server.py`). The template is still substrate-registered (so the executor can dispatch it and tests can exercise it), but it does not reach the LLM router or the REST catalogue.
+#### 5c. Chat session — `orchestrator/session.py`
 
-If you skip the user-facing imports for a template that should be user-visible, the template is invisible to the catalogue tests (`tests/test_workflow_router.py`, `tests/test_workflow_template_system.py`) and the LLM cannot route to it. The CI suite catches the discrepancy if the PR description claims user-facing intent but no entry point imports the package.
+The chat session's `WorkflowRouter` setup. Without this import, the LLM-driven chat path will not route to the template — even though the substrate has it registered, the chat session's per-session re-import path does not pick it up.
+
+```python
+# orchestrator/session.py — inside the session constructor's
+# workflow-router bootstrap block (around line 280):
+
+try:
+    import rates_agent.workflows.cross_sectional_screen  # noqa: F401
+    import rates_agent.workflows.event_study  # noqa: F401
+    import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401
+    import rates_agent.workflows.<new_template_id>  # noqa: F401         # ← added
+except Exception as exc:
+    logger.warning(
+        "[%s] failed to import workflow templates; workflow "
+        "routing disabled for this session: %s",
+        self.thread_id, exc,
+    )
+```
+
+#### 5d. CLI — `rates_agent/workflows/cli.py`
+
+The CLI entry point. Without this import, CLI invocations of the template will fail.
+
+```python
+# rates_agent/workflows/cli.py
+
+import rates_agent.workflows.cross_sectional_screen  # noqa: F401, E402
+import rates_agent.workflows.event_study  # noqa: F401, E402
+import rates_agent.workflows.regime_conditioned_relationship  # noqa: F401, E402
+import rates_agent.workflows.<new_template_id>  # noqa: F401, E402        # ← added
+```
+
+#### 5e. LLM-router desk-phrasing taxonomy — `orchestrator/workflow_prompts.py`
+
+The "CANONICAL DESK PHRASING THE LLM SHOULD RECOGNIZE" section maps desk vocabulary (the same cues the template declares in `archetype_signature`) to template IDs. Without an entry here, the LLM router has no learned hint that a prompt matching the new template's cues should route to it — the substrate's `archetype_signature` cues alone are not always sufficient because the router prompt teaches the LLM the canonical-cue → template-id mapping explicitly.
+
+```python
+# orchestrator/workflow_prompts.py — inside CANONICAL DESK PHRASING:
+
+- <New-template> cues: "<cue 1>", "<cue 2>", ...
+
+These cues map to template_ids ``event_study``, \
+``regime_conditioned_relationship``, ``cross_sectional_screen``, \
+and ``<new_template_id>`` respectively.
+```
+
+Use the same cues you declared in the template's `archetype_signature` (per WT14) — copy them verbatim so the two sources stay in lockstep. If the prompt and the YAML drift, the router gets confused.
+
+#### What each surface does and does NOT cover
+
+| Surface | Covers | If omitted |
+|---|---|---|
+| **5a** `mcp_server.py` | MCP `@mcp.tool()` invocation; stdio LLM routing | LLM cannot call the workflow via MCP at all |
+| **5b** `catalogue.py` | REST `GET /workflows[/{id}]`; UI catalogue | UI catalogue + REST callers do not see the template |
+| **5c** `session.py` | Chat session's per-session `WorkflowRouter` | Chat router will not learn the template exists this session |
+| **5d** `cli.py` | CLI invocation | CLI cannot dispatch the template |
+| **5e** `workflow_prompts.py` | LLM-router's desk-vocabulary → template_id mapping | LLM may not recognise desk phrasing routes to this template |
+
+For a new template that should be user-facing from day one, add the import to **all five** surfaces. For a template that is genuinely paused (data prerequisites missing, archetype not yet user-ready, etc.), leave the user-facing imports out *and document the reason* in a comment block at the relevant entry point (cf. the backtest comment in `mcp_server.py`). The template is still substrate-registered (so the executor can dispatch it and tests can exercise it), but it does not reach the user-facing surfaces.
+
+If you skip the user-facing imports for a template that should be user-visible, the template is invisible to whichever surface was missed. Common failure modes the five-surface checklist catches:
+
+- "It works via MCP but not via the chat session" → 5c was missed.
+- "The catalogue UI shows it but the LLM never picks it" → 5e was missed.
+- "Tests pass but the CLI throws `KeyError: unknown template`" → 5d was missed.
+- "It worked locally but the REST catalogue is empty" → 5b was missed.
+
+The CI suite (`tests/test_workflow_router.py`, `tests/test_workflow_template_system.py`) catches some — but not all — of these gaps. The five-surface checklist is the procedural guarantee.
+
+> **Historical note.** The v1.1 runbook (and the v1.1 README's WT16) named only the first two surfaces (`mcp_server.py` + `catalogue.py`). That was incomplete — three additional surfaces had the same explicit-import pattern but were not enumerated. The omission surfaced during the Stage-4 Round-3 review of PR #201 (Codex F3): `cross_sectional_screen` shipped registered in two of the five surfaces and invisible in the other three. The v1.2 enumeration above is canonical going forward.
 
 ### Step 6 — Write the test suite (per WT15)
 
@@ -680,7 +763,12 @@ The reviewer signs off when each item is met. Cite the matching WT-number; do no
 
 ### Universal items
 
-- [ ] **`<agent>/workflows/__init__.py`** imports the new template's package so its `register()` side effect fires at agent boot.
+- [ ] **Step 5 — five user-facing surfaces (per WT16).** For a user-facing template, every one of the five surfaces below imports the new template package explicitly. For a paused template, all five surfaces are deliberately skipped *and* the rationale is documented in a comment at the relevant entry point.
+  - [ ] **5a `rates_agent/workflows/mcp_server.py`** — side-effect import + matching `@mcp.tool()` wrapper.
+  - [ ] **5b `api/routes/workflows/catalogue.py`** — side-effect import.
+  - [ ] **5c `orchestrator/session.py`** — side-effect import in the chat session's workflow-router bootstrap block.
+  - [ ] **5d `rates_agent/workflows/cli.py`** — side-effect import.
+  - [ ] **5e `orchestrator/workflow_prompts.py`** — desk-phrasing cues block + `template_id` reference in `CANONICAL DESK PHRASING THE LLM SHOULD RECOGNIZE`.
 - [ ] **AC2 / AC6.** Commit message ends with `Operationalises: P3, P9, P11; WT1, WT3, WT7, WT8, WT11, WT15, WT16; AC1, AC3, AC5, AC6.` (adjust IDs to whichever apply). For archetype extension also cite WT2, WT4.
 - [ ] **AC8.** Any uncertainty about archetype identification, sibling-template disambiguation, or asset-class-blindness was raised with a human reviewer before YAML was drafted, not after.
 
@@ -688,5 +776,6 @@ The reviewer signs off when each item is met. Cite the matching WT-number; do no
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1.1 | 2026-05-18 | Pre-canonical corrections aligned with the README v1.1 revisions: (a) Step 5 rewritten — replaced the incorrect "wire into agent's `workflows/__init__.py`" pattern with the real two-surface explicit-import pattern (`rates_agent/workflows/mcp_server.py` for MCP/LLM routing, `api/routes/workflows/catalogue.py` for REST exposure); documented that the agent's `workflows/__init__.py` is NOT an auto-import barrel. Added paused-template example with the `backtest` comment-block pattern. (b) Step 6c E2E assertion — replaced the wrong `len(result.terminal_artifact.lineage.steps) >= len(template.nodes)` invariant (which only holds for linear DAGs; branched DAGs embed auxiliary lineages via `OperatorStep.auxiliary_lineages`) with the real assertion pattern from `tests/test_workflow_event_study.py` (assert every `node_id` is in `result.node_artifacts` and in `result.workflow_lineage_summary`). (c) Step 6d instrument-agnostic test — corrected the wrong import (`tests._workflow_synthetic_fetchers.synthetic_primitive_resolver` does not exist; that file provides fetcher patches, not a resolver). Documented both real patterns: Pattern A (slot-substituted `tool_name` templates) builds a local `PrimitiveResolver` from synthetic `PrimitiveSpec` entries; Pattern B (literal-primitive templates like `backtest`) uses the agent's real resolver with `patch_all_synthetic_fetchers()` context. | (pending) |
+| v1.2 | 2026-05-25 | Step 5 rewritten to enumerate **five** user-facing surfaces (was: two).  The v1.1 runbook named only `rates_agent/workflows/mcp_server.py` + `api/routes/workflows/catalogue.py`; three additional surfaces have the same explicit-import requirement and were silently missed by templates that followed the v1.1 procedure to the letter: (5c) `orchestrator/session.py`'s chat-session WorkflowRouter bootstrap; (5d) `rates_agent/workflows/cli.py`'s CLI entry point; (5e) `orchestrator/workflow_prompts.py`'s `CANONICAL DESK PHRASING THE LLM SHOULD RECOGNIZE` taxonomy.  The gap surfaced during the Stage-4 Round-3 review of PR #201 (Codex F3): the new `cross_sectional_screen` template shipped registered in 5a + 5b only and was invisible to chat / CLI / LLM-router-prompt.  PR-A8 added the three missing imports + cues block; this runbook revision pins the procedural guarantee so future templates do not repeat the omission.  Also added: a per-surface table summarising "what each covers / what breaks if omitted"; an explicit historical-note callout pinning the v1.1 → v1.2 motivation; PR review checklist's "Universal items" rewritten as a five-item sub-checklist (was: a single "agent's workflows/__init__.py" line that the runbook's own Step 5 explicitly contradicted). | (pending) |
+| v1.1 | 2026-05-18 | Pre-canonical corrections aligned with the README v1.1 revisions: (a) Step 5 rewritten — replaced the incorrect "wire into agent's `workflows/__init__.py`" pattern with the real two-surface explicit-import pattern (`rates_agent/workflows/mcp_server.py` for MCP/LLM routing, `api/routes/workflows/catalogue.py` for REST exposure); documented that the agent's `workflows/__init__.py` is NOT an auto-import barrel. Added paused-template example with the `backtest` comment-block pattern. (b) Step 6c E2E assertion — replaced the wrong `len(result.terminal_artifact.lineage.steps) >= len(template.nodes)` invariant (which only holds for linear DAGs; branched DAGs embed auxiliary lineages via `OperatorStep.auxiliary_lineages`) with the real assertion pattern from `tests/test_workflow_event_study.py` (assert every `node_id` is in `result.node_artifacts` and in `result.workflow_lineage_summary`). (c) Step 6d instrument-agnostic test — corrected the wrong import (`tests._workflow_synthetic_fetchers.synthetic_primitive_resolver` does not exist; that file provides fetcher patches, not a resolver). Documented both real patterns: Pattern A (slot-substituted `tool_name` templates) builds a local `PrimitiveResolver` from synthetic `PrimitiveSpec` entries; Pattern B (literal-primitive templates like `backtest`) uses the agent's real resolver with `patch_all_synthetic_fetchers()` context. Superseded the next week by v1.2 after the five-surface gap surfaced. | (pending) |
 | v1 | 2026-05-17 | Initial runbook for adding a new workflow template (Path A) and for extending the closed `WORKFLOW_ARCHETYPES` family (Path B). Seven pre-flight decisions, seven-step Path-A procedure, six-step Path-B procedure. Superseded by v1.1 the next day after a factual-review pass against the live workflow substrate. | — |
