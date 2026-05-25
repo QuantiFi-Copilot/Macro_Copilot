@@ -67,6 +67,15 @@ def carry(
         default="1M",
         description="Forward tenor: one of 1W, 1M, 3M, 6M, 12M.",
     ),
+    market_scope: str = Query(
+        default="G10",
+        description=(
+            "Universe filter. 'G10' (default, 6 majors), 'EM' (6 EM "
+            "deliverable: MXN/ZAR/TRY/PLN/HUF/PHP), 'ALL' (12 = G10 + EM). "
+            "NDFs (BRL/KRW/IDR/CNY/INR) are not included — separate "
+            "compute path coming in Phase D."
+        ),
+    ),
     rank_by: str = Query(
         default="carry_signed",
         description=(
@@ -108,6 +117,7 @@ def carry(
             engine,
             FXCarryInput(
                 tenor=tenor,
+                market_scope=market_scope,
                 rank_by=rank_by,
                 top_n=top_n,
                 lookback_days=lookback_days,

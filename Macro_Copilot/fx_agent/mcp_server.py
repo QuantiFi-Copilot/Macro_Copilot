@@ -138,31 +138,39 @@ def scan_fx_spot_tool(
 @mcp.tool()
 def calculate_fx_carry_tool(
     tenor: str = "1M",
+    market_scope: str = "G10",
     rank_by: str = "carry_signed",
     top_n: Optional[int] = None,
     lookback_days: int = 365,
     field_name: Optional[str] = None,
 ) -> str:
-    """Cross-sectional FX carry scanner over the standard G10 forward
+    """Cross-sectional FX carry scanner over the deliverable-forward
     universe at a given tenor.
 
-    For every G10 pair with both spot and same-tenor forward observations
-    in the DB, returns spot, raw forward points, spot-unit forward points,
-    outright forward, carry in basis points, annualised carry %, plus a
-    rolling 252-day z-score / percentile / range computed on the per-date
-    carry_annualized_pct series (historical spot and forward are joined
-    by trade_date — no lookahead).
+    For every pair in the selected market_scope with both spot and
+    same-tenor forward observations in the DB, returns spot, raw forward
+    points, spot-unit forward points, outright forward, carry in basis
+    points, annualised carry %, plus a rolling 252-day z-score /
+    percentile / range computed on the per-date carry_annualized_pct
+    series (historical spot and forward are joined by trade_date — no
+    lookahead).
 
     Useful for: identifying the richest / cheapest carry currencies vs
     history, ranking carry trades by absolute z-score extremeness,
-    monitoring carry compression / blowouts across the G10 strip.
+    monitoring carry compression / blowouts across the strip.
 
     Parameters
     ----------
-    tenor : "1W" | "1M" | "3M" | "6M" | "12M", default "1M"
+    tenor : "1W" | "1M" | "3M" | "6M" | "12M", default "1M".
+    market_scope : "G10" | "EM" | "ALL", default "G10". 'G10' = 6
+        G10 majors (Phase A behaviour). 'EM' = 6 EM deliverable
+        forwards (MXN/ZAR/TRY/PLN/HUF/PHP). 'ALL' = 12 (G10 + EM
+        deliverable). NDFs (BRL/KRW/IDR/CNY/INR) are NOT included —
+        outright vs points unit, separate compute path coming in
+        Phase D.
     rank_by : "carry_signed" | "abs_carry" | "abs_z_score", default
-        "carry_signed" (matches the pre-scanner descending-by-carry sort).
-    top_n : int | None, default None (returns every pair in the substrate).
+        "carry_signed".
+    top_n : int | None, default None (returns every pair in the scope).
     lookback_days : int, default 365 — DB fetch window for the z-score
         history. Does NOT control the z-score window itself (252).
     field_name : str | None — Bloomberg field override; None falls
@@ -171,6 +179,7 @@ def calculate_fx_carry_tool(
     try:
         params = FXCarryInput(
             tenor=tenor,
+            market_scope=market_scope,
             rank_by=rank_by,
             top_n=top_n,
             lookback_days=lookback_days,

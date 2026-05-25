@@ -31,6 +31,19 @@ FXCarryTenor = Literal["1W", "1M", "3M", "6M", "12M"]
 FXCarryRankBy = Literal["carry_signed", "abs_carry", "abs_z_score"]
 
 
+# Closed set of supported market_scope values for the carry universe.
+# - "G10" (default, preserves Phase A behaviour): G10 majors only, via
+#   forwards filter fx_family='G10_FORWARDS'.
+# - "EM": EM deliverable forwards only (fx_family='EM_FORWARDS'). Does
+#   NOT include EM_NDF (NDFs are outright not points — separate compute
+#   path, will be covered by Phase D's calculate_ndf_implied_carry).
+# - "ALL": G10 + EM deliverable. Still excludes NDFs (same reason).
+# Added in Phase B BBG batch 2026-05-25 to make Codex's "EM carry as
+# explicit B+ decision" rule enforceable in the schema, not just in
+# the SQL.
+FXCarryMarketScope = Literal["G10", "EM", "ALL"]
+
+
 class FXCarryInput(BaseModel):
     """Parameters for FX carry analytics."""
 
@@ -41,6 +54,20 @@ class FXCarryInput(BaseModel):
             "of: 1W, 1M, 3M, 6M, 12M. Default 1M. The annualisation "
             "factor reads the corresponding ``tenor_<n>_days`` from "
             "the tool config — see config.yaml."
+        ),
+    )
+    market_scope: FXCarryMarketScope = Field(
+        default="G10",
+        description=(
+            "Universe filter. 'G10' (default) = 6 G10 majors only "
+            "(EUR/GBP/JPY/AUD/CAD/CHF — Phase A behaviour preserved). "
+            "'EM' = 6 EM deliverable forwards "
+            "(MXN/ZAR/TRY/PLN/HUF/PHP — BBG batch 2026-05-25). 'ALL' = "
+            "G10 + EM deliverable = 12 pairs at any given tenor. NDFs "
+            "(BRL/KRW/IDR/CNY/INR) are NOT included in any market_scope "
+            "value — NDFs are quoted outright (not points), so their "
+            "carry compute path is separate and will land in Phase D as "
+            "calculate_ndf_implied_carry."
         ),
     )
     rank_by: FXCarryRankBy = Field(

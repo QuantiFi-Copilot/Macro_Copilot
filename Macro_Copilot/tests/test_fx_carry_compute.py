@@ -270,6 +270,71 @@ def test_consistency_with_forward_curve(engine) -> CheckResult:
 # ============================================================================
 
 
+_EXPECTED_G10_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"}
+_EXPECTED_EM_PAIRS = {"USDMXN", "USDZAR", "USDTRY", "USDPLN", "USDHUF", "USDPHP"}
+
+
+def test_market_scope_default_is_g10(engine) -> CheckResult:
+    """Default market_scope must be 'G10' — preserves Phase A behavior
+    after the BBG batch 2026-05-25 added EM forwards substrate."""
+    out = get_fx_carry(engine, FXCarryInput(tenor="1M"))
+    rows = out["rows"]
+    pairs = {r["pair"] for r in rows}
+    if len(rows) != 6:
+        return _fail("market_scope_default_g10", f"expected 6 rows, got {len(rows)}")
+    if pairs != _EXPECTED_G10_PAIRS:
+        return _fail(
+            "market_scope_default_g10",
+            f"expected {sorted(_EXPECTED_G10_PAIRS)}, got {sorted(pairs)}",
+        )
+    return _pass("market_scope_default_g10", "default returns exactly 6 G10 majors")
+
+
+def test_market_scope_em(engine) -> CheckResult:
+    """market_scope='EM' returns exactly the 6 EM deliverable forwards
+    (USDMXN, USDZAR, USDTRY, USDPLN, USDHUF, USDPHP). NDFs (BRL/KRW/IDR)
+    are NOT included — they have a separate compute path."""
+    out = get_fx_carry(engine, FXCarryInput(tenor="1M", market_scope="EM"))
+    rows = out["rows"]
+    pairs = {r["pair"] for r in rows}
+    if len(rows) != 6:
+        return _fail("market_scope_em", f"expected 6 rows, got {len(rows)}")
+    if pairs != _EXPECTED_EM_PAIRS:
+        return _fail(
+            "market_scope_em",
+            f"expected {sorted(_EXPECTED_EM_PAIRS)}, got {sorted(pairs)}",
+        )
+    # Defensive: no NDF pairs sneak in.
+    if any(p in pairs for p in ("USDBRL", "USDKRW", "USDIDR")):
+        return _fail(
+            "market_scope_em",
+            f"NDF pair leaked into EM scope: {pairs & {'USDBRL', 'USDKRW', 'USDIDR'}}",
+        )
+    return _pass("market_scope_em", "EM scope returns exactly 6 deliverable EM pairs (no NDFs)")
+
+
+def test_market_scope_all(engine) -> CheckResult:
+    """market_scope='ALL' = G10 + EM deliverable = 12 pairs at any tenor."""
+    out = get_fx_carry(engine, FXCarryInput(tenor="1M", market_scope="ALL"))
+    rows = out["rows"]
+    pairs = {r["pair"] for r in rows}
+    expected = _EXPECTED_G10_PAIRS | _EXPECTED_EM_PAIRS
+    if len(rows) != 12:
+        return _fail("market_scope_all", f"expected 12 rows, got {len(rows)}")
+    if pairs != expected:
+        return _fail("market_scope_all", f"expected {sorted(expected)}, got {sorted(pairs)}")
+    return _pass("market_scope_all", "ALL scope returns 12 pairs (6 G10 + 6 EM deliverable)")
+
+
+def test_market_scope_invalid_via_pydantic() -> CheckResult:
+    """Invalid market_scope is caught by Pydantic Literal."""
+    try:
+        FXCarryInput(tenor="1M", market_scope="banana")  # type: ignore[arg-type]
+    except Exception as exc:
+        return _pass("market_scope_invalid_pydantic", f"Pydantic rejected as expected: {type(exc).__name__}")
+    return _fail("market_scope_invalid_pydantic", "Pydantic accepted market_scope='banana'")
+
+
 def main() -> int:
     print("=" * 80)
     print("FX CARRY — TARGETED REGRESSION TESTS")
@@ -281,6 +346,7 @@ def main() -> int:
     # Pure-schema tests do not need the engine.
     results.append(test_invalid_rank_by_via_pydantic())
     results.append(test_invalid_tenor_via_pydantic())
+    results.append(test_market_scope_invalid_via_pydantic())
 
     # DB-touching tests share one engine to avoid teardown overhead.
     for test_fn in (
@@ -291,6 +357,9 @@ def main() -> int:
         test_latest_common_date_alignment,
         test_unsupported_tenor_compute_fail_loud,
         test_consistency_with_forward_curve,
+        test_market_scope_default_is_g10,
+        test_market_scope_em,
+        test_market_scope_all,
     ):
         try:
             results.append(test_fn(engine))

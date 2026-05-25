@@ -50,7 +50,16 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 def _history_query() -> Any:
     """Full per-day join of spot and forward_points over the lookback
-    window, for every pair that has both legs at the requested tenor.
+    window, for every pair that has both legs at the requested tenor
+    AND falls within the requested market_scope (G10 / EM / ALL).
+
+    Codex Phase B BBG batch 2026-05-25: market_scope filter applied on
+    the forwards side via fx_family. Spot side stays unfiltered — the
+    join naturally excludes spots whose pair has no matching forward
+    in the requested scope. NDFs (fx_family='EM_NDF') are explicitly
+    NOT included in any market_scope value because they are quoted
+    outright (not points); their carry compute path is separate and
+    will land in Phase D as calculate_ndf_implied_carry.
     """
     return text(
         """
@@ -76,6 +85,7 @@ def _history_query() -> Any:
             JOIN macro_data.instrument_master im
                 ON d.instrument_id = im.instrument_id
             WHERE im.instrument_type = 'fx_forward'
+              AND im.attributes ->> 'fx_family' = ANY(:fx_families)
               AND im.tenor = :tenor
               AND d.field_name = :forward_field
               AND d.trade_date >= :start_date
@@ -93,6 +103,17 @@ def _history_query() -> Any:
         ORDER BY s.pair, s.trade_date
         """
     )
+
+
+# Closed map of market_scope → fx_family list. Mirror of the Pydantic
+# Literal in schemas.FXCarryMarketScope so callers fail-loud at both
+# the schema boundary AND the SQL boundary. NDFs are explicitly
+# excluded — they have their own compute path.
+_MARKET_SCOPE_TO_FX_FAMILIES = {
+    "G10": ["G10_FORWARDS"],
+    "EM": ["EM_FORWARDS"],
+    "ALL": ["G10_FORWARDS", "EM_FORWARDS"],
+}
 
 
 def _round(value: Optional[float], decimals: int) -> Optional[float]:
@@ -168,6 +189,17 @@ def get_fx_carry(
         pd.Timestamp.today().normalize() - pd.Timedelta(days=lookback_days)
     ).date()
 
+    # Resolve market_scope → list of fx_family values to filter forwards.
+    # Closed enum — fail-loud if somehow a value sneaks past the Pydantic
+    # Literal upstream (defensive).
+    try:
+        fx_families = _MARKET_SCOPE_TO_FX_FAMILIES[params.market_scope]
+    except KeyError as e:
+        raise ValueError(
+            f"calculate_fx_carry: market_scope={params.market_scope!r} not in "
+            f"closed set {sorted(_MARKET_SCOPE_TO_FX_FAMILIES.keys())}."
+        ) from e
+
     # --- 1. Per-day spot+forward history for every pair at this tenor ----
     with engine.connect() as conn:
         df = pd.read_sql(
@@ -178,6 +210,7 @@ def get_fx_carry(
                 "spot_field": spot_field,
                 "forward_field": forward_field,
                 "start_date": start_date,
+                "fx_families": fx_families,
             },
         )
 

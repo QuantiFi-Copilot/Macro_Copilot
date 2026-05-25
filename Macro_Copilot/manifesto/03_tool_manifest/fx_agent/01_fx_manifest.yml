@@ -116,13 +116,18 @@ tools:
       config: fx_agent/forwards/tools/fx_carry/config.yaml
 
     one_liner: >-
-      Cross-sectional FX carry scanner over the G10 forward universe at a
-      given tenor. Joins per-date spot and forward-points history, converts
-      points into spot units with the JPY-aware divisor, annualises by a
-      trading-day basis, and per pair computes a rolling 252-day z-score /
-      percentile / range on the carry_annualized_pct series. Rows are
-      ranked by signed carry, absolute carry, or absolute carry z-score
-      and optionally capped to top-N.
+      Cross-sectional FX carry scanner over the deliverable-forward
+      universe at a given tenor. Universe controlled by market_scope:
+      'G10' (default, 6 majors), 'EM' (6 EM deliverable: MXN/ZAR/TRY/
+      PLN/HUF/PHP), or 'ALL' (12 = G10 + EM). NDFs (BRL/KRW/IDR/CNY/INR)
+      are NOT included — outright vs points unit, separate compute path
+      (Phase D's calculate_ndf_implied_carry). Joins per-date spot and
+      forward-points history, converts points into spot units with the
+      JPY-aware divisor, annualises by a trading-day basis, and per pair
+      computes a rolling 252-day z-score / percentile / range on the
+      carry_annualized_pct series. Rows are ranked by signed carry,
+      absolute carry, or absolute carry z-score and optionally capped
+      to top-N.
 
     bucket_rationale: >-
       Deterministic forward-points arithmetic over stored spot and forward
@@ -131,9 +136,14 @@ tools:
       trailing-range window conventions are YAML-locked. The rolling-stat
       computation delegates to shared.analytics.levels.compute_level_metrics
       (the same generic operator the rates yield_levels tool uses).
+      market_scope filter applied on the forwards side via fx_family
+      ANY(:fx_families) — closed set in compute.py mirrors the closed
+      Pydantic Literal in schemas.py so callers fail-loud at both
+      boundaries.
 
     pm_overridable:
       - tenor
+      - market_scope
       - rank_by
       - top_n
       - lookback_days
