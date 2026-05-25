@@ -271,7 +271,16 @@ def test_consistency_with_forward_curve(engine) -> CheckResult:
 
 
 _EXPECTED_G10_PAIRS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF"}
-_EXPECTED_EM_PAIRS = {"USDMXN", "USDZAR", "USDTRY", "USDPLN", "USDHUF", "USDPHP"}
+_EXPECTED_EM_PAIRS = {
+    "USDMXN",
+    "USDZAR",
+    "USDTRY",
+    "USDPLN",
+    "USDHUF",
+    "USDPHP",
+    "USDSGD",
+    "USDTHB",
+}
 
 
 def test_market_scope_default_is_g10(engine) -> CheckResult:
@@ -291,39 +300,40 @@ def test_market_scope_default_is_g10(engine) -> CheckResult:
 
 
 def test_market_scope_em(engine) -> CheckResult:
-    """market_scope='EM' returns exactly the 6 EM deliverable forwards
-    (USDMXN, USDZAR, USDTRY, USDPLN, USDHUF, USDPHP). NDFs (BRL/KRW/IDR)
-    are NOT included — they have a separate compute path."""
+    """market_scope='EM' returns exactly the 8 EM deliverable forwards.
+
+    NDFs (BRL/KRW/IDR/TWD) are NOT included — they have a separate compute path.
+    """
     out = get_fx_carry(engine, FXCarryInput(tenor="1M", market_scope="EM"))
     rows = out["rows"]
     pairs = {r["pair"] for r in rows}
-    if len(rows) != 6:
-        return _fail("market_scope_em", f"expected 6 rows, got {len(rows)}")
+    if len(rows) != 8:
+        return _fail("market_scope_em", f"expected 8 rows, got {len(rows)}")
     if pairs != _EXPECTED_EM_PAIRS:
         return _fail(
             "market_scope_em",
             f"expected {sorted(_EXPECTED_EM_PAIRS)}, got {sorted(pairs)}",
         )
     # Defensive: no NDF pairs sneak in.
-    if any(p in pairs for p in ("USDBRL", "USDKRW", "USDIDR")):
+    if any(p in pairs for p in ("USDBRL", "USDKRW", "USDIDR", "USDTWD")):
         return _fail(
             "market_scope_em",
-            f"NDF pair leaked into EM scope: {pairs & {'USDBRL', 'USDKRW', 'USDIDR'}}",
+            f"NDF pair leaked into EM scope: {pairs & {'USDBRL', 'USDKRW', 'USDIDR', 'USDTWD'}}",
         )
-    return _pass("market_scope_em", "EM scope returns exactly 6 deliverable EM pairs (no NDFs)")
+    return _pass("market_scope_em", "EM scope returns exactly 8 deliverable EM pairs (no NDFs)")
 
 
 def test_market_scope_all(engine) -> CheckResult:
-    """market_scope='ALL' = G10 + EM deliverable = 12 pairs at any tenor."""
+    """market_scope='ALL' = G10 + EM deliverable = 14 pairs at any tenor."""
     out = get_fx_carry(engine, FXCarryInput(tenor="1M", market_scope="ALL"))
     rows = out["rows"]
     pairs = {r["pair"] for r in rows}
     expected = _EXPECTED_G10_PAIRS | _EXPECTED_EM_PAIRS
-    if len(rows) != 12:
-        return _fail("market_scope_all", f"expected 12 rows, got {len(rows)}")
+    if len(rows) != 14:
+        return _fail("market_scope_all", f"expected 14 rows, got {len(rows)}")
     if pairs != expected:
         return _fail("market_scope_all", f"expected {sorted(expected)}, got {sorted(pairs)}")
-    return _pass("market_scope_all", "ALL scope returns 12 pairs (6 G10 + 6 EM deliverable)")
+    return _pass("market_scope_all", "ALL scope returns 14 pairs (6 G10 + 8 EM deliverable)")
 
 
 def test_market_scope_invalid_via_pydantic() -> CheckResult:
