@@ -559,8 +559,13 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=52,
         min_rows_per_sheet=500,
         combine_existing_filter=(
+            # Widened to all fx_spot (no fx_family restriction) so the
+            # sanity gate sees the full prior load count (~38 instruments
+            # incl. G10_CROSSES + EM_SPOT_REFERENCE). Per-playbook
+            # attribute restoration happens via the post-ingest
+            # refresh_instrument_metadata invocations (spot_fx + fx_crosses
+            # both, since the wipe affects all touched instruments).
             "im.instrument_type = 'fx_spot' "
-            "AND im.attributes->>'fx_family' IN ('G10_SPOT', 'EM_SPOT', 'EM_SPOT_REFERENCE') "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -580,8 +585,9 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=22,
         min_rows_per_sheet=500,
         combine_existing_filter=(
+            # Widened to all fx_spot — same rationale as
+            # spot_bidask_majors_em (need full prior count for sanity gate).
             "im.instrument_type = 'fx_spot' "
-            "AND im.attributes->>'fx_family' = 'G10_CROSSES' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -601,8 +607,9 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=60,
         min_rows_per_sheet=500,
         combine_existing_filter=(
+            # Widened to all fx_forward — sanity gate needs full 82
+            # (42 G10 + 40 EM) not just 42 G10.
             "im.instrument_type = 'fx_forward' "
-            "AND im.attributes->>'fx_family' = 'G10_FORWARDS' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -621,8 +628,8 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=80,
         min_rows_per_sheet=500,
         combine_existing_filter=(
+            # Widened to all fx_forward — same rationale as forwards_bidask_g10.
             "im.instrument_type = 'fx_forward' "
-            "AND im.attributes->>'fx_family' = 'EM_FORWARDS' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -661,8 +668,9 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=60,
         min_rows_per_sheet=500,
         combine_existing_filter=(
+            # Widened to all fx_vol — sanity gate needs full 200
+            # (G10 standard+ext + EM standard+ext + CNH/INR) not just G10.
             "im.instrument_type = 'fx_vol' "
-            "AND im.attributes->>'fx_family' = 'G10_FX_VOL' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -681,8 +689,8 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=170,
         min_rows_per_sheet=300,
         combine_existing_filter=(
+            # Widened to all fx_vol — same rationale as atm_vol_g10_bidask.
             "im.instrument_type = 'fx_vol' "
-            "AND im.attributes->>'fx_family' = 'EM_FX_VOL' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -701,8 +709,9 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=144,
         min_rows_per_sheet=300,
         combine_existing_filter=(
+            # Widened to all fx_vol_smile — sanity gate needs full 284
+            # (180 standard + 104 extended) not just 120 G10.
             "im.instrument_type = 'fx_vol_smile' "
-            "AND im.attributes->>'fx_family' = 'G10_FX_VOL_SMILE' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
@@ -724,8 +733,8 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         expected_sheet_count=168,
         min_rows_per_sheet=300,
         combine_existing_filter=(
+            # Widened to all fx_vol_smile — same rationale as smile_g10_bidask.
             "im.instrument_type = 'fx_vol_smile' "
-            "AND im.attributes->>'fx_family' = 'EM_FX_VOL_SMILE' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
