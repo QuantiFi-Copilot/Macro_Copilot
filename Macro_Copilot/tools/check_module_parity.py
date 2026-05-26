@@ -368,8 +368,26 @@ def main() -> int:
         # Strict mode (Stage N+): any whitelisted tool that hasn't
         # migrated is a hard failure.
         print_problems(
-            "Strict-mode failure — Stage 4 refactor whitelist is non-empty",
+            "Strict-mode failure — whitelisted tool missing from frontend",
             backend_only & STAGE_4_REFACTOR_WHITELIST,
+        )
+        problems += 1
+
+    # Stage 4g: strict mode binds whenever the whitelist is non-empty,
+    # not just when `backend_only` is non-empty.  Pre-Stage-4g the
+    # only fail path was "a whitelisted tool went missing on the
+    # frontend"; since Stage 3 scaffolded all 58 module folders,
+    # ``backend_only`` is always empty in practice and the strict
+    # gate never tripped — making it indistinguishable from the
+    # normal gate.  Stage N's goal is whitelist-empty (zero hand-
+    # authored, fully derived from modules); strict mode enforces
+    # that progress now.
+    if args.strict and STAGE_4_REFACTOR_WHITELIST:
+        print_problems(
+            "Strict-mode failure — Stage 4 refactor whitelist is non-empty "
+            "(Stage N goal: whitelist == empty.  Each Stage 5+ PR removes "
+            "its tool from the whitelist as the per-tool surfaces land.)",
+            STAGE_4_REFACTOR_WHITELIST,
         )
         problems += 1
 

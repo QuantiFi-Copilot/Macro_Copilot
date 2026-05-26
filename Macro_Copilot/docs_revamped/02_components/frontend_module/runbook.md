@@ -145,7 +145,11 @@ const PreviewWidget: NodeRenderer = (props) => (
 export default PreviewWidget;
 ```
 
-### `monitor_surface` → `surfaces/MonitorWidget.tsx`
+### `monitor_surface` → `surfaces/MonitorWidget.tsx` OR `surfaces/monitor/<WidgetName>.tsx`
+
+**Two shapes are supported.**
+
+**Single-widget legacy shape** (one Monitor variant per tool):
 
 ```tsx
 import type { FC } from 'react';
@@ -157,6 +161,19 @@ const MonitorWidget: FC<MonitorWidgetProps> = (props) => {
 
 export default MonitorWidget;
 ```
+
+…with `MODULE.surfaces.monitor = MonitorWidget`.
+
+**Stage 4d multi-variant shape** (one or more Monitor variants per tool — e.g. `calculate_curve_spread_tool` ships both `curve_spreads` and `spread_chart`):
+
+```tsx
+// src/modules/primitives/<tool>/surfaces/monitor/CurveSpreadsWidget.tsx
+import { useRatesDataContext } from '@/components/monitor/RatesDataProvider';
+// ... component body ...
+export function CurveSpreadsWidget() { /* ... */ }
+```
+
+…with `MODULE.monitorWidgets[i].component = CurveSpreadsWidget` and the catalog metadata (`id`, `label`, `description`, `category`, `defaultSize`, `allowedSizes`, `parameterized`, optional `paramFields`) declared inline on the same `monitorWidgets[i]` entry. The central `src/components/monitor/registry.ts` walker reads `ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])` to build the public `WIDGET_TYPES` map.
 
 ### `ask_surface` → `surfaces/AskCard.tsx`
 
@@ -280,7 +297,7 @@ PR description MUST include:
 | Failure | Cause | Fix |
 |---|---|---|
 | Round-trip test: "folder name does not match toolName" | Folder name and `MODULE.toolName` disagree | Rename the folder OR update `toolName`. The folder is the source of truth (FM1). |
-| Round-trip test: "missing surface file for claimed tier" | `tiers ∋ monitor_surface` but `surfaces/MonitorWidget.tsx` doesn't exist | Either create the file OR remove the tier from `tiers`. |
+| Round-trip test: "missing surface file for claimed tier" | `tiers ∋ monitor_surface` but neither `surfaces/MonitorWidget.tsx` (single-widget legacy shape) nor `MODULE.monitorWidgets[]` (Stage 4d multi-variant shape) is populated | Pick one shape: either create the legacy file + set `MODULE.surfaces.monitor`, OR add entries to `MODULE.monitorWidgets[]` with per-widget components under `surfaces/monitor/<Name>.tsx`.  Remove the tier if neither is appropriate. |
 | Round-trip test: "THESIS surfaces don't match tier set" | THESIS Question 1 lists surfaces that don't match `MODULE.tiers` | Update THESIS Question 1 to enumerate exactly the tiers in `MODULE.tiers`. |
 | Build test: "RUNNABLE_PRIMITIVE_TOOLS expected N, got N+1" | Registry-derivation test snapshot needs update | Update the snapshot count in the test (the snapshot is a tripwire; bumping it intentionally on new modules is correct). |
 | Parity check: "backend has X, frontend doesn't" | A backend primitive shipped without a matching frontend module | Add the module in THIS PR or the same coupled PR. The bound is that backend + frontend ship together. |

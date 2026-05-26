@@ -26,20 +26,22 @@ This separation is the canonical reason the migration is staged the way it is be
 
 | Stage | What lands | Kind | Status | PR count | Effort |
 |---|---|---|---|---|---|
-| **0** | The constitution (22-document docs_revamped/ omnibus) | Docs | **In flight (PR #211)** | 1 | Done |
-| **1** | Static-registry catch-up + test repair (close the 20-tool gap; fix 3 failing tests) | Hold-the-line patch | Not started | 1 | Small (~2h) |
-| **2** | Build the `src/modules/` infrastructure (loader, types, test helpers, ESLint boundary rule) | Infrastructure | Not started | 1 | Small-medium (~half-day) |
-| **3** | Scaffold module folders for ALL primitives (existing + 18 missing); skeleton `module.ts` per folder; existing-primitive specs point at legacy surface locations | Scaffolding | Not started | 1 | Medium (mechanical, ~1 day) |
-| **4a** | Refactor sovereign + OIS primitives' typed views INTO their module folders | Pure refactor | **Merged (PR #216)** | 1 | Medium (~1 day) |
-| **4b** | Refactor rich-model primitives' surfaces (PCA, regression, attribution, half-life, beta-adjusted spread) | Pure refactor | **Merged (PR #217)** | 1 | Medium (~1 day) |
-| **4c** | Refactor futures primitives — remove 12 + 4 hand-authored registry entries (module-derived covers) | Pure refactor | **Merged (PR #218)** | 1 | Small (~half-day) |
-| **4d** | Monitor widgets + persistedModelAdapters + ancillary derivations onto module spec | Pure refactor | **Merged (PR #219)** | 1 | Medium (~1 day) |
-| **4e** | Codex-audit follow-up: runner overwrite bug, manifest_typed_view tier, THESIS rewrites, invariant strengthening, parity whitelist shrink, displayName Title Case, doc refresh | Pure refactor | **In flight** | 1 | Medium (~half-day) |
+| **0** | The constitution (22-document docs_revamped/ omnibus) | Docs | **Merged (PRs #211, #212)** | 2 | Done |
+| **1** | Static-registry catch-up + test repair (close the 20-tool gap; fix 3 failing tests) | Hold-the-line patch | **Merged (PR #213)** | 1 | Done |
+| **2** | Build the `src/modules/` infrastructure (loader, types, test helpers, ESLint boundary rule) | Infrastructure | **Merged (PR #214)** | 1 | Done |
+| **3** | Scaffold module folders for ALL primitives (existing + 18 missing); skeleton `module.ts` per folder; existing-primitive specs point at legacy surface locations | Scaffolding | **Merged (PR #215)** | 1 | Done |
+| **4a** | Refactor sovereign + OIS primitives' typed views INTO their module folders | Pure refactor | **Merged (PR #216)** | 1 | Done |
+| **4b** | Refactor rich-model primitives' surfaces (PCA, regression, attribution, half-life, beta-adjusted spread) | Pure refactor | **Merged (PR #217)** | 1 | Done |
+| **4c** | Refactor futures primitives — remove 12 + 4 hand-authored registry entries (module-derived covers) | Pure refactor | **Merged (PR #218)** | 1 | Done |
+| **4d** | Monitor widgets + persistedModelAdapters + ancillary derivations onto module spec | Pure refactor | **Merged (PR #219)** | 1 | Done |
+| **4e** | Codex-audit follow-up: runner overwrite bug, manifest_typed_view tier, THESIS rewrites, invariant strengthening, parity whitelist shrink, displayName Title Case, doc refresh | Pure refactor | **Merged (PR #220)** | 1 | Done |
+| **4f** | Second Codex-audit pass: CategoryChips derivation, doc consistency (4 constitution docs + roadmap), 47 stale Stage-3 THESIS rewrites, 5 rich-model displayName Title-Case, tiers.md matrix sweep, Monitor widget-ID guidance | Pure refactor | **Merged (PR #221)** | 1 | Done |
+| **4g** | Third Codex-audit pass: tier vocab consistency across module README/runbook/ADR/architecture/file-layout, roadmap status refresh, strict-parity gate binds on non-empty whitelist, CategoryChips test coverage | Pure refactor | **In flight** | 1 | Small |
 | **5** | Pilot new primitive: `calculate_cpi_surprise_tool` (full surfaces — Monitor + Ask + generic Build) | New-feature | Not started | 1 | Medium |
 | **6+** | Remaining 17 new-feature primitives (one or two per PR) | New-feature | Not started | ~10 | Small-medium each |
 | **N** | Cleanup: move typed primitive views to `shared/render/typed/`; flip the strict "no hand-authored registries" CI gate | Cleanup | Not started | 1 | Small |
 
-**Net total: ~19 PRs over ~3 months.** Stages 0–4e merged or in flight; Stage 5+ ahead.
+**Net total: ~21 PRs over ~3 months.** Stages 0–4g merged or in flight; Stage 5+ ahead.
 
 ## Stage 0 — Documentation (this PR)
 
@@ -391,7 +393,7 @@ After Stage 16, every backend-shipped primitive has its real UI representation. 
 
 Before merging, the PR description confirms:
 
-1. ☐ Which stage this PR belongs to (3 / 4a / 4b / 4c / 5 / 6+ / N).
+1. ☐ Which stage this PR belongs to (3 / 4a / 4b / 4c / 4d / 4e / 4f / 4g / 5 / 6+ / N).
 2. ☐ The kind of work (refactor vs new-feature vs cleanup).
 3. ☐ For refactor PRs: NO new behaviour added. Diff is move-and-rename only.
 4. ☐ For new-feature PRs: THESIS populated for every new primitive; every claimed tier has a working surface.

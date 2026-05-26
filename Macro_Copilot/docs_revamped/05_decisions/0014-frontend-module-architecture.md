@@ -83,7 +83,9 @@ src/modules/primitives/<tool_name>/
 ├── surfaces/                ← Per-surface JSX. ONLY surfaces this module claims.
 │   ├── BuildSurface.tsx     ← IF tiers ∋ custom_build_surface
 │   ├── PreviewWidget.tsx    ← IF tiers ∋ custom_preview_widget
-│   ├── MonitorWidget.tsx    ← IF tiers ∋ monitor_surface
+│   ├── MonitorWidget.tsx    ← IF tiers ∋ monitor_surface AND single-widget legacy shape
+│   ├── monitor/             ← IF tiers ∋ monitor_surface AND Stage 4d multi-variant shape
+│   │   └── <WidgetName>.tsx ← one file per MODULE.monitorWidgets[i].component
 │   └── AskCard.tsx          ← IF tiers ∋ ask_surface
 ├── types.ts                 ← OPTIONAL. Bespoke wire shapes (most modules reuse shared types).
 └── __tests__/
@@ -165,9 +167,10 @@ No mutation. Deterministic order. Tree-shakeable. Tests can import individual sp
 | `generic_runnable` | Backend declares in `_PRIMITIVE_SPECS`. UI routes through `GenericPrimitiveBuilder` + `AutoRenderer`. |
 | `custom_build_surface` | Bespoke Build canvas. Module ships `surfaces/BuildSurface.tsx`. |
 | `custom_preview_widget` | Per-tool persisted-artifact card. Module ships `surfaces/PreviewWidget.tsx`. |
-| `monitor_surface` | Monitor bento widget. Module ships `surfaces/MonitorWidget.tsx`. |
+| `monitor_surface` | One or more Monitor bento widgets.  Module ships EITHER `surfaces/MonitorWidget.tsx` (single-widget legacy shape) referenced from `MODULE.surfaces.monitor`, OR `surfaces/monitor/<WidgetName>.tsx` per entry of `MODULE.monitorWidgets[]` (Stage 4d multi-variant shape — used when one backend tool ships multiple catalog widgets, e.g. `calculate_curve_spread_tool` → `curve_spreads` + `spread_chart`). |
 | `ask_surface` | Bespoke Ask result/message card. Module ships `surfaces/AskCard.tsx`. |
 | `workflow_incompatible` | Backend declares in `WORKFLOW_INCOMPATIBLE_TOOLS`. Cannot route through generic builder. Module surfaces honest treatment. Mutually exclusive with `generic_runnable`. |
+| `manifest_typed_view` | (Stage 4e) Backend declares in `_MANIFEST_ONLY_BUILD_TOOLS`: typed-detail endpoint ships but no `_PRIMITIVE_SPECS` entry, so the workflow bridge can't dispatch the tool.  Build's typed view (`MODULE.typedView`) is the live surface; the generic builder is intentionally NOT offered.  Mutually exclusive with the other runtime tiers. |
 | `paused` | Manifest-declared, no backend implementation yet. Module surfaces paused card with reason. Mutually exclusive with `generic_runnable`. |
 | `deferred` | Reserved name; not yet built. Module exists to document intent; no surfaces. |
 

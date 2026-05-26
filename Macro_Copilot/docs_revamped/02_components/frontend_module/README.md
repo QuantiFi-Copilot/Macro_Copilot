@@ -186,12 +186,13 @@ The shared-rendering-shell pattern handles UI similarity without violating cardi
 
 ### FM3 — Surface-tier capability declaration
 
-**Rule.** A module's `MODULE.tiers` is a non-empty subset of the closed family:
+**Rule.** A module's `MODULE.tiers` is a non-empty subset of the closed family (Stage 4e: 5 runtime-status + 4 capability = 9):
 
 ```
 SurfaceTier =
-  | 'generic_runnable'         // runtime-status — claim ONE of these four
+  | 'generic_runnable'         // runtime-status — claim ONE of these five
   | 'workflow_incompatible'    //
+  | 'manifest_typed_view'      //  Stage 4e — manifest-only with typed-detail endpoint
   | 'paused'                   //
   | 'deferred'                 //
   | 'custom_build_surface'     // capability — claim any combination
@@ -203,6 +204,7 @@ SurfaceTier =
 Exactly one runtime-status tier is claimed per module. Capability tiers are unconstrained except:
 - `paused` and `deferred` modules MAY claim capability tiers (a paused module may still have a Monitor widget showing "this is paused").
 - `workflow_incompatible` modules SHOULD claim `custom_build_surface` (so the user has a real Build affordance instead of just the paused card).
+- `manifest_typed_view` modules MUST claim `custom_build_surface` (the typed view IS the live surface).
 - `deferred` modules SHOULD NOT claim any capability tier (they have nothing to ship yet).
 
 For each claimed capability tier, the corresponding file in `surfaces/` MUST exist (see FM8 for the file-naming contract).
@@ -210,9 +212,9 @@ For each claimed capability tier, the corresponding file in `surfaces/` MUST exi
 **Why.** Predictability. A reader of `module.ts.tiers` knows immediately which surfaces this module provides. The closed family (per P8) means the tier vocabulary cannot drift; ADR-recorded extensions only. The mutually-exclusive runtime-status rule prevents nonsense ("paused but runnable").
 
 **Verify.**
-- `MODULE.tiers` is a subset of the eight values above.
-- Exactly one of `{generic_runnable, workflow_incompatible, paused, deferred}` is present.
-- For each capability tier in `tiers`, `surfaces/<Name>.tsx` exists and `MODULE.surfaces.<key>` references it.
+- `MODULE.tiers` is a subset of the nine values above.
+- Exactly one of `{generic_runnable, workflow_incompatible, manifest_typed_view, paused, deferred}` is present.
+- For each capability tier in `tiers`, the corresponding `surfaces/<Name>.tsx` exists and `MODULE.surfaces.<key>` references it (or, for `monitor_surface`, EITHER `surfaces/MonitorWidget.tsx` OR a non-empty `MODULE.monitorWidgets[]` array per the Stage 4d multi-variant shape).
 - For each `surfaces/<Name>.tsx` present, the corresponding capability tier is in `tiers`.
 - Lint / round-trip test asserts all four invariants (FM11).
 
@@ -370,7 +372,7 @@ Per-tool registrations against runtime registries (the node-renderer registry, e
 |---|---|---|
 | `custom_build_surface` | `surfaces/BuildSurface.tsx` | `React.FC<BuildSurfaceProps>` |
 | `custom_preview_widget` | `surfaces/PreviewWidget.tsx` | `NodeRenderer` (per `nodeRendererRegistry.ts`) |
-| `monitor_surface` | `surfaces/MonitorWidget.tsx` | `React.FC<MonitorWidgetProps>` |
+| `monitor_surface` | `surfaces/MonitorWidget.tsx` (single-widget legacy shape) OR one or more `surfaces/monitor/<WidgetName>.tsx` files referenced from `MODULE.monitorWidgets[]` (Stage 4d multi-variant shape) | `React.FC<MonitorWidgetProps>` per the legacy shape; `ComponentType<any>` per the Stage 4d shape (typed loosely while the catalog walker validates the inline `MonitorWidgetMeta` metadata) |
 | `ask_surface` | `surfaces/AskCard.tsx` | `React.FC<AskCardProps>` |
 
 For workflow modules:
@@ -387,12 +389,12 @@ The `MODULE.surfaces` field references each surface by key:
 MODULE.surfaces = {
   build:   BuildSurface,    // if custom_build_surface
   preview: PreviewWidget,   // if custom_preview_widget
-  monitor: MonitorWidget,   // if monitor_surface
+  monitor: MonitorWidget,   // if monitor_surface AND single-widget legacy shape
   ask:     AskCard,         // if ask_surface
 };
 ```
 
-Each key is present if and only if the corresponding tier is claimed.
+Each key is present if and only if the corresponding tier is claimed. For `monitor_surface`, the Stage 4d multi-variant shape uses `MODULE.monitorWidgets: ReadonlyArray<MonitorWidgetMeta>` instead — each entry declares its own `id`, `label`, `description`, `category`, `defaultSize`, `allowedSizes`, `parameterized`, optional `paramFields`, and a `component` reference. The central `src/components/monitor/registry.ts` walker derives `WIDGET_TYPES` from `ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])`, so a module that ships multiple variants from the same backend tool (e.g. `calculate_curve_spread_tool` → `curve_spreads` + `spread_chart`) gets multiple catalog entries from a single module declaration.
 
 **Why.** Predictability. Every page shell can ask `MODULE.surfaces.monitor` and either get a component or `undefined` — no per-module branching. The fixed prop shapes mean shells pass the same data to every module's surface; modules can't request bespoke props that break the shell.
 

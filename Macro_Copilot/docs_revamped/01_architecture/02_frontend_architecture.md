@@ -127,7 +127,9 @@ UI/macro-copilot-dashboard-polished/
 │   │   │       ├── surfaces/
 │   │   │       │   ├── BuildSurface.tsx
 │   │   │       │   ├── PreviewWidget.tsx
-│   │   │       │   ├── MonitorWidget.tsx
+│   │   │       │   ├── MonitorWidget.tsx        — single-widget legacy shape
+│   │   │       │   ├── monitor/                  — Stage 4d multi-variant shape
+│   │   │       │   │   └── <WidgetName>.tsx
 │   │   │       │   └── AskCard.tsx
 │   │   │       ├── types.ts           — optional
 │   │   │       └── __tests__/module.spec.ts
