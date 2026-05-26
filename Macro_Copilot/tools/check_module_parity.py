@@ -245,11 +245,14 @@ STAGE_4_REFACTOR_WHITELIST: set[str] = {
     # (Stage 3 scaffolded them) but no Stage 4 PR migrated their
     # surfaces.  Stage 5+ ships per-tool surfaces + removes each
     # entry as it lands.
-    "calculate_otr_ofr_spread_tool",
     # Stage 5 removal: calculate_cpi_surprise_tool migrated as the
     # first reference implementation of the module-first dispatch
     # architecture.  Module ships surfaces.ask + monitorWidgets[].
-    "calculate_nfp_surprise_tool",
+    # Stage 6 removals: calculate_otr_ofr_spread_tool (Monitor card,
+    # parameterised by curve_family + tenor) and
+    # calculate_nfp_surprise_tool (Monitor + Ask cards, mirrors CPI
+    # Surprise).  Both shipped through the Stage 5 module-first
+    # dispatch architecture with ZERO edits to central routing files.
     "get_real_yield_level_tool",
     "calculate_breakeven_inflation_simple_tool",
     "calculate_forward_breakeven_simple_tool",

@@ -1,49 +1,64 @@
 # THESIS — `calculate_nfp_surprise_tool`
 
-> Module shipped with runtime tier only (Stage 3 / Stage 4c-derived).  Capability surfaces are added by Stages 5+ as the desk earns them.
+> Stage 6 reference implementation — second new-feature primitive through the module-first dispatch architecture.
 
-**Version:** v2 (Stage 4f — post-runner-fix rewrite)
+**Version:** v3 (Stage 6)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `calculate_nfp_surprise_tool` (generic_runnable)
-**Tier set:** `[generic_runnable]`
+**Tier set:** `[generic_runnable, monitor_surface, ask_surface]`
 **Category:** `economic_release_surprises`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive in `_PRIMITIVE_SPECS`; the generic schema-driven builder (`GenericPrimitiveBuilder`) configures + runs + renders it via `POST /api/v1/tools/{name}/run`.  No bespoke per-tool Build / Preview / Monitor / Ask surface today — Stage 5+ adds capability tiers as the desk earns them.
+- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive in `_PRIMITIVE_SPECS`; the generic schema-driven builder (`GenericPrimitiveBuilder`) handles the Build entry path.  No `surfaces.build` claim — the generic builder + AutoRenderer is sufficient for the per-release surprise series.
+- **`monitor_surface`** — bespoke bento card at `surfaces/monitor/NfpSurpriseWidget.tsx`.  Registered via `MODULE.monitorWidgets[0]` with widget id `nfp_surprise_latest`.  Stage 4d's catalog walker discovers it through the module spec.
+- **`ask_surface`** — bespoke assistant card at `surfaces/AskCard.tsx`, referenced by `MODULE.surfaces.ask`.  Stage 5's `ConversationCanvas.resolveAssistantCard` reaches it when an assistant turn's terminal tool is `calculate_nfp_surprise_tool`.
 
 ## 2. What does the user read off each surface?
 
-**Build (generic builder).** The schema-driven `GenericPrimitiveBuilder` mounts when the user opens this tool from Library / Ask handoff.  Controls rail is generated from the backend `ToolCard.input_fields`; the output canvas renders via `AutoRenderer` (Series → SeriesWidget, Panel → PanelWidget, etc.).
+* **Build (generic builder).** Controls rail generated from the backend `ToolCard.input_fields` (window length, etc.; country + event_type are YAML-locked to US + nfp).  Output canvas renders the per-release surprise time series via `AutoRenderer`.
+* **Monitor (`nfp_surprise_latest`).** Latest US nonfarm-payrolls release — actual vs consensus in thousands, surprise direction, rolling-z signal.  Mounts inside `RatesDataProvider` context on the live Monitor page; falls back to honest "no context" tile in test environments.
+* **Ask card.** Bespoke chat-result card with an NFP-themed kicker.  Inherits the standard research-card chrome but provides per-tool framing for chat queries.
 
 ## 3. Why these surfaces and not others?
 
-Generic-only today because the tool's output shape is well-served by `AutoRenderer` and the input fields are well-served by the schema-driven form.  Bespoke surfaces (typed view, Monitor tile, Ask card) land in Stage 5+ if the desk's read pattern justifies them.
+NFP is the macro print most directly read into the front-end Treasury curve — the desk watches the release on NFP Friday at the second it lands.  That justifies the Monitor card.  "What's the latest NFP surprise" is a high-frequency Ask query → bespoke chat card.  No bespoke Build surface today because the generic builder + AutoRenderer renders the per-release series natively.
 
 ## 4. What would change the design?
 
-- Frequent desk read at a glance → claim `monitor_surface` and add `surfaces/monitor/<Name>.tsx` + a `MODULE.monitorWidgets` entry.
-- Output shape gains rich structure that AutoRenderer can't honour → claim `custom_build_surface` and ship `surfaces/BuildSurface.tsx`.
-- Persisted-artifact preview needs per-tool framing → claim `custom_preview_widget` and add `surfaces/PreviewWidget.tsx` + a `MODULE.modelAdapter` block.
-- Chat-result framing the generic `AssistantResearchCard` can't carry → claim `ask_surface` and ship `surfaces/AskCard.tsx`.
+- Per-release decomposition (sector breakdown, revision impact) → claim `custom_build_surface` and ship `surfaces/BuildSurface.tsx`.
+- Cross-release dashboard (CPI + NFP + ECI side-by-side) → either add a parameterised variant to `MODULE.monitorWidgets[]` or ship a sibling dashboard module.
 
 ## 5. Which backend doctrine does this module operationalise?
 
-- **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — claims `generic_runnable`; no capability tiers.
-- **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
-- **FM6** (unsupported-reason gating) — N/A (generic_runnable; no reason field).
-- **FM10** (THESIS discipline) — this file.
-- **FM11** (round-trip test) — `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`.
-- **FM12** (loader presence) — module imported in `src/modules/index.ts`.
+- **FM1** — folder name equals backend `tool_name` exactly.
+- **FM3** — claims runtime tier `generic_runnable` + capabilities `[monitor_surface, ask_surface]`.
+- **FM7** — `module.ts` exports a pure value.
+- **FM8** — `monitor_surface` populated via `MODULE.monitorWidgets[]`; `ask_surface` populated via `MODULE.surfaces.ask`.
+- **FM10** — this file.
+- **FM11** — `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`.
+- **FM12** — module imported in `src/modules/index.ts`.
 
 ---
 
 ## One-line summary
 
-Per-release US nonfarm-payrolls (NFP) surprise series (actual − consensus_median, in THOUSANDS of jobs) plus a rolling z-score over a window of N RELEASES (NOT calendar days).  Surprise is computed at the primitive layer per ADR 0008 §2\
+Per-release US nonfarm-payrolls (NFP) surprise series (actual − consensus_median, in thousands of jobs) plus a rolling z-score over a window of N releases.
+
+---
+
+## Stage 6 reference acceptance
+
+Adding the bespoke Monitor + Ask surfaces required ZERO edits to:
+- `src/components/build/BuildShell.tsx`
+- `src/components/build/primitive/VirtualPrimitiveCanvas.tsx`
+- `src/components/ask/ConversationCanvas.tsx`
+- `src/components/monitor/registry.ts`
+- `src/components/monitor/WidgetRenderer.tsx`
+- `src/components/build/widgets/index.ts`
+- `src/lib/toolNames.ts` (only DELETION of the Stage 1 hand-authored entry, never an edit-to-add-a-tool)
 
 ---
 
@@ -51,5 +66,6 @@ Per-release US nonfarm-payrolls (NFP) surprise series (actual − consensus_medi
 
 | Version | Date | Change |
 |---|---|---|
-| v2 | 2026-05-26 | Stage 4f — rewrote the body to drop stale "Stage 3 scaffold" framing and answer Q2–Q5 for real. |
-| v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |
+| v3 | 2026-05-26 | Stage 6 — added `monitor_surface` + `ask_surface` tiers and the bespoke surfaces. |
+| v2 | 2026-05-26 | Stage 4f — rewrote the body to drop stale "Stage 3 scaffold" framing. |
+| v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only. |
