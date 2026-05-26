@@ -51,7 +51,7 @@ const MODEL_METADATA: ModelMetadata = {
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_half_life_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'half_life',
+  displayName: 'Mean-Reversion Half-Life',
   category: 'model_fits',
   oneLineSummary:
     'Ornstein-Uhlenbeck / AR(1) fit on a supplied series.  Returns half-life of mean reversion (trading days), long-run mean, current deviation, OU β with confidence interval, and a delta-method CI on the half-life itself.',

@@ -309,7 +309,7 @@ The "refactor work" half of the migration is complete. From Stage 5 onward, all 
 ## Stage 5 — Pilot new-feature primitive: `calculate_cpi_surprise_tool` (your step "c", first one)
 
 **Why this exists.** First true new-feature PR. CPI surprise is the canonical event-signal primitive. Its module already exists as a Stage 3 skeleton; Stage 5 fills in the actual surfaces:
-- `surfaces/MonitorWidget.tsx` — bento card showing the latest CPI release inline with the rolling surprise / z-score band.
+- `surfaces/monitor/CpiSurpriseWidget.tsx` — bento card showing the latest CPI release inline with the rolling surprise / z-score band.
 - `surfaces/AskCard.tsx` — chat-result card with release-date / actual / consensus / surprise / z-score inline.
 - Generic Build surface (no custom build surface needed — generic builder + AutoRenderer is sufficient).
 
@@ -318,15 +318,16 @@ The THESIS that was a Stage 3 skeleton is now filled in fully — the five quest
 This pilot validates that the module architecture works end-to-end for genuinely new UI work, not just relocated UI.
 
 **Files added.**
-- `src/modules/primitives/calculate_cpi_surprise_tool/surfaces/MonitorWidget.tsx`
-- `src/modules/primitives/calculate_cpi_surprise_tool/surfaces/AskCard.tsx`
+- `src/modules/primitives/calculate_cpi_surprise_tool/surfaces/monitor/CpiSurpriseWidget.tsx` (per Stage 4d's multi-variant Monitor shape — even single-variant modules use `surfaces/monitor/<Name>.tsx` for consistency).
+- `src/modules/primitives/calculate_cpi_surprise_tool/surfaces/AskCard.tsx`.
 - `src/modules/primitives/calculate_cpi_surprise_tool/THESIS.md` — fully populated.
 
 **Files modified.**
-- `src/modules/primitives/calculate_cpi_surprise_tool/module.ts` — add `'monitor_surface'` + `'ask_surface'` to `tiers`; populate `surfaces.monitor` and `surfaces.ask`; populate `monitorMeta` (defaultSize, allowedSizes, etc.).
+- `src/modules/primitives/calculate_cpi_surprise_tool/module.ts` — add `'monitor_surface'` + `'ask_surface'` to `tiers`; populate `surfaces.ask`; populate `monitorWidgets: [{ id, label, description, category, defaultSize, allowedSizes, parameterized, component }]` per the Stage 4d shape (NOT the pre-Stage-4d `surfaces.monitor` + `monitorMeta` shape — that's gone).
 - `src/lib/toolNames.ts` — REMOVE `calculate_cpi_surprise_tool` from the Stage 1 hand-authored entries; the module is now driving its registration entirely.
-- `src/components/monitor/registry.ts` — start consuming `MODULE.monitorMeta` from modules-that-claim-`monitor_surface`.
 - `src/components/ask/messages/ConversationCanvas.tsx` — start consuming `MODULE.surfaces.ask` from modules-that-claim-`ask_surface`; CPI surprise routes to its bespoke card, everything else falls through to `AssistantResearchCard`.
+
+Note: `src/components/monitor/registry.ts` and `WidgetRenderer.tsx` already consume `MODULE.monitorWidgets[]` via the Stage 4d walker.  No change required to the Monitor page-shell — adding the new module's `monitorWidgets` entry is sufficient for the widget to appear in the catalog modal.
 
 **Acceptance.**
 - Opening CPI Surprise from Library → generic builder works (it claims `generic_runnable`).

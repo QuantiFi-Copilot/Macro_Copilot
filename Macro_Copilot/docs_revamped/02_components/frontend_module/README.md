@@ -29,7 +29,9 @@ src/modules/primitives/<tool_name>/
 ├── surfaces/                       # Per-surface JSX directory
 │   ├── BuildSurface.tsx            # IF tiers ∋ custom_build_surface
 │   ├── PreviewWidget.tsx           # IF tiers ∋ custom_preview_widget
-│   ├── MonitorWidget.tsx           # IF tiers ∋ monitor_surface
+│   ├── MonitorWidget.tsx           # IF tiers ∋ monitor_surface AND single-widget legacy shape
+│   ├── monitor/                    # IF tiers ∋ monitor_surface AND multi-variant Stage 4d shape
+│   │   └── <WidgetName>.tsx        # one file per MODULE.monitorWidgets[i].component
 │   └── AskCard.tsx                 # IF tiers ∋ ask_surface
 ├── types.ts                        # OPTIONAL — bespoke wire shapes (most modules reuse shared types)
 └── __tests__/

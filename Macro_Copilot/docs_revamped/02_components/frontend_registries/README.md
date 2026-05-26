@@ -30,7 +30,7 @@ The architectural decision is recorded in [`../../05_decisions/0014-frontend-mod
 | `PAUSED_WORKFLOWS` | `src/lib/toolNames.ts` | `ReadonlySet<string>` | workflow modules where `tiers ∋ paused` |
 | `MODELS` | `src/lib/modelRegistry.ts` | `ModelMetadata[]` | modules where `richModel === true`; the entry shape is the module's `displayName`, `category`, `oneLineSummary`, `defaultParams`, `paramHints`, `interpretationCards` |
 | `TOOL_TO_VIEW` | `src/components/build/primitive/contextDecoder.ts` | `Record<string, PrimitiveViewKind>` | modules where `typedView !== null`; entry is `{ [m.toolName]: m.typedView }` |
-| `WIDGET_TYPES` | `src/components/monitor/registry.ts` | `Record<string, WidgetTypeMeta>` | modules where `tiers ∋ monitor_surface`; entry shape from `module.monitorMeta` |
+| `WIDGET_TYPES` | `src/components/monitor/registry.ts` | `Record<string, WidgetTypeMeta>` | Stage 4d hybrid: `yield_snapshot` (pre-aggregated dashboard tile) hand-authored, rest derive from `ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])` with `sourceTool = m.toolName`.  A module that ships one or more Monitor widgets declares each as a `MonitorWidgetMeta` on `MODULE.monitorWidgets[]` (the Stage 4d multi-variant shape) or — for legacy single-widget modules — populates `MODULE.surfaces.monitor`. |
 | Node-renderer registry (per-tool entries) | `src/components/build/lib/nodeRendererRegistry.ts` (runtime) | mutable per-tool dict | modules where `tiers ∋ custom_preview_widget`; registered at loader-init from `module.surfaces.preview` |
 | Dashboard registry (per-workflow) | `src/components/build/results/dashboards/registry.ts` | runtime dict | workflow modules where `surfaces.results` is defined |
 

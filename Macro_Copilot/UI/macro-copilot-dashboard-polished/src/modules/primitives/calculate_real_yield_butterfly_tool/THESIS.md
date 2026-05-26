@@ -1,80 +1,55 @@
 # THESIS — `calculate_real_yield_butterfly_tool`
 
-> Stage 3 minimum-viable module — runtime tier only.  Surface code lives in its
-> legacy page-folder location until the Stage 4 refactor moves it into this folder.
+> Module shipped with runtime tier only (Stage 3 / Stage 4c-derived).  Capability surfaces are added by Stages 5+ as the desk earns them.
 
-**Version:** v1 (Stage 3 scaffold)
+**Version:** v2 (Stage 4f — post-runner-fix rewrite)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `calculate_real_yield_butterfly_tool` (generic_runnable)
 **Tier set:** `[generic_runnable]`
-**Backend sub-agent:** `inflation_indexed_bonds` · **Category:** `curve_shape`
+**Category:** `curve_shape`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier only (Stage 3 minimal scaffold).
-  Backend ships this primitive in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through the workflow bridge.
-
-(Capability tiers are not claimed yet.  Stage 5+ PRs add capability
-tiers as surfaces are built — see Question 4 below for the planned
-next steps and Question 5 for the doctrine this module operationalises.)
+- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive in `_PRIMITIVE_SPECS`; the generic schema-driven builder (`GenericPrimitiveBuilder`) configures + runs + renders it via `POST /api/v1/tools/{name}/run`.  No bespoke per-tool Build / Preview / Monitor / Ask surface today — Stage 5+ adds capability tiers as the desk earns them.
 
 ## 2. What does the user read off each surface?
 
-Stage 3 surfaces today: (none — Stage 3 ships the minimum-viable module).
-
-User-facing read at the runtime tier level: opening this tool from Library →
-`Open in Build` decodes per `contextDecoder.ts` and lands on the matching shared
-surface (generic builder / typed view / unsupported card) per the current routing
-priority.  The decoder lookup is unchanged by Stage 3 — the module spec contributes
-to the central registries via the hybrid derivation but the resulting set
-membership is identical to the Stage 1 hand-authored entries.
+**Build (generic builder).** The schema-driven `GenericPrimitiveBuilder` mounts when the user opens this tool from Library / Ask handoff.  Controls rail is generated from the backend `ToolCard.input_fields`; the output canvas renders via `AutoRenderer` (Series → SeriesWidget, Panel → PanelWidget, etc.).
 
 ## 3. Why these surfaces and not others?
 
-Stage 3 is a pure scaffolding stage.  Per the migration roadmap
-([06_roadmap/frontend_migration.md](../../../../../../docs_revamped/06_roadmap/frontend_migration.md)),
-every primitive that will eventually have a module gets its folder
-materialised in this stage so Stage 4 refactor PRs have a destination
-to move legacy surface code INTO.  Claiming capability tiers + populating
-`surfaces.*` happens in Stage 4 alongside the actual code move (no
-half-states between stages).
+Generic-only today because the tool's output shape is well-served by `AutoRenderer` and the input fields are well-served by the schema-driven form.  Bespoke surfaces (typed view, Monitor tile, Ask card) land in Stage 5+ if the desk's read pattern justifies them.
 
 ## 4. What would change the design?
 
-Planned Stage 4+ capabilities: (none planned beyond the current runtime tier).
-
-Concrete triggers:
-- Backend output-shape changes → re-evaluate the runtime tier.
-- New typed-detail endpoint shipped → claim `custom_build_surface` and
-  point `MODULE.typedView` at the new kind.
-- Per-tool persisted-artifact preview needed → claim `custom_preview_widget`
-  and add `surfaces/PreviewWidget.tsx`.
-- Tool surfaces frequently in daily desk read → claim `monitor_surface`
-  and add `surfaces/MonitorWidget.tsx`.
+- Frequent desk read at a glance → claim `monitor_surface` and add `surfaces/monitor/<Name>.tsx` + a `MODULE.monitorWidgets` entry.
+- Output shape gains rich structure that AutoRenderer can't honour → claim `custom_build_surface` and ship `surfaces/BuildSurface.tsx`.
+- Persisted-artifact preview needs per-tool framing → claim `custom_preview_widget` and add `surfaces/PreviewWidget.tsx` + a `MODULE.modelAdapter` block.
+- Chat-result framing the generic `AssistantResearchCard` can't carry → claim `ask_surface` and ship `surfaces/AskCard.tsx`.
 
 ## 5. Which backend doctrine does this module operationalise?
 
 - **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — exactly one runtime-status
-  tier (`generic_runnable`); no capability tiers in Stage 3.
+- **FM3** (surface-tier capability declaration) — claims `generic_runnable`; no capability tiers.
 - **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
+- **FM6** (unsupported-reason gating) — N/A (generic_runnable; no reason field).
 - **FM10** (THESIS discipline) — this file.
-- **FM11** (round-trip test) — `__tests__/module.spec.ts` calls
-  `assertStandardModuleInvariants`.
+- **FM11** (round-trip test) — `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`.
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
-- Stage 3 of the migration roadmap (`docs_revamped/06_roadmap/frontend_migration.md`).
 
 ---
 
-## Stage 3 implementation notes
+## One-line summary
 
-Stage 3 ships this module with only the `generic_runnable` runtime tier.  Capability tiers + surface refs land in the relevant Stage 4 PR (4a sovereign + OIS, 4b rich-model, 4c futures); existing UI continues to render via legacy page-folder code until then.
+Three-point real-yield butterfly with fixed 50-50 weights (e.g. US TIPS 2s5s10s butterfly) and rolling 252-day z-score. Real-yield analogue of calculate_butterfly.
+
 ---
 
 ## Version log
 
 | Version | Date | Change |
 |---|---|---|
+| v2 | 2026-05-26 | Stage 4f — rewrote the body to drop stale "Stage 3 scaffold" framing and answer Q2–Q5 for real. |
 | v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |

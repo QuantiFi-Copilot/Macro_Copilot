@@ -73,7 +73,7 @@ const MODEL_METADATA: ModelMetadata = {
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_beta_adjusted_spread_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'beta_adjusted_spread',
+  displayName: 'Beta-Adjusted Spread',
   category: 'rolling_analytics',
   oneLineSummary:
     'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
