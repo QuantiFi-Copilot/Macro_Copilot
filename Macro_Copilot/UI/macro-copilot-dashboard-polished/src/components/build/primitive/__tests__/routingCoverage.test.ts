@@ -43,6 +43,7 @@ import {
   WORKFLOW_INCOMPATIBLE_TOOLS,
   unsupportedKnownReasonFor,
 } from '@/lib/toolNames';
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
 // ----------------------------------------------------------------------------
 // Tiny test shim — works under vitest OR as a plain Node script.
@@ -748,6 +749,62 @@ check('KNOWN_WORKFLOWS contains exactly event_study + regime_conditioned_relatio
 
 check('PAUSED_WORKFLOWS contains backtest', () => {
   assertTruthy(PAUSED_WORKFLOWS.has('backtest'), 'backtest paused');
+});
+
+// ----------------------------------------------------------------------------
+// Decoder coverage gate — every module in ALL_PRIMITIVE_MODULES decodes
+// to a non-null DecodedPrimitive.
+// ----------------------------------------------------------------------------
+//
+// The surface contract's containment principle (see
+// docs_revamped/02_components/surface_contract.md §1) gates on every
+// module being routable end-to-end through the Ask→Build handoff.  The
+// existing Stage 1 net-new check (above) iterates a HAND-AUTHORED list
+// of 18 tool names — that catches regressions on those 18 specifically
+// but says nothing about the other 40 modules in the registry.  As new
+// modules land via tools/scaffold_module.py, the hand-authored list
+// goes stale and a future module could silently fall through to the
+// decode-error card without any check tripping.
+//
+// This assertion iterates ALL_PRIMITIVE_MODULES (the actual source of
+// truth) and asserts every module's toolName decodes to SOMETHING.  It
+// makes no claim about WHICH decoded kind — the per-tool kind tests
+// above stay authoritative for the discriminator logic.  This is the
+// minimum-bar coverage gate: "no module silently drops into the orange
+// decode-error card", which is the user-visible failure mode the
+// containment principle exists to prevent.
+//
+// Synthetic smoke-test fixtures (tool names starting with ``__``) are
+// excluded — they live in ALL_PRIMITIVE_MODULES for the Stage 5
+// module-first dispatch acceptance test but MUST NOT be expected to
+// route through the user-facing decoder.
+check('every module in ALL_PRIMITIVE_MODULES decodes to a non-null result', () => {
+  const realModules = ALL_PRIMITIVE_MODULES.filter(
+    (m) => !m.toolName.startsWith('__'),
+  );
+  assertTruthy(
+    realModules.length >= 50,
+    `expected >=50 real modules in registry; got ${realModules.length}`,
+  );
+  const failures: string[] = [];
+  for (const m of realModules) {
+    const out = decodePrimitiveContext(encodeContext([{ tool: m.toolName }]));
+    if (out === null) {
+      failures.push(m.toolName);
+      continue;
+    }
+    if (out.toolName !== m.toolName) {
+      failures.push(
+        `${m.toolName}: decoded.toolName=${out.toolName} (canonical mismatch)`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `decoder coverage gap — ${failures.length} module(s) failed to decode:\n  ` +
+        failures.join('\n  '),
+    );
+  }
 });
 
 // ----------------------------------------------------------------------------
