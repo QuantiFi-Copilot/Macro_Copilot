@@ -200,6 +200,22 @@ def _build_em_ext_ndf_ticker(g: Dict[str, str]) -> str:
 # f"{pair}{tenor} Curncy" / f"{pair}{delta}{tenor} Curncy" output shape.
 
 
+# ============================================================================
+# Tradability bid/ask (2026-05-26) — 1 new ticker builder
+# ============================================================================
+# For spot bid/ask substrates the regex captures the full pair name
+# (e.g. EURUSD, USDMXN, EURGBP) so the builder just appends " Curncy".
+# All other bid/ask substrates reuse the existing tenor/delta-aware
+# builders (em_forwards, em_vol, vol_smile, ndf), differentiated only
+# by adding the `field` regex group and the playbook target.
+
+def _build_spot_ticker_from_pair(g: Dict[str, str]) -> str:
+    # sheet "EURUSD_BID" → "EURUSD Curncy"
+    # sheet "USDMXN_ASK" → "USDMXN Curncy"
+    # sheet "EURGBP_BID" → "EURGBP Curncy"  (used by spot_bidask_crosses)
+    return f"{g['pair']} Curncy"
+
+
 SUBSTRATES: Dict[str, SubstrateConfig] = {
     "g10_forwards_long": SubstrateConfig(
         name="g10_forwards_long",
@@ -487,6 +503,229 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
         min_rows_per_sheet=500,
         combine_existing_filter=(
             "im.instrument_type = 'fx_vol_smile' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    # ====================================================================
+    # Tradability bid/ask (2026-05-26) — 9 new substrates
+    # --------------------------------------------------------------------
+    # FX bid/ask extraction for backtest/execution realism. Phase 1
+    # discovery validated PX_BID and PX_ASK serve clean (>=99% coverage)
+    # across spot, forwards, NDF, ATM vol, smile. Phase 2 extraction
+    # produced 8 XLSX files (871 sheets total). Two of those XLSX files
+    # span multiple playbooks and need to be partitioned via regex into
+    # 2 substrates each:
+    #
+    #   spot_bidask_extraction.xlsx (74 sheets) =
+    #     spot_bidask_majors_em (52 → spot_fx playbook)
+    #     spot_bidask_crosses   (22 → fx_crosses playbook)
+    #
+    #   forwards_bidask_extraction.xlsx (140 sheets) =
+    #     forwards_bidask_g10 (60 → fx_forwards playbook)
+    #     forwards_bidask_em  (80 → fx_em_forwards playbook)
+    #
+    # Other 6 XLSX files map 1:1 to a substrate.
+    #
+    # Each bid/ask substrate uses combine_existing_filter to pull the
+    # prior PX_LAST series of the same fx_family into the parquet. This
+    # ensures the ingester's sanity gate (which counts instrument×field
+    # tuples) passes — incoming = bid+ask new tuples (and we re-upsert
+    # PX_LAST as no-op for safety).
+    #
+    # min_rows_per_sheet is more permissive than for PX_LAST substrates
+    # (300-500 vs 4000-6000) because bid/ask history is structurally
+    # shorter than PX_LAST on Bloomberg (some pairs only get bid/ask
+    # quotes from ~2005-2010 onwards). Discovery showed >=99% coverage
+    # at the depth available; the threshold is a safety net for tickers
+    # we didn't sample.
+    # ====================================================================
+
+    "spot_bidask_majors_em": SubstrateConfig(
+        name="spot_bidask_majors_em",
+        playbook_name="spot_fx",  # extends spot_fx.yml (bid/ask layer)
+        dataset_name="spot_fx",
+        instrument_type="fx_spot",
+        # Matches G10 majors (9) + EM core/top-up (11) + EM warehouse-seed (6)
+        # = 26 instruments × 2 fields (BID, ASK) = 52 matched sheets.
+        # Excludes the 22 G10 crosses sheets (those go to spot_bidask_crosses).
+        # Excludes USDCNY (non-tradable EM_SPOT_REFERENCE — no bid/ask per protocol).
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF|NZDUSD|USDNOK|USDSEK|"
+            r"USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW|IDR|PHP|CNH|INR|SGD|TWD|THB|CLP|COP|PEN))"
+            r"_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=52,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_spot' "
+            "AND im.attributes->>'fx_family' IN ('G10_SPOT', 'EM_SPOT', 'EM_SPOT_REFERENCE') "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "spot_bidask_crosses": SubstrateConfig(
+        name="spot_bidask_crosses",
+        playbook_name="fx_crosses",  # extends fx_crosses.yml (bid/ask layer)
+        dataset_name="fx_crosses",
+        instrument_type="fx_spot",
+        # 11 G10 crosses × 2 fields = 22 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURGBP|EURJPY|EURCHF|EURAUD|EURCAD|EURNZD|"
+            r"GBPJPY|GBPCHF|AUDJPY|AUDNZD|CADJPY)"
+            r"_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=22,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_spot' "
+            "AND im.attributes->>'fx_family' = 'G10_CROSSES' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "forwards_bidask_g10": SubstrateConfig(
+        name="forwards_bidask_g10",
+        playbook_name="fx_forwards",  # extends fx_forwards.yml (bid/ask layer)
+        dataset_name="fx_forwards",
+        instrument_type="fx_forward",
+        # 6 G10 pairs × 5 standard tenors × 2 fields = 60 sheets.
+        # Extended tenors (2Y/5Y) bid/ask explicitly out-of-scope.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_forwards_ticker,  # f"{pair}{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_forward' "
+            "AND im.attributes->>'fx_family' = 'G10_FORWARDS' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "forwards_bidask_em": SubstrateConfig(
+        name="forwards_bidask_em",
+        playbook_name="fx_em_forwards",  # extends fx_em_forwards.yml (bid/ask layer)
+        dataset_name="fx_em_forwards",
+        instrument_type="fx_forward",
+        # 8 EM deliverable pairs × 5 tenors × 2 fields = 80 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|ZAR|TRY|PLN|HUF|PHP|SGD|THB))"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_forwards_ticker,
+        expected_sheet_count=80,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_forward' "
+            "AND im.attributes->>'fx_family' = 'EM_FORWARDS' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "ndf_bidask": SubstrateConfig(
+        name="ndf_bidask",
+        playbook_name="fx_ndf",  # extends fx_ndf.yml (bid/ask layer)
+        dataset_name="fx_ndf",
+        instrument_type="fx_ndf",
+        # 6 NDF families × 5 tenors × 2 fields = 60 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<ndf_code>CCN|IRN|BCN|KWN|IHN|NTN)"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_ndf_ticker,  # f"{ndf_code}+{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_ndf' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "atm_vol_g10_bidask": SubstrateConfig(
+        name="atm_vol_g10_bidask",
+        playbook_name="fx_vol",  # extends fx_vol.yml (bid/ask layer)
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 6 G10 pairs × 5 standard tenors × 2 fields = 60 sheets.
+        # Extended tenors (ON/2W/2M/9M/2Y) bid/ask explicitly skipped.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,  # f"{pair}V{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol' "
+            "AND im.attributes->>'fx_family' = 'G10_FX_VOL' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "atm_vol_em_bidask": SubstrateConfig(
+        name="atm_vol_em_bidask",
+        playbook_name="fx_vol",  # extends fx_vol.yml (bid/ask layer)
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 17 EM pairs × 5 standard tenors × 2 fields = 170 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW|IDR|PHP|CNH|INR|SGD|TWD|THB|CLP|COP|PEN))"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,
+        expected_sheet_count=170,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol' "
+            "AND im.attributes->>'fx_family' = 'EM_FX_VOL' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "smile_g10_bidask": SubstrateConfig(
+        name="smile_g10_bidask",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml (bid/ask layer)
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # 6 G10 pairs × 4 deltas × 3 std tenors × 2 fields = 144 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=144,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol_smile' "
+            "AND im.attributes->>'fx_family' = 'G10_FX_VOL_SMILE' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "smile_em_bidask": SubstrateConfig(
+        name="smile_em_bidask",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml (bid/ask layer)
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # 7 EM pairs (MXN/BRL/ZAR/TRY/PLN/HUF/KRW) × 4 deltas × 3 std tenors
+        # × 2 fields = 168 sheets. USDIDR/USDPHP/USDCNH/USDINR explicitly
+        # EXCLUDED from smile bid/ask (already skinny on PX_LAST per
+        # discovery — no incremental tradability value).
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW))"
+            r"_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=168,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_vol_smile' "
+            "AND im.attributes->>'fx_family' = 'EM_FX_VOL_SMILE' "
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
