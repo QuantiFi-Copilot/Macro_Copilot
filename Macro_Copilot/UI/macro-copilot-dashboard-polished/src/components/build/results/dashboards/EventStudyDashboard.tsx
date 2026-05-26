@@ -265,9 +265,10 @@ function OutputSection({
 }
 
 // ----------------------------------------------------------------------------
-// "All artifacts" fall-through — re-exported as a named helper so the
-// Results tab can offer a generic-grid toggle below the specialised
-// surface.
+// "Intermediate stages" fall-through — re-exported as a named helper
+// so the Results tab can offer a generic-grid toggle below the
+// specialised surface.  Vocabulary aligned with the surface contract
+// §6 operator visibility policy.
 // ----------------------------------------------------------------------------
 
 export function EventStudyAllArtifactsFallback({
@@ -279,8 +280,8 @@ export function EventStudyAllArtifactsFallback({
     <GenericResultsDashboard
       detail={detail}
       showTerminalSection={false}
-      intermediateLabel="All artifacts"
-      intermediateDescription="Every persisted artifact this workspace produced, including ones not surfaced in the sections above."
+      intermediateLabel="Intermediate stages"
+      intermediateDescription="Every per-node artifact this workspace produced — primitives and operator outputs alike (align_series, threshold_events, event_windows, conditional_aggregate, …) — rendered through the same widget registry as the terminal output above."
     />
   );
 }

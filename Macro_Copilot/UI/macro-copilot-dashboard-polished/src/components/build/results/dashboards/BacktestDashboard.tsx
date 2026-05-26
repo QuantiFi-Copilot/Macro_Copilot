@@ -323,8 +323,8 @@ export function BacktestAllArtifactsFallback({
     <GenericResultsDashboard
       detail={detail}
       showTerminalSection={false}
-      intermediateLabel="All artifacts"
-      intermediateDescription="Every persisted artifact this workspace produced, including ones not surfaced in the sections above."
+      intermediateLabel="Intermediate stages"
+      intermediateDescription="Every per-node artifact this workspace produced — primitives and operator outputs alike (threshold_events, construct_trades, evaluate_trades, summarize_trades, …) — rendered through the same widget registry as the terminal output above."
     />
   );
 }

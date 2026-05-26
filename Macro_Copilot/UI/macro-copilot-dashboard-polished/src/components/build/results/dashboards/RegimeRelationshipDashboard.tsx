@@ -260,8 +260,8 @@ export function RegimeAllArtifactsFallback({
     <GenericResultsDashboard
       detail={detail}
       showTerminalSection={false}
-      intermediateLabel="All artifacts"
-      intermediateDescription="Every persisted artifact this workspace produced, including ones not surfaced in the sections above."
+      intermediateLabel="Intermediate stages"
+      intermediateDescription="Every per-node artifact this workspace produced — primitives and operator outputs alike (align_series, threshold_events, rolling_regression, summarize_series, …) — rendered through the same widget registry as the terminal output above."
     />
   );
 }

@@ -124,11 +124,16 @@ check('ResultsView: falls back to GenericResultsDashboard', () => {
   assertContains(src, 'GenericResultsDashboard', 'generic fallback');
 });
 
-check('ResultsView: surfaces "Show all artifacts" toggle', () => {
+check('ResultsView: surfaces "Show intermediate stages" toggle', () => {
   const src = _src['src/components/build/results/ResultsView.tsx'];
   // The toggle keeps the generic grid accessible beneath every
-  // specialised dashboard, so no persisted artifact is hidden.
-  assertContains(src, 'Show all artifacts', 'toggle copy');
+  // specialised dashboard, so no persisted artifact is hidden.  The
+  // copy reads "intermediate stages" (vocabulary aligned with the
+  // surface contract §6 operator visibility policy — see
+  // docs_revamped/02_components/surface_contract.md), and the toggle
+  // counts non-terminal artifacts up-front so the surface area is
+  // visible before the panel is opened.
+  assertContains(src, 'Show intermediate stages', 'toggle copy');
   assertContains(src, 'showAll', 'state variable');
 });
 

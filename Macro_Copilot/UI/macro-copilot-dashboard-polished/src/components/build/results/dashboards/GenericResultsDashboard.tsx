@@ -3,8 +3,9 @@
 // ----------------------------------------------------------------------------
 // PR7 — extracted from the pre-PR7 ``ResultsView`` so it can be:
 //   (a) the default Results-tab rendering for unsupported workflows,
-//   (b) the "All artifacts" toggle target underneath every
-//       specialised dashboard.
+//   (b) the "Intermediate stages" toggle target underneath every
+//       specialised dashboard (vocabulary aligned with the surface
+//       contract §6 operator visibility policy).
 //
 // Layout is identical to the pre-PR7 grid:
 //   - Terminal node lifted into its own ``wide`` row
