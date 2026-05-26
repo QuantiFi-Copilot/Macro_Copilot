@@ -1542,7 +1542,11 @@ def main() -> None:
         logger.log(f"  Playbook: {s['playbook']}")
         logger.log(f"    universe size            : {s['rolling_universe_size']}")
         logger.log(f"    mnemonics 100% pass      : {s['full_pass_fields']}")
-        logger.log(f"    mnemonics partial pass   : {[(f, f'{s['field_passes'][f]}/{s['field_attempts'][f]}') for f in s['partial_pass_fields']]}")
+        partial_pass_details = [
+            (f, f"{s['field_passes'][f]}/{s['field_attempts'][f]}")
+            for f in s["partial_pass_fields"]
+        ]
+        logger.log(f"    mnemonics partial pass   : {partial_pass_details}")
         logger.log(f"    mnemonics 0% pass        : {s['zero_pass_fields']}")
         logger.log()
 

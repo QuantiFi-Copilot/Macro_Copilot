@@ -406,6 +406,12 @@ def render_thesis(e: ModuleEntry) -> str:
         ),
     }[e.runtime_tier]
 
+    notes_block = (
+        "---\n\n## Stage 3 implementation notes\n\n" + e.notes + "\n"
+        if e.notes
+        else ""
+    )
+
     return f"""# THESIS — `{e.tool_name}`
 
 > Stage 3 minimum-viable module — runtime tier only.  Surface code lives in its
@@ -475,7 +481,7 @@ Concrete triggers:
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
 - Stage 3 of the migration roadmap (`docs_revamped/06_roadmap/frontend_migration.md`).
 
-{("---\n\n## Stage 3 implementation notes\n\n" + e.notes + "\n") if e.notes else ""}---
+{notes_block}---
 
 ## Version log
 

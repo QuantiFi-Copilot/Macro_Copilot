@@ -173,11 +173,11 @@ const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
   // them honestly from Library / Ask handoff.
   // ----------------------------------------------------------------
   // Phase-3 cash-bond + event primitives
-  // Stage 5 removal: ``calculate_cpi_surprise_tool`` migrated — the
-  // module ships ``surfaces.ask`` + ``monitorWidgets[]`` and the
-  // module-derived KNOWN/RUNNABLE sets cover the registration.
-  'calculate_otr_ofr_spread_tool',
-  'calculate_nfp_surprise_tool',
+  // Stage 5 removal: ``calculate_cpi_surprise_tool``.
+  // Stage 6 removals: ``calculate_otr_ofr_spread_tool`` (Monitor card)
+  // and ``calculate_nfp_surprise_tool`` (Monitor + Ask cards).  Both
+  // migrated through the module-first dispatch architecture; their
+  // module-derived contributions cover the central-registry entries.
   // PR #177 inflation_indexed_bonds primitives
   'get_real_yield_level_tool',
   'calculate_breakeven_inflation_simple_tool',
@@ -275,11 +275,11 @@ const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
   // ``isRunnablePrimitive`` branch.
   // ----------------------------------------------------------------
   // Phase-3 cash-bond + event primitives
-  // Stage 5 removal: ``calculate_cpi_surprise_tool`` migrated — the
-  // module ships ``surfaces.ask`` + ``monitorWidgets[]`` and the
-  // module-derived KNOWN/RUNNABLE sets cover the registration.
-  'calculate_otr_ofr_spread_tool',
-  'calculate_nfp_surprise_tool',
+  // Stage 5 removal: ``calculate_cpi_surprise_tool``.
+  // Stage 6 removals: ``calculate_otr_ofr_spread_tool`` (Monitor card)
+  // and ``calculate_nfp_surprise_tool`` (Monitor + Ask cards).  Both
+  // migrated through the module-first dispatch architecture; their
+  // module-derived contributions cover the central-registry entries.
   // PR #177 inflation_indexed_bonds primitives
   'get_real_yield_level_tool',
   'calculate_breakeven_inflation_simple_tool',
