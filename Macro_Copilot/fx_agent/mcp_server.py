@@ -25,6 +25,16 @@ from fx_agent.forwards.tools.fx_carry import (  # noqa: E402
     FXCarryInput,
     get_fx_carry,
 )
+from fx_agent.ndf.tools.ndf_implied_carry import (  # noqa: E402
+    CONFIG_PATH as FX_NDF_IMPLIED_CARRY_CONFIG_PATH,
+    FXNDFImpliedCarryInput,
+    calculate_fx_ndf_implied_carry,
+)
+from fx_agent.ndf.tools.ndf_outright import (  # noqa: E402
+    CONFIG_PATH as FX_NDF_OUTRIGHT_CONFIG_PATH,
+    FXNDFOutrightInput,
+    get_fx_ndf_outright,
+)
 from fx_agent.spot.tools.drawdown import (  # noqa: E402
     CONFIG_PATH as FX_DRAWDOWN_CONFIG_PATH,
     FXDrawdownInput,
@@ -441,6 +451,166 @@ def get_fx_realized_vol_tool(
     except Exception as exc:
         logger.exception("FX realized vol failed for pair=%s window=%s", pair, window_days)
         return json.dumps({"error": f"FX realized vol failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_ndf_outright_tool(
+    ndf_code: str,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(ndf, tenor) NDF outright snapshot.
+
+    For one NDF family (CCN+ / IRN+ / BCN+ / KWN+ / IHN+ / NTN+) at a
+    given tenor, returns the latest outright value, daily / weekly /
+    monthly % changes, rolling 252-day z-score, trailing 252-day
+    high / low / percentile, and observation count. Mirrors
+    get_fx_spot_level but for the NDF substrate.
+
+    NDF outrights are quoted in spot-equivalent units (USD per local
+    currency), NOT as forward points — for the carry analysis, use
+    calculate_fx_ndf_implied_carry.
+
+    Parameters
+    ----------
+    ndf_code : str — one of CCN+ (USDCNY), IRN+ (USDINR), BCN+ (USDBRL),
+        KWN+ (USDKRW), IHN+ (USDIDR), NTN+ (USDTWD).
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365 — fetch window for z-score history.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST. Use
+        'PX_BID' / 'PX_ASK' for bid/ask side.
+    """
+    try:
+        params = FXNDFOutrightInput(
+            ndf_code=ndf_code,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_NDF_OUTRIGHT_CONFIG_PATH)
+        result = get_fx_ndf_outright(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX NDF outright failed for %s %s", ndf_code, tenor)
+        return json.dumps({"error": f"FX NDF outright failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def calculate_fx_ndf_implied_carry_tool(
+    tenor: str = "1M",
+    spot_convention: str = "settlement",
+    rank_by: str = "carry_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Cross-sectional FX NDF implied carry scanner.
+
+    For every NDF family (CCN+ / IRN+ / BCN+ / KWN+ / IHN+ / NTN+) at
+    a given tenor, joins the latest underlying spot and same-tenor
+    NDF outright observation (per trade_date — no lookahead), computes
+    implied annualized carry as (outright/spot - 1) * (252/tenor_days)
+    * 100, and ranks the cross-section. Each row carries a rolling
+    252-day z-score / percentile / range on its OWN historical
+    implied-carry series.
+
+    Mirrors calculate_fx_carry but for the NDF outright substrate
+    (no points → no divisor). NDFs are quoted outright by convention,
+    so the carry formula is direct.
+
+    Useful for: identifying rich / cheap NDF carry vs history, ranking
+    NDF carry trades by extremeness, monitoring NDF basis differentials
+    (with spot_convention='offshore_tradable' for CCN+).
+
+    Parameters
+    ----------
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    spot_convention : str, default 'settlement' — 'settlement' uses
+        each NDF's official spot reference (textbook implied carry).
+        'offshore_tradable' swaps USDCNY → USDCNH for CCN+ (other
+        NDFs fall back to settlement so coverage is uniform).
+    rank_by : str, default 'carry_signed' — one of 'carry_signed' /
+        'abs_carry' / 'abs_z_score'.
+    top_n : int | None, default None (returns every NDF in scope).
+    lookback_days : int, default 365 — DB fetch window for z-score
+        history.
+    field_name : str | None — Bloomberg field for BOTH spot and NDF
+        legs; None ⇒ PX_LAST. Use 'PX_BID' / 'PX_ASK' for bid/ask
+        side carry.
+    """
+    try:
+        params = FXNDFImpliedCarryInput(
+            tenor=tenor,
+            spot_convention=spot_convention,
+            rank_by=rank_by,
+            top_n=top_n,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_NDF_IMPLIED_CARRY_CONFIG_PATH)
+        result = calculate_fx_ndf_implied_carry(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX NDF implied carry failed tenor=%s rank_by=%s top_n=%s",
+            tenor, rank_by, top_n,
+        )
+        return json.dumps({"error": f"FX NDF implied carry failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_ndf_carry_tool(
+    tenor: str = "1M",
+    top_n: int = 5,
+    spot_convention: str = "settlement",
+    lookback_days: int = 365,
+) -> str:
+    """Scanner-mode FX NDF carry: top-N most extreme by absolute z-score.
+
+    Thin wrapper around calculate_fx_ndf_implied_carry with curated
+    defaults (rank_by='abs_z_score', top_n=5) for the 'what's the
+    most extreme NDF carry today?' use case. Same compute path —
+    use calculate_fx_ndf_implied_carry directly when you want a
+    different rank_by or to see every NDF in scope.
+
+    Parameters
+    ----------
+    tenor : str, default '1M'.
+    top_n : int, default 5.
+    spot_convention : str, default 'settlement'. See
+        calculate_fx_ndf_implied_carry for the full description.
+    lookback_days : int, default 365.
+    """
+    try:
+        params = FXNDFImpliedCarryInput(
+            tenor=tenor,
+            spot_convention=spot_convention,
+            rank_by="abs_z_score",
+            top_n=top_n,
+            lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_NDF_IMPLIED_CARRY_CONFIG_PATH)
+        result = calculate_fx_ndf_implied_carry(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX NDF carry scanner failed tenor=%s", tenor)
+        return json.dumps({"error": f"FX NDF carry scanner failed: {exc}"}, default=str)
 
     return json.dumps(result, default=str)
 
