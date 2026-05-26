@@ -140,27 +140,19 @@ const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
   // src/modules/primitives/<name>/module.ts and the module-derived
   // contribution below feeds them back into the union, so the public
   // KNOWN_BACKEND_TOOLS export is unchanged.
+  //
+  // Stage 4c — factory-ported futures + linker + ZCIS entries
+  // (bond_futures, policy_futures, inflation_indexed_bonds,
+  // inflation_swaps factory-ported primitives) were removed too.
+  // Same rationale: every removed tool ships a Stage 3 module with
+  // ``tiers: ['generic_runnable']`` so the module-derived contribution
+  // below feeds them back into the union.  The 12 futures primitives
+  // (3 bond_futures + 9 policy_futures) per the Stage 4c roadmap;
+  // the 4 inflation factory-ported (build_linker_panel,
+  // scan_inflation_linkers_extremes, build_zcis_panel,
+  // scan_inflation_swaps_extremes) were also covered by their
+  // modules and are dropped here for symmetry.
   // ----------------------------------------------------------------
-  // Factory-ported bond_futures primitives (ADR 0013)
-  'get_futures_price_level_tool',
-  'get_futures_volume_oi_tool',
-  'scan_bond_futures_extremes_tool',
-  // Factory-ported policy_futures primitives (ADR 0013)
-  'build_policy_futures_strip_panel_tool',
-  'get_scan_policy_futures_extremes_tool',
-  'policy_futures_get_futures_butterfly_simple_tool',
-  'policy_futures_get_futures_calendar_spread_tool',
-  'policy_futures_get_futures_cross_market_spread_tool',
-  'policy_futures_get_futures_pack_average_simple_tool',
-  'policy_futures_get_futures_price_level_tool',
-  'policy_futures_get_futures_strip_snapshot_tool',
-  'policy_futures_get_volume_open_interest_snapshot_tool',
-  // Factory-ported inflation_indexed_bonds primitives (ADR 0013)
-  'build_linker_panel_tool',
-  'scan_inflation_linkers_extremes_tool',
-  // Factory-ported inflation_swaps primitives (ADR 0013)
-  'build_zcis_panel_tool',
-  'scan_inflation_swaps_extremes_tool',
   // ----------------------------------------------------------------
   // Stage 1 — backend-runnable primitives missing from the registry.
   // These tools exist in ``rates_agent.workflows._PRIMITIVE_SPECS``
@@ -255,27 +247,14 @@ const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
   // with tiers including ``generic_runnable``; the module-derived
   // contribution below feeds them back into the union, so the
   // public RUNNABLE_PRIMITIVE_TOOLS export is unchanged.
+  //
+  // Stage 4c — factory-ported futures + linker + ZCIS runnable
+  // entries (12 futures primitives — 3 bond_futures, 9 policy_futures
+  // — plus 4 inflation factory-ported primitives) were removed.  Same
+  // rationale: every removed tool's Stage 3 module claims
+  // ``generic_runnable``, so the module-derived contribution below
+  // feeds them back into the union.
   // ----------------------------------------------------------------
-  // Factory-ported bond_futures primitives (ADR 0013)
-  'get_futures_price_level_tool',
-  'get_futures_volume_oi_tool',
-  'scan_bond_futures_extremes_tool',
-  // Factory-ported policy_futures primitives (ADR 0013)
-  'build_policy_futures_strip_panel_tool',
-  'get_scan_policy_futures_extremes_tool',
-  'policy_futures_get_futures_butterfly_simple_tool',
-  'policy_futures_get_futures_calendar_spread_tool',
-  'policy_futures_get_futures_cross_market_spread_tool',
-  'policy_futures_get_futures_pack_average_simple_tool',
-  'policy_futures_get_futures_price_level_tool',
-  'policy_futures_get_futures_strip_snapshot_tool',
-  'policy_futures_get_volume_open_interest_snapshot_tool',
-  // Factory-ported inflation_indexed_bonds primitives (ADR 0013)
-  'build_linker_panel_tool',
-  'scan_inflation_linkers_extremes_tool',
-  // Factory-ported inflation_swaps primitives (ADR 0013)
-  'build_zcis_panel_tool',
-  'scan_inflation_swaps_extremes_tool',
   // ----------------------------------------------------------------
   // Stage 1 — the 18 backend-runnable primitives that ship in
   // ``_PRIMITIVE_SPECS`` on ``build`` today but were missing from
