@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_forward_breakeven_simple_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_forward_breakeven_simple',
+  displayName: 'Forward Breakeven Simple',
   category: 'forwards_classify',
   oneLineSummary: 'Forward bond-implied breakeven (e.g. 5Y5Y breakeven) computed from two spot bond-implied breakeven legs. The "simple" name denotes the textbook log-additive forward construction without carry / seasonals adjustments.',
 };

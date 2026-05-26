@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_cross_market_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_cross_market_spread',
+  displayName: 'Policy Futures Futures Cross Market Spread',
   category: 'spreads',
   oneLineSummary: 'Matched-strip cross-market implied-rate differential on the policy-.',
 };

@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_pack_average_simple_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_pack_average_simple',
+  displayName: 'Policy Futures Futures Pack Average Simple',
   category: 'aggregates',
   oneLineSummary: 'Pack-average implied rate (arithmetic mean) for ONE policy-futures.',
 };

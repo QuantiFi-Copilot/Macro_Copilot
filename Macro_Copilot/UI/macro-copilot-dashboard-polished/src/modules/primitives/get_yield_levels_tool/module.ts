@@ -21,7 +21,7 @@ import { YieldLevelWidget } from './surfaces/monitor/YieldLevelWidget';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_yield_levels_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
-  displayName: 'get_yield_levels',
+  displayName: 'Yield Levels',
   category: 'snapshots',
   oneLineSummary:
     'Single-tenor sovereign yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, observation count, and full chartable time series.',

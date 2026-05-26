@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_ois_cross_market_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_ois_cross_market_spread',
+  displayName: 'OIS Cross Market Spread',
   category: 'cross_market_rv',
   oneLineSummary: 'Cross-market OIS rate differential between the same tenor on two OIS curves (e.g. SOFR 2Y − ESTR 2Y), with rolling 252-day z-score, daily / weekly / monthly change, trailing range, and both canonical and bespoke time series.',
 };

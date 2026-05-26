@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'build_zcis_panel_tool',
   tiers: ['generic_runnable'],
-  displayName: 'build_zcis_panel',
+  displayName: 'Build ZCIS Panel',
   category: 'panels',
   oneLineSummary: 'Assemble a wide multi-instrument Panel of zero-coupon inflation.',
 };

@@ -13,8 +13,14 @@ import BuildSurface from './surfaces/BuildSurface';
 
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_butterfly_tool',
-  tiers: ['workflow_incompatible', 'custom_build_surface'],
-  displayName: 'calculate_butterfly',
+  // Stage 4e: ``manifest_typed_view`` (not ``workflow_incompatible``)
+  // because backend's ``WORKFLOW_INCOMPATIBLE_TOOLS`` dict does NOT
+  // contain this tool — it's a ``_MANIFEST_ONLY_BUILD_TOOLS`` entry
+  // with a typed-detail endpoint.  Pre-Stage-4e modules mis-classified
+  // this as ``workflow_incompatible``; Stage 4e introduces the dedicated
+  // tier so the spec stays aligned with backend doctrine.
+  tiers: ['manifest_typed_view', 'custom_build_surface'],
+  displayName: 'Butterfly',
   category: 'curve_shape',
   oneLineSummary: 'Three-point curvature on a sovereign curve — (2 × belly − short − long) × 100 bps — with rolling z-score, trailing range, wing-spread components, and full time series.',
   typedView: 'butterfly',

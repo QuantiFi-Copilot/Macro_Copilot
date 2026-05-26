@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_price_level_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_price_level',
+  displayName: 'Policy Futures Futures Price Level',
   category: 'snapshots',
   oneLineSummary: 'Single policy-futures strip-position price level — emits a.',
 };

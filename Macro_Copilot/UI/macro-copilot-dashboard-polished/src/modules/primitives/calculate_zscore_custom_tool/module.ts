@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_zscore_custom_tool',
   tiers: ['generic_runnable'],
-  displayName: 'zscore_custom',
+  displayName: 'Z-Score Custom',
   category: 'rolling_analytics',
   oneLineSummary: 'Rolling z-score of a single sovereign yield with a user-supplied window length (vs the fixed 252-day window in get_yield_levels). Returns current z-score, latest yield, actual window parameters, and full z-score time series.',
 };

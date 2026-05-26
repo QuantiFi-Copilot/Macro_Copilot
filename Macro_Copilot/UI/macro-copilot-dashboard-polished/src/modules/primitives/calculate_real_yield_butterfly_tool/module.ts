@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_real_yield_butterfly_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_real_yield_butterfly',
+  displayName: 'Real Yield Butterfly',
   category: 'curve_shape',
   oneLineSummary: 'Three-point real-yield butterfly with fixed 50-50 weights (e.g. US TIPS 2s5s10s butterfly) and rolling 252-day z-score. Real-yield analogue of calculate_butterfly.',
 };

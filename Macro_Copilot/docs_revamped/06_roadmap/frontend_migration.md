@@ -30,14 +30,16 @@ This separation is the canonical reason the migration is staged the way it is be
 | **1** | Static-registry catch-up + test repair (close the 20-tool gap; fix 3 failing tests) | Hold-the-line patch | Not started | 1 | Small (~2h) |
 | **2** | Build the `src/modules/` infrastructure (loader, types, test helpers, ESLint boundary rule) | Infrastructure | Not started | 1 | Small-medium (~half-day) |
 | **3** | Scaffold module folders for ALL primitives (existing + 18 missing); skeleton `module.ts` per folder; existing-primitive specs point at legacy surface locations | Scaffolding | Not started | 1 | Medium (mechanical, ~1 day) |
-| **4a** | Refactor sovereign + OIS primitives' surfaces INTO their module folders | Pure refactor | Not started | 1 | Medium (~1 day) |
-| **4b** | Refactor rich-model primitives' surfaces (PCA, regression, attribution, half-life, beta-adjusted spread) | Pure refactor | Not started | 1 | Medium (~1 day) |
-| **4c** | Refactor futures primitives' surfaces (bond_futures + policy_futures) | Pure refactor | Not started | 1 | Medium (~1 day) |
+| **4a** | Refactor sovereign + OIS primitives' typed views INTO their module folders | Pure refactor | **Merged (PR #216)** | 1 | Medium (~1 day) |
+| **4b** | Refactor rich-model primitives' surfaces (PCA, regression, attribution, half-life, beta-adjusted spread) | Pure refactor | **Merged (PR #217)** | 1 | Medium (~1 day) |
+| **4c** | Refactor futures primitives — remove 12 + 4 hand-authored registry entries (module-derived covers) | Pure refactor | **Merged (PR #218)** | 1 | Small (~half-day) |
+| **4d** | Monitor widgets + persistedModelAdapters + ancillary derivations onto module spec | Pure refactor | **Merged (PR #219)** | 1 | Medium (~1 day) |
+| **4e** | Codex-audit follow-up: runner overwrite bug, manifest_typed_view tier, THESIS rewrites, invariant strengthening, parity whitelist shrink, displayName Title Case, doc refresh | Pure refactor | **In flight** | 1 | Medium (~half-day) |
 | **5** | Pilot new primitive: `calculate_cpi_surprise_tool` (full surfaces — Monitor + Ask + generic Build) | New-feature | Not started | 1 | Medium |
 | **6+** | Remaining 17 new-feature primitives (one or two per PR) | New-feature | Not started | ~10 | Small-medium each |
 | **N** | Cleanup: move typed primitive views to `shared/render/typed/`; flip the strict "no hand-authored registries" CI gate | Cleanup | Not started | 1 | Small |
 
-**Net total: ~17 PRs over ~3 months at one PR every 4–5 days.** Stage 1 (hold-the-line) deliverable in days.
+**Net total: ~19 PRs over ~3 months.** Stages 0–4e merged or in flight; Stage 5+ ahead.
 
 ## Stage 0 — Documentation (this PR)
 
@@ -235,13 +237,70 @@ This separation is the canonical reason the migration is staged the way it is be
 
 ---
 
-## Stage 4 self-check (after 4a + 4b + 4c)
+## Stage 4d — Monitor widgets + ancillary derivations (PR #219)
 
-After Stages 4a, 4b, 4c:
-- Every existing UI primitive lives in its module folder.
-- Page shells contain ZERO per-primitive code.
+**Why this exists.** Stages 4a/4b/4c left Monitor widgets, the `persistedModelAdapters` registry, and several per-tool hand-authored maps (`TOOL_WORKSPACE_LABELS`, `TYPED_VIEW_TOOLS`, `DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS`) in page-shell locations. Stage 4d closes those remaining "per-primitive code in page shells" gaps by extending `PrimitiveModuleSpec` with four new optional fields and migrating the affected per-tool data onto each module.
+
+**Spec extensions.**
+- `monitorWidgets?: ReadonlyArray<MonitorWidgetMeta>` — multi-variant Monitor catalog declaration (`MODULE.surfaces.monitor` remains accepted as the single-widget legacy shape).
+- `modelAdapter?: ModelAdapter` — per-tool `RichModelWidget` adapter (displayName / persistedRole / detailUnavailable / builderHint).
+- `workspaceLabel?: string` — rich subtitle label for the "See more in workspace" CTA in `WorkspaceButton`.
+- `previewArtifactTypes?: ReadonlyArray<string>` — extra artifact types (beyond default `Series`) under which the module's `surfaces.preview` should be registered (today only attribution: `['Panel']`).
+
+**Files moved.**
+- 7 per-tool Monitor widget files from `src/components/monitor/widgets/` into each owning module's `surfaces/monitor/<Name>.tsx`. The pre-aggregated `YieldSnapshotWidget` (dashboard endpoint, not bound to a single primitive) stays in the legacy location as the sole `HAND_AUTHORED_WIDGETS` entry.
+- The 5 hand-authored `ModelAdapter` records moved onto each rich-model module's `modelAdapter` field; the central dispatcher in `persistedModelAdapters.ts` reads via lazy `getPrimitiveModule(toolName)?.modelAdapter`.
+
+**Files refactored.**
+- `monitor/registry.ts` — hand-authored `WIDGET_TYPES` map replaced by hybrid (yield_snapshot hand-authored, rest derive from `ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])`).
+- `monitor/WidgetRenderer.tsx` — hand-authored per-id switch replaced by a module-walker `id → component` map built once at module load.
+- `widgets/index.ts` — `DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS` replaced by `MODULE.previewArtifactTypes`.
+- `WorkspaceButton.tsx` — `TOOL_WORKSPACE_LABELS` replaced by `getPrimitiveModule(toolName)?.workspaceLabel`.
+- `library/ToolDetailDrawer.tsx` — `TYPED_VIEW_TOOLS` set replaced by `getPrimitiveModule(canonicalName)?.typedView != null`.
+
+**Invariant updates.** `assertStandardModuleInvariants` (and the parallel check in `loaderPresence.test.ts`) relax FM8 for `monitor_surface`: the tier is satisfied by EITHER `surfaces.monitor` OR a non-empty `monitorWidgets`. Reverse rule 5b: populating `monitorWidgets` requires the `monitor_surface` tier.
+
+**New leaf files (cycle-break).** `src/types/monitorWidget.ts` (types only) and `src/lib/monitorParamOptions.ts` (option arrays) — so per-module `module.ts` files can value-import the option constants without re-entering the monitor page-shell graph.
+
+**Acceptance.**
+- Monitor catalog renders identically (yield_snapshot first, then 7 module-derived widgets in the same order).
+- LAYOUT_VERSION stays at 2 (no widget-id changes).
+- Persisted-artifact previews resolve through the same per-tool adapter copy.
+- WorkspaceButton subtitles use the same labels.
+
+**Effort.** Medium (~1 day).
+
+---
+
+## Stage 4e — Codex-audit follow-up (PR #TBD)
+
+**Why this exists.** A thorough external audit of the merged Stage 4 state surfaced contract-level gaps that the green test sweeps missed. Stage 4e closes them so the Stage 4 self-check below holds for real (not just by-construction).
+
+**Findings fixed.**
+- **P1 — `npm run test:modules` runner overwrite.** `scripts/run_module_tests.mjs` bundled every `module.spec.ts` to the same temp filename (`basename` collision), so 57 of 58 module specs were silently overwritten and only the last bundled spec ran. Fix: include the path's parent dirs in the output stem AND handle both `.test.ts` and `.spec.ts` suffixes. After fix, all 58 modules actually round-trip through `assertStandardModuleInvariants`.
+- **P1 — `workflow_incompatible` doctrine drift.** Backend's `WORKFLOW_INCOMPATIBLE_TOOLS` has 3 entries (`classify_curve_move_tool`, `get_otr_history_tool`, `calculate_wirp_meeting_pricing_tool`). Pre-Stage-4e modules tagged `calculate_butterfly_tool` and `scan_extremes_tool` as `workflow_incompatible`, but backend treats those as `_MANIFEST_ONLY_BUILD_TOOLS`. Stage 4e introduces a dedicated `manifest_typed_view` runtime tier (closed family expands from 8 to 9) and updates the 2 modules. Doctrine update lives in [`tiers.md`](../02_components/frontend_module/tiers.md#manifest_typed_view).
+- **P1 — 11 migrated THESIS files stale.** Stage 4a/4b/4d patched Q1 of each migrated module but Q2-Q5 still contained "Stage 3 surfaces today: (none)" language that contradicted the actual MODULE state. Stage 4e rewrites the full body for each.
+- **P2 — Stage 4d Monitor contract undocumented.** The frontend-module doctrine (`tiers.md` + `monitor_page/README.md`) still described the original `surfaces/MonitorWidget.tsx` + `monitorMeta` shape. Stage 4e brings both docs current with the `monitorWidgets` design.
+- **P2 — Invariant helper weaker than docs claimed.** `assertStandardModuleInvariants` only checked tier names appear in THESIS Q1 (no file-existence check; lenient reverse-Q1 rule). Stage 4e adds (a) on-disk file presence for every populated `surfaces.<key>`, (b) `surfaces/monitor/` folder presence when `monitorWidgets` is populated, (c) re-enables Stage 2's strict reverse Q1 check (unclaimed capability tiers MUST NOT appear in Q1 body).
+- **P2 — Parity whitelist still all 58.** `tools/check_module_parity.py` whitelisted every backend tool, so a deleted migrated module would silently pass parity. Stage 4e shrinks the whitelist to 20 entries (Stage 5+ net-new only); the 38 migrated tools no longer have whitelist cover.
+- **P2 — `displayName` snake_case violations.** ~50 modules used the raw `tool_name` slug as `displayName`. Stage 4e converts every snake_case `displayName` to domain-aware Title Case (PCA / OIS / ZCIS / CPI / NFP / WIRP / OTR / OFR / OI / RV stay UPPERCASE; rest are Title Case).
+- **P3 — Stage 4d missing from this roadmap + stale docs.** Added Stage 4d entry above + Stage 4e entry here; refreshed `01_architecture/02_frontend_architecture.md` and `03_standards/frontend_test_patterns.md` so they describe the actual shipped tooling rather than the target-state.
+
+**Effort.** Medium (~half-day of mechanical fixes + careful invariant strengthening).
+
+---
+
+## Stage 4 self-check (after 4a + 4b + 4c + 4d + 4e)
+
+After Stages 4a, 4b, 4c, 4d, 4e:
+- Every existing UI primitive lives in its module folder, including its Monitor widgets.
+- Page shells contain ZERO per-primitive surface code; remaining per-tool string literals are configuration data (Build empty-state tile catalog, backtest workflow node-role binding) that move to workflow modules in Stage 7+.
 - Central registries are FULLY derived for migrated primitives.
-- The Stage 1 hand-authored entries for the 18 net-new primitives remain — these are the targets of Stages 5+.
+- The Stage 1 hand-authored entries for the 18 net-new primitives + 2 workflow-incompatible tools remain — these are the targets of Stages 5+.
+- All 58 module specs ACTUALLY round-trip through `assertStandardModuleInvariants` (no more runner overwrite bug).
+- Parity check binds for the 38 migrated primitives (whitelist down from 58 to 20).
+- Module tier classifications match backend doctrine exactly (Stage 4e disambiguated `workflow_incompatible` vs `manifest_typed_view`).
+- All `displayName` values conform to FNC Title-Case convention.
 
 The "refactor work" half of the migration is complete. From Stage 5 onward, all work is new-feature.
 
@@ -366,5 +425,7 @@ The cross-link audit is the final task before opening the PR.
 
 | Version | Date | Change |
 |---|---|---|
+| v4 | 2026-05-26 | Added Stage 4e (Codex-audit follow-up) and updated Stage 4 self-check to reflect the actual landed state. Stages 4a/4b/4c/4d marked as merged with PR numbers. Total PR count revised to ~19 (Stages 0–4e). |
+| v3 | 2026-05-26 | Added Stage 4d (Monitor widgets + ancillary derivations). Updated Stages-at-a-glance with merge status for 4a/4b/4c. |
 | v2 | 2026-05-25 | Restructured staging to cleanly separate refactor work (Stage 4a/4b/4c — sub-agent grouped) from new-feature work (Stage 5+ — pilot then one-or-two-per-PR). Inserted Stage 2 (build `src/modules/` infrastructure) and Stage 3 (scaffold ALL module folders with skeleton specs pointing at legacy file paths) so refactor PRs have somewhere to move code INTO. Total PR count reduced from ~50 to ~17 over ~3 months. |
 | v1 | 2026-05-25 | Initial migration roadmap. Stages 0–N defined; per-stage scope, acceptance gates, mistakes to avoid. |

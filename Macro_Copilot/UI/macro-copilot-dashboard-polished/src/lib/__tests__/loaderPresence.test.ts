@@ -147,13 +147,16 @@ check('ALL_WORKFLOW_MODULES exists and is an array', () => {
   assertTruthy(Array.isArray(ALL_WORKFLOW_MODULES), 'is array');
 });
 
-check('SurfaceTier closed family has exactly 8 members', () => {
-  // 4 runtime-status + 4 capability = 8.  Adding a new tier requires
-  // an ADR amending the closed family — see
+check('SurfaceTier closed family has exactly 9 members', () => {
+  // Stage 4e: 5 runtime-status + 4 capability = 9.  Stage 4e added
+  // ``manifest_typed_view`` to disambiguate manifest-only typed-view
+  // tools (in backend ``_MANIFEST_ONLY_BUILD_TOOLS``) from genuinely
+  // workflow-incompatible tools (in backend ``WORKFLOW_INCOMPATIBLE_TOOLS``).
+  // Adding a new tier requires an ADR amending the closed family — see
   // docs_revamped/02_components/frontend_module/tiers.md §
   // "Closed-family extensions".
-  assertEqual(ALL_SURFACE_TIERS.length, 8, 'tier count');
-  assertEqual(RUNTIME_STATUS_TIERS.size, 4, 'runtime-status count');
+  assertEqual(ALL_SURFACE_TIERS.length, 9, 'tier count');
+  assertEqual(RUNTIME_STATUS_TIERS.size, 5, 'runtime-status count');
   assertEqual(CAPABILITY_TIERS.size, 4, 'capability count');
 });
 

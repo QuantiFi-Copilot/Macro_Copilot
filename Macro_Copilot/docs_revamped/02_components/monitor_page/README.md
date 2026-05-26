@@ -34,47 +34,68 @@ The composition:
 
 The user can add widgets from a catalog modal, resize them within allowed sizes, drag-reorder. The layout persists to localStorage per `LAYOUT_VERSION`.
 
-## The widget catalogue (derived)
+## The widget catalogue (Stage 4d hybrid)
 
-`WIDGET_TYPES` (defined in `src/components/monitor/registry.ts`) is the dictionary the bento grid reads. Per FP4, it is *derived* from modules that claim `monitor_surface`:
+`WIDGET_TYPES` (defined in `src/components/monitor/registry.ts`) is the dictionary the bento grid reads. Per FP4 it is *derived*, with a small hand-authored carve-out for non-primitive dashboard widgets (today: only `yield_snapshot`, which reads from the dashboard aggregate endpoint rather than any one primitive's typed-detail endpoint):
 
 ```ts
 import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
-export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = Object.fromEntries(
-  ALL_PRIMITIVE_MODULES
-    .filter((m) => m.tiers.includes('monitor_surface'))
-    .map((m) => [m.toolName, m.monitorMeta!]),
-);
-```
+const HAND_AUTHORED_WIDGETS: Record<string, WidgetTypeMeta> = {
+  yield_snapshot: { /* ... pre-aggregated dashboard tile ... */ },
+};
 
-A module that does not claim `monitor_surface` does not appear in the catalogue. The catalogue is regenerated on every page load (the derivation is pure).
+const MODULE_DERIVED_WIDGETS: Record<string, WidgetTypeMeta> = {};
+for (const m of ALL_PRIMITIVE_MODULES) {
+  for (const w of m.monitorWidgets ?? []) {
+    MODULE_DERIVED_WIDGETS[w.id] = {
+      id: w.id,
+      label: w.label,
+      description: w.description,
+      category: w.category,
+      defaultSize: w.defaultSize,
+      allowedSizes: w.allowedSizes,
+      parameterized: w.parameterized,
+      paramFields: w.paramFields,
+      sourceTool: m.toolName,  // implicit — derived from owning module
+    };
+  }
+}
 
-## Per-widget metadata (`MODULE.monitorMeta`)
-
-A module claiming `monitor_surface` sets `MODULE.monitorMeta` to a `WidgetTypeMeta`:
-
-```ts
-type WidgetTypeMeta = {
-  id: string;                       // = MODULE.toolName
-  label: string;                    // human-facing label
-  description: string;              // one-line description for the catalog tile
-  category: 'data' | 'analysis' | 'anomaly';
-  defaultSize: WidgetSize;          // 'small' | 'medium' | 'wide' | 'tall'
-  allowedSizes: WidgetSize[];
-  parameterized: boolean;
-  paramFields?: WidgetParamField[];
-  sourceTool: string;               // = MODULE.toolName (for provenance footer)
+export const WIDGET_TYPES: Record<string, WidgetTypeMeta> = {
+  ...HAND_AUTHORED_WIDGETS,
+  ...MODULE_DERIVED_WIDGETS,
 };
 ```
 
-The `monitorMeta` field is required if `tiers ∋ monitor_surface`; the round-trip test (FM11) catches the inconsistency.
+A module that does not declare `monitorWidgets` (and does not set the legacy single-widget `surfaces.monitor`) does not appear in the catalogue. The catalogue is regenerated on every page load (the derivation is pure).
+
+## Per-widget metadata (`MODULE.monitorWidgets`)
+
+A module claiming `monitor_surface` declares one OR MORE `MonitorWidgetMeta` entries on `MODULE.monitorWidgets`. Stage 4d introduced multi-variant support because several primitives ship both a pre-aggregated dashboard tile AND a parameterised single-pair tile from the same backend tool (`calculate_curve_spread_tool` ships `curve_spreads` + `spread_chart`; `calculate_cross_market_spread_tool` ships `cross_market_spreads` + `cross_market_spread`).
+
+```ts
+type MonitorWidgetMeta = {
+  id: string;                       // unique widget id (key in WIDGET_TYPES + layout state)
+  label: string;                    // human-facing catalog label
+  description: string;              // one-line catalog tile description
+  category: 'data' | 'analysis' | 'anomaly';
+  defaultSize: WidgetSize;          // 'small' | 'medium' | 'wide' | 'tall'
+  allowedSizes: ReadonlyArray<WidgetSize>;
+  parameterized: boolean;
+  paramFields?: ReadonlyArray<WidgetParamField>;
+  component: ComponentType<any>;    // renderer (lives under surfaces/monitor/<Name>.tsx)
+};
+```
+
+The legacy single-widget shape (`MODULE.surfaces.monitor: ComponentType<MonitorWidgetProps>`) is still supported for modules that only ship one Monitor variant — the round-trip test (FM11) accepts EITHER `surfaces.monitor` populated OR `monitorWidgets.length > 0`.
 
 ## How a module contributes to Monitor
 
 | Module declaration | Monitor behaviour |
 |---|---|
-| `tiers ∋ monitor_surface` AND `MODULE.surfaces.monitor` set AND `MODULE.monitorMeta` set | Appears in the catalog modal; user can add it. Renders via `MODULE.surfaces.monitor` when present in the layout. |
+| `tiers ∋ monitor_surface` AND `MODULE.monitorWidgets` has ≥1 entries | Each `monitorWidgets[i]` appears as a separate catalog modal tile under its `id`. The registry walker derives `sourceTool = MODULE.toolName` for the provenance footer. |
+| `tiers ∋ monitor_surface` AND `MODULE.surfaces.monitor` set (legacy single-widget) | Module contributes one entry; the entry's id, label, etc. come from a hand-authored `HAND_AUTHORED_WIDGETS` record. (No Stage 4d module uses this shape today.) |
 | Default (most modules) | Does not appear in the Monitor catalogue. |
 
 ## Default layouts

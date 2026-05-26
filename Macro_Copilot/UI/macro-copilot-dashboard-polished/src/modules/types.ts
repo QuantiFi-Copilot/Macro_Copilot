@@ -61,14 +61,22 @@ import type { ModelAdapter } from '@/components/build/widgets/shared/persistedMo
 //
 // Two groups:
 //   - Runtime-status tiers (exactly one per module):
-//       generic_runnable | workflow_incompatible | paused | deferred
+//       generic_runnable | workflow_incompatible | manifest_typed_view
+//       | paused | deferred
 //   - Capability tiers (zero or more per module):
 //       custom_build_surface | custom_preview_widget |
 //       monitor_surface     | ask_surface
+//
+// Stage 4e added ``manifest_typed_view`` to disambiguate tools that
+// ship in backend's ``_MANIFEST_ONLY_BUILD_TOOLS`` set (typed-detail
+// endpoint exists, no ``_PRIMITIVE_SPECS`` entry, NOT in backend's
+// ``WORKFLOW_INCOMPATIBLE_TOOLS`` dict) from the genuinely-workflow-
+// incompatible tools the doctrine binds to that name.
 
 export type RuntimeStatusTier =
   | 'generic_runnable'
   | 'workflow_incompatible'
+  | 'manifest_typed_view'
   | 'paused'
   | 'deferred';
 
@@ -90,6 +98,7 @@ export const ALL_SURFACE_TIERS: ReadonlyArray<SurfaceTier> = [
   // Runtime-status (mutually exclusive)
   'deferred',
   'generic_runnable',
+  'manifest_typed_view',
   'paused',
   'workflow_incompatible',
   // Capability (free-combine)
@@ -101,6 +110,7 @@ export const ALL_SURFACE_TIERS: ReadonlyArray<SurfaceTier> = [
 
 export const RUNTIME_STATUS_TIERS: ReadonlySet<RuntimeStatusTier> = new Set([
   'generic_runnable',
+  'manifest_typed_view',
   'workflow_incompatible',
   'paused',
   'deferred',

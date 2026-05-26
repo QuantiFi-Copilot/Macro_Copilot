@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'scan_bond_futures_extremes_tool',
   tiers: ['generic_runnable'],
-  displayName: 'scan_bond_futures_extremes',
+  displayName: 'Scan Bond Futures Extremes',
   category: 'scanners',
   oneLineSummary: 'Universe-wide front-month bond-futures sweep — ranks every.',
 };

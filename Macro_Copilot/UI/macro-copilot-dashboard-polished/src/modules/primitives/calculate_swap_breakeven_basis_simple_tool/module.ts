@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_swap_breakeven_basis_simple_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_swap_breakeven_basis_simple',
+  displayName: 'Swap Breakeven Basis Simple',
   category: 'cross_market_rv',
   oneLineSummary: 'Swap-vs-bond inflation basis (e.g. USD ZCIS 10Y minus US TIPS bond-implied breakeven 10Y) — the cleanest read of the swap-bond inflation pricing gap. The "simple" name denotes the unadjusted pairing (no carry / seasonals adjustment).',
 };

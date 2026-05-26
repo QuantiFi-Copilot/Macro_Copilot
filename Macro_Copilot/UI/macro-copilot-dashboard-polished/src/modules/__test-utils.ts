@@ -210,8 +210,14 @@ export async function assertStandardModuleInvariants(
   }
 
   // ---- Invariant 8: unsupportedReason gating --------------------------
+  //
+  // Stage 4e: ``manifest_typed_view`` also requires a reason — these
+  // tools ship typed-detail endpoints but no ``_PRIMITIVE_SPECS`` entry,
+  // so the workflow bridge cannot dispatch them.  The honest copy
+  // explains the "typed view in Build is the live surface" affordance.
   const needsReason =
     tierSet.has('workflow_incompatible') ||
+    tierSet.has('manifest_typed_view') ||
     tierSet.has('paused') ||
     tierSet.has('deferred');
   if (needsReason) {
@@ -240,7 +246,8 @@ export async function assertStandardModuleInvariants(
       throw new Error(
         `FM6 violation — module is generic_runnable but unsupportedReason ` +
           `is set.  Remove it (the field is reserved for ` +
-          `workflow_incompatible / paused / deferred modules).`,
+          `workflow_incompatible / manifest_typed_view / paused / ` +
+          `deferred modules).`,
       );
     }
   }
@@ -263,6 +270,65 @@ export async function assertStandardModuleInvariants(
       `FM10 violation — THESIS.md not found at ${thesisPath}.  Every ` +
         `module ships THESIS.md per the template at ` +
         `docs_revamped/02_components/frontend_module/thesis_template.md.`,
+    );
+  }
+
+  // ---- Stage 4e — surface-file presence check -------------------------
+  //
+  // FM8 enforces that every claimed capability tier has a populated
+  // ``surfaces.<key>``.  Stage 4e adds the on-disk corollary: when a
+  // surface is populated, the matching ``surfaces/<Name>.tsx`` file
+  // MUST exist in the module folder.  Catches the "I claimed the tier
+  // and set surfaces.X but deleted the actual .tsx" failure mode the
+  // pre-Stage-4e helper was blind to.
+  //
+  // Mapping is the canonical one from FM8 plus Stage 4d's
+  // ``monitorWidgets`` array, which can carry many components per
+  // module under ``surfaces/monitor/``.
+  const expectedSurfaceFiles: Array<{ key: string; path: string }> = [];
+  if (module.surfaces?.build != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.build',
+      path: `${folderPath}/surfaces/BuildSurface.tsx`,
+    });
+  }
+  if (module.surfaces?.preview != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.preview',
+      path: `${folderPath}/surfaces/PreviewWidget.tsx`,
+    });
+  }
+  if (module.surfaces?.monitor != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.monitor',
+      path: `${folderPath}/surfaces/MonitorWidget.tsx`,
+    });
+  }
+  if (module.surfaces?.ask != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.ask',
+      path: `${folderPath}/surfaces/AskCard.tsx`,
+    });
+  }
+  for (const f of expectedSurfaceFiles) {
+    if (!fs.existsSync(f.path)) {
+      throw new Error(
+        `FM8 violation — ${f.key} is populated on MODULE but the ` +
+          `expected file is missing at ${f.path}.`,
+      );
+    }
+  }
+  // For ``monitorWidgets``, the per-widget components live anywhere
+  // the module wants (convention: ``surfaces/monitor/<Name>.tsx``).
+  // We verify the folder exists when widgets are populated.
+  if (
+    Array.isArray(module.monitorWidgets) &&
+    module.monitorWidgets.length > 0 &&
+    !fs.existsSync(`${folderPath}/surfaces/monitor`)
+  ) {
+    throw new Error(
+      `FM8 violation — monitorWidgets is populated but the expected ` +
+        `surfaces/monitor/ folder is missing at ${folderPath}/surfaces/monitor.`,
     );
   }
 
@@ -294,10 +360,32 @@ export async function assertStandardModuleInvariants(
       );
     }
   }
-  // Stage 3 — relaxed strict-reverse check.  The original Stage 2
-  // check rejected any unclaimed tier name appearing in Q1's body.
-  // In practice, well-written THESIS prose often mentions UNCLAIMED
-  // capability tiers in framing text — e.g. "(custom_build_surface,
+  // ---- Stage 4e — strict reverse Q1 check (re-enabled) ----------------
+  //
+  // Stage 2 enforced this strictly; Stage 3 relaxed it because the
+  // scaffolded modules' framing prose mentioned UNCLAIMED capability
+  // tiers in passing.  Stage 4e's rewrites made the prose precise, so
+  // we re-enable the strict rule: an UNCLAIMED capability tier name
+  // MUST NOT appear in Q1's body.  Word-boundary regex so "ask" can
+  // still appear without being mistaken for ``ask_surface``.
+  const allCapabilityTiers = ['custom_build_surface', 'custom_preview_widget', 'monitor_surface', 'ask_surface'];
+  for (const t of allCapabilityTiers) {
+    if (tierSet.has(t as SurfaceTier)) continue;
+    const pattern = new RegExp(`\\b${escapeRegex(t)}\\b`);
+    if (pattern.test(q1Body)) {
+      throw new Error(
+        `FM10 violation — THESIS Question 1 mentions unclaimed capability ` +
+          `tier '${t}'.  Q1 is the canonical declaration of which tiers ` +
+          `this module ships; unclaimed tiers must not appear there.  ` +
+          `Move the mention to Q4 (design triggers) if it's aspirational.`,
+      );
+    }
+  }
+  // Stage 3 historical note — original relaxed-reverse rationale (kept
+  // for the bisect log; the strict check above replaces it).  The
+  // original Stage 2 check rejected any unclaimed tier name appearing
+  // in Q1's body.  Stage 3 ran into the case where THESIS prose
+  // mentioned UNCLAIMED capability tiers in framing text — e.g. "(custom_build_surface,
   // monitor_surface — not claimed in this stage; planned for Stage
   // 4)".  Such mentions are valid documentation, not invariant
   // violations.  The Stage 3 contract is one-directional: every

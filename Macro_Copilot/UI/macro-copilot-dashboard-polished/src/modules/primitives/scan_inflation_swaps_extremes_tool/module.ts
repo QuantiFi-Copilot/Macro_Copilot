@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'scan_inflation_swaps_extremes_tool',
   tiers: ['generic_runnable'],
-  displayName: 'scan_inflation_swaps_extremes',
+  displayName: 'Scan Inflation Swaps Extremes',
   category: 'scanners',
   oneLineSummary: 'Universe-wide ZCIS quoted-rate sweep — ranks every.',
 };

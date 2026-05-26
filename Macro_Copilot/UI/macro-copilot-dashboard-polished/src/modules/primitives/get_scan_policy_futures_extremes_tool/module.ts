@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_scan_policy_futures_extremes_tool',
   tiers: ['generic_runnable'],
-  displayName: 'get_scan_policy_futures_extremes',
+  displayName: 'Scan Policy Futures Extremes',
   category: 'scanners',
   oneLineSummary: 'Universe-wide policy-futures strip scan — ranks every.',
 };

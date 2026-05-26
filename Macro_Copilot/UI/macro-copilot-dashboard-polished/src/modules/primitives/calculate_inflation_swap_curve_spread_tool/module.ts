@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_inflation_swap_curve_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_inflation_swap_curve_spread',
+  displayName: 'Inflation Swap Curve Spread',
   category: 'curve_shape',
   oneLineSummary: 'Basis-point spread between two tenors of one country\'s ZCIS curve (e.g. USD ZCIS 2s10s) with rolling 252-day z-score, daily change, and a full chartable time series. ZCIS analogue of calculate_ois_curve_spread.',
 };

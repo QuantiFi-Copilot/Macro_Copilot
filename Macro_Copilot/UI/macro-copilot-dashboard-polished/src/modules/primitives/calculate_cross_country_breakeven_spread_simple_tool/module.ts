@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_cross_country_breakeven_spread_simple_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_cross_country_breakeven_spread_simple',
+  displayName: 'Cross Country Breakeven Spread Simple',
   category: 'cross_market_rv',
   oneLineSummary: 'Cross-country bond-implied breakeven spread (e.g. US TIPS vs Gilt linker 10Y) — country-A breakeven minus country-B breakeven at a matched tenor, with rolling 252-day z-score and a full chartable time series. The "simple" name denotes the unadjusted cross-country pairing (no FX adjustment).',
 };

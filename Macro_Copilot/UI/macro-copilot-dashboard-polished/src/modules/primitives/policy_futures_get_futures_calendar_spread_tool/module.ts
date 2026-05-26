@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_calendar_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_calendar_spread',
+  displayName: 'Policy Futures Futures Calendar Spread',
   category: 'spreads',
   oneLineSummary: 'Same-curve calendar spread on the policy-futures strip — emits a.',
 };

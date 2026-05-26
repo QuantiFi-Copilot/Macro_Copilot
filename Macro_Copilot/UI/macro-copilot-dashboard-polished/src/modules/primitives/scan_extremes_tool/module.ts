@@ -12,8 +12,11 @@ import { ScannerWidget } from './surfaces/monitor/ScannerWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'scan_extremes_tool',
-  tiers: ['workflow_incompatible', 'custom_build_surface', 'monitor_surface'],
-  displayName: 'scan_extremes',
+  // Stage 4e: ``manifest_typed_view`` (not ``workflow_incompatible``)
+  // — backend's ``WORKFLOW_INCOMPATIBLE_TOOLS`` dict does NOT contain
+  // this tool; it's a ``_MANIFEST_ONLY_BUILD_TOOLS`` entry.
+  tiers: ['manifest_typed_view', 'custom_build_surface', 'monitor_surface'],
+  displayName: 'Scan Extremes',
   category: 'screening',
   oneLineSummary:
     'Scans every sovereign instrument in the database, ranks the top-N by absolute 252-day z-score and returns yield, daily change, z-score, percentile, and signal label per row.',

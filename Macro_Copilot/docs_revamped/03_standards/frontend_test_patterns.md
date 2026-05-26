@@ -12,18 +12,18 @@
 
 ## Test categories
 
-**Status today (Stage 0):** Only the **Surface contracts** category exists. `npm run test:build` runs via `scripts/run_build_tests.mjs`. The three other categories (per-module round-trips, registry derivation, cross-side parity) are **target-state Stage 2+** — they require `src/modules/` to exist, plus new `npm run` scripts in `package.json` and a `tools/check_module_parity.py` script. **None of those exist today.** This document specifies the target contract; the supporting tooling lands in Stage 2 alongside the first reference module.
+**Status today (post-Stage-4e):** All four categories are live. `npm run test:build` runs `scripts/run_build_tests.mjs`; `npm run test:modules` and `npm run test:registries` run `scripts/run_module_tests.mjs` (Stage 2 shipped both runners; Stage 4e fixed an overwrite bug where every `module.spec.ts` bundled to the same temp filename and only the last spec actually ran). Parity is `python tools/check_module_parity.py` (or `make check-module-parity`). The tooling is plain Node + esbuild — no Vitest dependency; the historical `import { describe, it } from 'vitest'` boilerplate examples below describe the aspirational Vitest target, but live module tests use a tiny custom `check()` runner that the bundler resolves at compile time.
 
-The frontend test suite is organised into four categories at target state:
+The frontend test suite is organised into four categories:
 
 | Category | What it asserts | Files | CI command | Status |
 |---|---|---|---|---|
-| **Per-module round-trips** | Module's spec ↔ folder ↔ surfaces ↔ THESIS consistency (FM11) | `src/modules/.../__tests__/module.spec.ts` | `npm run test:modules` | Target-state Stage 2+ |
-| **Registry derivation** | Central registries are pure derivations of `ALL_PRIMITIVE_MODULES`; no hand-authored entries | `src/lib/__tests__/registry_*.spec.ts` | `npm run test:registries` | Target-state Stage 2+ |
-| **Surface contracts** | Shared shells render correctly for representative inputs; per-tool surfaces honour their Prop contracts | `src/components/.../__tests__/*.spec.tsx` and `src/lib/__tests__/*.test.ts` | `npm run test:build` (today, via `scripts/run_build_tests.mjs`) | **Live today** |
-| **Parity (cross-side)** | Backend + frontend agree on the primitive / workflow set | `python tools/check_module_parity.py` | `make check-module-parity` | Target-state Stage 2+ |
+| **Per-module round-trips** | Module's spec ↔ folder ↔ surfaces ↔ THESIS consistency (FM11) | `src/modules/.../__tests__/module.spec.ts` | `npm run test:modules` | **Live (Stage 2+ infrastructure, Stage 4e runner fix)** |
+| **Registry derivation** | Central registries are pure derivations of `ALL_PRIMITIVE_MODULES`; no hand-authored entries for migrated primitives | `src/lib/__tests__/loaderPresence.test.ts` + `pageShellBoundary.test.ts` | `npm run test:registries` (alias for `test:modules`) | **Live** |
+| **Surface contracts** | Shared shells render correctly for representative inputs; per-tool surfaces honour their Prop contracts | `src/components/.../__tests__/*.test.ts` and `src/lib/__tests__/*.test.ts` | `npm run test:build` (via `scripts/run_build_tests.mjs`) | **Live** |
+| **Parity (cross-side)** | Backend + frontend agree on the primitive / workflow set | `python tools/check_module_parity.py` | `make check-module-parity` | **Live (whitelist shrunk to 20 Stage-5+ targets after Stage 4e)** |
 
-The default `npm test` (target-state) runs all four. CI runs them in this order. Today only `npm run test:build` exists.
+The default `npm test` runs `test:build` + `test:modules`. CI runs them in this order plus `make check-module-parity`.
 
 ## Category 1 — Per-module round-trip
 

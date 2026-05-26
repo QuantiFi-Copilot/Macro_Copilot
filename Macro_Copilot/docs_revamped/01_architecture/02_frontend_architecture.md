@@ -14,15 +14,15 @@
 
 This document describes the **target architecture** that [ADR 0014](../05_decisions/0014-frontend-module-architecture.md) sets. The codebase today is partway between the legacy page-organised shape and the target module-organised shape.
 
-| Section | Current today (Stage 0) | Target (Stage N) |
+| Section | Current today (Stage 4e merged) | Target (Stage N) |
 |---|---|---|
-| Layered shape L6.1–L6.6 | L6.4–L6.6 exist; L6.1–L6.3 (`src/modules/`, derived registries) **do not yet exist** | All six layers exist |
-| `src/modules/` directory | Does not exist | One folder per primitive + workflow |
-| Central registries (`toolNames.ts`, `modelRegistry.ts`) | Hand-authored sets | Derived from `ALL_PRIMITIVE_MODULES` |
-| `tools/check_module_parity.py` | Does not exist | Required CI gate |
-| `npm run test:modules`, `npm run test:registries` | Do not exist | Standard test commands |
-| Page shells (`BuildShell`, `LibraryPage`, etc.) | Exist; some contain per-primitive branching | Exist; pure orchestration only |
-| Shared infrastructure (AutoRenderer, DagStrip, hooks, services) | Exists | Same; refactored to derive per-tool data from module specs |
+| Layered shape L6.1–L6.6 | All six layers exist | All six layers exist |
+| `src/modules/` directory | 58 primitive module folders (Stage 3 scaffold + Stage 4a/4b/4c/4d/4e surface migrations) | Same + workflow modules under `src/modules/workflows/` (Stage 7+) |
+| Central registries (`toolNames.ts`, `modelRegistry.ts`) | Hybrid: hand-authored Stage 1 net-new entries (~20) + module-derived for migrated primitives (38) | Fully derived (zero hand-authored) |
+| `tools/check_module_parity.py` | Exists; whitelist down to 20 Stage-5+ targets after Stage 4e | Same; whitelist empty when last Stage 6+ primitive lands |
+| `npm run test:modules`, `npm run test:registries` | Shipped via `scripts/run_module_tests.mjs` (Stage 4e fixed the runner overwrite bug — all 58 module specs now actually run) | Same |
+| Page shells (`BuildShell`, `LibraryPage`, `MonitorPage`, etc.) | Free of per-primitive surface code after Stage 4d/4e; remaining per-tool string literals are workflow-template + Build-empty-state UX wiring (moves to workflow modules in Stage 7+) | Pure orchestration only |
+| Shared infrastructure (AutoRenderer, DagStrip, hooks, services) | Exists; per-tool data derives from module specs (Monitor catalog walker, modelRegistry lazy derivation, `widgets/index.ts` preview walker, ToolDetailDrawer's `hasTypedView` lookup, WorkspaceButton's `workspaceLabel` lookup, persistedModelAdapters' `getModelAdapter` lookup) | Same |
 
 When a section says "the module loader exports X" or "the central registry is derived from Y", treat it as **target-state** unless explicitly qualified with "today" or "currently". The migration roadmap in [`../06_roadmap/frontend_migration.md`](../06_roadmap/frontend_migration.md) defines the staged path from current to target.
 

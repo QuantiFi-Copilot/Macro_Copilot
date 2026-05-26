@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_ois_forward_rate_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_ois_forward_rate',
+  displayName: 'OIS Forward Rate',
   category: 'forwards_classify',
   oneLineSummary: 'Implied forward rate between two points on an OIS curve via a dual-compounding bootstrap (simple interest for T ≤ 1Y, annual compounding for T > 1Y).  Two input modes — tenor-based or date-based — both returning forward rate, daily change, rolling z-score, trailing range, and time series.',
 };

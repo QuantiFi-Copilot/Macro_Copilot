@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_otr_history_tool',
   tiers: ['workflow_incompatible'],
-  displayName: 'get_otr_history',
+  displayName: 'OTR History',
   category: 'snapshots',
   oneLineSummary: 'On-the-run transition log for one (country, tenor) sovereign cash-bond slot — current OTR snapshot (CUSIP, ISIN, vendor_ticker, maturity_date, effective_from of the open window) plus the chronological list of OTR transitions intersecting the lookback window.  Pure-INGEST read of macro_data.otr_history (ADR 0003), forward-only per ADR 0007 / TD #27.',
   unsupportedReason: {
