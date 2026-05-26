@@ -35,6 +35,26 @@ from fx_agent.ndf.tools.ndf_outright import (  # noqa: E402
     FXNDFOutrightInput,
     get_fx_ndf_outright,
 )
+from fx_agent.vol.tools.atm_vol_level import (  # noqa: E402
+    CONFIG_PATH as FX_ATM_VOL_LEVEL_CONFIG_PATH,
+    FXAtmVolLevelInput,
+    get_fx_atm_vol_level,
+)
+from fx_agent.vol.tools.vol_scanner import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_SCANNER_CONFIG_PATH,
+    FXVolScannerInput,
+    run_fx_vol_scanner,
+)
+from fx_agent.vol.tools.vol_term_structure import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_TERM_STRUCTURE_CONFIG_PATH,
+    FXVolTermStructureInput,
+    get_fx_vol_term_structure,
+)
+from fx_agent.vol.tools.vol_z_score import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_Z_SCORE_CONFIG_PATH,
+    FXVolZScoreInput,
+    get_fx_vol_z_score,
+)
 from fx_agent.spot.tools.drawdown import (  # noqa: E402
     CONFIG_PATH as FX_DRAWDOWN_CONFIG_PATH,
     FXDrawdownInput,
@@ -612,6 +632,162 @@ def scan_fx_ndf_carry_tool(
         logger.exception("FX NDF carry scanner failed tenor=%s", tenor)
         return json.dumps({"error": f"FX NDF carry scanner failed: {exc}"}, default=str)
 
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_atm_vol_level_tool(
+    pair: str,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, tenor) ATM implied vol snapshot.
+
+    Returns latest ATM vol (PERCENT), daily / weekly / monthly absolute
+    vol-point changes, rolling 252-day z-score, trailing 252-day
+    high/low/percentile, and observation count. Mirror of
+    get_fx_spot_level but for the ATM vol substrate (115 standard-tenor
+    instruments).
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD', 'USDMXN', 'EURJPY').
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365 — DB fetch window for z-score history.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST. Use
+        'PX_BID' / 'PX_ASK' for bid/ask side (std-tenor 115 instruments).
+    """
+    try:
+        params = FXAtmVolLevelInput(
+            pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_ATM_VOL_LEVEL_CONFIG_PATH)
+        result = get_fx_atm_vol_level(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX ATM vol level failed for %s %s", pair, tenor)
+        return json.dumps({"error": f"FX ATM vol level failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_vol_term_structure_tool(
+    pair: str,
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """ATM vol term structure snapshot for one pair.
+
+    For the requested pair, returns one row per standard tenor (1W /
+    1M / 3M / 6M / 12M, short → long) with current vol, absolute vol-
+    point changes, rolling 252-day z-score / percentile / range.
+    Tenors without DB data are silently skipped.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolTermStructureInput(
+            pair=pair, lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_TERM_STRUCTURE_CONFIG_PATH)
+        result = get_fx_vol_term_structure(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX vol term structure failed for %s", pair)
+        return json.dumps({"error": f"FX vol term structure failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_vol_tool(
+    tenor: str = "1M",
+    market_scope: str = "G10",
+    rank_by: str = "vol_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Cross-sectional ATM vol scanner across pairs at one tenor.
+
+    For one tenor and market_scope (G10 / EM / G10_CROSSES / ALL),
+    returns one row per pair with current vol, rolling 252-day
+    z-score / percentile / range, ranked by 'vol_signed' /
+    'abs_vol' / 'abs_z_score'.
+
+    Useful for identifying the highest / lowest vol pairs or the
+    pairs whose vol is most stretched vs own history (abs_z_score).
+
+    Parameters
+    ----------
+    tenor : str, default '1M'.
+    market_scope : str, default 'G10'. Choices: 'G10', 'EM',
+        'G10_CROSSES', 'ALL'.
+    rank_by : str, default 'vol_signed'. Choices: 'vol_signed',
+        'abs_vol', 'abs_z_score'.
+    top_n : int | None — truncate to top-N after sorting.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolScannerInput(
+            tenor=tenor, market_scope=market_scope, rank_by=rank_by,
+            top_n=top_n, lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_SCANNER_CONFIG_PATH)
+        result = run_fx_vol_scanner(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX vol scanner failed tenor=%s scope=%s", tenor, market_scope)
+        return json.dumps({"error": f"FX vol scanner failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_vol_z_score_tool(
+    pair: str,
+    tenor: str = "1M",
+    lookback_days: int = 730,
+    field_name: Optional[str] = None,
+) -> str:
+    """Rolling 252-day z-score TIME SERIES for one (pair, tenor) ATM vol.
+
+    Returns the full time-series of rolling z-scores plus summary stats
+    (current, min / max / mean). Useful for visualizing vol-regime
+    trajectory rather than just the current snapshot. For a current-
+    snapshot single value, prefer get_fx_atm_vol_level.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair.
+    tenor : str, default '1M'.
+    lookback_days : int, default 730 (2 years) — wider than other tools'
+        365 so the rolling 252-day z-score series has ~1 year of valid
+        emitted points.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolZScoreInput(
+            pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_Z_SCORE_CONFIG_PATH)
+        result = get_fx_vol_z_score(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX vol z-score failed for %s %s", pair, tenor)
+        return json.dumps({"error": f"FX vol z-score failed: {exc}"}, default=str)
     return json.dumps(result, default=str)
 
 
