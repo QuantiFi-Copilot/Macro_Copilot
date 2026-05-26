@@ -70,15 +70,13 @@ import type {
   ArtifactType,
 } from '@/types/artifacts';
 
-/** Closed list of model tool names this module knows about.  The
- *  union is also a runtime registry — adding a new model means
- *  adding it here AND adding an entry to ``ADAPTERS``. */
-export type ModelToolName =
-  | 'calculate_pca_yield_curve_tool'
-  | 'calculate_rolling_regression_tool'
-  | 'calculate_yield_change_attribution_pca_tool'
-  | 'calculate_half_life_tool'
-  | 'calculate_beta_adjusted_spread_tool';
+/** Tool name that an adapter applies to.  Pre-Stage-4d this was a
+ *  closed literal union enumerating the 5 known rich-model tools;
+ *  Stage 4d moved the per-tool records onto each owning module's
+ *  ``MODULE.modelAdapter`` field, so the closed enumeration is gone
+ *  and any module may contribute an adapter under its
+ *  backend-canonical tool name. */
+export type ModelToolName = string;
 
 /** What the persisted artifact contains, semantically — used by the
  *  view to label the time series correctly ("Factor scores — first
@@ -122,104 +120,15 @@ export interface ModelAdapter {
 // Per-tool adapter records
 // ----------------------------------------------------------------------------
 
-const PCA_ADAPTER: ModelAdapter = {
-  toolName: 'calculate_pca_yield_curve_tool',
-  displayName: 'PCA',
-  hasTimeSeriesOutput: true,
-  expectedArtifactType: 'Series',
-  persistedRole: {
-    headline: 'PCA · factor-score time series',
-    description:
-      'The persisted Series carries one principal-component factor score path (one of the multi-factor fits the tool emits).',
-  },
-  detailUnavailable: [
-    'Per-tenor loadings matrix',
-    'Variance explained per component (and cumulative)',
-    'Current factor levels (latest snapshot)',
-    'Component-quality / diagnostics flags',
-    'Peer factor series that weren’t lifted as the artifact',
-  ],
-  builderHint:
-    'Re-run from the model builder to view the full loadings / variance / current-factor-levels panel.',
-};
-
-const ROLLING_REGRESSION_ADAPTER: ModelAdapter = {
-  toolName: 'calculate_rolling_regression_tool',
-  displayName: 'Rolling regression',
-  hasTimeSeriesOutput: true,
-  expectedArtifactType: 'Series',
-  persistedRole: {
-    headline: 'Rolling regression · rolling coefficient time series',
-    description:
-      'The persisted Series carries one of the rolling fit outputs (β, α, R², residual, or condition flag) — whichever the workspace selected via output_field.',
-  },
-  detailUnavailable: [
-    'Latest fit snapshot (current β, α, R²)',
-    'Numerical-stability condition number',
-    'Peer rolling series not lifted as the artifact',
-  ],
-  builderHint:
-    'Re-run from the model builder to inspect the snapshot panel + the peer coefficient series.',
-};
-
-const ATTRIBUTION_ADAPTER: ModelAdapter = {
-  toolName: 'calculate_yield_change_attribution_pca_tool',
-  displayName: 'Yield-change attribution',
-  // Backend output_class has NO time_series field — the substrate's
-  // Series bridge would crash on lift today.  We surface this honestly
-  // rather than render an empty body.
-  hasTimeSeriesOutput: false,
-  expectedArtifactType: 'Series',
-  persistedRole: {
-    headline: 'Attribution · snapshot decomposition (not persistable today)',
-    description:
-      'This tool emits a pure-snapshot output (component-level contribution / residual breakdown).  Today there is no time_series field to lift as a workspace artifact, so persistence isn’t supported end-to-end.',
-  },
-  detailUnavailable: [
-    'Per-component contribution waterfall',
-    'Residual + diagnostic flags',
-    'Tenor coverage list',
-  ],
-  builderHint:
-    'Open the attribution builder to view the live decomposition.  A future PR may extend the substrate to persist a snapshot row.',
-};
-
-const HALF_LIFE_ADAPTER: ModelAdapter = {
-  toolName: 'calculate_half_life_tool',
-  displayName: 'Half-life',
-  hasTimeSeriesOutput: false,
-  expectedArtifactType: 'Series',
-  persistedRole: {
-    headline: 'Half-life · snapshot scalar (not persistable today)',
-    description:
-      'The tool emits a snapshot scalar (estimated half-life + the AR(1) diagnostics).  No time_series field exists on the output, so workspace persistence isn’t supported end-to-end.',
-  },
-  detailUnavailable: [
-    'Half-life value (in trading days)',
-    'AR(1) coefficient + standard error',
-    'Mean-reversion direction flag',
-  ],
-  builderHint:
-    'Open the half-life builder to view the live snapshot.',
-};
-
-const BETA_ADJUSTED_SPREAD_ADAPTER: ModelAdapter = {
-  toolName: 'calculate_beta_adjusted_spread_tool',
-  displayName: 'Beta-adjusted spread',
-  hasTimeSeriesOutput: true,
-  expectedArtifactType: 'Series',
-  persistedRole: {
-    headline: 'Beta-adjusted spread · rolling residual time series',
-    description:
-      'The persisted Series carries one of the rolling outputs — the beta time series, the residual spread, or its z-score — whichever the workspace selected via output_field.',
-  },
-  detailUnavailable: [
-    'Latest fit snapshot (current beta + residual z-score)',
-    'Peer rolling series not lifted as the artifact',
-  ],
-  builderHint:
-    'Re-run from the model builder to view the snapshot panel + the peer coefficient series.',
-};
+// ----------------------------------------------------------------------------
+// Stage 4d — the per-tool adapter records (PCA, rolling regression,
+// attribution, half-life, beta-adjusted spread) moved onto each
+// owning module's ``MODULE.modelAdapter`` field.  This file now
+// derives the registry via ``getPrimitiveModule(toolName)?.modelAdapter``
+// instead of holding a hand-authored ``ADAPTERS`` record.  Adding a
+// new rich-model tool with a bespoke adapter = ship it on the module
+// spec; no further edit to this file.
+// ----------------------------------------------------------------------------
 
 /** Generic fallback adapter for unregistered or unknown tool names.
  *  Used when the per-tool registry has no entry — the widget renders
@@ -239,27 +148,23 @@ export const GENERIC_MODEL_ADAPTER: ModelAdapter = {
   builderHint: '',
 };
 
-/** Closed registry of model adapters, keyed by tool name. */
-const ADAPTERS: Record<ModelToolName, ModelAdapter> = {
-  calculate_pca_yield_curve_tool: PCA_ADAPTER,
-  calculate_rolling_regression_tool: ROLLING_REGRESSION_ADAPTER,
-  calculate_yield_change_attribution_pca_tool: ATTRIBUTION_ADAPTER,
-  calculate_half_life_tool: HALF_LIFE_ADAPTER,
-  calculate_beta_adjusted_spread_tool: BETA_ADJUSTED_SPREAD_ADAPTER,
-};
+// Lazy module lookup — defer the ``getPrimitiveModule`` call to first
+// invocation so this file's module-init never reads ``@/modules``
+// directly (avoids the persistedModelAdapters ↔ modules ↔ RichModelWidget
+// cycle through each rich-model module's PreviewWidget surface).
+import { getPrimitiveModule } from '@/modules';
 
-/** Returns ``true`` if the tool name is one this module has an
- *  adapter for. */
+/** Returns ``true`` if the tool name has a per-tool adapter declared
+ *  on its owning module's spec (``MODULE.modelAdapter``). */
 export function isModelTool(toolName: string): toolName is ModelToolName {
-  return toolName in ADAPTERS;
+  return getPrimitiveModule(toolName)?.modelAdapter != null;
 }
 
-/** Look up the per-tool adapter.  Returns ``GENERIC_MODEL_ADAPTER``
- *  for unregistered tool names so callers always get a usable
- *  adapter shape. */
+/** Look up the per-tool adapter.  Reads ``MODULE.modelAdapter`` from
+ *  the owning primitive module; falls back to ``GENERIC_MODEL_ADAPTER``
+ *  when the tool has no module entry or no adapter declared. */
 export function getModelAdapter(toolName: string): ModelAdapter {
-  if (isModelTool(toolName)) return ADAPTERS[toolName];
-  return GENERIC_MODEL_ADAPTER;
+  return getPrimitiveModule(toolName)?.modelAdapter ?? GENERIC_MODEL_ADAPTER;
 }
 
 // ----------------------------------------------------------------------------

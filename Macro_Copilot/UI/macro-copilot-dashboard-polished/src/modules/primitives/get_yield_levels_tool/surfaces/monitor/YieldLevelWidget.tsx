@@ -18,7 +18,7 @@ import {
   WidgetProvenance,
 } from '@/components/monitor/WidgetCard';
 import { Sparkline } from '@/components/ui/Sparkline';
-import { WidgetLoading, WidgetError } from './shared';
+import { WidgetLoading, WidgetError } from '@/components/monitor/widgets/shared';
 import { cn } from '@/utils/cn';
 
 const CURVE_LABEL: Record<string, string> = {

@@ -14,28 +14,23 @@ import { ArrowUpRight, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkspaceContext } from '@/types/copilot';
 import { normalizeToolName } from '@/lib/toolNames';
+import { getPrimitiveModule } from '@/modules';
 
 type WorkspaceButtonProps = {
   context: WorkspaceContext;
 };
 
-// Human-readable tool labels for the workspace button subtitle.
-// Existing chartable tools route to typed views; the analytical models
-// route to the rich ModelWorkspacePage.  Keys are BACKEND-CANONICAL —
-// names from the manifest are normalised before lookup.
-const TOOL_WORKSPACE_LABELS: Record<string, string> = {
-  calculate_curve_spread_tool: 'Spread chart & history',
-  calculate_cross_market_spread_tool: 'Cross-market chart',
-  calculate_butterfly_tool: 'Butterfly decomposition',
-  scan_extremes_tool: 'Scanner results & heatmap',
-  // Analytical models — open in the model playground.
-  calculate_rolling_regression_tool: 'Rolling regression playground',
-  calculate_pca_yield_curve_tool: 'PCA loadings, variance, factor scores',
-  calculate_yield_change_attribution_pca_tool:
-    'PCA-based attribution decomposition',
-  calculate_half_life_tool: 'Mean-reversion half-life diagnostics',
-  calculate_beta_adjusted_spread_tool: 'Beta-adjusted spread playground',
-};
+// Stage 4d — per-tool labels for the workspace button subtitle are
+// now sourced from each module's ``workspaceLabel`` field on its
+// spec.  Falls back to the raw tool name when the owning module
+// doesn't ship a rich label (so multi-tool contexts that include
+// generic-builder tools without bespoke copy still render meaningful
+// text).  This file used to carry a hand-authored
+// ``TOOL_WORKSPACE_LABELS`` record (9 entries); each entry moved
+// onto its owning module's spec.
+function workspaceLabelFor(toolName: string): string {
+  return getPrimitiveModule(toolName)?.workspaceLabel ?? toolName;
+}
 
 export function WorkspaceButton({ context }: WorkspaceButtonProps) {
   const navigate = useNavigate();
@@ -53,7 +48,7 @@ export function WorkspaceButton({ context }: WorkspaceButtonProps) {
   };
 
   const subtitle = normalisedContext.tools
-    .map((t) => TOOL_WORKSPACE_LABELS[t.tool] ?? t.tool)
+    .map((t) => workspaceLabelFor(t.tool))
     .join(' · ');
 
   const handleClick = () => {

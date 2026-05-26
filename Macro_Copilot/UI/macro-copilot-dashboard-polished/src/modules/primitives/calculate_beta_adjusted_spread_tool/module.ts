@@ -8,12 +8,31 @@
 
 import type { PrimitiveModuleSpec } from '../../types';
 import type { ModelMetadata } from '@/lib/modelRegistry';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import {
   DEFAULT_LOOKBACK_PRESETS,
   DEFAULT_WINDOW_PRESETS,
 } from '@/lib/modelPresets';
 import BuildSurface from './surfaces/BuildSurface';
 import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_ADAPTER: ModelAdapter = {
+  toolName: 'calculate_beta_adjusted_spread_tool',
+  displayName: 'Beta-adjusted spread',
+  hasTimeSeriesOutput: true,
+  expectedArtifactType: 'Series',
+  persistedRole: {
+    headline: 'Beta-adjusted spread · rolling residual time series',
+    description:
+      'The persisted Series carries one of the rolling outputs — the beta time series, the residual spread, or its z-score — whichever the workspace selected via output_field.',
+  },
+  detailUnavailable: [
+    'Latest fit snapshot (current beta + residual z-score)',
+    'Peer rolling series not lifted as the artifact',
+  ],
+  builderHint:
+    'Re-run from the model builder to view the snapshot panel + the peer coefficient series.',
+};
 
 const MODEL_METADATA: ModelMetadata = {
   toolName: 'calculate_beta_adjusted_spread_tool',
@@ -60,6 +79,8 @@ export const MODULE: PrimitiveModuleSpec = {
     'Bivariate beta-adjusted RV — rolling OLS regresses one sovereign yield (target) on another (regressor); returns hedge ratio (beta), alpha (yield-percent), residual in bps, and a rolling z-score on the residual.',
   richModel: true,
   modelMetadata: MODEL_METADATA,
+  modelAdapter: MODEL_ADAPTER,
+  workspaceLabel: 'Beta-adjusted spread playground',
   surfaces: {
     build: BuildSurface,
     preview: PreviewWidget,

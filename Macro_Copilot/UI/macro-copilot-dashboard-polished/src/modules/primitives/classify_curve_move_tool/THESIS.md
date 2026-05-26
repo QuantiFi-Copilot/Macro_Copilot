@@ -6,7 +6,7 @@
 **Version:** v1 (Stage 3 scaffold)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `classify_curve_move_tool` (workflow_incompatible)
-**Tier set:** `[workflow_incompatible, custom_build_surface]`
+**Tier set:** `[workflow_incompatible, custom_build_surface, monitor_surface]`
 **Backend sub-agent:** `sovereign_bonds` · **Category:** `forwards_classify`
 
 ---
@@ -25,6 +25,13 @@
 `ask_surface` — are NOT claimed in Stage 3.  The existing UI continues to render
 via the legacy page-folder code in `src/components/build/`, `src/components/monitor/`,
 etc.  Stage 4 PRs add capability tiers as surfaces move into this folder.)
+
+
+- **`monitor_surface`** (Stage 4d) — Stage 4d — Monitor catalog widgets shipped: `curve_classifier`.
+  The widget components live under `surfaces/monitor/`; their
+  catalog metadata is declared inline on `MODULE.monitorWidgets`
+  and `src/components/monitor/registry.ts` walks the module
+  set to build the public `WIDGET_TYPES` map.
 
 ## 2. What does the user read off each surface?
 

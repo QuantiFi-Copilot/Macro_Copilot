@@ -142,10 +142,33 @@ export async function assertStandardModuleInvariants(
   };
 
   // 4 — every claimed capability tier must have a populated surface.
+  //
+  // Stage 4d relaxation for ``monitor_surface``: the tier is satisfied
+  // by EITHER ``surfaces.monitor`` (the single-widget legacy shape) OR
+  // a non-empty ``monitorWidgets`` array (the multi-variant shape that
+  // Stage 4d introduces for tools with cross-market parameterised +
+  // pre-aggregated variants of the same widget).  Every Stage 4d
+  // ``monitor_surface`` claim uses ``monitorWidgets``; ``surfaces.monitor``
+  // is reserved for future single-widget modules.
   for (const t of tierSet) {
     if (!CAPABILITY_TIERS.has(t as never)) continue;
     const key = capabilityToSurfaceKey[t];
-    if (key && !surfaces[key]) {
+    if (!key) continue;
+    if (key === 'monitor') {
+      const hasSurface = surfaces.monitor != null;
+      const hasWidgets =
+        Array.isArray(module.monitorWidgets) && module.monitorWidgets.length > 0;
+      if (!hasSurface && !hasWidgets) {
+        throw new Error(
+          `FM8 violation — module claims 'monitor_surface' but neither ` +
+            `surfaces.monitor nor monitorWidgets is populated.  Add a ` +
+            `MonitorWidget surface file (single-widget) OR populate ` +
+            `monitorWidgets (multi-variant).`,
+        );
+      }
+      continue;
+    }
+    if (!surfaces[key]) {
       throw new Error(
         `FM8 violation — module claims '${t}' but surfaces.${key} is not ` +
           `populated.  Either remove the tier or add the surface file.`,
@@ -172,6 +195,18 @@ export async function assertStandardModuleInvariants(
           `surface reference.`,
       );
     }
+  }
+
+  // 5b — Stage 4d reverse rule for monitorWidgets: if a module
+  // populates ``monitorWidgets`` it MUST claim ``monitor_surface``.
+  const widgetsPopulated =
+    Array.isArray(module.monitorWidgets) && module.monitorWidgets.length > 0;
+  if (widgetsPopulated && !tierSet.has('monitor_surface')) {
+    throw new Error(
+      `FM8 violation — module populates monitorWidgets but does not ` +
+        `claim 'monitor_surface'.  Either claim the tier or remove the ` +
+        `monitorWidgets entries.`,
+    );
   }
 
   // ---- Invariant 8: unsupportedReason gating --------------------------

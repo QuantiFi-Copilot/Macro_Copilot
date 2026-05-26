@@ -14,8 +14,31 @@
 
 import type { PrimitiveModuleSpec } from '../../types';
 import type { ModelMetadata } from '@/lib/modelRegistry';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import BuildSurface from './surfaces/BuildSurface';
 import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_ADAPTER: ModelAdapter = {
+  toolName: 'calculate_yield_change_attribution_pca_tool',
+  displayName: 'Yield-change attribution',
+  // Backend output_class has NO time_series field — the substrate's
+  // Series bridge would crash on lift today.  We surface this honestly
+  // rather than render an empty body.
+  hasTimeSeriesOutput: false,
+  expectedArtifactType: 'Series',
+  persistedRole: {
+    headline: 'Attribution · snapshot decomposition (not persistable today)',
+    description:
+      'This tool emits a pure-snapshot output (component-level contribution / residual breakdown).  Today there is no time_series field to lift as a workspace artifact, so persistence isn’t supported end-to-end.',
+  },
+  detailUnavailable: [
+    'Per-component contribution waterfall',
+    'Residual + diagnostic flags',
+    'Tenor coverage list',
+  ],
+  builderHint:
+    'Open the attribution builder to view the live decomposition.  A future PR may extend the substrate to persist a snapshot row.',
+};
 
 const MODEL_METADATA: ModelMetadata = {
   toolName: 'calculate_yield_change_attribution_pca_tool',
@@ -87,6 +110,12 @@ export const MODULE: PrimitiveModuleSpec = {
     'Decompose a sovereign yield change at a given tenor over a window into per-PCA-component contributions in bps.  Loadings come from an inline PCA fit or a caller-supplied pasted payload.',
   richModel: true,
   modelMetadata: MODEL_METADATA,
+  modelAdapter: MODEL_ADAPTER,
+  workspaceLabel: 'PCA-based attribution decomposition',
+  // Attribution registers under BOTH ``Series`` and ``Panel`` because
+  // either artifact type can materialise depending on what the bridge
+  // lifts.  ``Series`` is the default; ``Panel`` is the addition.
+  previewArtifactTypes: ['Panel'],
   surfaces: {
     build: BuildSurface,
     preview: PreviewWidget,

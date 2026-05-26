@@ -39,6 +39,17 @@ import type {
 // ``ModelMetadata`` block.  Type-only import keeps the
 // modules/types ↔ modelRegistry cycle erased at runtime.
 import type { ModelMetadata } from '@/lib/modelRegistry';
+// Stage 4d — modules that ship Monitor catalog widgets carry a
+// MonitorWidgetMeta entry per widget id.  Type-only import from the
+// leaf-file shape; the per-tool components are referenced by value
+// inside each module's own ``module.ts``.
+import type { MonitorWidgetMeta } from '@/types/monitorWidget';
+// Stage 4d — modules that ship persisted-artifact previews via
+// RichModelWidget carry their per-tool adapter here; the central
+// ``persistedModelAdapters`` dispatcher reads ``module.modelAdapter``
+// instead of carrying a hand-authored record.  Type-only — no runtime
+// cycle through the page-shell widgets folder.
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 
 // ---------------------------------------------------------------------------
 // SurfaceTier — closed family (FP3 / FM3).
@@ -319,6 +330,71 @@ export interface PrimitiveModuleSpec {
    *  ``RichModelWidget``); ``modelRegistry`` derives its ``MODELS``
    *  array from these entries. */
   modelMetadata?: ModelMetadata;
+
+  // -------------------------------------------------------------------
+  // FM5c — Monitor catalog widgets (Stage 4d).  Populated on modules
+  // that ship one or more Monitor widgets to the bento catalog.
+  // ``src/components/monitor/registry.ts`` walks
+  // ``ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])``
+  // and unions with the hand-authored (pre-aggregated) entries to
+  // build the public ``WIDGET_TYPES`` map.
+  //
+  // The module-spec invariant (FM8) is extended: a module that claims
+  // ``monitor_surface`` MUST populate EITHER ``surfaces.monitor`` (the
+  // single-widget legacy shape, kept for back-compat) OR a non-empty
+  // ``monitorWidgets`` array (the Stage 4d multi-variant shape).  In
+  // practice every Stage 4d module uses ``monitorWidgets``.
+  // -------------------------------------------------------------------
+  /** Monitor catalog widgets contributed by this module.  Each entry
+   *  carries the user-facing metadata (id, label, description,
+   *  category, sizing, param-form spec) and the renderer component.
+   *  ``sourceTool`` for each catalog entry is implicit — derived from
+   *  this module's ``toolName`` by the registry walker. */
+  monitorWidgets?: ReadonlyArray<MonitorWidgetMeta>;
+
+  // -------------------------------------------------------------------
+  // FM5d — persisted-artifact ModelAdapter (Stage 4d).  Populated on
+  // modules whose RichModelWidget rendering needs per-tool copy
+  // (displayName, persistedRole, detailUnavailable list, builderHint).
+  // The central ``persistedModelAdapters.getModelAdapter`` dispatcher
+  // reads ``getPrimitiveModule(toolName).modelAdapter`` instead of
+  // carrying a hand-authored record per tool.  Falls back to
+  // ``GENERIC_MODEL_ADAPTER`` when null / undefined (preserves the
+  // pre-Stage-4d "unknown tool" semantics).
+  // -------------------------------------------------------------------
+  /** Per-tool ModelAdapter for the persisted-artifact RichModelWidget.
+   *  Only populated on rich-model modules; tools without a bespoke
+   *  persisted-artifact view leave this unset (the dispatcher falls
+   *  through to the generic adapter). */
+  modelAdapter?: ModelAdapter;
+
+  // -------------------------------------------------------------------
+  // FM5e — preview-widget artifact-type registration override (Stage 4d).
+  // The Stage 4b ``widgets/index.ts`` walker registers each module's
+  // ``surfaces.preview`` under ``(Series, toolName)`` by default.  A
+  // module that needs the preview registered against MULTIPLE artifact
+  // types (today only ``calculate_yield_change_attribution_pca_tool``
+  // — Series AND Panel) lists every extra artifact type here.  The
+  // default ``Series`` registration always happens — this field
+  // declares additions, not replacements.
+  // -------------------------------------------------------------------
+  /** Extra artifact types beyond the default ``Series`` under which
+   *  the module's ``surfaces.preview`` should be registered.  Used
+   *  by attribution which can land as a Panel snapshot too. */
+  previewArtifactTypes?: ReadonlyArray<string>;
+
+  // -------------------------------------------------------------------
+  // FM5f — Workspace-button rich label (Stage 4d).  Used by
+  // ``src/components/copilot/WorkspaceButton.tsx`` to render a richer
+  // subtitle for the "See more in workspace" CTA than the bare
+  // ``displayName``.  Optional — when null the button falls back to
+  // the module's ``displayName``, and from there to the raw tool name.
+  // -------------------------------------------------------------------
+  /** Rich human-readable label for the workspace-button subtitle
+   *  (e.g. "Spread chart & history" vs the plainer ``displayName``
+   *  "calculate_curve_spread").  Falls back to ``displayName`` when
+   *  unset. */
+  workspaceLabel?: string;
 
   // -------------------------------------------------------------------
   // FM6 — unsupported reason.  Required when tiers includes

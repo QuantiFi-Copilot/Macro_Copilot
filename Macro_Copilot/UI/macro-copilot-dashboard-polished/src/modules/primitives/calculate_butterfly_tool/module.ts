@@ -18,6 +18,7 @@ export const MODULE: PrimitiveModuleSpec = {
   category: 'curve_shape',
   oneLineSummary: 'Three-point curvature on a sovereign curve — (2 × belly − short − long) × 100 bps — with rolling z-score, trailing range, wing-spread components, and full time series.',
   typedView: 'butterfly',
+  workspaceLabel: 'Butterfly decomposition',
   surfaces: { build: BuildSurface },
   unsupportedReason: {
     label: 'calculate_butterfly',

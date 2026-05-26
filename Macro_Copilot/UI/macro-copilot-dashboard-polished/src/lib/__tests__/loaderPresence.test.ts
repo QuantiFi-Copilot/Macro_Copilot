@@ -304,10 +304,29 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     const tierSet = new Set<SurfaceTier>(m.tiers);
     const surfaces = m.surfaces ?? {};
     // capability tier ⇒ surface populated
+    //
+    // Stage 4d relaxation for ``monitor_surface``: the tier is
+    // satisfied by EITHER ``surfaces.monitor`` (single-widget legacy
+    // shape) OR a non-empty ``monitorWidgets`` array (multi-variant
+    // Stage 4d shape).  Mirrors the relaxation in
+    // ``src/modules/__test-utils.ts``.
     for (const t of tierSet) {
       if (!(CAPABILITY_TIERS as ReadonlySet<SurfaceTier>).has(t)) continue;
       const key = map[t];
-      if (key && !surfaces[key]) {
+      if (!key) continue;
+      if (key === 'monitor') {
+        const hasSurface = surfaces.monitor != null;
+        const hasWidgets =
+          Array.isArray(m.monitorWidgets) && m.monitorWidgets.length > 0;
+        if (!hasSurface && !hasWidgets) {
+          throw new Error(
+            `${m.toolName}: claims 'monitor_surface' but neither ` +
+              `surfaces.monitor nor monitorWidgets is populated`,
+          );
+        }
+        continue;
+      }
+      if (!surfaces[key]) {
         throw new Error(
           `${m.toolName}: claims '${t}' but surfaces.${key} is empty`,
         );
@@ -322,6 +341,14 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
           `${m.toolName}: surfaces.${key} populated but '${tier}' not in tiers`,
         );
       }
+    }
+    // Stage 4d reverse: monitorWidgets ⇒ monitor_surface tier
+    const widgetsPopulated =
+      Array.isArray(m.monitorWidgets) && m.monitorWidgets.length > 0;
+    if (widgetsPopulated && !tierSet.has('monitor_surface')) {
+      throw new Error(
+        `${m.toolName}: monitorWidgets populated but 'monitor_surface' not in tiers`,
+      );
     }
   }
 });

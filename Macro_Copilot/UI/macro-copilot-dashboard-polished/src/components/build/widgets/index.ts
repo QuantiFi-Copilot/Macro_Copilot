@@ -54,26 +54,25 @@ import {
   type NodeRenderer,
 } from '@/components/build/lib/nodeRendererRegistry';
 
-// Attribution's persisted artifact can land as either ``Series`` (when
-// the workflow bridge lifts a time-series field) or ``Panel`` (when
-// it lifts the snapshot table).  The legacy ``AttributionPreviewWidget``
-// registered against both artifact types; preserve that dual
-// registration here.  Other rich-model preview widgets register
-// against ``Series`` only.
-const DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS = new Set<string>([
-  'calculate_yield_change_attribution_pca_tool',
-]);
+// Stage 4d — every module's preview registers under ``Series`` by
+// default.  Modules that need additional artifact-type registrations
+// (today only attribution — Series AND Panel) declare them via the
+// module spec's ``previewArtifactTypes`` field, eliminating the
+// hand-authored DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS set this file used
+// to carry.
+const DEFAULT_PREVIEW_ARTIFACT_TYPE = 'Series';
 
 for (const m of ALL_PRIMITIVE_MODULES) {
   const Preview = m.surfaces?.preview as NodeRenderer | undefined;
   if (!Preview) continue;
   registerToolRenderer(
-    { artifactType: 'Series', toolName: m.toolName },
+    { artifactType: DEFAULT_PREVIEW_ARTIFACT_TYPE, toolName: m.toolName },
     Preview,
   );
-  if (DUAL_ARTIFACT_TYPE_PREVIEW_TOOLS.has(m.toolName)) {
+  for (const extra of m.previewArtifactTypes ?? []) {
+    if (extra === DEFAULT_PREVIEW_ARTIFACT_TYPE) continue;
     registerToolRenderer(
-      { artifactType: 'Panel', toolName: m.toolName },
+      { artifactType: extra, toolName: m.toolName },
       Preview,
     );
   }

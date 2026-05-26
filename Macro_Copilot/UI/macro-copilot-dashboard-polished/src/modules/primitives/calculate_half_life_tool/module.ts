@@ -8,8 +8,27 @@
 
 import type { PrimitiveModuleSpec } from '../../types';
 import type { ModelMetadata } from '@/lib/modelRegistry';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import BuildSurface from './surfaces/BuildSurface';
 import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_ADAPTER: ModelAdapter = {
+  toolName: 'calculate_half_life_tool',
+  displayName: 'Half-life',
+  hasTimeSeriesOutput: false,
+  expectedArtifactType: 'Series',
+  persistedRole: {
+    headline: 'Half-life · snapshot scalar (not persistable today)',
+    description:
+      'The tool emits a snapshot scalar (estimated half-life + the AR(1) diagnostics).  No time_series field exists on the output, so workspace persistence isn’t supported end-to-end.',
+  },
+  detailUnavailable: [
+    'Half-life value (in trading days)',
+    'AR(1) coefficient + standard error',
+    'Mean-reversion direction flag',
+  ],
+  builderHint: 'Open the half-life builder to view the live snapshot.',
+};
 
 const MODEL_METADATA: ModelMetadata = {
   toolName: 'calculate_half_life_tool',
@@ -38,6 +57,8 @@ export const MODULE: PrimitiveModuleSpec = {
     'Ornstein-Uhlenbeck / AR(1) fit on a supplied series.  Returns half-life of mean reversion (trading days), long-run mean, current deviation, OU β with confidence interval, and a delta-method CI on the half-life itself.',
   richModel: true,
   modelMetadata: MODEL_METADATA,
+  modelAdapter: MODEL_ADAPTER,
+  workspaceLabel: 'Mean-reversion half-life diagnostics',
   surfaces: {
     build: BuildSurface,
     preview: PreviewWidget,

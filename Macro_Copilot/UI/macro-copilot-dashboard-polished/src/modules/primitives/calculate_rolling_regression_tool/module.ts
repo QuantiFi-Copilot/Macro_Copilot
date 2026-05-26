@@ -8,12 +8,32 @@
 
 import type { PrimitiveModuleSpec } from '../../types';
 import type { ModelMetadata } from '@/lib/modelRegistry';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import {
   DEFAULT_LOOKBACK_PRESETS,
   DEFAULT_WINDOW_PRESETS,
 } from '@/lib/modelPresets';
 import BuildSurface from './surfaces/BuildSurface';
 import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_ADAPTER: ModelAdapter = {
+  toolName: 'calculate_rolling_regression_tool',
+  displayName: 'Rolling regression',
+  hasTimeSeriesOutput: true,
+  expectedArtifactType: 'Series',
+  persistedRole: {
+    headline: 'Rolling regression · rolling coefficient time series',
+    description:
+      'The persisted Series carries one of the rolling fit outputs (β, α, R², residual, or condition flag) — whichever the workspace selected via output_field.',
+  },
+  detailUnavailable: [
+    'Latest fit snapshot (current β, α, R²)',
+    'Numerical-stability condition number',
+    'Peer rolling series not lifted as the artifact',
+  ],
+  builderHint:
+    'Re-run from the model builder to inspect the snapshot panel + the peer coefficient series.',
+};
 
 const MODEL_METADATA: ModelMetadata = {
   toolName: 'calculate_rolling_regression_tool',
@@ -78,6 +98,8 @@ export const MODULE: PrimitiveModuleSpec = {
     'Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.',
   richModel: true,
   modelMetadata: MODEL_METADATA,
+  modelAdapter: MODEL_ADAPTER,
+  workspaceLabel: 'Rolling regression playground',
   surfaces: {
     build: BuildSurface,
     preview: PreviewWidget,

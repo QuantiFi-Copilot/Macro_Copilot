@@ -16,7 +16,7 @@ import {
   WidgetBody,
   WidgetProvenance,
 } from '@/components/monitor/WidgetCard';
-import { WidgetLoading, WidgetError, WidgetEmpty } from './shared';
+import { WidgetLoading, WidgetError, WidgetEmpty } from '@/components/monitor/widgets/shared';
 import { cn } from '@/utils/cn';
 
 const CURVE_SHORT: Record<string, string> = {
