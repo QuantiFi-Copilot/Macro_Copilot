@@ -86,18 +86,51 @@ def is_na(v) -> bool:
     return False
 
 
-def read_static_matrix(xlsx_path: Path) -> List[Tuple[str, Dict[str, str]]]:
-    """Read XLSX, return list of (vendor_ticker, attrs_dict) where attrs
-    only contains BDP fields that resolved to a non-N/A value.
+def _iter_rows_from_xlsx(path: Path):
+    """Yield (header_row, body_iter) from an XLSX file (first sheet only)."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    body = list(ws.iter_rows(min_row=2, values_only=True))
+    wb.close()
+    return header_row, body
 
+
+def _iter_rows_from_csv(path: Path):
+    """Yield (header_row, body_iter) from a CSV file."""
+    import csv
+    with path.open("r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        all_rows = list(reader)
+    if not all_rows:
+        return (), []
+    header_row = tuple(all_rows[0])
+    body = [tuple(r) for r in all_rows[1:]]
+    return header_row, body
+
+
+def read_static_matrix(input_path: Path) -> List[Tuple[str, Dict[str, str]]]:
+    """Read static matrix file, return list of (vendor_ticker, attrs_dict).
+
+    Accepts both .xlsx and .csv (including .xlsx.csv double-extension when
+    Bloomberg/Excel exports as CSV). Format detected from the suffix.
     Tickers with zero usable attrs are excluded from the result.
     """
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    sheet_name = wb.sheetnames[0]
-    ws = wb[sheet_name]
+    name_lower = input_path.name.lower()
+    if name_lower.endswith(".csv"):
+        # Covers both "*.csv" and "*.xlsx.csv" (Bloomberg/Excel export with
+        # double-extension when "Save As CSV" preserves the original .xlsx
+        # part in the filename).
+        header_row, body = _iter_rows_from_csv(input_path)
+    elif name_lower.endswith(".xlsx"):
+        header_row, body = _iter_rows_from_xlsx(input_path)
+    else:
+        raise ValueError(
+            f"Unsupported static matrix file extension: {input_path.name!r}. "
+            "Expected .xlsx or .csv."
+        )
 
-    # Read header from row 1 to map column index → attr key
-    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    # Map header column → attr_key
     col_idx_to_attr_key: Dict[int, str] = {}
     for i, col_name in enumerate(header_row):
         if col_name in COL_HEADER_TO_ATTR_KEY:
@@ -105,13 +138,13 @@ def read_static_matrix(xlsx_path: Path) -> List[Tuple[str, Dict[str, str]]]:
 
     if not col_idx_to_attr_key:
         raise ValueError(
-            f"No usable columns found in static matrix XLSX. "
+            f"No usable columns found in static matrix file. "
             f"Expected one of {list(COL_HEADER_TO_ATTR_KEY)}. "
             f"Header found: {list(header_row)}"
         )
 
     rows: List[Tuple[str, Dict[str, str]]] = []
-    for r in ws.iter_rows(min_row=2, values_only=True):
+    for r in body:
         if not r or len(r) == 0:
             continue
         ticker = r[0]
@@ -129,7 +162,6 @@ def read_static_matrix(xlsx_path: Path) -> List[Tuple[str, Dict[str, str]]]:
         if attrs:
             rows.append((ticker, attrs))
 
-    wb.close()
     return rows
 
 
