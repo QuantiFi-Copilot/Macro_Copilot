@@ -1,7 +1,10 @@
 """Manual Bloomberg XLSX → parquet converter (generic, substrate-parameterised).
 
 Phase B Wave 2 / BBG batch (2026-05-25). Extended for BBG warehouse seeding
-session (2026-05-25 night) — supports 15 FX substrates total now.
+(2026-05-25 night) and for FX tradability (2026-05-26) — supports 15+
+FX substrates. Multi-field aware (PX_LAST + PX_BID + PX_ASK + PX_VOLUME)
+and multi-playbook-XLSX aware (one XLSX can feed multiple substrates by
+regex partition).
 
 Original BBG batch substrates (PR #198 + #203):
   - g10_forwards_long    (G10 forwards 2Y/5Y, extends fx_forwards.yml)
@@ -495,6 +498,31 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
 # ============================================================================
 
 
+# Map regex `field` group value → BBG field_name written to the parquet.
+# When a substrate's regex has no `field` named group, the long_df field_name
+# defaults to PX_LAST (backward compat with all pre-bidask substrates).
+_BBG_FIELD_MAP: Dict[str, str] = {
+    "": "PX_LAST",
+    "LAST": "PX_LAST",
+    "BID": "PX_BID",
+    "ASK": "PX_ASK",
+    "VOL": "PX_VOLUME",  # reserved — no PX_VOLUME substrate currently uses it
+}
+
+
+def _resolve_field_name(regex_groups: Dict[str, str]) -> str:
+    """Return the BBG field_name for a regex match. Defaults to PX_LAST when
+    the substrate's regex has no `field` named group (single-field substrates
+    like spot_topup, em_ext_vol, atm_extended — backward compat)."""
+    raw = (regex_groups.get("field") or "").upper()
+    if raw not in _BBG_FIELD_MAP:
+        _fail(
+            f"Unknown regex `field` group value {raw!r}. "
+            f"Allowed: {sorted(_BBG_FIELD_MAP.keys())}"
+        )
+    return _BBG_FIELD_MAP[raw]
+
+
 class ValidationError(RuntimeError):
     """Raised when the XLSX or built parquet fails any garde-fou check."""
 
@@ -518,9 +546,21 @@ def read_and_validate_xlsx(
     substrate: SubstrateConfig,
     infer_missing_first_date: bool = False,
 ) -> pd.DataFrame:
-    """Read the XLSX, validate, return a long-format DataFrame with
-    columns [trade_date, ticker, field_value]. Fail-loud on any
+    """Read the XLSX, validate, return a long-format DataFrame with columns
+    [trade_date, ticker, field_name, field_value]. Fail-loud on any
     discrepancy with the substrate's spec.
+
+    The XLSX may contain MORE sheets than the substrate's regex matches —
+    this supports multi-playbook XLSX files (e.g. spot_bidask covers both
+    spot_fx and fx_crosses playbooks, run twice with different regexes).
+    Non-matching sheets are skipped with a NOTE. expected_sheet_count
+    refers to the count of REGEX-MATCHED sheets, not total XLSX sheets.
+
+    Multi-field support: if the substrate's regex captures a named group
+    `field` with values in {BID, ASK, LAST, VOL}, each sheet's BBG
+    field_name is resolved per-sheet via _resolve_field_name. Substrates
+    without a `field` group default every row to PX_LAST (pre-bidask
+    backward compat).
     """
     if not xlsx_path.exists():
         _fail(f"Input file not found: {xlsx_path}")
@@ -528,46 +568,58 @@ def read_and_validate_xlsx(
     sheets = pd.read_excel(xlsx_path, sheet_name=None, header=None)
     sheet_names = list(sheets.keys())
 
-    # 1. Sheet count
-    if len(sheet_names) != substrate.expected_sheet_count:
-        _fail(
-            f"Substrate {substrate.name!r}: expected exactly "
-            f"{substrate.expected_sheet_count} sheets, got "
-            f"{len(sheet_names)}. Sheet list: {sheet_names}"
-        )
-
-    # 2. Each sheet name matches the substrate's regex; build ticker map
+    # 1. Match regex against every sheet name; only matched ones are processed.
+    # Unmatched sheets are SKIPPED with a NOTE (multi-playbook XLSX support).
     sheet_to_ticker: Dict[str, str] = {}
-    bad_names: List[str] = []
+    sheet_to_field: Dict[str, str] = {}
+    unmatched: List[str] = []
     for sn in sheet_names:
         m = substrate.sheet_name_pattern.match(sn)
         if not m:
-            bad_names.append(sn)
+            unmatched.append(sn)
             continue
-        sheet_to_ticker[sn] = substrate.ticker_builder(m.groupdict())
-    if bad_names:
+        groups = m.groupdict()
+        sheet_to_ticker[sn] = substrate.ticker_builder(groups)
+        sheet_to_field[sn] = _resolve_field_name(groups)
+
+    matched_count = len(sheet_to_ticker)
+    if matched_count != substrate.expected_sheet_count:
         _fail(
-            f"Substrate {substrate.name!r}: {len(bad_names)} sheet name(s) "
-            f"do not match pattern {substrate.sheet_name_pattern.pattern!r}: "
-            f"{bad_names[:10]}"
+            f"Substrate {substrate.name!r}: expected exactly "
+            f"{substrate.expected_sheet_count} REGEX-MATCHED sheets, got "
+            f"{matched_count} (out of {len(sheet_names)} total sheets in XLSX). "
+            f"Pattern: {substrate.sheet_name_pattern.pattern!r}. "
+            f"Matched (first 5): {list(sheet_to_ticker)[:5]}. "
+            f"Unmatched (first 5): {unmatched[:5]}"
         )
 
-    # 3. No duplicate tickers (would mean the substrate config + sheet
-    # names disagree silently)
-    tickers_seen: Dict[str, str] = {}
-    for sn, t in sheet_to_ticker.items():
-        if t in tickers_seen:
-            _fail(
-                f"Substrate {substrate.name!r}: duplicate ticker {t!r} from "
-                f"sheets {tickers_seen[t]!r} and {sn!r}. Sheet names probably "
-                "map to the same ticker — check the ticker_builder."
-            )
-        tickers_seen[t] = sn
+    if unmatched:
+        print(
+            f"NOTE: skipping {len(unmatched)} sheets that do not match "
+            f"substrate {substrate.name!r} regex (probably target a "
+            f"different playbook — run another substrate for them). "
+            f"First 5: {unmatched[:5]}"
+        )
 
-    # 4. Per-sheet read + optional first-row inference
-    inferred_first_dates: List[tuple[str, pd.Timestamp, float]] = []
+    # 2. No duplicate (ticker, field_name) tuples (would mean the substrate
+    # config + sheet names disagree silently).
+    keys_seen: Dict[tuple[str, str], str] = {}
+    for sn in sheet_to_ticker:
+        key = (sheet_to_ticker[sn], sheet_to_field[sn])
+        if key in keys_seen:
+            _fail(
+                f"Substrate {substrate.name!r}: duplicate (ticker, field) "
+                f"tuple {key!r} from sheets {keys_seen[key]!r} and {sn!r}. "
+                "Sheet names probably map to the same (ticker, field) — "
+                "check the regex/ticker_builder."
+            )
+        keys_seen[key] = sn
+
+    # 3. Per-sheet read + optional first-row inference. Only process
+    # regex-matched sheets (sheet_to_ticker keys).
+    inferred_first_dates: List[tuple[str, str, pd.Timestamp, float]] = []
     long_rows: List[pd.DataFrame] = []
-    for sn in sheet_names:
+    for sn in sheet_to_ticker:
         raw = sheets[sn]
         if raw.shape[1] < 2:
             _fail(f"Sheet {sn!r}: expected ≥2 columns from BDH, got {raw.shape[1]}.")
@@ -605,21 +657,24 @@ def read_and_validate_xlsx(
             second_date = pd.Timestamp(df.iloc[1]["trade_date"])
             inferred_date = second_date - pd.tseries.offsets.BDay(1)
             df.iat[0, df.columns.get_loc("trade_date")] = inferred_date
-            inferred_first_dates.append((sheet_to_ticker[sn], inferred_date, float(first_b)))
+            inferred_first_dates.append(
+                (sheet_to_ticker[sn], sheet_to_field[sn], inferred_date, float(first_b))
+            )
 
         df = df.dropna(subset=["trade_date", "field_value"]).reset_index(drop=True)
         if df.empty:
             _fail(f"Sheet {sn!r}: zero usable rows after parsing dates/values.")
 
         df["ticker"] = sheet_to_ticker[sn]
-        long_rows.append(df[["trade_date", "ticker", "field_value"]])
+        df["field_name"] = sheet_to_field[sn]
+        long_rows.append(df[["trade_date", "ticker", "field_name", "field_value"]])
 
     if inferred_first_dates:
         print(
             f"NOTE: inferred {len(inferred_first_dates)} missing first-row date(s):"
         )
-        for ticker, dt, val in inferred_first_dates[:10]:
-            print(f"  - {ticker}: row 0 date set to {dt.date()} (value={val})")
+        for ticker, field, dt, val in inferred_first_dates[:10]:
+            print(f"  - {ticker} [{field}]: row 0 date set to {dt.date()} (value={val})")
         if len(inferred_first_dates) > 10:
             print(f"  ... +{len(inferred_first_dates) - 10} more")
 
@@ -629,25 +684,34 @@ def read_and_validate_xlsx(
 
 
 def _validate_long_df(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None:
-    """Fail-loud on duplicates and per-ticker row counts."""
-    assert set(long_df.columns) == {"trade_date", "ticker", "field_value"}
+    """Fail-loud on duplicates and per-(ticker, field) row counts.
 
-    dups = long_df.duplicated(subset=["ticker", "trade_date"], keep=False)
+    Duplicate check uses (ticker, trade_date, field_name) — same ticker
+    with different field_names (PX_BID + PX_ASK) is legitimate and must
+    NOT be flagged as a duplicate.
+
+    History check uses (ticker, field_name) groupby so a thin PX_ASK
+    series doesn't get masked by a deep PX_BID series.
+    """
+    assert set(long_df.columns) == {"trade_date", "ticker", "field_name", "field_value"}
+
+    dups = long_df.duplicated(subset=["ticker", "trade_date", "field_name"], keep=False)
     if dups.any():
         sample = long_df[dups].head(10)
         _fail(
-            f"Found {dups.sum()} duplicate (ticker, trade_date) rows. "
+            f"Found {dups.sum()} duplicate (ticker, trade_date, field_name) rows. "
             f"Sample:\n{sample.to_string(index=False)}"
         )
 
-    short_tickers: List[str] = []
-    for ticker, sub in long_df.groupby("ticker"):
+    short_series: List[str] = []
+    for (ticker, field), sub in long_df.groupby(["ticker", "field_name"]):
         if len(sub) < substrate.min_rows_per_sheet:
-            short_tickers.append(f"{ticker}={len(sub)}")
-    if short_tickers:
+            short_series.append(f"{ticker} [{field}]={len(sub)}")
+    if short_series:
         _fail(
-            f"Per-ticker history check failed (substrate {substrate.name!r} "
-            f"requires ≥{substrate.min_rows_per_sheet} rows): {short_tickers}"
+            f"Per-(ticker, field) history check failed (substrate "
+            f"{substrate.name!r} requires ≥{substrate.min_rows_per_sheet} "
+            f"rows per series): {short_series}"
         )
 
 
@@ -659,11 +723,16 @@ def _validate_long_df(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None
 def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
     """Fetch existing rows from live DB matching the substrate's
     combine_existing_filter. Returns long-format DataFrame
-    [trade_date, ticker, field_value]. Connects to localhost:5433
-    (Docker tsdb). Empty DataFrame if filter is None.
+    [trade_date, ticker, field_name, field_value]. Connects to
+    localhost:5433 (Docker tsdb). Empty DataFrame if filter is None.
+
+    Multi-field aware: includes field_name in the SELECT so that combine
+    semantics on bid/ask substrates work correctly (deduplication keys
+    are (ticker, field_name), not just ticker).
     """
+    empty_cols = ["trade_date", "ticker", "field_name", "field_value"]
     if substrate.combine_existing_filter is None:
-        return pd.DataFrame(columns=["trade_date", "ticker", "field_value"])
+        return pd.DataFrame(columns=empty_cols)
 
     try:
         from sqlalchemy import create_engine, text
@@ -677,19 +746,20 @@ def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
         SELECT
             d.trade_date,
             im.vendor_ticker AS ticker,
+            d.field_name,
             d.field_value
         FROM macro_data.market_data_daily d
         JOIN macro_data.instrument_master im
           ON im.instrument_id = d.instrument_id
         WHERE {substrate.combine_existing_filter}
-        ORDER BY im.vendor_ticker, d.trade_date
+        ORDER BY im.vendor_ticker, d.field_name, d.trade_date
     """)
     with engine.connect() as conn:
         rows = conn.execute(sql).fetchall()
         columns = list(conn.execute(sql).keys())
 
     if not rows:
-        return pd.DataFrame(columns=["trade_date", "ticker", "field_value"])
+        return pd.DataFrame(columns=empty_cols)
     df = pd.DataFrame(rows, columns=columns)
     df["trade_date"] = pd.to_datetime(df["trade_date"])
     df["field_value"] = pd.to_numeric(df["field_value"], errors="coerce")
@@ -703,17 +773,18 @@ def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
 
 def print_validation_summary(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None:
     rows = []
-    for ticker, sub in long_df.groupby("ticker"):
+    for (ticker, field), sub in long_df.groupby(["ticker", "field_name"]):
         sub = sub.sort_values("trade_date")
         rows.append({
             "ticker": ticker,
+            "field": field,
             "rows": len(sub),
             "min_date": sub["trade_date"].min().date(),
             "max_date": sub["trade_date"].max().date(),
             "first_value": float(sub["field_value"].iloc[0]),
             "last_value": float(sub["field_value"].iloc[-1]),
         })
-    summary = pd.DataFrame(rows).sort_values("ticker").reset_index(drop=True)
+    summary = pd.DataFrame(rows).sort_values(["ticker", "field"]).reset_index(drop=True)
     print(f"\n=== Substrate '{substrate.name}' extraction summary ===")
     if len(summary) > 30:
         print(summary.head(15).to_string(index=False))
@@ -721,7 +792,11 @@ def print_validation_summary(long_df: pd.DataFrame, substrate: SubstrateConfig) 
         print(summary.tail(15).to_string(index=False))
     else:
         print(summary.to_string(index=False))
-    print(f"\nTotal rows across {len(summary)} tickers: {len(long_df):,}")
+    field_breakdown = long_df.groupby("field_name").size().to_dict()
+    print(
+        f"\nTotal rows across {len(summary)} (ticker, field) series: "
+        f"{len(long_df):,}  |  field breakdown: {field_breakdown}"
+    )
 
 
 # ============================================================================
@@ -735,7 +810,9 @@ def build_parquet_dataframe(
 ) -> pd.DataFrame:
     df = long_df.copy()
     df["trade_date"] = df["trade_date"].dt.strftime("%Y-%m-%d")
-    df["field_name"] = "PX_LAST"
+    # field_name already comes from long_df (set in read_and_validate_xlsx
+    # via _resolve_field_name from the regex `field` group, or defaulting
+    # to PX_LAST for single-field substrates).
 
     extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df["vendor"] = "BLOOMBERG"
@@ -823,8 +900,12 @@ def main() -> int:
         return 1
 
     # Codex Option A: combine existing DB rows for partial-extension
-    # substrates (g10_forwards_long) so the sanity gate sees the full
-    # universe (existing + new) and passes.
+    # substrates (g10_forwards_long, spot_topup, em_ext_*) so the sanity
+    # gate sees the full universe (existing + new) and passes.
+    #
+    # Multi-field aware: dedup key is (ticker, field_name) tuple — bid/ask
+    # substrates can ship PX_BID + PX_ASK for the SAME ticker without
+    # accidentally dropping the existing PX_LAST series via the dedup.
     if substrate.combine_existing_filter is not None:
         print(f"[{substrate.name}] fetching existing DB rows to combine...")
         try:
@@ -832,21 +913,41 @@ def main() -> int:
         except Exception as e:
             print(f"\nDB FETCH FAILED: {e}\n", file=sys.stderr)
             return 1
-        n_new_tickers = long_df["ticker"].nunique()
-        n_existing_tickers = existing_df["ticker"].nunique() if not existing_df.empty else 0
-        if n_existing_tickers == 0:
+        n_new_keys = long_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+        n_existing_keys = (
+            existing_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+            if not existing_df.empty else 0
+        )
+        if n_existing_keys == 0:
             print(f"  No existing rows match filter; combine is a no-op.")
         else:
-            # Defensive: if XLSX tickers overlap with existing (shouldn't
-            # for g10_forwards_long since 2Y/5Y are net-new), keep XLSX
-            # rows (fresher).
-            existing_only = existing_df[~existing_df["ticker"].isin(long_df["ticker"])]
+            # Dedup on (ticker, field_name) so multi-field shipments
+            # preserve existing field series we're not overwriting this run.
+            incoming_keys = set(
+                zip(long_df["ticker"], long_df["field_name"])
+            )
+            existing_keys_in_df = list(
+                zip(existing_df["ticker"], existing_df["field_name"])
+            )
+            keep_mask = [k not in incoming_keys for k in existing_keys_in_df]
+            existing_only = existing_df[keep_mask].reset_index(drop=True)
+            n_existing_kept = (
+                existing_only[["ticker", "field_name"]].drop_duplicates().shape[0]
+                if not existing_only.empty else 0
+            )
             long_df = pd.concat([long_df, existing_only], ignore_index=True)
-            long_df = long_df.sort_values(["ticker", "trade_date"]).reset_index(drop=True)
+            long_df = long_df.sort_values(
+                ["ticker", "field_name", "trade_date"]
+            ).reset_index(drop=True)
+            n_total_keys = (
+                long_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+            )
             print(
-                f"  Combined: {n_new_tickers} new tickers (from XLSX) + "
-                f"{existing_only['ticker'].nunique()} existing tickers (from DB) "
-                f"= {long_df['ticker'].nunique()} total."
+                f"  Combined: {n_new_keys} new (ticker, field) keys (from XLSX) + "
+                f"{n_existing_kept} existing (ticker, field) keys (from DB) "
+                f"= {n_total_keys} total. "
+                f"({n_existing_keys - n_existing_kept} existing keys overlapped "
+                f"with XLSX and were replaced.)"
             )
 
     print_validation_summary(long_df, substrate)
