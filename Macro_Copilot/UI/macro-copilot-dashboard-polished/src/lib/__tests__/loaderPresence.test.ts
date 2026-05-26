@@ -303,16 +303,25 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     monitor_surface: 'monitor',
     ask_surface: 'ask',
   };
+  // Stage 5: surfaces.resultRenderer also satisfies custom_build_surface.
+  const surfaceKeyToTier: Record<string, string> = {
+    build: 'custom_build_surface',
+    resultRenderer: 'custom_build_surface',
+    preview: 'custom_preview_widget',
+    monitor: 'monitor_surface',
+    ask: 'ask_surface',
+  };
   for (const m of ALL_PRIMITIVE_MODULES) {
     const tierSet = new Set<SurfaceTier>(m.tiers);
-    const surfaces = m.surfaces ?? {};
+    const surfaces = (m.surfaces ?? {}) as Record<string, unknown>;
     // capability tier ⇒ surface populated
     //
-    // Stage 4d relaxation for ``monitor_surface``: the tier is
-    // satisfied by EITHER ``surfaces.monitor`` (single-widget legacy
-    // shape) OR a non-empty ``monitorWidgets`` array (multi-variant
-    // Stage 4d shape).  Mirrors the relaxation in
-    // ``src/modules/__test-utils.ts``.
+    // Stage 4d relaxation for ``monitor_surface``: satisfied by
+    // EITHER ``surfaces.monitor`` OR non-empty ``monitorWidgets``.
+    // Stage 5 relaxation for ``custom_build_surface``: satisfied by
+    // EITHER ``surfaces.build`` (full Build experience) OR
+    // ``surfaces.resultRenderer`` (payload renderer).  Mirrors the
+    // relaxation in ``src/modules/__test-utils.ts``.
     for (const t of tierSet) {
       if (!(CAPABILITY_TIERS as ReadonlySet<SurfaceTier>).has(t)) continue;
       const key = map[t];
@@ -329,6 +338,23 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
         }
         continue;
       }
+      if (key === 'build') {
+        const hasBuild = surfaces.build != null;
+        const hasRenderer = surfaces.resultRenderer != null;
+        if (!hasBuild && !hasRenderer) {
+          throw new Error(
+            `${m.toolName}: claims 'custom_build_surface' but neither ` +
+              `surfaces.build nor surfaces.resultRenderer is populated`,
+          );
+        }
+        if (hasBuild && hasRenderer) {
+          throw new Error(
+            `${m.toolName}: surfaces.build AND surfaces.resultRenderer are ` +
+              `both populated — they are mutually exclusive`,
+          );
+        }
+        continue;
+      }
       if (!surfaces[key]) {
         throw new Error(
           `${m.toolName}: claims '${t}' but surfaces.${key} is empty`,
@@ -338,7 +364,7 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     // surface populated ⇒ matching capability tier claimed
     for (const [key, comp] of Object.entries(surfaces)) {
       if (comp == null) continue;
-      const tier = Object.entries(map).find(([, v]) => v === key)?.[0];
+      const tier = surfaceKeyToTier[key];
       if (!tier || !tierSet.has(tier as SurfaceTier)) {
         throw new Error(
           `${m.toolName}: surfaces.${key} populated but '${tier}' not in tiers`,

@@ -308,22 +308,59 @@ export interface PrimitiveModuleSpec {
   // tiers.  Each value is a React component matching the matching
   // surface-prop interface above.
   //
-  // Stage 4a relaxation — ``build`` is typed as ``ComponentType<any>``
-  // because typed-view tools (calculate_curve_spread_tool etc.) ship
-  // their existing payload-shaped views (``{payload: <Output>}``) as
-  // the Build surface during the refactor.  Stage 4b extends the
-  // relaxation to ``preview`` because the rich-model preview widgets
-  // consume the ``NodeRenderProps`` shape from the workspace's node-
-  // renderer registry — the strict ``PreviewWidgetProps`` interface
-  // is aspirational and will return in Stage N cleanup once every
-  // preview widget conforms.  ``monitor`` / ``ask`` keep their
-  // strict types — they haven't started migrating yet.
+  // Stage 5 — two distinct Build-side contracts
+  // -------------------------------------------
+  // ``surfaces.build`` and ``surfaces.resultRenderer`` are TWO
+  // different concepts the pre-Stage-5 spec conflated under a single
+  // ``surfaces.build`` field:
+  //
+  //   * ``surfaces.build`` — **full Build experience.**  The component
+  //     owns the entire Build canvas: controls strip, fetch dispatch,
+  //     error handling, output rendering.  Receives ``BuildSurfaceProps``
+  //     (toolName + params + decoded + askHandoff).  Mounted directly
+  //     by ``VirtualPrimitiveCanvas`` as the whole canvas.  Examples:
+  //     the rich-model 5 (PCA, rolling regression, etc.) ship this as
+  //     a wrapper around the shared ``BuilderCanvas``.
+  //
+  //   * ``surfaces.resultRenderer`` — **payload renderer.**  The
+  //     component renders ONLY the result body for a typed-detail
+  //     primitive whose chrome (controls strip, fetch dispatch,
+  //     loading / error states) is provided by the parent canvas.
+  //     Receives ``{ payload }`` typed loosely to fit each tool's
+  //     output shape.  Stage 4a-migrated typed views (curve spread,
+  //     cross-market, butterfly, yield levels, regime, scanner)
+  //     ship this.
+  //
+  // Stage 4a/4b relaxation
+  // ----------------------
+  // ``build`` / ``resultRenderer`` / ``preview`` are typed as
+  // ``ComponentType<any>`` because the per-tool surface families
+  // carry different prop shapes during the migration (typed views
+  // take ``{payload}``, rich-model builders take ``{toolName, params, …}``,
+  // persisted previews take ``NodeRenderProps``).  Strict typing
+  // returns once each family converges (Stage N cleanup).
+  // ``monitor`` keeps its strict type via the catalog walker;
+  // ``ask`` is loosened so per-tool cards can shape the assistant
+  // message however they want.
   // -------------------------------------------------------------------
   surfaces?: {
+    /** Full Build experience.  Module owns the entire canvas.
+     *  When populated, ``VirtualPrimitiveCanvas`` mounts this
+     *  directly and skips its own controls / fetch / output flow. */
     build?: ComponentType<any>; // relaxed Stage 4a; aspirational ComponentType<BuildSurfaceProps>
+    /** Payload renderer.  Module ships ONLY the result body; the
+     *  parent canvas provides chrome (controls strip, fetch dispatch,
+     *  loading + error states).  Used by typed-view tools.  Mutually
+     *  exclusive with ``surfaces.build`` (a module ships EITHER the
+     *  full builder OR just the renderer — both is meaningless). */
+    resultRenderer?: ComponentType<any>; // Stage 5 — payload renderer contract
     preview?: ComponentType<any>; // relaxed Stage 4b; aspirational ComponentType<PreviewWidgetProps>
     monitor?: ComponentType<MonitorWidgetProps>;
-    ask?: ComponentType<AskCardProps>;
+    /** Bespoke assistant-card override.  Replaces the default
+     *  ``AssistantResearchCard`` for assistant messages whose terminal
+     *  tool is this module.  Receives the full ``CopilotMessage`` so
+     *  the per-tool card can pick out the bits it needs. */
+    ask?: ComponentType<any>; // relaxed Stage 5; aspirational ComponentType<AskCardProps>
   };
 
   // -------------------------------------------------------------------

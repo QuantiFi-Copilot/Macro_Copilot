@@ -15,7 +15,7 @@ import {
   LOOKBACK_OPTIONS,
   TENOR_OPTIONS,
 } from '@/lib/monitorParamOptions';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 import { YieldLevelWidget } from './surfaces/monitor/YieldLevelWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
@@ -26,7 +26,7 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Single-tenor sovereign yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, observation count, and full chartable time series.',
   typedView: 'yield',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   monitorWidgets: [
     {
       id: 'yield_level',

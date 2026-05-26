@@ -246,7 +246,9 @@ STAGE_4_REFACTOR_WHITELIST: set[str] = {
     # surfaces.  Stage 5+ ships per-tool surfaces + removes each
     # entry as it lands.
     "calculate_otr_ofr_spread_tool",
-    "calculate_cpi_surprise_tool",
+    # Stage 5 removal: calculate_cpi_surprise_tool migrated as the
+    # first reference implementation of the module-first dispatch
+    # architecture.  Module ships surfaces.ask + monitorWidgets[].
     "calculate_nfp_surprise_tool",
     "get_real_yield_level_tool",
     "calculate_breakeven_inflation_simple_tool",
@@ -305,6 +307,18 @@ def main() -> int:
 
     frontend_primitive_folders = read_frontend_primitive_modules()
     loader_imports = read_loader_imports()
+
+    # ---- Stage 5 — synthetic smoke-test fixtures ------------------
+    # Tool names starting with ``__`` are smoke-test fixtures (the
+    # Stage 5 acceptance-gate scaffolding).  They exist in the
+    # frontend loader on purpose but DO NOT correspond to a backend
+    # primitive.  Strip them from both the folder set and the loader
+    # set before comparing against backend so the parity rule binds
+    # only on real tool names.
+    smoke_fixtures = {n for n in frontend_primitive_folders if n.startswith("__")}
+    smoke_fixtures |= {n for n in loader_imports if n.startswith("__")}
+    frontend_primitive_folders = frontend_primitive_folders - smoke_fixtures
+    loader_imports = loader_imports - smoke_fixtures
 
     # ---- Folder ↔ loader parity (FM12) ----------------------------
     folder_orphans = frontend_primitive_folders - loader_imports

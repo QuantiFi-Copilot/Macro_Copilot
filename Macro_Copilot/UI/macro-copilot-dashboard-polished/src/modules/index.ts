@@ -31,6 +31,11 @@ import type {
 // Primitive module imports — alphabetised by tool_name.
 // ----------------------------------------------------------------------------
 
+// Stage 5 — smoke-test fixture (synthetic toolName starting with ``__``;
+// excluded from cross-side parity check via the ``__``-prefix filter
+// in ``tools/check_module_parity.py``).  Sorted first to keep the
+// ASCII alphabetical order accurate.
+import { MODULE as __smoke_test_tool } from './primitives/__smoke_test_tool/module';
 import { MODULE as build_linker_panel_tool } from './primitives/build_linker_panel_tool/module';
 import { MODULE as build_policy_futures_strip_panel_tool } from './primitives/build_policy_futures_strip_panel_tool/module';
 import { MODULE as build_sovereign_yield_panel_tool } from './primitives/build_sovereign_yield_panel_tool/module';
@@ -103,6 +108,7 @@ import { MODULE as scan_ois_extremes_tool } from './primitives/scan_ois_extremes
  *  ``src/lib/toolNames.ts`` union these spec-derived contributions
  *  with the Stage 1 hand-authored entries through the migration. */
 export const ALL_PRIMITIVE_MODULES: ReadonlyArray<PrimitiveModuleSpec> = [
+  __smoke_test_tool,
   build_linker_panel_tool,
   build_policy_futures_strip_panel_tool,
   build_sovereign_yield_panel_tool,

@@ -150,6 +150,15 @@ export async function assertStandardModuleInvariants(
   // pre-aggregated variants of the same widget).  Every Stage 4d
   // ``monitor_surface`` claim uses ``monitorWidgets``; ``surfaces.monitor``
   // is reserved for future single-widget modules.
+  //
+  // Stage 5 relaxation for ``custom_build_surface``: the tier is
+  // satisfied by EITHER ``surfaces.build`` (full Build experience —
+  // module owns the canvas) OR ``surfaces.resultRenderer`` (payload
+  // renderer for a typed-detail tool — the parent canvas provides
+  // chrome).  Stage 4a migrated 6 typed views to ``surfaces.build``
+  // with the wrong contract; Stage 5 splits them out to
+  // ``surfaces.resultRenderer``.  Both options remain valid; a
+  // module ships EITHER ``build`` OR ``resultRenderer``, never both.
   for (const t of tierSet) {
     if (!CAPABILITY_TIERS.has(t as never)) continue;
     const key = capabilityToSurfaceKey[t];
@@ -168,6 +177,28 @@ export async function assertStandardModuleInvariants(
       }
       continue;
     }
+    if (key === 'build') {
+      const hasBuild = surfaces.build != null;
+      const hasRenderer = surfaces.resultRenderer != null;
+      if (!hasBuild && !hasRenderer) {
+        throw new Error(
+          `FM8 violation — module claims 'custom_build_surface' but ` +
+            `neither surfaces.build (full Build experience) nor ` +
+            `surfaces.resultRenderer (payload renderer for a typed-detail ` +
+            `tool) is populated.  Pick one shape and ship it under the ` +
+            `matching key.`,
+        );
+      }
+      if (hasBuild && hasRenderer) {
+        throw new Error(
+          `FM8 violation — module claims both surfaces.build AND ` +
+            `surfaces.resultRenderer.  Those are mutually exclusive: ` +
+            `surfaces.build owns the whole canvas, surfaces.resultRenderer ` +
+            `is just the result body.  Pick one.`,
+        );
+      }
+      continue;
+    }
     if (!surfaces[key]) {
       throw new Error(
         `FM8 violation — module claims '${t}' but surfaces.${key} is not ` +
@@ -177,15 +208,23 @@ export async function assertStandardModuleInvariants(
   }
 
   // 5 — every populated surface must have a matching capability tier.
+  //
+  // Stage 5: ``resultRenderer`` is recognised as a build-surface variant —
+  // it satisfies ``custom_build_surface`` (same tier as the full builder).
+  const surfaceKeyToTier: Record<string, string> = {
+    build: 'custom_build_surface',
+    resultRenderer: 'custom_build_surface',
+    preview: 'custom_preview_widget',
+    monitor: 'monitor_surface',
+    ask: 'ask_surface',
+  };
   for (const [key, component] of Object.entries(surfaces)) {
     if (component == null) continue;
-    const tierForKey = Object.entries(capabilityToSurfaceKey).find(
-      ([, v]) => v === key,
-    )?.[0];
+    const tierForKey = surfaceKeyToTier[key];
     if (!tierForKey) {
       throw new Error(
         `FM8 violation — surfaces.${key} is populated but no capability ` +
-          `tier maps to that key (closed mapping is build/preview/monitor/ask).`,
+          `tier maps to that key (closed mapping is build/resultRenderer/preview/monitor/ask).`,
       );
     }
     if (!tierSet.has(tierForKey as SurfaceTier)) {

@@ -22,7 +22,7 @@ import {
   LOOKBACK_OPTIONS,
   TENOR_OPTIONS,
 } from '@/lib/monitorParamOptions';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 import { CurveSpreadsWidget } from './surfaces/monitor/CurveSpreadsWidget';
 import { SpreadChartWidget } from './surfaces/monitor/SpreadChartWidget';
 
@@ -35,7 +35,7 @@ export const MODULE: PrimitiveModuleSpec = {
     'Basis-point spread between two tenors on the same sovereign yield curve, with a fixed 1-year rolling z-score and full chartable time series.',
   typedView: 'spread',
   workspaceLabel: 'Spread chart & history',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   monitorWidgets: [
     {
       id: 'curve_spreads',

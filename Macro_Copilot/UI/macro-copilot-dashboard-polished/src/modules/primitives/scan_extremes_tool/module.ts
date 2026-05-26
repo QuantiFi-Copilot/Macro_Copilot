@@ -7,7 +7,7 @@
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 import { ScannerWidget } from './surfaces/monitor/ScannerWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
@@ -22,7 +22,7 @@ export const MODULE: PrimitiveModuleSpec = {
     'Scans every sovereign instrument in the database, ranks the top-N by absolute 252-day z-score and returns yield, daily change, z-score, percentile, and signal label per row.',
   typedView: 'scanner',
   workspaceLabel: 'Scanner results & heatmap',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   monitorWidgets: [
     {
       id: 'scanner',
