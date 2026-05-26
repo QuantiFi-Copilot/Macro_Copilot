@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_futures_price_level_tool',
   tiers: ['generic_runnable'],
-  displayName: 'get_futures_price_level',
+  displayName: 'Futures Price Level',
   category: 'snapshots',
   oneLineSummary: 'Single rolling-generic bond-futures price level — emits a.',
 };

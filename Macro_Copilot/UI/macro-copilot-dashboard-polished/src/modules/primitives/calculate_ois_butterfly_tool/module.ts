@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_ois_butterfly_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_ois_butterfly',
+  displayName: 'OIS Butterfly',
   category: 'spreads',
   oneLineSummary: 'Same-curve 3-point butterfly (curvature) on a single OIS par-swap.',
 };

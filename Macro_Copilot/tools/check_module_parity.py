@@ -231,48 +231,20 @@ def read_loader_imports() -> set[str]:
 # Every backend-shipped tool is here today (Stage 2).
 
 STAGE_4_REFACTOR_WHITELIST: set[str] = {
-    # Sovereign + OIS primitives (12 + 5 = 17) — Stage 4a target.
-    "build_sovereign_yield_panel_tool",
-    "calculate_beta_adjusted_spread_tool",
-    "calculate_breakeven_inflation_tool",
-    "calculate_cross_market_spread_tool",
-    "calculate_curve_spread_tool",
-    "calculate_half_life_tool",
-    "calculate_pca_yield_curve_tool",
-    "calculate_rolling_regression_tool",
-    "calculate_swap_spread_tool",
-    "calculate_yield_change_attribution_pca_tool",
-    "calculate_zscore_custom_tool",
-    "get_yield_levels_tool",
-    "calculate_ois_cross_market_spread_tool",
-    "calculate_ois_curve_spread_tool",
-    "calculate_ois_forward_rate_tool",
-    "compute_financing_rate_tool",
-    "get_ois_rate_level_tool",
-    # Manifest-only typed-view / paused (4) — Stage 4a target.
-    "calculate_butterfly_tool",
-    "classify_curve_move_tool",
-    "scan_extremes_tool",
-    "scan_ois_extremes_tool",
-    # Factory-ported (ADR 0013) — 1 OIS + 3 bond_futures + 9 policy_futures + 4 inflation = 17 — Stage 4c target.
-    "calculate_ois_butterfly_tool",
-    "get_futures_price_level_tool",
-    "get_futures_volume_oi_tool",
-    "scan_bond_futures_extremes_tool",
-    "build_policy_futures_strip_panel_tool",
-    "get_scan_policy_futures_extremes_tool",
-    "policy_futures_get_futures_butterfly_simple_tool",
-    "policy_futures_get_futures_calendar_spread_tool",
-    "policy_futures_get_futures_cross_market_spread_tool",
-    "policy_futures_get_futures_pack_average_simple_tool",
-    "policy_futures_get_futures_price_level_tool",
-    "policy_futures_get_futures_strip_snapshot_tool",
-    "policy_futures_get_volume_open_interest_snapshot_tool",
-    "build_linker_panel_tool",
-    "scan_inflation_linkers_extremes_tool",
-    "build_zcis_panel_tool",
-    "scan_inflation_swaps_extremes_tool",
+    # ----------------------------------------------------------------
+    # Stage 4e — whitelist shrunk to Stage 5+ targets ONLY.  Every
+    # primitive that was migrated by Stage 4a/4b/4c/4d (sovereign +
+    # OIS typed views, rich models, futures, monitor widgets, manifest-
+    # typed-view tools) is no longer whitelisted; if any of them
+    # disappear from the frontend module set, the parity check binds
+    # and the missing module is reported as drift.  This matches the
+    # roadmap's "whitelist SHRINKS as modules land" promise.
+    # ----------------------------------------------------------------
     # Stage 1 net-new runnable primitives (18) — Stage 5+ targets.
+    # These remain whitelisted because their module folders exist
+    # (Stage 3 scaffolded them) but no Stage 4 PR migrated their
+    # surfaces.  Stage 5+ ships per-tool surfaces + removes each
+    # entry as it lands.
     "calculate_otr_ofr_spread_tool",
     "calculate_cpi_surprise_tool",
     "calculate_nfp_surprise_tool",
@@ -291,7 +263,8 @@ STAGE_4_REFACTOR_WHITELIST: set[str] = {
     "calculate_cross_market_inflation_swap_spread_tool",
     "calculate_swap_breakeven_basis_simple_tool",
     "calculate_inflation_swap_butterfly_tool",
-    # Workflow-incompatible (2) — Stage 5+ target.
+    # Workflow-incompatible (2) — Stage 5+ target (Stage 15/16 in
+    # roadmap).
     "get_otr_history_tool",
     "calculate_wirp_meeting_pricing_tool",
 }

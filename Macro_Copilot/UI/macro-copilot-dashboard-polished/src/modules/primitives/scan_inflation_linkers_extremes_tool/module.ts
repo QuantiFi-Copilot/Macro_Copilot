@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'scan_inflation_linkers_extremes_tool',
   tiers: ['generic_runnable'],
-  displayName: 'scan_inflation_linkers_extremes',
+  displayName: 'Scan Inflation Linkers Extremes',
   category: 'scanners',
   oneLineSummary: 'Universe-wide linker real-yield sweep — ranks every.',
 };

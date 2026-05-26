@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_cpi_surprise_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_cpi_surprise',
+  displayName: 'CPI Surprise',
   category: 'economic_release_surprises',
   oneLineSummary: 'Per-release CPI surprise series (actual − consensus_median, in percentage points of YoY CPI) for one country\'s headline CPI YoY print, plus a rolling z-score over a window of N RELEASES (NOT calendar days — releases happen monthly, so day-based windows are the wrong unit).  US/UK/JP query event_type=cpi_yoy; EU queries event_type=hicp_yoy (the eurozone HICP equivalent of CPI YoY). Surprise is computed at the primitive layer per ADR 0008 §2\'s P12 disclosure (event_calendar.surprise is intentionally NULL by ingestion); Bloomberg\'s ECO screen reports the same number.',
 };

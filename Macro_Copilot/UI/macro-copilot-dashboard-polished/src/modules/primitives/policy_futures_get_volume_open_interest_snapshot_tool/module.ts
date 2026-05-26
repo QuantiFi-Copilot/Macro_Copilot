@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_volume_open_interest_snapshot_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_volume_open_interest_snapshot',
+  displayName: 'Policy Futures Volume Open Interest Snapshot',
   category: 'snapshots',
   oneLineSummary: 'Single policy-futures strip-position volume + open-interest.',
 };

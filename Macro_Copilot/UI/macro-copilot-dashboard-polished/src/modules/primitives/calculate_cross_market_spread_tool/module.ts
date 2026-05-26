@@ -22,7 +22,7 @@ import { CrossMarketSpreadWidget } from './surfaces/monitor/CrossMarketSpreadWid
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_cross_market_spread_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
-  displayName: 'calculate_cross_market_spread',
+  displayName: 'Cross Market Spread',
   category: 'cross_market_rv',
   oneLineSummary:
     'Yield differential between the same tenor on two sovereign curves (e.g. BTP-Bund 10Y), in basis points, with rolling 252-day z-score, daily / weekly / monthly change, trailing range, and full time series.',

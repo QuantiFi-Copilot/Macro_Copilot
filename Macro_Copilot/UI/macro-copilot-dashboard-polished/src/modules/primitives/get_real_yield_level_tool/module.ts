@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_real_yield_level_tool',
   tiers: ['generic_runnable'],
-  displayName: 'get_real_yield_level',
+  displayName: 'Real Yield Level',
   category: 'snapshots',
   oneLineSummary: 'Single-tenor sovereign-linker real-yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, and full chartable time series. Linker analogue of get_yield_levels.',
 };

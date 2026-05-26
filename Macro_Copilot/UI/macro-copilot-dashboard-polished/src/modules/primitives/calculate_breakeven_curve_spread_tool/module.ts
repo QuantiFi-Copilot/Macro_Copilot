@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_breakeven_curve_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_breakeven_curve_spread',
+  displayName: 'Breakeven Curve Spread',
   category: 'curve_shape',
   oneLineSummary: 'Basis-point spread between two tenors of one country\'s bond-implied breakeven curve (e.g. US 2s10s breakeven) with rolling 252-day z-score, daily change, and a full chartable time series. Breakeven-curve analogue of calculate_curve_spread.',
 };

@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_ois_rate_level_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_ois_rate_level',
+  displayName: 'OIS Rate Level',
   category: 'snapshots',
   oneLineSummary: 'Single-tenor OIS par-swap-rate snapshot — current rate, daily / weekly / monthly change, rolling 252-day z-score, trailing 252-day high / low / percentile, plus full chartable time series.  OIS analogue of get_yield_levels.',
 };

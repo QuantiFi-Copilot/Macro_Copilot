@@ -1,9 +1,8 @@
 # THESIS — `get_yield_levels_tool`
 
-> Stage 3 minimum-viable module — runtime tier only.  Surface code lives in its
-> legacy page-folder location until the Stage 4 refactor moves it into this folder.
+> Migrated module — primary surface code lives in this folder.
 
-**Version:** v1 (Stage 3 scaffold)
+**Version:** v2 (Stage 4e — post-migration sweep)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `get_yield_levels_tool` (generic_runnable)
 **Tier set:** `[generic_runnable, custom_build_surface, monitor_surface]`
@@ -14,80 +13,49 @@
 ## 1. What surfaces does this module ship?
 
 - **`generic_runnable`** — runtime-status tier.
-- **`custom_build_surface`** — Stage 4a ships the typed view
-  (`yield` kind) at `surfaces/BuildSurface.tsx`.  Routes via
-  ``MODULE.typedView = 'yield'`` through the contextDecoder.  The
-  build canvas mounts the typed view directly with the typed-detail
-  endpoint payload.
-  Backend ships this primitive in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through the workflow bridge.
-
-(Capability tiers — `custom_build_surface`, `custom_preview_widget`, `monitor_surface`,
-`ask_surface` — are NOT claimed in Stage 3.  The existing UI continues to render
-via the legacy page-folder code in `src/components/build/`, `src/components/monitor/`,
-etc.  Stage 4 PRs add capability tiers as surfaces move into this folder.)
-
-
-- **`monitor_surface`** (Stage 4d) — Stage 4d — Monitor catalog widgets shipped: `yield_level`.
-  The widget components live under `surfaces/monitor/`; their
-  catalog metadata is declared inline on `MODULE.monitorWidgets`
-  and `src/components/monitor/registry.ts` walks the module
-  set to build the public `WIDGET_TYPES` map.
+- **`custom_build_surface`** — typed-view module: `surfaces/BuildSurface.tsx` ships the `yield` view, resolved by the central contextDecoder through `MODULE.typedView = 'yield'`.
+- **`monitor_surface`** — Monitor catalog widgets shipped: `yield_level`.  Component files live under `surfaces/monitor/`; catalog metadata (id, label, description, sizes, paramFields) is declared inline on `MODULE.monitorWidgets` and `src/components/monitor/registry.ts` walks the module set to build the public `WIDGET_TYPES` map.
 
 ## 2. What does the user read off each surface?
 
-Stage 3 surfaces today: (none — Stage 3 ships the minimum-viable module).
-
-User-facing read at the runtime tier level: opening this tool from Library →
-`Open in Build` decodes per `contextDecoder.ts` and lands on the matching shared
-surface (generic builder / typed view / unsupported card) per the current routing
-priority.  The decoder lookup is unchanged by Stage 3 — the module spec contributes
-to the central registries via the hybrid derivation but the resulting set
-membership is identical to the Stage 1 hand-authored entries.
+* Build (typed view): yield-level chart with z-score band, current snapshot card (yield + Δ1d/1w/1m + z-score + percentile), and identity strip (curve_family / tenor).
+* Monitor (`yield_level`): parameterised single-yield tile showing current yield + Δ1d + z-score + 252-day sparkline.
 
 ## 3. Why these surfaces and not others?
 
-Stage 3 is a pure scaffolding stage.  Per the migration roadmap
-([06_roadmap/frontend_migration.md](../../../../../../docs_revamped/06_roadmap/frontend_migration.md)),
-every primitive that will eventually have a module gets its folder
-materialised in this stage so Stage 4 refactor PRs have a destination
-to move legacy surface code INTO.  Claiming capability tiers + populating
-`surfaces.*` happens in Stage 4 alongside the actual code move (no
-half-states between stages).
+Single-yield snapshot is the bread-and-butter Monitor tile AND a load-bearing typed view on Build for one-off inspection of a specific (curve, tenor) point.  The pre-aggregated yield-snapshot dashboard widget (G4 grid) is intentionally a separate non-primitive surface — it lives in the legacy monitor/widgets/ folder because it reads from the dashboard aggregate endpoint rather than this primitive's typed-detail endpoint.
 
 ## 4. What would change the design?
 
-Planned Stage 4+ capabilities: custom_build_surface, monitor_surface.
-
 Concrete triggers:
-- Backend output-shape changes → re-evaluate the runtime tier.
-- New typed-detail endpoint shipped → claim `custom_build_surface` and
-  point `MODULE.typedView` at the new kind.
-- Per-tool persisted-artifact preview needed → claim `custom_preview_widget`
-  and add `surfaces/PreviewWidget.tsx`.
-- Tool surfaces frequently in daily desk read → claim `monitor_surface`
-  and add `surfaces/MonitorWidget.tsx`.
+- Backend adding multi-tenor snapshot output → split into a sibling primitive or extend the typed view body.
+- A second Monitor variant (e.g. yield-vs-OIS overlay) → add to `MODULE.monitorWidgets`.
 
 ## 5. Which backend doctrine does this module operationalise?
 
 - **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — exactly one runtime-status
-  tier (`generic_runnable`); no capability tiers in Stage 3.
+- **FM3** (surface-tier capability declaration) — claims the runtime
+  tier `generic_runnable` and capability tiers
+  `[custom_build_surface, monitor_surface]`.
 - **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
+- **FM8** (surface-file contract) — every claimed capability tier has
+  a matching populated surface file under `surfaces/`.
 - **FM10** (THESIS discipline) — this file.
 - **FM11** (round-trip test) — `__tests__/module.spec.ts` calls
   `assertStandardModuleInvariants`.
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
-- Stage 3 of the migration roadmap (`docs_revamped/06_roadmap/frontend_migration.md`).
 
 ---
 
-## Stage 3 implementation notes
+## One-line summary
 
-Stage 3 ships this module with only the `generic_runnable` runtime tier.  Capability tiers + surface refs land in the relevant Stage 4 PR (4a sovereign + OIS, 4b rich-model, 4c futures); existing UI continues to render via legacy page-folder code until then.
+Single-tenor sovereign yield snapshot — current yield, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, observation count, and full chartable time series.
+
 ---
 
 ## Version log
 
 | Version | Date | Change |
 |---|---|---|
+| v2 | 2026-05-26 | Stage 4e — rewrote Q2–Q5 to match the actual post-migration module state. |
 | v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |

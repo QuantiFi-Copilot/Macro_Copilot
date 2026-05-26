@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'build_linker_panel_tool',
   tiers: ['generic_runnable'],
-  displayName: 'build_linker_panel',
+  displayName: 'Build Linker Panel',
   category: 'panels',
   oneLineSummary: 'Assemble a wide multi-instrument Panel of inflation-linker REAL.',
 };

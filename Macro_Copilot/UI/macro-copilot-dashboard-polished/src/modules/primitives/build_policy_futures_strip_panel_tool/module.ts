@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'build_policy_futures_strip_panel_tool',
   tiers: ['generic_runnable'],
-  displayName: 'build_policy_futures_strip_panel',
+  displayName: 'Build Policy Futures Strip Panel',
   category: 'panels',
   oneLineSummary: 'Assemble a wide multi-instrument Panel of policy-futures.',
 };

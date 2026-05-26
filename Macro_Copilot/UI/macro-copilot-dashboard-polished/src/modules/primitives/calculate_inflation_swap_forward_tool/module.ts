@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_inflation_swap_forward_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_inflation_swap_forward',
+  displayName: 'Inflation Swap Forward',
   category: 'forwards_classify',
   oneLineSummary: 'Forward inflation swap rate (e.g. 5Y5Y inflation) computed from two spot ZCIS legs via closed-form forward construction. ZCIS analogue of calculate_ois_forward_rate.',
 };

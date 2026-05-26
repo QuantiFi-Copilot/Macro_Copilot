@@ -1,9 +1,8 @@
 # THESIS — `calculate_rolling_regression_tool`
 
-> Stage 3 minimum-viable module — runtime tier only.  Surface code lives in its
-> legacy page-folder location until the Stage 4 refactor moves it into this folder.
+> Migrated module — primary surface code lives in this folder.
 
-**Version:** v1 (Stage 3 scaffold)
+**Version:** v2 (Stage 4e — post-migration sweep)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `calculate_rolling_regression_tool` (generic_runnable)
 **Tier set:** `[generic_runnable, custom_build_surface, custom_preview_widget]`
@@ -13,79 +12,50 @@
 
 ## 1. What surfaces does this module ship?
 
-- **`generic_runnable`** — runtime-status tier.  Backend ships this primitive
-  in `_PRIMITIVE_SPECS`; it runs via `POST /api/v1/tools/{name}/run` through
-  the workflow bridge.
-- **`custom_build_surface`** (Stage 4b) — the rich-model Build canvas
-  (`BuilderCanvas` → `ModelWorkspacePage`).  `surfaces/BuildSurface.tsx`
-  ships in this folder as the canonical entry point; the page-shell still
-  mounts `BuilderCanvas` directly from BuildShell's `?builder=` branch
-  today, but the wrapper is the migration target once the page-shell
-  switches to module-driven mounting.
-- **`custom_preview_widget`** (Stage 4b) — the per-tool persisted-artifact
-  card driven by `RichModelWidget` (with this tool's per-tool adapter).
-  `surfaces/PreviewWidget.tsx` ships in this folder; the `widgets/index.ts`
-  barrel walks `ALL_PRIMITIVE_MODULES` and registers every populated
-  `surfaces.preview` into the per-tool `nodeRendererRegistry`.
-
-(`monitor_surface` and `ask_surface` are NOT claimed in Stage 4b.
-Adding them is a Stage 5+ feature PR, not a refactor.)
+- **`generic_runnable`** — runtime-status tier.
+- **`custom_build_surface`** — rich-model module: `surfaces/BuildSurface.tsx` is a lazy wrapper around the shared `BuilderCanvas` (full model playground — controls rail + output canvas + interpretation cards).  Sets `MODULE.richModel: true` and carries the full `ModelMetadata` block via `MODULE.modelMetadata`.
+- **`custom_preview_widget`** — per-tool persisted-artifact card at `surfaces/PreviewWidget.tsx`, a thin caller of the shared `RichModelWidget`.  Per-tool copy comes from `MODULE.modelAdapter`; the `widgets/index.ts` barrel walks `ALL_PRIMITIVE_MODULES` and registers each populated preview into the per-tool `nodeRendererRegistry`.
 
 ## 2. What does the user read off each surface?
 
-Stage 3 surfaces today: (none — Stage 3 ships the minimum-viable module).
-
-User-facing read at the runtime tier level: opening this tool from Library →
-`Open in Build` decodes per `contextDecoder.ts` and lands on the matching shared
-surface (generic builder / typed view / unsupported card) per the current routing
-priority.  The decoder lookup is unchanged by Stage 3 — the module spec contributes
-to the central registries via the hybrid derivation but the resulting set
-membership is identical to the Stage 1 hand-authored entries.
+* Build (rich-model canvas): target / regressor (series_spec) controls + window-length slider + lookback slider; output panel shows rolling β / α / R² / residual / condition-flag time series with peer-fit comparison strip.
+* Preview (persisted artifact): single rolling coefficient Series (whichever output_field the workspace selected) with the 'latest snapshot + peer series + condition flag are NOT in this artifact' affordance.
 
 ## 3. Why these surfaces and not others?
 
-Stage 3 is a pure scaffolding stage.  Per the migration roadmap
-([06_roadmap/frontend_migration.md](../../../../../../docs_revamped/06_roadmap/frontend_migration.md)),
-every primitive that will eventually have a module gets its folder
-materialised in this stage so Stage 4 refactor PRs have a destination
-to move legacy surface code INTO.  Claiming capability tiers + populating
-`surfaces.*` happens in Stage 4 alongside the actual code move (no
-half-states between stages).
+Rolling regression is the canonical relative-value model; the rich BuilderCanvas surface gives the desk the visual control over target / regressors / window that no generic form could match.  Persisted preview ships the single selected output series only — the rest live on the live *Output dict.
 
 ## 4. What would change the design?
 
-Planned Stage 4+ capabilities: custom_build_surface, custom_preview_widget.
-
 Concrete triggers:
-- Backend output-shape changes → re-evaluate the runtime tier.
-- New typed-detail endpoint shipped → claim `custom_build_surface` and
-  point `MODULE.typedView` at the new kind.
-- Per-tool persisted-artifact preview needed → claim `custom_preview_widget`
-  and add `surfaces/PreviewWidget.tsx`.
-- Tool surfaces frequently in daily desk read → claim `monitor_surface`
-  and add `surfaces/MonitorWidget.tsx`.
+- Backend persisting multi-output (all rolling series) → upgrade preview to render the full peer set.
+- Multi-target regression (target panel) → sibling primitive.
 
 ## 5. Which backend doctrine does this module operationalise?
 
 - **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — exactly one runtime-status
-  tier (`generic_runnable`); no capability tiers in Stage 3.
+- **FM3** (surface-tier capability declaration) — claims the runtime
+  tier `generic_runnable` and capability tiers
+  `[custom_build_surface, custom_preview_widget]`.
 - **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
+- **FM8** (surface-file contract) — every claimed capability tier has
+  a matching populated surface file under `surfaces/`.
 - **FM10** (THESIS discipline) — this file.
 - **FM11** (round-trip test) — `__tests__/module.spec.ts` calls
   `assertStandardModuleInvariants`.
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
-- Stage 3 of the migration roadmap (`docs_revamped/06_roadmap/frontend_migration.md`).
 
 ---
 
-## Stage 3 implementation notes
+## One-line summary
 
-Stage 3 ships this module with only the `generic_runnable` runtime tier.  Capability tiers + surface refs land in the relevant Stage 4 PR (4a sovereign + OIS, 4b rich-model, 4c futures); existing UI continues to render via legacy page-folder code until then.
+Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.
+
 ---
 
 ## Version log
 
 | Version | Date | Change |
 |---|---|---|
+| v2 | 2026-05-26 | Stage 4e — rewrote Q2–Q5 to match the actual post-migration module state. |
 | v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |

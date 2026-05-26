@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_strip_snapshot_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_strip_snapshot',
+  displayName: 'Policy Futures Futures Strip Snapshot',
   category: 'snapshots',
   oneLineSummary: 'Whole-strip side-by-side snapshot for ONE policy-futures.',
 };

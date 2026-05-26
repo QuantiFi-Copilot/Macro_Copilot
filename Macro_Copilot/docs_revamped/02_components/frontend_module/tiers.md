@@ -17,6 +17,7 @@ type SurfaceTier =
   // Runtime status — choose EXACTLY ONE per module:
   | 'generic_runnable'
   | 'workflow_incompatible'
+  | 'manifest_typed_view'   // Stage 4e — manifest-only with typed-detail endpoint
   | 'paused'
   | 'deferred'
 
@@ -35,10 +36,10 @@ The tier set is closed. Adding a new tier requires an ADR amending this file + [
 A module's `MODULE.tiers` is valid iff:
 
 1. It is a non-empty subset of the closed family.
-2. It contains exactly one of `{generic_runnable, workflow_incompatible, paused, deferred}` (the runtime-status group).
-3. For each capability tier in the set, the corresponding `surfaces/<Name>.tsx` exists and is referenced from `MODULE.surfaces.<key>`.
+2. It contains exactly one of `{generic_runnable, workflow_incompatible, manifest_typed_view, paused, deferred}` (the runtime-status group).
+3. For each capability tier in the set, the corresponding `surfaces/<Name>.tsx` exists and is referenced from `MODULE.surfaces.<key>`. (For `monitor_surface` the equivalent is EITHER `surfaces/MonitorWidget.tsx` OR a non-empty `MODULE.monitorWidgets[]` with components under `surfaces/monitor/*.tsx` — see the Stage 4d note in the `monitor_surface` section below.)
 4. For each capability tier NOT in the set, the corresponding `surfaces/<Name>.tsx` does NOT exist and `MODULE.surfaces.<key>` is undefined.
-5. If the set contains `workflow_incompatible | paused | deferred`, `MODULE.unsupportedReason` is non-null with all three fields non-empty.
+5. If the set contains `workflow_incompatible | manifest_typed_view | paused | deferred`, `MODULE.unsupportedReason` is non-null with all three fields non-empty.
 6. If the set is exactly `{deferred}`, no capability tier is present, no `surfaces/` files exist, and THESIS.md is the minimal reservation form.
 
 The per-module round-trip test (FM11) asserts all six.
@@ -90,6 +91,32 @@ Today the closed set is three tools:
 **Mutually exclusive with.** `generic_runnable`, `paused`, `deferred`.
 
 **Implies (about `unsupportedReason`).** Must be present with all three fields.
+
+### `manifest_typed_view`
+
+**Means.** Stage 4e tier — the primitive is in the backend's `_MANIFEST_ONLY_BUILD_TOOLS` set in [`orchestrator/events.py`](../../../orchestrator/events.py) (search for `_MANIFEST_ONLY_BUILD_TOOLS`): it has a working typed-detail endpoint under `/api/v1/rates/detail/<kind>` and the manifest YAML lists it, but it is NOT in `_PRIMITIVE_SPECS` (so the workflow bridge cannot dispatch it) AND NOT in `WORKFLOW_INCOMPATIBLE_TOOLS` (the backend's separate "callable via MCP but output not bridge-shaped" set). Build's typed view is the live affordance.
+
+Today the closed set is two tools:
+- `calculate_butterfly_tool` — typed-view kind `butterfly`.
+- `scan_extremes_tool` — typed-view kind `scanner`.
+
+**Why a dedicated tier?** Pre-Stage-4e these tools were tagged `workflow_incompatible`, but that misclassified them against backend doctrine (their behaviour is different from genuine workflow-incompatible tools like `get_otr_history_tool` and `calculate_wirp_meeting_pricing_tool`, which DO ship in `WORKFLOW_INCOMPATIBLE_TOOLS`). Stage 4e introduces this dedicated tier so the spec stays aligned.
+
+**Verify by claiming this tier.**
+- The tool appears in [`orchestrator/events._MANIFEST_ONLY_BUILD_TOOLS`](../../../orchestrator/events.py).
+- The tool does NOT appear in `_PRIMITIVE_SPECS`.
+- The tool does NOT appear in `WORKFLOW_INCOMPATIBLE_TOOLS`.
+- The tool has a typed-detail endpoint and `MODULE.typedView` is set.
+
+**Surface contribution.** Build mounts the typed view (via the `MODULE.typedView` → `TOOL_TO_VIEW` derivation in `contextDecoder.ts`). `MODULE.unsupportedReason` exists for the diagnostic affordance but is not the primary surface — the typed view fires first.
+
+**When to claim.** A manifest-only tool with a typed-detail endpoint.
+
+**When NOT to claim.** The primitive ships through the workflow bridge — that's `generic_runnable`. The primitive ships in `WORKFLOW_INCOMPATIBLE_TOOLS` — that's `workflow_incompatible`. The primitive has no backend implementation at all — that's `paused`.
+
+**Mutually exclusive with.** `generic_runnable`, `workflow_incompatible`, `paused`, `deferred`.
+
+**Implies (about `unsupportedReason`).** Must be present with all three fields (matches the other "not generically runnable" tiers).
 
 ### `paused`
 
@@ -181,11 +208,17 @@ Capability tiers describe what bespoke UI the module ships beyond the runtime-st
 
 ### `monitor_surface`
 
-**Means.** The module ships a bespoke React component at `surfaces/MonitorWidget.tsx` that renders this tool as a bento card on the Monitor / Rates Agent surface. Contributes one entry to the Monitor widget catalogue (`WIDGET_TYPES`).
+**Means.** The module contributes one or more bento-card entries to the Monitor widget catalogue (`WIDGET_TYPES`). Stage 4d extended the original single-widget contract to support multi-variant tools (e.g. `calculate_cross_market_spread_tool` ships both a pre-aggregated dashboard tile AND a parameterised single-pair tile from the same primitive).
 
-**Files.** `surfaces/MonitorWidget.tsx` with default export `React.FC<MonitorWidgetProps>`.
+**Files.** EITHER:
+- single-widget legacy shape — `surfaces/MonitorWidget.tsx` with default export `React.FC<MonitorWidgetProps>`; OR
+- multi-variant Stage 4d shape — one or more component files under `surfaces/monitor/*.tsx`, each referenced from `MODULE.monitorWidgets[].component`.
 
-**Spec field.** `MODULE.surfaces.monitor` references the component. Additional metadata: `MODULE.monitorMeta` carrying `defaultSize`, `allowedSizes`, `parameterized` flag, and `paramFields` (per the WidgetTypeMeta contract).
+**Spec field.** EITHER:
+- `MODULE.surfaces.monitor` (legacy single-widget); OR
+- `MODULE.monitorWidgets: ReadonlyArray<MonitorWidgetMeta>` (Stage 4d multi-variant). Each `MonitorWidgetMeta` carries `id`, `label`, `description`, `category`, `defaultSize`, `allowedSizes`, `parameterized`, optional `paramFields`, and `component`. The central `src/components/monitor/registry.ts` walks `ALL_PRIMITIVE_MODULES.flatMap(m => m.monitorWidgets ?? [])` and unions with the hand-authored (pre-aggregated dashboard) entries to build the public `WIDGET_TYPES` map.
+
+Stage 4d removed the original `MODULE.monitorMeta` proposal — the metadata that was going to live there now lives inline on each `monitorWidgets[]` entry, so there's no second field to keep in sync.
 
 **When to claim.** The desk reads this tool at a glance every day; a Monitor bento card is the canonical surface. Examples: yield snapshot, curve spreads, cross-market spreads, scanner, event-feed.
 

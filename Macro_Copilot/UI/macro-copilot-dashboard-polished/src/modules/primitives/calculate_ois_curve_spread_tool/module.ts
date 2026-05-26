@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_ois_curve_spread_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_ois_curve_spread',
+  displayName: 'OIS Curve Spread',
   category: 'curve_shape',
   oneLineSummary: 'Basis-point spread between two tenors on the same OIS curve (e.g. SOFR 2s10s) with rolling 252-day z-score, daily change, and both canonical and bespoke wire-frozen time series.',
 };

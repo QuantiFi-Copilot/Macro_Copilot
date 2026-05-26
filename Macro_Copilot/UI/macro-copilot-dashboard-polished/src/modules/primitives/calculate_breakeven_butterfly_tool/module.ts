@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_breakeven_butterfly_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_breakeven_butterfly',
+  displayName: 'Breakeven Butterfly',
   category: 'curve_shape',
   oneLineSummary: 'Three-point bond-implied breakeven butterfly with fixed 50-50 weights (e.g. US 2s5s10s breakeven butterfly) and rolling 252-day z-score. Breakeven analogue of calculate_butterfly.',
 };

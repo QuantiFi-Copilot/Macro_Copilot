@@ -14,7 +14,7 @@ import { CurveClassifierWidget } from './surfaces/monitor/CurveClassifierWidget'
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'classify_curve_move_tool',
   tiers: ['workflow_incompatible', 'custom_build_surface', 'monitor_surface'],
-  displayName: 'classify_curve_move',
+  displayName: 'Classify Curve Move',
   category: 'forwards_classify',
   oneLineSummary:
     'Deterministically classify a two-point sovereign curve move over a discrete lookback into one of six canonical labels.',

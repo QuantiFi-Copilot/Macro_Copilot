@@ -36,7 +36,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const PROJECT_ROOT = process.cwd();
@@ -89,7 +89,20 @@ function findTestFiles(roots) {
 // ----------------------------------------------------------------------------
 
 function bundle(testPath, outDir) {
-  const out = join(outDir, `${basename(testPath).replace('.test.ts', '')}.js`);
+  // Stage 4e fix — every per-module test is named ``module.spec.ts``,
+  // so ``basename(testPath).replace('.test.ts','')`` produced the same
+  // output filename for all 58 modules and they overwrote each other
+  // (only the last bundled spec actually ran).  Use the relative path
+  // from PROJECT_ROOT, slashes → underscores, AND handle both .test.ts
+  // and .spec.ts suffixes, so every test compiles to a UNIQUE output.
+  const rel = testPath.startsWith(PROJECT_ROOT + '/')
+    ? testPath.slice(PROJECT_ROOT.length + 1)
+    : testPath;
+  const stem = rel
+    .replace(/\.test\.ts$/, '')
+    .replace(/\.spec\.ts$/, '')
+    .replace(/[\/\\]/g, '_');
+  const out = join(outDir, `${stem}.js`);
   const args = [
     testPath,
     '--bundle',

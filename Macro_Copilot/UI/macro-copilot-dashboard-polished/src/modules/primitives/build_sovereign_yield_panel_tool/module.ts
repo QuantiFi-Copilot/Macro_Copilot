@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'build_sovereign_yield_panel_tool',
   tiers: ['generic_runnable'],
-  displayName: 'build_sovereign_yield_panel',
+  displayName: 'Build Sovereign Yield Panel',
   category: 'panel_assembly',
   oneLineSummary: 'Wide multi-instrument Panel of sovereign yields keyed by `<curve_family>_<tenor>` over a date range. Designed as the backtest workflow\'s primary price-source panel — every cash leg in a sovereign-family trade reads its time series from one row of the assembled Panel.',
 };

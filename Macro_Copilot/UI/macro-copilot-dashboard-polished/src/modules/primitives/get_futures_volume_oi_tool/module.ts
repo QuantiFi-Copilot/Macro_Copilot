@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'get_futures_volume_oi_tool',
   tiers: ['generic_runnable'],
-  displayName: 'get_futures_volume_oi',
+  displayName: 'Futures Volume OI',
   category: 'snapshots',
   oneLineSummary: 'Single rolling-generic bond-futures volume + open-interest snapshot —.',
 };

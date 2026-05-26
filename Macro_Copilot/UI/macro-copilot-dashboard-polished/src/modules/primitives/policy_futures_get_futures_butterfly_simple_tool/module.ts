@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'policy_futures_get_futures_butterfly_simple_tool',
   tiers: ['generic_runnable'],
-  displayName: 'policy_futures_get_futures_butterfly_simple',
+  displayName: 'Policy Futures Futures Butterfly Simple',
   category: 'spreads',
   oneLineSummary: 'Same-curve simple butterfly (3-point curvature) on the policy-.',
 };

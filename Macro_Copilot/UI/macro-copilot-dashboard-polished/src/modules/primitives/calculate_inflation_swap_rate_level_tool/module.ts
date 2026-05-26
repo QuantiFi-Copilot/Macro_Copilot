@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_inflation_swap_rate_level_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_inflation_swap_rate_level',
+  displayName: 'Inflation Swap Rate Level',
   category: 'snapshots',
   oneLineSummary: 'Single-pillar zero-coupon inflation swap (ZCIS) rate snapshot — current rate, daily / weekly / monthly change in bps, rolling 252-day z-score, trailing 252-day high / low / percentile, and a full chartable time series. ZCIS analogue of get_ois_rate_level.',
 };

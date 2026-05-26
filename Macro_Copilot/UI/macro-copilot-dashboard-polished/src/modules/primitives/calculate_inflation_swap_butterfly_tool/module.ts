@@ -12,7 +12,7 @@ import type { PrimitiveModuleSpec } from '../../types';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_inflation_swap_butterfly_tool',
   tiers: ['generic_runnable'],
-  displayName: 'calculate_inflation_swap_butterfly',
+  displayName: 'Inflation Swap Butterfly',
   category: 'curve_shape',
   oneLineSummary: 'Three-point ZCIS butterfly with fixed 50-50 weights (e.g. USD ZCIS 2s5s10s butterfly) and rolling 252-day z-score. ZCIS analogue of calculate_butterfly.',
 };

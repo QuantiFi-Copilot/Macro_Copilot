@@ -16,10 +16,9 @@
 - **`paused`** — runtime-status tier only (Stage 3 minimal scaffold).
   Backend does not yet have a live implementation for this tool.
 
-(Capability tiers — `custom_build_surface`, `custom_preview_widget`, `monitor_surface`,
-`ask_surface` — are NOT claimed in Stage 3.  The existing UI continues to render
-via the legacy page-folder code in `src/components/build/`, `src/components/monitor/`,
-etc.  Stage 4 PRs add capability tiers as surfaces move into this folder.)
+(Capability tiers are not claimed yet.  Stage 5+ PRs add capability
+tiers as surfaces are built — see Question 4 below for the planned
+next steps and Question 5 for the doctrine this module operationalises.)
 
 ## 2. What does the user read off each surface?
 

@@ -29,7 +29,7 @@ import { SpreadChartWidget } from './surfaces/monitor/SpreadChartWidget';
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_curve_spread_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'monitor_surface'],
-  displayName: 'calculate_curve_spread',
+  displayName: 'Curve Spread',
   category: 'curve_shape',
   oneLineSummary:
     'Basis-point spread between two tenors on the same sovereign yield curve, with a fixed 1-year rolling z-score and full chartable time series.',
