@@ -47,6 +47,7 @@ import {
   type ManifestTool,
 } from '@/types/library';
 import { hasModelMetadata } from '@/lib/modelRegistry';
+import { getPrimitiveModule } from '@/modules';
 import {
   isKnownBackendTool,
   isRunnablePrimitive,
@@ -434,24 +435,19 @@ function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
   );
 }
 
-/** Closed list mirror of ``contextDecoder.TOOL_TO_VIEW``.  Used by the
- *  Library CTA to decide whether to label a runnable primitive as
- *  "Open in Build" (typed-view shipped) vs "Open builder" (PR2
- *  schema-driven fallback).  Kept private to this module because
- *  the decoder is the source of truth; this is a UX-only echo for
- *  button copy.  If the decoder's typed-view list changes,
- *  ``routingCoverage.test.ts`` will catch the drift. */
-const TYPED_VIEW_TOOLS: ReadonlySet<string> = new Set([
-  'calculate_curve_spread_tool',
-  'calculate_cross_market_spread_tool',
-  'calculate_butterfly_tool',
-  'get_yield_levels_tool',
-  'classify_curve_move_tool',
-  'scan_extremes_tool',
-]);
-
+/** Stage 4d — derived from each module's ``typedView`` field.  The
+ *  Library CTA uses this to decide whether to label a runnable
+ *  primitive as "Open in Build" (typed-view shipped) vs "Open builder"
+ *  (PR2 schema-driven fallback).  Pre-Stage-4d this was a hand-
+ *  authored set duplicating ``contextDecoder.TOOL_TO_VIEW``; the
+ *  decoder itself now derives from the same source so the two are
+ *  unambiguously in lock-step.
+ *
+ *  Stored as a function (rather than a const) to defer the
+ *  ``ALL_PRIMITIVE_MODULES`` filter to first call — keeps the
+ *  module-init order free of the cycle through ``@/modules``. */
 function hasTypedView(canonicalName: string): boolean {
-  return TYPED_VIEW_TOOLS.has(canonicalName);
+  return getPrimitiveModule(canonicalName)?.typedView != null;
 }
 
 // ----------------------------------------------------------------------------

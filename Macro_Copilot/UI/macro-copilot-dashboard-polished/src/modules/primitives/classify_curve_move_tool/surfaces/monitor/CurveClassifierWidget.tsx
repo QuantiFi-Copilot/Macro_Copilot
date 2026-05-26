@@ -23,7 +23,7 @@ import {
   WidgetBody,
   WidgetProvenance,
 } from '@/components/monitor/WidgetCard';
-import { WidgetLoading, WidgetError } from './shared';
+import { WidgetLoading, WidgetError } from '@/components/monitor/widgets/shared';
 import { cn } from '@/utils/cn';
 
 const CURVE_LABEL: Record<string, string> = {

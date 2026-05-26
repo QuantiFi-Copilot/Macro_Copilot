@@ -1,25 +1,25 @@
 // ============================================================================
-// CrossMarketSpreadWidget — custom cross-sovereign spread chart
+// SpreadChartWidget — custom curve-spread chart (e.g. UST 2s10s)
 // ----------------------------------------------------------------------------
-// Parameterized.  Fetches /api/v1/rates/detail/cross-market with user-
-// supplied (curve_family_1, curve_family_2, tenor, lookback_days),
-// renders a time-series area chart of the spread plus current/Δ1d/
-// %ile/z-score summary.
+// Parameterized.  Fetches /api/v1/rates/detail/spread with user-supplied
+// (curve_family, short_tenor, long_tenor, lookback_days), renders a
+// time-series area chart of the spread plus a current/Δ1d/z-score
+// summary on the header.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  fetchDetailCrossMarket,
-  type CrossMarketDetailParams,
+  fetchDetailSpread,
+  type SpreadDetailParams,
 } from '@/services/ratesApi';
-import type { CrossMarketSpreadOutput } from '@/types/rates';
+import type { CurveSpreadOutput } from '@/types/rates';
 import {
   WidgetHeader,
   WidgetBody,
   WidgetProvenance,
 } from '@/components/monitor/WidgetCard';
 import { Sparkline } from '@/components/ui/Sparkline';
-import { WidgetLoading, WidgetError } from './shared';
+import { WidgetLoading, WidgetError } from '@/components/monitor/widgets/shared';
 import { cn } from '@/utils/cn';
 
 const CURVE_LABEL: Record<string, string> = {
@@ -38,14 +38,14 @@ type Props = {
   params: Record<string, unknown>;
 };
 
-export function CrossMarketSpreadWidget({ params }: Props) {
-  const fetchParams = useMemo<CrossMarketDetailParams | null>(() => {
-    const cf1 =
-      typeof params.curve_family_1 === 'string' ? params.curve_family_1 : null;
-    const cf2 =
-      typeof params.curve_family_2 === 'string' ? params.curve_family_2 : null;
-    const t = typeof params.tenor === 'string' ? params.tenor : '10Y';
-    if (!cf1 || !cf2) return null;
+export function SpreadChartWidget({ params }: Props) {
+  const fetchParams = useMemo<SpreadDetailParams | null>(() => {
+    const cf = typeof params.curve_family === 'string' ? params.curve_family : null;
+    const st =
+      typeof params.short_tenor === 'string' ? params.short_tenor : undefined;
+    const lt =
+      typeof params.long_tenor === 'string' ? params.long_tenor : undefined;
+    if (!cf) return null;
     const lookbackRaw = params.lookback_days;
     const lookback =
       typeof lookbackRaw === 'string'
@@ -54,14 +54,14 @@ export function CrossMarketSpreadWidget({ params }: Props) {
           ? lookbackRaw
           : 252;
     return {
-      curve_family_1: cf1,
-      curve_family_2: cf2,
-      tenor: t,
+      curve_family: cf,
+      short_tenor: st,
+      long_tenor: lt,
       lookback_days: lookback,
     };
   }, [params]);
 
-  const { data, error, isLoading } = useFetchDetailCrossMarket(fetchParams);
+  const { data, error, isLoading } = useFetchDetailSpread(fetchParams);
 
   if (!fetchParams) return <WidgetError message="Widget params incomplete." />;
   if (error && !data) return <WidgetError message={error.message} />;
@@ -72,24 +72,24 @@ export function CrossMarketSpreadWidget({ params }: Props) {
   const zAbs = Math.abs(m.current_z_score ?? 0);
   const zToneClass =
     zAbs >= 2.0
-      ? 'text-coral-300'
+      ? (m.current_z_score ?? 0) > 0
+        ? 'text-coral-300'
+        : 'text-mint-300'
       : zAbs >= 1.5
         ? 'text-amber-300'
         : 'text-fg-secondary';
-  void zToneClass;
 
   const sparkData = data.time_series.map((row) => ({
     date: row.date,
     value: row.spread_bps,
   }));
 
-  const c1Short = CURVE_LABEL[m.curve_family_1] ?? m.curve_family_1;
-  const c2Short = CURVE_LABEL[m.curve_family_2] ?? m.curve_family_2;
+  const curveShort = CURVE_LABEL[m.curve_family] ?? m.curve_family;
 
   return (
     <>
       <WidgetHeader
-        kicker={`CROSS-MARKET · ${c1Short.toUpperCase()}-${c2Short.toUpperCase()} · ${m.tenor.toUpperCase()}`}
+        kicker={`CURVE SPREAD · ${curveShort.toUpperCase()}`}
         title={m.spread_label}
         meta={
           <span
@@ -121,9 +121,6 @@ export function CrossMarketSpreadWidget({ params }: Props) {
               ? `${m.daily_change_bps > 0 ? '+' : ''}${m.daily_change_bps.toFixed(1)}`
               : '—'}
           </span>
-          <span className="ml-1 font-mono text-[10.5px] text-fg-muted">
-            · %ile {m.percentile_252d?.toFixed(0) ?? '—'}
-          </span>
         </div>
 
         <div className="-mx-1 mt-2 min-h-[120px] flex-1">
@@ -141,13 +138,13 @@ export function CrossMarketSpreadWidget({ params }: Props) {
             window {m.rolling_window_days}d · {data.time_series.length} obs
           </span>
           <span>
-            {c1Short} {m.curve_family_1_yield?.toFixed(3) ?? '—'} · {c2Short}{' '}
-            {m.curve_family_2_yield?.toFixed(3) ?? '—'}
+            short {m.short_tenor_yield?.toFixed(3) ?? '—'} · long{' '}
+            {m.long_tenor_yield?.toFixed(3) ?? '—'}
           </span>
         </div>
       </WidgetBody>
       <WidgetProvenance
-        toolName="calculate_cross_market_spread_tool"
+        toolName="calculate_curve_spread_tool"
         asOfDate={m.as_of_date}
       />
     </>
@@ -156,9 +153,9 @@ export function CrossMarketSpreadWidget({ params }: Props) {
 
 // ----------------------------------------------------------------------------
 
-function useFetchDetailCrossMarket(params: CrossMarketDetailParams | null) {
+function useFetchDetailSpread(params: SpreadDetailParams | null) {
   const [state, setState] = useState<{
-    data: CrossMarketSpreadOutput | null;
+    data: CurveSpreadOutput | null;
     error: Error | null;
     isLoading: boolean;
   }>({ data: null, error: null, isLoading: !!params });
@@ -172,7 +169,7 @@ function useFetchDetailCrossMarket(params: CrossMarketDetailParams | null) {
     }
     let cancelled = false;
     setState((s) => ({ ...s, isLoading: true, error: null }));
-    fetchDetailCrossMarket(params)
+    fetchDetailSpread(params)
       .then((data) => {
         if (!cancelled) setState({ data, error: null, isLoading: false });
       })

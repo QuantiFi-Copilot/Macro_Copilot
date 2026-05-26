@@ -12,9 +12,31 @@
 
 import type { PrimitiveModuleSpec } from '../../types';
 import type { ModelMetadata } from '@/lib/modelRegistry';
+import type { ModelAdapter } from '@/components/build/widgets/shared/persistedModelAdapters';
 import { DEFAULT_LOOKBACK_PRESETS } from '@/lib/modelPresets';
 import BuildSurface from './surfaces/BuildSurface';
 import PreviewWidget from './surfaces/PreviewWidget';
+
+const MODEL_ADAPTER: ModelAdapter = {
+  toolName: 'calculate_pca_yield_curve_tool',
+  displayName: 'PCA',
+  hasTimeSeriesOutput: true,
+  expectedArtifactType: 'Series',
+  persistedRole: {
+    headline: 'PCA · factor-score time series',
+    description:
+      'The persisted Series carries one principal-component factor score path (one of the multi-factor fits the tool emits).',
+  },
+  detailUnavailable: [
+    'Per-tenor loadings matrix',
+    'Variance explained per component (and cumulative)',
+    'Current factor levels (latest snapshot)',
+    'Component-quality / diagnostics flags',
+    'Peer factor series that weren’t lifted as the artifact',
+  ],
+  builderHint:
+    'Re-run from the model builder to view the full loadings / variance / current-factor-levels panel.',
+};
 
 const MODEL_METADATA: ModelMetadata = {
   toolName: 'calculate_pca_yield_curve_tool',
@@ -94,6 +116,8 @@ export const MODULE: PrimitiveModuleSpec = {
     'PCA on the yield-CHANGES panel of one sovereign curve.  Returns per-component loadings, variance shares, factor-score time series, and per-component quality metadata (degenerate + sign-anchor flags).',
   richModel: true,
   modelMetadata: MODEL_METADATA,
+  modelAdapter: MODEL_ADAPTER,
+  workspaceLabel: 'PCA loadings, variance, factor scores',
   surfaces: {
     build: BuildSurface,
     preview: PreviewWidget,
