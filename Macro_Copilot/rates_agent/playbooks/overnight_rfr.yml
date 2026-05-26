@@ -1,0 +1,131 @@
+# ============================================================================
+# overnight_rfr playbook — overnight risk-free-rate fixings
+# (work order C2a, Track C, Step 1 sub-phase 4A; substrate decision: ADR 0010)
+#
+# VERIFIED 2026-05-23 — every Bloomberg mnemonic below was confirmed on a live
+# Bloomberg terminal via scripts/overnight_rfr_bloomberg_check.py (5-year
+# window 2021-05-24..2026-05-21): 4/4 markets PASS, with clean PX_LAST series,
+# sane rate ranges, and matching bdp metadata.  Per-market evidence:
+#
+#   SOFR   SOFRRATE Index   1247 pts  last=3.51    range [0.01, 5.40]
+#                           NAME='United States SOFR Secured Overnight Financing Rate'
+#   ESTR   ESTRON Index     1280 pts  last=1.932   range [-0.593, 3.913]
+#                           NAME='ESTR Volume Weighted Trimmed Mean'
+#   SONIA  SONIO/N Index    1261 pts  last=3.7309  range [0.045, 5.2001]
+#                           NAME='SONIA Interest Rate Benchmark'
+#   TONA   MUTKCALM Index   1221 pts  last=0.727   range [-0.079, 0.736]
+#                           NAME='Bank of Japan Final Result: Uncollateralized
+#                                 Overnight Call Rate'
+#
+# JPY-NAMING NOTE: the modern Tokyo Overnight Average Rate (TONA) IS the
+# uncollateralized overnight call rate Bloomberg historically tickers as
+# MUTKCALM (the legacy "Mutan call" name).  Operator-confirmed 2026-05-22;
+# the SECURITY_DES "Bank of Japan Final Result: Uncollateralized Overnight
+# Call Rate" is TONA.  The playbook's curve_family JPY_TONA_RFR reflects the
+# modern (post-reform) rate identity.
+#
+# WHAT THIS SHIPS
+#   One daily PX_LAST observation per market per day — the overnight RFR
+#   fixing — for the four core macro markets:
+#     USD  SOFR    (Secured Overnight Financing Rate, Federal Reserve)
+#     EUR  ESTR    (Euro Short-Term Rate, European Central Bank)
+#     GBP  SONIA   (Sterling Overnight Index Average, Bank of England)
+#     JPY  TONA    (Tokyo Overnight Average Rate, Bank of Japan)
+#
+# WHY (the desk demand)
+#   `tmp/primitive_expansion/phase4.md` Step 1, sub-phase 4A: this is what
+#   upgrades the `financing_rate.overnight_index_proxy` primitive from its
+#   current OIS proxy to TRUE overnight RFR — the foundation for every Phase-4
+#   repo / bond-futures-RV primitive that follows.  C2a builds ONLY the data;
+#   the primitive closure is Phase-4 work.
+#
+# SHAPE (per ADR 0010)
+#   Repo (incl. these RFR fixings) is time-series: `(trade_date, instrument_id,
+#   field_name, field_value)`.  It rides the existing rails unchanged —
+#   `--mode time-series` extractor → `data/overnight_rfr/` GCS prefix →
+#   `market_data_daily` via the existing `data/` ingester route.  No new table,
+#   no new extractor mode, no new ingester route, no new DB helper.  ADR 0010
+#   §Decision 2 is explicit about this.
+#
+# INSTRUMENT_TYPE
+#   `overnight_rfr` — one of the three repo `instrument_type` values ADR 0010
+#   §Decision 3 fixed (the others — `gc_repo`, `repo_special` — register in
+#   C2b/C2c).  `instrument_type` is free VARCHAR; no schema change.
+# ============================================================================
+
+playbook_name: "overnight_rfr"
+playbook_version: "1.0"
+asset_class: "rates"
+dataset_name: "overnight_rfr"
+description: |
+  Overnight risk-free-rate (RFR) fixings for the four core macro markets —
+  SOFR / ESTR / SONIA / TONA. One daily PX_LAST value per market, one row per
+  market in instrument_master under `instrument_type: overnight_rfr` (ADR 0010).
+  This is the substrate the Phase-4 `financing_rate.overnight_index_proxy`
+  primitive upgrades to TRUE overnight (Phase 4 Step 1, sub-phase 4A) from its
+  current OIS proxy.  Sourced Bloomberg-only — anything that does not verify on
+  Bloomberg is deferred and documented per the project's data-PR discipline.
+
+extraction:
+  # Request maximum history; Bloomberg returns what each series has (SOFR from
+  # 2018-04, ESTR from 2019-10, SONIA pre-2018 under the same ticker family per
+  # Bloomberg convention, TONA back to the 1990s).
+  start_date: "2005-01-01"
+  # Standard project default. The 14d incremental window covers normal
+  # overnight publication latency plus weekends/holidays comfortably.
+  incremental_window_days: 14
+
+target_metrics:
+  - metric_id: "last_price"
+    bloomberg_field: "PX_LAST"   # VERIFIED 2026-05-23 — clean daily series, 4/4 markets
+
+reference_metrics:
+  - column_name: "security_name"
+    bloomberg_field: "SECURITY_DES"   # VERIFIED 2026-05-23 — populated on all 4 tickers
+
+universe:
+  # All four tickers VERIFIED 2026-05-23 via scripts/overnight_rfr_bloomberg_check.py
+  # — full per-market evidence (points, span, last value, range, NAME) is in the
+  # header block above.
+
+  # --------------------------------------------------------------------------
+  # United States — SOFR (Federal Reserve)
+  # --------------------------------------------------------------------------
+  - ticker: "SOFRRATE Index"   # VERIFIED 2026-05-23 (1247 pts; last 3.51%; 5y span)
+    instrument_type: "overnight_rfr"
+    curve_family: "USD_SOFR_RFR"
+    country: "US"
+    currency: "USD"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # Euro area — ESTR (European Central Bank)
+  # --------------------------------------------------------------------------
+  - ticker: "ESTRON Index"     # VERIFIED 2026-05-23 (1280 pts; last 1.932%; 5y span)
+    instrument_type: "overnight_rfr"
+    curve_family: "EUR_ESTR_RFR"
+    country: "EU"
+    currency: "EUR"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # United Kingdom — SONIA (Bank of England)
+  # --------------------------------------------------------------------------
+  - ticker: "SONIO/N Index"    # VERIFIED 2026-05-23 (1261 pts; last 3.7309%; 5y span)
+    instrument_type: "overnight_rfr"
+    curve_family: "GBP_SONIA_RFR"
+    country: "UK"
+    currency: "GBP"
+    tenor: "ON"
+
+  # --------------------------------------------------------------------------
+  # Japan — TONA (Bank of Japan; uncollateralized overnight call rate)
+  # Bloomberg's legacy MUTKCALM ticker carries the modern TONA fixing — see
+  # the JPY-NAMING NOTE in the header block above.
+  # --------------------------------------------------------------------------
+  - ticker: "MUTKCALM Index"   # VERIFIED 2026-05-23 (1221 pts; last 0.727%; 5y span)
+    instrument_type: "overnight_rfr"
+    curve_family: "JPY_TONA_RFR"
+    country: "JP"
+    currency: "JPY"
+    tenor: "ON"

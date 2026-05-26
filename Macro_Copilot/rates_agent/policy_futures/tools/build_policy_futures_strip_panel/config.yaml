@@ -1,0 +1,374 @@
+# =============================================================================
+# build_policy_futures_strip_panel — tool configuration
+# =============================================================================
+# Multi-instrument Panel of policy-futures IMPLIED RATES (PERCENT)
+# across the SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT universe ×
+# strip positions 1..8 (rows = trade_date, columns =
+# "<CURVE_FAMILY>|<STRIP_POSITION>"-encoded cells).  Substrate
+# primitive for downstream operator-shaped work (cross-central-bank
+# pricing comparison, strip-curve PCA, RV scanning at the
+# curve-family × strip-position level).  Plan §5 Group 3 #21.
+#
+# Same convention names + values as ``build_sovereign_yield_panel`` /
+# ``build_zcis_panel`` / ``build_linker_panel`` for the alignment /
+# missing-data / forward-fill knobs so the cross-tool
+# ``shared.config.lint`` stays clean.  The Bloomberg field default is
+# ``PX_LAST`` — the canonical futures-price mnemonic every other
+# policy_futures sibling consumes from
+# ``v_market_data_daily_enriched``.
+#
+# Implied-rate conversion (load-bearing)
+# --------------------------------------
+# The Panel's value field is ``implied_rate_pct`` (PR14-frozen name).
+# For each (curve_family, strip_position) cell the implied rate is
+# computed from ``raw_price`` per the per-curve_family
+# ``instrument_master.attributes->>'inverse_pricing'`` flag:
+#   - inverse-priced (SOFR_FUT / SONIA_FUT / EUR_SHORT_RATE_FUT in V1):
+#       implied_rate_pct = 100 - raw_price
+#   - direct-priced (none in V1; future families flip the metadata
+#     flag and the panel adjusts per curve_family with NO code edit):
+#       implied_rate_pct = raw_price
+# The inverse-pricing flag is METADATA-DRIVEN (P5 / P6 — no hidden
+# methodology in code); the compute layer reads the flag off the
+# universe-meta fetcher and refuses a mixed-flag set within ONE
+# curve_family.
+#
+# Column-axis encoding (load-bearing)
+# -----------------------------------
+# Columns are keyed by the flat string ``"<CURVE_FAMILY>|<STRIP_
+# POSITION>"`` (e.g. ``"SOFR_FUT|1"``, ``"EUR_SHORT_RATE_FUT|8"``).
+# The desk-recognised 2-dimensional read is the
+# (curve_family, strip_position) matrix; the Panel typed artifact's
+# ``units_by_column`` is declared ``Dict[str, TimeSeriesUnits]`` so
+# tuple keys would break the typed-boundary contract — flat string
+# encoding preserves BOTH pieces of information in every column key
+# AND remains honest under the Panel contract.  The methodology card
+# surfaces the encoding rule + a per-column decomposition under
+# ``column_axis_encoding`` + ``curve_family_reference``.
+#
+# Notes
+# -----
+# - Calendar policy default: ``business_days`` (matches sibling
+#   build_sovereign_yield_panel / build_zcis_panel / build_linker_
+#   panel convention value so the cross-tool config lint stays
+#   clean).
+# - EUR_SHORT_RATE_FUT preservation: this panel does NOT collapse
+#   Buba serial+quarterly Euribor rows into a mix-averaged read.
+#   The Panel is the SUBSTRATE — the Buba mix sits on the wire
+#   exactly as it sits on the DB; the methodology card discloses
+#   the mix per curve_family.  futures_pack_average_simple's PR11
+#   NotImplementedError refusal applies to the pack-average OUTPUT,
+#   not to raw substrate ingestion.
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time.  Bumping any value here is a deliberate methodology
+# change with downstream impact on every operator that consumes the
+# panel.
+# =============================================================================
+
+tool:
+  name: build_policy_futures_strip_panel_tool
+  domain: policy_futures
+  category: desk_invariant_primitive
+  description: |
+    Assemble a wide multi-instrument Panel of policy-futures
+    IMPLIED RATES (PERCENT) across the SOFR_FUT / SONIA_FUT /
+    EUR_SHORT_RATE_FUT curve families × strip positions 1..8
+    (rows = trade_date, columns =
+    ``"<CURVE_FAMILY>|<STRIP_POSITION>"``-encoded cells).
+    Pivots raw ``macro_data.v_market_data_daily_enriched`` rows
+    (``instrument_type='policy_future' AND
+    is_rolling_contract=TRUE``) into a date-indexed DataFrame
+    keyed by the flat ``"<CURVE_FAMILY>|<STRIP_POSITION>"``
+    encoding, converts per-cell ``raw_price`` to
+    ``implied_rate_pct`` via the per-curve-family ``inverse_
+    pricing`` flag from ``instrument_master.attributes``,
+    forward-fills holiday gaps up to ``ffill_limit_days``,
+    applies the missing-data policy, and emits a closed-family
+    Panel artifact with per-column PERCENT units.
+
+    EUR_SHORT_RATE_FUT preservation: the Euribor strip (Buba
+    serial+quarterly mix) is preserved RAW in the Panel — no
+    averaging, no row-dropping.  The Panel is the SUBSTRATE; the
+    methodology card discloses the mix per curve_family and
+    points to ``futures_pack_average_simple``'s PR11
+    NotImplementedError refusal (which DOES collapse Buba into
+    a pack-average and therefore refuses honestly) for the
+    aggregated-output unblock path.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field for the policy-futures price series
+  # ---------------------------------------------------------------------------
+  # Convention NAME ``default_price_field`` matches every other
+  # policy_futures sibling (futures_price_level /
+  # volume_open_interest_snapshot / futures_calendar_spread /
+  # futures_butterfly_simple / futures_cross_market_spread /
+  # futures_strip_snapshot / futures_pack_average_simple /
+  # scan_policy_futures_extremes).  PX_LAST is the canonical
+  # last-traded futures price mnemonic.
+  default_price_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Last-traded price is the canonical observation for the
+      policy-futures strip.  Maps onto the playbook's
+      ``last_price`` metric (bloomberg_field PX_LAST).  The Panel
+      stores the IMPLIED RATE (PERCENT) derived from this field
+      via the per-curve-family inverse-pricing flag; field-name
+      override at the input layer flows through the fetcher
+      unchanged.  LLM/HTTP wrappers MUST use the empty-string /
+      None sentinel so this default flows through — same
+      shadowing-fix pattern as sovereign curve_move_classifier
+      (commit b2605ee) / every sibling policy_futures wrapper.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps
+  # ---------------------------------------------------------------------------
+  # NAME-MATCH every other rates tool's ``ffill_limit_days`` and
+  # carry the SAME value so the cross-config lint stays clean.
+  ffill_limit_days:
+    value: 5
+    source: industry_standard_5d_ffill
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps so the panel has comparable observations across all
+      cells.  Identical to ``build_sovereign_yield_panel`` /
+      ``build_zcis_panel`` / ``build_linker_panel`` / every other
+      rates tool; ``shared.config.lint`` enforces the match.  Set
+      to 0 to disable forward-fill entirely (strict-coverage
+      panels).  The cross-region bridge is particularly load-
+      bearing for the policy-futures universe because the three
+      curve families span three trading sessions (US CME / UK ICE
+      / EUR ICE) with different national holiday calendars.
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Missing-data policy (after ffill)
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; ToolConfig's Convention schema
+  # only supports ``valid_range`` (numeric), so the allowed-values
+  # set is declared in the rationale text instead of a dedicated
+  # field — same convention every other ``rates_agent/*/tools/*/
+  # config.yaml`` follows for enum-shaped knobs.  Mirrors
+  # ``build_zcis_panel`` / ``build_linker_panel`` / sovereign_
+  # yield_panel.
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``forward_fill_only`` (V1 default) — return the panel
+          as-is after the ffill_limit-day forward-fill.  Holes
+          remaining outside that bound are left as NaN; downstream
+          operators handle them.
+        - ``raise`` — strictest; any NaN cell after ffill halts
+          the compute path with the (date, column) of the first
+          miss.
+        - ``drop_rows_any_missing`` — shrinks the panel to
+          fully-observed dates only.  Useful for correlation /
+          regression / PCA panels that cannot tolerate per-cell
+          gaps.  Particularly aggressive on the policy-futures
+          universe because the three curve families span three
+          national trading calendars — many otherwise-fine rows
+          will drop.
+      Per-call override via
+      ``BuildPolicyFuturesStripPanelInput.missing_data_policy``.
+
+  # ---------------------------------------------------------------------------
+  # Calendar policy
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; same enum-in-rationale pattern
+  # as ``default_missing_data_policy``.  Default value matches the
+  # sibling Panel primitives (``business_days``) so the cross-tool
+  # ``shared.config.lint`` stays clean.
+  #
+  # The multi-region policy-futures universe spans three distinct
+  # trading calendars (US / UK / Euro area), so a unioned Mon-Fri
+  # filter is a cross-region approximation; the methodology card's
+  # ``cross_region_business_days_caveat`` field surfaces this
+  # explicitly, and ``instrument_native`` is exposed as a per-query
+  # opt-in for desks that want every native session date through.
+  calendar_policy:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``business_days`` (V1 default; matches the sibling
+          build_zcis_panel / build_linker_panel / build_sovereign_
+          yield_panel convention value so the cross-tool config
+          lint stays clean) — restrict the output index to Mon-Fri
+          observations.  For the multi-region policy-futures
+          universe this is a cross-region approximation; the
+          methodology card's ``cross_region_business_days_caveat``
+          field surfaces the per-region holiday-calendar mismatch
+          (US Federal / UK Bank / EUR TARGET holidays differ, so
+          a Mon-Fri filter still surfaces dates that are holidays
+          in one or more sessions).
+        - ``instrument_native`` (per-query opt-in) — pass through
+          every observed date verbatim from the DB.  Use for
+          multi-region full-universe queries where the desk
+          wants every native trading session surfaced regardless
+          of weekend / holiday alignment across the three
+          sessions.  Holiday-aware per-curve_family calendars
+          require a holiday-table ingestion step not yet built
+          (see ``methodology.planned_extensions``).
+      Documented on the methodology card.
+
+methodology:
+
+  what_it_does: |
+    For each policy-futures curve_family in the request
+    (defaulting to the full SOFR_FUT / SONIA_FUT /
+    EUR_SHORT_RATE_FUT universe) AND each strip position in the
+    request (defaulting to the full 1..8 strip), fetches the
+    ``default_price_field`` observations from
+    ``macro_data.v_market_data_daily_enriched`` over
+    ``[start_date, end_date]`` filtered by
+    ``instrument_type='policy_future'`` AND
+    ``is_rolling_contract=TRUE`` (the structural identity guards),
+    pivots into a wide DataFrame keyed by the flat
+    ``"<CURVE_FAMILY>|<STRIP_POSITION>"`` encoding, converts
+    raw_price to implied_rate_pct per the per-curve-family
+    inverse-pricing flag from ``instrument_master.attributes``,
+    forward-fills holiday gaps up to ``ffill_limit_days``,
+    applies the missing-data policy, and emits a closed-family
+    Panel artifact with per-column PERCENT units inferred from
+    ``implied_rate_pct``.
+
+  assumptions:
+    - "Policy-futures raw prices stored as percent-of-par in the DB
+       (e.g. 95.875 = 4.125% implied rate after the inverse
+       conversion).  The Panel's value field is the desk-recognised
+       ``implied_rate_pct`` (PERCENT); the inversion is metadata-
+       driven (per-curve-family inverse_pricing flag from
+       ``instrument_master.attributes``) so a future direct-priced
+       family lands with a metadata flip + no code change."
+    - "Every column in the same curve_family carries the SAME
+       ``inverse_pricing`` flag.  A mixed-flag universe within ONE
+       curve_family is refused with the controlled-error envelope
+       (P5 — refusing to silently re-label a mixed convention).
+       In V1 every universe entry on SOFR_FUT / SONIA_FUT /
+       EUR_SHORT_RATE_FUT carries ``inverse_pricing: true`` per the
+       playbook, so the panel always returns
+       ``implied_rate_pct = 100 - raw_price`` per cell.  Cross-
+       curve-family flag inconsistency is NOT refused (it is
+       expected as the universe grows beyond V1)."
+    - "Column order is sorted by the caller-supplied
+       ``curve_families`` × ``strip_positions`` Cartesian product
+       (curve_family in caller-input order; strip_position
+       ascending integer order within each family) so the output
+       Panel has a deterministic, desk-readable layout regardless
+       of input row ordering."
+    - "Closed-enum curve_family set (SOFR_FUT / SONIA_FUT /
+       EUR_SHORT_RATE_FUT) — non-policy-futures curve families
+       (sovereign ``UST`` / ``DE_BUND``, OIS ``USD_SOFR_OIS``,
+       ZCIS ``USD_ZCIS``, linker ``USD_TIPS``, bond futures
+       ``UST_FUT``) are rejected at input validation per the
+       closed-family discipline.  Adding a new policy-futures
+       curve family requires an ADR (P8 / PR8) + a playbook entry
+       + a Literal extension."
+    - "Closed-enum strip_position set (1..8) — out-of-range
+       integer positions are rejected at input validation.  The
+       V1 playbook universe ingests positions 1..8 across all
+       three curve families; expanding the strip requires a
+       playbook ingestion update + (separately) a closed-family
+       Literal extension if the new positions cross a structural
+       boundary."
+    - "EUR_SHORT_RATE_FUT preservation: the Euribor strip's Buba
+       serial+quarterly mix is PRESERVED RAW in the Panel — no
+       collapsing into a Buba-mix average per ADR 0013's hard
+       guard.  The Panel is the SUBSTRATE; the methodology card's
+       ``curve_family_reference['EUR_SHORT_RATE_FUT'].buba_mix_
+       caveat`` field discloses the mix AND cites the
+       futures_pack_average_simple PR11 planned-extension entry
+       that gates the aggregated-output path."
+    - "Column-axis encoding: the Panel's column key is the flat
+       string ``\"<CURVE_FAMILY>|<STRIP_POSITION>\"`` (e.g.
+       ``\"SOFR_FUT|1\"``).  The desk-recognised 2-dimensional
+       read is the (curve_family, strip_position) matrix; the
+       Panel typed artifact's ``units_by_column`` is declared
+       ``Dict[str, TimeSeriesUnits]`` (Pydantic v2 enforces str
+       keys), so tuple keys would break the typed-boundary
+       contract.  The flat encoding preserves BOTH pieces of
+       information in every column key; the methodology card's
+       ``column_axis_encoding`` + ``curve_family_reference``
+       fields surface the per-column decomposition explicitly so
+       a downstream consumer can resolve a column back to its
+       underlying ``(curve_family, strip_position, vendor_ticker)``
+       triple."
+    - "Per-curve-family RFR vs IBOR regime caveat: SOFR_FUT (US,
+       compounded daily SOFR — RFR), SONIA_FUT (UK, compounded
+       daily SONIA — RFR), EUR_SHORT_RATE_FUT (Euro area,
+       unsecured 3M term Euribor — IBOR).  The methodology card's
+       per-curve-family ``curve_family_reference`` block surfaces
+       the regime label inline so cross-CB operators consuming
+       this panel do not silently mix structurally different
+       short-rate objects.  ADR 0013 V1 — RFR + IBOR are kept as
+       SEPARATE curve_family rows in the panel; cross-CB
+       comparisons see all three regimes side-by-side AND see the
+       disclosure inline."
+
+  citations:
+    - "Plan §5 Group 3 #21 — Panel substrate primitive for
+      operator-shaped work (cross-CB pricing comparison, strip-
+      curve PCA, RV scanning at the curve_family × strip_position
+      level)."
+    - "ADR 0013 V1 (docs_revamped/05_decisions/0013-futures-
+      domain-agents.md) — policy_futures domain scope, the
+      EUR_SHORT_RATE_FUT Buba-mix refusal discipline on
+      aggregated outputs, the rolling-generic strip
+      methodology."
+    - "build_linker_panel (commit 95f0e0f) and build_zcis_panel
+      (commit 32c386f) — the closest-in-time Panel primitives
+      on non-tenor universes; same MissingnessPolicy + Lineage
+      discipline, same ``_panel`` envelope, same methodology-
+      card disclosure shape."
+    - "futures_strip_snapshot (commit 4f6dc3b) — the canonical
+      per-curve-family 8-strip-position primitive; the
+      implied_rate_pct PR14-frozen field name, the per-curve
+      inverse-pricing-flag discipline, and the RFR / IBOR regime-
+      map disclosure pattern."
+    - "futures_pack_average_simple (commit 80a26cd) — the
+      sibling primitive that explicitly REFUSES
+      EUR_SHORT_RATE_FUT (PR11 NotImplementedError) because the
+      Buba mix cannot be averaged honestly without the missing
+      ``delivery_month_type`` metadata.  This panel preserves the
+      RAW Buba-mix rows because the substrate is not an
+      aggregated output."
+
+  planned_extensions:
+    - "Per-cell field_name override (mixing PX_LAST with
+      PX_BID / PX_ASK on a single panel).  V1 emits the same
+      field on every cell by design; deviation belongs in a
+      future primitive."
+    - "Holiday-aware calendar policy per curve_family (US / UK /
+      Euro area have different trading-day calendars; V1's
+      ``business_days`` Mon-Fri default is a cross-region
+      approximation surfaced via the methodology card's
+      ``cross_region_business_days_caveat`` field).  Requires
+      holiday-table ingestion per country."
+    - "Frequency resampling (weekly / monthly closes for lower-
+      frequency operators)."
+    - "Per-row ``delivery_month_type`` (``serial`` / ``quarterly``)
+      annotation on the EUR_SHORT_RATE_FUT cells so downstream
+      operators can filter to a uniform cadence on consumption.
+      Today the panel preserves the Buba mix raw; the
+      ``delivery_month_type`` annotation lives on the
+      ``rates_agent/playbooks/policy_futures.yml`` playbook-
+      extension queue and unblocks both this disclosure AND the
+      futures_pack_average_simple PR11 refusal."
+    - "MultiIndex column axis (literal ``(curve_family,
+      strip_position)`` tuple keys).  Gated on a Panel typed-
+      artifact extension that admits tuple keys in
+      ``units_by_column`` (today's str-only contract makes the
+      flat encoding the honest path)."
+    - "CTD-of-futures-of-OIS strip panel (Phase-4 per ADR
+      0013).  Maps each strip slot's implied rate onto a
+      calibrated OIS forward curve; gated on the CTD
+      identification + OIS-curve interpolation stack landing as
+      primitives.  Until then the methodology card carries the
+      rolling-generic-strip caveat verbatim."

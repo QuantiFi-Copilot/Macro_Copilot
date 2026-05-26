@@ -31,9 +31,10 @@ Honest level/slope/curvature handling
 -------------------------------------
 The output uses ``pc1``, ``pc2``, ``pc3`` labels — NOT
 ``level``, ``slope``, ``curvature``.  The canonical interpretation
-holds for normal sovereign panels but is a property of the data, not
-enforced by the tool.  Downstream tools
-(yield_change_attribution_pca) consume the labels as-is.
+holds for normal yield-curve panels (sovereign / OIS / ZCIS /
+linker) but is a property of the data, not enforced by the tool.
+Downstream tools (yield_change_attribution_pca) consume the labels
+as-is.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ _LOCKED_SIGN_ANCHOR_LITERAL = "lock_pc_long_tenor_positive"
 
 
 class PcaYieldCurveInput(BaseModel):
-    """Parameters the LLM extracts to fit PCA on a sovereign curve."""
+    """Parameters the LLM extracts to fit PCA on a rates curve."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -60,8 +61,18 @@ class PcaYieldCurveInput(BaseModel):
         ...,
         min_length=1,
         description=(
-            "Sovereign curve identifier — e.g. 'UST', 'DE_BUND', "
-            "'IT_BTP', 'FR_OAT', 'ES_BONO', 'UK_GILT', 'JGB'."
+            "Rates curve identifier.  Accepts any curve_family declared "
+            "in a tenor-keyed playbook under rates_agent/playbooks/ — "
+            "sovereign benchmarks (e.g. 'UST', 'DE_BUND', 'IT_BTP', "
+            "'FR_OAT', 'ES_BONO', 'UK_GILT', 'JGB', 'CANADA_GOVT', "
+            "'AU_GOVT'), OIS curves (e.g. 'USD_SOFR_OIS', 'EUR_ESTR_OIS', "
+            "'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', 'CAD_OIS'), "
+            "inflation swaps ('USD_ZCIS', 'EUR_ZCIS', 'GBP_ZCIS'), and "
+            "sovereign linker real-yield curves ('USD_TIPS', "
+            "'GBP_LINKER', 'EUR_FR_LINKER', 'CAD_RRB').  PCA fits on "
+            "the curve_family's yield-changes panel regardless of the "
+            "underlying instrument family; the math is curve-family "
+            "agnostic."
         ),
     )
     tenors: Optional[List[str]] = Field(
@@ -83,13 +94,14 @@ class PcaYieldCurveInput(BaseModel):
         le=7300,
         description=(
             "Calendar days of history fetched for the fit.  Default "
-            "1825 (~5 years) — typical desk range for PCA on "
-            "sovereign curves.  Lower bound 400 is a conservative "
-            "calendar-day floor intended to leave enough trading-day "
-            "observations for the YAML's ``min_observations_for_pca`` "
-            "requirement after differencing, including the weekly "
-            "(``periods=5``) path.  The cross-layer observation-count "
-            "guard remains the real authority."
+            "1825 (~5 years) — typical desk range for rates-curve "
+            "PCA across sovereign / OIS / ZCIS / linker families.  "
+            "Lower bound 400 is a conservative calendar-day floor "
+            "intended to leave enough trading-day observations for the "
+            "YAML's ``min_observations_for_pca`` requirement after "
+            "differencing, including the weekly (``periods=5``) path.  "
+            "The cross-layer observation-count guard remains the real "
+            "authority."
         ),
     )
     n_components: int = Field(
@@ -98,31 +110,38 @@ class PcaYieldCurveInput(BaseModel):
         le=8,
         description=(
             "Number of components to return.  Default 3 (level + "
-            "slope + curvature on normal sovereign panels).  Upper "
-            "bound 8 = the largest tenor universe per curve_family "
-            "in the playbook today."
+            "slope + curvature on normal yield-curve panels).  Upper "
+            "bound 8 reflects the widest tenor universe per curve_family "
+            "currently ingested across rates playbooks; smaller "
+            "universes (e.g. USD_TIPS at 4 tenors) cap n_components at "
+            "that tenor count and the primitive returns a controlled "
+            "error envelope if exceeded."
         ),
     )
     change_frequency: Literal["daily", "weekly"] = Field(
         default="daily",
         description=(
-            "Frequency at which to take yield differences before "
-            "fitting PCA.  'daily' → 1-step diff; 'weekly' → 5-"
-            "trading-day diff.  Default 'daily' matches the desk-"
-            "canonical input for sovereign-curve PCA."
+            "Frequency at which to take yield (or rate) differences "
+            "before fitting PCA.  'daily' → 1-step diff; 'weekly' → "
+            "5-trading-day diff.  Default 'daily' matches the desk-"
+            "canonical input across sovereign / OIS / ZCIS / linker "
+            "curves."
         ),
     )
     field_name: Optional[str] = Field(
         default=None,
         description=(
-            "Bloomberg observation field.  When None (default), "
-            "the tool falls through to ``default_field_name`` from "
-            "config.yaml (currently 'YLD_YTM_MID').  Pass an explicit "
-            "field name to override per query.  LLM/HTTP wrappers "
-            "MUST translate their wire-level sentinel (empty string "
-            "for MCP, missing param for FastAPI) to None before "
-            "constructing this input — otherwise the YAML default "
-            "is silently shadowed."
+            "Bloomberg observation field.  When None (default), the "
+            "tool auto-discovers the field from the owning playbook's "
+            "``target_metrics[0].bloomberg_field`` — different per "
+            "playbook: sovereign benchmarks + linkers use "
+            "'YLD_YTM_MID', OIS curves use 'PX_LAST', ZCIS curves use "
+            "'PX_MID'.  Pass an explicit field name to override per "
+            "query.  LLM/HTTP wrappers MUST translate their wire-level "
+            "sentinel (empty string for MCP, missing param for "
+            "FastAPI) to None before constructing this input — "
+            "otherwise the playbook auto-discovery is silently "
+            "shadowed."
         ),
     )
 
@@ -164,7 +183,7 @@ class PcaComponentMetadata(BaseModel):
 
 
 class PcaYieldCurveMetrics(BaseModel):
-    """Snapshot metrics for a sovereign-curve PCA fit."""
+    """Snapshot metrics for a rates-curve PCA fit."""
 
     model_config = ConfigDict(extra="forbid")
 

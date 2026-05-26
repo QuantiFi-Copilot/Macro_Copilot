@@ -44,6 +44,11 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'PieChart',
     promptSeed:
       'Attribute the recent UST 10Y yield move to PCA level / slope / curvature factors.',
+    // Phase R4 — tile launches the PCA model builder directly so the
+    // user lands on the rich loadings / variance / factor-scores view
+    // with the form pre-mounted, instead of round-tripping through the
+    // composer.
+    builderTool: 'calculate_pca_yield_curve_tool',
   },
   {
     id: 'screen_a_universe',
@@ -62,6 +67,10 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'GitCompare',
     promptSeed:
       'Compare the rolling beta of UST 10Y to 2Y SOFR across steepening vs flattening 2s10s regimes.',
+    // Phase R4 — tile launches the rolling-regression builder where the
+    // user can pick target + regressor specs and the window, then run
+    // to see β / α / R² histories.
+    builderTool: 'calculate_rolling_regression_tool',
   },
   {
     id: 'build_custom_dag',
@@ -71,8 +80,14 @@ export const BUILD_CATEGORIES: BuildEmptyCategory[] = [
     iconName: 'Code',
     soon: true,
     soonReason:
-      'Unconstrained DAG composition arrives with the Tier 2 LLM reasoning surface (Phase 2).  In the meantime, ask the copilot in plain English.',
-    promptSeed:
-      'Compose a new analysis from these primitives and operators: …',
+      'Unconstrained DAG composition arrives with the Tier 2 LLM reasoning surface (Phase 2).  In the meantime, describe your analysis in plain English and the copilot will assemble a supported workflow for you.',
+    // PR3 — ``soon: true`` disables the tile so ``onSelect`` never
+    // fires.  Pre-PR3 this entry carried a placeholder ``promptSeed``
+    // ("Compose a new analysis from these primitives and operators: …")
+    // that was unreachable code AND misleading copy: it suggested an
+    // open-ended composer the backend can't yet execute.  We replace
+    // it with the empty string so the only source of truth for the
+    // user remains the ``soonReason`` caption.
+    promptSeed: '',
   },
 ];

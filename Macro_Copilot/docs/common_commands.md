@@ -18,3 +18,5 @@ To run a script from in the container:
 
 docker compose exec rates-agent-dev bash
 micromamba run -n macro-env python -m tests.test for e.g 
+
+git pull --rebase --autostash origin branch_name

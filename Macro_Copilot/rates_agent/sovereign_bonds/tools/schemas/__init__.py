@@ -84,6 +84,38 @@ from rates_agent.sovereign_bonds.tools.schemas.scanner import (
     ScannerOutput,
 )
 
+# OTR-history monitor — categorical / SCD2 output, not bridge-composable
+# (see get_otr_history/schemas.py docstring).  Re-exported here so
+# external code can import from the schemas hub uniformly with the
+# other sovereign tools.
+from rates_agent.sovereign_bonds.tools.get_otr_history.schemas import (
+    OtrHistoryInput,
+    OtrHistoryCurrentMetrics,
+    OtrHistoryTransitionRow,
+    OtrHistoryOutput,
+)
+
+# OTR/OFR spread — desk-recognised rich-cheap signal built on the
+# cash-bond substrate.  Bridge-composable (Series shape, snapshot +
+# canonical TimeSeries).  See otr_ofr_spread/schemas.py docstring.
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread.schemas import (
+    OtrOfrSpreadInput,
+    OtrOfrSpreadCurrentMetrics,
+    OtrOfrSpreadTimeSeriesRow,
+    OtrOfrSpreadOutput,
+)
+
+# US NFP surprise (per-release actual − consensus_median + rolling
+# release-window z-score) — front-end Treasury desk concept.
+# Bridge-composable (snapshot + canonical TimeSeries).  See
+# nfp_surprise/schemas.py docstring.
+from rates_agent.sovereign_bonds.tools.nfp_surprise.schemas import (
+    NfpSurpriseInput,
+    NfpSurpriseCurrentMetrics,
+    NfpSurpriseTimeSeriesRow,
+    NfpSurpriseOutput,
+)
+
 __all__ = [
     "CurveSpreadInput", "CurveSpreadCurrentMetrics", "CurveSpreadTimeSeriesRow", "CurveSpreadOutput",
     "YieldLevelInput", "YieldLevelMetrics", "YieldLevelOutput",
@@ -91,4 +123,7 @@ __all__ = [
     "ButterflyInput", "ButterflyCurrentMetrics", "ButterflyTimeSeriesRow", "ButterflyOutput",
     "CurveMoveInput", "CurveMoveCurrentMetrics", "CurveMoveOutput",
     "ScannerInput", "ScannerResultRow", "ScannerOutput",
+    "OtrHistoryInput", "OtrHistoryCurrentMetrics", "OtrHistoryTransitionRow", "OtrHistoryOutput",
+    "OtrOfrSpreadInput", "OtrOfrSpreadCurrentMetrics", "OtrOfrSpreadTimeSeriesRow", "OtrOfrSpreadOutput",
+    "NfpSurpriseInput", "NfpSurpriseCurrentMetrics", "NfpSurpriseTimeSeriesRow", "NfpSurpriseOutput",
 ]

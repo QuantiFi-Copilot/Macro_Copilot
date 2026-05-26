@@ -18,9 +18,7 @@ import { registerFallbackRenderer } from '@/components/build/lib/nodeRendererReg
 const FallbackWidget: NodeRenderer = ({ artifact }) => {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 py-4">
-      <div className="text-[10.5px] uppercase tracking-[0.16em] text-fg-muted">
-        Artifact ready
-      </div>
+      <div className="kicker text-fg-muted">Artifact ready</div>
       <div className="flex items-baseline gap-2">
         <span className="font-serif-display text-[22px] font-light leading-tight text-fg-primary">
           {artifact.artifact_type}

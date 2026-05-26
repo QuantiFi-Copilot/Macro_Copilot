@@ -1,28 +1,66 @@
 // ============================================================================
-// WidgetRenderer
+// WidgetRenderer — Stage 4d module-driven dispatch.
 // ----------------------------------------------------------------------------
-// Single dispatcher: given a WidgetInstance from the layout, look up the
-// type's renderer and render it inside the shared WidgetCard chrome.
+// Single dispatcher: given a WidgetInstance from the layout, look up
+// the type's renderer and render it inside the shared WidgetCard
+// chrome.
 //
-// Adding a new widget type:
-//   1. Register its metadata in `registry.ts` (WIDGET_TYPES + CATALOG_ORDER)
-//   2. Build its renderer in `widgets/<Name>Widget.tsx`
-//   3. Add the renderer to RENDERERS below
+// Stage 4d
+// --------
+// Per-primitive widget components no longer live under
+// ``components/monitor/widgets/`` — they live in their owning module's
+// ``surfaces/monitor/`` folder (FP12 compliant; modules consume page-
+// shell infrastructure, page shells consume module specs via the
+// loader).  This file walks ``ALL_PRIMITIVE_MODULES`` once at module
+// load and builds an ``id → component`` map keyed by the per-module
+// ``monitorWidgets[i].component`` reference.
+//
+// Hand-authored widgets (today: only the pre-aggregated
+// ``yield_snapshot``) keep their direct import.
+//
+// Adding a new widget renderer:
+//   * Per-primitive: add the component to the owning module's
+//     ``monitorWidgets[i].component`` field; this dispatcher picks it
+//     up automatically.
+//   * Hand-authored: import the component below and add it to
+//     ``HAND_AUTHORED_COMPONENTS``.
 // ============================================================================
 
+import { type ComponentType } from 'react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetError } from './widgets/shared';
 import { widgetMeta, type WidgetInstance } from './registry';
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
-// Widget renderers
+// Hand-authored renderers (kept here; not module-derived).
 import { YieldSnapshotWidget } from './widgets/YieldSnapshotWidget';
-import { ScannerWidget } from './widgets/ScannerWidget';
-import { CrossMarketSpreadsWidget } from './widgets/CrossMarketSpreadsWidget';
-import { CurveSpreadsWidget } from './widgets/CurveSpreadsWidget';
-import { CurveClassifierWidget } from './widgets/CurveClassifierWidget';
-import { YieldLevelWidget } from './widgets/YieldLevelWidget';
-import { SpreadChartWidget } from './widgets/SpreadChartWidget';
-import { CrossMarketSpreadWidget } from './widgets/CrossMarketSpreadWidget';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RendererComponent = ComponentType<any>;
+
+const HAND_AUTHORED_COMPONENTS: Record<string, RendererComponent> = {
+  yield_snapshot: YieldSnapshotWidget,
+};
+
+// Build the module-derived component map once at module load.  The
+// registry walker in ``registry.ts`` does the metadata side; we
+// mirror its walk here for the renderers to keep both sides in
+// lock-step from a single source (each module's ``monitorWidgets``
+// array).
+const MODULE_DERIVED_COMPONENTS: Record<string, RendererComponent> = (() => {
+  const out: Record<string, RendererComponent> = {};
+  for (const m of ALL_PRIMITIVE_MODULES) {
+    for (const w of m.monitorWidgets ?? []) {
+      out[w.id] = w.component;
+    }
+  }
+  return out;
+})();
+
+const COMPONENTS: Record<string, RendererComponent> = {
+  ...HAND_AUTHORED_COMPONENTS,
+  ...MODULE_DERIVED_COMPONENTS,
+};
 
 type Props = {
   instance: WidgetInstance;
@@ -73,28 +111,16 @@ export function WidgetRenderer({
 }
 
 function Body({ instance }: { instance: WidgetInstance }) {
-  switch (instance.type) {
-    case 'yield_snapshot':
-      return <YieldSnapshotWidget />;
-    case 'scanner':
-      return <ScannerWidget />;
-    case 'cross_market_spreads':
-      return <CrossMarketSpreadsWidget />;
-    case 'curve_spreads':
-      return <CurveSpreadsWidget />;
-    case 'curve_classifier':
-      return <CurveClassifierWidget />;
-    case 'yield_level':
-      return <YieldLevelWidget params={instance.params} />;
-    case 'spread_chart':
-      return <SpreadChartWidget params={instance.params} />;
-    case 'cross_market_spread':
-      return <CrossMarketSpreadWidget params={instance.params} />;
-    default:
-      return (
-        <WidgetError
-          message={`No renderer registered for "${instance.type}".`}
-        />
-      );
+  const Component = COMPONENTS[instance.type];
+  if (!Component) {
+    return (
+      <WidgetError
+        message={`No renderer registered for "${instance.type}".`}
+      />
+    );
   }
+  // Pre-aggregated widgets ignore the ``params`` prop; parameterised
+  // widgets read from it.  Passing it unconditionally is harmless —
+  // pre-aggregated components destructure no props.
+  return <Component params={instance.params} />;
 }

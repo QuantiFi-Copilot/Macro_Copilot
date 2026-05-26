@@ -611,29 +611,255 @@ class TestDefaultFieldNameFromYaml:
             curve_family="UST", front_tenor="2Y", back_tenor="10Y",
             lookback_period="22d",  # no field_name passed
         )
-        # YAML default is YLD_YTM_MID:
+        # YAML default is YLD_YTM_MID.  Round 3 A4 introduced per-
+        # playbook field auto-discovery: for a discoverable
+        # curve_family (UST → sovereign_bonds.yml), the discovered
+        # field wins over the YAML fallback.  In this UST case both
+        # values are YLD_YTM_MID (sovereign_bonds.yml's
+        # target_metrics[0] AND the YAML default), so the resolved
+        # value is identical to the pre-A4 path — backward compat
+        # invariant.
         passed = self._run_capture_field_name(params, self._custom_config())
         assert passed == "YLD_YTM_MID"
 
-    def test_yaml_override_changes_resolved_field_name(self):
+    def test_known_curve_family_uses_per_playbook_field_not_yaml_override(self):
+        """Round 3 A4 — contract change.  For any curve_family
+        declared in a tenor-keyed playbook under
+        rates_agent/playbooks/, the resolved field comes from the
+        playbook's ``target_metrics[0].bloomberg_field`` rather than
+        the YAML's ``default_field_name``.  Editing the YAML default
+        no longer affects callers whose curve_family is discoverable
+        — they get the playbook-canonical field instead.  The YAML
+        default is only a final fallback for curve_families NOT
+        declared in any tenor-keyed playbook (a rare path that today
+        produces an error envelope at fetch time anyway, because
+        the playbook discovery is the same source of truth the
+        fetcher relies on).
+
+        This replaces the pre-A4 test
+        ``test_yaml_override_changes_resolved_field_name`` which
+        asserted the inverse contract (YAML override dominating).
+        That contract was strictly less honest for non-sovereign
+        callers — sovereign + linker callers happen to share the
+        YAML's YLD_YTM_MID, but OIS callers need PX_LAST and ZCIS
+        callers need PX_MID, so per-playbook discovery is the
+        right primary path.
+        """
         params = CurveMoveInput(
             curve_family="UST", front_tenor="2Y", back_tenor="10Y",
             lookback_period="22d",
         )
-        # Override the YAML default — fetch should see the new value:
+        # Override the YAML default to PX_LAST.  Per-playbook
+        # discovery wins: UST → sovereign_bonds.yml → YLD_YTM_MID.
         passed = self._run_capture_field_name(
             params, self._custom_config(default_field_name="PX_LAST"),
         )
-        assert passed == "PX_LAST"
+        assert passed == "YLD_YTM_MID", (
+            "UST resolves to sovereign_bonds.yml's YLD_YTM_MID via "
+            "per-playbook discovery; YAML default_field_name override "
+            "is now the FINAL fallback (only reachable for "
+            "curve_families NOT in any tenor-keyed playbook)."
+        )
 
-    def test_explicit_field_name_overrides_yaml(self):
+    def test_explicit_field_name_overrides_both_discovery_and_yaml(self):
+        """Explicit params.field_name remains the highest-priority
+        signal — beats both per-playbook discovery AND the YAML
+        fallback.  Backward compat: callers that already pass an
+        explicit field see no change in behaviour."""
         params = CurveMoveInput(
             curve_family="UST", front_tenor="2Y", back_tenor="10Y",
             lookback_period="22d",
             field_name="YLD_BID",
         )
-        # Caller's explicit value wins, regardless of the YAML default:
+        # Caller's explicit value wins, regardless of the YAML default
+        # OR the per-playbook discovered value.
         passed = self._run_capture_field_name(
             params, self._custom_config(default_field_name="PX_LAST"),
         )
         assert passed == "YLD_BID"
+
+
+# ===========================================================================
+# 9. Curve-family-agnostic scope (Round 3 Stage 2, work item A4 — PR5
+#    coverage extension)
+# ===========================================================================
+#
+# The pre-A4 implementation hardcoded a sovereign-specific field
+# default (``YLD_YTM_MID``).  After A4, the primitive accepts ANY
+# tenor-keyed rates curve_family declared in any playbook under
+# rates_agent/playbooks/ — sovereign + OIS + ZCIS + sovereign-linker
+# curves are all classifiable through the same code path, and the
+# field name is auto-discovered from the owning playbook's
+# ``target_metrics[0].bloomberg_field``.
+#
+# Tests below pin (a) end-to-end runs on >=3 non-sovereign curve_
+# families with the right per-playbook field auto-discovery, and
+# (b) the sovereign-callers-unchanged invariant (backward compat).
+
+
+class TestCurveFamilyAgnosticScope:
+    """Round 3 A4: classify_curve_move accepts any tenor-keyed rates
+    curve_family declared in any playbook under
+    rates_agent/playbooks/.
+
+    The fetcher (shared.analytics.rates_fetch.fetch_tenor_group) is
+    already instrument-type agnostic; the change here is in
+    compute()'s field-name resolution chain (params.field_name >
+    per-playbook auto-discovered field > YAML default)."""
+
+    @staticmethod
+    def _run_capture(
+        params: CurveMoveInput,
+        raw_df,
+        captured: dict,
+    ):
+        """Variant of TestComputeHappyPath._run that captures the
+        field_name passed to fetch_tenor_group."""
+        def fake_fetch(*, engine, curve_family, tenors, field_name,
+                       start_date):
+            captured["field_name"] = field_name
+            captured["curve_family"] = curve_family
+            captured["tenors"] = list(tenors)
+            return raw_df
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.curve_move_classifier.compute.fetch_tenor_group",
+            side_effect=fake_fetch,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.curve_move_classifier.compute.date",
+            _FrozenDate,
+        ):
+            return classify_curve_move_compute(
+                engine=None, params=params, config=None,
+            )
+
+    # -----------------------------------------------------------------
+    # End-to-end runs on >=3 non-sovereign curve_families
+    # -----------------------------------------------------------------
+
+    def test_runs_on_usd_sofr_ois(self):
+        """OIS curve_family — discovered from ois.yml; default field
+        PX_LAST."""
+        raw_df = _synthetic_raw_df(
+            front_change_pct=-0.10, back_change_pct=-0.05,
+        )
+        params = CurveMoveInput(
+            curve_family="USD_SOFR_OIS", front_tenor="2Y",
+            back_tenor="10Y", lookback_period="22d",
+        )
+        captured: dict = {}
+        out = self._run_capture(params, raw_df, captured)
+        assert "error" not in out, out.get("error")
+        cm = out["current_metrics"]
+        assert cm["curve_family"] == "USD_SOFR_OIS"
+        assert cm["classification"] in CURVE_MOVE_TAGS
+        # Per-playbook field auto-discovery: ois.yml's
+        # target_metrics[0] is PX_LAST.
+        assert captured["field_name"] == "PX_LAST", (
+            f"USD_SOFR_OIS should auto-discover PX_LAST from "
+            f"ois.yml; got {captured['field_name']!r}"
+        )
+
+    def test_runs_on_usd_zcis(self):
+        """ZCIS curve_family — discovered from inflation_swaps.yml;
+        default field PX_MID."""
+        raw_df = _synthetic_raw_df(
+            front_change_pct=-0.10, back_change_pct=-0.05,
+        )
+        params = CurveMoveInput(
+            curve_family="USD_ZCIS", front_tenor="2Y",
+            back_tenor="10Y", lookback_period="22d",
+        )
+        captured: dict = {}
+        out = self._run_capture(params, raw_df, captured)
+        assert "error" not in out, out.get("error")
+        assert captured["field_name"] == "PX_MID", (
+            f"USD_ZCIS should auto-discover PX_MID from "
+            f"inflation_swaps.yml; got {captured['field_name']!r}"
+        )
+
+    def test_runs_on_usd_tips(self):
+        """Sovereign-linker curve_family — discovered from
+        inflation_indexed_bonds.yml; default field YLD_YTM_MID."""
+        raw_df = _synthetic_raw_df(
+            front_change_pct=-0.10, back_change_pct=-0.05,
+            front_tenor="5Y", back_tenor="10Y",
+        )
+        params = CurveMoveInput(
+            curve_family="USD_TIPS", front_tenor="5Y",
+            back_tenor="10Y", lookback_period="22d",
+        )
+        captured: dict = {}
+        out = self._run_capture(params, raw_df, captured)
+        assert "error" not in out, out.get("error")
+        # Per-playbook field auto-discovery: inflation_indexed_bonds
+        # .yml's target_metrics[0] is YLD_YTM_MID.
+        assert captured["field_name"] == "YLD_YTM_MID", (
+            f"USD_TIPS should auto-discover YLD_YTM_MID from "
+            f"inflation_indexed_bonds.yml; got "
+            f"{captured['field_name']!r}"
+        )
+
+    # -----------------------------------------------------------------
+    # Backward-compat invariant for sovereign callers
+    # -----------------------------------------------------------------
+
+    def test_sovereign_ust_field_default_unchanged(self):
+        """Backward-compat: a UST call with field_name=None still
+        resolves to YLD_YTM_MID (the same value as pre-A4 — both the
+        YAML default AND the sovereign playbook's
+        target_metrics[0] are YLD_YTM_MID; the per-playbook
+        discovery picks the playbook value, identical to the legacy
+        YAML fallback)."""
+        raw_df = _synthetic_raw_df(
+            front_change_pct=-0.10, back_change_pct=-0.05,
+        )
+        params = CurveMoveInput(
+            curve_family="UST", front_tenor="2Y", back_tenor="10Y",
+            lookback_period="22d",
+        )
+        captured: dict = {}
+        out = self._run_capture(params, raw_df, captured)
+        assert "error" not in out, out.get("error")
+        assert captured["field_name"] == "YLD_YTM_MID"
+
+    # -----------------------------------------------------------------
+    # Discovery boundary — cash-bond playbook excluded
+    # -----------------------------------------------------------------
+
+    def test_ust_resolves_to_sovereign_benchmark_playbook(self):
+        """UST appears in BOTH sovereign_bonds.yml (benchmark
+        generics) AND sovereign_cash_bonds.yml (specific cusips).
+        The discovery rule excludes cash-bond playbooks
+        (instrument_type='sovereign_cash_bond'), so UST resolves to
+        sovereign_bonds.yml — preserving the pre-A4 lookup
+        behaviour.  Regression guard for the cash-bond
+        bleed-through case."""
+        from shared.analytics.playbook_discovery import (
+            playbook_curve_family_index,
+        )
+        idx = playbook_curve_family_index()
+        ust_entry = idx.get("UST")
+        assert ust_entry is not None, (
+            "UST must be discoverable for backward compat"
+        )
+        assert ust_entry["playbook"] == "sovereign_bonds.yml", (
+            f"UST must resolve to sovereign_bonds.yml (benchmark "
+            f"playbook), got {ust_entry['playbook']!r} — cash-bond "
+            f"playbook bleed-through is a regression."
+        )
+
+    def test_at_least_three_non_sovereign_curve_families_discoverable(self):
+        """The work order's A4 acceptance requires
+        classify_curve_move to work on >=3 non-sovereign
+        curve_families.  Pins discoverability of one OIS + one ZCIS
+        + one linker curve_family — three independent playbook
+        sources."""
+        from shared.analytics.playbook_discovery import (
+            playbook_curve_family_index,
+        )
+        idx = playbook_curve_family_index()
+        for cf in ("USD_SOFR_OIS", "USD_ZCIS", "USD_TIPS"):
+            assert cf in idx, f"{cf} must be discoverable post-A4"
+            assert idx[cf]["default_field"]
+            assert idx[cf]["playbook"].endswith(".yml")

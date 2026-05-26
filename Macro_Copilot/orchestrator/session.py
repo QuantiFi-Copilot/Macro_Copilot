@@ -56,7 +56,7 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, Optional
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
@@ -87,7 +87,11 @@ from orchestrator.contracts import (
 from orchestrator.domain_agent import DomainAgentSession
 from orchestrator.events import SessionEvent, extract_workspace_context
 from orchestrator.prompts import (
+    BOND_FUTURES_SYSTEM_PROMPT,
+    INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
+    INFLATION_SWAPS_SYSTEM_PROMPT,
     OIS_SYSTEM_PROMPT,
+    POLICY_FUTURES_SYSTEM_PROMPT,
     SOVEREIGN_BONDS_SYSTEM_PROMPT,
     render_routing_prefix,
 )
@@ -111,6 +115,10 @@ logger = logging.getLogger("orchestrator.session")
 _DOMAIN_PROMPTS: dict[Domain, str] = {
     Domain.SOVEREIGN_BONDS: SOVEREIGN_BONDS_SYSTEM_PROMPT,
     Domain.OIS: OIS_SYSTEM_PROMPT,
+    Domain.INFLATION_INDEXED_BONDS: INFLATION_INDEXED_BONDS_SYSTEM_PROMPT,
+    Domain.INFLATION_SWAPS: INFLATION_SWAPS_SYSTEM_PROMPT,
+    Domain.POLICY_FUTURES: POLICY_FUTURES_SYSTEM_PROMPT,
+    Domain.BOND_FUTURES: BOND_FUTURES_SYSTEM_PROMPT,
 }
 
 
@@ -1512,25 +1520,85 @@ class CopilotSession:
             )
         )
 
+        # R5.3 — Supervisor workspace persistence.
+        #
+        # When the supervisor turn called exactly one workspace-eligible
+        # primitive tool, we'd like to persist a workspace for it so the
+        # frontend's "Open in Build" CTA navigates to /workspace/{slug}
+        # instead of the empty shell.  The persistence helper lives at
+        # ``orchestrator/supervisor_persistence.py`` and is fully wired
+        # — it accepts (tool_name, params, tool_output, conn, …) and
+        # returns the workspace envelope.
+        #
+        # Wiring the call from here requires plumbing the raw tool
+        # output dict through:
+        #
+        #   ToolTraceEntry (capture output)
+        #     → ChildResponse.tool_trace
+        #       → child_response (read here)
+        #         → persist_supervisor_workspace_from_tool_call(...)
+        #           → workspace envelope appended to the done event
+        #
+        # Today ``ToolTraceEntry`` only carries ``tool``, ``duration_ms``,
+        # and ``error`` — the raw output isn't retained.  That capture
+        # is a hot-path change (the domain agent's ReAct loop) and is
+        # tracked as a follow-up.  Until then the supervisor done event
+        # below carries only ``workspace_context`` (metadata, no slug)
+        # and the frontend renders an inline answer card.
+        supervisor_workspace: Optional[dict] = None
+
+        # R5.5 — classify the user's prose for parameter-override intent
+        # and surface any matches as ``proposed_overrides`` on the done
+        # event.  The frontend (PR #141) renders them as click-to-queue
+        # chips that dispatch into the shared workspace overrides queue.
+        # The classifier is heuristic-first (regex patterns for "change
+        # X to Y" / "use ACT/365" / etc.); the LLM-structured-output
+        # fallback is env-gated.  Returns [] when no overrides are
+        # detected — we drop the wire key in that case to keep the
+        # payload compact.
+        try:
+            from orchestrator.override_classifier import classify_overrides
+            proposed = classify_overrides(
+                user_message,
+                workspace_context=child_response.workspace_context,
+            )
+        except Exception:
+            logger.exception("override_classifier: skipped due to error")
+            proposed = []
+        proposed_wire = [p.to_wire() for p in proposed] if proposed else None
+
+        done_data: Dict[str, Any] = {
+            "workspace_context": child_response.workspace_context,
+            # When the R5.3 follow-up plumbs ``tool_output``
+            # into ``ChildResponse.tool_trace`` and the
+            # supervisor calls ``persist_supervisor_workspace_
+            # from_tool_call`` above, this key carries the
+            # persisted workspace handle (id/slug/name/url/
+            # dag_hash).  The frontend reads ``done.workspace
+            # .slug`` to populate ``message.workflow.workspace
+            # .slug`` so "Open in Build" navigates directly.
+            "workspace": supervisor_workspace,
+            "tool_calls": [
+                {
+                    "tool": t.tool,
+                    "domain": domain.value,
+                    "duration_ms": t.duration_ms,
+                    "error": t.error,
+                }
+                for t in child_response.tool_trace
+            ],
+            "total_duration_ms": round(
+                (time.monotonic() - turn_start) * 1000
+            ),
+        }
+        if proposed_wire is not None:
+            done_data["proposed_overrides"] = proposed_wire
+
         # Done
         await emit(
             SessionEvent(
                 type="done",
-                data={
-                    "workspace_context": child_response.workspace_context,
-                    "tool_calls": [
-                        {
-                            "tool": t.tool,
-                            "domain": domain.value,
-                            "duration_ms": t.duration_ms,
-                            "error": t.error,
-                        }
-                        for t in child_response.tool_trace
-                    ],
-                    "total_duration_ms": round(
-                        (time.monotonic() - turn_start) * 1000
-                    ),
-                },
+                data=done_data,
             )
         )
 
@@ -1834,6 +1902,10 @@ def _build_domain_boundaries(domains: list[Domain]) -> dict[Domain, str]:
     domain_labels = {
         Domain.SOVEREIGN_BONDS: "cash sovereign bonds",
         Domain.OIS: "OIS swaps",
+        Domain.INFLATION_INDEXED_BONDS: "inflation-linked bonds (linkers)",
+        Domain.INFLATION_SWAPS: "zero-coupon inflation swaps (ZCIS)",
+        Domain.POLICY_FUTURES: "policy / STIR strip futures",
+        Domain.BOND_FUTURES: "sovereign bond futures (monitors only at V1)",
     }
     out: dict[Domain, str] = {}
     for d in domains:

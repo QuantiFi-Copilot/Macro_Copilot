@@ -27,7 +27,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import { useWorkspaceDetail } from '@/hooks/useWorkspaceDetail';
@@ -36,6 +36,17 @@ import { WorkspaceCopilotRail } from './copilot-rail/WorkspaceCopilotRail';
 import { BuildEmptyState } from './empty/BuildEmptyState';
 import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
+import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
+import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
+import { MultiPrimitiveCanvas } from './primitive/MultiPrimitiveCanvas';
+import {
+  decodePrimitiveContext,
+  decodePrimitiveList,
+} from './primitive/contextDecoder';
+import { isAskHandoff } from './primitive/handoffSignal';
+import { BuilderCanvas } from './model/BuilderCanvas';
+import { getPrimitiveModule } from '@/modules';
+import { WorkflowStatusCanvas } from './workflow/WorkflowStatusCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
 // ``resolveNodeRenderer`` returns real renderers, not the fallback.
@@ -64,6 +75,42 @@ function SlugFreeShell({
 }) {
   const { messages, sendMessage, connectionStatus, isThinking } =
     useCopilotContext();
+
+  // Phase R1.3 — when Ask hands off a single-primitive analysis via
+  // ``/workspace?context=<encoded>``, BuildShell short-circuits the
+  // empty-state / building-state machine and mounts a virtual primitive
+  // canvas.  The canvas fetches the matching typed-detail endpoint and
+  // renders the result (Spread / CrossMarket / Butterfly / Yield /
+  // Regime / Scanner / Forward).  No workspace is persisted — this is
+  // the supervisor-turn handoff path.
+  //
+  // Phase R4 — ``/workspace?builder=<tool_name>`` opens the standalone
+  // model builder (ModelWorkspacePage) for the given tool.  Extra URL
+  // params other than ``builder`` are forwarded as initial form values
+  // so deep-links can pre-fill the controls.
+  const [searchParams] = useSearchParams();
+  const contextParam = searchParams.get('context');
+  const builderParam = searchParams.get('builder');
+  // PR1 — explicit workflow-status handoff.  When a workflow turn from
+  // Ask has a recognised ``template_id`` but no persisted workspace
+  // slug (paused template / persistence failed / etc.),
+  // ``ActionRow.resolveBuildHref`` routes here with ``?workflow=<id>``
+  // so we can surface an honest "workflow paused / unavailable" card
+  // instead of the empty Build shell.
+  const workflowParam = searchParams.get('workflow');
+  const workflowStatusParam = searchParams.get('workflow_status');
+  const initialBuilderParams: Record<string, string> = {};
+  const RESERVED_URL_KEYS = new Set([
+    'builder',
+    'context',
+    'workflow',
+    'workflow_status',
+  ]);
+  searchParams.forEach((value, key) => {
+    if (!RESERVED_URL_KEYS.has(key)) {
+      initialBuilderParams[key] = value;
+    }
+  });
 
   // ``pendingPrompt`` carries the user's last empty-state submission
   // so the building view can echo it back.  Cleared once we navigate
@@ -113,19 +160,137 @@ function SlugFreeShell({
   const composerDisabled =
     connectionStatus !== 'ready' || isThinking;
 
+  // Pick the centre-column canvas:
+  //   builder (explicit tile / Library click)
+  //     > workflow-status card (PR1, paused / unavailable workflow
+  //       without persisted slug)
+  //     > virtual primitive single-card (one Ask tool)
+  //     > virtual primitive multi-card (N Ask tools, R6.3)
+  //     > building (prompt in flight)
+  //     > empty state
+  //
+  // Builder wins over context because if the user explicitly asked
+  // for a tool builder the URL says so directly.  Workflow-status
+  // wins over context because the workflow handoff happens when a
+  // template_id is recognised but the slug didn't materialise — we
+  // want the honest paused / unavailable card, not the per-tool
+  // primitive canvas (which would only render the supervisor's
+  // workspace_context, hiding the workflow's status).
+  let canvas: React.ReactNode;
+  if (builderParam !== null) {
+    // Stage 5 — module-first dispatch: if the owning module ships a
+    // full Build surface (``MODULE.surfaces.build``), mount IT
+    // instead of the shared ``BuilderCanvas``.  Falls back to the
+    // shared canvas when the module didn't override.  The 5 rich-
+    // model modules' ``surfaces.build`` is itself a lazy wrapper
+    // around ``BuilderCanvas``, so the rendered output for those
+    // tools is identical — but a NEW tool can ship a totally
+    // custom Build surface here without editing this file.
+    const moduleSpec = builderParam
+      ? getPrimitiveModule(builderParam)
+      : null;
+    const ModuleBuildSurface = moduleSpec?.surfaces?.build;
+    if (ModuleBuildSurface) {
+      canvas = (
+        <ModuleBuildSurface
+          toolName={builderParam}
+          params={initialBuilderParams}
+        />
+      );
+    } else {
+      canvas = (
+        <BuilderCanvas
+          toolName={builderParam || null}
+          initialParams={initialBuilderParams}
+        />
+      );
+    }
+  } else if (workflowParam !== null) {
+    canvas = (
+      <WorkflowStatusCanvas
+        templateId={workflowParam}
+        status={workflowStatusParam}
+      />
+    );
+  } else if (contextParam) {
+    canvas = (
+      <ContextCanvasRouter
+        contextParam={contextParam}
+        searchParams={searchParams}
+      />
+    );
+  } else if (isBuilding) {
+    canvas = <BuildBuilding prompt={pendingPrompt!} />;
+  } else {
+    canvas = (
+      <BuildEmptyState
+        onSend={handleSend}
+        composerDisabled={composerDisabled}
+      />
+    );
+  }
+
   return (
     <BuildShellLayout
-      canvas={
-        isBuilding ? (
-          <BuildBuilding prompt={pendingPrompt!} />
-        ) : (
-          <BuildEmptyState
-            onSend={handleSend}
-            composerDisabled={composerDisabled}
-          />
-        )
-      }
+      canvas={canvas}
       copilotRail={<WorkspaceCopilotRail mode="empty" />}
+    />
+  );
+}
+
+// ----------------------------------------------------------------------------
+// R6.3 — single vs multi canvas selector
+// ----------------------------------------------------------------------------
+//
+// One place to make the single vs multi decision so it stays consistent
+// regardless of how the user landed on the route (Library deep-link,
+// Ask handoff, manual URL paste).  The priority chain is:
+//
+//   1. Builder match wins — short-circuit through the single canvas
+//      which has the ``useEffect`` redirect to ``?builder=``.
+//   2. Multiple typed primitives → MultiPrimitiveCanvas (N-card grid).
+//   3. Otherwise → VirtualPrimitiveCanvas (single-card with editable
+//      dropdowns + the decode-error path for unrecognised tools).
+
+function ContextCanvasRouter({
+  contextParam,
+  searchParams,
+}: {
+  contextParam: string;
+  /** PR-B-β — full ``URLSearchParams`` so we can read the
+   *  ``handoff=ask`` marker and gate the missing-param tile on it.
+   *  Library-blank opens lack the marker → existing silent-defaults
+   *  behaviour is preserved. */
+  searchParams: URLSearchParams;
+}) {
+  // Compute the handoff origin ONCE at the router level — every
+  // downstream surface (single canvas, multi canvas, individual
+  // cards) inherits the same value so the visible behaviour stays
+  // consistent across the page.
+  const askHandoff = isAskHandoff(searchParams);
+  const builderHit = decodePrimitiveContext(contextParam);
+  if (builderHit?.kind === 'builder') {
+    // Single canvas handles the builder redirect via useEffect.
+    return (
+      <VirtualPrimitiveCanvas
+        contextParam={contextParam}
+        askHandoff={askHandoff}
+      />
+    );
+  }
+  const list = decodePrimitiveList(contextParam);
+  if (list.length > 1) {
+    return (
+      <MultiPrimitiveCanvas
+        contextParam={contextParam}
+        askHandoff={askHandoff}
+      />
+    );
+  }
+  return (
+    <VirtualPrimitiveCanvas
+      contextParam={contextParam}
+      askHandoff={askHandoff}
     />
   );
 }
@@ -142,22 +307,43 @@ function SlugBoundShell({ slug }: { slug: string }) {
     return detail.name?.trim() || undefined;
   }, [detail]);
 
+  // Slug-bound shell — wrap in the overrides provider so the
+  // Parameters tab AND the copilot rail share one queue.  The
+  // provider needs a concrete workspace to bind its fork pipeline
+  // to; gate the wrap on the detail being loaded.
+  if (detail) {
+    return (
+      <WorkspaceOverridesProvider workspace={detail}>
+        <BuildShellLayout
+          canvas={<BuildCompleted detail={detail} replay={replay} />}
+          copilotRail={
+            <WorkspaceCopilotRail
+              mode="completed"
+              workspaceTitle={workspaceTitle}
+              workspace={detail}
+            />
+          }
+        />
+      </WorkspaceOverridesProvider>
+    );
+  }
+
+  // Loading / error fall-through — render the layout without the
+  // overrides provider since there's no workspace to bind to yet.
   return (
     <BuildShellLayout
       canvas={
         error ? (
           <ErrorCanvas slug={slug} message={String(error.message)} />
-        ) : isLoading || !detail ? (
-          <LoadingCanvas />
         ) : (
-          <BuildCompleted detail={detail} replay={replay} />
+          <LoadingCanvas />
         )
       }
       copilotRail={
         <WorkspaceCopilotRail
           mode="completed"
           workspaceTitle={workspaceTitle}
-          workspace={detail}
+          workspace={null}
         />
       }
     />

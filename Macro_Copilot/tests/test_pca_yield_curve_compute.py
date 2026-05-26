@@ -763,3 +763,263 @@ class TestPastedPcaLoadingsContract:
         )
         assert pasted.components[1] == [None, None, None]
         assert pasted.component_metadata[1].quality_flag == "degenerate"
+
+
+# ===========================================================================
+# 13. Curve-family-agnostic scope (Round 3 Stage 2, work item A3 — PR5
+#     coverage extension)
+# ===========================================================================
+#
+# The pre-A3 implementation hardcoded a single PLAYBOOK_PATH to
+# sovereign_bonds.yml so any non-sovereign curve_family raised
+# "Missing curve ... in the sovereign playbook".  After A3, the
+# discovery layer scans every tenor-keyed playbook under
+# rates_agent/playbooks/ — sovereign + OIS + ZCIS + sovereign-linker
+# curves are all PCA-fittable through the same code path.  Per-
+# playbook field-name auto-discovery picks the right Bloomberg
+# primary metric per curve_family without caller intervention.
+#
+# Tests below pin (a) end-to-end runs on >=3 non-sovereign curve_
+# families, (b) the per-playbook field-name auto-discovery, (c) the
+# unknown-curve_family controlled-error envelope, and (d) the
+# sovereign-callers-unchanged invariant (backward compat).
+
+
+class TestCurveFamilyAgnosticScope:
+    """Round 3 A3: pca_yield_curve accepts any tenor-keyed rates
+    curve_family declared in any playbook under rates_agent/playbooks/.
+
+    The fetcher (shared.analytics.rates_fetch.fetch_tenor_group) is
+    already instrument-type agnostic; the change here is in
+    compute()'s playbook lookup + field-name resolution."""
+
+    @staticmethod
+    def _run_capture(params, fetched_df, captured: dict):
+        """Variant of _run() that also captures the resolved
+        field_name passed to fetch_tenor_group, so tests can assert
+        per-playbook auto-discovery happened correctly."""
+        def fake_fetch(*, engine, curve_family, tenors, field_name, start_date):
+            captured["field_name"] = field_name
+            captured["curve_family"] = curve_family
+            captured["tenors"] = list(tenors)
+            mask = (
+                fetched_df["tenor"].isin(tenors)
+                & (fetched_df["trade_date"] >= start_date)
+            )
+            return fetched_df.loc[mask].copy()
+
+        with patch(
+            "rates_agent.sovereign_bonds.tools.pca_yield_curve.compute.fetch_tenor_group",
+            side_effect=fake_fetch,
+        ), patch(
+            "rates_agent.sovereign_bonds.tools.pca_yield_curve.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_pca_yield_curve(
+                engine=None, params=params, config=None,
+            )
+
+    # -----------------------------------------------------------------
+    # End-to-end runs on >=3 non-sovereign curve_families
+    # -----------------------------------------------------------------
+
+    def test_runs_on_usd_sofr_ois(self):
+        """OIS curve_family — discovered from ois.yml, default field
+        PX_LAST."""
+        # USD_SOFR_OIS has 13 tenors in the playbook (1W..30Y).  Use
+        # a 5-tenor subset to keep the synthetic panel small + ensure
+        # n_components <= n_tenors.
+        tenors = ("1Y", "2Y", "5Y", "10Y", "30Y")
+        df = _synthetic_curve_df(tenors=tenors, n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="USD_SOFR_OIS",
+            tenors=list(tenors),
+            n_components=3,
+            lookback_days=1825,
+        )
+        captured: dict = {}
+        out = self._run_capture(params, df, captured)
+        assert "error" not in out, out.get("error")
+        cm = out["current_metrics"]
+        # Curve_family echoed honestly.
+        assert cm["curve_family"] == "USD_SOFR_OIS"
+        # n_components honoured.
+        assert cm["n_components_returned"] == 3
+        # All loadings rows present + per-component metadata.
+        assert len(cm["loadings"]) == 5
+        assert len(cm["variance_explained"]) == 3
+        # Per-playbook field auto-discovery: ois.yml's target_metrics[0]
+        # is PX_LAST, so that should be what was passed to fetch_tenor_group.
+        assert captured["field_name"] == "PX_LAST", (
+            f"USD_SOFR_OIS should auto-discover PX_LAST from ois.yml; "
+            f"got {captured['field_name']!r}"
+        )
+        # 3 factor TimeSeries with curve_family-aware naming.
+        assert len(out["time_series_factors"]) == 3
+        for ts in out["time_series_factors"]:
+            assert ts["series_name"].startswith("usd_sofr_ois_pc")
+            assert ts["units"] == TimeSeriesUnits.FACTOR_LEVEL.value
+
+    def test_runs_on_usd_zcis(self):
+        """Inflation-swap curve_family — discovered from
+        inflation_swaps.yml, default field PX_MID."""
+        # USD_ZCIS has 7 tenors (1Y..30Y); use 5.
+        tenors = ("1Y", "2Y", "5Y", "10Y", "30Y")
+        df = _synthetic_curve_df(tenors=tenors, n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="USD_ZCIS",
+            tenors=list(tenors),
+            n_components=3,
+            lookback_days=1825,
+        )
+        captured: dict = {}
+        out = self._run_capture(params, df, captured)
+        assert "error" not in out, out.get("error")
+        cm = out["current_metrics"]
+        assert cm["curve_family"] == "USD_ZCIS"
+        # Per-playbook field auto-discovery: inflation_swaps.yml's
+        # target_metrics[0] is PX_MID.
+        assert captured["field_name"] == "PX_MID", (
+            f"USD_ZCIS should auto-discover PX_MID from "
+            f"inflation_swaps.yml; got {captured['field_name']!r}"
+        )
+
+    def test_runs_on_usd_tips(self):
+        """Sovereign-linker curve_family — discovered from
+        inflation_indexed_bonds.yml, default field YLD_YTM_MID.
+        USD_TIPS has only 4 tenors (5Y, 10Y, 20Y, 30Y); n_components=3
+        is the maximum that fits."""
+        tenors = ("5Y", "10Y", "20Y", "30Y")
+        df = _synthetic_curve_df(tenors=tenors, n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="USD_TIPS",
+            tenors=list(tenors),
+            n_components=3,
+            lookback_days=1825,
+        )
+        captured: dict = {}
+        out = self._run_capture(params, df, captured)
+        assert "error" not in out, out.get("error")
+        cm = out["current_metrics"]
+        assert cm["curve_family"] == "USD_TIPS"
+        assert cm["tenors_used"] == ["5Y", "10Y", "20Y", "30Y"]
+        # Per-playbook field auto-discovery: inflation_indexed_bonds.yml's
+        # target_metrics[0] is YLD_YTM_MID (same as sovereign — both are
+        # yield-to-maturity).
+        assert captured["field_name"] == "YLD_YTM_MID", (
+            f"USD_TIPS should auto-discover YLD_YTM_MID from "
+            f"inflation_indexed_bonds.yml; got {captured['field_name']!r}"
+        )
+
+    # -----------------------------------------------------------------
+    # Per-playbook field auto-discovery + explicit override precedence
+    # -----------------------------------------------------------------
+
+    def test_explicit_field_name_wins_over_playbook_default(self):
+        """params.field_name takes precedence over the per-playbook
+        auto-discovered default — backward compat for callers that
+        already pass an explicit field."""
+        tenors = ("1Y", "2Y", "5Y", "10Y")
+        df = _synthetic_curve_df(tenors=tenors, n_obs=1000)
+        params = PcaYieldCurveInput(
+            curve_family="USD_SOFR_OIS",
+            tenors=list(tenors),
+            n_components=3,
+            lookback_days=1825,
+            field_name="EXPLICIT_OVERRIDE_FIELD",
+        )
+        captured: dict = {}
+        # Note: the fake_fetch returns the synthetic data regardless of
+        # field_name (it filters by tenor only), so the explicit override
+        # doesn't change the output — but it should appear in the
+        # captured field_name passed to fetch_tenor_group.
+        _ = self._run_capture(params, df, captured)
+        assert captured["field_name"] == "EXPLICIT_OVERRIDE_FIELD"
+
+    def test_sovereign_curve_field_default_unchanged(self):
+        """Backward-compat invariant: a UST call with field_name=None
+        still resolves to YLD_YTM_MID (the same value as pre-A3 — both
+        the YAML default AND the sovereign playbook's target_metrics[0]
+        are YLD_YTM_MID; the per-playbook discovery picks the playbook
+        value, identical to the legacy YAML fallback)."""
+        df = _synthetic_curve_df(
+            tenors=("1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"),
+            n_obs=1000,
+        )
+        params = PcaYieldCurveInput(
+            curve_family="UST",
+            n_components=3,
+            lookback_days=1825,
+        )
+        captured: dict = {}
+        out = self._run_capture(params, df, captured)
+        assert "error" not in out, out.get("error")
+        assert captured["field_name"] == "YLD_YTM_MID"
+
+    # -----------------------------------------------------------------
+    # Unknown-curve_family controlled error envelope
+    # -----------------------------------------------------------------
+
+    def test_unknown_curve_family_returns_controlled_error(self):
+        """An unknown curve_family produces a controlled error envelope
+        (not a crash) and the message names the rejection rule."""
+        df = _synthetic_curve_df()  # data shape irrelevant — discovery fails first
+        params = PcaYieldCurveInput(
+            curve_family="DOES_NOT_EXIST",
+            n_components=3,
+            lookback_days=1825,
+        )
+        out = _run(params, df)
+        assert "error" in out
+        assert "DOES_NOT_EXIST" in out["error"]
+        assert "Unknown curve_family" in out["error"]
+
+    # -----------------------------------------------------------------
+    # Discovery boundary — cash-bond playbook excluded
+    # -----------------------------------------------------------------
+
+    def test_ust_resolves_to_sovereign_benchmark_playbook(self):
+        """UST appears in BOTH sovereign_bonds.yml (benchmark generics)
+        AND sovereign_cash_bonds.yml (specific cusips).  The discovery
+        rule excludes cash-bond playbooks
+        (instrument_type='sovereign_cash_bond'), so UST resolves to
+        sovereign_bonds.yml — preserving the pre-A3 lookup behaviour.
+
+        This test pins the discovery boundary: a future expansion that
+        accidentally admits cash-bond playbooks would surface as a
+        ValueError ("UST is declared in both ... and ...") at discovery
+        time, which then surfaces as a controlled error envelope on
+        every UST call.  Catching the regression at unit-test time
+        prevents that production blast radius.
+        """
+        from shared.analytics.playbook_discovery import (
+            playbook_curve_family_index,
+        )
+        idx = playbook_curve_family_index()
+        ust_entry = idx.get("UST")
+        assert ust_entry is not None, (
+            "UST must be discoverable for PCA backward compat"
+        )
+        assert ust_entry["playbook"] == "sovereign_bonds.yml", (
+            f"UST must resolve to sovereign_bonds.yml (benchmark "
+            f"playbook), got {ust_entry['playbook']!r} — cash-bond "
+            f"playbook bleed-through is a regression."
+        )
+
+    def test_at_least_three_non_sovereign_curve_families_discoverable(self):
+        """The work order's A3 acceptance requires PCA work on >=3
+        non-sovereign curve_families.  This test pins discoverability
+        of one OIS + one ZCIS + one linker curve_family — three
+        independent playbook sources."""
+        from shared.analytics.playbook_discovery import (
+            playbook_curve_family_index,
+        )
+        idx = playbook_curve_family_index()
+        for cf in ("USD_SOFR_OIS", "USD_ZCIS", "USD_TIPS"):
+            assert cf in idx, f"{cf} must be discoverable post-A3"
+            entry = idx[cf]
+            # Each discovered curve_family carries a non-empty tenor
+            # universe + the owning playbook's default field name.
+            assert len(entry["tenors"]) >= 1
+            assert entry["default_field"]
+            assert entry["playbook"].endswith(".yml")

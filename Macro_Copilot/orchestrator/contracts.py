@@ -27,9 +27,9 @@ Design notes
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -45,6 +45,10 @@ class Domain(str, Enum):
 
     SOVEREIGN_BONDS = "sovereign_bonds"
     OIS = "ois"
+    INFLATION_INDEXED_BONDS = "inflation_indexed_bonds"
+    INFLATION_SWAPS = "inflation_swaps"
+    POLICY_FUTURES = "policy_futures"
+    BOND_FUTURES = "bond_futures"
 
 
 # ============================================================================
@@ -169,3 +173,106 @@ class ChildResponse(BaseModel):
         default=None,
         description="Populated when status='error'.",
     )
+
+
+
+# ============================================================================
+# PROPOSED OVERRIDES (R5.5)
+# ============================================================================
+#
+# When the user types a workspace-scoped intent that maps to a parameter
+# change ("change the z-score window to 126d", "use ACT/365 instead"),
+# the supervisor (or a cheaper pre-classifier) can emit structured
+# ``proposed_overrides`` on the ``done`` event.  The frontend renders
+# them as click-to-queue chips that dispatch into the shared workspace
+# overrides queue — wired in PR #141.
+
+class ProposedOverride(BaseModel):
+    """One parameter-override suggestion the chat emits to the
+    frontend's `proposed_overrides` channel.
+
+    Mirrors ``ServerProposedOverride`` on the wire (``src/types/
+    copilot.ts``) so the frontend can dispatch the chip click directly
+    into ``WorkspaceOverridesProvider`` without translation.
+
+    ``path`` follows the override-state convention:
+      - ``[slot]`` for scalar slots
+      - ``[slot, field]`` for dict-merge entries
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable id within the message so chips can be approved / "
+            "rejected individually.  Optional; the frontend falls back "
+            "to a hash of (path, value)."
+        ),
+    )
+    path: Union[Tuple[str], Tuple[str, str]] = Field(
+        ...,
+        description=(
+            "Override-key path.  One-element tuple for top-level scalar "
+            "slots, two-element tuple for nested dict-merge entries "
+            "(e.g. ('signal_params', 'window_days'))."
+        ),
+    )
+    value: Any = Field(
+        ...,
+        description="New value the user implied.  Scalar (string/number/bool).",
+    )
+    value_label: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional human-readable label for the chip (e.g. 'ACT/365') "
+            "when the raw value would print awkwardly.  Defaults to "
+            "str(value) on the wire."
+        ),
+    )
+    node_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "The stage's node_id this override targets.  Optional — the "
+            "override map is path-keyed and doesn't need it — but carrying "
+            "it through lets the rail render 'for stage X' context."
+        ),
+    )
+    previous_value: Any = Field(
+        default=None,
+        description=(
+            "The substrate's previous value at this path, when known.  "
+            "Lets the chip show 'was → is' before the user applies it."
+        ),
+    )
+    rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "Short note explaining why this override is being suggested. "
+            "Rendered as the chip's tooltip."
+        ),
+    )
+
+    def to_wire(self) -> dict:
+        """Serialise to the snake_case wire shape the frontend expects."""
+        return {
+            "id": self.id,
+            "path": list(self.path),
+            "value": self.value,
+            "value_label": self.value_label,
+            "node_id": self.node_id,
+            "previous_value": self.previous_value,
+            "rationale": self.rationale,
+        }
+
+
+class ProposedOverridesList(BaseModel):
+    """Top-level structured-output model for an LLM that classifies
+    override intent.  Used by ``orchestrator/override_classifier.py``
+    when the heuristic fast-path doesn't find a match and the system
+    falls through to the structured LLM call (env-gated; off by
+    default in v1 to avoid per-turn cost)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    overrides: List[ProposedOverride] = Field(default_factory=list)

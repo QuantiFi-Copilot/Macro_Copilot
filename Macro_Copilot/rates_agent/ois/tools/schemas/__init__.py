@@ -51,6 +51,20 @@ from rates_agent.ois.tools.cross_market_spread.schemas import (
     OISCrossMarketSpreadTimeSeriesRow,
 )
 
+# OIS butterfly (same-curve 3-point curvature) — re-exported from
+# the per-tool-folder package
+# (``rates_agent/ois/tools/calculate_ois_butterfly/``).  The schemas
+# hub stays as the legacy import surface for callers / tests; new
+# code should prefer ``from
+# rates_agent.ois.tools.calculate_ois_butterfly import
+# OISButterflyInput``.
+from rates_agent.ois.tools.calculate_ois_butterfly.schemas import (
+    OISButterflyCurrentMetrics,
+    OISButterflyInput,
+    OISButterflyOutput,
+    OISButterflyTimeSeriesRow,
+)
+
 # Swap spread (cross-domain — one sovereign leg + one OIS leg) —
 # re-exported from the per-tool-folder package
 # (``rates_agent/ois/tools/swap_spread/``).  This is the FIRST cross-
@@ -98,6 +112,11 @@ __all__ = [
     "OISCrossMarketSpreadInput",
     "OISCrossMarketSpreadOutput",
     "OISCrossMarketSpreadTimeSeriesRow",
+    # ois butterfly (same-curve 3-point curvature)
+    "OISButterflyCurrentMetrics",
+    "OISButterflyInput",
+    "OISButterflyOutput",
+    "OISButterflyTimeSeriesRow",
     # swap_spread (cross-domain)
     "SwapSpreadCurrentMetrics",
     "SwapSpreadInput",
@@ -108,3 +127,10 @@ __all__ = [
     "OISScannerOutput",
     "OISScannerResultRow",
 ]
+
+from rates_agent.ois.tools.wirp_meeting_pricing.schemas import (
+    WirpMeetingPricingCurrentMetrics,
+    WirpMeetingPricingInput,
+    WirpMeetingPricingOutput,
+    WirpMeetingSnapshot,
+)

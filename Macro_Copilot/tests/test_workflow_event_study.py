@@ -1131,6 +1131,23 @@ class TestResolverCompleteness:
             "calculate_yield_change_attribution_pca_tool",
             "calculate_half_life_tool",
             "calculate_beta_adjusted_spread_tool",
+            # Inflation-indexed-bonds (linker) family
+            "get_real_yield_level_tool",
+            "calculate_breakeven_inflation_simple_tool",
+            "calculate_forward_breakeven_simple_tool",
+            "calculate_breakeven_curve_spread_tool",
+            "calculate_cross_country_breakeven_spread_simple_tool",
+            "calculate_real_yield_curve_spread_tool",
+            "calculate_cross_country_real_yield_spread_simple_tool",
+            "calculate_real_yield_butterfly_tool",
+            "calculate_breakeven_butterfly_tool",
+            # Inflation-swaps family
+            "calculate_inflation_swap_rate_level_tool",
+            "calculate_inflation_swap_curve_spread_tool",
+            "calculate_inflation_swap_forward_tool",
+            "calculate_cross_market_inflation_swap_spread_tool",
+            "calculate_swap_breakeven_basis_simple_tool",
+            "calculate_inflation_swap_butterfly_tool",
         }
         missing = canonical_set - registered
         assert not missing, (

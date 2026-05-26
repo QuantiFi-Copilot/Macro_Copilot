@@ -60,31 +60,59 @@ export type LibraryManifestResponse = {
 // renders the friendly form via these maps.
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  snapshots:          'Snapshots',
-  curve_shape:        'Curve shape',
-  cross_market_rv:    'Cross-market RV',
-  forwards_classify:  'Forwards & classify',
-  screening:          'Screening',
-  rolling_analytics:  'Rolling analytics',
-  model_fits:         'Model fits',
+  snapshots:                     'Snapshots',
+  curve_shape:                   'Curve shape',
+  cross_market_rv:               'Cross-market RV',
+  forwards_classify:             'Forwards & classify',
+  screening:                     'Screening',
+  rolling_analytics:             'Rolling analytics',
+  model_fits:                    'Model fits',
+  // Stage 1 — categories present in the backend manifests that the
+  // frontend was previously dropping silently from the chip row.
+  // Source: grep -h "^\\s\\+category:" manifesto/03_tool_manifest/rates_agent/*.yml.
+  aggregates:                    'Aggregates',
+  economic_release_surprises:    'Economic-release surprises',
+  meeting_pricing:               'Meeting pricing',
+  panel_assembly:                'Panel assembly',
+  panels:                        'Panels',
+  scanners:                      'Scanners',
+  spreads:                       'Spreads',
 };
 
 /** Maps each category to one of the three semantic colors used across
  *  the product (data / analysis / anomaly) so cards + chips stay
  *  visually consistent with the widget engine. */
 export const CATEGORY_TONE: Record<string, 'data' | 'analysis' | 'anomaly'> = {
-  snapshots:          'data',
-  curve_shape:        'data',
-  cross_market_rv:    'analysis',
-  forwards_classify:  'analysis',
-  screening:          'anomaly',
-  rolling_analytics:  'analysis',
-  model_fits:         'analysis',
+  snapshots:                     'data',
+  curve_shape:                   'data',
+  cross_market_rv:               'analysis',
+  forwards_classify:             'analysis',
+  screening:                     'anomaly',
+  rolling_analytics:             'analysis',
+  model_fits:                    'analysis',
+  // Stage 1 — tones for the new categories.  Aggregates / panels /
+  // panel_assembly are data-shaped reads; economic_release_surprises
+  // and meeting_pricing are event-driven analysis; scanners and
+  // spreads sit with their existing-vocabulary peers.
+  aggregates:                    'data',
+  panels:                        'data',
+  panel_assembly:                'data',
+  economic_release_surprises:    'analysis',
+  meeting_pricing:               'analysis',
+  scanners:                      'anomaly',
+  spreads:                       'analysis',
 };
 
 export const SUB_AGENT_LABELS: Record<string, string> = {
-  sovereign_bonds: 'Sovereign Bonds',
-  ois:             'OIS',
+  sovereign_bonds:         'Sovereign Bonds',
+  ois:                     'OIS',
+  // Stage 1 — sub-agents present in manifests on `build` today.  Without
+  // these entries, the InstrumentStrip rendered the raw snake_case
+  // slug (e.g. `inflation_swaps` instead of `Inflation Swaps`).
+  inflation_indexed_bonds: 'Inflation-Indexed Bonds',
+  inflation_swaps:         'Inflation Swaps',
+  bond_futures:            'Bond Futures',
+  policy_futures:          'Policy Futures',
 };
 
 export const AGENT_LABELS: Record<string, string> = {

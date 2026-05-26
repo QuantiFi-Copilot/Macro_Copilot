@@ -46,6 +46,14 @@ import {
   SUB_AGENT_LABELS,
   type ManifestTool,
 } from '@/types/library';
+import { hasModelMetadata } from '@/lib/modelRegistry';
+import { getPrimitiveModule } from '@/modules';
+import {
+  isKnownBackendTool,
+  isRunnablePrimitive,
+  isUnsupportedKnownTool,
+  normalizeToolName,
+} from '@/lib/toolNames';
 import { cn } from '@/utils/cn';
 import { prettyTitle } from './lib/prettyTitle';
 
@@ -289,12 +297,22 @@ function DrawerBody({
         <button
           type="button"
           onClick={() => {
-            // Drop a templated prompt into Ask's composer via the
-            // existing custom-event channel.  Same channel the legacy
-            // ChatDrawer uses; AskPage's Composer listens for it.
+            // R6.5 — normalise the tool name before seeding the Ask
+            // composer.  The manifest emits the un-prefixed shorthand
+            // (e.g. ``half_life_tool``) but the supervisor's MCP-call
+            // layer expects the backend-canonical form (``calculate_
+            // half_life_tool``).  Without normalisation, the LLM gets
+            // a shorthand the resolver doesn't recognise and the call
+            // fails at runtime.  Drop a templated prompt into Ask's
+            // composer via the existing custom-event channel — same
+            // channel the legacy ChatDrawer uses; AskPage's Composer
+            // listens for it.
+            const canonicalName = normalizeToolName(
+              tool.implementation.tool_function,
+            );
             window.dispatchEvent(
               new CustomEvent('copilot:set-input', {
-                detail: `Run ${tool.implementation.tool_function} with default params and explain the output.`,
+                detail: `Run ${canonicalName} with default params and explain the output.`,
               }),
             );
             navigate('/ask');
@@ -304,23 +322,132 @@ function DrawerBody({
           <ArrowUpRight size={12} />
           <span>Try in Ask</span>
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            // Build/Workspace integration is V2 — for now route the
-            // user to the existing /workspace surface.  When Build
-            // ships proper deep-linking, swap this for an URL with
-            // pre-filled tool params.
-            navigate('/workspace');
-          }}
-          className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
-        >
-          <ArrowRight size={12} />
-          <span>Open in Build</span>
-        </button>
+        <OpenInBuildCta tool={tool} />
       </div>
     </div>
   );
+}
+
+// ----------------------------------------------------------------------------
+// R6.5 — clearer CTA wording for model tools
+// ----------------------------------------------------------------------------
+//
+// When the tool has model-registry metadata, the click opens the
+// standalone playground (controls / output / methodology / lineage).
+// When it's a typed primitive, the click opens the chart canvas.  The
+// underlying destination has been different since R4; R6.5 makes that
+// difference visible on the button so the user knows what they're
+// about to land on instead of relying on the generic "Open in Build"
+// label.
+
+function OpenInBuildCta({ tool }: { tool: ManifestTool }) {
+  const navigate = useNavigate();
+  // R6.1 — the manifest emits ``tool_function`` in its un-prefixed
+  // historical shorthand (``half_life_tool`` etc.), but every internal
+  // registry keys on the backend-canonical prefixed form (``calculate_
+  // half_life_tool``).  Normalise before lookup so both forms resolve.
+  const canonicalName = normalizeToolName(tool.implementation.tool_function);
+  const isModel = hasModelMetadata(canonicalName);
+  // PR1 + PR2 — every known tool gets a deterministic Build
+  // destination.  The decoder maps:
+  //   - ``hasModelMetadata`` ⇒ rich-model builder (``?builder=``)
+  //   - typed-view tool ⇒ chart canvas (``?context=``)
+  //   - PR2: ``isRunnablePrimitive`` (no typed view) ⇒ generic
+  //     schema-driven builder (still ``?context=``; decoder emits
+  //     ``generic_builder`` variant)
+  //   - ``isUnsupportedKnownTool`` ⇒ explicit unsupported-known card
+  //     (still ``?context=``; decoder emits ``unsupported_known``)
+  //   - everything else ⇒ ``?context=`` as a best-effort handoff;
+  //     ``VirtualPrimitiveCanvas`` shows the decode-error card only
+  //     when the tool name is truly unknown.
+  //
+  // Note ``isRunnablePrimitive`` covers both model-registry tools AND
+  // every other ``_PRIMITIVE_SPECS`` entry; we check ``isModel``
+  // first so the rich playground wins over the generic builder.
+  const isGenericBuilder =
+    !isModel &&
+    isRunnablePrimitive(canonicalName) &&
+    !hasTypedView(canonicalName);
+  const isUnsupported =
+    !isModel &&
+    !isGenericBuilder &&
+    isUnsupportedKnownTool(canonicalName);
+  const isKnown = isModel || isKnownBackendTool(canonicalName);
+
+  const handleClick = () => {
+    if (isModel) {
+      navigate(`/workspace?builder=${encodeURIComponent(canonicalName)}`);
+      return;
+    }
+    // Every other branch — typed view, generic builder, unsupported,
+    // truly-unknown — rides ``?context=`` with an empty params dict.
+    // The decoder picks the right variant downstream so the canvas
+    // mounts the matching surface.  For unsupported / truly-unknown
+    // tools the canvas surfaces an honest card; for generic-builder
+    // tools (PR2) the canvas mounts a schema-driven form.
+    const context = encodeURIComponent(
+      JSON.stringify({
+        tools: [{ tool: canonicalName, params: {} }],
+        tool_count: 1,
+      }),
+    );
+    navigate(`/workspace?context=${context}`);
+  };
+
+  // R6.5 + PR1 + PR2 — button copy + tooltip differentiate the four
+  // destinations so users know what they're about to land on:
+  //   - model builder → "Open in builder"
+  //   - typed primitive → "Open in Build"
+  //   - PR2 generic builder → "Open builder (schema)"
+  //   - unsupported-known → "Open Build (unsupported)"
+  let buttonLabel = 'Open in Build';
+  let title = 'Opens the chart canvas with editable parameter dropdowns';
+  if (isModel) {
+    buttonLabel = 'Open in builder';
+    title =
+      'Opens the standalone model builder with editable controls + methodology';
+  } else if (isGenericBuilder) {
+    buttonLabel = 'Open builder';
+    title =
+      'Opens a schema-driven builder — editable inputs from this primitive’s ToolCard plus a Run button that posts to /tools/{name}/run';
+  } else if (isUnsupported) {
+    buttonLabel = 'Open Build (unsupported)';
+    title =
+      'Build does not have a run path for this tool yet — the card explains the gap and links to Ask';
+  } else if (!isKnown) {
+    // Truly-unknown manifest entry — should be rare.  Still navigate
+    // so the user sees the decode-error card rather than a silent
+    // no-op.
+    buttonLabel = 'Open in Build';
+    title = 'Tool is not recognised by Build; the canvas will explain.';
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={title}
+      className="composer-send-active flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium"
+    >
+      <ArrowRight size={12} />
+      <span>{buttonLabel}</span>
+    </button>
+  );
+}
+
+/** Stage 4d — derived from each module's ``typedView`` field.  The
+ *  Library CTA uses this to decide whether to label a runnable
+ *  primitive as "Open in Build" (typed-view shipped) vs "Open builder"
+ *  (PR2 schema-driven fallback).  Pre-Stage-4d this was a hand-
+ *  authored set duplicating ``contextDecoder.TOOL_TO_VIEW``; the
+ *  decoder itself now derives from the same source so the two are
+ *  unambiguously in lock-step.
+ *
+ *  Stored as a function (rather than a const) to defer the
+ *  ``ALL_PRIMITIVE_MODULES`` filter to first call — keeps the
+ *  module-init order free of the cycle through ``@/modules``. */
+function hasTypedView(canonicalName: string): boolean {
+  return getPrimitiveModule(canonicalName)?.typedView != null;
 }
 
 // ----------------------------------------------------------------------------

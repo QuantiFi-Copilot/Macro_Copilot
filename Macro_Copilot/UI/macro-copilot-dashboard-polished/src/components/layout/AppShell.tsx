@@ -4,14 +4,16 @@
 // Single global TopNav at viewport top, then a body region that picks
 // one of three shapes based on route:
 //
-//   1. FULL-WIDTH (Ask, Briefcase): main only.  Ask owns its own
-//      internal three-column grid; Briefcase is centered placeholder.
+//   1. FULL-WIDTH (Ask, Briefcase, Library, Build/Workspace): main only.
+//      Each surface owns whatever internal grid it needs.  Build's
+//      ``BuildShell`` carries its own 3-column layout (sidebar + canvas
+//      + copilot rail) so it lives here.
 //
 //   2. SIDEBAR + MAIN (Monitor, Rates Agent, agent placeholders):
 //      Two-column shell (sidebar + main).  No right-rail chat.
 //
-//   3. LEGACY THREE-COLUMN (Workspace detail, Tools catalog, Workflows
-//      catalog): kept until those surfaces are redesigned.
+//   3. LEGACY THREE-COLUMN (Workflows catalogue): kept until that
+//      surface ships its redesign.
 //
 // IMPORTANT: TopNav is mounted ONCE at the top of the shell, not
 // inside each layout shape.  An earlier version mounted TopNav inside
@@ -36,38 +38,27 @@ import {
   PolicyEventsPlaceholder,
   PmOrchestratorPlaceholder,
 } from '@/components/agents/AgentPlaceholderPage';
-import { WorkspacePage } from '@/components/workspace/WorkspacePage';
-import { WorkspaceBySlugPage } from '@/components/workspace/WorkspaceBySlugPage';
 import { LibraryPage } from '@/components/library/LibraryPage';
 import { WorkflowsCataloguePage } from '@/components/catalogue/WorkflowsCataloguePage';
 import { AskPage } from '@/components/ask/AskPage';
 import { BriefcasePlaceholder } from '@/components/briefcase/BriefcasePlaceholder';
-// PR A — feature-flagged redesigned Build surface.  The new shell
-// replaces the legacy WorkspacePage + WorkspaceBySlugPage when
-// VITE_BUILD_V2=1 is set at build time.  The legacy components stay
-// imported so flipping the flag off (or any future surface that
-// deep-links into ?tool=... URLs) keeps working unchanged.
-import { BUILD_V2_ENABLED } from '@/components/build/lib/buildFlag';
+// Build surface — owns both ``/workspace`` (empty / building) and
+// ``/workspace/:slug`` (completed).  Carries its own 3-column grid
+// internally; AppShell drops it into full-width chrome so the shell-
+// level layout stays out of its way.
 import { BuildShell } from '@/components/build/BuildShell';
 
 export function AppShell() {
   const { pathname } = useLocation();
 
-  // PR A — when the new Build surface is flagged on, ``/workspace*``
-  // moves out of the legacy three-column shell (which mounts the
-  // ChatDrawer on the right) and into a full-width layout.  The new
-  // ``BuildShell`` owns its own 3-column grid (sidebar + canvas +
-  // workspace-copilot rail) so the AppShell-level chrome stays out
-  // of its way.
-  const isBuildV2Route =
-    BUILD_V2_ENABLED && pathname.startsWith('/workspace');
+  const isBuildRoute = pathname.startsWith('/workspace');
 
   const isFullWidth =
     pathname.startsWith('/ask') ||
     pathname.startsWith('/briefcase') ||
     pathname.startsWith('/library') ||
     pathname.startsWith('/tools') || // legacy alias for Library
-    isBuildV2Route;
+    isBuildRoute;
   const isWidgetSurface =
     pathname === '/' ||
     pathname.startsWith('/rates') ||
@@ -88,29 +79,12 @@ export function AppShell() {
       <Route path="/policy" element={<PolicyEventsPlaceholder />} />
       <Route path="/pm-orchestrator" element={<PmOrchestratorPlaceholder />} />
 
-      {/* Build / Workspace — feature-flagged.
-           - With VITE_BUILD_V2=1: BuildShell owns both ``/workspace``
-             (empty / building) and ``/workspace/:slug`` (completed).
-             ``isBuildV2Route`` above routes the shell into full-
-             width chrome since BuildShell carries its own 3-column
-             grid.
-           - Without the flag: the legacy WorkspacePage + the Phase-0
-             WorkspaceBySlugPage stub render as before; nothing
-             about Ask / Monitor / Library changes. */}
-      {BUILD_V2_ENABLED ? (
-        <>
-          <Route path="/workspace" element={<BuildShell />} />
-          <Route path="/workspace/:slug" element={<BuildShell />} />
-        </>
-      ) : (
-        <>
-          <Route path="/workspace" element={<WorkspacePage />} />
-          {/* PR 10 — slug-driven persistent workspace view.  Stable
-              URL handle (slug = ``[a-z0-9-]+``) routed to the
-              Phase-0 minimal renderer. */}
-          <Route path="/workspace/:slug" element={<WorkspaceBySlugPage />} />
-        </>
-      )}
+      {/* Build / Workspace — single shell for both empty + slug-bound
+          states.  ``BuildShell`` reads the ``:slug`` param itself and
+          swaps the canvas between BuildEmptyState / BuildBuilding /
+          BuildCompleted accordingly. */}
+      <Route path="/workspace" element={<BuildShell />} />
+      <Route path="/workspace/:slug" element={<BuildShell />} />
       <Route path="/workflows" element={<WorkflowsCataloguePage />} />
 
       {/* Library — new full-width catalogue surface.
@@ -163,8 +137,8 @@ export function AppShell() {
             </div>
           </RatesDataProvider>
         ) : (
-          // Legacy three-column shell — keeps Workspace / Tools /
-          // Workflows working until each ships its redesign.
+          // Legacy three-column shell — kept for ``/workflows`` until
+          // that surface ships its redesign.
           //
           // Wrapped in RatesDataProvider because the Sidebar (rendered
           // here too) reads from the rates context for its scope

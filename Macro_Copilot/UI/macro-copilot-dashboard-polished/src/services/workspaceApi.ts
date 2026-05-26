@@ -7,7 +7,16 @@
 // Phase 0 PR 10 — workspace persistence + URL routing.  Workspaces are
 // identified by their slug in the URL; renames update the display name
 // only, the slug (and therefore the URL) is stable.
+//
+// PR3 — adds ``getArtifactPayload`` for the ``/artifacts/{hash}/payload``
+// surface so Build widgets can render a persisted artifact's full
+// deserialised contents without re-running the underlying primitive.
 // ============================================================================
+
+import {
+  isArtifactPayloadResponseShape,
+  type ArtifactPayloadResponse,
+} from '@/types/artifacts';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 const PREFIX = `${API_BASE}/api/v1`;
@@ -295,4 +304,146 @@ export async function replayArtifact(
   return fetchJSON<ArtifactReplay>(
     `${PREFIX}/artifacts/${encodeURIComponent(artifactHash)}/replay?mode=${mode}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Artifact payload — PR3
+// ---------------------------------------------------------------------------
+//
+// ``GET /api/v1/artifacts/{artifact_hash}/payload`` returns the full
+// deserialised ``StoredArtifact`` for a persisted artifact (the same
+// shape ``state.artifact_store.get_artifact_payload_dict`` returns).
+// Used by Build widgets to render a workspace node without re-running
+// its primitive.  Backend errors:
+//
+//   - 400 — ``artifact_hash`` is not a 64-char hex SHA-256.
+//   - 404 — no metadata row, OR the metadata row points at a missing
+//           object-storage blob (orphaned).
+//   - 503 — object-storage backend not initialised.
+//   - 500 — corrupt row in storage.
+//
+// ``ArtifactPayloadError`` exposes the ``status`` so widget-side error
+// handlers can react differently (e.g. 404 → "this snapshot is gone"
+// vs 503 → "storage down, retry later") without parsing the raw
+// fetch error string.
+
+/** Status codes the backend uses for the payload endpoint.  Matches
+ *  the FastAPI HTTPException statuses in
+ *  ``api/routes/artifacts.py::artifact_payload``.  ``-1`` is reserved
+ *  for transport-level failures (network, CORS, abort). */
+export type ArtifactPayloadErrorStatus = 400 | 404 | 500 | 503 | -1;
+
+/** Error class thrown by ``getArtifactPayload`` for any non-2xx
+ *  response.  Carries the HTTP status so callers can branch without
+ *  re-fetching or string-matching the network error message. */
+export class ArtifactPayloadError extends Error {
+  readonly status: ArtifactPayloadErrorStatus;
+  readonly artifactHash: string;
+
+  constructor(args: {
+    status: ArtifactPayloadErrorStatus;
+    artifactHash: string;
+    message: string;
+  }) {
+    super(args.message);
+    this.name = 'ArtifactPayloadError';
+    this.status = args.status;
+    this.artifactHash = args.artifactHash;
+  }
+}
+
+/** Pre-flight sanity check on the hash format — matches the backend's
+ *  ``len == 64 && is_hex`` guard so we fail fast on malformed inputs
+ *  without burning a round-trip.  Exposed so the hook can short-
+ *  circuit when the caller passes a placeholder. */
+export function isLikelyArtifactHash(hash: string): boolean {
+  if (typeof hash !== 'string' || hash.length !== 64) return false;
+  return /^[0-9a-fA-F]{64}$/.test(hash);
+}
+
+/** Fetch a persisted artifact's full deserialised contents by hash.
+ *
+ *  Throws an ``ArtifactPayloadError`` (with ``status``) on any non-2xx
+ *  response; throws a plain ``Error`` for transport failures.  Returns
+ *  the typed ``ArtifactPayloadResponse`` envelope on success.
+ *
+ *  Defensive: validates the JSON body structurally before returning so
+ *  a corrupt 200 response doesn't silently break the discriminated-
+ *  union narrowing downstream.
+ *
+ *  Accepts an optional ``AbortSignal`` so hook callers can cancel
+ *  in-flight requests on unmount. */
+export async function getArtifactPayload(
+  artifactHash: string,
+  init?: { signal?: AbortSignal },
+): Promise<ArtifactPayloadResponse> {
+  if (!isLikelyArtifactHash(artifactHash)) {
+    throw new ArtifactPayloadError({
+      status: 400,
+      artifactHash,
+      message:
+        'artifact_hash must be a 64-char hex SHA-256 digest (client-side check)',
+    });
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `${PREFIX}/artifacts/${encodeURIComponent(artifactHash)}/payload`,
+      { signal: init?.signal },
+    );
+  } catch (err) {
+    // Transport-level failure (network, CORS, abort).  Re-throw as a
+    // typed error with status=-1 so callers don't need to string-
+    // match the raw browser fetch error.
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw err; // Let the abort propagate untransformed.
+    }
+    throw new ArtifactPayloadError({
+      status: -1,
+      artifactHash,
+      message:
+        err instanceof Error ? err.message : 'Network error fetching artifact',
+    });
+  }
+
+  if (!res.ok) {
+    // Status mapping mirrors the backend's HTTPException codes.
+    const body = await res.text().catch(() => '');
+    const status = (res.status === 400 ||
+    res.status === 404 ||
+    res.status === 500 ||
+    res.status === 503
+      ? res.status
+      : -1) as ArtifactPayloadErrorStatus;
+    throw new ArtifactPayloadError({
+      status,
+      artifactHash,
+      message: `API ${res.status}: ${res.statusText}${body ? ` — ${body}` : ''}`,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await res.json();
+  } catch (err) {
+    throw new ArtifactPayloadError({
+      status: 500,
+      artifactHash,
+      message: `Artifact payload was not valid JSON: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    });
+  }
+
+  if (!isArtifactPayloadResponseShape(parsed)) {
+    throw new ArtifactPayloadError({
+      status: 500,
+      artifactHash,
+      message:
+        'Artifact payload response is structurally invalid (missing artifact_type / metadata / payload).',
+    });
+  }
+
+  return parsed;
 }

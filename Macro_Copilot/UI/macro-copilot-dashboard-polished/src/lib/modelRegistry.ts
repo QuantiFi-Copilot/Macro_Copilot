@@ -70,6 +70,7 @@ export type ControlKind =
   | 'lookback_slider'    // int slider with lookback presets (calendar days)
   | 'enum'               // generic enum dropdown (uses field's examples)
   | 'date'               // YYYY-MM-DD date input
+  | 'field_name'         // PR5 — Bloomberg observation-field dropdown
   | 'auto';              // fall back to ParameterPanel's schema-driven default
 
 export type ParamHint = {
@@ -125,299 +126,203 @@ export type ModelMetadata = {
 // ---------------------------------------------------------------------------
 // Sane defaults — every field below is overridable per-model.
 // ---------------------------------------------------------------------------
+//
+// Stage 4b moved the preset arrays to ``src/lib/modelPresets.ts`` so
+// per-module ``module.ts`` files can value-import them without
+// triggering the modelRegistry ↔ @/modules runtime cycle.  Re-exported
+// here for backward compatibility with non-module consumers.
 
-export const DEFAULT_LOOKBACK_PRESETS = [365, 730, 1095, 1825, 3650];
-export const DEFAULT_WINDOW_PRESETS = [22, 60, 126, 252, 504];
+export { DEFAULT_LOOKBACK_PRESETS, DEFAULT_WINDOW_PRESETS } from './modelPresets';
 
 // ---------------------------------------------------------------------------
-// Registry
+// Registry — Stage 4b hybrid
 // ---------------------------------------------------------------------------
+//
+// Pre-Stage-4b this file carried the full ``MODELS`` array verbatim.
+// Stage 4b moved the 5 rich-model entries (PCA, rolling regression,
+// attribution, half-life, beta-adjusted spread) onto each owning
+// module's ``MODULE.modelMetadata`` field; the hand-authored set
+// below is now empty.  The public ``MODELS`` export is the union of
+// ``_HAND_AUTHORED_MODELS`` (empty today) and the module-derived
+// contribution from ``ALL_PRIMITIVE_MODULES``.  Adding a new rich-
+// model primitive now = ship its module with ``modelMetadata`` +
+// ``richModel: true``; no further edit to this file.
 
-const MODELS: ModelMetadata[] = [
-  // -------------------------------------------------------------------
-  // Rolling OLS regression (target ~ regressors).
-  // -------------------------------------------------------------------
-  {
-    toolName: 'calculate_rolling_regression_tool',
-    displayName: 'Rolling Regression',
-    category: 'regression',
-    modelKind: 'time_series_model',
-    outputRenderer: 'rolling_regression',
-    oneLineSummary:
-      'Trailing-window OLS of one sovereign yield series on one or more regressor yield series. Single methodological knob: window length.',
-    defaultParams: {
-      target_spec: { curve_family: 'UST', tenor: '10Y' },
-      regressor_specs: [{ curve_family: 'UST', tenor: '5Y' }],
-      regression_window_days: '60',
-      lookback_days: '730',
-    },
-    paramHints: {
-      target_spec: {
-        control: 'series_spec',
-        label: 'Target series',
-        help: 'The y in the regression — a single sovereign (curve, tenor) yield series.',
-      },
-      regressor_specs: {
-        control: 'series_spec_list',
-        label: 'Regressor series',
-        help: 'One or more (curve, tenor) yield series — the columns of X.',
-      },
-      regression_window_days: {
-        control: 'window_slider',
-        label: 'Window (trading days)',
-        help: 'Trailing-window length per rolling fit. Tactical = 60, annual = 252.',
-        presets: DEFAULT_WINDOW_PRESETS,
-      },
-      lookback_days: {
-        control: 'lookback_slider',
-        label: 'Display lookback (calendar days)',
-        help: 'Calendar days of history to render. Does NOT change the rolling-window length.',
-        presets: DEFAULT_LOOKBACK_PRESETS,
-      },
-    },
-    interpretationCards: [
-      {
-        headline: 'How to read the betas',
-        body: 'Each beta time series is the partial elasticity of the target on that regressor at the rolling window date — the rest of the regressors held flat. A beta crossing 1 means the target moves one-for-one with the regressor in that window.',
-      },
-      {
-        headline: 'When R² collapses',
-        body: 'A sharp drop in rolling R² is a structural-break tell — the linear hedge ratio has lost predictive power for that horizon. Sustained low R² with high volatility is a regime-shift warning.',
-      },
-      {
-        headline: 'Condition flag',
-        body: 'A row flagged 1 means the design matrix was near-singular (e.g. two regressors became collinear) — that fit was suppressed and the row should be masked from interpretation.',
-      },
-    ],
-  },
-
-  // -------------------------------------------------------------------
-  // PCA on the yield-changes panel of one sovereign curve.
-  // -------------------------------------------------------------------
-  {
-    toolName: 'calculate_pca_yield_curve_tool',
-    displayName: 'PCA · Yield Curve',
-    category: 'pca',
-    modelKind: 'composite',
-    outputRenderer: 'pca',
-    oneLineSummary:
-      'Principal-component decomposition of a sovereign curve\'s yield changes — surfaces level, slope, and curvature factors plus their daily scores.',
-    defaultParams: {
-      curve_family: 'UST',
-      lookback_days: '1825',
-      n_components: '3',
-      change_frequency: 'daily',
-      // tenors: empty array → use the curve's full tenor universe.
-      tenors: [],
-    },
-    paramHints: {
-      curve_family: {
-        control: 'curve_family',
-        label: 'Curve family',
-        help: 'Sovereign curve identifier — UST, DE_BUND, IT_BTP, FR_OAT, ES_BONO, UK_GILT, JGB.',
-      },
-      tenors: {
-        control: 'multi_tenor',
-        label: 'Tenors (subset)',
-        help: 'Optional subset of tenors. Leave empty to use the full universe.',
-      },
-      lookback_days: {
-        control: 'lookback_slider',
-        label: 'Lookback (calendar days)',
-        help: 'History fetched for the fit. 5 years is the desk-canonical default.',
-        presets: DEFAULT_LOOKBACK_PRESETS,
-      },
-      n_components: {
-        control: 'enum',
-        label: 'Components to return',
-        help: '3 captures level/slope/curvature on a normal sovereign panel.',
-      },
-      change_frequency: {
-        control: 'enum',
-        label: 'Change frequency',
-        help: 'Differencing step: daily (1d) or weekly (5d).',
-      },
-      field_name: {
-        control: 'auto',
-        label: 'Field override',
-        help: 'Bloomberg field. Leave blank to use config.yaml default (typically YLD_YTM_MID).',
-      },
-    },
-    interpretationCards: [
-      {
-        headline: 'PC1 = Level',
-        body: 'The first principal component on a normal sovereign curve loads positive across all tenors — it captures parallel shifts in the entire curve. Daily PC1 score moves correspond to broad rate-level moves.',
-      },
-      {
-        headline: 'PC2 = Slope',
-        body: 'PC2 typically loads positive at the long end and negative at the short end — it captures steepening vs flattening. PC2 moves track 2s10s and 5s30s dynamics.',
-      },
-      {
-        headline: 'PC3 = Curvature',
-        body: 'PC3 typically loads positive at the belly and negative at the wings — it captures butterfly moves. Watch this when belly-rich/cheap views are in play.',
-      },
-      {
-        headline: 'Variance explained',
-        body: 'The first three components typically capture >97% of yield-change variance on a developed sovereign. If they do not, the curve is in an atypical regime and the residuals are themselves the signal.',
-      },
-    ],
-  },
-
-  // -------------------------------------------------------------------
-  // PCA-based attribution of a tenor's yield change over a window.
-  // -------------------------------------------------------------------
-  {
-    toolName: 'calculate_yield_change_attribution_pca_tool',
-    displayName: 'Yield-Change Attribution · PCA',
-    category: 'attribution',
-    modelKind: 'snapshot_model',
-    outputRenderer: 'attribution',
-    oneLineSummary:
-      'Decomposes a single tenor\'s yield change between two dates into per-PCA-component contributions in basis points.',
-    defaultParams: (() => {
-      // Default window: ~last quarter, ending today.  ISO YYYY-MM-DD.
-      const today = new Date();
-      const start = new Date(today);
-      start.setDate(start.getDate() - 90);
-      const fmt = (d: Date) => d.toISOString().slice(0, 10);
-      return {
-        curve_family: 'UST',
-        target_tenor: '10Y',
-        start_date: fmt(start),
-        end_date: fmt(today),
-        n_components: '3',
-      };
-    })(),
-    paramHints: {
-      curve_family: { control: 'curve_family', label: 'Curve family' },
-      target_tenor: { control: 'tenor', label: 'Target tenor' },
-      start_date: {
-        control: 'date',
-        label: 'Window start',
-        help: 'Calendar start of the change window. The tool resolves to the nearest trading day on or after.',
-      },
-      end_date: {
-        control: 'date',
-        label: 'Window end',
-        help: 'Calendar end of the change window. The tool resolves to the nearest trading day on or before.',
-      },
-      n_components: {
-        control: 'enum',
-        label: 'Components',
-        help: '3 captures level/slope/curvature on a normal sovereign panel.',
-      },
-      pasted_loadings: {
-        control: 'auto',
-        hidden: true,
-      },
-      pasted_loadings_input: {
-        control: 'auto',
-        hidden: true,
-      },
-    },
-    interpretationCards: [
-      {
-        headline: 'Interpretation',
-        body: 'Total change at the target tenor = sum of component contributions + residual. A residual >5bp on a 3-component decomposition signals atypical curve behaviour the level/slope/curvature basis cannot capture.',
-      },
-      {
-        headline: 'Sign convention',
-        body: 'Each PC\'s loading at the longest tenor is locked non-negative. So a positive PC1 contribution on a 10Y means the level component drove a yield rise; a negative PC2 contribution means the slope component compressed (flattening).',
-      },
-    ],
-  },
-
-  // -------------------------------------------------------------------
-  // OU / AR(1) half-life of mean reversion.
-  // -------------------------------------------------------------------
-  {
-    toolName: 'calculate_half_life_tool',
-    displayName: 'Mean-Reversion Half-Life',
-    category: 'mean_reversion',
-    modelKind: 'snapshot_model',
-    outputRenderer: 'auto',
-    oneLineSummary:
-      'Fits an Ornstein-Uhlenbeck / AR(1) process and reports the half-life of mean reversion — how long it takes a deviation to decay by half.',
-    defaultParams: {
-      series_spec: { curve_family: 'UST', tenor: '10Y' },
-    },
-    paramHints: {
-      series_spec: { control: 'series_spec', label: 'Series', hidden: false },
-      pair_spec: { control: 'auto', hidden: true },
-      pasted_series: { control: 'auto', hidden: true },
-    },
-  },
-
-  // -------------------------------------------------------------------
-  // Beta-adjusted RV (rolling-OLS hedge ratio + bps residual).
-  // -------------------------------------------------------------------
-  {
-    toolName: 'calculate_beta_adjusted_spread_tool',
-    displayName: 'Beta-Adjusted Spread',
-    category: 'regression',
-    modelKind: 'time_series_model',
-    outputRenderer: 'series_panel',
-    oneLineSummary:
-      'Bivariate beta-adjusted RV: rolling hedge ratio of one yield on another, residual in bps, residual z-score.',
-    defaultParams: {
-      target_spec: { curve_family: 'IT_BTP', tenor: '10Y' },
-      hedge_spec: { curve_family: 'DE_BUND', tenor: '10Y' },
-      regression_window_days: '60',
-      lookback_days: '730',
-    },
-    paramHints: {
-      target_spec: { control: 'series_spec', label: 'Target series' },
-      hedge_spec: { control: 'series_spec', label: 'Hedge series' },
-      regression_window_days: {
-        control: 'window_slider',
-        label: 'Hedge-ratio window',
-        presets: DEFAULT_WINDOW_PRESETS,
-      },
-      lookback_days: {
-        control: 'lookback_slider',
-        label: 'Display lookback',
-        presets: DEFAULT_LOOKBACK_PRESETS,
-      },
-    },
-    interpretationCards: [
-      {
-        headline: 'How to read it',
-        body: 'Residual = target - beta × hedge. A residual z-score >2 means the bivariate spread is rich on its own history; <-2 means cheap. The hedge ratio time series itself is the signal when betas drift.',
-      },
-    ],
-  },
+const _HAND_AUTHORED_MODELS: ModelMetadata[] = [
+  // ----------------------------------------------------------------
+  // Stage 4b removal — every prior entry (rolling regression, PCA,
+  // attribution, half-life, beta-adjusted spread) moved onto its
+  // owning module's ``modelMetadata`` field.  The module-derived
+  // contribution below feeds those entries back into the union, so
+  // the public ``MODELS`` export and ``REGISTRY_INDEX`` keys are
+  // unchanged.
+  // ----------------------------------------------------------------
 ];
 
-// ---------------------------------------------------------------------------
-// Lookup helpers
-// ---------------------------------------------------------------------------
+import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
-const REGISTRY_INDEX: Record<string, ModelMetadata> = Object.fromEntries(
-  MODELS.map((m) => [m.toolName, m] as const),
-);
+// ---------------------------------------------------------------------------
+// Lazy registry initialisation (Stage 4b)
+// ---------------------------------------------------------------------------
+//
+// Why lazy: the rich-model modules' ``module.ts`` files value-import
+// their per-tool ``BuildSurface.tsx`` wrapper, which in turn imports
+// ``BuilderCanvas`` → ``ModelWorkspacePage`` → ``modelRegistry``.
+// Touching ``ALL_PRIMITIVE_MODULES`` at modelRegistry's module-init
+// time would mean reading it MID-cycle, before @/modules has finished
+// populating it (TDZ → undefined → ``.filter`` throws).  Initialising
+// on first lookup defers the read until after @/modules's load
+// settles, breaking the cycle without restructuring the surface
+// graph.  Every public accessor (``getModelMetadata`` / ``hasModelMetadata``
+// / ``listModels`` / ``paramHintFor``) calls ``getRegistry()`` /
+// ``getModels()`` instead of reading the raw module-scope binding.
+
+let _modelsCache: ModelMetadata[] | null = null;
+let _registryCache: Record<string, ModelMetadata> | null = null;
+
+function getModels(): ModelMetadata[] {
+  if (_modelsCache === null) {
+    const moduleDerived: ModelMetadata[] = ALL_PRIMITIVE_MODULES
+      .filter((m) => m.modelMetadata != null)
+      .map((m) => m.modelMetadata as ModelMetadata);
+    _modelsCache = [..._HAND_AUTHORED_MODELS, ...moduleDerived];
+  }
+  return _modelsCache;
+}
+
+function getRegistry(): Record<string, ModelMetadata> {
+  if (_registryCache === null) {
+    _registryCache = Object.fromEntries(
+      getModels().map((m) => [m.toolName, m] as const),
+    );
+  }
+  return _registryCache;
+}
+
+// R6.1 — every public lookup goes through ``normalizeToolName`` so
+// Library manifest shorthand (e.g. ``half_life_tool``) resolves to the
+// same canonical entry as the backend-prefixed form
+// (``calculate_half_life_tool``).  Without this the Library "Open in
+// Build" CTA mis-routes rich-model tools to the ``?context=`` decoder,
+// producing the "Could not decode workspace context" card the user
+// audit flagged.
+
+import { normalizeToolName } from '@/lib/toolNames';
 
 export function getModelMetadata(toolName: string): ModelMetadata | null {
-  return REGISTRY_INDEX[toolName] ?? null;
+  return getRegistry()[normalizeToolName(toolName)] ?? null;
 }
 
 export function hasModelMetadata(toolName: string): boolean {
-  return toolName in REGISTRY_INDEX;
+  return normalizeToolName(toolName) in getRegistry();
 }
 
 export function listModels(): ModelMetadata[] {
-  return [...MODELS];
+  return [...getModels()];
 }
 
 /** Resolve the ParamHint for a field, with a sensible default when the
- *  registry entry omits it (or doesn't exist at all). */
+ *  registry entry omits it (or doesn't exist at all).  ``toolName`` is
+ *  normalised so callers can pass either the manifest shorthand or the
+ *  backend-canonical form.
+ *
+ *  Priority (highest to lowest):
+ *    1. Registry-supplied hint (explicit per-tool override).
+ *    2. Field-name inference for canonical rates fields
+ *       (``curve_family``, ``tenor``, ``lookback_days`` …).  Drives
+ *       PR2's generic primitive builder: unregistered runnable
+ *       primitives still get dropdown / slider controls for the
+ *       shared rates vocabulary instead of falling back to plain
+ *       text inputs.  Safe additive change — explicit registry
+ *       hints always win.
+ *    3. ``{control: 'auto'}`` — text/number/boolean fall-through.
+ */
 export function paramHintFor(
   toolName: string,
   fieldName: string,
 ): ParamHint {
-  const meta = REGISTRY_INDEX[toolName];
-  return (
-    (meta?.paramHints && meta.paramHints[fieldName]) ?? {
-      control: 'auto',
-    }
-  );
+  const meta = getRegistry()[normalizeToolName(toolName)];
+  const explicit = meta?.paramHints?.[fieldName];
+  if (explicit) return explicit;
+  return inferFieldControl(fieldName);
+}
+
+/** Field-name-based fallback for tools that don't ship a registry
+ *  hint for the field.  Returns ``{control: 'auto'}`` for unknown
+ *  field names so the ``ParametersPanel`` falls through to its
+ *  text/number/boolean auto-renderer.
+ *
+ *  Used directly by the generic primitive builder (PR2) so the
+ *  schema-driven controls rail recognises the shared rates
+ *  vocabulary without the tool having to register a full
+ *  ``ModelMetadata`` entry.  Exposed as a top-level helper so the
+ *  routing-coverage tests can assert it. */
+export function inferFieldControl(fieldName: string): ParamHint {
+  // Curve-family pickers — every typed control set in the codebase
+  // uses ``ALL_CURVES`` for both the sovereign and OIS variants.
+  // Sovereign / OIS curves coexist in that option list; the user
+  // picks whichever applies to the tool they're configuring.
+  if (
+    fieldName === 'curve_family' ||
+    fieldName === 'curve_family_1' ||
+    fieldName === 'curve_family_2' ||
+    fieldName === 'sovereign_curve_family' ||
+    fieldName === 'ois_curve_family' ||
+    fieldName === 'nominal_curve_family' ||
+    fieldName === 'real_curve_family' ||
+    fieldName === 'proxy_curve'
+  ) {
+    return { control: 'curve_family' };
+  }
+  // Tenor pickers — short / long / belly / target / start / end /
+  // forward-window all share the canonical TENORS option set.
+  if (
+    fieldName === 'tenor' ||
+    fieldName === 'short_tenor' ||
+    fieldName === 'long_tenor' ||
+    fieldName === 'belly_tenor' ||
+    fieldName === 'target_tenor' ||
+    fieldName === 'front_tenor' ||
+    fieldName === 'back_tenor' ||
+    fieldName === 'start_tenor' ||
+    fieldName === 'end_tenor' ||
+    fieldName === 'forward_start' ||
+    fieldName === 'forward_length'
+  ) {
+    return { control: 'tenor' };
+  }
+  // Lookback / rolling-window scalars — both surface as a slider
+  // with calendar-day presets.  Different scope (display history
+  // vs analytics window) but the control affordance is identical.
+  if (
+    fieldName === 'lookback_days' ||
+    fieldName === 'rolling_window_days' ||
+    fieldName === 'z_score_window_days' ||
+    fieldName === 'regression_window_days'
+  ) {
+    return { control: 'lookback_slider' };
+  }
+  // Date / datetime fields — the date input is wire-compatible with
+  // the FastAPI ``date`` query parameter.
+  if (
+    fieldName === 'start_date' ||
+    fieldName === 'end_date' ||
+    fieldName === 'as_of_date' ||
+    fieldName === 'prior_date'
+  ) {
+    return { control: 'date' };
+  }
+  // PR5 — Bloomberg observation-field pickers.  Every primitive's
+  // config.yaml ships a ``default_field_name`` (``YLD_YTM_MID`` for
+  // sovereigns, ``PX_LAST`` for OIS), but the override knob was
+  // rendering as a free-text input because the inferer only
+  // recognised the bare ``field_name`` field.  The schema-driven
+  // generic builder hit this gap whenever a tool's input class
+  // declared ``sovereign_field_name`` / ``ois_field_name`` (cross-
+  // domain primitives), ``nominal_field_name`` / ``real_field_name``
+  // (breakeven), or any prefixed Bloomberg-mnemonic field name.
+  if (fieldName === 'field_name' || fieldName.endsWith('_field_name')) {
+    return { control: 'field_name' };
+  }
+  return { control: 'auto' };
 }

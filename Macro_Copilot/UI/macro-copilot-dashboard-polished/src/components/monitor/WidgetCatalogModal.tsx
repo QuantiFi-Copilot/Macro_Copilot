@@ -444,6 +444,6 @@ function categoryChipClass(category: WidgetCategory): string {
   }
 }
 
-function labelOf(name: string, fields: WidgetParamField[]): string {
+function labelOf(name: string, fields: ReadonlyArray<WidgetParamField>): string {
   return fields.find((f) => f.name === name)?.label ?? name;
 }

@@ -1,0 +1,130 @@
+# ============================================================================
+# wirp playbook — WIRP per-meeting implied-rate time series
+# (work order B2, D-wirp, ADR 0009).  SEED — the universe is GENERATED.
+#
+# WIRP (Bloomberg's World Interest Rate Probability) prices, per scheduled
+# central-bank meeting, the rate path the market implies for that meeting.
+# D-wirp ingests it as an ordinary daily time series into market_data_daily —
+# WIRP is NOT an event (ADR 0008 §5 carved it out of the event-playbook
+# contract; ADR 0009 is the D-wirp increment).
+#
+# A TIME-SERIES PLAYBOOK WITH A `wirp:` MARKER SECTION — a DOCUMENTED EXCEPTION
+# to the standard time-series contract (ADR 0009 §2).  A WIRP meeting's four
+# metrics (FR/PR/NM/CH) are TICKER-borne, not field-borne — each is a different
+# Bloomberg ticker, not a different field on one ticker — so this playbook
+# carries NO `target_metrics` / `reference_metrics`; the `wirp:` section
+# declares the metrics instead.  The `wirp:` section IS the marker: a playbook
+# that has one is a WIRP playbook (routed to the WIRP extractor branch),
+# exactly as `event_calendar:` marks an event playbook.
+#
+# SYNTHETIC-INSTRUMENT MODEL (ADR 0009 §1): ONE INSTRUMENT PER MEETING.  The
+# four metrics are four `field` values in market_data_daily under one
+# instrument_id — so event_calendar.related_instrument_id is a clean 1:1 link
+# to the meeting's WIRP instrument (set by utils/backfill_wirp_links.py).
+#
+# THE UNIVERSE IS GENERATED.  `universe:` ships EMPTY.  utils/render_wirp_
+# universe.py reads the central-bank-meeting calendar from macro_data.
+# event_calendar (ingested by D-cb) and renders the effective wirp.yml — one
+# universe row per meeting, the synthetic per-meeting instrument — to
+# gs://<bucket>/playbooks/wirp.yml.  push_playbooks.py SKIPS this seed so the
+# empty universe never clobbers the rendered one (the OTR rendered-universe
+# pattern, ADR 0007 §7, reused).
+#
+# VERIFIED TICKER GRAMMAR (operator terminal, 2026-05-21): fixed-meeting
+# virtual tickers  {region_prefix}{metric_code} {MMMYYYY} Index — e.g.
+# `US0BFR JUN2026 Index`.  Region prefixes US0B / EZ0B / GB0B / JP0B; metric
+# codes FR / PR / NM / CH; a clean daily bdh(PX_LAST) series each; past-meeting
+# tickers retain full history.
+#
+# VERIFIED FULL-CALENDAR COVERAGE (Stage-B probe, scripts/wirp_coverage_check.py,
+# run 2026-05-22 over all 88 central-bank meetings): 73 meetings return all
+# four metrics (full 4/4), 0 are partial, 15 return nothing.  The 15 are a
+# CLEAN far-future tail — every one is a meeting on/after 2027-06-09, none
+# inside the covered span — so a forward horizon excludes them cleanly and the
+# strict 4/4 coverage gate (ADR 0009 §4) is satisfiable.  Verified
+# full-coverage span: 2025-01-24 .. 2027-04-29.  The `forward_horizon_days` /
+# `past_horizon_days` below are set from this.
+#
+# UNITS — ingested VERBATIM (P12).  The `field` names assert a QUANTITY, never
+# a unit; the Stage-B observed value ranges are documented per metric below.
+# No conversion is ever applied to a WIRP value.
+# ============================================================================
+
+playbook_name: wirp
+playbook_version: "1.0"
+asset_class: rates
+dataset_name: wirp
+description: |
+  WIRP per-meeting implied-rate time series for the four core central banks —
+  the Federal Reserve (FOMC), the European Central Bank, the Bank of England
+  and the Bank of Japan. One synthetic instrument per scheduled meeting; the
+  four WIRP metrics — post-meeting implied rate (FR), single-move probability
+  (PR), number of 25bp moves priced (NM), implied rate change (CH) — are four
+  market_data_daily fields under that instrument. The universe is generated
+  from the macro_data.event_calendar central-bank-meeting calendar by
+  utils/render_wirp_universe.py. This is the substrate the Phase-3
+  fomc_surprise primitive and the FOMC event-study template read; each
+  event_calendar central-bank-meeting row links to its WIRP instrument via
+  related_instrument_id (utils/backfill_wirp_links.py).
+
+extraction:
+  # Deep window — WIRP extraction is incremental-only (ADR 0009 §4); one run
+  # must span every meeting's full pre-meeting run-up, realized meetings
+  # included. Re-pulled each run; the ingester upserts. "Incremental" here is
+  # the dispatch sense, not the narrow-window sense.
+  incremental_window_days: 1000
+
+wirp:
+  # The daily series field — VERIFIED 2026-05-21 (every WIRP ticker is a clean
+  # bdh(PX_LAST) series).
+  bloomberg_field: "PX_LAST"
+
+  # WIRP metric code -> market_data_daily.field. All four are TICKER-borne: the
+  # Bloomberg ticker is {region_prefix}{code} {meeting_token} Index. `field`
+  # names a QUANTITY, not a unit (P12). The observed value ranges below are
+  # from the Stage-B coverage probe (2026-05-22, 73 full-coverage meetings) —
+  # they DOCUMENT the unit; NO conversion is ever applied. A metric may carry
+  # `available: false` for a region the probe confirms exposes no such WIRP
+  # series (ADR 0009 §4) — none are excluded in v1 (all four cover all 73).
+  metrics:
+    # FR — post-meeting implied effective policy rate.
+    #   Unit: percent. Observed range 0.295 .. 4.983.
+    - { code: FR, field: WIRP_IMPLIED_RATE }
+    # PR — probability that a single 25bp move (hike +, cut -) is priced.
+    #   Unit: percent, signed; CUMULATIVE — can exceed +/-100 when multiple
+    #   moves are priced. Observed range -360.1 .. 548.0.
+    - { code: PR, field: WIRP_MOVE_PROB }
+    # NM — number of 25bp moves priced.
+    #   Unit: count of 25bp moves, signed / fractional. Observed -9.57 .. 6.729.
+    - { code: NM, field: WIRP_NUM_MOVES }
+    # CH — implied change from the current effective rate.
+    #   Unit: PERCENTAGE POINTS (a rate change) — NOT basis points (the probe
+    #   range confirms this: a bp-unit field would print ~+/-100s, not +/-2).
+    #   Observed range -2.392 .. 1.013.
+    - { code: CH, field: WIRP_RATE_CHANGE }
+
+  # central_bank -> WIRP ticker region prefix. VERIFIED 2026-05-21.
+  region_prefixes:
+    FOMC: "US0B"
+    ECB: "EZ0B"
+    BOE: "GB0B"
+    BOJ: "JP0B"
+
+  # Universe horizon (ADR 0009 §3) — SET from the Stage-B coverage probe
+  # (2026-05-22). The renderer emits a universe row only for meetings within
+  # [today - past_horizon_days, today + forward_horizon_days].
+  #   forward 365: the verified full-coverage edge is 2027-04-29 (+342d from
+  #     the probe's as_of); the first far-future EMPTY meeting is 2027-06-09
+  #     (+383d). 365 sits in the [342, 382] gap — it includes every covered
+  #     meeting and excludes every empty one (universe = exactly the 73
+  #     verified meetings). The strict 4/4 coverage gate (ADR 0009 §4) is the
+  #     backstop should a meeting drift into range before WIRP prices it.
+  #   past 540: the earliest meeting (2025-01-24) is -483d from the probe's
+  #     as_of; 540 includes it with margin, and nothing in event_calendar
+  #     predates it.
+  forward_horizon_days: 365
+  past_horizon_days: 540
+
+# GENERATED — see ADR 0009 §3. The seed ships EMPTY; utils/render_wirp_
+# universe.py fills this from the event_calendar central-bank-meeting calendar.
+universe: []

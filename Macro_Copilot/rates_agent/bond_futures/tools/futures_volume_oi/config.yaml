@@ -1,0 +1,339 @@
+# =============================================================================
+# get_futures_volume_oi_tool — tool configuration
+# =============================================================================
+# Daily bond-futures volume, open interest, ΔOI, and OI z-score for ONE
+# rolling-generic (TY1 / UXY1 / US1 / WN1 / RX1 / JB1 / OAT1 / ...).
+#
+# V1 monitor #2 under ``bond_futures`` (per ADR 0013 — bond_futures
+# ships monitors only until the D-repo + D-deliverable substrate
+# lands and the CTD / basis / DV01-weighted RV stack becomes
+# buildable). The methodology card disclosure makes the scope-limited
+# reading explicit (P5):
+#
+#   "OI z-score lookback = 252 trading days. This is rolling-generic
+#    open interest; the front-back OI migration is the positioning
+#    signal but the per-contract underlying rolls quarterly so the
+#    OI series mixes contracts across rolls."
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions. The LLM cannot ask for non-standard windows / thresholds.
+# Field names for volume / open_interest are also YAML-owned (NOT
+# input-schema knobs) — this primitive's concept is specifically
+# tied to ``PX_VOLUME`` + ``OPEN_INT``; exposing those as inputs would
+# be input-schema overreach (PR9 / OPR8 — methodology knob masquerading
+# as a per-query choice).
+# =============================================================================
+
+tool:
+  name: get_futures_volume_oi_tool
+  domain: bond_futures
+  description: |
+    Single rolling-generic bond-futures volume + open-interest snapshot —
+    emits a ``current_metrics`` snapshot for the latest aligned bar:
+
+      - ``current_volume``: latest daily traded volume in CONTRACTS
+        (NOT notional). The snapshot carries ``contract_size``
+        alongside the counts so downstream consumers can convert to
+        notional without a second tool call.
+
+      - ``current_open_interest``: latest open-interest level in
+        CONTRACTS (NOT notional).
+
+      - ``delta_open_interest_1d``: 1-trading-day change in OI level
+        (raw subtraction; NOT bps multiplication).
+
+      - ``oi_z_score``: rolling 252-trading-day z-score of the OI
+        level. The OI z-score lookback is the headline desk-recognised
+        positioning extreme signal; it is disclosed verbatim on the
+        methodology card per the catalog's methodology guardrail.
+
+      - ``oi_high_252d`` / ``oi_low_252d`` / ``oi_percentile_252d``:
+        trailing 252-day range stats on the OI level.
+
+      - ``volume_rolling_mean_22d`` / ``volume_rolling_max_22d``:
+        rolling 22-day (~1 calendar month) context stats for daily
+        volume. A SHORT window is used deliberately — daily futures
+        volume is noisy intra-month and a 1Y window over-smooths the
+        recent activity that defines "is this above its recent
+        average?" desk questions. The OI level is much more persistent,
+        which is why the OI rolling stat uses 252.
+
+      - latest-effective ``expiry_date`` + ``security_name`` from the
+        SCD2 rolling-contract metadata history so the snapshot names
+        the underlying front contract.
+
+      - ``time_series``: per-row ``{date, volume, open_interest}``
+        history over the displayed window. Bespoke list shape (NOT
+        canonical ``shared.schemas.TimeSeries``) because the row
+        carries two semantically distinct series (contracts traded vs
+        contracts outstanding), and the closed-enum
+        ``TimeSeriesUnits`` family has no ``CONTRACTS`` member —
+        declaring PERCENT or BPS would silently lie under P8 (closed-
+        family discipline) and P5 (honest disclosure).
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # OI z-score window length (trading days). The HEADLINE methodology
+  # disclosure required by the catalog guardrail — disclosed verbatim
+  # on the response's methodology_disclosure string. Mirrors the same
+  # 1y_window convention used by yield_levels / ois rate_level /
+  # futures_price_level so the OI z-score reads the same way as the
+  # price z-score and the yield z-score across this codebase.
+  # ---------------------------------------------------------------------------
+  oi_z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window on the OI level.
+      Same convention as yield_levels / ois rate_level /
+      futures_price_level. Desk reads of "is OI elevated?" are
+      benchmarked against the trailing year — anchoring the OI z-score
+      here keeps cross-tool z-scores comparable. The MUST-DISCLOSE
+      window per the catalog's methodology guardrail (catalog entry
+      ``bond_futures__futures_volume_oi``).
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  oi_z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches yield_levels / ois rate_level /
+      futures_price_level.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  oi_z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  oi_z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading day.
+      1.5x trading-day window covers weekends + holidays. Matches
+      yield_levels / ois rate_level / futures_price_level.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # ΔOI offset (in trading-day rows after ffill + alignment)
+  # ---------------------------------------------------------------------------
+  delta_oi_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back. Matches the daily
+      change convention used by every other rates level primitive.
+    valid_range: [2, 5]
+
+  # ---------------------------------------------------------------------------
+  # OI trailing range window — LOCKED at 252 in V1.
+  # The output schema's field names (oi_high_252d, oi_low_252d,
+  # oi_percentile_252d) are wire-frozen and embed the 252 number;
+  # changing this convention without renaming the wire fields would
+  # silently lie about what the percentile is computed against.
+  # compute() raises NotImplementedError if this is set to anything
+  # other than 252; see methodology.planned_extensions for the path
+  # to making it configurable. Mirrors the same guard in
+  # futures_price_level / yield_levels.
+  # ---------------------------------------------------------------------------
+  oi_trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for OI high / low / percentile. Locked at 252 in V1
+      because the wire field names embed the number. Mirrors the same
+      wire-freeze in yield_levels / ois rate_level /
+      futures_price_level.
+
+  # ---------------------------------------------------------------------------
+  # Volume short-context window — LOCKED at 22 in V1.
+  # Distinct from the OI window because volume is much more volatile
+  # day-to-day than OI; a 1Y window over-smooths the recent activity
+  # that defines "is today's volume above its recent average?" desk
+  # questions. The output schema's field names (volume_rolling_mean_22d,
+  # volume_rolling_max_22d) embed the number; same wire-freeze guard
+  # as the OI trailing window.
+  # ---------------------------------------------------------------------------
+  volume_avg_window_days:
+    value: 22
+    source: team_judgment_pending_review
+    rationale: >-
+      ~1 calendar month of trading days for the volume rolling mean /
+      max context. Volume on bond futures is noisy intra-month
+      (expiry-driven liquidity, surprise-CPI day spikes, FOMC-decision
+      doublings) so the desk-recognised reading is "today vs trailing
+      ~1 month", not "today vs trailing year" (which would smooth
+      out the surprise-day signal). Deliberately distinct from the OI
+      window which uses 252 — see config.yaml description block for
+      the rationale.
+    valid_range: [10, 63]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps. Same as yield_levels / ois rate_level / futures_price_level.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg observation fields for volume + open_interest
+  # ---------------------------------------------------------------------------
+  # These are NOT input-schema knobs — see config block description for
+  # the input-schema-overreach rationale. They are field-name conventions
+  # owned by the YAML so an ingestion-side rename (e.g. PX_VOLUME →
+  # FUT_VOLUME) can be absorbed by a YAML edit rather than a code change.
+  default_volume_field:
+    value: PX_VOLUME
+    source: bloomberg_field_convention
+    rationale: >-
+      Daily traded volume mnemonic. Bond-futures playbook ingests
+      PX_VOLUME alongside PX_LAST / OPEN_INT.
+  default_open_interest_field:
+    value: OPEN_INT
+    source: bloomberg_field_convention
+    rationale: >-
+      Daily end-of-day open-interest mnemonic. Bond-futures playbook
+      ingests OPEN_INT alongside PX_LAST / PX_VOLUME.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding
+  # ---------------------------------------------------------------------------
+  # Volume and OI are contract counts — integer-valued in Bloomberg's
+  # feed but stored as numeric(20,8) in market_data_daily. Rounding to
+  # 0 decimals turns them back into whole-contract numbers on the wire
+  # without coercing the schema to int (where a NaN would crash).
+  volume_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Volume is a whole-contract count. Round to 0 decimals to surface
+      the integer-valued count on the wire (the underlying DB column is
+      numeric(20,8); the original Bloomberg PX_VOLUME field IS an
+      integer).
+    valid_range: [0, 4]
+
+  oi_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Open interest is a whole-contract count. Round to 0 decimals for
+      the same reason as volume_round_decimals.
+    valid_range: [0, 4]
+
+  oi_z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches yield_levels / ois rate_level /
+      futures_price_level.
+    valid_range: [0, 8]
+
+  oi_high_low_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      OI high / low report in whole-contract counts at the same
+      precision as ``current_open_interest`` (avoids the snapshot's
+      current_open_interest equalling neither high nor low because of
+      rounding asymmetry on a single observation).
+    valid_range: [0, 4]
+
+  volume_avg_round_decimals:
+    value: 0
+    source: bloomberg_field_convention
+    rationale: >-
+      Volume rolling mean / max report in whole-contract counts at the
+      same precision as ``current_volume``. The rolling mean of integer
+      counts is itself fractional, but on the desk the read is "this
+      many thousand contracts" — sub-contract precision is noise.
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    Fetches one (curve_family, contract_code) rolling-generic
+    bond-futures pair of series — PX_VOLUME (daily traded volume in
+    contracts) + OPEN_INT (end-of-day open interest in contracts) —
+    cleans both (ffill bridges holidays up to 5 trading days), aligns
+    them on the intersection of trading days, and returns a snapshot:
+    current volume + OI, 1-day ΔOI (raw subtraction; NOT bps
+    multiplication), rolling 252-day z-score of the OI LEVEL,
+    trailing 252-day OI high / low / percentile, rolling 22-day
+    volume mean / max, observation count over the lookback_days
+    window, plus the reference disclosure block (contract_size,
+    latest-effective expiry_date and security_name).
+
+  assumptions:
+    - "Volume and open_interest are whole-contract counts (the
+       contract_size on the snapshot is the per-contract notional
+       multiplier; the snapshot does NOT pre-multiply to notional —
+       consumers do the conversion if they want notional)."
+    - "The OI z-score window is 252 trading days — DISCLOSED VERBATIM
+       on the methodology_disclosure string per the catalog's
+       methodology guardrail."
+    - "Bond-futures rolling-generics are keyed by
+       ``(curve_family, contract_code)`` where ``contract_code`` is
+       the playbook stem (TY1 / UXY1 / ...) — not the per-window
+       underlying contract (TYH6 / TYM6 / ...) that the enriched
+       view's contract_code column rotates through."
+    - "ADR 0013 V1 monitors-only scope: this primitive reports daily
+       VOLUME + OI on the rolling-generic series. Front-back OI
+       migration as a positioning signal cannot be expressed as a
+       single-contract primitive — that is the scan_bond_futures_
+       extremes role (build_order 3) and any future cross-contract
+       primitives. The methodology disclosure surfaces this limit
+       verbatim."
+    - "The rolling-generic OI series rotates underlying contracts at
+       roll (front rolls quarterly). The OI level on the rolling-
+       generic therefore inherits the discontinuity at roll; this is
+       the canonical desk read but it does NOT equal the open
+       interest of a single underlying. The methodology disclosure
+       names this caveat."
+    - "lookback_days controls the fetch window and the
+       observation_count cutoff. The rolling OI z-score window
+       (oi_z_score_window_days), trailing range window
+       (oi_trailing_range_window_days), and volume short-context
+       window (volume_avg_window_days) are independent conventions
+       fixed in this YAML."
+
+  citations:
+    - "ADR 0013 (docs_revamped/05_decisions/0013-futures-domain-agents.md)"
+
+  planned_extensions:
+    - "oi_trailing_range_window_days + volume_avg_window_days:
+       configurable. Currently wire-frozen at 252 and 22 respectively
+       because the output fields embed those numbers (oi_high_252d /
+       volume_rolling_mean_22d). Path to configurability: rename
+       schema fields to oi_high_window / volume_rolling_mean_window
+       + add the window value to the snapshot. Remove the
+       NotImplementedError guards in compute()."
+    - "Add a canonical TimeSeries output once TimeSeriesUnits gains a
+       CONTRACTS member (ADR-gated extension per P8). Until that ADR
+       lands, the bespoke ``time_series: List[FuturesVolumeOITimeSeriesRow]``
+       shape is the honest export because declaring PERCENT / BPS on a
+       contracts series would silently lie. The rows already carry the
+       date + both counts in a single payload — frontend consumers
+       can plot the dual-axis view directly off the bespoke shape."
+    - "Front-back OI migration as a distinct primitive (calendar-
+       spread OI; nominally bond_futures__roll_pressure). Needs the
+       next-contract series joined to the front; documented-deferred
+       Phase-4 work behind D-repo + D-deliverable like the rest of
+       the bond-futures RV stack."

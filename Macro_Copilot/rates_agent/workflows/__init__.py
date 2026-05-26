@@ -88,6 +88,18 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     YieldLevelOutput,
     get_yield_levels,
 )
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    OtrOfrSpreadOutput,
+    calculate_otr_ofr_spread,
+)
+from rates_agent.sovereign_bonds.tools.nfp_surprise import (
+    CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
+    NfpSurpriseInput,
+    NfpSurpriseOutput,
+    calculate_nfp_surprise,
+)
 
 # Analytical model primitives — registered so the workspace UI's
 # model-playground can surface + run them via the same /tools catalogue
@@ -154,7 +166,265 @@ from rates_agent.ois.tools.financing_rate import (
     FinancingRateOutput,
     compute_financing_rate,
 )
+from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (
+    CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
+    RealYieldLevelInput,
+    RealYieldLevelOutput,
+    get_real_yield_level,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (
+    CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+    BreakevenInflationSimpleInput,
+    BreakevenInflationSimpleOutput,
+    calculate_breakeven_inflation_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.forward_breakeven_simple import (
+    CONFIG_PATH as FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
+    ForwardBreakevenSimpleInput,
+    ForwardBreakevenSimpleOutput,
+    calculate_forward_breakeven_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
+    CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+    BreakevenButterflyInput,
+    BreakevenButterflyOutput,
+    calculate_breakeven_butterfly,
+)
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
+    CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+    BreakevenCurveSpreadInput,
+    BreakevenCurveSpreadOutput,
+    calculate_breakeven_curve_spread,
+)
+from rates_agent.inflation_indexed_bonds.tools.cross_country_breakeven_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryBreakevenSpreadSimpleInput,
+    CrossCountryBreakevenSpreadSimpleOutput,
+    calculate_cross_country_breakeven_spread_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
+    CONFIG_PATH as REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+    RealYieldButterflyInput,
+    RealYieldButterflyOutput,
+    calculate_real_yield_butterfly,
+)
+from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
+    CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+    RealYieldCurveSpreadInput,
+    RealYieldCurveSpreadOutput,
+    calculate_real_yield_curve_spread,
+)
+from rates_agent.inflation_indexed_bonds.tools.cross_country_real_yield_spread_simple import (
+    CONFIG_PATH as CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+    CrossCountryRealYieldSpreadSimpleInput,
+    CrossCountryRealYieldSpreadSimpleOutput,
+    calculate_cross_country_real_yield_spread_simple,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_rate_level import (
+    CONFIG_PATH as INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
+    InflationSwapRateLevelInput,
+    InflationSwapRateLevelOutput,
+    calculate_inflation_swap_rate_level,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_curve_spread import (
+    CONFIG_PATH as INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+    InflationSwapCurveSpreadInput,
+    InflationSwapCurveSpreadOutput,
+    calculate_inflation_swap_curve_spread,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_forward import (
+    CONFIG_PATH as INFLATION_SWAP_FORWARD_CONFIG_PATH,
+    InflationSwapForwardInput,
+    InflationSwapForwardOutput,
+    calculate_inflation_swap_forward,
+)
+from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import (
+    CONFIG_PATH as CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+    CrossMarketInflationSwapSpreadInput,
+    CrossMarketInflationSwapSpreadOutput,
+    calculate_cross_market_inflation_swap_spread,
+)
+from rates_agent.inflation_swaps.tools.swap_breakeven_basis_simple import (
+    CONFIG_PATH as SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
+    SwapBreakevenBasisSimpleInput,
+    SwapBreakevenBasisSimpleOutput,
+    calculate_swap_breakeven_basis_simple,
+)
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
+    CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+    InflationSwapButterflyInput,
+    InflationSwapButterflyOutput,
+    calculate_inflation_swap_butterfly,
+)
+from rates_agent.inflation_swaps.tools.cpi_surprise import (
+    CONFIG_PATH as CPI_SURPRISE_CONFIG_PATH,
+    CpiSurpriseInput,
+    CpiSurpriseOutput,
+    calculate_cpi_surprise,
+)
+from rates_agent.inflation_indexed_bonds.tools.build_linker_panel import (
+    CONFIG_PATH as BUILD_LINKER_PANEL_CONFIG_PATH,
+    BuildLinkerPanelInput,
+    BuildLinkerPanelOutput,
+    build_linker_panel,
+)
+from rates_agent.policy_futures.tools.build_policy_futures_strip_panel import (
+    CONFIG_PATH as BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+    BuildPolicyFuturesStripPanelInput,
+    BuildPolicyFuturesStripPanelOutput,
+    build_policy_futures_strip_panel,
+)
+from rates_agent.inflation_swaps.tools.build_zcis_panel import (
+    CONFIG_PATH as BUILD_ZCIS_PANEL_CONFIG_PATH,
+    BuildZcisPanelInput,
+    BuildZcisPanelOutput,
+    build_zcis_panel,
+)
+from rates_agent.ois.tools.calculate_ois_butterfly import (
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    OISButterflyInput,
+    OISButterflyOutput,
+    calculate_ois_butterfly,
+)
+from rates_agent.bond_futures.tools.futures_price_level import (
+    CONFIG_PATH as FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    FuturesPriceLevelOutput,
+    calculate_futures_price_level,
+)
+from rates_agent.bond_futures.tools.futures_volume_oi import (
+    CONFIG_PATH as FUTURES_VOLUME_OI_CONFIG_PATH,
+    FuturesVolumeOIInput,
+    FuturesVolumeOIOutput,
+    calculate_futures_volume_oi,
+)
+from rates_agent.policy_futures.tools.scan_policy_futures_extremes import (
+    CONFIG_PATH as POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+    ScanPolicyFuturesExtremesInput,
+    ScanPolicyFuturesExtremesOutput,
+    calculate_scan_policy_futures_extremes,
+)
+from rates_agent.policy_futures.tools.futures_butterfly_simple import (
+    CONFIG_PATH as POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+    FuturesButterflySimpleInput,
+    FuturesButterflySimpleOutput,
+    calculate_futures_butterfly_simple,
+)
+from rates_agent.policy_futures.tools.futures_calendar_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+    FuturesCalendarSpreadInput,
+    FuturesCalendarSpreadOutput,
+    calculate_futures_calendar_spread,
+)
+from rates_agent.policy_futures.tools.futures_cross_market_spread import (
+    CONFIG_PATH as POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+    FuturesCrossMarketSpreadInput,
+    FuturesCrossMarketSpreadOutput,
+    calculate_futures_cross_market_spread,
+)
+from rates_agent.policy_futures.tools.futures_pack_average_simple import (
+    CONFIG_PATH as POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+    FuturesPackAverageSimpleInput,
+    FuturesPackAverageSimpleOutput,
+    calculate_futures_pack_average_simple,
+)
+from rates_agent.policy_futures.tools.futures_price_level import (
+    CONFIG_PATH as POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput as PolicyFuturesPriceLevelInput,
+    FuturesPriceLevelOutput as PolicyFuturesPriceLevelOutput,
+    calculate_futures_price_level as calculate_policy_futures_price_level,
+)
+from rates_agent.policy_futures.tools.futures_strip_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+    FuturesStripSnapshotInput,
+    FuturesStripSnapshotOutput,
+    calculate_futures_strip_snapshot,
+)
+from rates_agent.policy_futures.tools.volume_open_interest_snapshot import (
+    CONFIG_PATH as POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+    VolumeOpenInterestSnapshotInput,
+    VolumeOpenInterestSnapshotOutput,
+    calculate_volume_open_interest_snapshot,
+)
+from rates_agent.bond_futures.tools.scan_bond_futures_extremes import (
+    CONFIG_PATH as SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+    ScanBondFuturesExtremesInput,
+    ScanBondFuturesExtremesOutput,
+    calculate_scan_bond_futures_extremes,
+)
+from rates_agent.inflation_indexed_bonds.tools.scan_inflation_linkers_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+    ScanInflationLinkersExtremesInput,
+    ScanInflationLinkersExtremesOutput,
+    calculate_scan_inflation_linkers_extremes,
+)
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    calculate_scan_inflation_swaps_extremes,
+)
 from shared.workflow import PrimitiveResolver, PrimitiveSpec
+
+
+# ============================================================================
+# WORKFLOW-INCOMPATIBLE TOOLS — explicit absence-of-registration marker
+# ============================================================================
+#
+# Some primitives in the rates agent's MCP catalogue are intentionally NOT
+# registered in ``_PRIMITIVE_SPECS`` because their output shape is not
+# bridge-composable into the workflow substrate's ``Series`` / ``Panel``
+# artifact types (per docs_revamped/02_components/primitive/README.md,
+# section "What a primitive *is*" — only Series and Panel outputs are
+# bridge-dispatched in V1; categorical / list-shaped outputs are valid
+# primitives but cannot feed an operator chain).
+#
+# Listing them here — rather than just omitting them — turns the silent
+# "absent from the registry" state into an EXPLICIT contract: a tool here
+# is intentionally workflow-incompatible by output shape; a tool absent from
+# BOTH this set AND ``_PRIMITIVE_SPECS`` is genuinely unregistered (a
+# documentation bug).  The substrate validator + manifest renderers can
+# read this set to distinguish the two cases.
+#
+# Adding a tool to this set requires a one-line rationale.  When the
+# substrate bridge gains support for a new artifact shape that this tool's
+# output can be lifted into, REMOVE it from this set and add a matching
+# entry to ``_PRIMITIVE_SPECS`` in the same PR.
+WORKFLOW_INCOMPATIBLE_TOOLS: Dict[str, str] = {
+    "classify_curve_move_tool": (
+        "Categorical output (BULL_STEEPENER / BEAR_FLATTENER / PARALLEL_SHIFT "
+        "/ TWIST regime label) + supporting numeric evidence; not a "
+        "``Series`` or ``Panel`` artifact.  Bridge support for categorical "
+        "outputs would let this register."
+    ),
+    "get_otr_history_tool": (
+        "SCD2 transition log + identifier snapshot (CUSIP / ISIN / "
+        "vendor_ticker / maturity_date + effective_from / effective_to "
+        "date ranges).  List-shaped categorical output, not a numeric "
+        "``TimeSeries`` or wide-format ``Panel``; bridge cannot dispatch "
+        "it.  See get_otr_history/schemas.py docstring."
+    ),
+    "calculate_wirp_meeting_pricing_tool": (
+        "List of per-meeting WIRP snapshots — each meeting carries a "
+        "mix of identifier columns (vendor_ticker + 4 Bloomberg "
+        "tickers per ADR 0009 §1 provenance) and Bloomberg-ingested "
+        "numeric fields (implied_policy_rate_pct, cumulative_move_"
+        "prob_pct, num_25bp_moves_priced, rate_change_native — all "
+        "surfaced verbatim per P12).  No derived hike/cut/hold "
+        "probabilities; WIRP_MOVE_PROB is cumulative and any single-"
+        "event identity would be empirically wrong (per the Codex P0 "
+        "finding on PR #190 — see wirp_meeting_pricing/compute.py "
+        "_METHODOLOGY_NOTE).  Output is the natural 'N meeting "
+        "snapshots' shape — not a single numeric ``TimeSeries`` or "
+        "wide-format ``Panel``; bridge cannot dispatch it.  See "
+        "wirp_meeting_pricing/schemas.py docstring 'Output shape' "
+        "section.  A future Panel-shaped (N meetings × K metrics) "
+        "bridge artifact could absorb this; documented in "
+        "methodology.planned_extensions.  AC8 judgment per get_otr_"
+        "history / classify_curve_move precedent: list-shaped "
+        "categorical output is a deliberate non-V1-bridge primitive."
+    ),
+}
 
 
 # ============================================================================
@@ -270,6 +540,17 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
         config_path=YIELD_LEVELS_CONFIG_PATH,
         output_field_units={
             "time_series": "percent",
+        },
+    ),
+    "calculate_otr_ofr_spread_tool": PrimitiveSpec(
+        tool_name="calculate_otr_ofr_spread_tool",
+        callable=calculate_otr_ofr_spread,
+        input_class=OtrOfrSpreadInput,
+        output_class=OtrOfrSpreadOutput,
+        config_path=OTR_OFR_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
         },
     ),
 
@@ -406,6 +687,510 @@ _PRIMITIVE_SPECS: Dict[str, PrimitiveSpec] = {
             "time_series": "z_score",
             "time_series_zscore": "z_score",
         },
+    ),
+
+    # ---- Inflation-indexed-bonds (linker) domain ----
+    "get_real_yield_level_tool": PrimitiveSpec(
+        tool_name="get_real_yield_level_tool",
+        callable=get_real_yield_level,
+        input_class=RealYieldLevelInput,
+        output_class=RealYieldLevelOutput,
+        config_path=REAL_YIELD_LEVEL_CONFIG_PATH,
+        output_field_units={
+            # Linker real yields are quoted in percent — same unit as
+            # nominal sovereign yields, but the underlying series is
+            # the linker real-yield-to-maturity.  Wire field name on
+            # the snapshot is ``real_yield_pct``; series_name carries
+            # the ``_real_yield`` suffix (set in the per-tool config).
+            "time_series": "percent",
+        },
+    ),
+    "calculate_breakeven_inflation_simple_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_inflation_simple_tool",
+        callable=calculate_breakeven_inflation_simple,
+        input_class=BreakevenInflationSimpleInput,
+        output_class=BreakevenInflationSimpleOutput,
+        config_path=BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven row list — frontend
+            # consumes ``breakeven_bps`` per row, so the unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven history in BPS, rolling
+            # z-score in Z_SCORE units.  Operator-layer unit-compat
+            # checks rely on these declarations.
+            "time_series_breakeven": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_forward_breakeven_simple_tool": PrimitiveSpec(
+        tool_name="calculate_forward_breakeven_simple_tool",
+        callable=calculate_forward_breakeven_simple,
+        input_class=ForwardBreakevenSimpleInput,
+        output_class=ForwardBreakevenSimpleOutput,
+        config_path=FORWARD_BREAKEVEN_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen forward-breakeven row list —
+            # frontend consumes ``forward_breakeven_bps`` per row,
+            # so the unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: forward breakeven history in
+            # BPS, rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_forward": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_breakeven_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_curve_spread_tool",
+        callable=calculate_breakeven_curve_spread,
+        input_class=BreakevenCurveSpreadInput,
+        output_class=BreakevenCurveSpreadOutput,
+        config_path=BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven-curve-spread row list —
+            # frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven curve spread history
+            # in BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_country_breakeven_spread_simple_tool": PrimitiveSpec(
+        tool_name="calculate_cross_country_breakeven_spread_simple_tool",
+        callable=calculate_cross_country_breakeven_spread_simple,
+        input_class=CrossCountryBreakevenSpreadSimpleInput,
+        output_class=CrossCountryBreakevenSpreadSimpleOutput,
+        config_path=CROSS_COUNTRY_BREAKEVEN_SPREAD_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-country breakeven-spread row
+            # list — frontend consumes ``spread_bps`` per row, so
+            # the unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: cross-country breakeven spread
+            # history in BPS, rolling z-score in Z_SCORE units.
+            # Operator-layer unit-compat checks rely on these
+            # declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_real_yield_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_real_yield_curve_spread_tool",
+        callable=calculate_real_yield_curve_spread,
+        input_class=RealYieldCurveSpreadInput,
+        output_class=RealYieldCurveSpreadOutput,
+        config_path=REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen real-yield-curve-spread row list —
+            # frontend consumes ``spread_pct`` per row (the spread
+            # is in PERCENT, NOT bps, because real yields are in
+            # PERCENT and not multiplied by 100); declare PERCENT.
+            "time_series": "percent",
+            # Canonical TimeSeries: real-yield curve spread history
+            # in PERCENT (mirrors real_yield_level's PERCENT
+            # convention; distinct from the BPS convention every
+            # breakeven / inflation-swap curve spread uses),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_country_real_yield_spread_simple_tool": PrimitiveSpec(
+        tool_name="calculate_cross_country_real_yield_spread_simple_tool",
+        callable=calculate_cross_country_real_yield_spread_simple,
+        input_class=CrossCountryRealYieldSpreadSimpleInput,
+        output_class=CrossCountryRealYieldSpreadSimpleOutput,
+        config_path=CROSS_COUNTRY_REAL_YIELD_SPREAD_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-country real-yield-spread
+            # row list — frontend consumes ``spread_pct`` per row
+            # (the spread is in PERCENT, NOT bps, because real
+            # yields are in PERCENT and not multiplied by 100;
+            # mirrors the same-country real_yield_curve_spread
+            # PERCENT convention).
+            "time_series": "percent",
+            # Canonical TimeSeries: cross-country real-yield spread
+            # history in PERCENT (same units as the underlying real
+            # yields), rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_real_yield_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_real_yield_butterfly_tool",
+        callable=calculate_real_yield_butterfly,
+        input_class=RealYieldButterflyInput,
+        output_class=RealYieldButterflyOutput,
+        config_path=REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen real-yield-butterfly row list —
+            # frontend consumes ``butterfly_pct`` per row (the
+            # butterfly is in PERCENT, NOT bps, because real yields
+            # are in PERCENT and not multiplied by 100; mirrors the
+            # same-curve real_yield_curve_spread PERCENT convention
+            # and is distinct from the sovereign butterfly's BPS
+            # convention).
+            "time_series": "percent",
+            # Canonical TimeSeries: real-yield butterfly history in
+            # PERCENT (same units as the underlying real yields),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_breakeven_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_breakeven_butterfly_tool",
+        callable=calculate_breakeven_butterfly,
+        input_class=BreakevenButterflyInput,
+        output_class=BreakevenButterflyOutput,
+        config_path=BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen breakeven-butterfly row list —
+            # frontend consumes ``butterfly_bps`` per row (the
+            # butterfly is in BPS, same units as the underlying
+            # breakeven series; mirrors the breakeven_curve_spread
+            # / breakeven_inflation_simple BPS convention and is
+            # distinct from the real_yield_butterfly's PERCENT
+            # convention because breakevens are reported in bps).
+            "time_series": "bps",
+            # Canonical TimeSeries: breakeven butterfly history in
+            # BPS (same units as the underlying breakeven series),
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+
+    # ---- Inflation-swaps domain ----
+    "calculate_inflation_swap_rate_level_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_rate_level_tool",
+        callable=calculate_inflation_swap_rate_level,
+        input_class=InflationSwapRateLevelInput,
+        output_class=InflationSwapRateLevelOutput,
+        config_path=INFLATION_SWAP_RATE_LEVEL_CONFIG_PATH,
+        output_field_units={
+            # ZCIS rates are quoted in percent — same unit as
+            # nominal sovereign yields, OIS rates, and linker real
+            # yields, but the underlying series is the par-rate the
+            # zero-coupon inflation swap pays for inflation
+            # compensation against the headline index.  Wire field
+            # name on the snapshot is ``zcis_rate_pct``;
+            # series_name carries the ``_zcis_rate`` suffix.
+            "time_series": "percent",
+        },
+    ),
+    "calculate_inflation_swap_curve_spread_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_curve_spread_tool",
+        callable=calculate_inflation_swap_curve_spread,
+        input_class=InflationSwapCurveSpreadInput,
+        output_class=InflationSwapCurveSpreadOutput,
+        config_path=INFLATION_SWAP_CURVE_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS curve-spread row list —
+            # frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS.
+            "time_series": "bps",
+            # Canonical TimeSeries: ZCIS curve spread history in
+            # BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_inflation_swap_forward_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_forward_tool",
+        callable=calculate_inflation_swap_forward,
+        input_class=InflationSwapForwardInput,
+        output_class=InflationSwapForwardOutput,
+        config_path=INFLATION_SWAP_FORWARD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS forward row list — frontend
+            # consumes ``forward_zcis_pct`` (percent) and
+            # ``forward_zcis_bps`` (bps) per row.  Declare PERCENT
+            # for the bespoke list to match the canonical forward
+            # series unit (operator unit-compat checks key off the
+            # primary unit per row).
+            "time_series": "percent",
+            # Canonical TimeSeries: forward ZCIS rate (a level) in
+            # PERCENT — mirrors OIS forward_rate; do NOT ship in
+            # BPS (that's the spread convention).  Rolling z-score
+            # in Z_SCORE units.  Operator-layer unit-compat checks
+            # rely on these declarations.
+            "time_series_forward": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cross_market_inflation_swap_spread_tool": PrimitiveSpec(
+        tool_name="calculate_cross_market_inflation_swap_spread_tool",
+        callable=calculate_cross_market_inflation_swap_spread,
+        input_class=CrossMarketInflationSwapSpreadInput,
+        output_class=CrossMarketInflationSwapSpreadOutput,
+        config_path=CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen cross-market ZCIS spread row list
+            # — frontend consumes ``spread_bps`` per row, so the
+            # unit is BPS (mirrors sovereign cross_market_spread /
+            # inflation_swap_curve_spread; cross-market spreads
+            # are spread objects, not levels).
+            "time_series": "bps",
+            # Canonical TimeSeries: cross-market ZCIS spread
+            # history in BPS, rolling z-score in Z_SCORE units.
+            # Operator-layer unit-compat checks rely on these
+            # declarations.
+            "time_series_spread": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_swap_breakeven_basis_simple_tool": PrimitiveSpec(
+        tool_name="calculate_swap_breakeven_basis_simple_tool",
+        callable=calculate_swap_breakeven_basis_simple,
+        input_class=SwapBreakevenBasisSimpleInput,
+        output_class=SwapBreakevenBasisSimpleOutput,
+        config_path=SWAP_BREAKEVEN_BASIS_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen swap-breakeven basis row list —
+            # frontend consumes ``basis_bps`` per row, so the unit
+            # is BPS (the basis is a spread object, NOT a level).
+            "time_series": "bps",
+            # Canonical TimeSeries: swap-breakeven basis history
+            # in BPS, rolling z-score in Z_SCORE units.  Operator-
+            # layer unit-compat checks rely on these declarations.
+            "time_series_basis": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_inflation_swap_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_inflation_swap_butterfly_tool",
+        callable=calculate_inflation_swap_butterfly,
+        input_class=InflationSwapButterflyInput,
+        output_class=InflationSwapButterflyOutput,
+        config_path=INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen ZCIS butterfly row list —
+            # frontend consumes ``butterfly_bps`` per row, so the
+            # unit is BPS.  Even though the underlying ZCIS rates
+            # are quoted in PERCENT, this is a CURVATURE-OF-RATES
+            # object and the inflation_swaps domain established
+            # the BPS convention for curve-shape views via
+            # inflation_swap_curve_spread; mirrors that here.
+            # Distinct from the real_yield_butterfly's PERCENT
+            # convention (because real yields are level objects,
+            # not curve-shape objects in this repo's V1 wire
+            # conventions).
+            "time_series": "bps",
+            # Canonical TimeSeries: ZCIS butterfly history in BPS,
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_cpi_surprise_tool": PrimitiveSpec(
+        tool_name="calculate_cpi_surprise_tool",
+        callable=calculate_cpi_surprise,
+        input_class=CpiSurpriseInput,
+        output_class=CpiSurpriseOutput,
+        config_path=CPI_SURPRISE_CONFIG_PATH,
+        output_field_units={
+            # Surprise is in PERCENT (percentage points of YoY CPI —
+            # actual − consensus_median); z-score is unitless.
+            "time_series_surprise": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "calculate_nfp_surprise_tool": PrimitiveSpec(
+        tool_name="calculate_nfp_surprise_tool",
+        callable=calculate_nfp_surprise,
+        input_class=NfpSurpriseInput,
+        output_class=NfpSurpriseOutput,
+        config_path=NFP_SURPRISE_CONFIG_PATH,
+        output_field_units={
+            # Surprise is in COUNT — thousands of jobs (NFP TCH Index
+            # convention).  The closed-enum closest match for an
+            # integer-count delta.  The TimeSeries description field
+            # carries the explicit 'thousands of jobs' label so
+            # downstream consumers do not infer the unit from the
+            # series_name.
+            "time_series_surprise": "count",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "build_linker_panel_tool": PrimitiveSpec(
+        tool_name="build_linker_panel_tool",
+        callable=build_linker_panel,
+        input_class=BuildLinkerPanelInput,
+        output_class=BuildLinkerPanelOutput,
+        config_path=BUILD_LINKER_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "build_policy_futures_strip_panel_tool": PrimitiveSpec(
+        tool_name="build_policy_futures_strip_panel_tool",
+        callable=build_policy_futures_strip_panel,
+        input_class=BuildPolicyFuturesStripPanelInput,
+        output_class=BuildPolicyFuturesStripPanelOutput,
+        config_path=BUILD_POLICY_FUTURES_STRIP_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "build_zcis_panel_tool": PrimitiveSpec(
+        tool_name="build_zcis_panel_tool",
+        callable=build_zcis_panel,
+        input_class=BuildZcisPanelInput,
+        output_class=BuildZcisPanelOutput,
+        config_path=BUILD_ZCIS_PANEL_CONFIG_PATH,
+        output_field_units={
+            "panel": "percent",
+        },
+        output_artifact_type="Panel",
+    ),
+    "calculate_ois_butterfly_tool": PrimitiveSpec(
+        tool_name="calculate_ois_butterfly_tool",
+        callable=calculate_ois_butterfly,
+        input_class=OISButterflyInput,
+        output_class=OISButterflyOutput,
+        config_path=OIS_BUTTERFLY_CONFIG_PATH,
+        output_field_units={
+            # Bespoke wire-frozen butterfly row list — frontend
+            # consumes ``butterfly_bps`` per row, so the unit is BPS
+            # (mirrors sovereign butterfly / inflation_swap_butterfly /
+            # OIS curve_spread BPS-on-the-wire convention for curve-
+            # shape views, even though the underlying OIS rates are
+            # quoted in PERCENT).
+            "time_series": "bps",
+            # Canonical TimeSeries: OIS butterfly history in BPS,
+            # rolling z-score in Z_SCORE units.  Operator-layer
+            # unit-compat checks rely on these declarations.
+            "time_series_butterfly": "bps",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "get_futures_price_level_tool": PrimitiveSpec(
+        tool_name="get_futures_price_level_tool",
+        callable=calculate_futures_price_level,
+        input_class=FuturesPriceLevelInput,
+        output_class=FuturesPriceLevelOutput,
+        config_path=FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "get_futures_volume_oi_tool": PrimitiveSpec(
+        tool_name="get_futures_volume_oi_tool",
+        callable=calculate_futures_volume_oi,
+        input_class=FuturesVolumeOIInput,
+        output_class=FuturesVolumeOIOutput,
+        config_path=FUTURES_VOLUME_OI_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "get_scan_policy_futures_extremes_tool": PrimitiveSpec(
+        tool_name="get_scan_policy_futures_extremes_tool",
+        callable=calculate_scan_policy_futures_extremes,
+        input_class=ScanPolicyFuturesExtremesInput,
+        output_class=ScanPolicyFuturesExtremesOutput,
+        config_path=POLICY_FUTURES_SCAN_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_butterfly_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_butterfly_simple_tool",
+        callable=calculate_futures_butterfly_simple,
+        input_class=FuturesButterflySimpleInput,
+        output_class=FuturesButterflySimpleOutput,
+        config_path=POLICY_FUTURES_BUTTERFLY_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_butterfly": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_calendar_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_calendar_spread_tool",
+        callable=calculate_futures_calendar_spread,
+        input_class=FuturesCalendarSpreadInput,
+        output_class=FuturesCalendarSpreadOutput,
+        config_path=POLICY_FUTURES_CALENDAR_SPREAD_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_cross_market_spread_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_cross_market_spread_tool",
+        callable=calculate_futures_cross_market_spread,
+        input_class=FuturesCrossMarketSpreadInput,
+        output_class=FuturesCrossMarketSpreadOutput,
+        config_path=POLICY_FUTURES_CROSS_MARKET_SPREAD_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_spread": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_pack_average_simple_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_pack_average_simple_tool",
+        callable=calculate_futures_pack_average_simple,
+        input_class=FuturesPackAverageSimpleInput,
+        output_class=FuturesPackAverageSimpleOutput,
+        config_path=POLICY_FUTURES_PACK_AVERAGE_SIMPLE_CONFIG_PATH,
+        output_field_units={
+            "time_series": "percent",
+            "time_series_pack_average": "percent",
+            "time_series_zscore": "z_score",
+        },
+    ),
+    "policy_futures_get_futures_price_level_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_price_level_tool",
+        callable=calculate_policy_futures_price_level,
+        input_class=PolicyFuturesPriceLevelInput,
+        output_class=PolicyFuturesPriceLevelOutput,
+        config_path=POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_futures_strip_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_futures_strip_snapshot_tool",
+        callable=calculate_futures_strip_snapshot,
+        input_class=FuturesStripSnapshotInput,
+        output_class=FuturesStripSnapshotOutput,
+        config_path=POLICY_FUTURES_STRIP_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "policy_futures_get_volume_open_interest_snapshot_tool": PrimitiveSpec(
+        tool_name="policy_futures_get_volume_open_interest_snapshot_tool",
+        callable=calculate_volume_open_interest_snapshot,
+        input_class=VolumeOpenInterestSnapshotInput,
+        output_class=VolumeOpenInterestSnapshotOutput,
+        config_path=POLICY_FUTURES_VOLUME_OPEN_INTEREST_SNAPSHOT_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_bond_futures_extremes_tool": PrimitiveSpec(
+        tool_name="scan_bond_futures_extremes_tool",
+        callable=calculate_scan_bond_futures_extremes,
+        input_class=ScanBondFuturesExtremesInput,
+        output_class=ScanBondFuturesExtremesOutput,
+        config_path=SCAN_BOND_FUTURES_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_inflation_linkers_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_linkers_extremes_tool",
+        callable=calculate_scan_inflation_linkers_extremes,
+        input_class=ScanInflationLinkersExtremesInput,
+        output_class=ScanInflationLinkersExtremesOutput,
+        config_path=SCAN_INFLATION_LINKERS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
+    ),
+    "scan_inflation_swaps_extremes_tool": PrimitiveSpec(
+        tool_name="scan_inflation_swaps_extremes_tool",
+        callable=calculate_scan_inflation_swaps_extremes,
+        input_class=ScanInflationSwapsExtremesInput,
+        output_class=ScanInflationSwapsExtremesOutput,
+        config_path=SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        output_field_units={},
     ),
 }
 

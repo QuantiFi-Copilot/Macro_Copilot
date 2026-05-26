@@ -313,3 +313,172 @@ tools:
     built_date: 2026-05-01
     validation_status: >-
       Not validated yet
+
+  # ---------------------------------------------------------------------------
+  # WIRP — per-meeting policy-rate pricing (INGEST primitive, P12 boundary)
+  # ---------------------------------------------------------------------------
+
+  - name: calculate_wirp_meeting_pricing
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: meeting_pricing
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_wirp_meeting_pricing_tool
+      schema: rates_agent/ois/tools/wirp_meeting_pricing/schemas.py::WirpMeetingPricingInput
+      compute: rates_agent/ois/tools/wirp_meeting_pricing/compute.py::calculate_wirp_meeting_pricing
+      config: rates_agent/ois/tools/wirp_meeting_pricing/config.yaml
+
+    one_liner: >-
+      Per-meeting WIRP pricing snapshot for one central bank (FOMC /
+      ECB / BOE / BOJ).  Surfaces Bloomberg's WIRP-screen fields
+      verbatim per ADR 0009 §1 (INGEST primitive, P12 boundary —
+      NOT recomputed from STIR futures or OIS pricing): implied
+      policy rate, CUMULATIVE move probability, number of 25bp moves
+      priced, implied rate change.  WIRP_MOVE_PROB is cumulative
+      across multiple 25bp moves (range -360.1..548.0 per wirp.yml
+      Stage-B) — emitted as ``cumulative_move_prob_pct`` with explicit
+      methodology disclosure.  No hike/cut/hold decomposition: any
+      single-event identity (max(p,0)/max(-p,0)/100-|p|) is
+      empirically wrong for a cumulative quantity — BOE 2025-05-08
+      ships -104.9% verbatim, which the identity would render as
+      hold=-4.9% (impossible).  Step-by-step probability derivation is
+      a documented separate primitive (see config.yaml planned_
+      extensions).  Two selection modes (next_n_meetings vs
+      specific_meeting_date) via a cohesive PR8 central surface;
+      n_meetings defaults from YAML (currently 6).
+
+    bucket_rationale: >-
+      Strict INGEST of Bloomberg-stored WIRP fields surfaced verbatim
+      under accurate field names.  No model inference, no
+      recomputation, no derived single-event probabilities (per
+      P12 + the Codex P0 finding on PR #190 — see one_liner).  The
+      wire-frozen ``*_field`` conventions (implied_rate_field /
+      move_prob_field / num_moves_field / rate_change_field) pin the
+      read path to ADR 0009 §1's metric → field mapping; compute layer
+      guards each with NotImplementedError.  Categorical convention
+      ``supported_central_banks`` wire-locked to the four ADR 0009
+      §2 region-prefix banks.
+
+    pm_overridable: []
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - calculate_ois_forward_rate_tool
+      - get_otr_history_tool   # also list-shaped categorical output
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0009-wirp-time-series.md
+      - docs_revamped/05_decisions/0008-event-playbook-contract.md  # §5 WIRP carve-out
+      - docs_revamped/05_decisions/0004-event-calendar-substrate.md
+      - rates_agent/playbooks/wirp.yml
+      - docs/technical_debt.md  # TD #28 — ECO_RELEASE_DT_LIST window limit
+
+    built_date: 2026-05-24
+    validation_status: >-
+      Offline tests (compute + wiring + parity-driver) green.
+      Live-DB SQL validation green (4/4 central banks PASS row-for-
+      row against macro_data.instrument_master + market_data_daily).
+      Parity fixtures shipped at v1 land are live-DB captures
+      (capture_method = live_db_v1) for FOMC + ECB + BOE + BOJ —
+      strict PR15 compliance from day one (mirroring nfp_surprise's
+      precedent).  Output shape is list-shaped categorical (the
+      natural shape of "N meeting snapshots") and is NOT bridge-
+      composable in V1 — registered in
+      rates_agent.workflows.WORKFLOW_INCOMPATIBLE_TOOLS with
+      explicit rationale per the get_otr_history /
+      classify_curve_move precedent.
+
+  # ---------------------------------------------------------------------------
+  # FINANCING-RATE PANEL (multi-method; backtest's financing input)
+  # ---------------------------------------------------------------------------
+
+  - name: compute_financing_rate
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: panel_assembly
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: compute_financing_rate_tool
+      schema: rates_agent/ois/tools/financing_rate/schemas.py::FinancingRateInput
+      compute: rates_agent/ois/tools/financing_rate/compute.py::compute_financing_rate
+      config: rates_agent/ois/tools/financing_rate/config.yaml
+
+    one_liner: >-
+      Daily financing-rate Panel keyed by `<curve_family>` for use as
+      the financing input to the backtest workflow's evaluate_trades
+      operator.  Multi-method primitive: V1 ships the
+      `overnight_index_proxy` method (uses the OIS overnight index as a
+      proxy for true overnight repo financing).  `term_repo_curve` and
+      `gc_special_blend` are declared in the closed-method enum and
+      refuse with NotImplementedError per PR11 — they unblock when
+      TD #29 (term GC repo) and TD #30 (CUSIP-level repo specials) land.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored OIS overnight-index
+      rates (the V1 `overnight_index_proxy` method).  No user-facing
+      model inference.  Multi-method primitive with single central
+      `method:` knob per PR8; unbuilt methods refuse loudly per PR11.
+
+    pm_overridable:
+      - method
+
+    related_tools:
+      - calculate_ois_rate_level_tool
+      - build_sovereign_yield_panel_tool
+
+    workflows:
+      - backtest
+
+    references:
+      - docs/technical_debt.md  # TD #29 — term GC repo data
+      - docs/technical_debt.md  # TD #30 — CUSIP-level repo specials
+
+    built_date: 2026-05-01
+    validation_status: >-
+      Not validated yet
+
+  - name: calculate_ois_butterfly
+    domain: rates
+    sub_agent: ois
+    bucket: 1A
+    category: spreads
+    status: built
+
+    implementation:
+      mcp_server: rates_agent/ois/mcp_server.py
+      tool_function: calculate_ois_butterfly_tool
+      schema: rates_agent/ois/tools/calculate_ois_butterfly/schemas.py::OISButterflyInput
+      compute: rates_agent/ois/tools/calculate_ois_butterfly/compute.py::calculate_ois_butterfly
+      config: rates_agent/ois/tools/calculate_ois_butterfly/config.yaml
+
+    one_liner: >-
+      Same-curve 3-point butterfly (curvature) on a single OIS par-swap.
+
+    bucket_rationale: >-
+      Strict deterministic arithmetic on stored market_data_daily rows;
+      conventions YAML-locked (no LLM-facing override path in V1).
+
+    pm_overridable: []
+
+    related_tools: []
+
+    workflows: []
+
+    references:
+      - docs_revamped/05_decisions/0013-futures-domain-agents.md
+
+    built_date: 2026-05-25
+    validation_status: >-
+      PR16 three-test triplet (compute / wiring / sql_validation) +
+      PR15 parity fixture present; SQL validation runs read-only
+      against macro_data.v_market_data_daily_enriched.
+

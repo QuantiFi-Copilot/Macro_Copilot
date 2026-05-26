@@ -80,7 +80,16 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 if TYPE_CHECKING:
     # Lazy via TYPE_CHECKING so the cache module is not imported on
@@ -267,6 +276,64 @@ def put_artifact(
         artifact_hash[:12], artifact_type, row_count, len(serialized_bytes), inline,
     )
     return artifact_hash
+
+
+def get_artifact_payload_dict(
+    hash: str,
+    *,
+    conn: Connection,
+    object_storage: ObjectStorageBackend,
+    cache: Optional["ArtifactBytesCache"] = None,
+) -> Dict[str, Any]:
+    """Return the raw ``StoredArtifact`` dict for ``hash`` (no Pydantic
+    class hydration).  R5.2 — used by ``GET /api/v1/artifacts/{hash}/
+    payload`` to surface the full payload to UI consumers (e.g.
+    RichModelWidget for PCA / RollingRegression / Attribution
+    renderers) without paying the cost of rehydrating into a typed
+    Artifact instance.
+
+    The returned dict matches the ``StoredArtifact`` wire shape:
+
+      {"artifact_type": "...", "metadata": {...}, "payload": {...}}
+
+    Inline-stored artifacts read from Postgres JSONB; blob-stored ones
+    fetch from object storage (through the same cache as
+    ``get_artifact``).
+
+    Raises:
+        KeyError: no artifact_metadata row for ``hash``.
+        FileNotFoundError: orphaned metadata pointing at a missing
+            object-storage URI.
+    """
+    _validate_hash(hash)
+    row = _fetch_full_row(conn, hash)
+    if row is None:
+        raise KeyError(f"No artifact with hash {hash!r}")
+
+    if row["inline_payload"] is not None:
+        stored_dict = row["inline_payload"]
+    else:
+        if row["payload_uri"] is None:
+            raise RuntimeError(
+                f"Artifact {hash} has neither inline_payload nor "
+                "payload_uri set.  This violates the CHECK constraint "
+                "ck_artifact_metadata_payload_exactly_one — data "
+                "corruption?"
+            )
+        payload_bytes = _fetch_payload_bytes_with_cache(
+            hash=hash,
+            payload_uri=row["payload_uri"],
+            object_storage=object_storage,
+            cache=cache,
+        )
+        stored_dict = _bytes_to_stored_dict(payload_bytes)
+
+    # Validate the shape so callers always see a well-formed
+    # StoredArtifact dict.  We don't return the validated Pydantic
+    # object — callers want the raw dict — but the validation catches
+    # corrupted rows here rather than at the wire boundary.
+    StoredArtifact.model_validate(stored_dict)
+    return stored_dict
 
 
 def get_artifact(
@@ -707,7 +774,76 @@ def _series_to_stored(art: Series) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         "lineage": art.lineage.model_dump(mode="json"),
     }
     payload = _pd_series_to_jsonable(art.payload)
+    # R5.1 — when the Series was emitted by ``conditional_aggregate``,
+    # the index uses ``1970-01-01 + Timedelta(days=offset)`` as a
+    # synthetic anchor for event-relative offsets (see
+    # ``shared/operators/conditional_aggregate/operator.py``).  The
+    # raw ISO dates are useless to UI consumers — they read as
+    # "1970-01-01 .. 1970-01-06", which the user audit flagged as
+    # garbage data.  Promote the encoding declared in the operator's
+    # step params onto the stored payload so preview extraction +
+    # widget rendering can label the index as event offsets instead.
+    encoding = _detect_event_offset_encoding(art)
+    if encoding is not None:
+        payload["index_encoding"] = encoding
     return meta, payload
+
+
+def _detect_event_offset_encoding(
+    art: Series,
+) -> Optional[Dict[str, Any]]:
+    """If the Series was produced by an operator that records event-
+    relative offsets on its lineage step, return a JSON-safe
+    ``index_encoding`` blob.  Returns ``None`` for any other Series
+    so the normal date-index preview keeps working.
+
+    Allowed operator names (closed list):
+      - ``conditional_aggregate`` — the SOURCE of the encoding.  It
+        synthesises the ``1970-01-01 + Timedelta(days=offset)``
+        index and records ``offset_anchor`` + ``event_relative_offsets``
+        on its lineage step's params so consumers can recover the
+        event-relative interpretation.
+      - ``series_arithmetic`` (PR-C) — when both operands of a binary
+        op carry consistent event-offset metadata (or a unary /
+        scalar op with a single operand that carries it), the
+        operator propagates the same two fields onto its step.
+        That keeps the encoding alive through the event-study
+        workflow's terminal ``compare`` Series (which subtracts the
+        unconditional aggregate from the conditional aggregate).
+
+    Other operators MUST NOT be added to this list without an
+    explicit propagation contract — walking past an unknown operator
+    risks the encoding being false if that operator changed the
+    index semantics.
+
+    Defensive on every shape check: missing / wrong-type params
+    return ``None`` rather than producing a malformed encoding.  A
+    wrong encoding mislabels the user-facing chart x-axis with
+    synthetic offsets that don't correspond to real days — strictly
+    worse than no encoding at all.
+    """
+    try:
+        steps = list(art.lineage.steps)
+    except AttributeError:
+        return None
+    if not steps:
+        return None
+    last = steps[-1]
+    if getattr(last, "name", None) not in (
+        "conditional_aggregate",
+        "series_arithmetic",
+    ):
+        return None
+    params = getattr(last, "params", None) or {}
+    offsets = params.get("event_relative_offsets")
+    anchor = params.get("offset_anchor")
+    if not isinstance(offsets, list) or not isinstance(anchor, str):
+        return None
+    return {
+        "kind": "event_offset",
+        "anchor": anchor,
+        "offsets": [int(o) for o in offsets],
+    }
 
 
 def _series_from_stored(stored: StoredArtifact) -> Series:
@@ -912,6 +1048,19 @@ def _iso(ts: pd.Timestamp) -> str:
     return pd.Timestamp(ts).isoformat()
 
 
+def _format_event_offset(offset: int) -> str:
+    """Render an event-relative offset as a human label.  ``0`` → "Day 0",
+    positive offsets get a leading ``+`` ("Day +3"), negatives keep their
+    natural sign ("Day -5").  Used by the preview path so widgets show
+    event-offset Series with clear labels instead of synthetic 1970 dates.
+    """
+    if offset == 0:
+        return "Day 0"
+    if offset > 0:
+        return f"Day +{offset}"
+    return f"Day {offset}"
+
+
 def _datetime_index_to_iso(idx: pd.DatetimeIndex) -> List[str]:
     return [_iso(ts) for ts in idx]
 
@@ -1042,10 +1191,40 @@ def _extract_preview(
         return [], []
     artifact_type = inline_payload.get("artifact_type")
     payload = inline_payload.get("payload", {})
+    metadata = inline_payload.get("metadata", {}) or {}
 
     if artifact_type == "Series":
-        idx = payload.get("index", [])
         vals = payload.get("values", [])
+        # R5.1 — event-offset-encoded Series (output of
+        # ``conditional_aggregate``) carries an ``index_encoding`` blob
+        # declaring its index as event-relative offsets.  Render the
+        # preview index as "Day -5" / "Day +5" / "Day 0" labels instead
+        # of the synthetic 1970 anchor dates.  Path A: explicit encoding
+        # written by newer writes; path B (R6.4): read-time lineage
+        # inspection so older artifacts (persisted before R5.1) benefit
+        # too without a backfill migration.  Both paths converge on the
+        # same label list.
+        encoding = payload.get("index_encoding")
+        if (
+            isinstance(encoding, dict)
+            and encoding.get("kind") == "event_offset"
+            and isinstance(encoding.get("offsets"), list)
+        ):
+            offsets = encoding["offsets"]
+            labels = [_format_event_offset(int(o)) for o in offsets]
+            return labels[:max_points], vals[:max_points]
+
+        # R6.4 — fall through to lineage-driven detection for older
+        # artifacts that don't carry ``index_encoding`` in the payload.
+        # The detector reads ``metadata.lineage.steps[-1]`` and matches
+        # against the synthetic-index operator registry.
+        synth_labels = _synthetic_index_labels_from_lineage(
+            metadata, payload, max_points,
+        )
+        if synth_labels is not None:
+            return synth_labels, vals[:max_points]
+
+        idx = payload.get("index", [])
         return idx[:max_points], vals[:max_points]
 
     if artifact_type == "EventSet":
@@ -1059,3 +1238,105 @@ def _extract_preview(
     # the preview.  Callers can request the full artifact and pick a
     # column to render.
     return [], []
+
+
+# ----------------------------------------------------------------------------
+# R6.4 — synthetic-index detector registry
+# ----------------------------------------------------------------------------
+#
+# Some operators emit Series whose pd.DatetimeIndex doesn't carry real
+# calendar dates — instead they use a synthetic anchor + offset
+# (``conditional_aggregate``: 1970-01-01 + Timedelta(days=offset)) or
+# a single sentinel (``summarize_series``: 1900-01-01).  When the
+# preview path serialises the index as ISO dates the UI surfaces those
+# synthetic dates verbatim — "1970-01-01..06" / "1900-01-01" — which
+# reads as garbage data to the user.
+#
+# Each registered detector inspects the LAST step of the lineage and
+# returns a list of labels to substitute for the raw ISO dates.
+# Returns ``None`` when the operator name doesn't match — the preview
+# falls through to the normal ISO-date path.
+
+_SyntheticIndexDetector = Callable[
+    [Dict[str, Any], Dict[str, Any], int],
+    Optional[List[str]],
+]
+
+
+def _detect_conditional_aggregate_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """conditional_aggregate's index encodes event-relative offsets via
+    ``1970-01-01 + Timedelta(days=offset)``.  Step params carry the
+    integer offset list directly."""
+    del payload  # not needed; step_params has the offsets verbatim
+    offsets = step_params.get("event_relative_offsets")
+    if not isinstance(offsets, list):
+        return None
+    return [_format_event_offset(int(o)) for o in offsets[:max_points]]
+
+
+def _detect_summarize_series_labels(
+    step_params: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """summarize_series emits a 1-row Series with a ``1900-01-01``
+    sentinel.  Substitute a meaningful label that names the statistic
+    rather than the synthetic date."""
+    del max_points  # always at most one row
+    stat = step_params.get("statistic")
+    n = len(payload.get("values", []) or [])
+    if n == 0:
+        return []
+    label = f"Summary · {stat}" if isinstance(stat, str) and stat else "Summary"
+    # The operator's output is a 1-row series; defensive against
+    # future versions that might add rows.
+    return [label] * max(1, min(n, 1))
+
+
+_SYNTHETIC_INDEX_DETECTORS: Dict[str, _SyntheticIndexDetector] = {
+    "conditional_aggregate": _detect_conditional_aggregate_labels,
+    "summarize_series": _detect_summarize_series_labels,
+}
+
+
+def _synthetic_index_labels_from_lineage(
+    metadata: Dict[str, Any],
+    payload: Dict[str, Any],
+    max_points: int,
+) -> Optional[List[str]]:
+    """Walk ``metadata.lineage.steps`` to the last step + dispatch via
+    the synthetic-index registry.  Returns a list of preview-index
+    labels OR ``None`` when no detector matches.
+
+    Defensive: any malformed lineage shape (missing keys, wrong types)
+    returns ``None`` so the preview falls back to the raw ISO-date
+    path.  This is fast-path code on every artifact-summary read; we
+    don't raise. """
+    lineage = metadata.get("lineage")
+    if not isinstance(lineage, dict):
+        return None
+    steps = lineage.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return None
+    last = steps[-1]
+    if not isinstance(last, dict):
+        return None
+    name = last.get("name")
+    if not isinstance(name, str):
+        return None
+    detector = _SYNTHETIC_INDEX_DETECTORS.get(name)
+    if detector is None:
+        return None
+    step_params = last.get("params") or {}
+    if not isinstance(step_params, dict):
+        return None
+    try:
+        return detector(step_params, payload, max_points)
+    except Exception:
+        # Detectors are best-effort; never let an internal error
+        # prevent preview rendering.
+        return None

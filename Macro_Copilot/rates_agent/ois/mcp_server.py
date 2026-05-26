@@ -10,10 +10,11 @@ Tool surface
 ------------
 1. calculate_ois_rate_level_tool           — SOFR 2Y right now, z-score, range
 2. calculate_ois_curve_spread_tool         — SOFR 2s10s, ESTR 1s5s, etc.
-3. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
-4. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
-5. calculate_swap_spread_tool              — UST-SOFR, BUND-ESTR, GILT-SONIA — cross-domain
-6. scan_ois_extremes_tool                  — z-score screener across OIS universe
+3. calculate_ois_butterfly_tool            — SOFR 2s5s10s, ESTR 2s5s10s — same-curve curvature
+4. calculate_ois_forward_rate_tool         — 1Y1Y, 5Y5Y, or date-window forwards
+5. calculate_ois_cross_market_spread_tool  — SOFR-ESTR, ESTR-SONIA, etc.
+6. calculate_swap_spread_tool              — UST-SOFR, BUND-ESTR, GILT-SONIA — cross-domain
+7. scan_ois_extremes_tool                  — z-score screener across OIS universe
 
 Meeting-pricing was removed: the prior implementation approximated
 central-bank meeting moves by linearly interpolating par OIS rates,
@@ -51,12 +52,17 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
 from rates_agent.ois.tools.schemas import (  # noqa: E402
+    OISButterflyInput,
     OISCrossMarketSpreadInput,
     OISCurveSpreadInput,
     OISForwardRateInput,
     OISRateLevelInput,
     OISScannerInput,
     SwapSpreadInput,
+)
+from rates_agent.ois.tools.calculate_ois_butterfly import (  # noqa: E402
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    calculate_ois_butterfly,
 )
 from rates_agent.ois.tools.cross_market_spread import (  # noqa: E402
     CONFIG_PATH as OIS_CROSS_MARKET_SPREAD_CONFIG_PATH,
@@ -83,6 +89,11 @@ from rates_agent.ois.tools.financing_rate import (  # noqa: E402
     CONFIG_PATH as FINANCING_RATE_CONFIG_PATH,
     FinancingRateInput,
     compute_financing_rate,
+)
+from rates_agent.ois.tools.wirp_meeting_pricing import (  # noqa: E402
+    CONFIG_PATH as WIRP_MEETING_PRICING_CONFIG_PATH,
+    WirpMeetingPricingInput,
+    calculate_wirp_meeting_pricing,
 )
 from shared.config import load_tool_config  # noqa: E402
 
@@ -448,7 +459,159 @@ def calculate_ois_curve_spread_tool(
 
 
 # ===========================================================================
-# TOOL 3: calculate_ois_forward_rate
+# TOOL 3: calculate_ois_butterfly
+# ===========================================================================
+@mcp.tool()
+def calculate_ois_butterfly_tool(
+    curve_family: str,
+    short_tenor: str,
+    belly_tenor: str,
+    long_tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Calculate the 3-point butterfly (curvature) on a SINGLE OIS
+    par-swap curve (e.g. SOFR 2s5s10s, ESTR 2s5s10s, SONIA 2s5s10s),
+    plus its 1-year rolling z-score, trailing 252-day range, and the
+    two component wing spreads.
+
+    Math (FIXED simple-butterfly weighting — '50-50 wings', NOT
+    DV01-neutral):
+
+        butterfly_bps = (2 * belly_rate - short_rate - long_rate) * 100
+
+    Sign convention: POSITIVE = belly cheap (belly OIS rate HIGH
+    relative to the linear interpolation of the wings); NEGATIVE =
+    belly rich.
+
+    Use this tool when the user asks about:
+    - OIS curve curvature  (e.g. "What's the SOFR 2s5s10s butterfly?")
+    - Belly rich/cheap     (e.g. "Is the ESTR 5Y belly rich?")
+    - Curve shape beyond slope on the OIS / policy curve
+
+    Do NOT use this tool for:
+    - Sovereign-bond butterflies
+      → use calculate_butterfly_tool (sovereign).
+    - Cross-currency OIS butterflies
+      → not in V1; compose calculate_ois_cross_market_spread_tool
+        instead.
+    - DV01-neutral / PCA-neutral butterflies
+      → not in V1 (see config.yaml planned_extensions).
+
+    Parameters
+    ----------
+    curve_family : str
+        OIS curve identifier.  Closed-enum whitelist sourced from
+        rates_agent/playbooks/ois.yml: 'USD_SOFR_OIS', 'EUR_ESTR_OIS',
+        'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', 'CAD_OIS'.
+    short_tenor : str
+        The short wing, e.g. '2Y'.
+    belly_tenor : str
+        The belly (body), e.g. '5Y'.
+    long_tenor : str
+        The long wing, e.g. '10Y'.  All three tenors must be different.
+    lookback_days : int, optional
+        Calendar days of *displayed* history (default 365).  Does NOT
+        control the rolling z-score window or trailing range window —
+        those are config-driven (see
+        calculate_ois_butterfly/config.yaml).
+    field_name : str, optional
+        Bloomberg field mnemonic.  Leave as the default empty string
+        ""  to use the bundled ``default_swap_rate_field`` convention
+        from calculate_ois_butterfly/config.yaml (currently
+        'PX_LAST').  Pass an explicit field name to override per call.
+        Mirrors the empty-string sentinel pattern used by every other
+        OIS wrapper.
+    """
+    # Translate the empty-string sentinel into None so the schema +
+    # compute layers resolve against the YAML's
+    # ``default_swap_rate_field``.  Without this, the LLM omitting
+    # field_name would always hit a hardcoded default regardless of
+    # what the YAML says — same shadowing pattern fixed for sovereign
+    # curve_move_classifier in commit b2605ee.
+    field_name_arg = field_name if field_name else None
+    try:
+        params = OISButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name_arg,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            "[calculate_ois_butterfly_tool] input validation failed: %s", exc,
+        )
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"},
+            default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_butterfly_tool] failed to connect to TimescaleDB"
+        )
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"},
+            default=str,
+        )
+
+    # Pass the OIS butterfly tool's bundled config explicitly so the
+    # config dependency is observable here.  load_tool_config caches
+    # by path, so this is a free lookup after the first call within
+    # the MCP subprocess's lifetime.  Mirrors the sovereign
+    # calculate_butterfly_tool wrapper exactly.
+    try:
+        bf_config = load_tool_config(OIS_BUTTERFLY_CONFIG_PATH)
+        result = calculate_ois_butterfly(
+            engine=engine, params=params, config=bf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[calculate_ois_butterfly_tool] unhandled error for %s %s/%s/%s",
+            params.curve_family, params.short_tenor,
+            params.belly_tenor, params.long_tenor,
+        )
+        return json.dumps(
+            {"error": f"calculate_ois_butterfly_tool failed for "
+             f"{params.curve_family} {params.short_tenor}/"
+             f"{params.belly_tenor}/{params.long_tenor}: {exc}"},
+            default=str,
+        )
+
+    status = "error" if "error" in result else "OK"
+    logger.info(
+        "[calculate_ois_butterfly_tool] tool call complete: %s %s/%s/%s → %s",
+        params.curve_family, params.short_tenor,
+        params.belly_tenor, params.long_tenor, status,
+    )
+
+    if "error" in result:
+        return json.dumps(result, default=str)
+
+    # Strip the bespoke time_series list AND both canonical TimeSeries
+    # payloads from the LLM-facing response.  Frontend / future REST
+    # surfaces consume the full dict directly via the tool result;
+    # the LLM doesn't need every historical row to answer "where's
+    # the SOFR 2s5s10s butterfly?".
+    llm_response: dict = {
+        k: v for k, v in result.items()
+        if k not in ("time_series", "time_series_butterfly", "time_series_zscore")
+    }
+    bespoke_rows = len(result.get("time_series") or [])
+    if bespoke_rows:
+        logger.info(
+            "[calculate_ois_butterfly_tool] withheld %d time_series rows from LLM context.",
+            bespoke_rows,
+        )
+    return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL 4: calculate_ois_forward_rate
 # ===========================================================================
 @mcp.tool()
 def calculate_ois_forward_rate_tool(
@@ -599,7 +762,7 @@ def calculate_ois_forward_rate_tool(
 
 
 # ===========================================================================
-# TOOL 4: calculate_ois_cross_market_spread
+# TOOL 5: calculate_ois_cross_market_spread
 # ===========================================================================
 @mcp.tool()
 def calculate_ois_cross_market_spread_tool(
@@ -735,7 +898,7 @@ def calculate_ois_cross_market_spread_tool(
 
 
 # ===========================================================================
-# TOOL 5: calculate_swap_spread (cross-domain — sovereign vs OIS)
+# TOOL 6: calculate_swap_spread (cross-domain — sovereign vs OIS)
 # ===========================================================================
 @mcp.tool()
 def calculate_swap_spread_tool(
@@ -878,7 +1041,7 @@ def calculate_swap_spread_tool(
 
 
 # ===========================================================================
-# TOOL 6: scan_ois_extremes
+# TOOL 7: scan_ois_extremes
 # ===========================================================================
 @mcp.tool()
 def scan_ois_extremes_tool(
@@ -1041,6 +1204,139 @@ def compute_financing_rate_tool(
     }
     return json.dumps(llm_response, default=str)
 
+
+# ===========================================================================
+# TOOL: calculate_wirp_meeting_pricing
+# ===========================================================================
+@mcp.tool()
+def calculate_wirp_meeting_pricing_tool(
+    central_bank: str,
+    selection_mode: str = "next_n_meetings",
+    n_meetings: int = 0,
+    meeting_date: str = "",
+) -> str:
+    """Surface Bloomberg's WIRP-screen pricing per central-bank meeting.
+
+    INGEST primitive (P12 boundary per ADR 0009 §1): the four WIRP
+    fields (implied policy rate, CUMULATIVE move probability, number
+    of 25bp moves priced, implied rate change) are read verbatim from
+    macro_data.market_data_daily.  NOT recomputed from STIR futures
+    or OIS pricing.
+
+    ``cumulative_move_prob_pct`` is the CUMULATIVE signed pricing of
+    25bp moves into a meeting (range -360.1..548.0 per wirp.yml
+    Stage-B) — DO NOT interpret as a single-event hike/cut
+    probability.  Per-meeting step-by-step hike/cut/hold decomposition
+    is a separate, forthcoming primitive (see config.yaml
+    ``methodology.planned_extensions``).
+
+    Use this tool when the user asks about:
+    - WIRP-implied policy rate for a meeting ("where's the JUN
+      FOMC pricing?")
+    - Cumulative move-probability or number of 25bp moves priced into
+      an upcoming central-bank meeting
+    - Forward strip of meeting pricing for a central bank
+
+    Do NOT use this tool for:
+    - Recomputing rate path from STIR futures / OIS — this primitive
+      INGESTS Bloomberg WIRP verbatim per ADR 0009.
+    - Single-event hike vs. cut vs. hold probabilities at a meeting —
+      WIRP_MOVE_PROB is cumulative, not single-event; the dedicated
+      step-by-step primitive is a documented planned extension.
+    - Categorical FOMC surprise / hawk-dove labels — that's the
+      forthcoming ``calculate_fomc_surprise_label_tool`` (primitive
+      6 of the easy-win batch).
+    - Historical WIRP daily series per meeting — today's primitive
+      returns only the LATEST snapshot per meeting; daily-history
+      view is a documented planned extension.
+
+    Parameters
+    ----------
+    central_bank : str
+        One of 'FOMC' (US), 'ECB' (Eurozone), 'BOE' (UK), 'BOJ'
+        (Japan).  Lowercase / whitespace canonicalised; other
+        central banks return a controlled error envelope listing
+        the supported set.
+    selection_mode : str, optional
+        Either ``'next_n_meetings'`` (default — returns the next
+        ``n_meetings`` scheduled meetings from today forward) or
+        ``'specific_meeting_date'`` (returns exactly one meeting
+        on the given ``meeting_date``).
+    n_meetings : int, optional
+        Number of forward meetings to return.  Used only when
+        ``selection_mode='next_n_meetings'``.  Default 0 is the
+        wire sentinel for "use YAML default" (currently 6); pass an
+        explicit positive integer to override.
+    meeting_date : str, optional
+        ISO date (YYYY-MM-DD) of the specific meeting to query.
+        Required when ``selection_mode='specific_meeting_date'``;
+        empty string is the wire sentinel for "not provided" (must
+        match a scheduled meeting per
+        macro_data.instrument_master).
+    """
+    # Translate wire sentinels:
+    #   - n_meetings=0 → None (use YAML default in compute layer).
+    #   - meeting_date='' → None.
+    # Same MCP-wrapper-sentinel pattern as
+    # curve_move_classifier / get_otr_history / cpi_surprise.
+    resolved_n_meetings = n_meetings if n_meetings > 0 else None
+    resolved_meeting_date_str = meeting_date if meeting_date else None
+
+    # Build kwargs for Pydantic — only include the dependent field
+    # for the active mode so the @model_validator's "must be None"
+    # constraint fires correctly.
+    pydantic_kwargs = {
+        "central_bank": central_bank,
+        "selection_mode": selection_mode,
+    }
+    if selection_mode == "next_n_meetings":
+        if resolved_n_meetings is not None:
+            pydantic_kwargs["n_meetings"] = resolved_n_meetings
+    elif selection_mode == "specific_meeting_date":
+        if resolved_meeting_date_str is not None:
+            pydantic_kwargs["meeting_date"] = resolved_meeting_date_str
+
+    try:
+        params = WirpMeetingPricingInput(**pydantic_kwargs)
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        cfg = load_tool_config(WIRP_MEETING_PRICING_CONFIG_PATH)
+        result = calculate_wirp_meeting_pricing(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_wirp_meeting_pricing for %s",
+            params.central_bank,
+        )
+        return json.dumps(
+            {"error": f"WIRP pricing calculation failed for "
+                      f"{params.central_bank}: {exc}"},
+            default=str,
+        )
+
+    logger.info(
+        "Tool call complete: calculate_wirp_meeting_pricing %s %s → %s",
+        params.central_bank, params.selection_mode,
+        "error" if "error" in result else "OK",
+    )
+
+    return json.dumps(result, default=str)
 
 # ===========================================================================
 # ENTRY POINT

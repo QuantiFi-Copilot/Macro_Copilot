@@ -27,7 +27,8 @@ import {
   PlusSquare,
   RotateCcw,
 } from 'lucide-react';
-import type { CopilotMessage } from '@/types/copilot';
+import type { CopilotMessage, WorkspaceContext } from '@/types/copilot';
+import { classifyWorkflow, normalizeToolName } from '@/lib/toolNames';
 import { cn } from '@/utils/cn';
 
 type Props = {
@@ -117,18 +118,62 @@ function ActionButton({
 }
 
 function resolveBuildHref(message: CopilotMessage): string | null {
-  // Workflow turns: route to the workspace's workflow context with the
-  // template_id and the bound slot_values so Build opens with the same
-  // graph the user just saw.  For V1 we degrade to /workspace because
-  // the workflow-aware workspace surface ships in a later PR.
-  if (message.workflow?.routeDecision.template_id) {
-    return '/workspace';
+  // 1. Workflow turns with a persisted workspace slug — direct route
+  //    to Build's slug-bound shell, which materialises the saved DAG +
+  //    per-node artifacts.  This wins over every other path because
+  //    the persisted workspace IS the authoritative result.
+  const workflowSlug = message.workflow?.workspace?.slug;
+  if (workflowSlug) {
+    return `/workspace/${workflowSlug}`;
   }
-  // Supervisor turns: same path the legacy WorkspaceButton uses —
-  // ?context=<encoded JSON>.
+
+  // 2. Workflow turns WITHOUT a slug — the workflow router fired but
+  //    persistence didn't happen (paused template, runner failure,
+  //    persist=False).  PR1 — route to an explicit "workflow
+  //    unavailable" state so the user gets an honest card instead of
+  //    the empty Build shell.  ``BuildShell`` reads the
+  //    ``?workflow=<template_id>`` URL param and surfaces the right
+  //    state (paused / unavailable / unknown) via the
+  //    ``classifyWorkflow`` registry.
+  const templateId = message.workflow?.routeDecision.template_id;
+  if (templateId) {
+    const status = classifyWorkflow(templateId);
+    return `/workspace?workflow=${encodeURIComponent(templateId)}&workflow_status=${status.kind}`;
+  }
+
+  // 3. Supervisor turns: encode the tool calls into ``?context=...``
+  //    so Build decodes them into either a single primitive canvas, a
+  //    multi-card grid, or (PR1) an unsupported-known card.  Tool
+  //    names are normalised here too so manifest shorthand doesn't
+  //    confuse downstream lookups.
+  //
+  //    PR-B-β — append ``&handoff=ask`` so Build can distinguish
+  //    Ask-originated context from Library-blank opens (which use the
+  //    same ``?context=`` URL pattern but with empty params).  The
+  //    Build-side router reads this marker via ``isAskHandoff(...)``
+  //    and threads it through the typed canvases; the missing-param
+  //    tile only fires on the Ask-handoff path so blank Library opens
+  //    keep folding spec defaults as before.  Backward compatible:
+  //    pre-PR-B-β shared URLs without the marker default to the
+  //    library policy and continue to render with defaults.
   if (message.workspaceContext) {
-    const encoded = encodeURIComponent(JSON.stringify(message.workspaceContext));
-    return `/workspace?context=${encoded}`;
+    const normalised = normaliseWorkspaceContext(message.workspaceContext);
+    const encoded = encodeURIComponent(JSON.stringify(normalised));
+    return `/workspace?context=${encoded}&handoff=ask`;
   }
   return null;
+}
+
+/** Normalise every ``tool`` name in a workspace context so manifest
+ *  shorthand (``half_life_tool``) reaches the decoder in canonical
+ *  form (``calculate_half_life_tool``).  Preserves multi-tool order
+ *  + params verbatim. */
+function normaliseWorkspaceContext(ctx: WorkspaceContext): WorkspaceContext {
+  return {
+    ...ctx,
+    tools: ctx.tools.map((t) => ({
+      ...t,
+      tool: normalizeToolName(t.tool),
+    })),
+  };
 }

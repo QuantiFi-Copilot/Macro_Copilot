@@ -1,107 +1,126 @@
 // ============================================================================
-// ResultsView — per-node widget grid + terminal highlight.
+// ResultsView — Results-tab orchestration.
 // ----------------------------------------------------------------------------
-// Renders the workspace's nodes as a 12-column bento grid of widget
-// cards, with the terminal node lifted into its own visually-larger
-// "Terminal" section above the rest.  Layout rules:
+// PR7 — picks the right specialised dashboard for this workspace
+// via ``resolveWorkflowDashboard`` and renders it.  Unsupported
+// workflows fall through to ``GenericResultsDashboard`` (the
+// pre-PR7 grid).  Specialised dashboards expose an "All artifacts"
+// toggle below the canvas so the user can still inspect every
+// persisted artifact without leaving the tab.
 //
-//   - Terminal node: ``wide`` size (full row) so the final output
-//     gets visual emphasis.
-//   - Other nodes: ``medium`` (half row) by default; nodes with a
-//     small artifact (no preview values) collapse to ``small`` so
-//     four can fit per row.
-//
-// Cards inherit the WidgetCard chrome from Monitor, so the visual
-// register is consistent between the home dashboard and Build's
-// Results tab.
+// Discipline
+// ----------
+// 1. Dashboard selection is data-driven (``workspace.template_id``
+//    + topology fingerprint fallback).  No string-matching on
+//    titles.
+// 2. Generic grid is the default.  Adding a new specialised
+//    dashboard = one registry entry + one branch here + one new
+//    component file; no other call sites change.
+// 3. Specialised dashboards consume the existing PR4 payload-
+//    backed widgets via ``NodeWidgetCard``; they never compute
+//    metrics client-side.
 // ============================================================================
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { WorkspaceDetail } from '@/services/workspaceApi';
-import { topologicalOrder } from '../lib/topologicalOrder';
-import { NodeWidgetCard } from './NodeWidgetCard';
-import type { WidgetSize } from '@/components/monitor/registry';
+import {
+  describeDashboardKind,
+  resolveWorkflowDashboard,
+} from './lib/dashboardRegistry';
+import { GenericResultsDashboard } from './dashboards/GenericResultsDashboard';
+import {
+  EventStudyDashboard,
+  EventStudyAllArtifactsFallback,
+} from './dashboards/EventStudyDashboard';
+import {
+  RegimeRelationshipDashboard,
+  RegimeAllArtifactsFallback,
+} from './dashboards/RegimeRelationshipDashboard';
+import {
+  BacktestDashboard,
+  BacktestAllArtifactsFallback,
+} from './dashboards/BacktestDashboard';
 
 type Props = {
   detail: WorkspaceDetail;
 };
 
 export function ResultsView({ detail }: Props) {
-  const ordered = useMemo(
-    () => topologicalOrder(detail.nodes, detail.edges),
-    [detail.nodes, detail.edges],
-  );
+  const kind = useMemo(() => resolveWorkflowDashboard(detail), [detail]);
 
-  const terminalId = detail.focus_node;
-  const terminalNode =
-    terminalId != null
-      ? ordered.find((n) => n.node_id === terminalId)
-      : null;
-  const otherNodes = terminalNode
-    ? ordered.filter((n) => n.node_id !== terminalNode.node_id)
-    : ordered;
-
-  if (ordered.length === 0) {
+  if (detail.nodes.length === 0) {
     return <EmptyResults />;
   }
 
-  return (
-    <div className="flex min-w-0 flex-col gap-6 px-6 py-6">
-      {terminalNode && (
-        <section className="flex flex-col gap-3">
-          <SectionHeader
-            label="Terminal output"
-            description="The workflow's final artifact — what the analysis ultimately produced."
-          />
-          <div className="grid grid-cols-12 gap-4 lg:gap-5">
-            <NodeWidgetCard
-              node={terminalNode}
-              workspace={detail}
-              size="wide"
-            />
-          </div>
-        </section>
-      )}
+  if (kind === 'generic') {
+    return (
+      <div className="px-6 py-6">
+        <GenericResultsDashboard detail={detail} />
+      </div>
+    );
+  }
 
-      {otherNodes.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <SectionHeader
-            label={terminalNode ? 'Intermediate stages' : 'All stages'}
-            description={
-              terminalNode
-                ? 'Per-stage artifacts produced on the way to the terminal output.'
-                : 'Every artifact this workspace produced.'
-            }
-          />
-          <div className="grid grid-cols-12 gap-4 lg:gap-5">
-            {otherNodes.map((n) => (
-              <NodeWidgetCard
-                key={n.node_id}
-                node={n}
-                workspace={detail}
-                size={sizeForNode(n)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
-  );
+  return <SpecialisedShell detail={detail} kind={kind} />;
 }
 
-function SectionHeader({
-  label,
-  description,
+// ----------------------------------------------------------------------------
+// Specialised-dashboard shell with an "All artifacts" toggle below.
+// ----------------------------------------------------------------------------
+
+function SpecialisedShell({
+  detail,
+  kind,
 }: {
-  label: string;
-  description: string;
+  detail: WorkspaceDetail;
+  kind: 'event_study' | 'regime_conditioned_relationship' | 'backtest';
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const description = describeDashboardKind(kind);
+
   return (
-    <div>
-      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-fg-muted">
-        {label}
-      </h2>
-      <p className="mt-0.5 text-[11px] text-fg-faint">{description}</p>
+    <div className="flex min-w-0 flex-col">
+      {kind === 'event_study' && <EventStudyDashboard detail={detail} />}
+      {kind === 'regime_conditioned_relationship' && (
+        <RegimeRelationshipDashboard detail={detail} />
+      )}
+      {kind === 'backtest' && <BacktestDashboard detail={detail} />}
+
+      <div className="border-t border-line-subtle px-6 py-4">
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="flex items-center gap-1.5 rounded-md border border-line-soft bg-white/[0.025] px-2.5 py-1 text-[11px] font-medium text-fg-secondary transition-colors hover:border-ice-400/35 hover:text-ice-200"
+          aria-expanded={showAll}
+        >
+          {showAll ? (
+            <ChevronDown size={11} strokeWidth={1.75} aria-hidden />
+          ) : (
+            <ChevronRight size={11} strokeWidth={1.75} aria-hidden />
+          )}
+          <span>
+            {showAll
+              ? 'Hide all artifacts'
+              : `Show all artifacts (${detail.nodes.length} total)`}
+          </span>
+        </button>
+        <p className="mt-2 text-[10.5px] leading-[1.5] text-fg-faint">
+          Specialised view above · {description.summary}
+        </p>
+        {showAll && (
+          <div className="mt-4">
+            {kind === 'event_study' && (
+              <EventStudyAllArtifactsFallback detail={detail} />
+            )}
+            {kind === 'regime_conditioned_relationship' && (
+              <RegimeAllArtifactsFallback detail={detail} />
+            )}
+            {kind === 'backtest' && (
+              <BacktestAllArtifactsFallback detail={detail} />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -114,18 +133,4 @@ function EmptyResults() {
       </div>
     </div>
   );
-}
-
-/** Choose a widget size based on artifact properties.  Nodes whose
- *  artifact has no preview values (snapshots, scalar metrics)
- *  collapse to ``small`` so a row of four can fit; nodes with full
- *  time-series previews get the default ``medium``. */
-function sizeForNode(node: WorkspaceDetail['nodes'][number]): WidgetSize {
-  const a = node.artifact;
-  if (!a) return 'small';
-  const hasPreview = (a.preview_values ?? []).some(
-    (v) => v != null && !Number.isNaN(v),
-  );
-  if (!hasPreview) return 'small';
-  return 'medium';
 }

@@ -1,0 +1,626 @@
+# =============================================================================
+# swap_breakeven_basis_simple — tool configuration
+# =============================================================================
+# This file is the canonical record of the swap-breakeven basis
+# tool's conventions and methodology.  Loaded by
+# ``shared.config.load_tool_config`` at compute() time.  Every shared
+# convention (z_score_window_days, z_score_min_periods, z_score_ddof,
+# z_score_buffer_multiplier, ffill_limit_days, period offsets,
+# trailing range window, bps/yield/z-score rounding,
+# window_years_round_decimals) carries the same numeric value as the
+# sibling level / curve-spread / forward / cross-market primitives,
+# the linker breakeven_inflation_simple /
+# cross_country_breakeven_spread_simple primitives, and the sovereign
+# yield_levels / curve_spread / cross_market_spread tools — the
+# cross-config lint enforces value-agreement across every tool that
+# declares the same convention name.  Drift on any of those is
+# caught.
+#
+# Concept honesty
+# ---------------
+# This tool returns the *swap-breakeven basis*: the same-tenor,
+# same-currency difference between a zero-coupon inflation swap
+# (ZCIS) rate and a generic linker bond-implied breakeven inflation
+# rate (e.g. USD_ZCIS 10Y minus UST/USD_TIPS 10Y breakeven, EUR_ZCIS
+# 5Y minus FR_OAT/EUR_FR_LINKER 5Y breakeven, GBP_ZCIS 10Y
+# minus UK_GILT/GBP_LINKER 10Y breakeven).
+#
+#   basis_pct = zcis_pct - breakeven_pct
+#   basis_bps = basis_pct * 100
+#
+# This is NOT a clean liquidity-premium read.  The basis between a
+# ZCIS rate and a linker-implied breakeven also reflects:
+#   - index-lag differences between ZCIS conventions (e.g. 3M USD,
+#     3M EUR, 2M GBP) and the linker bond's realised CPI accrual
+#     convention,
+#   - linker bond on-the-run / liquidity premium effects in the
+#     nominal-vs-real decomposition,
+#   - structural ZCIS vs linker-breakeven basis present even in
+#     benign markets.
+#
+# The wire-honesty disclosure is threaded onto
+# current_metrics.methodology_label from methodology.what_it_does at
+# runtime so the load-bearing caveat cannot be lost in a refactor.
+#
+# Sign convention (canonical)
+# ---------------------------
+# Per the catalog's methodology_guardrails ("Must use the canonical
+# sign convention ZCIS minus breakeven", "Must not silently invert
+# the sign"), this primitive is wire-locked at
+# ``swap_breakeven_basis_sign_convention=zcis_minus_breakeven``.  The
+# compute layer raises NotImplementedError if any other value is
+# requested and points the caller at methodology.planned_extensions.
+#
+# Same-currency only (V1)
+# -----------------------
+# The basis is a same-currency object in V1: cross-currency basis
+# (e.g. USD_ZCIS minus EUR linker breakeven) is documented in
+# planned_extensions but not exposed as a knob — it would be a
+# separate primitive shape.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  See docs/architecture/tool_architecture.md.
+# =============================================================================
+
+tool:
+  name: calculate_swap_breakeven_basis_simple_tool
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Same-tenor, same-currency swap-breakeven basis between a
+    zero-coupon inflation swap (ZCIS) rate and a generic linker
+    bond-implied breakeven inflation rate.  Emits both:
+
+      - ``current_metrics``: snapshot of the latest aligned
+        observation (current basis in bps + percent, the per-leg
+        ZCIS rate / breakeven / nominal yield / real yield, daily
+        / weekly / monthly bps changes, 252-day rolling z-score,
+        trailing 252-day high / low / percentile, observation
+        count) PLUS each leg's reference / decomposition metadata
+        (the ZCIS leg's ``inflation_index_family`` /
+        ``index_lag`` / ``interpolation`` / ``underlying_index``
+        and whatever the breakeven primitive surfaces for the
+        linker leg) so a desk reader can interpret the basis under
+        the index-family caveat without a second tool call.
+
+      - ``time_series_basis``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units = BPS)
+        carrying the historical swap-breakeven basis over the
+        displayed ``lookback_days`` window.
+
+      - ``time_series_zscore``: canonical
+        ``shared.schemas.time_series.TimeSeries`` (units =
+        Z_SCORE) carrying the rolling z-score of the basis series
+        over the same window.
+
+      - ``time_series``: bespoke wire-frozen row list with per-row
+        ``basis_pct`` / ``basis_bps`` / ``zcis_pct`` /
+        ``breakeven_pct`` for callers that want the basis + each
+        leg in a single per-row shape.
+
+    Composed by calling ``calculate_inflation_swap_rate_level``
+    once for the ZCIS leg AND ``calculate_breakeven_inflation_simple``
+    once for the same-tenor, same-currency breakeven leg, then
+    aligning the two PERCENT-units series via a strict pandas
+    inner-join on trade_date and applying the per-trade-date
+    difference (zcis - breakeven) in PERCENT, with the BPS form
+    derived as basis_pct * 100.
+
+    Same-currency only (V1)
+    -----------------------
+    Cross-currency basis (e.g. USD_ZCIS minus EUR linker
+    breakeven) is documented in ``planned_extensions`` but not
+    exposed as a knob in V1.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default lookback window (calendar days of displayed history)
+  # ---------------------------------------------------------------------------
+  default_lookback_days:
+    value: 365
+    source: legacy_default_pre_pilot
+    rationale: >-
+      One calendar year of displayed history matches the legacy
+      default on every other rates spread / level tool's input
+      schema.  Surfaced here so the YAML is the authoritative
+      record even though the input schema's Field default
+      duplicates the value (the schema layer's default is the
+      load-bearing one for behaviour; this entry exists for
+      cross-tool auditability and to keep the lint clean).
+    valid_range: [30, 7300]
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days)
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window.  Matches
+      every sovereign rates tool, the OIS level/spread/forward
+      tools, the linker real_yield_level /
+      breakeven_inflation_simple / forward_breakeven_simple /
+      breakeven_curve_spread / cross_country_breakeven_spread_simple
+      tools, the inflation_swap_rate_level /
+      inflation_swap_curve_spread / inflation_swap_forward /
+      cross_market_inflation_swap_spread tools — the cross-config
+      lint enforces the match.
+    valid_range: [60, 1260]
+
+  # Spec-mandated alias mirroring ``z_score_window_days`` so the
+  # convention name ``zscore_window_days`` is also part of the
+  # record.  Compute reads ``z_score_window_days`` for cross-config
+  # lint alignment with every other rates tool.
+  zscore_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Spec-mandated alias for ``z_score_window_days`` — both names
+      carry the same numeric value (252).  Compute reads
+      ``z_score_window_days`` for cross-config lint alignment.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy.  Matches every sibling rates tool that
+      declares this convention.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard-deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1).
+      Matches pandas' default and the convention every other rates
+      tool uses.
+
+  # Spec-mandated alias mirroring ``z_score_ddof`` so the convention
+  # name ``zscore_ddof`` is also part of the record.  Compute reads
+  # the canonical ``z_score_ddof`` for cross-config lint alignment.
+  zscore_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Spec-mandated alias for ``z_score_ddof`` — both names carry
+      the same numeric value (1).  Compute reads ``z_score_ddof``
+      for cross-config lint alignment with every other rates tool.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score AND the trailing range stat are both fully populated
+      from the first displayed trading day.  1.5x trading-day
+      window covers weekends + holidays.  Matches every other
+      rates tool.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Period-change offsets (in trading-day rows after ffill)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back.  The
+      swap-breakeven basis series is in bps so changes go through
+      period_changes(already_bps=True), i.e. plain subtraction (no
+      *100 multiplier).
+    valid_range: [2, 5]
+
+  weekly_change_offset_rows:
+    value: 6
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
+    valid_range: [5, 10]
+
+  monthly_change_offset_rows:
+    value: 22
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
+    valid_range: [20, 30]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_bps, low_252d_bps,
+  # percentile_252d) embed the number; compute() raises
+  # NotImplementedError if this is set to anything else.  Same
+  # wire-freeze as the sibling spread tools.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high/low/percentile.  Locked at 252 in V1
+      because the wire field names embed the number.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps.  Matches every other rates tool; the consistency lint
+      enforces the match where declared.  Applies on the inner
+      ZCIS leg's clean step (the level primitive) AND on the inner
+      breakeven leg's clean step (via the breakeven primitive's
+      pivot_and_align_tenors); the basis-spread layer itself uses
+      a strict inner join on trade_date to avoid synthesising
+      basis points.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — bps (basis, period changes, range)
+  # ---------------------------------------------------------------------------
+  bps_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round bps output (current basis, daily/weekly/monthly
+      changes, trailing high/low) to 0.01 bps.  Display precision;
+      matches sovereign curve_spread / cross_market_spread / OIS
+      spread tools / linker breakeven_curve_spread /
+      breakeven_inflation_simple / forward_breakeven_simple /
+      cross_country_breakeven_spread_simple /
+      inflation_swap_curve_spread / inflation_swap_forward /
+      cross_market_inflation_swap_spread.  Threaded explicitly
+      into period_changes(decimals=...) so the delta_bps default
+      of 2 cannot silently shadow a YAML override.
+    valid_range: [0, 6]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — pct (basis)
+  # ---------------------------------------------------------------------------
+  pct_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker / ZCIS level tool's pct-units
+      rounding.  Used here for the boundary-rounding parity
+      between ``current_metrics.basis_pct`` and the bespoke
+      ``time_series[-1].basis_pct``.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — z-score
+  # ---------------------------------------------------------------------------
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``shared.analytics.spreads.rolling_zscore`` and every other
+      rates tool that exposes this convention.  Threaded to
+      safe_float at the output boundary so a YAML override above
+      4 is not silently truncated by safe_float's own default of
+      4.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — yields / pct (per-leg latest snapshots)
+  # ---------------------------------------------------------------------------
+  # Used here for the per-leg latest ZCIS / breakeven / nominal /
+  # real yield snapshots in current_metrics.  Matches every other
+  # rates level tool's convention so the cross-config lint stays
+  # clean.
+  yield_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy hardcoded default in
+      ``shared.analytics.levels.compute_level_metrics`` and every
+      sovereign / OIS / linker / ZCIS level tool.  Used here for
+      the per-leg ZCIS / breakeven / nominal / real yield
+      snapshots in current_metrics.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Per-window-year display rounding (tenor_years)
+  # ---------------------------------------------------------------------------
+  window_years_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Display-precision rounding for the tenor_years field in
+      current_metrics.  4 decimals matches every sibling tool that
+      exposes year-fraction display fields; the cross-config lint
+      enforces the value.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Trailing high / low rounding precision (passed into the composed
+  # level primitive's compute_level_metrics on the ZCIS leg)
+  # ---------------------------------------------------------------------------
+  high_low_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches the legacy default in
+      ``compute_level_metrics`` for the trailing high / low /
+      percentile stats.  Matches the inflation_swap_rate_level /
+      sibling level tools — required because this primitive's
+      ToolConfig is threaded into the level primitive's compute.
+    valid_range: [0, 8]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field for the ZCIS leg
+  # ---------------------------------------------------------------------------
+  # ZCIS quoted-rate mid is the canonical Bloomberg observation
+  # for inflation swaps.  Same convention name as the sibling
+  # inflation_swap level / curve-spread / forward / cross-market
+  # primitives so the cross-config lint stays clean and the
+  # threaded config flows through to the inner ZCIS level call.
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` (``yield_mid`` → ``PX_MID``).  Resolved
+      by compute when the input's optional ``field_name`` is None
+      (the empty-string sentinel is coerced to None at the schema
+      layer); the resolved value is threaded into the inner ZCIS
+      level call AND into the inner breakeven call.  Same
+      convention name as the sibling inflation_swap primitives so
+      the cross-config lint stays clean.
+
+  # ---------------------------------------------------------------------------
+  # Sign convention — wire-load-bearing (catalog methodology guardrail)
+  # ---------------------------------------------------------------------------
+  # The catalog's methodology_guardrails are explicit:
+  #   "Must use the canonical sign convention ZCIS minus breakeven."
+  #   "Must not silently invert the sign."
+  # This primitive uses ``zcis_pct - breakeven_pct`` so the desk
+  # reader can predict the sign from the canonical convention.
+  # Exposed as a YAML convention so any future change is auditable;
+  # compute reads this and refuses to run if it ever differs from
+  # ``zcis_minus_breakeven`` (V1 wire freeze).
+  swap_breakeven_basis_sign_convention:
+    value: zcis_minus_breakeven
+    source: team_judgment_pending_review
+    rationale: >-
+      Sign convention: basis = zcis - breakeven.  Documents that
+      the ZCIS leg is the minuend and the breakeven leg is the
+      subtrahend so downstream consumers can predict the sign
+      without re-reading code.  Catalog methodology_guardrails
+      explicitly require this canonical sign and forbid silent
+      inversion.  Wire-frozen in V1; any change requires a new
+      convention value, a coordinated update to the SQL validator
+      AND the wire-disclosed methodology label, and a schema
+      rename so the on-wire contract cannot disagree with the
+      math.
+
+methodology:
+  what_it_does: |
+    Swap-breakeven basis subtracts a generic linker-implied
+    breakeven from the corresponding ZCIS rate at the same tenor.
+    The result is NOT a clean liquidity-premium read: it also
+    reflects index-lag differences between ZCIS conventions and
+    the linker's realised CPI accrual, linker on-the-run /
+    liquidity effects, and any structural ZCIS basis that exists
+    even in benign markets.
+
+    Formula
+    -------
+    Per-trade-date,
+
+      basis_pct = zcis_pct - breakeven_pct
+      basis_bps = basis_pct * 100
+
+    where ``zcis_pct`` is the ZCIS rate level at ``tenor`` on
+    ``zcis_curve_family`` (computed by
+    ``calculate_inflation_swap_rate_level`` filtered by
+    ``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` AND
+    ``curve_family=?`` AND ``tenor=?`` — the no-proxy guard
+    inherited transitively) and ``breakeven_pct`` is the generic
+    bond-implied breakeven for the same-tenor, same-currency
+    ``(nominal_curve_family, linker_curve_family)`` pair (computed
+    by ``calculate_breakeven_inflation_simple`` which itself
+    composes a sovereign nominal yield_level with a linker
+    real_yield_level under their own four-conjunct discriminators,
+    plus the same-country invariant).
+
+    Composition path
+    ----------------
+    The basis primitive composes two inner calls (the ZCIS
+    rate-level and the breakeven primitive) and inherits BOTH
+    sets of structural guards transitively.  The basis-spread
+    layer itself issues NO raw market-data SELECTs — every read
+    flows through one of the inner primitives.
+
+    Per-trade-date alignment uses a strict pandas inner-join on
+    calendar trade_date AFTER each leg's canonical TimeSeries is
+    produced; the basis is computed only on dates where BOTH legs
+    exist (no synthetic basis points are produced).  The inner
+    primitives' clean steps already apply ffill within
+    ``ffill_limit_days``; the basis layer never adds its own
+    ffill across the inner-join.
+
+    Sign convention
+    ---------------
+    basis = zcis - breakeven.  Per the catalog's
+    methodology_guardrails ("Must use the canonical sign
+    convention ZCIS minus breakeven", "Must not silently invert
+    the sign"), the convention is wire-locked at
+    ``zcis_minus_breakeven``.  The compute layer raises
+    NotImplementedError if any other value is requested and
+    points the caller at methodology.planned_extensions.
+
+    Same-currency invariant (V1)
+    ----------------------------
+    The basis is a same-currency object in V1 (e.g. USD_ZCIS with
+    UST/USD_TIPS, EUR_ZCIS with FR_OAT/EUR_FR_LINKER,
+    GBP_ZCIS with UK_GILT/GBP_LINKER).  The per-leg same-country
+    invariant on the breakeven leg (nominal/linker share country
+    + currency) is enforced inside the breakeven primitive and
+    inherited transitively here.  The cross-currency basis
+    (USD_ZCIS minus EUR linker breakeven) is documented in
+    planned_extensions but not exposed as a knob — it would be a
+    separate primitive shape.
+
+    Index-family caveat
+    -------------------
+    Even within a single currency, the ZCIS leg and the linker
+    leg can reference different inflation indices in principle
+    (e.g. CPI-U non-seasonally adjusted vs CPI-U seasonally
+    adjusted; HICP vs HICP-xT).  ``current_metrics`` surfaces the
+    ZCIS leg's ``inflation_index_family`` / ``index_lag`` /
+    ``interpolation`` / ``underlying_index`` and the linker leg's
+    metadata (whatever the breakeven primitive currently exposes
+    on its public surface) so the desk reader can decompose the
+    basis under the correct conventions.  The derived
+    ``index_families_match`` flag and ``index_family_caveat`` are
+    surfaced top-level so the caveat is visible from one field.
+
+  assumptions:
+    - "Same-currency invariant (V1): the ZCIS leg and the
+       breakeven leg's (nominal, linker) pair share a single
+       currency.  Cross-currency basis is documented in
+       planned_extensions but NOT exposed as a knob."
+    - "Same-tenor invariant: a single ``tenor`` is shared by the
+       ZCIS leg and both breakeven legs.  Same-forward-window
+       basis (e.g. 5Y5Y ZCIS minus 5Y5Y linker breakeven) is
+       documented under planned_extensions but not exposed as a
+       knob in V1 — it would be a separate primitive shape."
+    - "ZCIS leg is computed by composing
+       ``calculate_inflation_swap_rate_level`` once, passing this
+       primitive's ``ToolConfig``.  Inherits the level primitive's
+       four-conjunct no-proxy guard (instrument_type +
+       pricing_type + curve_family + tenor) for free."
+    - "Breakeven leg is computed by composing
+       ``calculate_breakeven_inflation_simple`` once, passing the
+       breakeven primitive's bundled ``ToolConfig``.  Inherits
+       the breakeven primitive's instrument_type discriminator
+       guard, the same-country / same-currency invariant, and the
+       composed nominal + linker yield reads transitively — the
+       basis primitive does NOT thread further into the
+       sovereign / linker primitives."
+    - "If either inner call returns a controlled error envelope,
+       this tool surfaces a controlled error envelope of its own
+       that names which leg failed (zcis / breakeven) and
+       propagates the inner error context."
+    - "Per-trade-date alignment: the two PERCENT-units leg series
+       are aligned via a strict pandas inner-join on trade_date
+       AFTER each is computed independently.  The ZCIS level
+       primitive's clean step ffills within ``ffill_limit_days``;
+       the breakeven primitive's pivot_and_align_tenors does the
+       same.  The basis-spread layer never adds its own ffill
+       across the inner-join — dates where ONE leg has no data
+       after the inner ffill window are dropped from the basis
+       series."
+    - "The rates from the inner primitives arrive in PERCENT; the
+       basis is reported in BOTH PERCENT and BPS (the *100
+       multiplier is applied once at compute time and rounded to
+       ``bps_round_decimals`` for the BPS form,
+       ``pct_round_decimals`` for the PERCENT form).  The
+       ``daily/weekly/monthly`` changes use
+       ``period_changes(already_bps=True)`` (plain subtraction);
+       ``bps_round_decimals`` is threaded through explicitly so
+       the YAML is authoritative."
+    - "The snapshot's ``basis_bps`` equals
+       ``time_series[-1].basis_bps`` and
+       ``time_series_basis.rows[-1].value`` bit-for-bit at the
+       YAML's ``bps_round_decimals``; same boundary-rounding
+       discipline as breakeven_curve_spread /
+       inflation_swap_curve_spread /
+       cross_country_breakeven_spread_simple /
+       cross_market_inflation_swap_spread."
+    - "Sign convention is wire-locked at
+       ``swap_breakeven_basis_sign_convention=zcis_minus_breakeven``
+       per the catalog's methodology_guardrails.  Any other value
+       raises NotImplementedError and refers callers to
+       planned_extensions."
+    - "lookback_days controls the *display* window (and the
+       bespoke time_series row count + canonical TimeSeries
+       length), NOT the rolling z-score window or the trailing
+       range window — those are independent conventions in this
+       YAML."
+    - "Latest-observation cutoff for the displayed window is
+       anchored to the data's latest aligned trade_date (matching
+       inflation_swap_rate_level / inflation_swap_curve_spread /
+       inflation_swap_forward / cross_market_inflation_swap_spread
+       / breakeven_inflation_simple)."
+    - "NO raw market-data SELECTs in this primitive's compute
+       path — every fetch flows through one of the two inner
+       primitives.  The four-conjunct guard (ZCIS leg) and the
+       linker / nominal instrument_type discriminators (breakeven
+       leg) are inherited transitively."
+
+  citations:
+    - "trading_day_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_1y_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "industry_standard_sample_std (registered in
+       docs/architecture/methodology_sources.md)."
+    - "bloomberg_field_convention (registered in
+       docs/architecture/methodology_sources.md)."
+    - "derived_from_window (registered in
+       docs/architecture/methodology_sources.md)."
+    - "team_judgment_pending_review (registered in
+       docs/architecture/methodology_sources.md)."
+    - "legacy_default_pre_pilot (registered in
+       docs/architecture/methodology_sources.md)."
+
+  planned_extensions:
+    - "Cross-currency swap-breakeven basis (e.g. USD_ZCIS minus
+       EUR linker breakeven, USD_ZCIS minus GBP linker
+       breakeven).  V1 enforces a same-currency restriction
+       because the cross-currency basis mixes inflation
+       expectations across distinct inflation regimes plus the
+       cross-currency basis-swap funding component, and the
+       wire surface needs additional fields to disclose those
+       mixtures honestly.  Cross-currency basis would be a
+       separate primitive shape, NOT a config knob on this tool."
+    - "Alternative ``swap_breakeven_basis_sign_convention``
+       values beyond ``zcis_minus_breakeven`` (e.g.
+       ``breakeven_minus_zcis`` for callers that prefer the
+       inverted sign).  V1 pins the convention to
+       ``zcis_minus_breakeven`` per the catalog's explicit
+       methodology guardrail and the wire-deterministic
+       requirement — the wire-disclosed methodology_label and
+       the SQL validator must move in lockstep with any
+       sign-convention change so the desk user can never see a
+       label that disagrees with the math.  The compute-layer
+       guard refers callers here when an unsupported value is
+       set."
+    - "Forward swap-breakeven basis (e.g. 5Y5Y ZCIS minus 5Y5Y
+       linker breakeven).  V1 supports spot only; same-forward-
+       window basis would be a separate primitive shape composing
+       ``calculate_inflation_swap_forward`` and a future
+       forward-breakeven primitive, NOT a config knob on this
+       tool."
+    - "trailing_range_window_days: configurable.  Currently
+       locked at 252 because the output fields high_252d_bps /
+       low_252d_bps / percentile_252d embed the number.  Path to
+       configurability mirrors sibling spread tools'
+       planned_extensions: rename schema fields to
+       high_window_bps / low_window_bps / percentile_window + add
+       trailing_window_days to the output; remove the
+       NotImplementedError guard in compute()."
+    - "Date-window input mode (``start_date`` / ``end_date``) for
+       ad-hoc display windows aligned to specific calendar events
+       (e.g. central-bank meeting dates).  Deferred from V1 so
+       the wire shape stays minimal."

@@ -91,6 +91,10 @@ export function useCopilot(): UseCopilotResult {
 
   // Ref to the current streaming assistant message id
   const streamingMsgId = useRef<string | null>(null);
+  // R5.4 — remember the workspace_slug from the most recently-sent
+  // user message so the streaming assistant message it produces
+  // inherits it.  Cleared on each ``done`` event.
+  const pendingWorkspaceSlug = useRef<string | null>(null);
 
   const updateStreamingMessage = useCallback(
     (updater: (message: CopilotMessage) => CopilotMessage) => {
@@ -168,7 +172,9 @@ export function useCopilot(): UseCopilotResult {
 
       case 'status':
         if (event.status === 'thinking') {
-          // Create the assistant message placeholder
+          // Create the assistant message placeholder.  R5.4 — inherit
+          // the workspace_slug recorded by the most recent sendMessage
+          // call so the per-workspace chat rail can filter correctly.
           const assistantId = nextId();
           streamingMsgId.current = assistantId;
 
@@ -183,6 +189,7 @@ export function useCopilot(): UseCopilotResult {
               workspaceContext: null,
               isStreaming: true,
               phase: 'thinking' satisfies AssistantPhase,
+              workspaceSlug: pendingWorkspaceSlug.current,
             },
           ]);
         }
@@ -255,6 +262,24 @@ export function useCopilot(): UseCopilotResult {
       }
 
       case 'done': {
+        // Phase 4 — rebrand the wire's snake-case ``proposed_overrides``
+        // to the React message's camelCase ``proposedOverrides``.  Map
+        // each entry's wire fields (``value_label`` / ``node_id`` /
+        // ``previous_value``) to the camelCase equivalents the chip UI
+        // expects.  No-op when the event omits the field, so older
+        // backends that don't emit overrides keep working.
+        const proposedOverrides =
+          event.proposed_overrides && event.proposed_overrides.length > 0
+            ? event.proposed_overrides.map((o) => ({
+                id: o.id,
+                path: o.path,
+                value: o.value,
+                valueLabel: o.value_label,
+                nodeId: o.node_id,
+                previousValue: o.previous_value,
+                rationale: o.rationale,
+              }))
+            : null;
         updateStreamingMessage((msg) => ({
           ...msg,
           isStreaming: false,
@@ -265,8 +290,10 @@ export function useCopilot(): UseCopilotResult {
           ),
           workspaceContext: event.workspace_context,
           totalDurationMs: event.total_duration_ms,
+          proposedOverrides,
         }));
         streamingMsgId.current = null;
+        pendingWorkspaceSlug.current = null;
         setIsThinking(false);
         break;
       }
@@ -282,6 +309,7 @@ export function useCopilot(): UseCopilotResult {
           }));
           streamingMsgId.current = null;
         }
+        pendingWorkspaceSlug.current = null;
         setIsThinking(false);
         break;
       }
@@ -309,6 +337,10 @@ export function useCopilot(): UseCopilotResult {
               isStreaming: true,
               phase: 'running_tools',
               workflow: null,
+              // R5.4 — inherit the pending workspace slug so workflow
+              // turns originating from a workspace-scoped composer
+              // stay filterable.
+              workspaceSlug: pendingWorkspaceSlug.current,
             },
           ]);
         }
@@ -382,12 +414,14 @@ export function useCopilot(): UseCopilotResult {
   // ------------------------------------------------------------------
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, options?: { workspaceSlug?: string | null }) => {
       const trimmed = content.trim();
       if (!trimmed) return;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const workspaceSlug = options?.workspaceSlug ?? null;
 
-      // Add user message to state
+      // Add user message to state — stamped with the workspace slug so
+      // the per-workspace chat rail can filter (R5.4).
       setMessages((prev) => [
         ...prev,
         {
@@ -398,15 +432,25 @@ export function useCopilot(): UseCopilotResult {
           traceSteps: [],
           workspaceContext: null,
           isStreaming: false,
+          workspaceSlug,
         },
       ]);
 
       setIsThinking(true);
+      // Remember the slug so the streaming assistant message stamped
+      // from the next ``thinking`` event inherits it.  Cleared in the
+      // ``done`` handler so a subsequent un-scoped turn doesn't pick
+      // up stale state.
+      pendingWorkspaceSlug.current = workspaceSlug;
 
-      // Send to server
-      wsRef.current.send(
-        JSON.stringify({ type: 'user_message', content: trimmed }),
-      );
+      // Send to server.  Include workspace_slug so the backend can
+      // (eventually) scope LangGraph thread state per workspace.
+      const payload: { type: string; content: string; workspace_slug?: string } = {
+        type: 'user_message',
+        content: trimmed,
+      };
+      if (workspaceSlug) payload.workspace_slug = workspaceSlug;
+      wsRef.current.send(JSON.stringify(payload));
     },
     [],
   );

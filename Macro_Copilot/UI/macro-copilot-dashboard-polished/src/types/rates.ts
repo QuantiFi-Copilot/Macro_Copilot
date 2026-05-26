@@ -128,6 +128,43 @@ export type RatesPageData = {
 // the MCP server strips before sending to the LLM.
 // ============================================================================
 
+// --- Canonical TimeSeries shape (mirrors shared/schemas/time_series.py) ---
+//
+// PR-E — added to support the YieldLevelOutput.time_series field that the
+// backend has been emitting since the legacy-TimeSeries cleanup but that
+// the frontend was not yet declaring or consuming.  Other detail endpoints
+// (curve_spread, cross_market, butterfly) still ship bespoke per-tool row
+// arrays (see CurveSpreadTimeSeriesRow etc.) — that retro-fit to this
+// canonical shape is deferred to a separate cleanup PR (see schemas.py
+// docstring on TimeSeries).
+//
+// ``units`` is the closed enum from shared.schemas.time_series.TimeSeriesUnits.
+// Typed here as a wide string so frontend code that just displays a unit
+// label (% / bps / etc.) doesn't need to enumerate every Python enum
+// value.  When a typed switch is needed downstream, narrow at the call site.
+
+export type TimeSeriesRow = {
+  /** Trade date in YYYY-MM-DD form. */
+  date: string;
+  /**
+   * Observation value in the series' ``units``.  ``null`` when the
+   * tool emits a gap (e.g., warmup period for a rolling stat or a
+   * missing trading-day observation).
+   */
+  value: number | null;
+};
+
+export type TimeSeries = {
+  /** Canonical lower-snake-case identifier — e.g. ``ust_10y_yield``. */
+  series_name: string;
+  /** Unit label from the closed Python enum (e.g. ``percent``, ``bps``). */
+  units: string;
+  /** One-line human-readable description of what this series represents. */
+  description: string;
+  /** Observations in chronological order. May be empty when the window has no data. */
+  rows: TimeSeriesRow[];
+};
+
 // --- /detail/yield ---
 
 export type YieldLevelMetrics = {
@@ -147,6 +184,19 @@ export type YieldLevelMetrics = {
 
 export type YieldLevelOutput = {
   current_metrics: YieldLevelMetrics;
+  /**
+   * Historical yield levels at the requested tenor over the display
+   * window (last ``lookback_days`` calendar days, cleaned + ffilled,
+   * rounded to match ``current_metrics.current_yield_pct`` exactly at
+   * the latest row).  Units are ``percent`` (closed-enum
+   * ``TimeSeriesUnits.PERCENT`` on the backend).
+   *
+   * Optional in the TS type for defensive resilience against stale /
+   * cached payloads that pre-date the canonical-TimeSeries cleanup —
+   * the backend Pydantic schema marks this required, so on the live
+   * wire it is always present.
+   */
+  time_series?: TimeSeries;
 };
 
 // --- /detail/spread ---
@@ -249,10 +299,17 @@ export type RegimeCurrentMetrics = {
   regime_description: string;
   front_tenor: string;
   back_tenor: string;
-  front_yield_current: number | null;
-  back_yield_current: number | null;
-  front_yield_prior: number | null;
-  back_yield_prior: number | null;
+  // PR14 wire-format honesty (Round 3 A4, post-Codex review):
+  // renamed from front_yield_current/etc. to front_level_current/etc.
+  // because classify_curve_move is now curve-family-agnostic and the
+  // underlying observation may be a sovereign yield, an OIS par rate,
+  // an inflation swap rate, or a linker real yield depending on the
+  // bound curve_family.  "Level" is the unit-agnostic name; the
+  // playbook owns the observation semantics.
+  front_level_current: number | null;
+  back_level_current: number | null;
+  front_level_prior: number | null;
+  back_level_prior: number | null;
   front_change_bps: number | null;
   back_change_bps: number | null;
   spread_current_bps: number | null;
@@ -264,19 +321,3 @@ export type RegimeOutput = {
   current_metrics: RegimeCurrentMetrics;
 };
 
-// ============================================================================
-// WORKSPACE VIEW MODEL
-// Discriminated union the views render against.  WorkspacePage parses the
-// URL into one of these and passes it down.
-// ============================================================================
-
-export type WorkspaceViewType =
-  | 'spread'
-  | 'cross_market'
-  | 'butterfly'
-  | 'yield'
-  | 'forward'      // OIS forward — backend endpoint TBD; UI ready for it
-  | 'regime'
-  | 'scanner';
-
-export type WorkspaceParams = Record<string, string>;

@@ -1,0 +1,199 @@
+# =============================================================================
+# build_zcis_panel — tool configuration
+# =============================================================================
+# Multi-instrument Panel of zero-coupon inflation swap (ZCIS) rates
+# across the USD / EUR / GBP universe (rows = trade_date, columns =
+# vendor_ticker).  Substrate primitive for downstream cross-curve
+# regression / PCA / RV scanning operators (Plan §5 Group 3 #19).
+#
+# Same convention names + values as ``sovereign_yield_panel`` for the
+# alignment / calendar / missing-data knobs so the cross-tool
+# ``shared.config.lint`` stays clean.  The Bloomberg field default is
+# the ZCIS-specific ``default_zcis_rate_field`` convention (PX_MID)
+# shared with every other inflation_swaps tool.
+#
+# Conventions are loaded by ``shared.config.load_tool_config`` at
+# compute() time.  Bumping any value here is a deliberate methodology
+# change with downstream impact on every operator that consumes the
+# panel.
+# =============================================================================
+
+tool:
+  name: build_zcis_panel_tool
+  domain: inflation_swaps
+  category: desk_invariant_primitive
+  description: |
+    Assemble a wide multi-instrument Panel of zero-coupon inflation
+    swap (ZCIS) rates across the USD / EUR / GBP curve families
+    (rows = trade_date, columns = vendor_ticker).  Pivots raw
+    ``macro_data.v_market_data_daily_enriched`` rows
+    (instrument_type='inflation_swap' AND
+    pricing_type='zero_coupon_breakeven') into a date-indexed
+    DataFrame keyed by the canonical Bloomberg identifier of each
+    swap, ready for consumption by cross-curve regression / PCA /
+    RV operators.
+
+    Per the build_zcis_panel catalog entry the column key would
+    ideally be ``security_name``; the ZCIS universe's
+    ``instrument_metadata_history.security_name`` is universally
+    NULL on the live SCD2 rows (matching the no-proxy treatment
+    ``scan_inflation_swaps_extremes`` applies — vendor_ticker is
+    surfaced under its own honest name, NOT relabelled as
+    ``security_name``).  The Panel's column key is therefore
+    ``vendor_ticker`` (e.g. ``'USSWIT10 Curncy'``).  The
+    methodology card discloses the substitution explicitly so the
+    desk reader knows the naming did not silently swap labels.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg field for ZCIS legs
+  # ---------------------------------------------------------------------------
+  # Convention NAME matches every other inflation_swaps tool
+  # (``default_zcis_rate_field``).  The cross-config lint enforces
+  # value-agreement on the same convention name across the
+  # ZCIS-domain tools; PX_MID is the canonical mid quoted ZCIS rate
+  # and matches the playbook's ``target_metrics`` mapping
+  # (``yield_mid`` → ``PX_MID``).
+  default_zcis_rate_field:
+    value: PX_MID
+    source: bloomberg_field_convention
+    rationale: >-
+      ZCIS quoted-rate mid is the canonical Bloomberg observation
+      for inflation swaps and matches the playbook's
+      ``target_metrics`` mapping (``yield_mid`` → ``PX_MID``).
+      Identical to every other inflation_swaps tool's
+      ``default_zcis_rate_field``.  LLM/HTTP wrappers must use the
+      empty/None sentinel so this default flows through — see the
+      curve_move_classifier wrapper-shadowing fix (commit b2605ee)
+      for the canonical pattern.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for holiday gaps
+  # ---------------------------------------------------------------------------
+  # NAME-MATCH every other rates tool's ``ffill_limit_days`` and
+  # carry the SAME value so the cross-config lint stays clean.
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps so the panel has comparable observations across all
+      legs.  Identical to ``sovereign_yield_panel`` /
+      ``inflation_swap_rate_level`` / every other rates tool;
+      ``shared.config.lint`` enforces the match.  Set to 0 to
+      disable forward-fill entirely (strict-coverage panels).
+    valid_range: [0, 10]
+
+  # ---------------------------------------------------------------------------
+  # Missing-data policy (after ffill)
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; ToolConfig's Convention schema
+  # only supports ``valid_range`` (numeric), so the allowed-values
+  # set is declared in the rationale text instead of a dedicated
+  # field — same convention every other ``rates_agent/*/tools/*/
+  # config.yaml`` follows for enum-shaped knobs.  Mirrors
+  # ``sovereign_yield_panel``.
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``forward_fill_only`` (V1 default) — return the panel
+          as-is after the ffill_limit-day forward-fill.  Holes
+          remaining outside that bound are left as NaN; downstream
+          operators handle them.
+        - ``raise`` — strictest; any NaN cell after ffill halts
+          the compute path with the (date, column) of the first
+          miss.
+        - ``drop_rows_any_missing`` — shrinks the panel to
+          fully-observed dates only.  Useful for correlation /
+          regression / PCA panels that cannot tolerate per-leg
+          gaps.
+      Per-call override via ``BuildZcisPanelInput.missing_data_policy``.
+
+  # ---------------------------------------------------------------------------
+  # Calendar policy
+  # ---------------------------------------------------------------------------
+  # NB: enum constraint enforced at runtime in compute.py +
+  # input-validation in schemas.py; same enum-in-rationale pattern
+  # as ``default_missing_data_policy``.  Mirrors
+  # ``sovereign_yield_panel``.
+  calendar_policy:
+    value: business_days
+    source: operator_v1_default
+    rationale: >-
+      Allowed values:
+        - ``business_days`` (V1 default) — restrict the output
+          index to Mon-Fri observations.  Holiday-aware calendars
+          (per-curve trading sessions) require a holiday-table
+          ingestion step not yet built.
+        - ``instrument_native`` — pass through every observed
+          date verbatim from the DB.  Use when the panel will be
+          merged with a cross-calendar partner downstream.
+      Documented on the methodology card.
+
+methodology:
+
+  what_it_does: |
+    For each ZCIS curve_family in the request (defaulting to the
+    full USD_ZCIS / EUR_ZCIS / GBP_ZCIS universe) and each tenor
+    in the request (defaulting to every tenor present in the DB
+    for the resolved curve_families), fetches the
+    ``default_zcis_rate_field`` observations from
+    ``macro_data.v_market_data_daily_enriched`` ×
+    ``macro_data.instrument_master`` over ``[start_date, end_date]``
+    filtered by ``instrument_type='inflation_swap'`` AND
+    ``pricing_type='zero_coupon_breakeven'`` (the structural
+    no-proxy guard), pivots into a wide DataFrame keyed by the
+    swap's ``vendor_ticker`` (the canonical Bloomberg identifier,
+    e.g. ``'USSWIT10 Curncy'``), forward-fills holiday gaps up to
+    ``ffill_limit_days``, applies the missing-data policy, and
+    emits a closed-family Panel artifact with per-column PERCENT
+    units inferred from the resolved field_name.
+
+  assumptions:
+    - "ZCIS rates stored as percent in DB (e.g. 2.45 = 2.45%).
+       Negative ZCIS rates are valid across parts of the post-2020
+       EUR / GBP history; the panel surfaces them unchanged."
+    - "Every column carries the same ``field_name`` resolution
+       (V1: PER-LEG field overrides are NOT exposed — the catalog
+       limits this primitive's per-query knobs to legitimate
+       inputs; deviation belongs in a future primitive)."
+    - "Column order is sorted by ``(curve_family, tenor_year_fraction,
+       vendor_ticker)`` so the output Panel has a deterministic,
+       desk-readable layout regardless of input ordering."
+    - "Closed-enum curve_family set — non-ZCIS curve families
+       (sovereign / OIS / policy futures / linker) are rejected at
+       input validation per ADR 0006 + the closed-family
+       discipline."
+    - "Universe scoping (which curve_families + tenors flowed into
+       the panel) is surfaced on the methodology card and on the
+       wire so downstream operators see what the panel covers."
+
+  citations:
+    - "Plan §5 Group 3 #19 — Panel substrate primitive for
+      operator-shaped work (cross-curve regression, PCA, RV
+      scanning)."
+    - "ADR 0006 — Inflation-domain agents establish ZCIS as a
+      distinct instrument family from linker bonds and nominal
+      sovereigns."
+
+  planned_extensions:
+    - "Per-leg field_name override (mixing PX_MID with PX_BID /
+      PX_ASK on a single panel).  V1 emits the same field on every
+      leg by design; deviation belongs in a future primitive."
+    - "Holiday-aware calendar policy per curve_family (USD / EUR /
+      GBP have different trading-day calendars; V1's
+      ``business_days`` policy unioned across the universe is a
+      cross-region approximation).  Requires holiday-table
+      ingestion."
+    - "Frequency resampling (weekly / monthly closes for
+      lower-frequency operators)."
+    - "``security_name`` column key once
+      ``macro_data.instrument_metadata_history.security_name`` is
+      populated for the ZCIS universe (currently universally NULL
+      on the live SCD2 rows; see methodology card's
+      ``security_name_caveat`` and the no-proxy precedent in
+      ``scan_inflation_swaps_extremes``)."

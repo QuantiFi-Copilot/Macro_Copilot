@@ -96,6 +96,21 @@ from rates_agent.sovereign_bonds.tools.breakeven_inflation import (  # noqa: E40
     BreakevenInflationInput,
     calculate_breakeven_inflation,
 )
+from rates_agent.sovereign_bonds.tools.get_otr_history import (  # noqa: E402
+    CONFIG_PATH as GET_OTR_HISTORY_CONFIG_PATH,
+    OtrHistoryInput,
+    get_otr_history,
+)
+from rates_agent.sovereign_bonds.tools.otr_ofr_spread import (  # noqa: E402
+    CONFIG_PATH as OTR_OFR_SPREAD_CONFIG_PATH,
+    OtrOfrSpreadInput,
+    calculate_otr_ofr_spread,
+)
+from rates_agent.sovereign_bonds.tools.nfp_surprise import (  # noqa: E402
+    CONFIG_PATH as NFP_SURPRISE_CONFIG_PATH,
+    NfpSurpriseInput,
+    calculate_nfp_surprise,
+)
 from shared.schemas import PastedPcaLoadings  # noqa: E402
 from rates_agent.sovereign_bonds.tools.scanner import scan_extremes  # noqa: E402
 from shared.schemas import (  # noqa: E402
@@ -302,6 +317,185 @@ def get_yield_levels_tool(
     if "error" in result:
         return json.dumps(result, default=str)
     return json.dumps({"current_metrics": result.get("current_metrics", {})}, default=str)
+
+
+# ===========================================================================
+# TOOL 2b: get_otr_history
+# ===========================================================================
+@mcp.tool()
+def get_otr_history_tool(
+    country: str,
+    tenor: str,
+    lookback_days: int = 365,
+) -> str:
+    """Return the on-the-run (OTR) transition log + currently-OTR
+    snapshot for one (country, tenor) sovereign cash-bond slot.
+
+    Use this tool when the user asks about:
+    - Which CUSIP / ISIN is the current OTR bond for a slot
+      (e.g. "what's the current US 10Y OTR?")
+    - The history of OTR transitions for a slot
+      (e.g. "show me US 10Y OTR rolls in the past year")
+    - How many distinct bonds have been OTR for a slot over a window
+
+    Output shape: ``current_metrics`` (snapshot of the currently-OTR
+    bond, or ``None`` identity fields when no bond is currently OTR)
+    + ``transitions`` (chronological list of SCD2 windows) +
+    ``methodology_note`` (TD #27 disclosure — forward-only resolver,
+    detection-date precision).
+
+    Honest absence: when no OTR window covers the slot in the lookback
+    (e.g. resolver has not yet observed this slot, or query pre-dates
+    the resolver's first run), ``transitions`` is the empty list and
+    ``current_metrics`` identity fields are ``None``.  This is NOT an
+    error envelope — it's the honest absence shape per P5 + P6.
+
+    Parameters
+    ----------
+    country : str
+        Sovereign country code.  Convention: uppercase ISO-3166-alpha-2
+        (e.g. 'US', 'DE', 'GB', 'JP', 'FR', 'IT', 'ES').
+    tenor : str
+        Canonical slot tenor.  Convention: integer-Y matching
+        sovereign_cash_bonds.yml ('2Y', '3Y', '5Y', '7Y', '10Y',
+        '20Y', '30Y').
+    lookback_days : int, optional
+        Calendar days of trailing OTR-transition history to display
+        (default 365; matches the YAML's ``default_lookback_days``
+        convention — 1-year calendar window, PR13 consistency with
+        cross_market_inflation_swap_spread / swap_breakeven_basis_simple).
+    """
+    try:
+        params = OtrHistoryInput(
+            country=country, tenor=tenor, lookback_days=lookback_days,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (DESIGN_PRINCIPLES §8 + PR7).
+    try:
+        otr_config = load_tool_config(GET_OTR_HISTORY_CONFIG_PATH)
+        result = get_otr_history(
+            engine=engine, params=params, config=otr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in get_otr_history for %s %s",
+            params.country, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"OTR-history lookup failed for {params.country} "
+                      f"{params.tenor}: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: get_otr_history %s %s → %s",
+                params.country, params.tenor,
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
+
+
+# ===========================================================================
+# TOOL 2c: calculate_otr_ofr_spread
+# ===========================================================================
+@mcp.tool()
+def calculate_otr_ofr_spread_tool(
+    country: str,
+    tenor: str,
+    lookback_days: int = 365,
+    field_name: str = "",
+) -> str:
+    """Calculate the OTR/OFR yield spread (on-the-run minus first-off-
+    the-run) for one (country, tenor) sovereign cash-bond slot, plus
+    its 1-year rolling z-score.
+
+    Use this tool when the user asks about:
+    - The on-the-run / off-the-run rich-cheap spread for a sovereign
+      slot (e.g. "what's the US 10Y OTR/OFR spread?")
+    - Auction-roll dynamics, OTR liquidity premium
+      (e.g. "how rich is the 10Y OTR vs the bond it displaced?")
+    - The historical z-score of the OTR/OFR spread
+      (e.g. "is the US 10Y OTR/OFR cheap vs its own history?")
+
+    Do NOT use this for the curve spread between two tenors (use
+    calculate_curve_spread_tool) or for the OTR transition LOG (use
+    get_otr_history_tool — this primitive answers "what's the
+    spread?", that one answers "which bonds were OTR when?").
+
+    Parameters
+    ----------
+    country : str
+        Sovereign country code.  Convention: uppercase ISO-3166-alpha-2
+        (e.g. 'US', 'DE', 'GB', 'JP', 'FR', 'IT', 'ES').
+    tenor : str
+        Canonical slot tenor.  Convention: integer-Y matching
+        sovereign_cash_bonds.yml ('2Y', '3Y', '5Y', '7Y', '10Y',
+        '20Y', '30Y').
+    lookback_days : int, optional
+        Calendar days of displayed history (default 365 — 1 year).
+        The z-score rolling window is always a fixed 252 trading days
+        regardless of this value (config convention).
+    field_name : str, optional
+        Bloomberg field mnemonic for the cash-bond yield.  Empty
+        string is the wire-level sentinel meaning "use YAML default
+        (YLD_YTM_MID)".  See OtrOfrSpreadInput docstring for the
+        sentinel-to-None translation pattern.
+    """
+    # Translate the empty-string wire sentinel → None so the YAML
+    # default_field_name convention applies.  Same pattern as
+    # calculate_cross_market_spread_tool / curve_move_classifier
+    # (commit b2605ee).
+    resolved_field_name = field_name if field_name else None
+
+    try:
+        params = OtrOfrSpreadInput(
+            country=country,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=resolved_field_name,
+        )
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps({"error": f"Database connection failed: {exc}"}, default=str)
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        otr_ofr_config = load_tool_config(OTR_OFR_SPREAD_CONFIG_PATH)
+        result = calculate_otr_ofr_spread(
+            engine=engine, params=params, config=otr_ofr_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in calculate_otr_ofr_spread for %s %s",
+            params.country, params.tenor,
+        )
+        return json.dumps(
+            {"error": f"OTR/OFR spread calculation failed for {params.country} "
+                      f"{params.tenor}: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: calculate_otr_ofr_spread %s %s → %s",
+                params.country, params.tenor,
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================
@@ -525,21 +719,53 @@ def classify_curve_move_tool(
     six deterministic tags: BULL_STEEPENER, BEAR_STEEPENER,
     BULL_FLATTENER, BEAR_FLATTENER, PARALLEL_SHIFT, or TWIST.
 
+    Curve-family-agnostic (Round 3 Stage 2 A4 — PR5 coverage
+    extension).  Accepts any curve_family declared in a tenor-keyed
+    playbook under rates_agent/playbooks/:
+
+      - sovereign benchmarks: UST, DE_BUND, IT_BTP, FR_OAT, ES_BONO,
+        UK_GILT, JGB, CANADA_GOVT, AU_GOVT
+      - OIS curves: USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS,
+        JPY_OIS, AUD_OIS, CAD_OIS
+      - inflation swaps: USD_ZCIS, EUR_ZCIS, GBP_ZCIS
+      - sovereign linker real-yield curves: USD_TIPS, GBP_LINKER,
+        EUR_FR_LINKER, CAD_RRB
+
+    The 4-quadrant classification math is curve-family-agnostic;
+    per-playbook field auto-discovery picks the right Bloomberg
+    primary metric per curve_family (sovereign + linker →
+    YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID) so callers do not
+    need to know per-vendor field conventions.
+
     This is a single-observation classification — NOT a statistical
     persistence-state inference (which would justify the word "regime").
     Use it whenever the user asks about the nature of a curve move
     rather than just the numbers.
 
     Use this tool when the user asks about:
-    - Move type           (e.g. "Was today a bull steepener?")
-    - Curve dynamics      (e.g. "How has the Gilt curve moved this week?")
-    - Macro interpretation (e.g. "What kind of move are we seeing in Bunds?")
+    - Move type           (e.g. "Was today a bull steepener?",
+                           "Is the USD SOFR OIS curve bull-flattening?")
+    - Curve dynamics      (e.g. "How has the Gilt curve moved this week?",
+                           "What kind of move is the USD ZCIS curve seeing?")
+    - Macro interpretation (e.g. "What kind of move are we seeing in Bunds?",
+                           "Classify today's move in the EUR ESTR OIS curve.")
+
+    Output field naming (PR14 wire-format honesty)
+    ----------------------------------------------
+    The output's per-leg observation fields are named
+    ``front_level_current``, ``back_level_current``,
+    ``front_level_prior``, ``back_level_prior`` — NOT
+    ``front_yield_*`` / ``back_yield_*``.  "Level" is unit-agnostic
+    so the same field name carries a sovereign yield, an OIS par
+    rate, an inflation swap rate, or a linker real yield depending
+    on the bound curve_family.
 
     Parameters
     ----------
     curve_family : str
-        Curve identifier. Examples: 'UST', 'DE_BUND', 'UK_GILT', 'JGB',
-        'FR_OAT', 'IT_BTP', 'ES_BONO', 'CANADA_GOVT', 'AU_GOVT'.
+        Curve identifier.  Any tenor-keyed rates curve_family declared
+        in a playbook under rates_agent/playbooks/ (see the enumerated
+        families above).
     front_tenor : str, optional
         The front-end leg (default '2Y').
     back_tenor : str, optional
@@ -552,12 +778,14 @@ def classify_curve_move_tool(
         config.yaml.
     field_name : str, optional
         Bloomberg field mnemonic.  Leave as the default empty string ""
-        to use the tool's bundled ``default_field_name`` convention
-        from config.yaml (currently 'YLD_YTM_MID' for sovereigns).
-        Pass an explicit field name to override per call.  Mirrors the
-        empty-string sentinel pattern used by ``calculate_ois_forward_rate_tool``
-        for optional tenor/date inputs — MCP serialises only flat
-        scalars, so we use "" rather than None at the wire level.
+        so the per-playbook auto-discovery picks the right field per
+        curve_family (sovereign + linker → YLD_YTM_MID, OIS →
+        PX_LAST, ZCIS → PX_MID).  The YAML ``default_field_name``
+        (currently YLD_YTM_MID) is the final fallback — sovereign
+        callers see identical behaviour to the pre-A4 path because
+        both the YAML default and sovereign_bonds.yml's
+        target_metrics[0] are YLD_YTM_MID.  Mirrors the empty-string
+        sentinel pattern used by the rest of the rates roster.
     """
     # Translate the empty-string sentinel into a None that the schema
     # layer recognises and the compute layer resolves against the
@@ -1129,7 +1357,26 @@ def pca_yield_curve_tool(
     change_frequency: Literal["daily", "weekly"] = "daily",
     field_name: str = "",
 ) -> str:
-    """Run PCA on the yield-CHANGES panel of one sovereign curve.
+    """Run PCA on the yield-CHANGES panel of one rates curve.
+
+    Curve-family-agnostic (Round 3 Stage 2 A3 — PR5 coverage
+    extension).  Accepts any curve_family declared in a tenor-keyed
+    playbook under rates_agent/playbooks/:
+
+      - sovereign benchmarks: UST, DE_BUND, IT_BTP, FR_OAT, ES_BONO,
+        UK_GILT, JGB, CANADA_GOVT, AU_GOVT
+      - OIS curves: USD_SOFR_OIS, EUR_ESTR_OIS, GBP_SONIA_OIS,
+        JPY_OIS, AUD_OIS, CAD_OIS
+      - inflation swaps: USD_ZCIS, EUR_ZCIS, GBP_ZCIS
+      - sovereign linker real-yield curves: USD_TIPS, GBP_LINKER,
+        EUR_FR_LINKER, CAD_RRB
+
+    The PCA fitting math is curve-family-agnostic — the SVD operates
+    on whatever centered observation-change panel the playbook
+    declares.  Per-playbook field auto-discovery picks the right
+    Bloomberg primary metric per curve_family (sovereign + linker →
+    YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID) so callers do not
+    need to know the per-vendor field convention.
 
     Returns per-component loadings (one row per tenor), variance
     shares (and cumulative shares), per-row factor scores time
@@ -1142,17 +1389,25 @@ def pca_yield_curve_tool(
 
     Use this tool when the user asks about:
     - Curve factor structure  (e.g. "Run PCA on the UST curve over
-      the last 5 years.")
+      the last 5 years.", "PCA on the USD SOFR OIS curve.", "PCA
+      on the USD ZCIS inflation breakeven curve.")
     - Level/slope/curvature shares (e.g. "How much variance does
-      level explain in BTP yield changes?")
-    - Loadings for a downstream attribution (the next sprint tool,
-      yield_change_attribution_pca, consumes the loadings via
+      level explain in BTP yield changes?", "Decompose the OIS
+      curve into factors.")
+    - Loadings for a downstream attribution (the
+      yield_change_attribution_pca tool consumes the loadings via
       paste-from-prior-tool).
 
     Parameters
     ----------
     curve_family : str
-        Sovereign curve identifier — e.g. 'UST', 'DE_BUND', 'IT_BTP'.
+        Curve identifier — any tenor-keyed rates curve_family
+        declared in a playbook under rates_agent/playbooks/ (see
+        the enumerated families above).  PCA fits on the
+        curve_family's observation-changes panel regardless of
+        whether the underlying instrument is a sovereign yield, an
+        OIS par rate, an inflation swap rate, or a linker real
+        yield.
     tenors : List[str], optional
         Subset of tenor labels.  When None (default), use all
         playbook-configured tenors of the curve_family.  When supplied
@@ -1166,14 +1421,21 @@ def pca_yield_curve_tool(
         observation-count guard remains authoritative.
     n_components : int, optional
         Number of components to return (default 3).  Constrained to
-        [1, 8].
+        [1, 8].  Smaller-universe curves (e.g. USD_TIPS at 4 tenors)
+        cap n_components at that tenor count and the primitive
+        returns a controlled error envelope if exceeded.
     change_frequency : str, optional
         'daily' (default) or 'weekly'.  Frequency at which to take
-        yield differences before fitting PCA.
+        observation differences before fitting PCA.
     field_name : str, optional
         Bloomberg field mnemonic.  Leave as the default empty
-        string "" to use the bundled ``default_field_name`` from
-        pca_yield_curve/config.yaml (currently 'YLD_YTM_MID').
+        string "" so the per-playbook auto-discovery picks the
+        right field per curve_family (sovereign + linker →
+        YLD_YTM_MID, OIS → PX_LAST, ZCIS → PX_MID).  The YAML
+        ``default_field_name`` (currently YLD_YTM_MID) is the
+        final fallback — sovereign callers see identical behaviour
+        to the pre-A3 path because both the YAML default and
+        sovereign_bonds.yml's target_metrics[0] are YLD_YTM_MID.
         Mirrors the empty-string sentinel pattern used by the rest
         of the rates roster.
     """
@@ -1555,6 +1817,89 @@ def calculate_breakeven_inflation_tool(
         "methodology_disclosures": result.get("methodology_disclosures", []),
     }
     return json.dumps(llm_response, default=str)
+
+
+# ===========================================================================
+# TOOL: calculate_nfp_surprise
+# ===========================================================================
+@mcp.tool()
+def calculate_nfp_surprise_tool(
+    lookback_releases: int = 24,
+) -> str:
+    """Compute the per-release US NFP (nonfarm payrolls) surprise
+    series + rolling release-window z-score.
+
+    Surprise = ``actual − consensus_median`` per release (in
+    THOUSANDS of jobs) — the exact identity ADR 0008 §2 designates
+    as the primitive layer's P12-disclosed computation
+    (event_calendar.surprise is intentionally NULL by ingestion).
+
+    Use this tool when the user asks about:
+    - US NFP surprises ("what was the latest NFP surprise?")
+    - Headline-print history around NFP ("how big were the last 6
+      US payrolls surprises?")
+    - NFP-surprise z-score / standardisation ("is this print
+      surprisingly high vs the last 2 years?")
+    - Pre-/post-FOMC read-throughs (NFP is the front-end Treasury
+      curve's most-watched macro print)
+
+    Do NOT use this tool for:
+    - CPI surprises — use ``calculate_cpi_surprise_tool``
+      (event_type=cpi_yoy or hicp_yoy, inflation_swaps sub-agent).
+    - REVISIONS of prior NFP surprises — the well-known NFP caveat
+      (BLS revises the prior-month actual at the next release;
+      revision-adjusted surprise is a documented planned extension).
+    - Other US payroll-adjacent prints (ADP, ECI, JOLTs) — those
+      would be separate primitives (no other event_type currently
+      ingested).
+    - Non-US payroll equivalents — NFP is US-only; no comparable
+      series ships from ECB / BoE / BoJ regions.
+
+    Parameters
+    ----------
+    lookback_releases : int, optional
+        Number of realised releases of trailing history to display
+        (default 24 ≈ 2 years at monthly NFP cadence).  DISPLAY
+        WINDOW ONLY — not a methodology choice.  The rolling
+        z-score window is always fixed at ``release_z_window``
+        realised releases (24 by default), independent of this
+        parameter — same display-vs-z-window separation as
+        cpi_surprise / curve_spread / yield_levels.
+    """
+    try:
+        params = NfpSurpriseInput(lookback_releases=lookback_releases)
+    except ValidationError as exc:
+        logger.warning("Input validation failed: %s", exc)
+        return json.dumps(
+            {"error": f"Invalid parameters: {exc.errors()}"}, default=str,
+        )
+
+    try:
+        engine = _get_engine()
+    except Exception as exc:
+        logger.exception("Failed to connect to TimescaleDB")
+        return json.dumps(
+            {"error": f"Database connection failed: {exc}"}, default=str,
+        )
+
+    # Pass the bundled config explicitly so the config dependency is
+    # observable at the wiring layer (PR7 + DESIGN_PRINCIPLES §8).
+    try:
+        cfg = load_tool_config(NFP_SURPRISE_CONFIG_PATH)
+        result = calculate_nfp_surprise(
+            engine=engine, params=params, config=cfg,
+        )
+    except Exception as exc:
+        logger.exception("Unhandled error in calculate_nfp_surprise")
+        return json.dumps(
+            {"error": f"NFP surprise calculation failed: {exc}"},
+            default=str,
+        )
+
+    logger.info("Tool call complete: calculate_nfp_surprise → %s",
+                "error" if "error" in result else "OK")
+
+    return json.dumps(result, default=str)
 
 
 # ===========================================================================

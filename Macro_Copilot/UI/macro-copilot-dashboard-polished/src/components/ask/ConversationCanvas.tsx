@@ -20,11 +20,59 @@
 // breadcrumb — everything else is delegated to children.
 // ============================================================================
 
-import { useEffect, useRef, type RefObject } from 'react';
+import {
+  useEffect,
+  useRef,
+  type ComponentType,
+  type RefObject,
+} from 'react';
 import type { CopilotMessage } from '@/types/copilot';
 import { UserMessage } from './messages/UserMessage';
 import { AssistantResearchCard } from './messages/AssistantResearchCard';
 import { EmptyState } from './EmptyState';
+import { getPrimitiveModule } from '@/modules';
+import { normalizeToolName } from '@/lib/toolNames';
+
+// ----------------------------------------------------------------------------
+// Stage 5 — module-first assistant-card dispatch
+// ----------------------------------------------------------------------------
+//
+// For each assistant message we ask: was this turn driven by exactly
+// one primitive tool, and does that tool's module ship a bespoke
+// ``surfaces.ask`` component?  If yes, mount the module's card.  If
+// no, fall through to the default ``AssistantResearchCard``.
+//
+// Conservative — defer to the default card whenever the turn is
+// multi-tool, workflow-template-driven, or not yet completed.  Those
+// cases need the structured assembly ``AssistantResearchCard``
+// provides (RoutingStrip + ToolTrace + ResultCanvas + DagStrip +
+// etc.); a single per-tool card can't carry that composition.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AssistantCardComponent = ComponentType<any>;
+
+function extractTerminalToolName(message: CopilotMessage): string | null {
+  // Workflow-template turns assemble multiple primitives; render via
+  // the default card.
+  if (message.workflow != null) return null;
+  const completed = message.traceSteps.filter((s) => s.status === 'complete');
+  if (completed.length === 0) return null;
+  const tools = new Set(completed.map((s) => s.tool));
+  if (tools.size !== 1) return null;
+  return [...tools][0];
+}
+
+function resolveAssistantCard(
+  message: CopilotMessage,
+): AssistantCardComponent {
+  const rawTool = extractTerminalToolName(message);
+  if (rawTool) {
+    const moduleSpec = getPrimitiveModule(normalizeToolName(rawTool));
+    const AskSurface = moduleSpec?.surfaces?.ask;
+    if (AskSurface) return AskSurface as AssistantCardComponent;
+  }
+  return AssistantResearchCard as AssistantCardComponent;
+}
 
 type Props = {
   messages: CopilotMessage[];
@@ -110,13 +158,16 @@ export function ConversationCanvas({
                   onEditSubmit={onEditSubmit}
                 />
               )}
-              {turn.assistant && (
-                <AssistantResearchCard
-                  message={turn.assistant}
-                  pairedUserPrompt={turn.user?.content}
-                  onSeedComposer={onSeedComposer}
-                />
-              )}
+              {turn.assistant && (() => {
+                const AssistantCard = resolveAssistantCard(turn.assistant);
+                return (
+                  <AssistantCard
+                    message={turn.assistant}
+                    pairedUserPrompt={turn.user?.content}
+                    onSeedComposer={onSeedComposer}
+                  />
+                );
+              })()}
             </div>
           ))}
         </div>

@@ -1,0 +1,89 @@
+# ============================================================================
+# VERIFIED 2026-05-21 — central_bank_meetings playbook  (work order B2, D-cb)
+#
+# Central-bank policy-meeting events — FOMC / ECB / BoE / BoJ. One
+# macro_data.event_calendar row per scheduled meeting: the meeting date, the
+# policy rate the meeting set, the rate that held before it, and the
+# hike / hold / cut classification.
+#
+# EVENT PLAYBOOK (ADR 0008): lineage keys + an `event_calendar:` section, no
+# instrument-time-series keys. Run by `--mode event-calendar`; the time-series
+# flow skips it.
+#
+# VERIFIED: the meeting calendar for all four banks resolves via
+# bds(<rate ticker>, ECO_RELEASE_DT_LIST) — confirmed by the B2 verification
+# probe (scripts/event_data_bloomberg_check.py, v2 run 2026-05-21): 24 meeting
+# dates each for FOMC / ECB / BoE, 16 for BoJ. The policy rate per meeting
+# comes from bdh(<rate ticker>, PX_LAST).
+#
+# DESIGN NOTES — none guessed:
+#  (1) ECB uses EUORDEPO Index (the deposit facility rate) — the policy-
+#      relevant ECB rate since 2022. (EURR002W, the main-refi rate, was also
+#      verified and would give the same meeting calendar.)
+#  (2) actual / prior. For each meeting the extractor reads the daily rate
+#      series: `actual` = the last rate observation strictly before the NEXT
+#      meeting (the rate this meeting set, held over the inter-meeting period);
+#      `prior` = the last observation strictly before this meeting's own date.
+#      The hike / hold / cut classification (an exact identity, actual-prior)
+#      rides in `attributes`. A future meeting is a scheduled placeholder
+#      (actual / prior NULL), filled post-meeting by the full-row upsert.
+#  (3) related_instrument_id — the link to the per-meeting WIRP implied-rate
+#      instrument — is NULL in v1; it is backfilled when the D-wirp increment
+#      lands (ADR 0008 §3 / §5).
+# ============================================================================
+
+playbook_name: central_bank_meetings
+playbook_version: "1.0"
+dataset_name: central_bank_meetings
+description: |
+  Central-bank policy-meeting events for the four core central banks — the
+  Federal Reserve (FOMC), the European Central Bank, the Bank of England and
+  the Bank of Japan. One macro_data.event_calendar row per scheduled meeting,
+  carrying the meeting date, the policy rate the meeting set, the rate that
+  held before it, and the hike / hold / cut classification. This is the
+  substrate the FOMC event-study template reads; the per-meeting WIRP
+  implied-rate series links in via related_instrument_id (D-wirp increment,
+  ADR 0009).
+
+  NOTE — hawk/dove sentiment NOT in this playbook (TD #31).
+  This playbook stores the FACTUAL policy decision only
+  (`actual`/`prior` rates → identity-derived hike/hold/cut classifier in
+  `attributes`).  It does NOT carry a hawk/dove statement-sentiment
+  field.  Building a categorical FOMC-surprise hawk/dove label
+  (originally scoped as "primitive 6" of the easy-win batch) requires
+  EITHER intraday 2y OIS data (the desk-canonical methodology — see
+  TD #31 path a) OR a separately ingested statement_classification
+  field on this playbook (TD #31 path b).  Both are out of scope for
+  the easy-win batch — see `docs/technical_debt.md` §31.
+
+extraction:
+  # The bds meeting calendar spans ~2025 -> 2027; the bdh policy-rate pull must
+  # reach back before the earliest realized meeting so `prior` resolves.
+  lookback_days: 1000
+
+event_calendar:
+  family: central_bank_meeting
+  event_category: central_bank_meeting
+  meeting_calendar_field: "ECO_RELEASE_DT_LIST"   # VERIFIED — bds meeting-date table
+  rate_field: "PX_LAST"                           # VERIFIED — the daily policy rate
+  events:
+    - event_type: fomc_decision
+      country: "US"
+      currency: "USD"
+      central_bank: "FOMC"
+      rate_ticker: "FDTR Index"
+    - event_type: ecb_decision
+      country: "EU"
+      currency: "EUR"
+      central_bank: "ECB"
+      rate_ticker: "EUORDEPO Index"
+    - event_type: boe_decision
+      country: "UK"
+      currency: "GBP"
+      central_bank: "BOE"
+      rate_ticker: "UKBRBASE Index"
+    - event_type: boj_decision
+      country: "JP"
+      currency: "JPY"
+      central_bank: "BOJ"
+      rate_ticker: "BOJDTR Index"

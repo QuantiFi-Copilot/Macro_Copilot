@@ -285,6 +285,22 @@ def create_workspace(
     ``POST /workspace/{slug}/fork`` endpoint.
     """
     _validate_name(name)
+    # R5.6 — forkable consistency guard.  A workspace is "forkable" when
+    # both ``template_id`` AND ``bound_slot_values`` are populated;
+    # legacy / supervisor-persisted workspaces have both NULL.  Half-
+    # populated rows would silently fail the fork endpoint at apply-time
+    # — fail fast here with a clear message instead.  The check is at
+    # the API boundary rather than the schema so existing rows with
+    # legitimate NULLs (pre-PR-B workspaces, single-primitive supervisor
+    # persistence) keep working.
+    if (template_id is None) != (bound_slot_values is None):
+        raise ValueError(
+            "create_workspace: template_id and bound_slot_values must "
+            "either BOTH be set (forkable workspace) or BOTH be None "
+            "(legacy / supervisor-persisted).  Got "
+            f"template_id={template_id!r}, "
+            f"bound_slot_values={'set' if bound_slot_values is not None else None}."
+        )
     if workspace_uuid is None:
         workspace_uuid = uuid.uuid4()
     slug = derive_slug(name, workspace_uuid)

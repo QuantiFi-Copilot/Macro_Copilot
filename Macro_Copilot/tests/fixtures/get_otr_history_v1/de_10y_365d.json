@@ -1,0 +1,77 @@
+{
+  "fixture_name": "de_10y_365d",
+  "tool_module": "rates_agent.sovereign_bonds.tools.get_otr_history",
+  "tool_function": "get_otr_history",
+  "capture": {
+    "captured_at": "2026-05-24T13:26:38Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Synthetic raw_rows representing realistic resolver-observed OTR transitions for the slot; expected_output produced by running the primitive against these rows.  Locks in regression behavior pending replacement by live-DB capture via _capture.py once the resolver is deployed and macro_data.otr_history is populated.",
+    "frozen_today": "2026-05-24",
+    "raw_rows_count": 2,
+    "raw_rows_sha256": "567df81ec8fec37ba644c2b3338eb80092837993e4e0a52dd38c519055417d97"
+  },
+  "input": {
+    "params": {
+      "country": "DE",
+      "tenor": "10Y",
+      "lookback_days": 365
+    },
+    "frozen_today": "2026-05-24",
+    "raw_rows": [
+      {
+        "effective_from": "2025-09-10",
+        "effective_to": "2026-01-23",
+        "otr_instrument_id": 201,
+        "cusip": null,
+        "isin": "DE0001102648",
+        "vendor_ticker": "/isin/DE0001102648",
+        "maturity_date": "2035-08-15"
+      },
+      {
+        "effective_from": "2026-01-24",
+        "effective_to": null,
+        "otr_instrument_id": 202,
+        "cusip": null,
+        "isin": "DE0001102655",
+        "vendor_ticker": "/isin/DE0001102655",
+        "maturity_date": "2036-02-15"
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "country": "DE",
+      "tenor": "10Y",
+      "as_of_date": "2026-05-24",
+      "otr_instrument_id": 202,
+      "cusip": null,
+      "isin": "DE0001102655",
+      "vendor_ticker": "/isin/DE0001102655",
+      "maturity_date": "2036-02-15",
+      "current_effective_from": "2026-01-24",
+      "transition_count_in_window": 2,
+      "lookback_days": 365
+    },
+    "transitions": [
+      {
+        "effective_from": "2025-09-10",
+        "effective_to": "2026-01-23",
+        "otr_instrument_id": 201,
+        "cusip": null,
+        "isin": "DE0001102648",
+        "vendor_ticker": "/isin/DE0001102648",
+        "maturity_date": "2035-08-15"
+      },
+      {
+        "effective_from": "2026-01-24",
+        "effective_to": null,
+        "otr_instrument_id": 202,
+        "cusip": null,
+        "isin": "DE0001102655",
+        "vendor_ticker": "/isin/DE0001102655",
+        "maturity_date": "2036-02-15"
+      }
+    ],
+    "methodology_note": "Source: macro_data.otr_history (ADR 0003), populated by the on-the-run resolver per ADR 0007. Forward-only ingest: pre-resolver OTR windows are NOT reconstructed \u2014 queries that pre-date the resolver's first run return honest absence (transitions=[], current_metrics identity fields None), never a fabricated mapping. Detection-date precision: a window's effective_from is the resolver's first confirmed observation, ~1-2 days after the true auction date at daily incremental cadence (TD #27). Bloomberg has no historical OTR-window screen; this primitive does not recompute what the source of record provides (P12)."
+  }
+}

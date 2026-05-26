@@ -1,0 +1,127 @@
+# ============================================================================
+# VERIFIED 2026-05-21 — economic_releases playbook  (work order B2, D-econ)
+#
+# Macro economic-release events — CPI / payrolls / retail sales / PMI / jobless
+# claims for the US, Euro area, UK and Japan. One macro_data.event_calendar row
+# per release: the actual print, the analyst consensus, the reference period
+# and the true publication date.
+#
+# EVENT PLAYBOOK (ADR 0008): carries the lineage keys + an `event_calendar:`
+# section and NO instrument-time-series keys (asset_class / target_metrics /
+# reference_metrics / universe) — events are not instruments (ADR 0004). The
+# incremental extractor's `--mode event-calendar` runs it; the time-series flow
+# skips it (it has no `universe`).
+#
+# VERIFIED: every ticker + field below was confirmed on a live Bloomberg
+# terminal by the B2 verification probe (scripts/event_data_bloomberg_check.py,
+# v2 run 2026-05-21) — 11/11 indicators returned a usable actual series via
+# bdh(PX_LAST) AND an ECO_RELEASE_DT_LIST release-date table via bds; 10/11
+# returned the BN_SURVEY_* / FORECAST_STANDARD_DEVIATION consensus fields.
+#
+# DESIGN NOTES — none guessed:
+#  (1) RELEASE DATES. The bdh actual series is indexed by reference PERIOD
+#      (month-end). The true publication date per observation comes from the
+#      bulk field ECO_RELEASE_DT_LIST (a `bds` field). v1 ingests the
+#      release-dated window that list covers (~the last 1.5-2 years + forward
+#      scheduled releases); the deeper pre-window history is a documented
+#      follow-up (ADR 0008 §6).
+#  (2) JP COMPOSITE PMI. Bloomberg exposes NO survey for it (verified — all
+#      BN_SURVEY_* returned 0). It carries `survey: false`; its consensus
+#      columns are deliberately NULL, and this playbook documents the absence.
+#  (3) `surprise` is left NULL by event ingestion (P12) — the Phase-3 surprise
+#      primitives compute the exact identity `actual - consensus_median` with
+#      disclosure; it is never baked in here.
+#  (4) event_type is the generic indicator name; the event_calendar natural key
+#      (event_type, country, release_date) disambiguates by country, so e.g.
+#      cpi_yoy is reused across US / UK / JP.
+# ============================================================================
+
+playbook_name: economic_releases
+playbook_version: "1.0"
+dataset_name: economic_releases
+description: |
+  Macro economic-release events for the core liquid macro-rates economies —
+  US, Euro area, UK and Japan. One macro_data.event_calendar row per release,
+  carrying the actual print, the analyst consensus (median / high / low and
+  the forecast standard deviation), the reference period, and the true
+  publication date. Eleven indicators: US CPI, non-farm payrolls, advance
+  retail sales, ISM manufacturing PMI and initial jobless claims; Euro-area
+  HICP and composite PMI; UK CPI and composite PMI; Japan CPI and composite
+  PMI. This is the CUSIP-free macro-event substrate the Phase-3 event-derived
+  primitives (cpi_surprise, nfp_surprise) and the CPI / NFP event-study
+  templates consume.
+
+extraction:
+  # How far back the bdh actual/survey pull reaches. Must comfortably exceed
+  # the ECO_RELEASE_DT_LIST window (the weekly jobless-claims list spans ~2.2y)
+  # so every realized release date maps to a bdh observation.
+  lookback_days: 1000
+
+event_calendar:
+  family: economic_release
+  event_category: economic_release
+  actual_field: "PX_LAST"                       # VERIFIED — the released value
+  release_date_field: "ECO_RELEASE_DT_LIST"     # VERIFIED — bds bulk release-date table
+  survey_fields:                                # bdh field -> event_calendar column
+    consensus_median: "BN_SURVEY_MEDIAN"        # VERIFIED 10/11
+    consensus_high: "BN_SURVEY_HIGH"            # VERIFIED 10/11
+    consensus_low: "BN_SURVEY_LOW"              # VERIFIED 10/11
+    surprise_std_dev: "FORECAST_STANDARD_DEVIATION"  # VERIFIED 10/11 — forecast dispersion
+  events:
+    # ----------------------------------------------------------------------
+    # United States
+    # ----------------------------------------------------------------------
+    - event_type: cpi_yoy
+      country: "US"
+      currency: "USD"
+      ticker: "CPI YOY Index"
+    - event_type: nfp
+      country: "US"
+      currency: "USD"
+      ticker: "NFP TCH Index"
+    - event_type: retail_sales_mom
+      country: "US"
+      currency: "USD"
+      ticker: "RSTAMOM Index"
+    - event_type: ism_manufacturing
+      country: "US"
+      currency: "USD"
+      ticker: "NAPMPMI Index"
+    - event_type: initial_jobless_claims
+      country: "US"
+      currency: "USD"
+      ticker: "INJCJC Index"
+    # ----------------------------------------------------------------------
+    # Euro area
+    # ----------------------------------------------------------------------
+    - event_type: hicp_yoy
+      country: "EU"
+      currency: "EUR"
+      ticker: "ECCPEMUY Index"
+    - event_type: composite_pmi
+      country: "EU"
+      currency: "EUR"
+      ticker: "MPMIEZCA Index"
+    # ----------------------------------------------------------------------
+    # United Kingdom
+    # ----------------------------------------------------------------------
+    - event_type: cpi_yoy
+      country: "UK"
+      currency: "GBP"
+      ticker: "UKRPCJYR Index"
+    - event_type: composite_pmi
+      country: "UK"
+      currency: "GBP"
+      ticker: "MPMIGBCA Index"
+    # ----------------------------------------------------------------------
+    # Japan
+    # ----------------------------------------------------------------------
+    - event_type: cpi_yoy
+      country: "JP"
+      currency: "JPY"
+      ticker: "JNCPIYOY Index"
+    - event_type: composite_pmi
+      country: "JP"
+      currency: "JPY"
+      ticker: "MPMIJPCA Index"
+      survey: false        # VERIFIED — Bloomberg exposes no survey for JP composite PMI

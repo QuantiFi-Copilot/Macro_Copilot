@@ -6,9 +6,14 @@
 // strips) — the rail is for ongoing dialogue, not deep inspection.
 // For a full conversation view, the user is one click away in Ask.
 //
-// Special-case rendering: when an assistant message carries a
-// workflow result with a ``workspace.slug``, we surface a small
-// "→ Opens this workspace" link so the user can jump.
+// Special-case rendering:
+//   - When an assistant message carries a workflow result with a
+//     ``workspace.slug``, surface a small "→ Opens this workspace"
+//     link so the user can jump.
+//   - When an assistant message carries ``proposedOverrides`` (the
+//     Phase 4 chat-driven override channel), render the chips
+//     inline so a single click queues the suggestion into the
+//     shared ``WorkspaceOverridesProvider``.
 // ============================================================================
 
 import { useMemo } from 'react';
@@ -16,13 +21,28 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import type { CopilotMessage } from '@/types/copilot';
+import { useOptionalWorkspaceOverrides } from '@/components/build/lib/workspaceOverridesContext';
 import { cn } from '@/utils/cn';
+import { ProposedOverridesChips } from './ProposedOverridesChips';
 
 const TAIL = 6;
 
 export function WorkspaceCopilotMessages() {
   const { messages, isThinking } = useCopilotContext();
-  const tail = useMemo(() => messages.slice(-TAIL), [messages]);
+  // R5.4 — filter the global message buffer to the active workspace's
+  // slug so messages from other workspaces don't bleed into this rail.
+  // Falls back to the un-filtered tail when no workspace is in scope
+  // (e.g. the empty-state shell) so existing behaviour is preserved
+  // outside slug-bound mode.
+  const overrides = useOptionalWorkspaceOverrides();
+  const activeSlug = overrides?.workspace.slug ?? null;
+  const scoped = useMemo(() => {
+    if (!activeSlug) return messages;
+    return messages.filter(
+      (m) => !m.workspaceSlug || m.workspaceSlug === activeSlug,
+    );
+  }, [messages, activeSlug]);
+  const tail = useMemo(() => scoped.slice(-TAIL), [scoped]);
 
   if (tail.length === 0) {
     return (
@@ -51,6 +71,7 @@ function MessageBubble({ message }: { message: CopilotMessage }) {
   const navigate = useNavigate();
   const isUser = message.role === 'user';
   const workspaceSlug = message.workflow?.workspace?.slug ?? null;
+  const proposals = message.proposedOverrides ?? null;
 
   return (
     <div
@@ -64,7 +85,7 @@ function MessageBubble({ message }: { message: CopilotMessage }) {
       <div className="flex items-baseline justify-between gap-2">
         <span
           className={cn(
-            'text-[9.5px] font-semibold uppercase tracking-[0.18em]',
+            'kicker',
             isUser ? 'text-ice-200' : 'text-fg-muted',
           )}
         >
@@ -88,6 +109,9 @@ function MessageBubble({ message }: { message: CopilotMessage }) {
           <ArrowRight size={10} />
           <span>Opens /workspace/{workspaceSlug}</span>
         </button>
+      )}
+      {proposals && proposals.length > 0 && (
+        <ProposedOverridesChips proposals={proposals} />
       )}
     </div>
   );

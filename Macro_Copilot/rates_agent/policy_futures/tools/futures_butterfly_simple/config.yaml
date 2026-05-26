@@ -1,0 +1,406 @@
+# =============================================================================
+# policy_futures.get_futures_butterfly_simple_tool — tool configuration
+# =============================================================================
+# Same-curve simple butterfly (3-point curvature) between THREE
+# strip-position slots on ONE curve_family (SOFR_FUT /
+# EUR_SHORT_RATE_FUT / SONIA_FUT). E.g. SOFR_FUT strip 1 / 2 / 3
+# (SFR1-SFR2-SFR3 front-pack curvature) or EUR_SHORT_RATE_FUT 1 / 2 / 4.
+#
+# V1 simple-butterfly primitive (per ADR 0013 — `policy_futures` ships
+# strip-position-keyed monitors). The output card disclosure makes the
+# scope-limited reading explicit (P5):
+#
+#   "Rolling-generic strip simple butterfly at strip_position triple
+#    (W, B, W') — NOT a CTD-of-futures-of-OIS curvature; NOT a meeting-
+#    by-meeting policy-path decomposition; NOT a DV01-neutral or
+#    regression-fitted butterfly. The CTD-implied-OIS path is not yet
+#    a primitive in this build (ADR 0013 V1 scope). Sign convention:
+#    body − 0.5 * (wing_short + wing_long); fixed 50-50 simple-
+#    butterfly weighting."
+#
+# The catalog's methodology guardrail for this primitive REQUIRES the
+# fixed simple-butterfly weighting and explicit disclosure thereof —
+# DV01-neutral / regression-fitted variants are planned-extension
+# territory (PR11) and are refused on the methodology card.
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions. The LLM cannot ask for non-standard windows / thresholds
+# / weights. The implied-rate conversion rule (raw_price → implied_rate_pct,
+# per leg) is driven OFF METADATA (the per-strip
+# ``instrument_master.attributes->>'inverse_pricing'`` flag read via
+# fetch_strip_position_reference) — NOT off a hardcoded list in
+# compute.py. Same convention pattern the sibling futures_price_level /
+# futures_calendar_spread tools use; the simple butterfly re-uses the
+# conversion path verbatim.
+# =============================================================================
+
+tool:
+  name: policy_futures_get_futures_butterfly_simple_tool
+  domain: policy_futures
+  description: |
+    Same-curve simple butterfly (3-point curvature) on the policy-
+    futures strip — emits a ``current_metrics`` snapshot for the
+    latest aligned bar:
+
+      - ``butterfly_value_pct``: the desk-recognised simple-butterfly
+        value in PERCENT POINTS, computed as
+        ``rate_body − 0.5 * (rate_wing_short + rate_wing_long)`` on
+        the aligned (intersection) trading-day series, where each
+        ``rate_*`` is the per-leg implied rate (PERCENT) derived from
+        the leg's raw_price via the per-strip ``inverse_pricing``
+        flag. Fixed 50-50 simple-butterfly weighting (NOT DV01-
+        neutral; NOT regression-fitted).
+
+      - per-leg ``implied_rate_pct_*`` (wing_short / body / wing_long)
+        — the latest implied rate on each of the three legs in
+        PERCENT.
+
+      - 1-day raw-subtraction change in the butterfly value (NOT bps
+        multiplication).
+
+      - rolling 252-day z-score of the BUTTERFLY series.
+
+      - trailing 252-day high / low / mid range on the butterfly
+        series.
+
+      - percentile rank of the current butterfly within the trailing
+        252-day range (0-100).
+
+      - the as_of-bounded SCD2 per-leg disclosure block
+        (``contract_code_*``, ``underlying_contract_code_*``,
+        ``security_name_*``, ``expiry_date_*``) plus the
+        ``inverse_priced`` flag and ``short_rate_regime`` label.
+
+      - ``time_series``: per-row ``{date, butterfly_value_pct,
+        z_score}`` history over the displayed window (bespoke list
+        shape mirroring the sovereign butterfly tool's
+        frontend-friendly export).
+
+      - ``time_series_butterfly`` + ``time_series_zscore``: canonical
+        ``shared.schemas.TimeSeries`` with closed-enum
+        ``TimeSeriesUnits.PERCENT`` (butterfly) and
+        ``TimeSeriesUnits.Z_SCORE`` (z-score). Values match the
+        bespoke ``time_series`` row-for-row.
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Butterfly weighting — FIXED 50-50 simple-butterfly weights.
+  # ---------------------------------------------------------------------------
+  # Catalog methodology guardrail: "Must use the standard fixed
+  # simple-butterfly weighting and state it explicitly." The weights
+  # are body = 1, wing_short = -0.5, wing_long = -0.5; the formula is
+  # ``body - 0.5 * (wing_short + wing_long)``. This block is the
+  # YAML-owned disclosure surface for the weighting choice — it is
+  # NOT a knob (changing the CSV does NOT change compute(); the
+  # formula is wire-frozen in code per PR9 / PR10 — mathematical
+  # invariants in code). The block exists so the methodology card +
+  # the YAML-lint trail document the chosen weighting in a single
+  # place that a desk reviewer can audit. PR11 planned-extension
+  # territory: DV01-neutral / regression-fitted weighting variants
+  # ship as SEPARATE primitives in a future build (the catalog and
+  # this YAML refuse mixing them under the ``simple butterfly``
+  # name).
+  butterfly_weighting:
+    value: "body=1.0,wing_short=-0.5,wing_long=-0.5"
+    source: team_judgment_pending_review
+    rationale: >-
+      Fixed 50-50 simple-butterfly weighting. Body weight = 1, each
+      wing weight = -0.5 (wings sum to -1.0); the butterfly is
+      ``body - 0.5 * (wing_short + wing_long)`` in PERCENT POINTS.
+      Mirrors the "Equal-weighted / 50-50" branch documented in the
+      sovereign butterfly tool's methodology.assumptions block (see
+      rates_agent/sovereign_bonds/tools/butterfly/config.yaml). The
+      DV01-neutral / regression-fitted variants are PR11 planned-
+      extension territory and are explicitly refused by this
+      primitive's methodology card.
+
+  # ---------------------------------------------------------------------------
+  # Z-score window length (trading days) — applied to the BUTTERFLY
+  # series (not the per-leg series; the z lives on the curvature axis).
+  # ---------------------------------------------------------------------------
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      Trading-day count for a 1-year rolling window. Same convention
+      as the sibling futures_price_level / volume_open_interest_snapshot
+      / futures_calendar_spread / sovereign butterfly so cross-tool
+      z-score reads are comparable. Disclosed verbatim on every
+      methodology card per P5 + ADR 0013.
+    valid_range: [60, 1260]
+
+  # ---------------------------------------------------------------------------
+  # Minimum observations before the rolling stat is emitted
+  # ---------------------------------------------------------------------------
+  z_score_min_periods:
+    value: 60
+    source: team_judgment_pending_review
+    rationale: >-
+      ~3 months of observations before the rolling mean / std are
+      deemed trustworthy. Matches futures_price_level /
+      futures_calendar_spread / sovereign butterfly.
+    valid_range: [20, 252]
+
+  # ---------------------------------------------------------------------------
+  # Standard deviation degrees of freedom
+  # ---------------------------------------------------------------------------
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: >-
+      Sample standard deviation (Bessel-corrected, ddof=1). Matches
+      pandas' default and every other rates tool in this codebase.
+
+  # ---------------------------------------------------------------------------
+  # Calendar-day buffer for the fetch window
+  # ---------------------------------------------------------------------------
+  z_score_buffer_multiplier:
+    value: 1.5
+    source: derived_from_window
+    rationale: >-
+      Calendar-day buffer added to the fetch window so the rolling
+      z-score is fully populated from the first displayed trading
+      day. 1.5x trading-day window covers weekends + holidays.
+      Matches every other rates level primitive in this codebase.
+    valid_range: [1.2, 2.0]
+
+  # ---------------------------------------------------------------------------
+  # Daily-change offset (in trading-day rows after ffill + alignment)
+  # ---------------------------------------------------------------------------
+  daily_change_offset_rows:
+    value: 2
+    source: trading_day_convention
+    rationale: >-
+      iloc[-1] vs iloc[-2] = 1 trading day back. Matches the daily-
+      change convention used by every rates level primitive.
+    valid_range: [2, 5]
+
+  # ---------------------------------------------------------------------------
+  # Trailing range / percentile window — LOCKED at 252 in V1
+  # ---------------------------------------------------------------------------
+  # The output schema's field names (high_252d_butterfly_value_pct,
+  # low_252d_butterfly_value_pct, mid_252d_butterfly_value_pct,
+  # percentile_252d) are wire-frozen and embed the 252 number.
+  # compute() raises NotImplementedError if this is set to anything
+  # other than 252; see methodology.planned_extensions for the path
+  # to making it configurable. Mirrors the same guard in
+  # futures_price_level / futures_calendar_spread.
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      1Y trailing for high / low / mid / percentile on the butterfly
+      series. Locked at 252 in V1 because the wire field names embed
+      the number. Mirrors the same wire-freeze in futures_price_level
+      / futures_calendar_spread / sovereign butterfly.
+
+  # ---------------------------------------------------------------------------
+  # Forward-fill limit for missing observations
+  # ---------------------------------------------------------------------------
+  ffill_limit_days:
+    value: 5
+    source: team_judgment_pending_review
+    rationale: >-
+      Bridge up to one trading week of missing data across holiday
+      gaps on each leg. Same as every other rates level primitive in
+      this codebase. Applied independently to each leg's series
+      before the intersection-alignment step.
+    valid_range: [1, 10]
+
+  # ---------------------------------------------------------------------------
+  # Default Bloomberg observation field
+  # ---------------------------------------------------------------------------
+  default_price_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Last-traded price is the canonical front-month price
+      observation. Maps onto the playbook's ``last_price`` metric
+      (bloomberg_field PX_LAST). LLM/HTTP wrappers MUST use the
+      empty-string / None sentinel so this default flows through —
+      same shadowing-fix pattern as sovereign curve_move_classifier
+      (commit b2605ee) / yield_levels / futures_price_level.
+
+  # ---------------------------------------------------------------------------
+  # Short-rate regime map per curve_family — methodology disclosure (P5).
+  # ---------------------------------------------------------------------------
+  # RFR = compounded risk-free rate (SOFR daily compounding for
+  # SOFR_FUT; SONIA daily compounding for SONIA_FUT). IBOR = unsecured
+  # term IBOR (3M Euribor for EUR_SHORT_RATE_FUT). The regime label is
+  # carried on the methodology disclosure string so a desk reader
+  # knows the underlying rate object behind the butterfly. NOT a
+  # load-bearing computation choice — but P5 (honest disclosure)
+  # requires it on every response. Storing in YAML keeps a future
+  # curve_family addition (e.g. TIIE_FUT direct-priced) a YAML edit
+  # rather than a code change. Mirrors the sibling
+  # futures_calendar_spread / futures_price_level entries verbatim.
+  short_rate_regime_map:
+    value: "SOFR_FUT=RFR,SONIA_FUT=RFR,EUR_SHORT_RATE_FUT=IBOR"
+    source: team_judgment_pending_review
+    rationale: >-
+      Disclosure-only mapping (P5 — does NOT alter computation). RFR
+      vs IBOR labels the underlying short-rate object so a desk
+      reader knows what the implied rate means: a compounded daily
+      RFR (SOFR / SONIA) vs an unsecured 3M term IBOR (Euribor).
+      Stored as a CSV of ``KEY=VALUE`` pairs because
+      ``Convention.value`` is scalar; compute parses it into a dict
+      at load time.
+
+  # ---------------------------------------------------------------------------
+  # Boundary rounding — applied to butterfly_value_pct, each
+  # time_series row, high/low/mid, percentile, and z-score. Per-leg
+  # implied_rate_pct uses the same precision as the sibling tools'
+  # ``implied_rate_round_decimals`` for consistency across the
+  # policy_futures domain.
+  # ---------------------------------------------------------------------------
+  butterfly_value_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for the butterfly value in PERCENT POINTS (≈
+      0.01 bp precision). Matches the precision desks use to read
+      STIR butterflies without losing tick-derived resolution.
+      Threaded through both the snapshot's ``butterfly_value_pct``
+      and every row of the bespoke ``time_series`` output so the
+      snapshot equals ``time_series[-1].butterfly_value_pct``
+      strictly at the latest row. Same precision the sibling
+      futures_calendar_spread uses on its
+      ``spread_implied_rate_pct`` snapshot field.
+    valid_range: [0, 8]
+
+  implied_rate_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for per-leg implied rates in PERCENT. Matches
+      futures_price_level / futures_calendar_spread.
+    valid_range: [0, 8]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches yield_levels / curve_spread /
+      futures_price_level / futures_calendar_spread /
+      volume_open_interest_snapshot.
+    valid_range: [0, 8]
+
+  butterfly_value_high_low_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Four decimals for trailing high / low / mid on the butterfly
+      axis so they round at the same precision as
+      ``butterfly_value_pct`` (avoids the snapshot's butterfly
+      equalling neither high nor low because of rounding asymmetry
+      on a single observation).
+    valid_range: [0, 8]
+
+  percentile_round_decimals:
+    value: 1
+    source: team_judgment_pending_review
+    rationale: >-
+      One decimal on percentile (0.0 - 100.0). Matches yield_levels /
+      futures_price_level / futures_calendar_spread.
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    Fetches three same-curve policy-futures strip-slot price series
+    (the ``wing_short``, ``body``, and ``wing_long`` legs of the
+    butterfly triple) via the shared strip-group fetcher, converts
+    each to implied-rate space using the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes``,
+    aligns the three on the intersection of trading days (intra-leg
+    ffill bridges holidays up to 5 trading days), computes the
+    butterfly with FIXED 50-50 simple-butterfly weights
+    (``butterfly_value_pct = rate_body - 0.5 * (rate_wing_short +
+    rate_wing_long)``), and returns a snapshot: current butterfly,
+    1-day delta, rolling 252-day z-score of the butterfly series,
+    trailing 252-day high / low / mid on the butterfly axis,
+    percentile rank of the current butterfly, observation count
+    over the lookback_days window, per-leg current implied rates,
+    plus the as_of-bounded SCD2 per-leg disclosure block.
+
+    The implied-rate conversion rule is driven off the per-strip
+    ``inverse_priced`` flag from ``instrument_master.attributes`` —
+    NOT a hardcoded list in compute.py — and is verified to be
+    CONSISTENT across the three legs (a same-curve butterfly on legs
+    with different ``inverse_pricing`` flags is rejected with the
+    controlled-error envelope). The methodology card discloses the
+    underlying short-rate regime (RFR / IBOR per curve_family), the
+    fixed 50-50 simple-butterfly weighting, the inverse-pricing
+    rule, AND the sign convention so a desk reader cannot misread
+    the sign or the unit.
+
+  assumptions:
+    - "Policy-futures strip slots are keyed by
+       ``(curve_family, strip_position)``; this butterfly is keyed
+       by ``(curve_family, strip_position_wing_short,
+       strip_position_body, strip_position_wing_long)`` with the
+       code-level invariant ``wing_short < body < wing_long``."
+    - "All three legs are read from the same ``curve_family`` (same
+       RFR vs IBOR regime). This is a SAME-CURVE butterfly, NOT a
+       cross-CB / cross-family butterfly (the latter is not a V1
+       primitive)."
+    - "FIXED 50-50 simple-butterfly weighting: body weight = 1, each
+       wing weight = -0.5 (wings sum to -1.0). The catalog's
+       methodology guardrail requires this weighting and explicit
+       disclosure thereof. DV01-neutral / regression-fitted variants
+       are NOT supported by this primitive and are documented as
+       planned_extensions."
+    - "The per-strip ``inverse_priced`` flag drives the per-leg
+       raw_price → implied_rate_pct conversion. All three legs must
+       agree on the flag in V1; otherwise the controlled-error
+       envelope is returned."
+    - "The short-rate regime (RFR vs IBOR) is METHODOLOGY
+       DISCLOSURE — NOT a load-bearing computation choice."
+    - "The z-score lives on the BUTTERFLY axis (not the per-leg
+       implied-rate axis). The desk-recognised level IS the
+       butterfly; the z follows."
+    - "The output is NOT a meeting-by-meeting policy-path
+       decomposition. This is a same-curve simple butterfly on
+       strip-position rolling-generics; the FOMC / ECB / BOE
+       per-meeting implied-step view is a different concept and is
+       NOT a primitive in this build (would require the WIRP-time-
+       series substrate that is deferred per ADR 0009)."
+    - "The output is NOT a CTD-of-futures-of-OIS curvature. The
+       CTD-implied-OIS path is not yet a primitive in this build —
+       that requires the CTD identification + OIS-curve
+       interpolation stack (Phase-4 per ADR 0013)."
+    - "lookback_days controls the fetch window and the
+       observation_count cutoff. The rolling z-score window
+       (z_score_window_days) and trailing range window
+       (trailing_range_window_days) are independent conventions
+       fixed in this YAML."
+
+  citations:
+    - "ADR 0013 (docs_revamped/05_decisions/0013-futures-domain-agents.md)"
+    - "Catalog v2.1 PR14 (frozen field-name discipline: implied_rate_pct, butterfly_value_pct)"
+
+  planned_extensions:
+    - "trailing_range_window_days: configurable. Currently locked at
+       252 because the output fields
+       high_252d_butterfly_value_pct / low_252d_butterfly_value_pct
+       / mid_252d_butterfly_value_pct / percentile_252d embed the
+       number. Path to configurability: rename schema fields to
+       high_window_* / low_window_* / mid_window_* /
+       percentile_window + add trailing_window_days to the output;
+       remove the NotImplementedError guard in compute()."
+    - "DV01-neutral butterfly primitive (separate tool). Today's
+       primitive is the FIXED 50-50 simple butterfly; the DV01-
+       neutral / regression-fitted weighting variant is a distinct
+       desk object and ships as its own primitive (with the DV01
+       computation surface added — gated on a duration-of-futures
+       primitive that is not yet in V1). The methodology card
+       refuses to mix the two under the ``simple butterfly`` name."
+    - "Meeting-by-meeting policy-path butterfly. The FOMC / ECB /
+       BOE per-meeting implied-step decomposition is a separate
+       concept that requires a per-meeting contract calendar mapping
+       + the WIRP-time-series substrate (ADR 0009). NOT a V1
+       primitive."
+    - "CTD-of-futures-of-OIS butterfly (Phase-4 per ADR 0013). Maps
+       the strip butterfly onto a calibrated OIS forward-rate
+       butterfly. Gated on the CTD identification + OIS-curve
+       interpolation stack landing as primitives."

@@ -7,11 +7,12 @@
 //   - Title + status pill (``Completed`` / ``Editing`` / etc.)
 //   - Action cluster: Save / Share / Run all
 //
-// V1 wires the Save / Share / Run actions as visual affordances only —
-// the click handlers fire toast-style placeholders; real behaviour
-// ships in PR B alongside the parameter override + variant flow.
-// The header is rendered even before those wire up so the visual
-// register is correct from day one.
+// Save / Share / Run all are visual affordances that fire toast-style
+// placeholders.  Real wiring depends on backend endpoints that are
+// not yet shipped (a preset-save store, share-link minter, workflow
+// re-run route).  The header is rendered so the visual register
+// stays consistent across the surface; the toast copy is honest
+// about the deferral.
 // ============================================================================
 
 import { useState } from 'react';
@@ -105,7 +106,7 @@ function ActionButton({
         setToast(true);
         setTimeout(() => setToast(false), 1400);
       }}
-      title={`${label} (coming in PR B)`}
+      title={`${label} — coming soon`}
       className={cn(
         'relative flex h-8 items-center gap-1.5 rounded-md border px-3 text-[11.5px] font-medium transition-colors',
         primary
@@ -117,7 +118,7 @@ function ActionButton({
       <span>{label}</span>
       {toast && (
         <span className="pointer-events-none absolute -bottom-7 right-0 whitespace-nowrap rounded-sm border border-line-soft bg-ink-900/95 px-2 py-1 text-[10px] text-fg-secondary shadow-lg">
-          {label} ships in PR B
+          {label} — coming soon
         </span>
       )}
     </button>

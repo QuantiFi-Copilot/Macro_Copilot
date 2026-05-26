@@ -1,0 +1,23 @@
+{
+  "fixture_name": "empty_pre_extractor",
+  "tool_module": "rates_agent.sovereign_bonds.tools.nfp_surprise",
+  "tool_function": "calculate_nfp_surprise",
+  "capture": {
+    "captured_at": "2026-05-24T16:27:13Z",
+    "capture_method": "synthetic_v1",
+    "capture_method_note": "Empty-edge-case fixture pins the error-envelope shape for the pre-extractor-deployment / honest-absence path.  Cannot be captured from the live DB because the canonical US NFP slot now has realised data.",
+    "frozen_today": "2026-05-24",
+    "raw_rows_count": 0,
+    "raw_rows_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "input": {
+    "params": {
+      "lookback_releases": 24
+    },
+    "frozen_today": "2026-05-24",
+    "raw_rows": []
+  },
+  "expected_output": {
+    "error": "No event_calendar rows found for country='US', event_type='nfp' since 2021-10-17.  Either the event extractor has not yet ingested this slot (ADR 0008 \u00a76 / TD #28b \u2014 D-econ release-date window limit) or the requested period pre-dates the playbook's coverage.  Verify rates_agent/playbooks/economic_releases.yml covers the country and that the extractor has run."
+  }
+}

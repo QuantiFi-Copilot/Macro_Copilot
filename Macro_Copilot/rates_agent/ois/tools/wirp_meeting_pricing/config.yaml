@@ -1,0 +1,438 @@
+# =============================================================================
+# calculate_wirp_meeting_pricing_tool — tool configuration
+# =============================================================================
+# Canonical record of conventions + methodology for the WIRP per-meeting
+# pricing primitive (OIS desk concept — WIRP is computed against OIS
+# pricing, so the primitive lives under rates_agent/ois/ per PR3).
+#
+# Desk concept
+# ------------
+# For one central bank's scheduled meetings, surface the latest WIRP
+# pricing snapshot per meeting: implied policy rate (post-meeting),
+# the implied rate change vs current effective rate, the signed
+# move probability (Bloomberg's WIRP_MOVE_PROB — + = hike, − = cut),
+# the number of 25bp moves priced, plus the desk-recognised
+# derivation of separate hike / hold / cut probabilities from the
+# signed move probability.
+#
+# INGEST primitive (P12 boundary) — surfaces Bloomberg WIRP fields
+# verbatim per ADR 0009.  DOES NOT recompute the implied rate from
+# STIR futures, OIS swaps, or any other source.  The only
+# computation in this primitive is the desk-recognised IDENTITY
+# derivation of hike/hold/cut probabilities from the signed
+# WIRP_MOVE_PROB (Bloomberg supplies the signed probability; the
+# desk reads hike = max(p, 0), cut = max(-p, 0), hold = 100 - |p|
+# in percent units — see methodology_note's MANDATORY P5 disclosure).
+#
+# Data sources
+# ------------
+# - macro_data.instrument_master rows with instrument_type =
+#   'wirp_meeting' (one per scheduled meeting, ADR 0009 §1).
+# - macro_data.market_data_daily for the four WIRP field codes
+#   (WIRP_IMPLIED_RATE / WIRP_MOVE_PROB / WIRP_NUM_MOVES /
+#   WIRP_RATE_CHANGE per ADR 0009 §1's metric → field mapping).
+# - Fetched via
+#   shared.analytics.rates_fetch.fetch_wirp_meeting_snapshots
+#   which returns the LATEST observation per (instrument, field).
+#
+# In V1 deterministic mode there is NO LLM-facing override path for
+# conventions.  Conventions are YAML-locked.  See
+# docs_revamped/02_components/primitive/README.md (PR7).
+# =============================================================================
+
+tool:
+  name: calculate_wirp_meeting_pricing_tool
+  domain: ois
+  description: |
+    Per-meeting WIRP pricing snapshot for one central bank (FOMC /
+    ECB / BOE / BOJ).  Surfaces Bloomberg's WIRP-screen fields
+    verbatim per ADR 0009 §1's P12 disclosure (INGEST primitive —
+    NOT recomputed from STIR futures or OIS pricing).
+
+    Two selection modes via the wire-locked Pydantic input:
+      - ``next_n_meetings`` — return the next ``n_meetings`` meetings
+        from today forward (default 6 — see default_n_meetings
+        convention).
+      - ``specific_meeting_date`` — return exactly one meeting on the
+        given date.
+
+    For each selected meeting, surfaces the FOUR raw Bloomberg WIRP
+    fields verbatim:
+
+      - implied_policy_rate_pct      ← WIRP_IMPLIED_RATE (percent)
+      - cumulative_move_prob_pct     ← WIRP_MOVE_PROB (CUMULATIVE,
+        signed; can exceed ±100 — observed range -360.1 .. 548.0
+        per rates_agent/playbooks/wirp.yml)
+      - num_25bp_moves_priced        ← WIRP_NUM_MOVES (signed count,
+        observed -9.57 .. 6.729)
+      - rate_change_native           ← WIRP_RATE_CHANGE (percentage
+        points per wirp.yml Stage-B verification, observed
+        -2.392 .. 1.013)
+
+    NO derived hike / hold / cut probability fields are emitted.
+    The Codex P0 review of PR #190 identified that the original
+    draft's identity ``hike = max(p, 0)``, ``cut = max(-p, 0)``,
+    ``hold = 100 - |p|`` DOES NOT HOLD for CUMULATIVE
+    WIRP_MOVE_PROB — empirically BOE 2025-05-08 = -104.9% would
+    produce hold = -4.9% (impossible).  A step-by-step probability
+    surface that correctly handles the cumulative-move semantics is
+    a documented planned extension; this primitive ships only the
+    raw INGEST.
+
+    Each meeting also carries provenance: the synthetic instrument
+    ``vendor_ticker`` (``WIRP:{central_bank}:{meeting_date}``), the
+    four real Bloomberg tickers the values came from
+    (``bloomberg_ticker_fr/pr/nm/ch``), the ``meeting_date`` and
+    ``meeting_token`` (the ``MMMYYYY`` ticker token), and the
+    ``as_of_date`` of the snapshot — so a consumer can verify exactly
+    which Bloomberg ticker each metric was sourced from.
+
+    Output shape: list of meeting snapshots (categorical / list-
+    shaped output — not bridge-composable as Series or Panel in V1;
+    registered in WORKFLOW_INCOMPATIBLE_TOOLS with rationale per the
+    get_otr_history / classify_curve_move precedent, and as an
+    explicit AC8 judgment call per the Codex P4 finding from PR #190).
+
+  category: desk_invariant_primitive
+
+conventions:
+
+  # ---------------------------------------------------------------------------
+  # Default forward meeting count for ``next_n_meetings`` mode
+  # ---------------------------------------------------------------------------
+  # 6 meetings ≈ 1 year of FOMC / ECB scheduled meetings.  Matches the
+  # brief's "default_n_meetings 6" specification.  Sourced from the
+  # YAML via a lazy default factory in schemas.py (P10 — single source
+  # of truth).  The Pydantic field reads this default when the caller
+  # uses next_n_meetings mode without specifying n_meetings.
+  default_n_meetings:
+    value: 6
+    source: team_judgment_pending_review
+    rationale: >-
+      6 meetings ≈ 1 year of FOMC (8 / year, but 6 typical desk
+      forward window) or ECB (~8 / year) scheduled meetings — the
+      "next ~1y of policy decisions" desk view.  Matches the brief's
+      explicit "default_n_meetings 6" recommendation.  Per-query
+      overrides via the LLM-controlled ``n_meetings`` input are
+      honoured.
+    valid_range: [1, 24]
+
+  # ---------------------------------------------------------------------------
+  # Bloomberg field-name mapping — wire-locked per ADR 0009 §1
+  # ---------------------------------------------------------------------------
+  # The four ``market_data_daily.field_name`` values the primitive
+  # reads, one per WIRP metric per ADR 0009 §1's metric → field
+  # mapping.  These are YAML-locked because they pin the SQL fetch
+  # to the substrate's exact field-name convention; changing any of
+  # them silently would miss every row of the corresponding metric.
+  # Compute layer guards each value with NotImplementedError if the
+  # convention is set to anything else (PR14).
+  implied_rate_field:
+    value: WIRP_IMPLIED_RATE
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Bloomberg WIRP metric code ``FR`` (post-meeting implied
+      effective policy rate), stored in market_data_daily under
+      field_name = ``WIRP_IMPLIED_RATE`` per ADR 0009 §1's metric →
+      field mapping.
+
+  move_prob_field:
+    value: WIRP_MOVE_PROB
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Bloomberg WIRP metric code ``PR`` (signed probability of a
+      single 25bp move — + = hike, − = cut), stored in
+      market_data_daily under field_name = ``WIRP_MOVE_PROB`` per
+      ADR 0009 §1's metric → field mapping.  The desk-recognised
+      hike / cut / hold probabilities are derived from this single
+      signed field by the identity rule documented in
+      methodology.what_it_does (no recomputation).
+
+  num_moves_field:
+    value: WIRP_NUM_MOVES
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Bloomberg WIRP metric code ``NM`` (number of 25bp moves
+      priced), stored in market_data_daily under field_name =
+      ``WIRP_NUM_MOVES`` per ADR 0009 §1's metric → field mapping.
+
+  rate_change_field:
+    value: WIRP_RATE_CHANGE
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Bloomberg WIRP metric code ``CH`` (implied change in the rate
+      vs current effective), stored in market_data_daily under
+      field_name = ``WIRP_RATE_CHANGE`` per ADR 0009 §1's metric →
+      field mapping.  Note: ADR 0009 §1 explicitly disclaims the
+      unit — Bloomberg's PX_LAST is stored verbatim; the unit
+      (bp vs percent vs decimal) is NOT confirmed.  The primitive
+      surfaces the value as-is and discloses the unit ambiguity in
+      methodology_note (P12 — no conversion applied).
+
+  # ---------------------------------------------------------------------------
+  # WIRP universe horizon — sourced from wirp.yml's Stage-B coverage probe
+  # ---------------------------------------------------------------------------
+  # The WIRP universe is bounded per ADR 0009 §3 by the Stage-B
+  # coverage probe (2026-05-22).  The wirp.yml playbook documents:
+  #   forward_horizon_days: 365  — verified full-coverage edge at 2027-04-29
+  #                                (+342d from probe as_of); first far-future
+  #                                EMPTY meeting at 2027-06-09 (+383d); 365
+  #                                sits in the [342, 382] gap.
+  #   past_horizon_days: 540     — earliest meeting (2025-01-24) is -483d
+  #                                from probe as_of; 540 includes it with
+  #                                margin.
+  # These conventions YAML-lock the same numeric values into the
+  # primitive's fetch window — fixes the Codex P3 finding that
+  # ``today + timedelta(days=1500)`` was a hidden hard-coded constant
+  # in compute.py.  PR7 — conventions live in YAML, not code.
+  forward_horizon_days:
+    value: 365
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Forward calendar-day horizon for the next_n_meetings fetch
+      window.  Sourced verbatim from
+      rates_agent/playbooks/wirp.yml's Stage-B-verified
+      ``forward_horizon_days: 365`` (the verified full-coverage edge
+      at 2027-04-29 sits +342d from the probe's as_of; 365 includes
+      every covered meeting and excludes the first empty meeting at
+      +383d).  Compute uses ``today + forward_horizon_days`` as the
+      latest meeting_date in the next_n_meetings fetch.
+    valid_range: [30, 1095]   # 30 days .. 3 years
+
+  past_horizon_days:
+    value: 540
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      Past calendar-day horizon for the specific_meeting_date lookup.
+      Sourced verbatim from
+      rates_agent/playbooks/wirp.yml's Stage-B-verified
+      ``past_horizon_days: 540`` (the earliest meeting 2025-01-24
+      is -483d from the probe's as_of; 540 includes it with margin).
+      Compute uses ``today - past_horizon_days`` as the earliest
+      meeting_date in the next_n_meetings fetch (so a specific past
+      meeting up to ~1.5 years back can be queried).
+    valid_range: [30, 1825]   # 30 days .. 5 years
+
+  # ---------------------------------------------------------------------------
+  # Supported central banks — wire-locked per ADR 0009 §1
+  # ---------------------------------------------------------------------------
+  # The four ``central_bank`` values the WIRP playbook
+  # (rates_agent/playbooks/wirp.yml) ingests, one per region prefix
+  # per ADR 0009 §2's region_prefixes table:
+  #   FOMC ↔ US0B   ECB ↔ EZ0B   BOE ↔ GB0B   BOJ ↔ JP0B
+  #
+  # Stored as a comma-separated string here (Convention values must
+  # be scalar per shared.config.Convention — same shape used by
+  # cpi_surprise's country mapping).  Compute layer splits on comma
+  # and validates the central_bank input against this set.
+  supported_central_banks:
+    value: "FOMC,ECB,BOE,BOJ"
+    source: adr_0009_wirp_time_series
+    rationale: >-
+      The four central banks rates_agent/playbooks/wirp.yml ingests
+      via Bloomberg's WIRP screen, one per ADR 0009 §2 region prefix.
+      Adding another central bank requires extending the wirp.yml
+      playbook (to ingest that bank's series) AND extending this
+      convention in the same PR; compute layer rejects any other
+      central_bank input loudly (P6 — no silent fall-through).
+
+  # ---------------------------------------------------------------------------
+  # Output rounding precision — implied rate / rate change / probs
+  # ---------------------------------------------------------------------------
+  rate_round_decimals:
+    value: 4
+    source: team_judgment_pending_review
+    rationale: >-
+      Round implied-rate / rate-change output to 4 decimal places.
+      Matches the precision Bloomberg's WIRP screen displays.  The
+      raw market_data_daily values are stored with up to 8 decimals
+      of NUMERIC precision; 4 is the display floor.
+    valid_range: [2, 8]
+
+  prob_round_decimals:
+    value: 2
+    source: team_judgment_pending_review
+    rationale: >-
+      Round probability output to 2 decimal places (e.g. 27.40%).
+      WIRP_MOVE_PROB is stored as a percentage with up to 8 decimals
+      but Bloomberg's WIRP screen displays probabilities to one or
+      two decimals; 2 is conservative.
+    valid_range: [0, 4]
+
+  num_moves_round_decimals:
+    value: 3
+    source: team_judgment_pending_review
+    rationale: >-
+      Round num_25bp_moves_priced output to 3 decimal places (e.g.
+      0.237 moves).  Bloomberg's WIRP screen shows this metric with
+      ~2 decimals; 3 is the display floor.
+    valid_range: [0, 6]
+
+methodology:
+  what_it_does: |
+    For one central bank (FOMC / ECB / BOE / BOJ) and one of two
+    selection modes, returns the latest WIRP pricing snapshot per
+    selected meeting:
+
+      1. ``next_n_meetings`` mode — selects the next ``n_meetings``
+         meetings whose ``maturity_date`` (= meeting date, per
+         ADR 0009 §1's typed-column mapping) is on or after today,
+         ordered by meeting date ascending.  Bounded by the
+         ``forward_horizon_days`` convention sourced from
+         wirp.yml's Stage-B-verified band per ADR 0009 §3.
+      2. ``specific_meeting_date`` mode — selects exactly the one
+         meeting whose maturity_date equals the requested
+         ``meeting_date`` (which can be a past or future meeting
+         within the WIRP horizon — ADR 0009 §3).
+
+    For each selected meeting:
+      - Fetches the four WIRP fields' LATEST observation per
+        instrument_id × field_name from
+        shared.analytics.rates_fetch.fetch_wirp_meeting_snapshots
+        (a snapshot fetch — one row per (meeting, field) at the
+        latest available trade_date).
+      - Surfaces the FOUR Bloomberg values verbatim — INGEST
+        primitive per P12.  NO unit conversion.  NO derived
+        hike/hold/cut probability fields (see methodology_note's
+        CUMULATIVE disclosure — the Codex P0 finding from PR #190
+        established that a single-event-probability decomposition
+        does NOT hold for the CUMULATIVE WIRP_MOVE_PROB).
+      - Surfaces full provenance: the synthetic vendor_ticker, the
+        four real Bloomberg tickers, the meeting_date / meeting_token,
+        and the as_of_date.
+
+    Output is a list of meeting-snapshot rows + a methodology_note
+    surfacing the MANDATORY P5 disclosure from the brief: source is
+    Bloomberg WIRP via ADR 0009; nothing is recomputed; the
+    cumulative-move semantics of WIRP_MOVE_PROB are loud on the
+    wire (field name ``cumulative_move_prob_pct``); rate_change
+    unit confirmed as percentage points per wirp.yml's Stage-B
+    verification.
+
+    Honest absence per P5 + P6:
+      - When the requested central_bank is outside the YAML-locked
+        set of supported_central_banks, the response is a controlled
+        error envelope listing the supported set (no silent fall-
+        through).
+      - When ``next_n_meetings`` returns fewer than n_meetings rows
+        (the WIRP horizon ends before n meetings are ingested), the
+        response surfaces all available meetings + a flag noting
+        the gap — NOT a fabricated row for a meeting not in the DB.
+      - When ``specific_meeting_date`` finds no matching meeting,
+        the response is an error envelope naming the missing date.
+      - When a meeting is missing one of the four metrics (the
+        ADR 0009 §4 ``available: false`` opt-out — e.g. a region
+        for which one of the WIRP series doesn't exist), the row's
+        corresponding field is None on the wire — NOT a fabricated
+        zero.
+
+    Output shape: ``meetings: list[WirpMeetingSnapshot]`` — list-
+    shaped categorical output (the natural shape of "N meeting
+    snapshots") — NOT bridge-composable as Series or Panel in V1.
+    Per ADR 0009 + the get_otr_history / classify_curve_move
+    precedent, this primitive registers in
+    ``rates_agent/workflows/__init__.py``'s
+    ``WORKFLOW_INCOMPATIBLE_TOOLS`` and is reachable only via the
+    MCP tool catalogue, not via workflow templates.
+
+  assumptions:
+    - "WIRP synthetic instruments are populated per ADR 0009 (the
+       D-wirp playbook) — one ``wirp_meeting`` row in
+       macro_data.instrument_master per scheduled meeting, with
+       typed ``maturity_date`` = the meeting date and
+       ``attributes->>'central_bank'`` carrying FOMC / ECB / BOE /
+       BOJ."
+    - "The four WIRP fields (WIRP_IMPLIED_RATE / WIRP_MOVE_PROB /
+       WIRP_NUM_MOVES / WIRP_RATE_CHANGE) are ingested verbatim
+       from Bloomberg's WIRP screen per ADR 0009 §1's P12
+       boundary.  Units are stored as Bloomberg returns them — no
+       conversion is applied, in particular ``WIRP_RATE_CHANGE`` is
+       in NATIVE Bloomberg units (ADR 0009 §1 explicitly disclaims
+       the unit; the unit ambiguity is surfaced in
+       methodology_note)."
+    - "``WIRP_MOVE_PROB`` is a CUMULATIVE SIGNED probability per
+       rates_agent/playbooks/wirp.yml's Stage-B verification —
+       observed live-DB range -360.1 .. 548.0%.  Values can
+       exceed ±100 when the market prices more than one 25bp
+       move.  This primitive surfaces the raw value as
+       ``cumulative_move_prob_pct`` and does NOT derive
+       hike/hold/cut probabilities (the naive identity
+       max(p, 0) / max(-p, 0) / 100 - |p| does NOT hold for
+       CUMULATIVE values — empirically BOE 2025-05-08 = -104.9%
+       would give hold = -4.9%).  A correct hike-step probability
+       primitive that maps the joint distribution of WIRP_NUM_MOVES
+       and WIRP_MOVE_PROB into desk-recognised step probabilities
+       is a documented planned extension."
+    - "The WIRP horizon is bounded per ADR 0009 §3 by the Stage-B
+       coverage probe — meetings beyond the verified horizon are
+       deliberately absent from instrument_master and the primitive
+       returns them as honest absence (TD #28b)."
+    - "The latest snapshot per meeting is the LATEST available
+       trade_date in market_data_daily — typically yesterday's
+       close.  Two meetings may have different ``as_of_date``
+       values if one stopped updating before the other (e.g. a
+       past meeting's tickers age out before the next one).  The
+       row carries its own ``as_of_date`` so consumers can detect
+       and disclose this."
+
+  citations:
+    - "docs_revamped/05_decisions/0009-wirp-time-series.md
+       (synthetic-instrument model, region prefixes, metric → field
+       mapping, P12 INGEST boundary, unit ambiguity for
+       WIRP_RATE_CHANGE)."
+    - "docs_revamped/05_decisions/0008-event-playbook-contract.md
+       §5 (WIRP carve-out — time-series, not event playbook)."
+    - "docs_revamped/05_decisions/0004-event-calendar-substrate.md
+       (event_calendar.related_instrument_id reserved for the WIRP
+       link)."
+    - "rates_agent/playbooks/wirp.yml (the WIRP ingestion playbook)."
+
+  planned_extensions:
+    - >-
+      Daily WIRP history per meeting.  Today's primitive returns
+      only the LATEST snapshot per meeting.  A companion primitive
+      could return the daily series of WIRP_IMPLIED_RATE (or the
+      other three metrics) over the meeting's run-up — useful for
+      event-study workflows that want "how did the priced rate
+      evolve in the 30 days before the meeting".  Output shape
+      would be a Panel (one TimeSeries per metric per meeting), or
+      one TimeSeries per metric across meetings — TBD when the
+      consuming workflow is specified.
+    - >-
+      Standardised WIRP unit disclosure.  ADR 0009 §1 disclaims the
+      unit of WIRP_RATE_CHANGE; Stage B was supposed to confirm
+      observed value ranges per metric and document them.  Once
+      that disclosure is canonical, this primitive can drop the
+      "NATIVE units" hedging in methodology_note and assert the
+      unit explicitly.
+    - >-
+      Categorical hawk/dove summary.  A consumer-facing scalar
+      classification of the WIRP read (e.g. "100% hold-pricing",
+      "marginal hike risk", "convex cut-pricing").  This is the
+      kind of summary the forthcoming ``fomc_surprise_label``
+      primitive (primitive 6 of the 8-batch) would consume; the
+      WIRP read itself is the input, not the output, of that
+      categorical primitive.
+    - >-
+      Step-by-step hike / hold / cut probability surface.  The
+      ORIGINAL draft of this primitive (PR #190 v1) derived these
+      from the signed WIRP_MOVE_PROB via
+      ``hike = max(p, 0)``, ``cut = max(-p, 0)``,
+      ``hold = 100 - |p|`` — Codex correctly identified that this
+      identity does NOT hold for the CUMULATIVE WIRP_MOVE_PROB
+      semantics documented in wirp.yml.  A correct surface
+      requires a verified mapping from the joint
+      (WIRP_NUM_MOVES, WIRP_MOVE_PROB) distribution into
+      step-by-step probabilities — likely involving Bloomberg's
+      WIRP documentation on how cumulative move probabilities are
+      decomposed into per-step ones (or an outside reference
+      desk-convention).  Deferred pending an AC8 design
+      conversation; see PR #190 Codex review for the empirical
+      counter-example (BOE 2025-05-08).
+    - >-
+      Bridge-composable output shape.  Today's list-of-snapshots
+      output is workflow-incompatible per the get_otr_history
+      precedent.  If the workflow bridge later supports a Panel
+      shape for "N meetings × K metrics" output, this primitive
+      could re-shape and join WORKFLOW_INCOMPATIBLE_TOOLS would
+      remove its entry in the same PR.

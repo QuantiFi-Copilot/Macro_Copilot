@@ -65,7 +65,11 @@ export function WorkspaceCopilotRail({
       // Completed mode — fire the chip prompt directly through the
       // scoped composer's path.  Same preamble + sendMessage as the
       // composer below, so chip-clicks are first-class messages.
-      sendMessage(composeScopedMessage(workspace, text));
+      // R5.4 — scope the chip-driven turn to the active workspace so
+      // the per-workspace message rail filters correctly.
+      sendMessage(composeScopedMessage(workspace, text), {
+        workspaceSlug: workspace?.slug ?? null,
+      });
     },
     [mode, onChipSeed, sendMessage, workspace],
   );
