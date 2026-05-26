@@ -43,6 +43,10 @@ const PROJECT_ROOT = process.cwd();
 const SRC_ROOTS = [
   join(PROJECT_ROOT, 'src/lib/__tests__'),
   join(PROJECT_ROOT, 'src/modules'),
+  // Stage 4g — page-shell structural tests that lock module-derivation
+  // contracts (e.g. CategoryChips deriving CATEGORY_ORDER from
+  // CATEGORY_LABELS instead of hard-coding a closed list).
+  join(PROJECT_ROOT, 'src/components/library/__tests__'),
 ];
 const ESBUILD = join(PROJECT_ROOT, 'node_modules/.bin/esbuild');
 

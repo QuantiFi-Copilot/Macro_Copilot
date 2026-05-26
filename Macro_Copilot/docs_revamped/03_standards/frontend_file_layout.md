@@ -70,7 +70,9 @@ src/modules/primitives/<tool_name>/        # FM1: folder name = backend tool_nam
 ├── surfaces/                              # Per-capability-tier JSX
 │   ├── BuildSurface.tsx                   # if tiers ∋ custom_build_surface
 │   ├── PreviewWidget.tsx                  # if tiers ∋ custom_preview_widget
-│   ├── MonitorWidget.tsx                  # if tiers ∋ monitor_surface
+│   ├── MonitorWidget.tsx                  # if tiers ∋ monitor_surface AND single-widget legacy shape
+│   ├── monitor/                           # if tiers ∋ monitor_surface AND Stage 4d multi-variant shape
+│   │   └── <WidgetName>.tsx               # one file per MODULE.monitorWidgets[i].component
 │   └── AskCard.tsx                        # if tiers ∋ ask_surface
 ├── types.ts                               # OPTIONAL — bespoke wire shapes
 └── __tests__/
