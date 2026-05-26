@@ -1,8 +1,8 @@
 playbook_name: "fx_crosses"
-playbook_version: "2.0"
+playbook_version: "3.0"
 asset_class: "fx"
 dataset_name: "fx_crosses"
-description: "G10 FX cross rates (non-USD pairs) for relative value, cross-asset analysis, and synthetic basket construction. Wave 1 expands from 6 to 11 crosses by adding NZD-side crosses (NZDJPY, EURNZD, AUDNZD) and EUR-side crosses (EURCAD, EURAUD). The metadata is also harmonised — Wave 1 backfills `market_scope: G10` and `region: Global` on the pre-existing entries (these were missing from v1)."
+description: "G10 FX cross rates (non-USD pairs) for relative value, cross-asset analysis, and synthetic basket construction. Wave 1 expanded from 6 to 11 crosses. v3.0 (Tradability 2026-05-26) adds GBPCHF + CADJPY (2 net-new entries) to align with the bid/ask warehouse-seed extraction batch — these 2 crosses are heavily quoted by Bloomberg with full PX_BID/PX_ASK coverage. Total: 13 G10 cross rates."
 
 extraction:
   start_date: "2000-01-01"
@@ -118,3 +118,32 @@ universe:
     pair: "EURAUD"
     base_ccy: "EUR"
     quote_ccy: "AUD"
+
+  # ============================================================
+  # v3.0 additions — Tradability 2026-05-26 (2 new entries)
+  # ------------------------------------------------------------
+  # GBPCHF + CADJPY were extracted in the bid/ask warehouse-seed
+  # session as part of the 11-G10-crosses cohort. Adding them here
+  # aligns the playbook YAML with the DB universe (otherwise they'd
+  # be orphan instruments — no metadata, no test coverage). Both are
+  # liquid G10 crosses with bid/ask streams available since at least
+  # 2003-2005.
+  # ============================================================
+
+  - ticker: "GBPCHF Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    market_scope: "G10"
+    region: "Global"
+    pair: "GBPCHF"
+    base_ccy: "GBP"
+    quote_ccy: "CHF"
+
+  - ticker: "CADJPY Curncy"
+    instrument_type: "fx_spot"
+    fx_family: "G10_CROSSES"
+    market_scope: "G10"
+    region: "Global"
+    pair: "CADJPY"
+    base_ccy: "CAD"
+    quote_ccy: "JPY"

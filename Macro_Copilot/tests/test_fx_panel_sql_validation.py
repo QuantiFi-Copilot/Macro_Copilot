@@ -63,21 +63,36 @@ _SCOPE_TO_FAMILIES: Dict[str, List[str] | None] = {
 
 
 def _sql_pairs_for_scope(engine, families: List[str] | None) -> List[str]:
+    """Return pairs matching scope AND having at least one PX_LAST row.
+
+    The calculate_fx_panel tool joins on field_name='PX_LAST' so it cannot
+    return pairs that have only bid/ask quotes (e.g. GBPCHF + CADJPY added
+    in fx_crosses.yml v3.0 — bid/ask-only pending future PX_LAST extraction).
+    The SQL truth must mirror that semantic to keep parity meaningful.
+    """
+    base_join = """
+        FROM macro_data.instrument_master im
+        WHERE im.instrument_type = 'fx_spot'
+          AND EXISTS (
+              SELECT 1 FROM macro_data.market_data_daily d
+              WHERE d.instrument_id = im.instrument_id
+                AND d.field_name = 'PX_LAST'
+              LIMIT 1
+          )
+    """
     if families is None:
-        sql = text("""
-            SELECT attributes->>'pair' AS pair
-            FROM macro_data.instrument_master
-            WHERE instrument_type = 'fx_spot'
-            ORDER BY attributes->>'pair'
+        sql = text(f"""
+            SELECT im.attributes->>'pair' AS pair
+            {base_join}
+            ORDER BY im.attributes->>'pair'
         """)
         params = {}
     else:
-        sql = text("""
-            SELECT attributes->>'pair' AS pair
-            FROM macro_data.instrument_master
-            WHERE instrument_type = 'fx_spot'
-              AND attributes->>'fx_family' = ANY(:families)
-            ORDER BY attributes->>'pair'
+        sql = text(f"""
+            SELECT im.attributes->>'pair' AS pair
+            {base_join}
+              AND im.attributes->>'fx_family' = ANY(:families)
+            ORDER BY im.attributes->>'pair'
         """)
         params = {"families": families}
     with engine.connect() as conn:

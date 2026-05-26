@@ -1,7 +1,10 @@
 """Manual Bloomberg XLSX → parquet converter (generic, substrate-parameterised).
 
 Phase B Wave 2 / BBG batch (2026-05-25). Extended for BBG warehouse seeding
-session (2026-05-25 night) — supports 15 FX substrates total now.
+(2026-05-25 night) and for FX tradability (2026-05-26) — supports 15+
+FX substrates. Multi-field aware (PX_LAST + PX_BID + PX_ASK + PX_VOLUME)
+and multi-playbook-XLSX aware (one XLSX can feed multiple substrates by
+regex partition).
 
 Original BBG batch substrates (PR #198 + #203):
   - g10_forwards_long    (G10 forwards 2Y/5Y, extends fx_forwards.yml)
@@ -195,6 +198,22 @@ def _build_em_ext_ndf_ticker(g: Dict[str, str]) -> str:
 # existing _build_em_vol_ticker / _build_em_forwards_ticker /
 # _build_vol_smile_ticker builders — same f"{pair}V{tenor} Curncy" /
 # f"{pair}{tenor} Curncy" / f"{pair}{delta}{tenor} Curncy" output shape.
+
+
+# ============================================================================
+# Tradability bid/ask (2026-05-26) — 1 new ticker builder
+# ============================================================================
+# For spot bid/ask substrates the regex captures the full pair name
+# (e.g. EURUSD, USDMXN, EURGBP) so the builder just appends " Curncy".
+# All other bid/ask substrates reuse the existing tenor/delta-aware
+# builders (em_forwards, em_vol, vol_smile, ndf), differentiated only
+# by adding the `field` regex group and the playbook target.
+
+def _build_spot_ticker_from_pair(g: Dict[str, str]) -> str:
+    # sheet "EURUSD_BID" → "EURUSD Curncy"
+    # sheet "USDMXN_ASK" → "USDMXN Curncy"
+    # sheet "EURGBP_BID" → "EURGBP Curncy"  (used by spot_bidask_crosses)
+    return f"{g['pair']} Curncy"
 
 
 SUBSTRATES: Dict[str, SubstrateConfig] = {
@@ -487,12 +506,296 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
+
+    # ====================================================================
+    # Tradability bid/ask (2026-05-26) — 9 new substrates
+    # --------------------------------------------------------------------
+    # FX bid/ask extraction for backtest/execution realism. Phase 1
+    # discovery validated PX_BID and PX_ASK serve clean (>=99% coverage)
+    # across spot, forwards, NDF, ATM vol, smile. Phase 2 extraction
+    # produced 8 XLSX files (871 sheets total). Two of those XLSX files
+    # span multiple playbooks and need to be partitioned via regex into
+    # 2 substrates each:
+    #
+    #   spot_bidask_extraction.xlsx (74 sheets) =
+    #     spot_bidask_majors_em (52 → spot_fx playbook)
+    #     spot_bidask_crosses   (22 → fx_crosses playbook)
+    #
+    #   forwards_bidask_extraction.xlsx (140 sheets) =
+    #     forwards_bidask_g10 (60 → fx_forwards playbook)
+    #     forwards_bidask_em  (80 → fx_em_forwards playbook)
+    #
+    # Other 6 XLSX files map 1:1 to a substrate.
+    #
+    # Each bid/ask substrate uses combine_existing_filter to pull the
+    # prior PX_LAST series of the same fx_family into the parquet. This
+    # ensures the ingester's sanity gate (which counts instrument×field
+    # tuples) passes — incoming = bid+ask new tuples (and we re-upsert
+    # PX_LAST as no-op for safety).
+    #
+    # min_rows_per_sheet is more permissive than for PX_LAST substrates
+    # (300-500 vs 4000-6000) because bid/ask history is structurally
+    # shorter than PX_LAST on Bloomberg (some pairs only get bid/ask
+    # quotes from ~2005-2010 onwards). Discovery showed >=99% coverage
+    # at the depth available; the threshold is a safety net for tickers
+    # we didn't sample.
+    # ====================================================================
+
+    "spot_bidask_majors_em": SubstrateConfig(
+        name="spot_bidask_majors_em",
+        playbook_name="spot_fx",  # extends spot_fx.yml (bid/ask layer)
+        dataset_name="spot_fx",
+        instrument_type="fx_spot",
+        # Matches G10 majors (9) + EM core/top-up (11) + EM warehouse-seed (6)
+        # = 26 instruments × 2 fields (BID, ASK) = 52 matched sheets.
+        # Excludes the 22 G10 crosses sheets (those go to spot_bidask_crosses).
+        # Excludes USDCNY (non-tradable EM_SPOT_REFERENCE — no bid/ask per protocol).
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF|NZDUSD|USDNOK|USDSEK|"
+            r"USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW|IDR|PHP|CNH|INR|SGD|TWD|THB|CLP|COP|PEN))"
+            r"_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=52,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_spot (no fx_family restriction) so the
+            # sanity gate sees the full prior load count (~38 instruments
+            # incl. G10_CROSSES + EM_SPOT_REFERENCE). Per-playbook
+            # attribute restoration happens via the post-ingest
+            # refresh_instrument_metadata invocations (spot_fx + fx_crosses
+            # both, since the wipe affects all touched instruments).
+            "im.instrument_type = 'fx_spot' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "spot_bidask_crosses": SubstrateConfig(
+        name="spot_bidask_crosses",
+        playbook_name="fx_crosses",  # extends fx_crosses.yml (bid/ask layer)
+        dataset_name="fx_crosses",
+        instrument_type="fx_spot",
+        # 11 G10 crosses × 2 fields = 22 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURGBP|EURJPY|EURCHF|EURAUD|EURCAD|EURNZD|"
+            r"GBPJPY|GBPCHF|AUDJPY|AUDNZD|CADJPY)"
+            r"_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=22,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_spot — same rationale as
+            # spot_bidask_majors_em (need full prior count for sanity gate).
+            "im.instrument_type = 'fx_spot' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "forwards_bidask_g10": SubstrateConfig(
+        name="forwards_bidask_g10",
+        playbook_name="fx_forwards",  # extends fx_forwards.yml (bid/ask layer)
+        dataset_name="fx_forwards",
+        instrument_type="fx_forward",
+        # 6 G10 pairs × 5 standard tenors × 2 fields = 60 sheets.
+        # Extended tenors (2Y/5Y) bid/ask explicitly out-of-scope.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_forwards_ticker,  # f"{pair}{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_forward — sanity gate needs full 82
+            # (42 G10 + 40 EM) not just 42 G10.
+            "im.instrument_type = 'fx_forward' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "forwards_bidask_em": SubstrateConfig(
+        name="forwards_bidask_em",
+        playbook_name="fx_em_forwards",  # extends fx_em_forwards.yml (bid/ask layer)
+        dataset_name="fx_em_forwards",
+        instrument_type="fx_forward",
+        # 8 EM deliverable pairs × 5 tenors × 2 fields = 80 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|ZAR|TRY|PLN|HUF|PHP|SGD|THB))"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_forwards_ticker,
+        expected_sheet_count=80,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_forward — same rationale as forwards_bidask_g10.
+            "im.instrument_type = 'fx_forward' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "ndf_bidask": SubstrateConfig(
+        name="ndf_bidask",
+        playbook_name="fx_ndf",  # extends fx_ndf.yml (bid/ask layer)
+        dataset_name="fx_ndf",
+        instrument_type="fx_ndf",
+        # 6 NDF families × 5 tenors × 2 fields = 60 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<ndf_code>CCN|IRN|BCN|KWN|IHN|NTN)"
+            r"_(?P<tenor>1W|1M|3M|6M|12M)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_ndf_ticker,  # f"{ndf_code}+{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            "im.instrument_type = 'fx_ndf' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "atm_vol_g10_bidask": SubstrateConfig(
+        name="atm_vol_g10_bidask",
+        playbook_name="fx_vol",  # extends fx_vol.yml (bid/ask layer)
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 6 G10 pairs × 5 standard tenors × 2 fields = 60 sheets.
+        # Extended tenors (ON/2W/2M/9M/2Y) bid/ask explicitly skipped.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,  # f"{pair}V{tenor} Curncy"
+        expected_sheet_count=60,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_vol — sanity gate needs full 200
+            # (G10 standard+ext + EM standard+ext + CNH/INR) not just G10.
+            "im.instrument_type = 'fx_vol' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "atm_vol_em_bidask": SubstrateConfig(
+        name="atm_vol_em_bidask",
+        playbook_name="fx_vol",  # extends fx_vol.yml (bid/ask layer)
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 17 EM pairs × 5 standard tenors × 2 fields = 170 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW|IDR|PHP|CNH|INR|SGD|TWD|THB|CLP|COP|PEN))"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,
+        expected_sheet_count=170,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            # Widened to all fx_vol — same rationale as atm_vol_g10_bidask.
+            "im.instrument_type = 'fx_vol' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "smile_g10_bidask": SubstrateConfig(
+        name="smile_g10_bidask",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml (bid/ask layer)
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # 6 G10 pairs × 4 deltas × 3 std tenors × 2 fields = 144 sheets.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURUSD|GBPUSD|USDJPY|AUDUSD|USDCAD|USDCHF)"
+            r"_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=144,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            # Widened to all fx_vol_smile — sanity gate needs full 284
+            # (180 standard + 104 extended) not just 120 G10.
+            "im.instrument_type = 'fx_vol_smile' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "smile_em_bidask": SubstrateConfig(
+        name="smile_em_bidask",
+        playbook_name="fx_vol_smile",  # extends fx_vol_smile.yml (bid/ask layer)
+        dataset_name="fx_vol_smile",
+        instrument_type="fx_vol_smile",
+        # 7 EM pairs (MXN/BRL/ZAR/TRY/PLN/HUF/KRW) × 4 deltas × 3 std tenors
+        # × 2 fields = 168 sheets. USDIDR/USDPHP/USDCNH/USDINR explicitly
+        # EXCLUDED from smile bid/ask (already skinny on PX_LAST per
+        # discovery — no incremental tradability value).
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>USD(?:MXN|BRL|ZAR|TRY|PLN|HUF|KRW))"
+            r"_(?P<delta>25R|25B|10R|10B)_(?P<tenor>1M|3M|1Y)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_vol_smile_ticker,
+        expected_sheet_count=168,
+        min_rows_per_sheet=300,
+        combine_existing_filter=(
+            # Widened to all fx_vol_smile — same rationale as smile_g10_bidask.
+            "im.instrument_type = 'fx_vol_smile' "
+            "AND d.field_name = 'PX_LAST'"
+        ),
+    ),
+
+    "cross_atm_vol": SubstrateConfig(
+        name="cross_atm_vol",
+        playbook_name="fx_vol",  # extends fx_vol.yml to v6.0
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 11 G10 crosses × 5 standard tenors = 55 NEW fx_vol instruments.
+        # PX_LAST only (no bid/ask in this batch). These are net-new
+        # instruments — they REQUIRE fx_vol.yml v6.0 extension with 55
+        # new universe entries (fx_family='G10_CROSSES_FX_VOL', new
+        # value). Unlike the bid/ask substrates which only add
+        # field_name rows, this one adds new instrument_master rows.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURGBP|EURJPY|EURCHF|EURAUD|EURCAD|EURNZD|"
+            r"GBPJPY|GBPCHF|AUDJPY|AUDNZD|CADJPY)"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,  # f"{pair}V{tenor} Curncy"
+        expected_sheet_count=55,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_vol PX_LAST + BID/ASK so the consolidated
+            # bid/ask state survives the delete-then-insert cycle.
+            # No d.field_name restriction.
+            "im.instrument_type = 'fx_vol'"
+        ),
+    ),
 }
 
 
 # ============================================================================
 # Validation (mirror Phase B EM spot strict)
 # ============================================================================
+
+
+# Map regex `field` group value → BBG field_name written to the parquet.
+# When a substrate's regex has no `field` named group, the long_df field_name
+# defaults to PX_LAST (backward compat with all pre-bidask substrates).
+_BBG_FIELD_MAP: Dict[str, str] = {
+    "": "PX_LAST",
+    "LAST": "PX_LAST",
+    "BID": "PX_BID",
+    "ASK": "PX_ASK",
+    "VOL": "PX_VOLUME",  # reserved — no PX_VOLUME substrate currently uses it
+}
+
+
+def _resolve_field_name(regex_groups: Dict[str, str]) -> str:
+    """Return the BBG field_name for a regex match. Defaults to PX_LAST when
+    the substrate's regex has no `field` named group (single-field substrates
+    like spot_topup, em_ext_vol, atm_extended — backward compat)."""
+    raw = (regex_groups.get("field") or "").upper()
+    if raw not in _BBG_FIELD_MAP:
+        _fail(
+            f"Unknown regex `field` group value {raw!r}. "
+            f"Allowed: {sorted(_BBG_FIELD_MAP.keys())}"
+        )
+    return _BBG_FIELD_MAP[raw]
 
 
 class ValidationError(RuntimeError):
@@ -518,9 +821,21 @@ def read_and_validate_xlsx(
     substrate: SubstrateConfig,
     infer_missing_first_date: bool = False,
 ) -> pd.DataFrame:
-    """Read the XLSX, validate, return a long-format DataFrame with
-    columns [trade_date, ticker, field_value]. Fail-loud on any
+    """Read the XLSX, validate, return a long-format DataFrame with columns
+    [trade_date, ticker, field_name, field_value]. Fail-loud on any
     discrepancy with the substrate's spec.
+
+    The XLSX may contain MORE sheets than the substrate's regex matches —
+    this supports multi-playbook XLSX files (e.g. spot_bidask covers both
+    spot_fx and fx_crosses playbooks, run twice with different regexes).
+    Non-matching sheets are skipped with a NOTE. expected_sheet_count
+    refers to the count of REGEX-MATCHED sheets, not total XLSX sheets.
+
+    Multi-field support: if the substrate's regex captures a named group
+    `field` with values in {BID, ASK, LAST, VOL}, each sheet's BBG
+    field_name is resolved per-sheet via _resolve_field_name. Substrates
+    without a `field` group default every row to PX_LAST (pre-bidask
+    backward compat).
     """
     if not xlsx_path.exists():
         _fail(f"Input file not found: {xlsx_path}")
@@ -528,46 +843,58 @@ def read_and_validate_xlsx(
     sheets = pd.read_excel(xlsx_path, sheet_name=None, header=None)
     sheet_names = list(sheets.keys())
 
-    # 1. Sheet count
-    if len(sheet_names) != substrate.expected_sheet_count:
-        _fail(
-            f"Substrate {substrate.name!r}: expected exactly "
-            f"{substrate.expected_sheet_count} sheets, got "
-            f"{len(sheet_names)}. Sheet list: {sheet_names}"
-        )
-
-    # 2. Each sheet name matches the substrate's regex; build ticker map
+    # 1. Match regex against every sheet name; only matched ones are processed.
+    # Unmatched sheets are SKIPPED with a NOTE (multi-playbook XLSX support).
     sheet_to_ticker: Dict[str, str] = {}
-    bad_names: List[str] = []
+    sheet_to_field: Dict[str, str] = {}
+    unmatched: List[str] = []
     for sn in sheet_names:
         m = substrate.sheet_name_pattern.match(sn)
         if not m:
-            bad_names.append(sn)
+            unmatched.append(sn)
             continue
-        sheet_to_ticker[sn] = substrate.ticker_builder(m.groupdict())
-    if bad_names:
+        groups = m.groupdict()
+        sheet_to_ticker[sn] = substrate.ticker_builder(groups)
+        sheet_to_field[sn] = _resolve_field_name(groups)
+
+    matched_count = len(sheet_to_ticker)
+    if matched_count != substrate.expected_sheet_count:
         _fail(
-            f"Substrate {substrate.name!r}: {len(bad_names)} sheet name(s) "
-            f"do not match pattern {substrate.sheet_name_pattern.pattern!r}: "
-            f"{bad_names[:10]}"
+            f"Substrate {substrate.name!r}: expected exactly "
+            f"{substrate.expected_sheet_count} REGEX-MATCHED sheets, got "
+            f"{matched_count} (out of {len(sheet_names)} total sheets in XLSX). "
+            f"Pattern: {substrate.sheet_name_pattern.pattern!r}. "
+            f"Matched (first 5): {list(sheet_to_ticker)[:5]}. "
+            f"Unmatched (first 5): {unmatched[:5]}"
         )
 
-    # 3. No duplicate tickers (would mean the substrate config + sheet
-    # names disagree silently)
-    tickers_seen: Dict[str, str] = {}
-    for sn, t in sheet_to_ticker.items():
-        if t in tickers_seen:
-            _fail(
-                f"Substrate {substrate.name!r}: duplicate ticker {t!r} from "
-                f"sheets {tickers_seen[t]!r} and {sn!r}. Sheet names probably "
-                "map to the same ticker — check the ticker_builder."
-            )
-        tickers_seen[t] = sn
+    if unmatched:
+        print(
+            f"NOTE: skipping {len(unmatched)} sheets that do not match "
+            f"substrate {substrate.name!r} regex (probably target a "
+            f"different playbook — run another substrate for them). "
+            f"First 5: {unmatched[:5]}"
+        )
 
-    # 4. Per-sheet read + optional first-row inference
-    inferred_first_dates: List[tuple[str, pd.Timestamp, float]] = []
+    # 2. No duplicate (ticker, field_name) tuples (would mean the substrate
+    # config + sheet names disagree silently).
+    keys_seen: Dict[tuple[str, str], str] = {}
+    for sn in sheet_to_ticker:
+        key = (sheet_to_ticker[sn], sheet_to_field[sn])
+        if key in keys_seen:
+            _fail(
+                f"Substrate {substrate.name!r}: duplicate (ticker, field) "
+                f"tuple {key!r} from sheets {keys_seen[key]!r} and {sn!r}. "
+                "Sheet names probably map to the same (ticker, field) — "
+                "check the regex/ticker_builder."
+            )
+        keys_seen[key] = sn
+
+    # 3. Per-sheet read + optional first-row inference. Only process
+    # regex-matched sheets (sheet_to_ticker keys).
+    inferred_first_dates: List[tuple[str, str, pd.Timestamp, float]] = []
     long_rows: List[pd.DataFrame] = []
-    for sn in sheet_names:
+    for sn in sheet_to_ticker:
         raw = sheets[sn]
         if raw.shape[1] < 2:
             _fail(f"Sheet {sn!r}: expected ≥2 columns from BDH, got {raw.shape[1]}.")
@@ -605,21 +932,24 @@ def read_and_validate_xlsx(
             second_date = pd.Timestamp(df.iloc[1]["trade_date"])
             inferred_date = second_date - pd.tseries.offsets.BDay(1)
             df.iat[0, df.columns.get_loc("trade_date")] = inferred_date
-            inferred_first_dates.append((sheet_to_ticker[sn], inferred_date, float(first_b)))
+            inferred_first_dates.append(
+                (sheet_to_ticker[sn], sheet_to_field[sn], inferred_date, float(first_b))
+            )
 
         df = df.dropna(subset=["trade_date", "field_value"]).reset_index(drop=True)
         if df.empty:
             _fail(f"Sheet {sn!r}: zero usable rows after parsing dates/values.")
 
         df["ticker"] = sheet_to_ticker[sn]
-        long_rows.append(df[["trade_date", "ticker", "field_value"]])
+        df["field_name"] = sheet_to_field[sn]
+        long_rows.append(df[["trade_date", "ticker", "field_name", "field_value"]])
 
     if inferred_first_dates:
         print(
             f"NOTE: inferred {len(inferred_first_dates)} missing first-row date(s):"
         )
-        for ticker, dt, val in inferred_first_dates[:10]:
-            print(f"  - {ticker}: row 0 date set to {dt.date()} (value={val})")
+        for ticker, field, dt, val in inferred_first_dates[:10]:
+            print(f"  - {ticker} [{field}]: row 0 date set to {dt.date()} (value={val})")
         if len(inferred_first_dates) > 10:
             print(f"  ... +{len(inferred_first_dates) - 10} more")
 
@@ -629,25 +959,34 @@ def read_and_validate_xlsx(
 
 
 def _validate_long_df(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None:
-    """Fail-loud on duplicates and per-ticker row counts."""
-    assert set(long_df.columns) == {"trade_date", "ticker", "field_value"}
+    """Fail-loud on duplicates and per-(ticker, field) row counts.
 
-    dups = long_df.duplicated(subset=["ticker", "trade_date"], keep=False)
+    Duplicate check uses (ticker, trade_date, field_name) — same ticker
+    with different field_names (PX_BID + PX_ASK) is legitimate and must
+    NOT be flagged as a duplicate.
+
+    History check uses (ticker, field_name) groupby so a thin PX_ASK
+    series doesn't get masked by a deep PX_BID series.
+    """
+    assert set(long_df.columns) == {"trade_date", "ticker", "field_name", "field_value"}
+
+    dups = long_df.duplicated(subset=["ticker", "trade_date", "field_name"], keep=False)
     if dups.any():
         sample = long_df[dups].head(10)
         _fail(
-            f"Found {dups.sum()} duplicate (ticker, trade_date) rows. "
+            f"Found {dups.sum()} duplicate (ticker, trade_date, field_name) rows. "
             f"Sample:\n{sample.to_string(index=False)}"
         )
 
-    short_tickers: List[str] = []
-    for ticker, sub in long_df.groupby("ticker"):
+    short_series: List[str] = []
+    for (ticker, field), sub in long_df.groupby(["ticker", "field_name"]):
         if len(sub) < substrate.min_rows_per_sheet:
-            short_tickers.append(f"{ticker}={len(sub)}")
-    if short_tickers:
+            short_series.append(f"{ticker} [{field}]={len(sub)}")
+    if short_series:
         _fail(
-            f"Per-ticker history check failed (substrate {substrate.name!r} "
-            f"requires ≥{substrate.min_rows_per_sheet} rows): {short_tickers}"
+            f"Per-(ticker, field) history check failed (substrate "
+            f"{substrate.name!r} requires ≥{substrate.min_rows_per_sheet} "
+            f"rows per series): {short_series}"
         )
 
 
@@ -659,11 +998,16 @@ def _validate_long_df(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None
 def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
     """Fetch existing rows from live DB matching the substrate's
     combine_existing_filter. Returns long-format DataFrame
-    [trade_date, ticker, field_value]. Connects to localhost:5433
-    (Docker tsdb). Empty DataFrame if filter is None.
+    [trade_date, ticker, field_name, field_value]. Connects to
+    localhost:5433 (Docker tsdb). Empty DataFrame if filter is None.
+
+    Multi-field aware: includes field_name in the SELECT so that combine
+    semantics on bid/ask substrates work correctly (deduplication keys
+    are (ticker, field_name), not just ticker).
     """
+    empty_cols = ["trade_date", "ticker", "field_name", "field_value"]
     if substrate.combine_existing_filter is None:
-        return pd.DataFrame(columns=["trade_date", "ticker", "field_value"])
+        return pd.DataFrame(columns=empty_cols)
 
     try:
         from sqlalchemy import create_engine, text
@@ -677,19 +1021,20 @@ def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
         SELECT
             d.trade_date,
             im.vendor_ticker AS ticker,
+            d.field_name,
             d.field_value
         FROM macro_data.market_data_daily d
         JOIN macro_data.instrument_master im
           ON im.instrument_id = d.instrument_id
         WHERE {substrate.combine_existing_filter}
-        ORDER BY im.vendor_ticker, d.trade_date
+        ORDER BY im.vendor_ticker, d.field_name, d.trade_date
     """)
     with engine.connect() as conn:
         rows = conn.execute(sql).fetchall()
         columns = list(conn.execute(sql).keys())
 
     if not rows:
-        return pd.DataFrame(columns=["trade_date", "ticker", "field_value"])
+        return pd.DataFrame(columns=empty_cols)
     df = pd.DataFrame(rows, columns=columns)
     df["trade_date"] = pd.to_datetime(df["trade_date"])
     df["field_value"] = pd.to_numeric(df["field_value"], errors="coerce")
@@ -703,17 +1048,18 @@ def fetch_existing_for_substrate(substrate: SubstrateConfig) -> pd.DataFrame:
 
 def print_validation_summary(long_df: pd.DataFrame, substrate: SubstrateConfig) -> None:
     rows = []
-    for ticker, sub in long_df.groupby("ticker"):
+    for (ticker, field), sub in long_df.groupby(["ticker", "field_name"]):
         sub = sub.sort_values("trade_date")
         rows.append({
             "ticker": ticker,
+            "field": field,
             "rows": len(sub),
             "min_date": sub["trade_date"].min().date(),
             "max_date": sub["trade_date"].max().date(),
             "first_value": float(sub["field_value"].iloc[0]),
             "last_value": float(sub["field_value"].iloc[-1]),
         })
-    summary = pd.DataFrame(rows).sort_values("ticker").reset_index(drop=True)
+    summary = pd.DataFrame(rows).sort_values(["ticker", "field"]).reset_index(drop=True)
     print(f"\n=== Substrate '{substrate.name}' extraction summary ===")
     if len(summary) > 30:
         print(summary.head(15).to_string(index=False))
@@ -721,7 +1067,11 @@ def print_validation_summary(long_df: pd.DataFrame, substrate: SubstrateConfig) 
         print(summary.tail(15).to_string(index=False))
     else:
         print(summary.to_string(index=False))
-    print(f"\nTotal rows across {len(summary)} tickers: {len(long_df):,}")
+    field_breakdown = long_df.groupby("field_name").size().to_dict()
+    print(
+        f"\nTotal rows across {len(summary)} (ticker, field) series: "
+        f"{len(long_df):,}  |  field breakdown: {field_breakdown}"
+    )
 
 
 # ============================================================================
@@ -735,7 +1085,9 @@ def build_parquet_dataframe(
 ) -> pd.DataFrame:
     df = long_df.copy()
     df["trade_date"] = df["trade_date"].dt.strftime("%Y-%m-%d")
-    df["field_name"] = "PX_LAST"
+    # field_name already comes from long_df (set in read_and_validate_xlsx
+    # via _resolve_field_name from the regex `field` group, or defaulting
+    # to PX_LAST for single-field substrates).
 
     extracted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df["vendor"] = "BLOOMBERG"
@@ -823,8 +1175,12 @@ def main() -> int:
         return 1
 
     # Codex Option A: combine existing DB rows for partial-extension
-    # substrates (g10_forwards_long) so the sanity gate sees the full
-    # universe (existing + new) and passes.
+    # substrates (g10_forwards_long, spot_topup, em_ext_*) so the sanity
+    # gate sees the full universe (existing + new) and passes.
+    #
+    # Multi-field aware: dedup key is (ticker, field_name) tuple — bid/ask
+    # substrates can ship PX_BID + PX_ASK for the SAME ticker without
+    # accidentally dropping the existing PX_LAST series via the dedup.
     if substrate.combine_existing_filter is not None:
         print(f"[{substrate.name}] fetching existing DB rows to combine...")
         try:
@@ -832,21 +1188,41 @@ def main() -> int:
         except Exception as e:
             print(f"\nDB FETCH FAILED: {e}\n", file=sys.stderr)
             return 1
-        n_new_tickers = long_df["ticker"].nunique()
-        n_existing_tickers = existing_df["ticker"].nunique() if not existing_df.empty else 0
-        if n_existing_tickers == 0:
+        n_new_keys = long_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+        n_existing_keys = (
+            existing_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+            if not existing_df.empty else 0
+        )
+        if n_existing_keys == 0:
             print(f"  No existing rows match filter; combine is a no-op.")
         else:
-            # Defensive: if XLSX tickers overlap with existing (shouldn't
-            # for g10_forwards_long since 2Y/5Y are net-new), keep XLSX
-            # rows (fresher).
-            existing_only = existing_df[~existing_df["ticker"].isin(long_df["ticker"])]
+            # Dedup on (ticker, field_name) so multi-field shipments
+            # preserve existing field series we're not overwriting this run.
+            incoming_keys = set(
+                zip(long_df["ticker"], long_df["field_name"])
+            )
+            existing_keys_in_df = list(
+                zip(existing_df["ticker"], existing_df["field_name"])
+            )
+            keep_mask = [k not in incoming_keys for k in existing_keys_in_df]
+            existing_only = existing_df[keep_mask].reset_index(drop=True)
+            n_existing_kept = (
+                existing_only[["ticker", "field_name"]].drop_duplicates().shape[0]
+                if not existing_only.empty else 0
+            )
             long_df = pd.concat([long_df, existing_only], ignore_index=True)
-            long_df = long_df.sort_values(["ticker", "trade_date"]).reset_index(drop=True)
+            long_df = long_df.sort_values(
+                ["ticker", "field_name", "trade_date"]
+            ).reset_index(drop=True)
+            n_total_keys = (
+                long_df[["ticker", "field_name"]].drop_duplicates().shape[0]
+            )
             print(
-                f"  Combined: {n_new_tickers} new tickers (from XLSX) + "
-                f"{existing_only['ticker'].nunique()} existing tickers (from DB) "
-                f"= {long_df['ticker'].nunique()} total."
+                f"  Combined: {n_new_keys} new (ticker, field) keys (from XLSX) + "
+                f"{n_existing_kept} existing (ticker, field) keys (from DB) "
+                f"= {n_total_keys} total. "
+                f"({n_existing_keys - n_existing_kept} existing keys overlapped "
+                f"with XLSX and were replaced.)"
             )
 
     print_validation_summary(long_df, substrate)
