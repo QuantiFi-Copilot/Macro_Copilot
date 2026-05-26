@@ -176,7 +176,7 @@ A module that claims `MODULE.surfaces.ask` but where the Supervisor doesn't rout
 | `get_yield_levels_tool` | single-series-percent | registered | routed-generic | typed-result-renderer | typed-renderer-built | required | built (YieldLevel; YieldSnapshot also reads this domain) |
 | `classify_curve_move_tool` | regime-state | registered | routed-generic | typed-result-renderer | typed-renderer-built | required | built (CurveClassifier) |
 | `scan_extremes_tool` | scanner-result | registered | routed-generic | typed-result-renderer | typed-renderer-built | required | built (Scanner) |
-| `calculate_otr_ofr_spread_tool` | single-series-bps | registered | unrouted | generic-builder | scaffolded | **not-required** | **stub-claim — must remove** |
+| `calculate_otr_ofr_spread_tool` | single-series-bps | registered | unrouted | generic-builder | scaffolded | required | deferred (needs typed-detail endpoint for OTR-OFR series) |
 | `build_sovereign_yield_panel_tool` | panel | registered | routed-generic | generic-builder | scaffolded | not-required | n/a |
 | `get_otr_history_tool` | workflow-incompatible | registered | unrouted | n/a (workflow_incompatible) | n/a | not-required | n/a |
 
@@ -276,10 +276,10 @@ A module that claims `MODULE.surfaces.ask` but where the Supervisor doesn't rout
 
 | tool_name | output_kind | library | ask | build_archetype | build_status | monitor_elig | monitor_status |
 |---|---|---|---|---|---|---|---|
-| `calculate_cpi_surprise_tool` | single-series-events | registered | unrouted | generic-builder | scaffolded | **not-required** | **stub-claim — must remove** |
-| `calculate_nfp_surprise_tool` | single-series-events | registered | unrouted | generic-builder | scaffolded | **not-required** | **stub-claim — must remove** |
+| `calculate_cpi_surprise_tool` | single-series-events | registered | unrouted | generic-builder | scaffolded | not-required | n/a |
+| `calculate_nfp_surprise_tool` | single-series-events | registered | unrouted | generic-builder | scaffolded | not-required | n/a |
 
-**Note:** Modules `calculate_cpi_surprise_tool` and `calculate_nfp_surprise_tool` currently ALSO claim `surfaces.ask`. Per § 3.2, the bespoke Ask cards must add value over the generic `AssistantResearchCard` — they currently do NOT (they strip the chart, DAG, provenance, follow-ups). Until the bespoke cards are extended to actually add a CPI/NFP-specific framing on top of the generic 7 zones, the `surfaces.ask` claim must be dropped.
+**Resolved in PR (post-contract Stage C):** Modules `calculate_cpi_surprise_tool` and `calculate_nfp_surprise_tool` previously claimed `monitor_surface` + `ask_surface` with stub widgets and a bespoke Ask card that was a regression vs the generic.  Both tier claims were retracted; the stub files were deleted; the modules now claim `generic_runnable` only.  Per the containment principle (§1), a module's `tiers` array must match delivery.
 
 ---
 
@@ -303,15 +303,15 @@ When an operator's output IS the terminal artifact of a workflow, it surfaces vi
 
 ---
 
-## 7. Cross-cutting status — the critical violations of the containment principle today
+## 7. Cross-cutting status — containment principle today
 
-These items MUST be resolved before any other surface work lands:
+**RESOLVED (PR Stage C — same PR as this row update):**
 
-1. **`calculate_cpi_surprise_tool`** claims `monitor_surface` + `ask_surface`. The Monitor widget at `surfaces/monitor/CpiSurpriseWidget.tsx` is a stub. The Ask card at `surfaces/AskCard.tsx` is a regression vs the generic. The module is claiming two tiers it doesn't deliver. **Fix:** drop both claims; remove both files; module retains `generic_runnable` only.
-2. **`calculate_nfp_surprise_tool`** — same situation. Drop both claims; remove both files.
-3. **`calculate_otr_ofr_spread_tool`** claims `monitor_surface`. Widget is a stub. **Fix:** drop the claim; remove the widget file.
+1. **`calculate_cpi_surprise_tool`** previously claimed `monitor_surface` + `ask_surface` with stub widget + regression Ask card.  Both claims retracted.  Module now `generic_runnable` only.
+2. **`calculate_nfp_surprise_tool`** — same.  Both claims retracted.  Module now `generic_runnable` only.
+3. **`calculate_otr_ofr_spread_tool`** previously claimed `monitor_surface` with stub widget.  Claim retracted.  Module now `generic_runnable` only.  Monitor remains eligible per the rule; row marked `deferred` until the typed-detail endpoint ships OTR-OFR series.
 
-After (1) (2) (3): containment is restored. Every remaining tier claim across the 58 primitives matches a real, polished surface.
+Containment is restored.  Every remaining tier claim across the 58 primitives matches a real, polished surface.
 
 ---
 
@@ -344,3 +344,4 @@ A PR may land iff:
 | Version | Date | Change |
 |---|---|---|
 | v1 | 2026-05-26 | Initial drafting. Populated all 58 primitive rows + 3 workflow rows. Identified 3 containment violations (CPI / NFP / OTR-OFR stub claims). Defined classifications + PR gates. |
+| v2 | 2026-05-26 | Stage C resolution.  Retracted the 3 containment violations from v1: CPI / NFP modules dropped `monitor_surface` + `ask_surface` tier claims (stub widget + regression Ask card); OTR-OFR module dropped `monitor_surface` tier claim (stub widget).  All 3 modules now `generic_runnable` only.  OTR-OFR row updated: Monitor eligibility corrected from `not-required` to `required (deferred)` — it IS desk-glanceable but needs the typed-detail endpoint first. |
