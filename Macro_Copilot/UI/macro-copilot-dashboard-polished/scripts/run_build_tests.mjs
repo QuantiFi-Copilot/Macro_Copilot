@@ -76,7 +76,10 @@ function findTestFiles(root) {
 // ----------------------------------------------------------------------------
 
 function bundle(testPath, outDir) {
-  const out = join(outDir, `${basename(testPath).replace('.test.ts', '')}.js`);
+  // Stage 5 — emit ``.mjs`` so Node treats the bundled output as
+  // ESM regardless of the running Node version (Node 18 rejects
+  // ``import.meta`` inside ``.js`` without ``"type":"module"``).
+  const out = join(outDir, `${basename(testPath).replace('.test.ts', '')}.mjs`);
   const args = [
     testPath,
     '--bundle',

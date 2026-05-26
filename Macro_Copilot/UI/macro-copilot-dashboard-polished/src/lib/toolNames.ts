@@ -14,6 +14,16 @@
 
 import { ALL_PRIMITIVE_MODULES } from '@/modules';
 
+/** Stage 5 — synthetic smoke-test fixtures (tool names starting with
+ *  ``__``) are excluded from every backend-facing module-derived
+ *  registry below.  They live in ``ALL_PRIMITIVE_MODULES`` so the
+ *  Stage 5 module-first dispatch acceptance test can mount them,
+ *  but they MUST NOT pollute the registry sets that are compared
+ *  against the backend's real primitive registry. */
+const REAL_BACKEND_MODULES = ALL_PRIMITIVE_MODULES.filter(
+  (m) => !m.toolName.startsWith('__'),
+);
+
 // ============================================================================
 // toolNames.ts — canonical tool-name normalisation + known-tool registry.
 // ----------------------------------------------------------------------------
@@ -163,8 +173,10 @@ const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
   // them honestly from Library / Ask handoff.
   // ----------------------------------------------------------------
   // Phase-3 cash-bond + event primitives
+  // Stage 5 removal: ``calculate_cpi_surprise_tool`` migrated — the
+  // module ships ``surfaces.ask`` + ``monitorWidgets[]`` and the
+  // module-derived KNOWN/RUNNABLE sets cover the registration.
   'calculate_otr_ofr_spread_tool',
-  'calculate_cpi_surprise_tool',
   'calculate_nfp_surprise_tool',
   // PR #177 inflation_indexed_bonds primitives
   'get_real_yield_level_tool',
@@ -203,7 +215,7 @@ const _HAND_AUTHORED_KNOWN_BACKEND_TOOLS = new Set<string>([
 // hand-authored entries shrink and the modules carry their own
 // surface refs, this derivation becomes the primary source.
 const _MODULE_DERIVED_KNOWN_BACKEND_TOOLS = new Set<string>(
-  ALL_PRIMITIVE_MODULES.map((m) => m.toolName),
+  REAL_BACKEND_MODULES.map((m) => m.toolName),
 );
 
 /** Every tool name the backend / manifest declares.  Stage 3 hybrid:
@@ -263,8 +275,10 @@ const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
   // ``isRunnablePrimitive`` branch.
   // ----------------------------------------------------------------
   // Phase-3 cash-bond + event primitives
+  // Stage 5 removal: ``calculate_cpi_surprise_tool`` migrated — the
+  // module ships ``surfaces.ask`` + ``monitorWidgets[]`` and the
+  // module-derived KNOWN/RUNNABLE sets cover the registration.
   'calculate_otr_ofr_spread_tool',
-  'calculate_cpi_surprise_tool',
   'calculate_nfp_surprise_tool',
   // PR #177 inflation_indexed_bonds primitives
   'get_real_yield_level_tool',
@@ -288,7 +302,7 @@ const _HAND_AUTHORED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>([
 // Stage 3 — module-derived contribution: every module that claims the
 // ``generic_runnable`` runtime-status tier.
 const _MODULE_DERIVED_RUNNABLE_PRIMITIVE_TOOLS = new Set<string>(
-  ALL_PRIMITIVE_MODULES
+  REAL_BACKEND_MODULES
     .filter((m) => m.tiers.includes('generic_runnable'))
     .map((m) => m.toolName),
 );
@@ -378,7 +392,7 @@ const _HAND_AUTHORED_UNSUPPORTED_KNOWN_TOOLS = new Set<string>([
 // Stage 3 — module-derived contribution: every module that claims the
 // ``paused`` runtime-status tier.
 const _MODULE_DERIVED_UNSUPPORTED_KNOWN_TOOLS = new Set<string>(
-  ALL_PRIMITIVE_MODULES
+  REAL_BACKEND_MODULES
     .filter((m) => m.tiers.includes('paused'))
     .map((m) => m.toolName),
 );
@@ -446,7 +460,7 @@ const _MODULE_DERIVED_UNSUPPORTED_KNOWN_REASONS: Record<
   string,
   UnsupportedKnownReason
 > = Object.fromEntries(
-  ALL_PRIMITIVE_MODULES
+  REAL_BACKEND_MODULES
     .filter((m) => m.unsupportedReason != null)
     .map((m) => [m.toolName, m.unsupportedReason as UnsupportedKnownReason]),
 );

@@ -45,6 +45,7 @@ import {
 } from './primitive/contextDecoder';
 import { isAskHandoff } from './primitive/handoffSignal';
 import { BuilderCanvas } from './model/BuilderCanvas';
+import { getPrimitiveModule } from '@/modules';
 import { WorkflowStatusCanvas } from './workflow/WorkflowStatusCanvas';
 // Side-effect import — populates the node renderer registry before
 // any NodeWidgetCard renders.  Must happen at module-init time so
@@ -177,12 +178,33 @@ function SlugFreeShell({
   // workspace_context, hiding the workflow's status).
   let canvas: React.ReactNode;
   if (builderParam !== null) {
-    canvas = (
-      <BuilderCanvas
-        toolName={builderParam || null}
-        initialParams={initialBuilderParams}
-      />
-    );
+    // Stage 5 — module-first dispatch: if the owning module ships a
+    // full Build surface (``MODULE.surfaces.build``), mount IT
+    // instead of the shared ``BuilderCanvas``.  Falls back to the
+    // shared canvas when the module didn't override.  The 5 rich-
+    // model modules' ``surfaces.build`` is itself a lazy wrapper
+    // around ``BuilderCanvas``, so the rendered output for those
+    // tools is identical — but a NEW tool can ship a totally
+    // custom Build surface here without editing this file.
+    const moduleSpec = builderParam
+      ? getPrimitiveModule(builderParam)
+      : null;
+    const ModuleBuildSurface = moduleSpec?.surfaces?.build;
+    if (ModuleBuildSurface) {
+      canvas = (
+        <ModuleBuildSurface
+          toolName={builderParam}
+          params={initialBuilderParams}
+        />
+      );
+    } else {
+      canvas = (
+        <BuilderCanvas
+          toolName={builderParam || null}
+          initialParams={initialBuilderParams}
+        />
+      );
+    }
   } else if (workflowParam !== null) {
     canvas = (
       <WorkflowStatusCanvas

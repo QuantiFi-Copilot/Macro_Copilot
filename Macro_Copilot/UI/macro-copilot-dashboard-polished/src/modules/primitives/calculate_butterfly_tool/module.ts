@@ -9,7 +9,7 @@
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_butterfly_tool',
@@ -25,7 +25,7 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary: 'Three-point curvature on a sovereign curve — (2 × belly − short − long) × 100 bps — with rolling z-score, trailing range, wing-spread components, and full time series.',
   typedView: 'butterfly',
   workspaceLabel: 'Butterfly decomposition',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   unsupportedReason: {
     label: 'calculate_butterfly',
     reason: 'Manifest-declared tool with a backend implementation behind a typed-detail endpoint (`/api/v1/rates/detail/<kind>`).  Not in `_PRIMITIVE_SPECS` so the workflow bridge cannot dispatch it; the typed view in Build is the live surface.',

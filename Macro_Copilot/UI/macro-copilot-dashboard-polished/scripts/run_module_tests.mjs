@@ -106,7 +106,13 @@ function bundle(testPath, outDir) {
     .replace(/\.test\.ts$/, '')
     .replace(/\.spec\.ts$/, '')
     .replace(/[\/\\]/g, '_');
-  const out = join(outDir, `${stem}.js`);
+  // Stage 5 fix — emit ``.mjs`` so Node treats the bundled output as
+  // ESM regardless of the running Node version (Node 22 was lenient
+  // about ``.js`` + ``import.meta``; Node 18 errors with "Cannot use
+  // import.meta outside a module").  Bundled output is always ESM
+  // (esbuild ``--format=esm``); the ``.mjs`` extension makes that
+  // unambiguous to the Node loader.
+  const out = join(outDir, `${stem}.mjs`);
   const args = [
     testPath,
     '--bundle',

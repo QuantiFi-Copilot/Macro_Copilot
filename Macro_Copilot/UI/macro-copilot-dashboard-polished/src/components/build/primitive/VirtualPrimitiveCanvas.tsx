@@ -205,6 +205,52 @@ export function VirtualPrimitiveCanvas({
   if (!decoded) {
     return <DecodeError contextParam={contextParam} />;
   }
+
+  // ---- Stage 5 — module-first dispatch -------------------------------
+  //
+  // If the owning primitive module ships a full Build surface
+  // (``MODULE.surfaces.build``), mount IT and skip every legacy
+  // dispatch branch below.  The module owns the entire canvas:
+  // controls strip, fetch dispatch, output rendering, error states.
+  //
+  // This is the page-shell-respects-module-shelf contract Stage 5
+  // delivers.  Any new tool that wants total ownership of its Build
+  // surface just ships a ``surfaces/BuildSurface.tsx`` + claims
+  // ``custom_build_surface`` — no edits to this file needed.
+  //
+  // Skipped for ``decoded.kind === 'builder'`` (rich-model) — the
+  // useEffect above already redirects to ``?builder=<toolName>`` so
+  // BuildShell handles the rich-model mount path.  BuildShell ALSO
+  // does module-first dispatch in Stage 5; the redirect-then-mount
+  // flow stays so the URL bar shows ``?builder=`` (the canonical
+  // rich-model URL).
+  //
+  // Result-renderer dispatch (the Stage 4a typed-view path) is the
+  // OTHER half: see ``ResultRendererDispatcher`` below + the
+  // ``surfaces.resultRenderer`` field, which is the surface contract
+  // for tools that ship ONLY the result body and let the parent
+  // canvas provide chrome.
+  if (decoded.kind !== 'builder') {
+    const moduleForBuild = getPrimitiveModule(decoded.toolName);
+    const ModuleBuildSurface = moduleForBuild?.surfaces?.build;
+    if (ModuleBuildSurface) {
+      return (
+        <ModuleBuildSurface
+          toolName={decoded.toolName}
+          params={
+            decoded.kind === 'generic_builder'
+              ? decoded.params
+              : isTypedPrimitive(decoded)
+                ? effectiveParams
+                : decoded.params
+          }
+          decoded={decoded}
+          askHandoff={askHandoff}
+        />
+      );
+    }
+  }
+
   // Builder redirects through the effect above; show a tight loader
   // for the single frame the navigate() lands.
   if (decoded.kind === 'builder') {
@@ -286,7 +332,7 @@ export function VirtualPrimitiveCanvas({
   } else if (isLoading || !payload) {
     body = <LoadingCanvas kind={decoded.kind} />;
   } else {
-    body = <PrimitiveDispatcher payload={payload} toolName={decoded.toolName} />;
+    body = <ResultRendererDispatcher payload={payload} toolName={decoded.toolName} />;
   }
 
   return (
@@ -303,28 +349,25 @@ export function VirtualPrimitiveCanvas({
 }
 
 // ----------------------------------------------------------------------------
-// View dispatcher
+// Result-renderer dispatcher
 // ----------------------------------------------------------------------------
 //
-// Stage 4a — the dispatcher used to import each typed view file directly
-// (``import { SpreadPrimitiveView } from './SpreadPrimitiveView'`` …).
-// The typed-view components have moved into their owning module folders
-// (e.g. ``src/modules/primitives/calculate_curve_spread_tool/surfaces/
-// BuildSurface.tsx``) and FP12 forbids page-shell files from importing
-// ``@/modules/primitives/<name>/`` directly.  Resolution flow:
+// Stage 4a — the dispatcher used to import each typed view file directly.
+// Stage 5 — it now resolves ``MODULE.surfaces.resultRenderer`` (the
+// payload-renderer surface contract introduced in Stage 5), not
+// ``surfaces.build``.  ``surfaces.build`` is reserved for modules
+// that own the WHOLE Build canvas (controls + fetch + output); this
+// dispatcher runs only after the module-first short-circuit at the
+// top of ``VirtualPrimitiveCanvas`` decides ``surfaces.build`` is
+// NOT populated, falling through to the typed-detail flow that this
+// canvas owns (params strip + fetch dispatch + result rendering).
 //
-//   1. Look up the PrimitiveModuleSpec by the decoded tool name.
-//   2. Read ``module.surfaces.build`` — the typed-view component.
-//   3. Render it with the same ``payload`` prop the legacy dispatcher
-//      passed.
-//
-// ``forward`` is the one remaining direct render — no tool maps to it
-// today (calculate_ois_forward_rate_tool routes through the generic
-// builder per the contextDecoder PR2 comment) so there's no module to
-// own the placeholder, and ForwardPrimitiveView still lives alongside
-// the dispatcher.
+// ``forward`` is the one remaining direct render — no tool maps to
+// it today (calculate_ois_forward_rate_tool routes through the
+// generic builder), so the placeholder ``ForwardPrimitiveView``
+// stays alongside the dispatcher.
 
-function PrimitiveDispatcher({
+function ResultRendererDispatcher({
   payload,
   toolName,
 }: {
@@ -335,21 +378,21 @@ function PrimitiveDispatcher({
     return <ForwardPrimitiveView />;
   }
   const moduleSpec = getPrimitiveModule(toolName);
-  const BuildSurface = moduleSpec?.surfaces?.build;
-  if (!BuildSurface) {
+  const ResultRenderer = moduleSpec?.surfaces?.resultRenderer;
+  if (!ResultRenderer) {
     return (
       <DispatchError
         toolName={toolName}
         kind={payload.kind}
         reason={
           moduleSpec
-            ? `Module '${toolName}' does not declare a Build surface for kind '${payload.kind}'.`
+            ? `Module '${toolName}' does not declare a result renderer for kind '${payload.kind}'.  Either populate surfaces.resultRenderer (payload renderer) or surfaces.build (full Build experience).`
             : `No module registered for tool '${toolName}'.`
         }
       />
     );
   }
-  return <BuildSurface payload={payload.data} />;
+  return <ResultRenderer payload={payload.data} />;
 }
 
 // ----------------------------------------------------------------------------

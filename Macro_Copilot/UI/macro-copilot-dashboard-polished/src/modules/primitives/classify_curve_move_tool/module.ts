@@ -8,7 +8,7 @@
 // ============================================================================
 
 import type { PrimitiveModuleSpec } from '../../types';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 import { CurveClassifierWidget } from './surfaces/monitor/CurveClassifierWidget';
 
 export const MODULE: PrimitiveModuleSpec = {
@@ -19,7 +19,7 @@ export const MODULE: PrimitiveModuleSpec = {
   oneLineSummary:
     'Deterministically classify a two-point sovereign curve move over a discrete lookback into one of six canonical labels.',
   typedView: 'regime',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   monitorWidgets: [
     {
       id: 'curve_classifier',

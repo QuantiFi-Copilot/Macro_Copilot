@@ -15,7 +15,7 @@ import {
   LOOKBACK_OPTIONS,
   TENOR_OPTIONS,
 } from '@/lib/monitorParamOptions';
-import BuildSurface from './surfaces/BuildSurface';
+import ResultRenderer from './surfaces/ResultRenderer';
 import { CrossMarketSpreadsWidget } from './surfaces/monitor/CrossMarketSpreadsWidget';
 import { CrossMarketSpreadWidget } from './surfaces/monitor/CrossMarketSpreadWidget';
 
@@ -28,7 +28,7 @@ export const MODULE: PrimitiveModuleSpec = {
     'Yield differential between the same tenor on two sovereign curves (e.g. BTP-Bund 10Y), in basis points, with rolling 252-day z-score, daily / weekly / monthly change, trailing range, and full time series.',
   typedView: 'cross_market',
   workspaceLabel: 'Cross-market chart',
-  surfaces: { build: BuildSurface },
+  surfaces: { resultRenderer: ResultRenderer },
   monitorWidgets: [
     {
       id: 'cross_market_spreads',
