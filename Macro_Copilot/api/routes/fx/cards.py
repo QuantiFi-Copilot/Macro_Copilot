@@ -11,6 +11,10 @@ from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import FXForwardCurveInput
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput
+from fx_agent.ndf.tools.ndf_implied_carry import calculate_fx_ndf_implied_carry
+from fx_agent.ndf.tools.ndf_implied_carry.schemas import FXNDFImpliedCarryInput
+from fx_agent.ndf.tools.ndf_outright import get_fx_ndf_outright
+from fx_agent.ndf.tools.ndf_outright.schemas import FXNDFOutrightInput
 from fx_agent.spot.tools.drawdown import calculate_fx_drawdown
 from fx_agent.spot.tools.drawdown.schemas import FXDrawdownInput
 from fx_agent.spot.tools.fx_panel import calculate_fx_panel
@@ -280,3 +284,92 @@ def realized_vol(
         raise HTTPException(status_code=422, detail=f"FX realized vol failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX realized vol failed: {exc}")
+
+
+@router.get("/ndf-outright", summary="FX NDF Outright Snapshot")
+def ndf_outright(
+    ndf_code: str = Query(..., description="NDF family code (e.g. 'CCN+', 'NTN+')"),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(NDF family, tenor) outright snapshot with rolling stats."""
+    try:
+        return get_fx_ndf_outright(
+            engine,
+            FXNDFOutrightInput(
+                ndf_code=ndf_code,
+                tenor=tenor,
+                lookback_days=lookback_days,
+                field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX NDF outright failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX NDF outright failed: {exc}")
+
+
+@router.get("/ndf-implied-carry", summary="FX NDF Implied Carry Scanner")
+def ndf_implied_carry(
+    tenor: str = Query(default="1M"),
+    spot_convention: str = Query(
+        default="settlement",
+        description=(
+            "'settlement' (default) = NDF official spot reference. "
+            "'offshore_tradable' = USDCNH for CCN+ (others fall back to settlement)."
+        ),
+    ),
+    rank_by: str = Query(
+        default="carry_signed",
+        description="One of 'carry_signed', 'abs_carry', 'abs_z_score'.",
+    ),
+    top_n: Optional[int] = Query(default=None, ge=1, le=20),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Cross-sectional FX NDF implied carry over the 6 NDF families."""
+    try:
+        return calculate_fx_ndf_implied_carry(
+            engine,
+            FXNDFImpliedCarryInput(
+                tenor=tenor,
+                spot_convention=spot_convention,
+                rank_by=rank_by,
+                top_n=top_n,
+                lookback_days=lookback_days,
+                field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX NDF implied carry failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX NDF implied carry failed: {exc}")
+
+
+@router.get("/ndf-carry-scanner", summary="FX NDF Carry Scanner (Top-N by abs z-score)")
+def ndf_carry_scanner(
+    tenor: str = Query(default="1M"),
+    top_n: int = Query(default=5, ge=1, le=20),
+    spot_convention: str = Query(default="settlement"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    engine: Engine = Depends(get_engine),
+):
+    """Top-N most extreme NDFs by absolute z-score of implied carry."""
+    try:
+        return calculate_fx_ndf_implied_carry(
+            engine,
+            FXNDFImpliedCarryInput(
+                tenor=tenor,
+                spot_convention=spot_convention,
+                rank_by="abs_z_score",
+                top_n=top_n,
+                lookback_days=lookback_days,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX NDF carry scanner failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX NDF carry scanner failed: {exc}")

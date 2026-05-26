@@ -460,3 +460,166 @@ tools:
       of std(log-rets) * sqrt(252) * 100; unknown pair fails loud;
       short lookback + long window works (buffer absorbs); units
       == 'percent'.
+
+  # ---------------------------------------------------------------------------
+  # NDF TOOLS (Phase D — 2026-05-26)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_ndf_outright
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_ndf_outright_tool
+      schema: fx_agent/ndf/tools/ndf_outright/schemas.py::FXNDFOutrightInput
+      compute: fx_agent/ndf/tools/ndf_outright/compute.py::get_fx_ndf_outright
+      config: fx_agent/ndf/tools/ndf_outright/config.yaml
+
+    one_liner: >-
+      Single-(NDF family, tenor) outright snapshot — latest outright
+      value (USD per local CCY, NOT forward points), daily / weekly /
+      monthly % change, rolling 252-day z-score, trailing 252-day
+      high / low / percentile. Mirror of get_fx_spot_level but for the
+      NDF outright substrate (CCN+ / IRN+ / BCN+ / KWN+ / IHN+ /
+      NTN+ x 5 tenors = 30 instruments).
+
+    bucket_rationale: >-
+      Deterministic arithmetic over stored NDF observations. Window /
+      annualization YAML-locked; no model inference and no LLM-facing
+      override path in V1.
+
+    pm_overridable:
+      - ndf_code
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_ndf_implied_carry_tool
+      - scan_fx_ndf_carry_tool
+      - get_fx_spot_level_tool
+
+    workflows:
+      - fx_ndf_monitor
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+      - fx_agent/spot/tools/spot_levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      6/6 NDF families return clean data on smoke test (CCN+/IRN+/BCN+/
+      KWN+/IHN+/NTN+) at 1M tenor; non-zero z-scores; observation
+      counts >= 250 trading days for each.
+
+  - name: calculate_fx_ndf_implied_carry
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_ndf_implied_carry_tool
+      schema: fx_agent/ndf/tools/ndf_implied_carry/schemas.py::FXNDFImpliedCarryInput
+      compute: fx_agent/ndf/tools/ndf_implied_carry/compute.py::calculate_fx_ndf_implied_carry
+      config: fx_agent/ndf/tools/ndf_implied_carry/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX NDF implied carry — for one tenor, joins the
+      latest underlying-spot and same-tenor NDF outright (per
+      trade_date — no lookahead), computes implied annualized carry
+      as (outright/spot - 1) * (252/tenor_days) * 100, and ranks the
+      cross-section. Each row carries a rolling 252-day z-score /
+      percentile / range on its own implied-carry series. Supports
+      'settlement' (textbook) and 'offshore_tradable' (USDCNH for
+      CCN+) spot conventions.
+
+    bucket_rationale: >-
+      Deterministic spot+outright arithmetic over the NDF substrate.
+      No divisor (outright unit), no points-to-spot conversion.
+      Convention switch (spot_convention) is closed-enum; rank_by is
+      closed-enum.
+
+    pm_overridable:
+      - tenor
+      - spot_convention
+      - rank_by
+      - top_n
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_ndf_outright_tool
+      - scan_fx_ndf_carry_tool
+      - calculate_fx_carry_tool
+
+    workflows:
+      - fx_ndf_monitor
+      - fx_ndf_carry_screen
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+      - fx_agent/forwards/tools/fx_carry
+      - shared/analytics/levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      6/6 NDF families return data at 1M settlement convention; CCN+
+      successfully swaps USDCNY -> USDCNH under offshore_tradable mode
+      with the carry differential surfaced; scanner mode (top_n=3,
+      rank_by=abs_z_score) ranks consistently with the full table.
+
+  - name: scan_fx_ndf_carry
+    domain: fx
+    sub_agent: ndf
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_ndf_carry_tool
+      schema: fx_agent/ndf/tools/ndf_implied_carry/schemas.py::FXNDFImpliedCarryInput
+      compute: fx_agent/ndf/tools/ndf_implied_carry/compute.py::calculate_fx_ndf_implied_carry
+      config: fx_agent/ndf/tools/ndf_implied_carry/config.yaml
+
+    one_liner: >-
+      Scanner-mode wrapper around calculate_fx_ndf_implied_carry —
+      returns the top-N most extreme NDF carry rows by absolute z-score
+      at a given tenor. Curated defaults (top_n=5, rank_by='abs_z_score',
+      spot_convention='settlement') for the 'what's the most extreme
+      NDF carry today?' use case. Same compute path as the parent tool.
+
+    bucket_rationale: >-
+      Thin scanner over the same deterministic compute — different
+      surface for a different question (executive summary vs full
+      table).
+
+    pm_overridable:
+      - tenor
+      - top_n
+      - spot_convention
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_ndf_implied_carry_tool
+      - get_fx_ndf_outright_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_ndf_monitor
+      - fx_extremes_workspace
+
+    references:
+      - fx_agent/playbooks/fx_ndf.yml
+
+    built_date: 2026-05-26
+    validation_status: >-
+      Default top_n=5 + abs_z_score returns the most extreme rows
+      consistently with the full implied-carry compute.
