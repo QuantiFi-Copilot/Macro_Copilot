@@ -623,3 +623,203 @@ tools:
     validation_status: >-
       Default top_n=5 + abs_z_score returns the most extreme rows
       consistently with the full implied-carry compute.
+
+  # ---------------------------------------------------------------------------
+  # ATM VOL TOOLS (Phase E1 — 2026-05-26)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_atm_vol_level
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_atm_vol_level_tool
+      schema: fx_agent/vol/tools/atm_vol_level/schemas.py::FXAtmVolLevelInput
+      compute: fx_agent/vol/tools/atm_vol_level/compute.py::get_fx_atm_vol_level
+      config: fx_agent/vol/tools/atm_vol_level/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX ATM implied vol snapshot — latest vol in
+      PERCENT, daily / weekly / monthly absolute vol-point changes,
+      rolling 252-day z-score, trailing 252-day high / low / percentile,
+      observation count. Mirror of get_fx_spot_level for the ATM vol
+      substrate (115 std-tenor instruments across 23 pairs x 5 tenors).
+
+    bucket_rationale: >-
+      Deterministic SQL query + rolling pandas stats. Window /
+      annualization YAML-locked.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_vol_term_structure_tool
+      - scan_fx_vol_tool
+      - get_fx_vol_z_score_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/spot_levels
+
+    built_date: 2026-05-26
+    validation_status: >-
+      Smoke test PASSED on EURUSD, USDJPY, USDMXN, USDCNH, USDTWD,
+      EURJPY, GBPCHF at 1M — z-score consistent with snapshot output.
+
+  - name: get_fx_vol_term_structure
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_term_structure_tool
+      schema: fx_agent/vol/tools/vol_term_structure/schemas.py::FXVolTermStructureInput
+      compute: fx_agent/vol/tools/vol_term_structure/compute.py::get_fx_vol_term_structure
+      config: fx_agent/vol/tools/vol_term_structure/config.yaml
+
+    one_liner: >-
+      Single-pair ATM vol term structure — one row per standard tenor
+      (1W / 1M / 3M / 6M / 12M, short → long) with current vol,
+      absolute vol-point changes, rolling 252-day z-score / high / low /
+      percentile. Mirror of get_fx_forward_curve for the ATM vol
+      substrate.
+
+    bucket_rationale: >-
+      Iterates atm_vol_level across the standard tenor strip; same
+      deterministic compute / YAML-locked stats.
+
+    pm_overridable:
+      - pair
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - scan_fx_vol_tool
+      - get_fx_forward_curve_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/forwards/tools/forward_curve
+
+    built_date: 2026-05-26
+    validation_status: >-
+      EURUSD term structure returns 5/5 standard tenors short-to-long
+      with per-tenor z-scores.
+
+  - name: scan_fx_vol
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: screening
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_vol_tool
+      schema: fx_agent/vol/tools/vol_scanner/schemas.py::FXVolScannerInput
+      compute: fx_agent/vol/tools/vol_scanner/compute.py::run_fx_vol_scanner
+      config: fx_agent/vol/tools/vol_scanner/config.yaml
+
+    one_liner: >-
+      Cross-sectional ATM vol scanner — for one tenor + market_scope
+      (G10 / EM / G10_CROSSES / ALL), ranks pairs by signed vol /
+      absolute vol / absolute z-score. Mirror of scan_fx_spot for the
+      ATM vol substrate.
+
+    bucket_rationale: >-
+      Deterministic batch screen over fx_vol substrate. Closed-enum
+      rank_by + market_scope; pure arithmetic ranking.
+
+    pm_overridable:
+      - tenor
+      - market_scope
+      - rank_by
+      - top_n
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_vol_term_structure_tool
+      - get_fx_vol_z_score_tool
+      - scan_fx_spot_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_extremes_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/scanner.py
+
+    built_date: 2026-05-26
+    validation_status: >-
+      G10 1M top-5 by abs_z_score returns USDJPY z=-2.12 (vol regime
+      compression). ALL 1M ranks USDCOP top at z=+4.6 (EM vol spike).
+
+  - name: get_fx_vol_z_score
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_z_score_tool
+      schema: fx_agent/vol/tools/vol_z_score/schemas.py::FXVolZScoreInput
+      compute: fx_agent/vol/tools/vol_z_score/compute.py::get_fx_vol_z_score
+      config: fx_agent/vol/tools/vol_z_score/config.yaml
+
+    one_liner: >-
+      Rolling 252-day z-score TIME SERIES for one (pair, tenor) ATM vol
+      — useful for visualizing vol-regime trajectory rather than just
+      the current snapshot. Analog of get_fx_returns_series in the
+      derived-series category.
+
+    bucket_rationale: >-
+      Deterministic pandas rolling stats over stored vol observations.
+      No model state.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - scan_fx_vol_tool
+      - get_fx_returns_series_tool
+      - get_fx_realized_vol_tool
+
+    workflows:
+      - fx_vol_monitor
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/spot/tools/returns_series
+
+    built_date: 2026-05-26
+    validation_status: >-
+      EURUSD 1M emitted 461 z-score points over a 730-day lookback;
+      last emitted z-score matches the snapshot z-score from
+      get_fx_atm_vol_level exactly (-0.6714).

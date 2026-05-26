@@ -15,6 +15,14 @@ from fx_agent.ndf.tools.ndf_implied_carry import calculate_fx_ndf_implied_carry
 from fx_agent.ndf.tools.ndf_implied_carry.schemas import FXNDFImpliedCarryInput
 from fx_agent.ndf.tools.ndf_outright import get_fx_ndf_outright
 from fx_agent.ndf.tools.ndf_outright.schemas import FXNDFOutrightInput
+from fx_agent.vol.tools.atm_vol_level import get_fx_atm_vol_level
+from fx_agent.vol.tools.atm_vol_level.schemas import FXAtmVolLevelInput
+from fx_agent.vol.tools.vol_scanner import run_fx_vol_scanner
+from fx_agent.vol.tools.vol_scanner.schemas import FXVolScannerInput
+from fx_agent.vol.tools.vol_term_structure import get_fx_vol_term_structure
+from fx_agent.vol.tools.vol_term_structure.schemas import FXVolTermStructureInput
+from fx_agent.vol.tools.vol_z_score import get_fx_vol_z_score
+from fx_agent.vol.tools.vol_z_score.schemas import FXVolZScoreInput
 from fx_agent.spot.tools.drawdown import calculate_fx_drawdown
 from fx_agent.spot.tools.drawdown.schemas import FXDrawdownInput
 from fx_agent.spot.tools.fx_panel import calculate_fx_panel
@@ -373,3 +381,93 @@ def ndf_carry_scanner(
         raise HTTPException(status_code=422, detail=f"FX NDF carry scanner failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX NDF carry scanner failed: {exc}")
+
+
+@router.get("/atm-vol-level", summary="FX ATM Vol Level Snapshot")
+def atm_vol_level(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, tenor) ATM vol snapshot with rolling 252d stats."""
+    try:
+        return get_fx_atm_vol_level(
+            engine,
+            FXAtmVolLevelInput(
+                pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX ATM vol level failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX ATM vol level failed: {exc}")
+
+
+@router.get("/vol-term-structure", summary="FX Vol Term Structure")
+def vol_term_structure(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """ATM vol curve across all standard tenors (1W-12M) for one pair."""
+    try:
+        return get_fx_vol_term_structure(
+            engine,
+            FXVolTermStructureInput(
+                pair=pair, lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol term structure failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol term structure failed: {exc}")
+
+
+@router.get("/vol-scanner", summary="FX Cross-Sectional Vol Scanner")
+def vol_scanner(
+    tenor: str = Query(default="1M"),
+    market_scope: str = Query(default="G10", description="G10 / EM / G10_CROSSES / ALL"),
+    rank_by: str = Query(default="vol_signed", description="vol_signed / abs_vol / abs_z_score"),
+    top_n: Optional[int] = Query(default=None, ge=1, le=50),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Cross-sectional ranking of ATM vol across pairs at one tenor."""
+    try:
+        return run_fx_vol_scanner(
+            engine,
+            FXVolScannerInput(
+                tenor=tenor, market_scope=market_scope, rank_by=rank_by,
+                top_n=top_n, lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol scanner failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol scanner failed: {exc}")
+
+
+@router.get("/vol-z-score-series", summary="FX Vol Rolling Z-Score Time Series")
+def vol_z_score_series(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=730, ge=60, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Rolling 252-day z-score time series of ATM vol for one (pair, tenor)."""
+    try:
+        return get_fx_vol_z_score(
+            engine,
+            FXVolZScoreInput(
+                pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol z-score failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol z-score failed: {exc}")
