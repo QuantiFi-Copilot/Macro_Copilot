@@ -6,9 +6,13 @@ Pins Codex's Phase B test coverage contract (validated 2026-05-25):
   excluded via fx_family filter).
 - EM scope returns exactly 17 columns (EM tradable/reference spots;
   excludes USDCNY because it is fx_family=EM_SPOT_REFERENCE).
-- G10_CROSSES scope returns exactly 11 columns.
+- G10_CROSSES scope returns exactly 11 columns (NOTE: fx_crosses.yml
+  has 13 entries after Tradability 2026-05-26 added GBPCHF + CADJPY,
+  but those 2 are bid/ask-only — no PX_LAST yet pending a future BBG
+  extraction. The panel filter joins on PX_LAST so it only sees 11.)
 - ALL scope returns 38 columns (9 G10 + 17 EM + 1 CNY onshore
-  reference + 11 G10 crosses) — ALL means every fx_spot row.
+  reference + 11 G10 crosses with PX_LAST). Will become 40 once
+  GBPCHF + CADJPY get PX_LAST extracted.
 - Columns are pair names (e.g. "EURUSD"), NOT vendor tickers
   (e.g. "EURUSD Curncy").
 - min/max date are preserved through the pivot + missing-data policy
@@ -115,28 +119,33 @@ def main() -> int:
     check("EM returns 17 pairs", check_em_count)
 
     # --- 3. G10_CROSSES scope returns 11 columns
+    # NOTE: fx_crosses.yml has 13 entries after Tradability 2026-05-26
+    # added GBPCHF + CADJPY for bid/ask coverage. Those 2 lack PX_LAST
+    # (extraction is bid/ask-only pending a future BBG session). The
+    # panel join requires PX_LAST so it only sees 11.
     def check_crosses_count():
         out = calculate_fx_panel(
             engine, FXPanelInput(market_scope="G10_CROSSES", start_date=recent_start)
         )
-        assert out["n_pairs"] == 11, f"expected 11, got {out['n_pairs']}"
-        # don't pin the exact set (depends on fx_crosses.yml — may grow);
-        # but assert all are within the G10 currency set.
+        assert out["n_pairs"] == 11, f"expected 11 (fx_crosses with PX_LAST), got {out['n_pairs']}"
         g10_ccys = {"EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "NOK", "SEK", "USD"}
         for pair in out["columns"]:
             assert len(pair) == 6, f"unexpected pair format {pair!r}"
             assert pair[:3] in g10_ccys and pair[3:] in g10_ccys, (
                 f"cross pair {pair} contains non-G10 currency"
             )
-    check("G10_CROSSES returns 11 pairs in G10 currency set", check_crosses_count)
+    check("G10_CROSSES returns 11 pairs (with PX_LAST) in G10 currency set", check_crosses_count)
 
-    # --- 4. ALL scope returns 38 columns
+    # --- 4. ALL scope returns 38 columns (panel-visible PX_LAST count)
     def check_all_count():
         out = calculate_fx_panel(
             engine, FXPanelInput(market_scope="ALL", start_date=recent_start)
         )
-        assert out["n_pairs"] == 38, f"expected 38 (9+17+1+11), got {out['n_pairs']}"
-    check("ALL returns 38 pairs (9 G10 + 17 EM + 1 ref + 11 crosses)", check_all_count)
+        assert out["n_pairs"] == 38, (
+            f"expected 38 (9+17+1+11 with PX_LAST), got {out['n_pairs']}. "
+            "Will become 40 once GBPCHF + CADJPY get PX_LAST extracted."
+        )
+    check("ALL returns 38 pairs (9 G10 + 17 EM + 1 ref + 11 crosses with PX_LAST)", check_all_count)
 
     # --- 5. Columns are pair names, not vendor tickers
     def check_columns_are_pairs():

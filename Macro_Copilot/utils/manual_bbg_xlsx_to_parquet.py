@@ -738,6 +738,33 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
             "AND d.field_name = 'PX_LAST'"
         ),
     ),
+
+    "cross_atm_vol": SubstrateConfig(
+        name="cross_atm_vol",
+        playbook_name="fx_vol",  # extends fx_vol.yml to v6.0
+        dataset_name="fx_vol",
+        instrument_type="fx_vol",
+        # 11 G10 crosses × 5 standard tenors = 55 NEW fx_vol instruments.
+        # PX_LAST only (no bid/ask in this batch). These are net-new
+        # instruments — they REQUIRE fx_vol.yml v6.0 extension with 55
+        # new universe entries (fx_family='G10_CROSSES_FX_VOL', new
+        # value). Unlike the bid/ask substrates which only add
+        # field_name rows, this one adds new instrument_master rows.
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>EURGBP|EURJPY|EURCHF|EURAUD|EURCAD|EURNZD|"
+            r"GBPJPY|GBPCHF|AUDJPY|AUDNZD|CADJPY)"
+            r"_V(?P<tenor>1W|1M|3M|6M|1Y)$"
+        ),
+        ticker_builder=_build_em_vol_ticker,  # f"{pair}V{tenor} Curncy"
+        expected_sheet_count=55,
+        min_rows_per_sheet=500,
+        combine_existing_filter=(
+            # Widened to all fx_vol PX_LAST + BID/ASK so the consolidated
+            # bid/ask state survives the delete-then-insert cycle.
+            # No d.field_name restriction.
+            "im.instrument_type = 'fx_vol'"
+        ),
+    ),
 }
 
 
