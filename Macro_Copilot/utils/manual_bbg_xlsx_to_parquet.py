@@ -765,6 +765,59 @@ SUBSTRATES: Dict[str, SubstrateConfig] = {
             "im.instrument_type = 'fx_vol'"
         ),
     ),
+
+    # ====================================================================
+    # Tradability cleanup top-up (2026-05-26) — 2 substrates
+    # --------------------------------------------------------------------
+    # Closes the consistency gaps left by the bid/ask wave:
+    #   - crosses_pxlast_topup: PX_LAST for GBPCHF + CADJPY (added to
+    #     fx_crosses.yml v3.0 but extracted as bid/ask-only)
+    #   - crosses_bidask_topup: PX_BID + PX_ASK for AUDCAD + NZDJPY
+    #     (in fx_crosses.yml since v2.0 but missed by spot_bidask_crosses
+    #     regex which listed GBPCHF/CADJPY instead)
+    # After these 2 substrates + static matrix top-up, fx_crosses (13)
+    # has full PX_LAST + bid/ask + static metadata coverage.
+    # ====================================================================
+
+    "crosses_pxlast_topup": SubstrateConfig(
+        name="crosses_pxlast_topup",
+        playbook_name="fx_crosses",
+        dataset_name="fx_crosses",
+        instrument_type="fx_spot",
+        # 2 sheets: GBPCHF_LAST, CADJPY_LAST → PX_LAST
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>GBPCHF|CADJPY)_(?P<field>LAST)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=2,
+        min_rows_per_sheet=4000,  # full G10 cross history back to ~2002+
+        combine_existing_filter=(
+            # Pull all fx_spot rows (PX_LAST + bid/ask) so the
+            # delete-then-insert cycle preserves the bid/ask we just
+            # landed in PR #228.
+            "im.instrument_type = 'fx_spot'"
+        ),
+    ),
+
+    "crosses_bidask_topup": SubstrateConfig(
+        name="crosses_bidask_topup",
+        playbook_name="fx_crosses",
+        dataset_name="fx_crosses",
+        instrument_type="fx_spot",
+        # 4 sheets: AUDCAD_BID, AUDCAD_ASK, NZDJPY_BID, NZDJPY_ASK
+        sheet_name_pattern=re.compile(
+            r"^(?P<pair>AUDCAD|NZDJPY)_(?P<field>BID|ASK)$"
+        ),
+        ticker_builder=_build_spot_ticker_from_pair,
+        expected_sheet_count=4,
+        min_rows_per_sheet=500,  # bid/ask depth can be shorter
+        combine_existing_filter=(
+            # Pull all fx_spot rows so the delete-then-insert cycle
+            # preserves the rest of the bid/ask + the PX_LAST from
+            # the prior topup ingest (must run in order: pxlast → bidask).
+            "im.instrument_type = 'fx_spot'"
+        ),
+    ),
 }
 
 
