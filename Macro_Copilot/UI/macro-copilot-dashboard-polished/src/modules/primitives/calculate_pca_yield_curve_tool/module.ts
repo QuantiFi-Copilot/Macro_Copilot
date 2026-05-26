@@ -110,7 +110,7 @@ const MODEL_METADATA: ModelMetadata = {
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_pca_yield_curve_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'pca_yield_curve',
+  displayName: 'PCA · Yield Curve',
   category: 'model_fits',
   oneLineSummary:
     'PCA on the yield-CHANGES panel of one sovereign curve.  Returns per-component loadings, variance shares, factor-score time series, and per-component quality metadata (degenerate + sign-anchor flags).',

@@ -92,7 +92,7 @@ const MODEL_METADATA: ModelMetadata = {
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_rolling_regression_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'rolling_regression',
+  displayName: 'Rolling Regression',
   category: 'rolling_analytics',
   oneLineSummary:
     'Rolling OLS regression of one sovereign yield on one or more regressor yields via numpy.linalg.lstsq, returning per-regressor betas, alpha, residual, in-window R², and a condition-number quality flag.',

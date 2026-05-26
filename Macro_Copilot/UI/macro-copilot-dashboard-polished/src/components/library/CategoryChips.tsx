@@ -1,10 +1,21 @@
 // ============================================================================
-// CategoryChips — horizontal chip row for the 7 functional categories
+// CategoryChips — horizontal chip row for every category in CATEGORY_LABELS
 // ----------------------------------------------------------------------------
 // Each chip carries a small color dot keyed to its semantic family
 // (data → ice, analysis → violet, anomaly → amber).  Chips show
 // tool counts from the manifest's category_counts; categories with
 // zero tools (e.g. when a sub-agent filter is active) hide.
+//
+// Render order — Stage 4f
+// -----------------------
+// The pre-Stage-4f hard-coded list dropped every category Stage 1 added
+// to the backend manifests (panels, scanners, spreads, economic_release_
+// surprises, meeting_pricing, aggregates, panel_assembly).  The row is
+// now derived from ``CATEGORY_LABELS`` so the chip row stays in lock-
+// step with the canonical list: pinned-priority categories appear first
+// (in the original visual-brief order), then every remaining label key
+// in alphabetical order.  Adding a new category = one new entry to
+// ``CATEGORY_LABELS``; no edit to this file required.
 // ============================================================================
 
 import { cn } from '@/utils/cn';
@@ -19,8 +30,10 @@ type Props = {
   onSelect: (category: string) => void;
 };
 
-// Render order — same order the user reads them in the visual brief.
-const CATEGORY_ORDER = [
+// Pinned-priority categories — these render first in the order shown,
+// matching the original visual brief.  Any other category in
+// ``CATEGORY_LABELS`` renders alphabetically after this prefix.
+const PINNED_CATEGORIES = [
   'snapshots',
   'curve_shape',
   'cross_market_rv',
@@ -28,6 +41,18 @@ const CATEGORY_ORDER = [
   'screening',
   'rolling_analytics',
   'model_fits',
+];
+
+const PINNED_SET = new Set(PINNED_CATEGORIES);
+
+/** Final render order: pinned-priority categories first, then every
+ *  remaining ``CATEGORY_LABELS`` key alphabetically.  Computed once at
+ *  module load. */
+const CATEGORY_ORDER: ReadonlyArray<string> = [
+  ...PINNED_CATEGORIES.filter((c) => c in CATEGORY_LABELS),
+  ...Object.keys(CATEGORY_LABELS)
+    .filter((c) => !PINNED_SET.has(c))
+    .sort(),
 ];
 
 export function CategoryChips({ active, counts, totalCount, onSelect }: Props) {

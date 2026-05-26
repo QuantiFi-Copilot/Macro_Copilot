@@ -104,7 +104,7 @@ const MODEL_METADATA: ModelMetadata = {
 export const MODULE: PrimitiveModuleSpec = {
   toolName: 'calculate_yield_change_attribution_pca_tool',
   tiers: ['generic_runnable', 'custom_build_surface', 'custom_preview_widget'],
-  displayName: 'yield_change_attribution_pca',
+  displayName: 'Yield-Change Attribution · PCA',
   category: 'model_fits',
   oneLineSummary:
     'Decompose a sovereign yield change at a given tenor over a window into per-PCA-component contributions in bps.  Loadings come from an inline PCA fit or a caller-supplied pasted payload.',

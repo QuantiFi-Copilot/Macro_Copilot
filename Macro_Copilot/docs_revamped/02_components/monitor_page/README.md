@@ -108,7 +108,7 @@ Default layouts are hand-curated. A new module claiming `monitor_surface` does N
 
 Bumping `LAYOUT_VERSION` invalidates all user layouts in localStorage. Bump only when the layout-state schema is structurally incompatible (renamed fields, new required fields). Adding a new widget type does NOT require a bump.
 
-Per FP4, widget IDs are module tool names. Renaming a tool name = bumping `LAYOUT_VERSION` (the existing layouts referencing the old id will be silently dropped).
+Stage 4d note — widget IDs are PER-WIDGET ids declared inline on each module's `MODULE.monitorWidgets[i].id` (e.g. `curve_spreads`, `spread_chart`, `cross_market_spreads`, `cross_market_spread`, `scanner`, `yield_level`, `curve_classifier`), NOT module tool names.  This decouples the catalog from the backend's tool-naming convention: a module can ship multiple Monitor variants under different ids from the same backend tool, and the layout state survives a tool-name rename as long as the widget ids stay stable.  Renaming a widget id (or splitting one widget into two) does require bumping `LAYOUT_VERSION` — existing layouts referencing the old id are silently dropped on read.
 
 ## RatesDataProvider
 

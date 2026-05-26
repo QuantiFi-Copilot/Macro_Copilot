@@ -34,7 +34,11 @@ Adopt **module-oriented organisation** for the frontend, mirroring the backend's
 
 3. **A module owns the end-to-end UI** for its backend unit: Monitor widget, Build canvas, Ask card, persisted-artifact preview, the THESIS document, the wire types, and the tests. Page shells (`build/`, `library/`, `monitor/`, `ask/`, `layout/`) host modules' surfaces but contain no primitive-specific logic.
 
-4. **Surface tiers are a closed family** (`generic_runnable`, `custom_build_surface`, `custom_preview_widget`, `monitor_surface`, `ask_surface`, `workflow_incompatible`, `paused`, `deferred`). Each module declares which tiers it claims; the tier set is the closed family for the surface-capability vocabulary. Extensions to the tier set are ADR-recorded.
+4. **Surface tiers are a closed family** (5 runtime-status + 4 capability = 9):
+   - Runtime-status: `generic_runnable`, `workflow_incompatible`, `manifest_typed_view`, `paused`, `deferred`.
+   - Capability: `custom_build_surface`, `custom_preview_widget`, `monitor_surface`, `ask_surface`.
+
+   Each module declares which tiers it claims; the tier set is the closed family for the surface-capability vocabulary. Extensions to the tier set are ADR-recorded (Stage 4e added `manifest_typed_view` to disambiguate manifest-only typed-view tools — `calculate_butterfly_tool`, `scan_extremes_tool` — from genuinely workflow-incompatible tools).
 
 5. **Central registries are derived, never hand-authored.** `RUNNABLE_PRIMITIVE_TOOLS`, `KNOWN_BACKEND_TOOLS`, `WORKFLOW_INCOMPATIBLE_TOOLS`, `UNSUPPORTED_KNOWN_TOOLS`, `MODEL_REGISTRY`, the Monitor widget catalogue, the node-renderer registry, the dashboard registry — all become functions over the module-spec list. No mutation, no side-effect registration; the assembly is pure.
 

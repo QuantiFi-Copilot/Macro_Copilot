@@ -1,70 +1,47 @@
 # THESIS — `get_otr_history_tool`
 
-> Stage 3 minimum-viable module — runtime tier only.  Surface code lives in its
-> legacy page-folder location until the Stage 4 refactor moves it into this folder.
+> Module shipped with runtime tier only (Stage 3 / Stage 4c-derived).  Capability surfaces are added by Stages 5+ as the desk earns them.
 
-**Version:** v1 (Stage 3 scaffold)
+**Version:** v2 (Stage 4f — post-runner-fix rewrite)
 **Module spec:** [`module.ts`](module.ts)
 **Backend artifact:** `get_otr_history_tool` (workflow_incompatible)
 **Tier set:** `[workflow_incompatible]`
-**Backend sub-agent:** `sovereign_bonds` · **Category:** `snapshots`
+**Category:** `snapshots`
 
 ---
 
 ## 1. What surfaces does this module ship?
 
-- **`workflow_incompatible`** — runtime-status tier only (Stage 3 minimal scaffold).
-  Backend recognises this tool but the workflow bridge cannot dispatch its output.
-
-(Capability tiers are not claimed yet.  Stage 5+ PRs add capability
-tiers as surfaces are built — see Question 4 below for the planned
-next steps and Question 5 for the doctrine this module operationalises.)
+- **`workflow_incompatible`** — runtime-status tier.  Backend ships this primitive in `WORKFLOW_INCOMPATIBLE_TOOLS`: the tool is callable via MCP but its output shape isn't workflow-bridge compatible (no Series / Panel artifact).  The frontend surfaces the honest `unsupported_known` card with the per-tool reason copy from `MODULE.unsupportedReason`.
 
 ## 2. What does the user read off each surface?
 
-Stage 3 surfaces today: (none — Stage 3 ships the minimum-viable module).
-
-User-facing read at the runtime tier level: opening this tool from Library →
-`Open in Build` decodes per `contextDecoder.ts` and lands on the matching shared
-surface (generic builder / typed view / unsupported card) per the current routing
-priority.  The decoder lookup is unchanged by Stage 3 — the module spec contributes
-to the central registries via the hybrid derivation but the resulting set
-membership is identical to the Stage 1 hand-authored entries.
+**Build (workflow-incompatible card).** `UnsupportedKnownToolCanvas` renders the honest unsupported card with the per-tool reason copy.  Ask handoff still works (the tool ships via MCP).
 
 ## 3. Why these surfaces and not others?
 
-Stage 3 is a pure scaffolding stage.  Per the migration roadmap
-([06_roadmap/frontend_migration.md](../../../../../../docs_revamped/06_roadmap/frontend_migration.md)),
-every primitive that will eventually have a module gets its folder
-materialised in this stage so Stage 4 refactor PRs have a destination
-to move legacy surface code INTO.  Claiming capability tiers + populating
-`surfaces.*` happens in Stage 4 alongside the actual code move (no
-half-states between stages).
+Output shape isn't bridge-compatible (categorical labels, per-meeting snapshots, or similar non-Series/Panel shape).  Until the bridge gains support for the relevant artifact type, the typed-detail endpoint route is the only live surface.
 
 ## 4. What would change the design?
 
-Planned Stage 4+ capabilities: (none planned beyond the current runtime tier).
-
-Concrete triggers:
-- Backend output-shape changes → re-evaluate the runtime tier.
-- New typed-detail endpoint shipped → claim `custom_build_surface` and
-  point `MODULE.typedView` at the new kind.
-- Per-tool persisted-artifact preview needed → claim `custom_preview_widget`
-  and add `surfaces/PreviewWidget.tsx`.
-- Tool surfaces frequently in daily desk read → claim `monitor_surface`
-  and add `surfaces/MonitorWidget.tsx`.
+- Backend artifact-bridge support → revisit runtime tier (could become `generic_runnable`).
+- Bespoke typed view for the workflow-incompatible payload → claim `custom_build_surface`.
 
 ## 5. Which backend doctrine does this module operationalise?
 
 - **FM1** (module identity) — folder name equals backend `tool_name` exactly.
-- **FM3** (surface-tier capability declaration) — exactly one runtime-status
-  tier (`workflow_incompatible`); no capability tiers in Stage 3.
+- **FM3** (surface-tier capability declaration) — claims `workflow_incompatible`; no capability tiers.
 - **FM7** (pure-spec assembly) — `module.ts` exports a pure value.
+- **FM6** (unsupported-reason gating) — `unsupportedReason` populated per the runtime tier.
 - **FM10** (THESIS discipline) — this file.
-- **FM11** (round-trip test) — `__tests__/module.spec.ts` calls
-  `assertStandardModuleInvariants`.
+- **FM11** (round-trip test) — `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`.
 - **FM12** (loader presence) — module imported in `src/modules/index.ts`.
-- Stage 3 of the migration roadmap (`docs_revamped/06_roadmap/frontend_migration.md`).
+
+---
+
+## One-line summary
+
+On-the-run transition log for one (country, tenor) sovereign cash-bond slot — current OTR snapshot (CUSIP, ISIN, vendor_ticker, maturity_date, effective_from of the open window) plus the chronological list of OTR transitions intersecting the lookback window.  Pure-INGEST read of macro_data.otr_history (ADR 0003), forward-only per ADR 0007 / TD #27.
 
 ---
 
@@ -72,4 +49,5 @@ Concrete triggers:
 
 | Version | Date | Change |
 |---|---|---|
+| v2 | 2026-05-26 | Stage 4f — rewrote the body to drop stale "Stage 3 scaffold" framing and answer Q2–Q5 for real. |
 | v1 | 2026-05-25 | Stage 3 scaffold — runtime tier only, no surfaces. |

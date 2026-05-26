@@ -65,7 +65,7 @@ A module claims exactly one. The runtime status is what the user effectively get
 
 **When NOT to claim.** The backend has the primitive in `WORKFLOW_INCOMPATIBLE_TOOLS` instead of `_PRIMITIVE_SPECS` (output shape is not bridge-compatible). Use `workflow_incompatible`.
 
-**Mutually exclusive with.** `workflow_incompatible`, `paused`, `deferred`.
+**Mutually exclusive with.** `workflow_incompatible`, `manifest_typed_view`, `paused`, `deferred`.
 
 **Implies (about `unsupportedReason`).** Must be `null` / omitted.
 
@@ -88,7 +88,7 @@ Today the closed set is three tools:
 
 **When NOT to claim.** The primitive is fully runnable via the bridge. Use `generic_runnable`.
 
-**Mutually exclusive with.** `generic_runnable`, `paused`, `deferred`.
+**Mutually exclusive with.** `generic_runnable`, `manifest_typed_view`, `paused`, `deferred`.
 
 **Implies (about `unsupportedReason`).** Must be present with all three fields.
 
@@ -136,7 +136,7 @@ Today the closed set is one tool:
 
 **When NOT to claim.** The primitive ships through MCP but not through the workflow bridge — that's `workflow_incompatible`, not `paused`.
 
-**Mutually exclusive with.** `generic_runnable`, `workflow_incompatible`, `deferred`.
+**Mutually exclusive with.** `generic_runnable`, `workflow_incompatible`, `manifest_typed_view`, `deferred`.
 
 **Implies (about `unsupportedReason`).** Must be present with all three fields.
 
@@ -161,7 +161,7 @@ Today the closed set is workflow-level only:
 
 **When NOT to claim.** The primitive / workflow is real but paused — use `paused`. The primitive / workflow is in development on a non-build branch — wait until it lands; don't anticipate.
 
-**Mutually exclusive with.** `generic_runnable`, `workflow_incompatible`, `paused`, and ALL capability tiers (a deferred module ships no surfaces).
+**Mutually exclusive with.** `generic_runnable`, `workflow_incompatible`, `manifest_typed_view`, `paused`, and ALL capability tiers (a deferred module ships no surfaces).
 
 **Implies (about `unsupportedReason`).** Must be present; `whatWorksNow` describes when the reservation may be lifted.
 
@@ -256,14 +256,16 @@ The combinations observed in practice (and anticipated for the catalogue):
 
 | Primitive shape | Typical tier set |
 |---|---|
-| Plain snapshot (`get_yield_levels_tool`) | `['generic_runnable']` |
-| Snapshot + daily monitor (`calculate_curve_spread_tool`) | `['generic_runnable', 'monitor_surface']` |
-| Scanner (`scan_extremes_tool`) | `['generic_runnable', 'monitor_surface']` (typed view via `MODULE.typedView = 'scanner'`) |
-| Rich-model fit (`calculate_pca_yield_curve_tool`) | `['generic_runnable', 'custom_build_surface', 'custom_preview_widget']` (rich-model via `MODULE.richModel = true`) |
-| Event signal (`calculate_cpi_surprise_tool`) | `['generic_runnable', 'monitor_surface', 'ask_surface']` |
-| Workflow-incompatible categorical (`classify_curve_move_tool`) | `['workflow_incompatible', 'custom_build_surface']` (typed view via `MODULE.typedView = 'regime'`) |
-| Workflow-incompatible list (`get_otr_history_tool`) | `['workflow_incompatible']` or `['workflow_incompatible', 'custom_build_surface']` |
-| Workflow-incompatible per-meeting (`calculate_wirp_meeting_pricing_tool`) | `['workflow_incompatible']` or `['workflow_incompatible', 'custom_build_surface']` |
+| Plain snapshot (`get_yield_levels_tool`) | `['generic_runnable', 'custom_build_surface', 'monitor_surface']` |
+| Snapshot + daily monitor (`calculate_curve_spread_tool`) | `['generic_runnable', 'custom_build_surface', 'monitor_surface']` (two Monitor widgets via `MODULE.monitorWidgets[]`: `curve_spreads` + `spread_chart`) |
+| Cross-market spread (`calculate_cross_market_spread_tool`) | `['generic_runnable', 'custom_build_surface', 'monitor_surface']` (two Monitor widgets via `MODULE.monitorWidgets[]`: `cross_market_spreads` + `cross_market_spread`) |
+| Manifest-only scanner (`scan_extremes_tool`) | `['manifest_typed_view', 'custom_build_surface', 'monitor_surface']` (typed view via `MODULE.typedView = 'scanner'`) |
+| Manifest-only butterfly (`calculate_butterfly_tool`) | `['manifest_typed_view', 'custom_build_surface']` (typed view via `MODULE.typedView = 'butterfly'`) |
+| Rich-model fit (`calculate_pca_yield_curve_tool`) | `['generic_runnable', 'custom_build_surface', 'custom_preview_widget']` (rich-model via `MODULE.richModel = true` + `MODULE.modelMetadata` + `MODULE.modelAdapter`) |
+| Event signal (`calculate_cpi_surprise_tool`) | `['generic_runnable', 'monitor_surface', 'ask_surface']` *(Stage 5+ target — not yet built)* |
+| Workflow-incompatible categorical (`classify_curve_move_tool`) | `['workflow_incompatible', 'custom_build_surface', 'monitor_surface']` (typed view via `MODULE.typedView = 'regime'` + Monitor `curve_classifier` widget) |
+| Workflow-incompatible list (`get_otr_history_tool`) | `['workflow_incompatible']` or `['workflow_incompatible', 'custom_build_surface']` *(Stage 5+ target — not yet built)* |
+| Workflow-incompatible per-meeting (`calculate_wirp_meeting_pricing_tool`) | `['workflow_incompatible']` or `['workflow_incompatible', 'custom_build_surface']` *(Stage 5+ target — not yet built)* |
 | Paused (`scan_ois_extremes_tool`) | `['paused']` |
 | Deferred workflow (`attribution_decomposition`) | `['deferred']` |
 
@@ -292,4 +294,6 @@ The closed family exists to prevent UI-tier proliferation. Extensions are delibe
 
 | Version | Date | Change |
 |---|---|---|
+| v3 | 2026-05-26 | Stage 4f doctrine sweep: fixed combination matrix (every observed pattern now reflects the actually-claimed tiers; `scan_extremes` + `calculate_butterfly` are `manifest_typed_view`, not `workflow_incompatible`; sovereign + cross-market spreads include `custom_build_surface` + `monitor_surface`).  Added `manifest_typed_view` to the four runtime tiers' Mutually-exclusive-with lines. |
+| v2 | 2026-05-26 | Stage 4e: added `manifest_typed_view` runtime tier (5 runtime-status + 4 capability = 9 tiers total).  Relaxed `monitor_surface` to accept EITHER `surfaces/MonitorWidget.tsx` OR `MODULE.monitorWidgets[]` (Stage 4d multi-variant shape). |
 | v1 | 2026-05-25 | Initial tier catalogue. 4 runtime-status + 4 capability tiers; validation rules; per-tier semantics; combination matrix. |

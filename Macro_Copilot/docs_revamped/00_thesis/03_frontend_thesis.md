@@ -120,14 +120,14 @@ For ongoing work: do not re-read this file from top to bottom. Look up the speci
 
 ### FP3 — Surface-tier capability declaration
 
-**Rule.** A module declares which surface tiers it claims via the closed-family `tiers: SurfaceTier[]` field in its `MODULE` spec. The closed family is exactly:
+**Rule.** A module declares which surface tiers it claims via the closed-family `tiers: SurfaceTier[]` field in its `MODULE` spec. The closed family is exactly (Stage 4e: 5 runtime-status + 4 capability = 9):
 
 ```
-generic_runnable | custom_build_surface | custom_preview_widget |
-monitor_surface | ask_surface | workflow_incompatible | paused | deferred
+generic_runnable | workflow_incompatible | manifest_typed_view | paused | deferred  // runtime-status (pick exactly one)
+custom_build_surface | custom_preview_widget | monitor_surface | ask_surface       // capability (combine freely)
 ```
 
-Every module MUST claim exactly one *runtime-status tier* (`generic_runnable`, `workflow_incompatible`, `paused`, or `deferred`). Capability tiers (`custom_build_surface`, `custom_preview_widget`, `monitor_surface`, `ask_surface`) may be combined freely. A module claiming a capability tier MUST ship the corresponding `surfaces/<Name>.tsx` file; conversely, a module that does NOT claim a capability tier MUST NOT have that surface file.
+Every module MUST claim exactly one *runtime-status tier* (`generic_runnable`, `workflow_incompatible`, `manifest_typed_view`, `paused`, or `deferred`). Capability tiers (`custom_build_surface`, `custom_preview_widget`, `monitor_surface`, `ask_surface`) may be combined freely. A module claiming a capability tier MUST ship the corresponding `surfaces/<Name>.tsx` file (or, for `monitor_surface`, EITHER `surfaces/MonitorWidget.tsx` OR a non-empty `MODULE.monitorWidgets[]` per the Stage 4d multi-variant shape); conversely, a module that does NOT claim a capability tier MUST NOT have that surface file.
 
 **Why.** Predictable contracts. A reader of the module's `module.ts` knows immediately what UI surfaces exist for this primitive. A reader of `src/modules/primitives/<name>/surfaces/` knows the tier set without reading code. The tier set being a *closed family* (per backend P8) means extensions are ADR-recorded — drift is impossible. The mutually-exclusive runtime-status rule prevents nonsense states like "runnable AND paused."
 
