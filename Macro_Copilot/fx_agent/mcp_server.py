@@ -40,10 +40,25 @@ from fx_agent.vol.tools.atm_vol_level import (  # noqa: E402
     FXAtmVolLevelInput,
     get_fx_atm_vol_level,
 )
+from fx_agent.vol.tools.butterfly import (  # noqa: E402
+    CONFIG_PATH as FX_BUTTERFLY_CONFIG_PATH,
+    FXButterflyInput,
+    get_fx_butterfly,
+)
+from fx_agent.vol.tools.risk_reversal import (  # noqa: E402
+    CONFIG_PATH as FX_RISK_REVERSAL_CONFIG_PATH,
+    FXRiskReversalInput,
+    get_fx_risk_reversal,
+)
 from fx_agent.vol.tools.vol_scanner import (  # noqa: E402
     CONFIG_PATH as FX_VOL_SCANNER_CONFIG_PATH,
     FXVolScannerInput,
     run_fx_vol_scanner,
+)
+from fx_agent.vol.tools.vol_smile import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_SMILE_CONFIG_PATH,
+    FXVolSmileInput,
+    get_fx_vol_smile,
 )
 from fx_agent.vol.tools.vol_term_structure import (  # noqa: E402
     CONFIG_PATH as FX_VOL_TERM_STRUCTURE_CONFIG_PATH,
@@ -788,6 +803,144 @@ def get_fx_vol_z_score_tool(
     except Exception as exc:
         logger.exception("FX vol z-score failed for %s %s", pair, tenor)
         return json.dumps({"error": f"FX vol z-score failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_risk_reversal_tool(
+    pair: str,
+    delta_anchor: int = 25,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, delta_anchor, tenor) FX risk reversal snapshot.
+
+    RR is the call_Δ - put_Δ implied-vol differential at the chosen
+    delta anchor (25Δ or 10Δ), the desk-standard skew indicator.
+    Positive RR = call skew dominant (upside risk priced); negative
+    RR = put skew (downside risk). Quoted in absolute vol points.
+
+    Returns latest RR, daily / weekly / monthly absolute vol-point
+    changes, rolling 252-day z-score, trailing 252-day high / low /
+    percentile, observation count. Mirror of get_fx_atm_vol_level for
+    the smile substrate (instrument_type='fx_vol_smile').
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD', 'USDMXN').
+    delta_anchor : int, default 25. Choices: 25 or 10. SINGLE central
+        methodology knob — defines what the RR IS (25Δ vs 10Δ skew
+        are structurally different observations).
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST. Use
+        'PX_BID' / 'PX_ASK' for bid/ask side.
+    """
+    try:
+        params = FXRiskReversalInput(
+            pair=pair, delta_anchor=delta_anchor, tenor=tenor,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_RISK_REVERSAL_CONFIG_PATH)
+        result = get_fx_risk_reversal(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX risk reversal failed for %s %sR %s", pair, delta_anchor, tenor,
+        )
+        return json.dumps({"error": f"FX risk reversal failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_butterfly_tool(
+    pair: str,
+    delta_anchor: int = 25,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, delta_anchor, tenor) FX butterfly snapshot.
+
+    BF is the average OTM wing vol minus the ATM vol at the chosen
+    delta anchor (25Δ or 10Δ), the desk-standard kurtosis / wing-
+    richness indicator. Positive BF = wings rich (market pricing
+    tail / jump risk); negative BF = wings cheap. Quoted in absolute
+    vol points.
+
+    Returns latest BF, daily / weekly / monthly absolute vol-point
+    changes, rolling 252-day z-score, trailing 252-day high / low /
+    percentile, observation count. Smile-substrate analog of
+    risk_reversal for the wing-richness leg.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair.
+    delta_anchor : int, default 25. Choices: 25 or 10. SINGLE central
+        methodology knob.
+    tenor : str, default '1M'.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXButterflyInput(
+            pair=pair, delta_anchor=delta_anchor, tenor=tenor,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_BUTTERFLY_CONFIG_PATH)
+        result = get_fx_butterfly(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX butterfly failed for %s %sB %s", pair, delta_anchor, tenor,
+        )
+        return json.dumps({"error": f"FX butterfly failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_vol_smile_tool(
+    pair: str,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Aggregate 5-point FX vol smile snapshot for one (pair, tenor).
+
+    Returns the full smile: ATM (level) + 25R + 25B + 10R + 10B
+    (differentials) in one call. Each point carries snapshot,
+    1/5/21-day absolute changes, and rolling 252-day z-score /
+    percentile / range — same recipe as the singleton primitives.
+
+    Aggregate as_of_date = MIN of per-point latest dates so cross-
+    point comparisons are aligned to a common confirmed trading day.
+    Fails loud if ANY of the 5 series is missing for the requested
+    (pair, tenor, lookback_days) — no silent partial smiles.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair.
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolSmileInput(
+            pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_SMILE_CONFIG_PATH)
+        result = get_fx_vol_smile(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX vol smile failed for %s %s", pair, tenor)
+        return json.dumps({"error": f"FX vol smile failed: {exc}"}, default=str)
     return json.dumps(result, default=str)
 
 

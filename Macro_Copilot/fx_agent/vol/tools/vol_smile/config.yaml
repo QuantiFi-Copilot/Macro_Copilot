@@ -1,0 +1,118 @@
+tool:
+  name: get_fx_vol_smile_tool
+  domain: fx_vol
+  description: |
+    Single-(pair, tenor) FX vol smile aggregate snapshot — returns the
+    full 5-point smile (ATM + 25R + 25B + 10R + 10B) in one call.
+    Each point carries snapshot + 252-day rolling z-score / percentile
+    / range, on the same shape as risk_reversal / butterfly. Pure
+    structural aggregate primitive — no central methodology knob per
+    PR4 parsimony (smile shape is fully determined by pair × tenor).
+  category: desk_invariant_primitive
+
+conventions:
+  default_vol_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Bloomberg PX_LAST is the canonical smile observation; PX_BID /
+      PX_ASK available for the 156 std-tenor smile instruments since
+      PR #228.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: >-
+      1M is the standard vol monitor tenor (matches atm_vol_level,
+      risk_reversal, butterfly, and fx_carry conventions).
+
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      One trading year of rolling history. Matches every other FX vol /
+      level / curve tool so cross-asset readers see comparable z-scores.
+    valid_range: [60, 504]
+
+  z_score_min_periods:
+    value: 60
+    source: industry_standard_1y_window
+    rationale: >-
+      Minimum observations before a z-score is emitted; below this the
+      rolling stat is too noisy and z_score is set to None (fail-loud).
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: Sample (Bessel-corrected) standard deviation.
+    valid_range: [0, 1]
+
+  trailing_range_window_days:
+    value: 252
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Locked at 252 in V1; the schema field names (high_252d /
+      low_252d / percentile_252d) embed the number — a convention
+      change without renaming would silently lie (PR14).
+    valid_range: [252, 252]
+
+  daily_change_periods:
+    value: 1
+    source: industry_standard_daily_changes
+    rationale: One trading-day offset for the daily change calculation.
+    valid_range: [1, 3]
+
+  weekly_change_periods:
+    value: 5
+    source: industry_standard_daily_changes
+    rationale: One trading-week offset (5 trading days).
+    valid_range: [5, 10]
+
+  monthly_change_periods:
+    value: 21
+    source: industry_standard_daily_changes
+    rationale: Approximate one trading month (21 trading days).
+    valid_range: [20, 30]
+
+  vol_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals matches risk_reversal / butterfly / atm_vol_level
+      precision; platform-wide rule.
+    valid_range: [2, 6]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: Four decimals for z-score (platform-wide convention).
+    valid_range: [2, 6]
+
+  percentile_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: Two decimals for percentile rank (0-100 scale).
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    For one (pair, tenor), fetches ATM (instrument_type='fx_vol') plus
+    the 4 smile points 25R / 25B / 10R / 10B (instrument_type=
+    'fx_vol_smile') histories over the lookback window. Computes each
+    point's snapshot value, 1/5/21-day absolute changes, and 252-day
+    rolling z-score / percentile / range — same recipe as the single-
+    point primitives.
+
+    Aggregate as_of_date = MIN of per-point latest dates so cross-point
+    comparisons are aligned to a common confirmed trading day.
+  assumptions:
+    - "ATM vol is a LEVEL in absolute vol points (e.g. 8.0 vol pts = 8% annualised vol). RR / BF are DIFFERENTIALS in absolute vol points. Trader convention."
+    - "Smile points {25R, 25B, 10R, 10B} live under instrument_type='fx_vol_smile' with attributes.smile_point matching. ATM lives under instrument_type='fx_vol' (separate substrate)."
+    - "Each per-point z-score uses its OWN series' 252-day window. Cross-point z-score comparisons are at the same horizon (252d) but not the same calendar window when feeds have different update lags — the aggregate as_of_date_min provides a conservative alignment signal."
+    - "If ANY of the 5 series is empty or all-NaN for the requested (pair, tenor, lookback_days), the tool fails loud (no silent zero or partial smile)."
+  citations: []
+  planned_extensions:
+    - "Add bid/ask-aware smile variant once Phase E3 smile bid/ask consumers land."
+    - "Add curvature / steepness derived metrics (10R-25R, (10B+10R)/2 - (25B+25R)/2) once a downstream consumer requests them. Currently leave aggregation to consumers per PR4 parsimony."
+    - "Add a regime-classifier output flag once Phase H regime operators land."

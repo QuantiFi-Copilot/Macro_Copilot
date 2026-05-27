@@ -823,3 +823,182 @@ tools:
       EURUSD 1M emitted 461 z-score points over a 730-day lookback;
       last emitted z-score matches the snapshot z-score from
       get_fx_atm_vol_level exactly (-0.6714).
+
+  # ---------------------------------------------------------------------------
+  # SMILE TOOLS (Phase E2 — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_risk_reversal
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_risk_reversal_tool
+      schema: fx_agent/vol/tools/risk_reversal/schemas.py::FXRiskReversalInput
+      compute: fx_agent/vol/tools/risk_reversal/compute.py::get_fx_risk_reversal
+      config: fx_agent/vol/tools/risk_reversal/config.yaml
+
+    one_liner: >-
+      Single-(pair, delta_anchor, tenor) FX risk reversal snapshot — RR
+      is the call_Δ - put_Δ implied-vol differential at the chosen delta
+      anchor (25Δ or 10Δ), the desk-standard skew indicator. Positive
+      RR = call skew dominant; negative = put skew. Quoted in absolute
+      vol points. Mirror of get_fx_atm_vol_level for the smile
+      substrate (instrument_type='fx_vol_smile', smile_point in
+      {'25R','10R'}).
+
+    bucket_rationale: >-
+      Deterministic SQL query against fx_vol_smile substrate + rolling
+      pandas stats. Same recipe as atm_vol_level — z-score / window /
+      annualization YAML-locked. Single methodology knob (delta_anchor)
+      surfaces the genuine 25Δ vs 10Δ structural choice per PR8.
+
+    pm_overridable:
+      - pair
+      - delta_anchor
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_butterfly_tool
+      - get_fx_vol_smile_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 25R 1M ticker resolves to EURUSD25R1M Curncy;
+      delta_anchor=10 resolves to EURUSD10R1M. SQL parity against
+      independent baseline within 0.001 vol-pt tolerance on 8 anchor
+      cases across G10 / EM / NDF / crosses.
+
+  - name: get_fx_butterfly
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_butterfly_tool
+      schema: fx_agent/vol/tools/butterfly/schemas.py::FXButterflyInput
+      compute: fx_agent/vol/tools/butterfly/compute.py::get_fx_butterfly
+      config: fx_agent/vol/tools/butterfly/config.yaml
+
+    one_liner: >-
+      Single-(pair, delta_anchor, tenor) FX butterfly snapshot — BF is
+      the average OTM wing vol minus the ATM vol at the chosen delta
+      anchor (25Δ or 10Δ), the desk-standard kurtosis / wing-richness
+      indicator. Positive BF = wings rich (tail-risk priced); negative
+      = wings cheap. Quoted in absolute vol points. Smile-substrate
+      analog of risk_reversal for the wing leg.
+
+    bucket_rationale: >-
+      Same compute path as risk_reversal — resolves smile_point as
+      f"{delta}B" (25B / 10B) instead of f"{delta}R". Deterministic
+      SQL + rolling pandas stats; YAML-locked conventions.
+
+    pm_overridable:
+      - pair
+      - delta_anchor
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_risk_reversal_tool
+      - get_fx_vol_smile_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/risk_reversal
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 25B 1M ticker resolves to EURUSD25B1M Curncy;
+      kurtosis sanity check (10B > 0.5 * 25B) passes on EURUSD. SQL
+      parity within 0.001 vol-pt on the same 8 anchor cases as
+      risk_reversal.
+
+  - name: get_fx_vol_smile
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_smile_tool
+      schema: fx_agent/vol/tools/vol_smile/schemas.py::FXVolSmileInput
+      compute: fx_agent/vol/tools/vol_smile/compute.py::get_fx_vol_smile
+      config: fx_agent/vol/tools/vol_smile/config.yaml
+
+    one_liner: >-
+      Aggregate 5-point FX vol smile snapshot for one (pair, tenor) —
+      ATM (level, from fx_vol substrate) + 25R + 25B + 10R + 10B
+      (differentials, from fx_vol_smile substrate). Each point carries
+      the same snapshot + rolling 252-day z-score / percentile / range
+      as the singleton primitives. Common as_of_date = MIN of per-point
+      latest dates for honest cross-point comparison. Fails loud if
+      ANY of the 5 series is missing.
+
+    bucket_rationale: >-
+      Structural aggregate primitive — composes the same compute logic
+      over 5 series. No central methodology knob per PR4 parsimony
+      (smile shape is fully determined by pair × tenor; per Codex 2026-
+      05-27 correction we do NOT add a fake `include_extended_tenors`
+      knob — that would be a data-availability question, not a
+      methodology choice).
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_risk_reversal_tool
+      - get_fx_butterfly_tool
+      - get_fx_atm_vol_level_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_smile_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/risk_reversal
+      - fx_agent/vol/tools/butterfly
+      - fx_agent/vol/tools/atm_vol_level
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation tests included in
+      Phase E2 PR. EURUSD 1M returns 5 points with correct smile_point
+      labels (ATM / 25R / 25B / 10R / 10B). vol_smile RR/BF values
+      match singleton tools within 0.001 vol-pt. ATM in 2-30 vol-pt
+      level range; RR/BF differentials < 5 vol pt absolute. Aggregate
+      as_of_date = MIN of per-point latest dates. SQL parity within
+      0.001 across 4 anchor (pair, tenor) cases x 5 smile points = 20
+      series.
