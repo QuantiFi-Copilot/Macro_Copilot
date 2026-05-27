@@ -1,0 +1,237 @@
+tool:
+  name: get_fx_cross_currency_basis_tool
+  domain: fx_forwards
+  description: |
+    Single-(pair, tenor) FX cross-currency basis snapshot — the CIP-
+    violation spread between what FX forwards imply about the local-
+    minus-USD rate spread and what the observed OIS curves show.
+    Composes the FX implied yield differential (from forward points)
+    with the observed local-OIS minus USD-OIS spread.
+
+    SIGN CONVENTION HARD-LOCKED to Bloomberg BCRX-style:
+    NEGATIVE basis = USD scarcity (FX-implied USD funding rate exceeds
+    USD OIS rate — USD funder demands a premium via FX swap). POSITIVE
+    basis = USD abundance (rare in post-2008 regimes). For DM pairs in
+    normal regimes typical magnitude is -50 to -5 bp.
+
+    Quoted in BASIS POINTS. Cross-domain primitive — consumes the
+    rates_agent OIS substrate via fetch_cross_market_pair.
+
+    V1 SCOPE: G10 USD-leg only — EURUSD, GBPUSD, USDJPY, AUDUSD,
+    USDCAD. USDCHF/NZD/NOK/SEK/EM/NDF fail-loud BY DESIGN at the
+    Pydantic boundary (no matching OIS curve in rates_agent V1).
+  category: desk_invariant_primitive
+
+conventions:
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX spot observation for the FX leg.
+
+  default_fx_forward_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX forward-points observation for the FX leg.
+
+  default_ois_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: >-
+      Canonical OIS par-swap-rate observation. Matches the
+      rates_agent/ois/tools/rate_level default field, so the basis
+      math is byte-identical to what an independent rate_level call
+      would return for each leg.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: >-
+      1M is the standard monitor tenor across the FX vol / forwards
+      tooling family. Also matches the OIS short-end pillar most
+      actively watched on the desk.
+
+  usd_ois_curve:
+    value: USD_SOFR_OIS
+    source: legacy_default_pre_pilot
+    rationale: >-
+      USD funding leg HARD-LOCKED to SOFR OIS (post-2022 reference).
+      EFFR-based OIS not used V1 since SOFR is the only curve in the
+      rates_agent OIS playbook for USD currently. Switching to EFFR
+      would be a methodology change requiring a new variant.
+
+  tenor_1w_days:
+    value: 5
+    source: trading_day_convention
+    rationale: One FX trading week.
+    valid_range: [3, 10]
+
+  tenor_1m_days:
+    value: 21
+    source: trading_day_convention
+    rationale: One FX trading month.
+    valid_range: [15, 30]
+
+  tenor_3m_days:
+    value: 63
+    source: trading_day_convention
+    rationale: Three FX trading months.
+    valid_range: [45, 90]
+
+  tenor_6m_days:
+    value: 126
+    source: trading_day_convention
+    rationale: Six FX trading months.
+    valid_range: [90, 180]
+
+  tenor_12m_days:
+    value: 252
+    source: trading_day_convention
+    rationale: One FX trading year. Coherent with annualization_days.
+    valid_range: [240, 270]
+
+  annualization_days:
+    value: 252
+    source: industry_standard_trading_year
+    rationale: >-
+      Trading-day annualization for the FX leg, coherent with
+      fx_carry / implied_yield_differential / forward_curve.
+
+  jpy_forward_points_divisor:
+    value: 100
+    source: bloomberg_field_convention
+    rationale: JPY pairs quote forward points in hundredths of one spot unit.
+    valid_range: [1, 10000]
+
+  default_forward_points_divisor:
+    value: 10000
+    source: bloomberg_field_convention
+    rationale: Non-JPY pairs quote forward points in ten-thousandths.
+    valid_range: [1, 100000]
+
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: >-
+      One trading year of rolling history on the basis series.
+      Matches every other FX vol / forwards tool for cross-asset
+      z-score comparability.
+    valid_range: [60, 504]
+
+  z_score_min_periods:
+    value: 60
+    source: industry_standard_1y_window
+    rationale: Minimum observations before z-score is emitted.
+    valid_range: [20, 252]
+
+  z_score_ddof:
+    value: 1
+    source: industry_standard_sample_std
+    rationale: Sample (Bessel-corrected) standard deviation.
+    valid_range: [0, 1]
+
+  trailing_range_window_days:
+    value: 252
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Locked at 252 in V1; schema field names (high_252d_bps /
+      low_252d_bps / percentile_252d) embed the number (PR14).
+    valid_range: [252, 252]
+
+  daily_change_periods:
+    value: 1
+    source: industry_standard_daily_changes
+    rationale: One trading-day offset.
+    valid_range: [1, 3]
+
+  weekly_change_periods:
+    value: 5
+    source: industry_standard_daily_changes
+    rationale: One trading-week offset.
+    valid_range: [5, 10]
+
+  monthly_change_periods:
+    value: 21
+    source: industry_standard_daily_changes
+    rationale: Approximate one trading month.
+    valid_range: [20, 30]
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Forward-fill window for missing daily observations before NA
+      treatment. Matches fx_carry / forward_curve / implied_yield_diff.
+    valid_range: [0, 10]
+
+  basis_bps_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Two decimals for basis in bps (typical magnitudes -50 to +5 bp,
+      0.01 bp precision sufficient for desk-level monitoring).
+    valid_range: [0, 4]
+
+  pct_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: >-
+      Four decimals for fx_implied and ois_diff PERCENT outputs
+      (platform-wide convention).
+    valid_range: [2, 6]
+
+  z_score_round_decimals:
+    value: 4
+    source: legacy_default_pre_pilot
+    rationale: Four decimals for z-score (platform-wide convention).
+    valid_range: [2, 6]
+
+  percentile_round_decimals:
+    value: 2
+    source: legacy_default_pre_pilot
+    rationale: Two decimals for percentile rank.
+    valid_range: [0, 4]
+
+methodology:
+  what_it_does: |
+    For one (pair, tenor) with USD-leg + OIS coverage:
+      1. FX leg: fetch joined (spot, forward_points) history,
+         compute fp_spot_units (JPY-aware divisor), compute
+         outright forward, then:
+           raw_diff_pct = (outright/spot - 1) * (252/tenor_days) * 100
+           fx_iyd_pct  = sign(usd_leg_position) * raw_diff_pct
+                       (sign-adjusted to LOCAL minus USD framing per
+                        implied_yield_differential convention)
+      2. OIS leg: fetch (local OIS, USD OIS) at the matching tenor
+         (FX 12M aliased to OIS 1Y) via
+         shared.analytics.rates_fetch.fetch_cross_market_pair.
+         Pivot wide, compute:
+           ois_diff_pct = local_ois - usd_ois
+      3. Inner-join FX and OIS series by trade_date.
+      4. Compute basis with HARD-LOCKED Bloomberg BCRX-style sign:
+           basis_bps = (fx_iyd_pct - ois_diff_pct) * 100
+         Sign: NEGATIVE = USD scarcity (FX-implied USD rate exceeds
+         OIS USD rate via swap). Re-derivable from a concrete example
+         in the compute.py source — sign-flip would invert the
+         Bloomberg-compatible interpretation. Pending Sreeram
+         confirmation in PR review.
+      5. Snapshot + 1/5/21-day changes + rolling 252-day z-score /
+         percentile / high / low on the basis series.
+
+  assumptions:
+    - "SIGN CONVENTION HARD-LOCKED Bloomberg/BCRX-style (confirmed 2026-05-27 by Sreeram referencing Bloomberg convention): basis_bps = (fx_iyd - (local_ois - usd_ois)) * 100. NEGATIVE = USD scarcity (FX-implied USD funding rate exceeds USD OIS; USD funder gets premium via FX swap). POSITIVE = USD abundance (rare post-2008). For DM pairs in normal regimes, typical -50 to -5 bp. Three independent corroborations of the sign convention: (a) Codex's algebraic derivation, (b) Claude's re-derivation with concrete EURUSD/USD-scarcity example yielding -30bp, (c) Bloomberg/ChatGPT reference via Sreeram. If desk feedback later requests inverse sign, flip is isolated to one line in compute.py + parity fixture recapture."
+    - "V1 PAIR SCOPE INTENTIONALLY NARROW (G10 USD-leg only: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD). Pairs without matching OIS coverage in rates_agent V1 (USDCHF — no SARON OIS curve; NZDUSD, USDNOK, USDSEK — no respective OIS; all EM) fail-loud at the Pydantic boundary BY DESIGN. Expansion requires (a) additional OIS curve coverage from rates_agent OR (b) proxy-rate substitution decision — both are real methodology questions for Phase C++."
+    - "V1 SIGN INTERPRETATION ASSUMES USD-FUNDING ANCHOR. The 'USD scarcity / USD-funding cost' framing applies to all V1 pairs because USD is the common funding currency anchor (all 5 pairs have USD as one leg). For future non-USD G10 crosses (EURJPY, GBPCHF, etc.) the 'USD scarcity' interpretation would not apply — the framing would need to shift to local-pair basis with an explicit numerator_currency selector. Phase C++ extension if a downstream consumer needs cross-pair basis."
+    - "Cross-domain dependency: FX consumes rates_agent OIS via shared.analytics.rates_fetch.fetch_cross_market_pair (existing helper, no new shared infra). USD OIS curve HARD-LOCKED to USD_SOFR_OIS (post-2022 reference); EFFR-OIS variant would be a separate tool."
+    - "Currency → local OIS curve mapping HARD-LOCKED in V1 within this tool's compute (fx_agent/forwards/tools/cross_currency_basis/compute.py::_LOCAL_CURRENCY_TO_OIS_CURVE). Closed dict for the 5 supported pairs. Phase C++ may promote to shared.conventions if EM/extended coverage lands and needs cross-tool reuse."
+    - "FX tenor → OIS tenor mapping: FX 12M aliases to OIS 1Y (rates_agent OIS playbook exposes 1Y not 12M). Other tenors (1W/1M/3M/6M) identical between FX and OIS."
+    - "Annualization 252 trading days/year on BOTH FX and OIS legs. Coherent with fx_carry / implied_yield_differential / rates_agent OIS. The basis bps figure is therefore directly comparable to a Bloomberg BCRX quote at the same horizon (subject to small day-count / convention differences explicitly documented as known basis residuals)."
+    - "Inner-join FX×OIS by trade_date — observation_count reflects the intersection. If OIS lags FX (or vice versa) by N days, the latest N basis observations may be lost. Acceptable for V1 since both feeds come from the same Bloomberg ingestion."
+    - "Identity check (in test_fx_cross_currency_basis_compute.py): the FX leg of this primitive MUST byte-match get_fx_implied_yield_differential at the same (pair, tenor). The OIS leg MUST byte-match a separate fetch_cross_market_pair call. Both checked live-DB on each canonical case."
+  citations: []
+  planned_extensions:
+    - "Add USDCHF support once rates_agent ingests a CHF SARON OIS curve."
+    - "Add NZDUSD / USDNOK / USDSEK support once their OIS curves are ingested."
+    - "Add EM cross-currency basis variant once an EM rate proxy convention is agreed (TIIE for MXN, etc.)."
+    - "Promote the currency → OIS curve mapping to shared.conventions.currency_rate_map if Phase C++ adds more pairs or cross-tool consumers (vol_carry_to_basis composite, etc.). V1 keeps the dict local to avoid premature shared coupling."
+    - "Add a USD basis scanner cross-sectional ranking once the snapshot stabilises and a downstream consumer requests it."
+    - "Add EFFR-OIS variant once rates_agent ingests EFFR_OIS curve — would be a separate tool with `usd_ois_curve` config knob."

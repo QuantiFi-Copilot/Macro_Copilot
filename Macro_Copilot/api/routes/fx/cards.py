@@ -9,6 +9,8 @@ from sqlalchemy.engine import Engine
 from api.dependencies import get_engine
 from fx_agent.forwards.tools.carry_basket import get_fx_carry_basket
 from fx_agent.forwards.tools.carry_basket.schemas import FXCarryBasketInput
+from fx_agent.forwards.tools.cross_currency_basis import get_fx_cross_currency_basis
+from fx_agent.forwards.tools.cross_currency_basis.schemas import FXCrossCurrencyBasisInput
 from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import FXForwardCurveInput
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
@@ -605,6 +607,34 @@ def vol_risk_premium(
         raise HTTPException(status_code=422, detail=f"FX vol risk premium failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX vol risk premium failed: {exc}")
+
+
+@router.get("/cross-currency-basis", summary="FX Cross-Currency Basis Snapshot")
+def cross_currency_basis(
+    pair: str = Query(..., description="V1 pairs: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD."),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, tenor) FX cross-currency basis snapshot.
+
+    CIP-violation spread = (fx_iyd - (local_ois - usd_ois)) * 100 bps.
+    NEGATIVE = USD scarcity (Bloomberg BCRX-style). Cross-domain
+    primitive: consumes rates_agent OIS substrate.
+    """
+    try:
+        return get_fx_cross_currency_basis(
+            engine,
+            FXCrossCurrencyBasisInput(
+                pair=pair, tenor=tenor,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX cross-currency basis failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX cross-currency basis failed: {exc}")
 
 
 @router.get("/implied-yield-differential", summary="FX Implied Yield Differential Snapshot")

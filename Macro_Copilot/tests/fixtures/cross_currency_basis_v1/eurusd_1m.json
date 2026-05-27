@@ -1,0 +1,3903 @@
+{
+  "fixture_name": "eurusd_1m",
+  "tool_module": "fx_agent.forwards.tools.cross_currency_basis",
+  "tool_function": "get_fx_cross_currency_basis",
+  "capture": {
+    "captured_at": "2026-05-27T21:37:14Z",
+    "capture_method": "live_db_v1_with_sreeram_ois_parquet",
+    "database_name": "macrodata",
+    "start_date": "2025-05-27",
+    "raw_rows_count": 768,
+    "raw_rows_sha256": "587c6091e32c4f7055489f5eb3ea96f06d776e373ee4fdbf9555a17b6b666c39"
+  },
+  "input": {
+    "params": {
+      "pair": "EURUSD",
+      "tenor": "1M",
+      "lookback_days": 365,
+      "field_name": "PX_LAST"
+    },
+    "queries": [
+      {
+        "substrate": "fx_joined_spot_forward",
+        "pair": "EURUSD",
+        "rows": [
+          {
+            "trade_date": "2025-05-27",
+            "spot": 1.1328,
+            "forward_points": 23.44
+          },
+          {
+            "trade_date": "2025-05-28",
+            "spot": 1.1292,
+            "forward_points": 22.57
+          },
+          {
+            "trade_date": "2025-05-29",
+            "spot": 1.137,
+            "forward_points": 21.98
+          },
+          {
+            "trade_date": "2025-05-30",
+            "spot": 1.1347,
+            "forward_points": 21.92
+          },
+          {
+            "trade_date": "2025-06-02",
+            "spot": 1.1441,
+            "forward_points": 24.41
+          },
+          {
+            "trade_date": "2025-06-03",
+            "spot": 1.1372,
+            "forward_points": 23.63
+          },
+          {
+            "trade_date": "2025-06-04",
+            "spot": 1.1417,
+            "forward_points": 23.02
+          },
+          {
+            "trade_date": "2025-06-05",
+            "spot": 1.1445,
+            "forward_points": 22.61
+          },
+          {
+            "trade_date": "2025-06-06",
+            "spot": 1.1397,
+            "forward_points": 22.66
+          },
+          {
+            "trade_date": "2025-06-09",
+            "spot": 1.1422,
+            "forward_points": 22.75
+          },
+          {
+            "trade_date": "2025-06-10",
+            "spot": 1.1425,
+            "forward_points": 24.27
+          },
+          {
+            "trade_date": "2025-06-11",
+            "spot": 1.1487,
+            "forward_points": 23.66
+          },
+          {
+            "trade_date": "2025-06-12",
+            "spot": 1.1584,
+            "forward_points": 23.14
+          },
+          {
+            "trade_date": "2025-06-13",
+            "spot": 1.1549,
+            "forward_points": 23.17
+          },
+          {
+            "trade_date": "2025-06-16",
+            "spot": 1.1561,
+            "forward_points": 23.17
+          },
+          {
+            "trade_date": "2025-06-17",
+            "spot": 1.148,
+            "forward_points": 23.76
+          },
+          {
+            "trade_date": "2025-06-18",
+            "spot": 1.148,
+            "forward_points": 23.75
+          },
+          {
+            "trade_date": "2025-06-19",
+            "spot": 1.1495,
+            "forward_points": 23.01
+          },
+          {
+            "trade_date": "2025-06-20",
+            "spot": 1.1523,
+            "forward_points": 23.04
+          },
+          {
+            "trade_date": "2025-06-23",
+            "spot": 1.1578,
+            "forward_points": 23.18
+          },
+          {
+            "trade_date": "2025-06-24",
+            "spot": 1.1609,
+            "forward_points": 24.75
+          },
+          {
+            "trade_date": "2025-06-25",
+            "spot": 1.1659,
+            "forward_points": 23.92
+          },
+          {
+            "trade_date": "2025-06-26",
+            "spot": 1.1701,
+            "forward_points": 24.04
+          },
+          {
+            "trade_date": "2025-06-27",
+            "spot": 1.1718,
+            "forward_points": 24.1
+          },
+          {
+            "trade_date": "2025-06-30",
+            "spot": 1.1787,
+            "forward_points": 25.69
+          },
+          {
+            "trade_date": "2025-07-01",
+            "spot": 1.1806,
+            "forward_points": 25.04
+          },
+          {
+            "trade_date": "2025-07-02",
+            "spot": 1.1799,
+            "forward_points": 24.29
+          },
+          {
+            "trade_date": "2025-07-03",
+            "spot": 1.1757,
+            "forward_points": 24.32
+          },
+          {
+            "trade_date": "2025-07-04",
+            "spot": 1.1778,
+            "forward_points": 24.39
+          },
+          {
+            "trade_date": "2025-07-07",
+            "spot": 1.1709,
+            "forward_points": 25.8
+          },
+          {
+            "trade_date": "2025-07-08",
+            "spot": 1.1725,
+            "forward_points": 25.05
+          },
+          {
+            "trade_date": "2025-07-09",
+            "spot": 1.172,
+            "forward_points": 24.25
+          },
+          {
+            "trade_date": "2025-07-10",
+            "spot": 1.1701,
+            "forward_points": 24.18
+          },
+          {
+            "trade_date": "2025-07-11",
+            "spot": 1.1689,
+            "forward_points": 24.14
+          },
+          {
+            "trade_date": "2025-07-14",
+            "spot": 1.1664,
+            "forward_points": 25.65
+          },
+          {
+            "trade_date": "2025-07-15",
+            "spot": 1.1601,
+            "forward_points": 24.76
+          },
+          {
+            "trade_date": "2025-07-16",
+            "spot": 1.1641,
+            "forward_points": 24.06
+          },
+          {
+            "trade_date": "2025-07-17",
+            "spot": 1.1596,
+            "forward_points": 23.99
+          },
+          {
+            "trade_date": "2025-07-18",
+            "spot": 1.1626,
+            "forward_points": 24.01
+          },
+          {
+            "trade_date": "2025-07-21",
+            "spot": 1.1694,
+            "forward_points": 25.7
+          },
+          {
+            "trade_date": "2025-07-22",
+            "spot": 1.1754,
+            "forward_points": 25.04
+          },
+          {
+            "trade_date": "2025-07-23",
+            "spot": 1.1771,
+            "forward_points": 24.26
+          },
+          {
+            "trade_date": "2025-07-24",
+            "spot": 1.1749,
+            "forward_points": 24.3
+          },
+          {
+            "trade_date": "2025-07-25",
+            "spot": 1.1742,
+            "forward_points": 24.25
+          },
+          {
+            "trade_date": "2025-07-28",
+            "spot": 1.1589,
+            "forward_points": 23.1
+          },
+          {
+            "trade_date": "2025-07-29",
+            "spot": 1.1547,
+            "forward_points": 22.19
+          },
+          {
+            "trade_date": "2025-07-30",
+            "spot": 1.1405,
+            "forward_points": 24.23
+          },
+          {
+            "trade_date": "2025-07-31",
+            "spot": 1.1415,
+            "forward_points": 23.52
+          },
+          {
+            "trade_date": "2025-08-01",
+            "spot": 1.1587,
+            "forward_points": 23.8
+          },
+          {
+            "trade_date": "2025-08-04",
+            "spot": 1.1571,
+            "forward_points": 25.3
+          },
+          {
+            "trade_date": "2025-08-05",
+            "spot": 1.1575,
+            "forward_points": 24.56
+          },
+          {
+            "trade_date": "2025-08-06",
+            "spot": 1.166,
+            "forward_points": 23.9
+          },
+          {
+            "trade_date": "2025-08-07",
+            "spot": 1.1666,
+            "forward_points": 23.92
+          },
+          {
+            "trade_date": "2025-08-08",
+            "spot": 1.1641,
+            "forward_points": 23.89
+          },
+          {
+            "trade_date": "2025-08-11",
+            "spot": 1.1615,
+            "forward_points": 25.53
+          },
+          {
+            "trade_date": "2025-08-12",
+            "spot": 1.1675,
+            "forward_points": 24.93
+          },
+          {
+            "trade_date": "2025-08-13",
+            "spot": 1.1705,
+            "forward_points": 24.15
+          },
+          {
+            "trade_date": "2025-08-14",
+            "spot": 1.1648,
+            "forward_points": 23.98
+          },
+          {
+            "trade_date": "2025-08-15",
+            "spot": 1.1703,
+            "forward_points": 24.05
+          },
+          {
+            "trade_date": "2025-08-18",
+            "spot": 1.1661,
+            "forward_points": 25.35
+          },
+          {
+            "trade_date": "2025-08-19",
+            "spot": 1.1647,
+            "forward_points": 24.58
+          },
+          {
+            "trade_date": "2025-08-20",
+            "spot": 1.1652,
+            "forward_points": 23.84
+          },
+          {
+            "trade_date": "2025-08-21",
+            "spot": 1.1606,
+            "forward_points": 23.62
+          },
+          {
+            "trade_date": "2025-08-22",
+            "spot": 1.1718,
+            "forward_points": 23.77
+          },
+          {
+            "trade_date": "2025-08-25",
+            "spot": 1.1618,
+            "forward_points": 24.96
+          },
+          {
+            "trade_date": "2025-08-26",
+            "spot": 1.1642,
+            "forward_points": 24.21
+          },
+          {
+            "trade_date": "2025-08-27",
+            "spot": 1.1639,
+            "forward_points": 24.13
+          },
+          {
+            "trade_date": "2025-08-28",
+            "spot": 1.1683,
+            "forward_points": 22.57
+          },
+          {
+            "trade_date": "2025-08-29",
+            "spot": 1.1686,
+            "forward_points": 22.54
+          },
+          {
+            "trade_date": "2025-09-01",
+            "spot": 1.1711,
+            "forward_points": 22.54
+          },
+          {
+            "trade_date": "2025-09-02",
+            "spot": 1.164,
+            "forward_points": 23.82
+          },
+          {
+            "trade_date": "2025-09-03",
+            "spot": 1.1662,
+            "forward_points": 23.08
+          },
+          {
+            "trade_date": "2025-09-04",
+            "spot": 1.1649,
+            "forward_points": 22.03
+          },
+          {
+            "trade_date": "2025-09-05",
+            "spot": 1.1717,
+            "forward_points": 21.94
+          },
+          {
+            "trade_date": "2025-09-08",
+            "spot": 1.1763,
+            "forward_points": 21.97
+          },
+          {
+            "trade_date": "2025-09-09",
+            "spot": 1.1708,
+            "forward_points": 24.08
+          },
+          {
+            "trade_date": "2025-09-10",
+            "spot": 1.1695,
+            "forward_points": 23.32
+          },
+          {
+            "trade_date": "2025-09-11",
+            "spot": 1.1734,
+            "forward_points": 21.83
+          },
+          {
+            "trade_date": "2025-09-12",
+            "spot": 1.1734,
+            "forward_points": 21.79
+          },
+          {
+            "trade_date": "2025-09-15",
+            "spot": 1.1761,
+            "forward_points": 21.63
+          },
+          {
+            "trade_date": "2025-09-16",
+            "spot": 1.1867,
+            "forward_points": 23.07
+          },
+          {
+            "trade_date": "2025-09-17",
+            "spot": 1.1813,
+            "forward_points": 22.42
+          },
+          {
+            "trade_date": "2025-09-18",
+            "spot": 1.1788,
+            "forward_points": 21.73
+          },
+          {
+            "trade_date": "2025-09-19",
+            "spot": 1.1746,
+            "forward_points": 21.7
+          },
+          {
+            "trade_date": "2025-09-22",
+            "spot": 1.1803,
+            "forward_points": 21.78
+          },
+          {
+            "trade_date": "2025-09-23",
+            "spot": 1.1815,
+            "forward_points": 23.27
+          },
+          {
+            "trade_date": "2025-09-24",
+            "spot": 1.1738,
+            "forward_points": 22.47
+          },
+          {
+            "trade_date": "2025-09-25",
+            "spot": 1.1666,
+            "forward_points": 21.65
+          },
+          {
+            "trade_date": "2025-09-26",
+            "spot": 1.1703,
+            "forward_points": 22.51
+          },
+          {
+            "trade_date": "2025-09-29",
+            "spot": 1.1727,
+            "forward_points": 23.66
+          },
+          {
+            "trade_date": "2025-09-30",
+            "spot": 1.1734,
+            "forward_points": 22.83
+          },
+          {
+            "trade_date": "2025-10-01",
+            "spot": 1.1732,
+            "forward_points": 22.14
+          },
+          {
+            "trade_date": "2025-10-02",
+            "spot": 1.1715,
+            "forward_points": 21.9
+          },
+          {
+            "trade_date": "2025-10-03",
+            "spot": 1.1742,
+            "forward_points": 21.88
+          },
+          {
+            "trade_date": "2025-10-06",
+            "spot": 1.1711,
+            "forward_points": 23.0
+          },
+          {
+            "trade_date": "2025-10-07",
+            "spot": 1.1657,
+            "forward_points": 22.02
+          },
+          {
+            "trade_date": "2025-10-08",
+            "spot": 1.1628,
+            "forward_points": 21.14
+          },
+          {
+            "trade_date": "2025-10-09",
+            "spot": 1.1564,
+            "forward_points": 20.84
+          },
+          {
+            "trade_date": "2025-10-10",
+            "spot": 1.1619,
+            "forward_points": 20.87
+          },
+          {
+            "trade_date": "2025-10-13",
+            "spot": 1.157,
+            "forward_points": 21.94
+          },
+          {
+            "trade_date": "2025-10-14",
+            "spot": 1.1607,
+            "forward_points": 21.44
+          },
+          {
+            "trade_date": "2025-10-15",
+            "spot": 1.1647,
+            "forward_points": 21.11
+          },
+          {
+            "trade_date": "2025-10-16",
+            "spot": 1.1687,
+            "forward_points": 20.82
+          },
+          {
+            "trade_date": "2025-10-17",
+            "spot": 1.1655,
+            "forward_points": 20.77
+          },
+          {
+            "trade_date": "2025-10-20",
+            "spot": 1.1642,
+            "forward_points": 21.83
+          },
+          {
+            "trade_date": "2025-10-21",
+            "spot": 1.16,
+            "forward_points": 21.25
+          },
+          {
+            "trade_date": "2025-10-22",
+            "spot": 1.1611,
+            "forward_points": 20.62
+          },
+          {
+            "trade_date": "2025-10-23",
+            "spot": 1.1618,
+            "forward_points": 21.02
+          },
+          {
+            "trade_date": "2025-10-24",
+            "spot": 1.1627,
+            "forward_points": 20.38
+          },
+          {
+            "trade_date": "2025-10-27",
+            "spot": 1.1645,
+            "forward_points": 19.81
+          },
+          {
+            "trade_date": "2025-10-28",
+            "spot": 1.1651,
+            "forward_points": 19.2
+          },
+          {
+            "trade_date": "2025-10-29",
+            "spot": 1.1601,
+            "forward_points": 18.9
+          },
+          {
+            "trade_date": "2025-10-30",
+            "spot": 1.1565,
+            "forward_points": 19.61
+          },
+          {
+            "trade_date": "2025-10-31",
+            "spot": 1.1537,
+            "forward_points": 19.52
+          },
+          {
+            "trade_date": "2025-11-03",
+            "spot": 1.152,
+            "forward_points": 19.51
+          },
+          {
+            "trade_date": "2025-11-04",
+            "spot": 1.1482,
+            "forward_points": 20.64
+          },
+          {
+            "trade_date": "2025-11-05",
+            "spot": 1.1492,
+            "forward_points": 19.83
+          },
+          {
+            "trade_date": "2025-11-06",
+            "spot": 1.1547,
+            "forward_points": 19.18
+          },
+          {
+            "trade_date": "2025-11-07",
+            "spot": 1.1566,
+            "forward_points": 19.19
+          },
+          {
+            "trade_date": "2025-11-10",
+            "spot": 1.1557,
+            "forward_points": 19.24
+          },
+          {
+            "trade_date": "2025-11-11",
+            "spot": 1.1582,
+            "forward_points": 20.4
+          },
+          {
+            "trade_date": "2025-11-12",
+            "spot": 1.1593,
+            "forward_points": 19.99
+          },
+          {
+            "trade_date": "2025-11-13",
+            "spot": 1.1633,
+            "forward_points": 19.4
+          },
+          {
+            "trade_date": "2025-11-14",
+            "spot": 1.1621,
+            "forward_points": 19.35
+          },
+          {
+            "trade_date": "2025-11-17",
+            "spot": 1.1592,
+            "forward_points": 19.25
+          },
+          {
+            "trade_date": "2025-11-18",
+            "spot": 1.1581,
+            "forward_points": 20.32
+          },
+          {
+            "trade_date": "2025-11-19",
+            "spot": 1.1538,
+            "forward_points": 19.68
+          },
+          {
+            "trade_date": "2025-11-20",
+            "spot": 1.1528,
+            "forward_points": 18.98
+          },
+          {
+            "trade_date": "2025-11-21",
+            "spot": 1.1513,
+            "forward_points": 21.27
+          },
+          {
+            "trade_date": "2025-11-24",
+            "spot": 1.1521,
+            "forward_points": 20.4
+          },
+          {
+            "trade_date": "2025-11-25",
+            "spot": 1.157,
+            "forward_points": 20.21
+          },
+          {
+            "trade_date": "2025-11-26",
+            "spot": 1.1595,
+            "forward_points": 20.25
+          },
+          {
+            "trade_date": "2025-11-27",
+            "spot": 1.1596,
+            "forward_points": 20.89
+          },
+          {
+            "trade_date": "2025-11-28",
+            "spot": 1.1598,
+            "forward_points": 19.98
+          },
+          {
+            "trade_date": "2025-12-01",
+            "spot": 1.161,
+            "forward_points": 20.99
+          },
+          {
+            "trade_date": "2025-12-02",
+            "spot": 1.1625,
+            "forward_points": 20.51
+          },
+          {
+            "trade_date": "2025-12-03",
+            "spot": 1.1671,
+            "forward_points": 19.84
+          },
+          {
+            "trade_date": "2025-12-04",
+            "spot": 1.1644,
+            "forward_points": 19.47
+          },
+          {
+            "trade_date": "2025-12-05",
+            "spot": 1.1642,
+            "forward_points": 19.4
+          },
+          {
+            "trade_date": "2025-12-08",
+            "spot": 1.1637,
+            "forward_points": 20.61
+          },
+          {
+            "trade_date": "2025-12-09",
+            "spot": 1.1627,
+            "forward_points": 20.14
+          },
+          {
+            "trade_date": "2025-12-10",
+            "spot": 1.1695,
+            "forward_points": 19.52
+          },
+          {
+            "trade_date": "2025-12-11",
+            "spot": 1.1738,
+            "forward_points": 19.25
+          },
+          {
+            "trade_date": "2025-12-12",
+            "spot": 1.174,
+            "forward_points": 19.19
+          },
+          {
+            "trade_date": "2025-12-15",
+            "spot": 1.1753,
+            "forward_points": 20.77
+          },
+          {
+            "trade_date": "2025-12-16",
+            "spot": 1.1747,
+            "forward_points": 20.0
+          },
+          {
+            "trade_date": "2025-12-17",
+            "spot": 1.1741,
+            "forward_points": 19.3
+          },
+          {
+            "trade_date": "2025-12-18",
+            "spot": 1.1722,
+            "forward_points": 18.68
+          },
+          {
+            "trade_date": "2025-12-19",
+            "spot": 1.171,
+            "forward_points": 18.64
+          },
+          {
+            "trade_date": "2025-12-22",
+            "spot": 1.1762,
+            "forward_points": 19.41
+          },
+          {
+            "trade_date": "2025-12-23",
+            "spot": 1.1795,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2025-12-24",
+            "spot": 1.1779,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2025-12-25",
+            "spot": 1.1784,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2025-12-26",
+            "spot": 1.1772,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2025-12-29",
+            "spot": 1.1773,
+            "forward_points": 17.6
+          },
+          {
+            "trade_date": "2025-12-30",
+            "spot": 1.1748,
+            "forward_points": 17.37
+          },
+          {
+            "trade_date": "2025-12-31",
+            "spot": 1.1746,
+            "forward_points": 17.26
+          },
+          {
+            "trade_date": "2026-01-01",
+            "spot": 1.1746,
+            "forward_points": 17.28
+          },
+          {
+            "trade_date": "2026-01-02",
+            "spot": 1.1719,
+            "forward_points": 17.06
+          },
+          {
+            "trade_date": "2026-01-05",
+            "spot": 1.1722,
+            "forward_points": 18.16
+          },
+          {
+            "trade_date": "2026-01-06",
+            "spot": 1.1689,
+            "forward_points": 17.84
+          },
+          {
+            "trade_date": "2026-01-07",
+            "spot": 1.1675,
+            "forward_points": 17.17
+          },
+          {
+            "trade_date": "2026-01-08",
+            "spot": 1.166,
+            "forward_points": 17.13
+          },
+          {
+            "trade_date": "2026-01-09",
+            "spot": 1.1637,
+            "forward_points": 17.15
+          },
+          {
+            "trade_date": "2026-01-12",
+            "spot": 1.1667,
+            "forward_points": 18.78
+          },
+          {
+            "trade_date": "2026-01-13",
+            "spot": 1.1642,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2026-01-14",
+            "spot": 1.1644,
+            "forward_points": 17.59
+          },
+          {
+            "trade_date": "2026-01-15",
+            "spot": 1.1609,
+            "forward_points": 16.88
+          },
+          {
+            "trade_date": "2026-01-16",
+            "spot": 1.1598,
+            "forward_points": 16.85
+          },
+          {
+            "trade_date": "2026-01-19",
+            "spot": 1.1646,
+            "forward_points": 18.1
+          },
+          {
+            "trade_date": "2026-01-20",
+            "spot": 1.1725,
+            "forward_points": 17.9
+          },
+          {
+            "trade_date": "2026-01-21",
+            "spot": 1.1685,
+            "forward_points": 17.24
+          },
+          {
+            "trade_date": "2026-01-22",
+            "spot": 1.1755,
+            "forward_points": 17.18
+          },
+          {
+            "trade_date": "2026-01-23",
+            "spot": 1.1828,
+            "forward_points": 17.35
+          },
+          {
+            "trade_date": "2026-01-26",
+            "spot": 1.188,
+            "forward_points": 16.88
+          },
+          {
+            "trade_date": "2026-01-27",
+            "spot": 1.2041,
+            "forward_points": 16.46
+          },
+          {
+            "trade_date": "2026-01-28",
+            "spot": 1.1954,
+            "forward_points": 15.85
+          },
+          {
+            "trade_date": "2026-01-29",
+            "spot": 1.1971,
+            "forward_points": 15.81
+          },
+          {
+            "trade_date": "2026-01-30",
+            "spot": 1.1851,
+            "forward_points": 15.67
+          },
+          {
+            "trade_date": "2026-02-02",
+            "spot": 1.1791,
+            "forward_points": 15.63
+          },
+          {
+            "trade_date": "2026-02-03",
+            "spot": 1.1819,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-04",
+            "spot": 1.1807,
+            "forward_points": 15.57
+          },
+          {
+            "trade_date": "2026-02-05",
+            "spot": 1.1777,
+            "forward_points": 15.52
+          },
+          {
+            "trade_date": "2026-02-06",
+            "spot": 1.1815,
+            "forward_points": 15.56
+          },
+          {
+            "trade_date": "2026-02-09",
+            "spot": 1.1914,
+            "forward_points": 15.7
+          },
+          {
+            "trade_date": "2026-02-10",
+            "spot": 1.1895,
+            "forward_points": 15.67
+          },
+          {
+            "trade_date": "2026-02-11",
+            "spot": 1.1872,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-12",
+            "spot": 1.1871,
+            "forward_points": 15.65
+          },
+          {
+            "trade_date": "2026-02-13",
+            "spot": 1.1868,
+            "forward_points": 15.68
+          },
+          {
+            "trade_date": "2026-02-16",
+            "spot": 1.1851,
+            "forward_points": 15.66
+          },
+          {
+            "trade_date": "2026-02-17",
+            "spot": 1.1855,
+            "forward_points": 15.72
+          },
+          {
+            "trade_date": "2026-02-18",
+            "spot": 1.1783,
+            "forward_points": 15.72
+          },
+          {
+            "trade_date": "2026-02-19",
+            "spot": 1.1773,
+            "forward_points": 15.73
+          },
+          {
+            "trade_date": "2026-02-20",
+            "spot": 1.1784,
+            "forward_points": 15.83
+          },
+          {
+            "trade_date": "2026-02-23",
+            "spot": 1.1785,
+            "forward_points": 15.84
+          },
+          {
+            "trade_date": "2026-02-24",
+            "spot": 1.1772,
+            "forward_points": 15.77
+          },
+          {
+            "trade_date": "2026-02-25",
+            "spot": 1.181,
+            "forward_points": 18.05
+          },
+          {
+            "trade_date": "2026-02-26",
+            "spot": 1.1797,
+            "forward_points": 17.49
+          },
+          {
+            "trade_date": "2026-02-27",
+            "spot": 1.1812,
+            "forward_points": 19.84
+          },
+          {
+            "trade_date": "2026-03-02",
+            "spot": 1.1688,
+            "forward_points": 19.5
+          },
+          {
+            "trade_date": "2026-03-03",
+            "spot": 1.1613,
+            "forward_points": 18.67
+          },
+          {
+            "trade_date": "2026-03-04",
+            "spot": 1.1634,
+            "forward_points": 17.75
+          },
+          {
+            "trade_date": "2026-03-05",
+            "spot": 1.1609,
+            "forward_points": 17.15
+          },
+          {
+            "trade_date": "2026-03-06",
+            "spot": 1.1618,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-09",
+            "spot": 1.1636,
+            "forward_points": 18.76
+          },
+          {
+            "trade_date": "2026-03-10",
+            "spot": 1.1611,
+            "forward_points": 17.89
+          },
+          {
+            "trade_date": "2026-03-11",
+            "spot": 1.1567,
+            "forward_points": 17.25
+          },
+          {
+            "trade_date": "2026-03-12",
+            "spot": 1.1512,
+            "forward_points": 17.39
+          },
+          {
+            "trade_date": "2026-03-13",
+            "spot": 1.1417,
+            "forward_points": 17.28
+          },
+          {
+            "trade_date": "2026-03-16",
+            "spot": 1.1505,
+            "forward_points": 18.26
+          },
+          {
+            "trade_date": "2026-03-17",
+            "spot": 1.154,
+            "forward_points": 17.76
+          },
+          {
+            "trade_date": "2026-03-18",
+            "spot": 1.1452,
+            "forward_points": 17.2
+          },
+          {
+            "trade_date": "2026-03-19",
+            "spot": 1.1589,
+            "forward_points": 17.42
+          },
+          {
+            "trade_date": "2026-03-20",
+            "spot": 1.1572,
+            "forward_points": 17.39
+          },
+          {
+            "trade_date": "2026-03-23",
+            "spot": 1.1613,
+            "forward_points": 18.59
+          },
+          {
+            "trade_date": "2026-03-24",
+            "spot": 1.1608,
+            "forward_points": 18.02
+          },
+          {
+            "trade_date": "2026-03-25",
+            "spot": 1.1559,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-26",
+            "spot": 1.1527,
+            "forward_points": 17.41
+          },
+          {
+            "trade_date": "2026-03-27",
+            "spot": 1.1509,
+            "forward_points": 16.91
+          },
+          {
+            "trade_date": "2026-03-30",
+            "spot": 1.1465,
+            "forward_points": 18.14
+          },
+          {
+            "trade_date": "2026-03-31",
+            "spot": 1.1553,
+            "forward_points": 17.6
+          },
+          {
+            "trade_date": "2026-04-01",
+            "spot": 1.1589,
+            "forward_points": 16.64
+          },
+          {
+            "trade_date": "2026-04-02",
+            "spot": 1.1539,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-03",
+            "spot": 1.1519,
+            "forward_points": 16.62
+          },
+          {
+            "trade_date": "2026-04-06",
+            "spot": 1.1541,
+            "forward_points": 16.65
+          },
+          {
+            "trade_date": "2026-04-07",
+            "spot": 1.1595,
+            "forward_points": 17.57
+          },
+          {
+            "trade_date": "2026-04-08",
+            "spot": 1.1663,
+            "forward_points": 17.05
+          },
+          {
+            "trade_date": "2026-04-09",
+            "spot": 1.1699,
+            "forward_points": 16.56
+          },
+          {
+            "trade_date": "2026-04-10",
+            "spot": 1.1723,
+            "forward_points": 16.59
+          },
+          {
+            "trade_date": "2026-04-13",
+            "spot": 1.1759,
+            "forward_points": 16.62
+          },
+          {
+            "trade_date": "2026-04-14",
+            "spot": 1.1796,
+            "forward_points": 17.82
+          },
+          {
+            "trade_date": "2026-04-15",
+            "spot": 1.1799,
+            "forward_points": 17.24
+          },
+          {
+            "trade_date": "2026-04-16",
+            "spot": 1.1781,
+            "forward_points": 16.65
+          },
+          {
+            "trade_date": "2026-04-17",
+            "spot": 1.1765,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-20",
+            "spot": 1.1788,
+            "forward_points": 16.69
+          },
+          {
+            "trade_date": "2026-04-21",
+            "spot": 1.1744,
+            "forward_points": 18.19
+          },
+          {
+            "trade_date": "2026-04-22",
+            "spot": 1.1705,
+            "forward_points": 17.63
+          },
+          {
+            "trade_date": "2026-04-23",
+            "spot": 1.1683,
+            "forward_points": 16.57
+          },
+          {
+            "trade_date": "2026-04-24",
+            "spot": 1.1722,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-27",
+            "spot": 1.1721,
+            "forward_points": 16.63
+          },
+          {
+            "trade_date": "2026-04-28",
+            "spot": 1.1712,
+            "forward_points": 15.99
+          },
+          {
+            "trade_date": "2026-04-29",
+            "spot": 1.1677,
+            "forward_points": 16.81
+          },
+          {
+            "trade_date": "2026-04-30",
+            "spot": 1.1731,
+            "forward_points": 17.08
+          },
+          {
+            "trade_date": "2026-05-01",
+            "spot": 1.1721,
+            "forward_points": 17.03
+          },
+          {
+            "trade_date": "2026-05-04",
+            "spot": 1.1691,
+            "forward_points": 18.09
+          },
+          {
+            "trade_date": "2026-05-05",
+            "spot": 1.1693,
+            "forward_points": 17.5
+          },
+          {
+            "trade_date": "2026-05-06",
+            "spot": 1.1748,
+            "forward_points": 16.95
+          },
+          {
+            "trade_date": "2026-05-07",
+            "spot": 1.1726,
+            "forward_points": 16.96
+          },
+          {
+            "trade_date": "2026-05-08",
+            "spot": 1.1787,
+            "forward_points": 17.08
+          },
+          {
+            "trade_date": "2026-05-11",
+            "spot": 1.1783,
+            "forward_points": 18.24
+          },
+          {
+            "trade_date": "2026-05-12",
+            "spot": 1.1739,
+            "forward_points": 17.66
+          },
+          {
+            "trade_date": "2026-05-13",
+            "spot": 1.1711,
+            "forward_points": 17.06
+          },
+          {
+            "trade_date": "2026-05-14",
+            "spot": 1.1669,
+            "forward_points": 16.87
+          },
+          {
+            "trade_date": "2026-05-15",
+            "spot": 1.1625,
+            "forward_points": 18.17
+          },
+          {
+            "trade_date": "2026-05-18",
+            "spot": 1.1656,
+            "forward_points": 17.54
+          },
+          {
+            "trade_date": "2026-05-19",
+            "spot": 1.1605,
+            "forward_points": 16.85
+          },
+          {
+            "trade_date": "2026-05-20",
+            "spot": 1.1624,
+            "forward_points": 16.38
+          },
+          {
+            "trade_date": "2026-05-21",
+            "spot": 1.1619,
+            "forward_points": 16.23
+          },
+          {
+            "trade_date": "2026-05-22",
+            "spot": 1.1617,
+            "forward_points": 16.22
+          }
+        ]
+      },
+      {
+        "substrate": "ois_cross_market_pair",
+        "curves": [
+          "EUR_ESTR_OIS",
+          "USD_SOFR_OIS"
+        ],
+        "tenor": "1M",
+        "rows": [
+          {
+            "trade_date": "2025-05-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32315
+          },
+          {
+            "trade_date": "2025-05-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 2.0241
+          },
+          {
+            "trade_date": "2025-05-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.323
+          },
+          {
+            "trade_date": "2025-05-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 2.02
+          },
+          {
+            "trade_date": "2025-05-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.99755
+          },
+          {
+            "trade_date": "2025-05-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31787
+          },
+          {
+            "trade_date": "2025-05-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.989
+          },
+          {
+            "trade_date": "2025-05-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.318
+          },
+          {
+            "trade_date": "2025-06-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31615
+          },
+          {
+            "trade_date": "2025-06-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.982
+          },
+          {
+            "trade_date": "2025-06-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.313
+          },
+          {
+            "trade_date": "2025-06-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.97395
+          },
+          {
+            "trade_date": "2025-06-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9665
+          },
+          {
+            "trade_date": "2025-06-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31058
+          },
+          {
+            "trade_date": "2025-06-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.939
+          },
+          {
+            "trade_date": "2025-06-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.313
+          },
+          {
+            "trade_date": "2025-06-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2025-06-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31425
+          },
+          {
+            "trade_date": "2025-06-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.923
+          },
+          {
+            "trade_date": "2025-06-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.314
+          },
+          {
+            "trade_date": "2025-06-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92425
+          },
+          {
+            "trade_date": "2025-06-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31289
+          },
+          {
+            "trade_date": "2025-06-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31104
+          },
+          {
+            "trade_date": "2025-06-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92465
+          },
+          {
+            "trade_date": "2025-06-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.314
+          },
+          {
+            "trade_date": "2025-06-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-06-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92465
+          },
+          {
+            "trade_date": "2025-06-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.31642
+          },
+          {
+            "trade_date": "2025-06-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-06-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32
+          },
+          {
+            "trade_date": "2025-06-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92725
+          },
+          {
+            "trade_date": "2025-06-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32125
+          },
+          {
+            "trade_date": "2025-06-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92704
+          },
+          {
+            "trade_date": "2025-06-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32175
+          },
+          {
+            "trade_date": "2025-06-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3209
+          },
+          {
+            "trade_date": "2025-06-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92567
+          },
+          {
+            "trade_date": "2025-06-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.322
+          },
+          {
+            "trade_date": "2025-06-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9254
+          },
+          {
+            "trade_date": "2025-06-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92536
+          },
+          {
+            "trade_date": "2025-06-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32356
+          },
+          {
+            "trade_date": "2025-06-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32375
+          },
+          {
+            "trade_date": "2025-06-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92575
+          },
+          {
+            "trade_date": "2025-06-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92675
+          },
+          {
+            "trade_date": "2025-06-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32875
+          },
+          {
+            "trade_date": "2025-06-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92595
+          },
+          {
+            "trade_date": "2025-06-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32582
+          },
+          {
+            "trade_date": "2025-06-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32321
+          },
+          {
+            "trade_date": "2025-06-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9253
+          },
+          {
+            "trade_date": "2025-06-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33155
+          },
+          {
+            "trade_date": "2025-06-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92545
+          },
+          {
+            "trade_date": "2025-07-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92627
+          },
+          {
+            "trade_date": "2025-07-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33192
+          },
+          {
+            "trade_date": "2025-07-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32394
+          },
+          {
+            "trade_date": "2025-07-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92395
+          },
+          {
+            "trade_date": "2025-07-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33505
+          },
+          {
+            "trade_date": "2025-07-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92275
+          },
+          {
+            "trade_date": "2025-07-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9206
+          },
+          {
+            "trade_date": "2025-07-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3325
+          },
+          {
+            "trade_date": "2025-07-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92125
+          },
+          {
+            "trade_date": "2025-07-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33754
+          },
+          {
+            "trade_date": "2025-07-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92101
+          },
+          {
+            "trade_date": "2025-07-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.344
+          },
+          {
+            "trade_date": "2025-07-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92034
+          },
+          {
+            "trade_date": "2025-07-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34133
+          },
+          {
+            "trade_date": "2025-07-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92075
+          },
+          {
+            "trade_date": "2025-07-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33815
+          },
+          {
+            "trade_date": "2025-07-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3358
+          },
+          {
+            "trade_date": "2025-07-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9219
+          },
+          {
+            "trade_date": "2025-07-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34198
+          },
+          {
+            "trade_date": "2025-07-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92132
+          },
+          {
+            "trade_date": "2025-07-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92065
+          },
+          {
+            "trade_date": "2025-07-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3485
+          },
+          {
+            "trade_date": "2025-07-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3451
+          },
+          {
+            "trade_date": "2025-07-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92146
+          },
+          {
+            "trade_date": "2025-07-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35038
+          },
+          {
+            "trade_date": "2025-07-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92193
+          },
+          {
+            "trade_date": "2025-07-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92102
+          },
+          {
+            "trade_date": "2025-07-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3429
+          },
+          {
+            "trade_date": "2025-07-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.921
+          },
+          {
+            "trade_date": "2025-07-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34625
+          },
+          {
+            "trade_date": "2025-07-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92217
+          },
+          {
+            "trade_date": "2025-07-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.349
+          },
+          {
+            "trade_date": "2025-07-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92232
+          },
+          {
+            "trade_date": "2025-07-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3495
+          },
+          {
+            "trade_date": "2025-07-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35529
+          },
+          {
+            "trade_date": "2025-07-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9244
+          },
+          {
+            "trade_date": "2025-07-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92501
+          },
+          {
+            "trade_date": "2025-07-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35935
+          },
+          {
+            "trade_date": "2025-07-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35179
+          },
+          {
+            "trade_date": "2025-07-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9255
+          },
+          {
+            "trade_date": "2025-07-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34677
+          },
+          {
+            "trade_date": "2025-07-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92587
+          },
+          {
+            "trade_date": "2025-07-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35218
+          },
+          {
+            "trade_date": "2025-07-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92475
+          },
+          {
+            "trade_date": "2025-07-31",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34838
+          },
+          {
+            "trade_date": "2025-07-31",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92578
+          },
+          {
+            "trade_date": "2025-08-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92407
+          },
+          {
+            "trade_date": "2025-08-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.34405
+          },
+          {
+            "trade_date": "2025-08-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.348
+          },
+          {
+            "trade_date": "2025-08-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9244
+          },
+          {
+            "trade_date": "2025-08-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35312
+          },
+          {
+            "trade_date": "2025-08-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92543
+          },
+          {
+            "trade_date": "2025-08-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35562
+          },
+          {
+            "trade_date": "2025-08-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92536
+          },
+          {
+            "trade_date": "2025-08-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92568
+          },
+          {
+            "trade_date": "2025-08-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.359
+          },
+          {
+            "trade_date": "2025-08-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35925
+          },
+          {
+            "trade_date": "2025-08-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92583
+          },
+          {
+            "trade_date": "2025-08-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9259
+          },
+          {
+            "trade_date": "2025-08-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.36315
+          },
+          {
+            "trade_date": "2025-08-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92522
+          },
+          {
+            "trade_date": "2025-08-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.36324
+          },
+          {
+            "trade_date": "2025-08-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35924
+          },
+          {
+            "trade_date": "2025-08-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92517
+          },
+          {
+            "trade_date": "2025-08-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.35934
+          },
+          {
+            "trade_date": "2025-08-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92475
+          },
+          {
+            "trade_date": "2025-08-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92425
+          },
+          {
+            "trade_date": "2025-08-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3555
+          },
+          {
+            "trade_date": "2025-08-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92325
+          },
+          {
+            "trade_date": "2025-08-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3408
+          },
+          {
+            "trade_date": "2025-08-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33865
+          },
+          {
+            "trade_date": "2025-08-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92275
+          },
+          {
+            "trade_date": "2025-08-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92225
+          },
+          {
+            "trade_date": "2025-08-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3408
+          },
+          {
+            "trade_date": "2025-08-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92325
+          },
+          {
+            "trade_date": "2025-08-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.33623
+          },
+          {
+            "trade_date": "2025-08-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.924
+          },
+          {
+            "trade_date": "2025-08-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3285
+          },
+          {
+            "trade_date": "2025-08-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.32015
+          },
+          {
+            "trade_date": "2025-08-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9253
+          },
+          {
+            "trade_date": "2025-08-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.3115
+          },
+          {
+            "trade_date": "2025-08-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92475
+          },
+          {
+            "trade_date": "2025-08-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92275
+          },
+          {
+            "trade_date": "2025-08-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.30059
+          },
+          {
+            "trade_date": "2025-08-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92375
+          },
+          {
+            "trade_date": "2025-08-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.28151
+          },
+          {
+            "trade_date": "2025-08-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.924
+          },
+          {
+            "trade_date": "2025-08-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.26866
+          },
+          {
+            "trade_date": "2025-09-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92505
+          },
+          {
+            "trade_date": "2025-09-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.2728
+          },
+          {
+            "trade_date": "2025-09-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.2533
+          },
+          {
+            "trade_date": "2025-09-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.924
+          },
+          {
+            "trade_date": "2025-09-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92435
+          },
+          {
+            "trade_date": "2025-09-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.2456
+          },
+          {
+            "trade_date": "2025-09-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92575
+          },
+          {
+            "trade_date": "2025-09-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.22745
+          },
+          {
+            "trade_date": "2025-09-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92515
+          },
+          {
+            "trade_date": "2025-09-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.20435
+          },
+          {
+            "trade_date": "2025-09-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1946
+          },
+          {
+            "trade_date": "2025-09-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92575
+          },
+          {
+            "trade_date": "2025-09-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.18895
+          },
+          {
+            "trade_date": "2025-09-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-09-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-09-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.18593
+          },
+          {
+            "trade_date": "2025-09-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.162
+          },
+          {
+            "trade_date": "2025-09-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92425
+          },
+          {
+            "trade_date": "2025-09-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9249
+          },
+          {
+            "trade_date": "2025-09-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1704
+          },
+          {
+            "trade_date": "2025-09-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-09-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.15198
+          },
+          {
+            "trade_date": "2025-09-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1377
+          },
+          {
+            "trade_date": "2025-09-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92525
+          },
+          {
+            "trade_date": "2025-09-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1509
+          },
+          {
+            "trade_date": "2025-09-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-09-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1608
+          },
+          {
+            "trade_date": "2025-09-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9268
+          },
+          {
+            "trade_date": "2025-09-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1609
+          },
+          {
+            "trade_date": "2025-09-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9277
+          },
+          {
+            "trade_date": "2025-09-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9278
+          },
+          {
+            "trade_date": "2025-09-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.16395
+          },
+          {
+            "trade_date": "2025-09-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.161
+          },
+          {
+            "trade_date": "2025-09-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.928
+          },
+          {
+            "trade_date": "2025-09-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.929
+          },
+          {
+            "trade_date": "2025-09-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.171
+          },
+          {
+            "trade_date": "2025-09-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1675
+          },
+          {
+            "trade_date": "2025-09-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92915
+          },
+          {
+            "trade_date": "2025-09-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.929
+          },
+          {
+            "trade_date": "2025-09-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1604
+          },
+          {
+            "trade_date": "2025-09-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.928
+          },
+          {
+            "trade_date": "2025-09-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.13168
+          },
+          {
+            "trade_date": "2025-09-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.13303
+          },
+          {
+            "trade_date": "2025-09-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9282
+          },
+          {
+            "trade_date": "2025-10-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.928
+          },
+          {
+            "trade_date": "2025-10-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.129
+          },
+          {
+            "trade_date": "2025-10-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.1124
+          },
+          {
+            "trade_date": "2025-10-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.929
+          },
+          {
+            "trade_date": "2025-10-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.10702
+          },
+          {
+            "trade_date": "2025-10-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9288
+          },
+          {
+            "trade_date": "2025-10-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9273
+          },
+          {
+            "trade_date": "2025-10-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.08723
+          },
+          {
+            "trade_date": "2025-10-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.08144
+          },
+          {
+            "trade_date": "2025-10-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.07758
+          },
+          {
+            "trade_date": "2025-10-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0448
+          },
+          {
+            "trade_date": "2025-10-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0328
+          },
+          {
+            "trade_date": "2025-10-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0353
+          },
+          {
+            "trade_date": "2025-10-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9265
+          },
+          {
+            "trade_date": "2025-10-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-10-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0429
+          },
+          {
+            "trade_date": "2025-10-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0557
+          },
+          {
+            "trade_date": "2025-10-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-10-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-10-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.02375
+          },
+          {
+            "trade_date": "2025-10-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-10-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.01
+          },
+          {
+            "trade_date": "2025-10-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-10-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.00464
+          },
+          {
+            "trade_date": "2025-10-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.0207
+          },
+          {
+            "trade_date": "2025-10-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.925
+          },
+          {
+            "trade_date": "2025-10-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.016
+          },
+          {
+            "trade_date": "2025-10-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.926
+          },
+          {
+            "trade_date": "2025-10-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.98913
+          },
+          {
+            "trade_date": "2025-10-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.98445
+          },
+          {
+            "trade_date": "2025-10-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.927
+          },
+          {
+            "trade_date": "2025-10-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.97575
+          },
+          {
+            "trade_date": "2025-10-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92745
+          },
+          {
+            "trade_date": "2025-10-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92735
+          },
+          {
+            "trade_date": "2025-10-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.95507
+          },
+          {
+            "trade_date": "2025-10-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9286
+          },
+          {
+            "trade_date": "2025-10-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.99714
+          },
+          {
+            "trade_date": "2025-10-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.99355
+          },
+          {
+            "trade_date": "2025-10-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93
+          },
+          {
+            "trade_date": "2025-10-31",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9925
+          },
+          {
+            "trade_date": "2025-10-31",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9296
+          },
+          {
+            "trade_date": "2025-11-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92985
+          },
+          {
+            "trade_date": "2025-11-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 4.00025
+          },
+          {
+            "trade_date": "2025-11-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9299
+          },
+          {
+            "trade_date": "2025-11-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.98776
+          },
+          {
+            "trade_date": "2025-11-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.969
+          },
+          {
+            "trade_date": "2025-11-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93005
+          },
+          {
+            "trade_date": "2025-11-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9302
+          },
+          {
+            "trade_date": "2025-11-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.96435
+          },
+          {
+            "trade_date": "2025-11-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93
+          },
+          {
+            "trade_date": "2025-11-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.965
+          },
+          {
+            "trade_date": "2025-11-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9313
+          },
+          {
+            "trade_date": "2025-11-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.959
+          },
+          {
+            "trade_date": "2025-11-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93075
+          },
+          {
+            "trade_date": "2025-11-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9575
+          },
+          {
+            "trade_date": "2025-11-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2025-11-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.966
+          },
+          {
+            "trade_date": "2025-11-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2025-11-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9644
+          },
+          {
+            "trade_date": "2025-11-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.933
+          },
+          {
+            "trade_date": "2025-11-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9593
+          },
+          {
+            "trade_date": "2025-11-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9597
+          },
+          {
+            "trade_date": "2025-11-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9328
+          },
+          {
+            "trade_date": "2025-11-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93295
+          },
+          {
+            "trade_date": "2025-11-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9477
+          },
+          {
+            "trade_date": "2025-11-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93295
+          },
+          {
+            "trade_date": "2025-11-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.95781
+          },
+          {
+            "trade_date": "2025-11-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.957
+          },
+          {
+            "trade_date": "2025-11-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2025-11-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.931
+          },
+          {
+            "trade_date": "2025-11-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9358
+          },
+          {
+            "trade_date": "2025-11-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9308
+          },
+          {
+            "trade_date": "2025-11-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.9165
+          },
+          {
+            "trade_date": "2025-11-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92945
+          },
+          {
+            "trade_date": "2025-11-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.89738
+          },
+          {
+            "trade_date": "2025-11-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.929
+          },
+          {
+            "trade_date": "2025-11-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.87639
+          },
+          {
+            "trade_date": "2025-11-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.92875
+          },
+          {
+            "trade_date": "2025-11-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.8738
+          },
+          {
+            "trade_date": "2025-11-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9291
+          },
+          {
+            "trade_date": "2025-11-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.872
+          },
+          {
+            "trade_date": "2025-12-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.85498
+          },
+          {
+            "trade_date": "2025-12-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9294
+          },
+          {
+            "trade_date": "2025-12-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.8401
+          },
+          {
+            "trade_date": "2025-12-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9299
+          },
+          {
+            "trade_date": "2025-12-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93055
+          },
+          {
+            "trade_date": "2025-12-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.82715
+          },
+          {
+            "trade_date": "2025-12-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93
+          },
+          {
+            "trade_date": "2025-12-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.80938
+          },
+          {
+            "trade_date": "2025-12-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.806
+          },
+          {
+            "trade_date": "2025-12-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93
+          },
+          {
+            "trade_date": "2025-12-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93035
+          },
+          {
+            "trade_date": "2025-12-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7957
+          },
+          {
+            "trade_date": "2025-12-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9305
+          },
+          {
+            "trade_date": "2025-12-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7845
+          },
+          {
+            "trade_date": "2025-12-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93095
+          },
+          {
+            "trade_date": "2025-12-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7559
+          },
+          {
+            "trade_date": "2025-12-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7512
+          },
+          {
+            "trade_date": "2025-12-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93
+          },
+          {
+            "trade_date": "2025-12-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.75667
+          },
+          {
+            "trade_date": "2025-12-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2025-12-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93275
+          },
+          {
+            "trade_date": "2025-12-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7435
+          },
+          {
+            "trade_date": "2025-12-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93155
+          },
+          {
+            "trade_date": "2025-12-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7465
+          },
+          {
+            "trade_date": "2025-12-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9326
+          },
+          {
+            "trade_date": "2025-12-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7481
+          },
+          {
+            "trade_date": "2025-12-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.74616
+          },
+          {
+            "trade_date": "2025-12-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9349
+          },
+          {
+            "trade_date": "2025-12-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.74674
+          },
+          {
+            "trade_date": "2025-12-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2025-12-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.749
+          },
+          {
+            "trade_date": "2025-12-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9347
+          },
+          {
+            "trade_date": "2025-12-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2025-12-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.739
+          },
+          {
+            "trade_date": "2025-12-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.7283
+          },
+          {
+            "trade_date": "2025-12-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93395
+          },
+          {
+            "trade_date": "2025-12-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.72145
+          },
+          {
+            "trade_date": "2025-12-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93355
+          },
+          {
+            "trade_date": "2025-12-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.708
+          },
+          {
+            "trade_date": "2025-12-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2025-12-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.683
+          },
+          {
+            "trade_date": "2025-12-31",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2025-12-31",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67485
+          },
+          {
+            "trade_date": "2026-01-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93405
+          },
+          {
+            "trade_date": "2026-01-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6757
+          },
+          {
+            "trade_date": "2026-01-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67425
+          },
+          {
+            "trade_date": "2026-01-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93475
+          },
+          {
+            "trade_date": "2026-01-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-01-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6756
+          },
+          {
+            "trade_date": "2026-01-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-01-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.678
+          },
+          {
+            "trade_date": "2026-01-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-01-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67107
+          },
+          {
+            "trade_date": "2026-01-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67838
+          },
+          {
+            "trade_date": "2026-01-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-01-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6794
+          },
+          {
+            "trade_date": "2026-01-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9345
+          },
+          {
+            "trade_date": "2026-01-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-01-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.678
+          },
+          {
+            "trade_date": "2026-01-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93385
+          },
+          {
+            "trade_date": "2026-01-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6725
+          },
+          {
+            "trade_date": "2026-01-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93335
+          },
+          {
+            "trade_date": "2026-01-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.671
+          },
+          {
+            "trade_date": "2026-01-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.933
+          },
+          {
+            "trade_date": "2026-01-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6692
+          },
+          {
+            "trade_date": "2026-01-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.933
+          },
+          {
+            "trade_date": "2026-01-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6731
+          },
+          {
+            "trade_date": "2026-01-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67095
+          },
+          {
+            "trade_date": "2026-01-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6703
+          },
+          {
+            "trade_date": "2026-01-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67595
+          },
+          {
+            "trade_date": "2026-01-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93245
+          },
+          {
+            "trade_date": "2026-01-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.675
+          },
+          {
+            "trade_date": "2026-01-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67185
+          },
+          {
+            "trade_date": "2026-01-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93235
+          },
+          {
+            "trade_date": "2026-01-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67
+          },
+          {
+            "trade_date": "2026-01-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.932
+          },
+          {
+            "trade_date": "2026-01-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66895
+          },
+          {
+            "trade_date": "2026-01-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9309
+          },
+          {
+            "trade_date": "2026-01-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67075
+          },
+          {
+            "trade_date": "2026-02-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6697
+          },
+          {
+            "trade_date": "2026-02-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93165
+          },
+          {
+            "trade_date": "2026-02-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93165
+          },
+          {
+            "trade_date": "2026-02-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.673
+          },
+          {
+            "trade_date": "2026-02-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.933
+          },
+          {
+            "trade_date": "2026-02-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.667
+          },
+          {
+            "trade_date": "2026-02-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6645
+          },
+          {
+            "trade_date": "2026-02-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93305
+          },
+          {
+            "trade_date": "2026-02-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66267
+          },
+          {
+            "trade_date": "2026-02-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.933
+          },
+          {
+            "trade_date": "2026-02-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93425
+          },
+          {
+            "trade_date": "2026-02-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6595
+          },
+          {
+            "trade_date": "2026-02-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6602
+          },
+          {
+            "trade_date": "2026-02-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9343
+          },
+          {
+            "trade_date": "2026-02-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93405
+          },
+          {
+            "trade_date": "2026-02-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66
+          },
+          {
+            "trade_date": "2026-02-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6655
+          },
+          {
+            "trade_date": "2026-02-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93485
+          },
+          {
+            "trade_date": "2026-02-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93485
+          },
+          {
+            "trade_date": "2026-02-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66412
+          },
+          {
+            "trade_date": "2026-02-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.665
+          },
+          {
+            "trade_date": "2026-02-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.935
+          },
+          {
+            "trade_date": "2026-02-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6709
+          },
+          {
+            "trade_date": "2026-02-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93455
+          },
+          {
+            "trade_date": "2026-02-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6768
+          },
+          {
+            "trade_date": "2026-02-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93445
+          },
+          {
+            "trade_date": "2026-02-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67217
+          },
+          {
+            "trade_date": "2026-02-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93405
+          },
+          {
+            "trade_date": "2026-02-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-02-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67368
+          },
+          {
+            "trade_date": "2026-02-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67616
+          },
+          {
+            "trade_date": "2026-02-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93405
+          },
+          {
+            "trade_date": "2026-02-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93405
+          },
+          {
+            "trade_date": "2026-02-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67108
+          },
+          {
+            "trade_date": "2026-02-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66905
+          },
+          {
+            "trade_date": "2026-02-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93305
+          },
+          {
+            "trade_date": "2026-02-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6672
+          },
+          {
+            "trade_date": "2026-02-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93325
+          },
+          {
+            "trade_date": "2026-02-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9316
+          },
+          {
+            "trade_date": "2026-02-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6651
+          },
+          {
+            "trade_date": "2026-03-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6715
+          },
+          {
+            "trade_date": "2026-03-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9357
+          },
+          {
+            "trade_date": "2026-03-03",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93805
+          },
+          {
+            "trade_date": "2026-03-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67531
+          },
+          {
+            "trade_date": "2026-03-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9393
+          },
+          {
+            "trade_date": "2026-03-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6734
+          },
+          {
+            "trade_date": "2026-03-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.669
+          },
+          {
+            "trade_date": "2026-03-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94285
+          },
+          {
+            "trade_date": "2026-03-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67307
+          },
+          {
+            "trade_date": "2026-03-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9441
+          },
+          {
+            "trade_date": "2026-03-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.674
+          },
+          {
+            "trade_date": "2026-03-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94915
+          },
+          {
+            "trade_date": "2026-03-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.938
+          },
+          {
+            "trade_date": "2026-03-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6735
+          },
+          {
+            "trade_date": "2026-03-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6759
+          },
+          {
+            "trade_date": "2026-03-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9429
+          },
+          {
+            "trade_date": "2026-03-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6827
+          },
+          {
+            "trade_date": "2026-03-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94285
+          },
+          {
+            "trade_date": "2026-03-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.683
+          },
+          {
+            "trade_date": "2026-03-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94395
+          },
+          {
+            "trade_date": "2026-03-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6765
+          },
+          {
+            "trade_date": "2026-03-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94
+          },
+          {
+            "trade_date": "2026-03-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93805
+          },
+          {
+            "trade_date": "2026-03-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6761
+          },
+          {
+            "trade_date": "2026-03-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.938
+          },
+          {
+            "trade_date": "2026-03-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6815
+          },
+          {
+            "trade_date": "2026-03-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6777
+          },
+          {
+            "trade_date": "2026-03-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93915
+          },
+          {
+            "trade_date": "2026-03-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.944
+          },
+          {
+            "trade_date": "2026-03-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.67975
+          },
+          {
+            "trade_date": "2026-03-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6786
+          },
+          {
+            "trade_date": "2026-03-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.948
+          },
+          {
+            "trade_date": "2026-03-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.677
+          },
+          {
+            "trade_date": "2026-03-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9473
+          },
+          {
+            "trade_date": "2026-03-25",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.939
+          },
+          {
+            "trade_date": "2026-03-25",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6737
+          },
+          {
+            "trade_date": "2026-03-26",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9347
+          },
+          {
+            "trade_date": "2026-03-26",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.667
+          },
+          {
+            "trade_date": "2026-03-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6635
+          },
+          {
+            "trade_date": "2026-03-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9345
+          },
+          {
+            "trade_date": "2026-03-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.934
+          },
+          {
+            "trade_date": "2026-03-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6628
+          },
+          {
+            "trade_date": "2026-03-31",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.66085
+          },
+          {
+            "trade_date": "2026-03-31",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9359
+          },
+          {
+            "trade_date": "2026-04-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.659
+          },
+          {
+            "trade_date": "2026-04-01",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94
+          },
+          {
+            "trade_date": "2026-04-02",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6613
+          },
+          {
+            "trade_date": "2026-04-02",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.944
+          },
+          {
+            "trade_date": "2026-04-03",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6602
+          },
+          {
+            "trade_date": "2026-04-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6581
+          },
+          {
+            "trade_date": "2026-04-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.65625
+          },
+          {
+            "trade_date": "2026-04-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9628
+          },
+          {
+            "trade_date": "2026-04-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6504
+          },
+          {
+            "trade_date": "2026-04-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94895
+          },
+          {
+            "trade_date": "2026-04-09",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95085
+          },
+          {
+            "trade_date": "2026-04-09",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6505
+          },
+          {
+            "trade_date": "2026-04-10",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6544
+          },
+          {
+            "trade_date": "2026-04-10",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9597
+          },
+          {
+            "trade_date": "2026-04-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9663
+          },
+          {
+            "trade_date": "2026-04-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.665
+          },
+          {
+            "trade_date": "2026-04-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.96215
+          },
+          {
+            "trade_date": "2026-04-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6648
+          },
+          {
+            "trade_date": "2026-04-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.65835
+          },
+          {
+            "trade_date": "2026-04-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95635
+          },
+          {
+            "trade_date": "2026-04-16",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95035
+          },
+          {
+            "trade_date": "2026-04-16",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.655
+          },
+          {
+            "trade_date": "2026-04-17",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9457
+          },
+          {
+            "trade_date": "2026-04-17",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.65
+          },
+          {
+            "trade_date": "2026-04-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94725
+          },
+          {
+            "trade_date": "2026-04-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6488
+          },
+          {
+            "trade_date": "2026-04-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95475
+          },
+          {
+            "trade_date": "2026-04-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.652
+          },
+          {
+            "trade_date": "2026-04-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6531
+          },
+          {
+            "trade_date": "2026-04-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95285
+          },
+          {
+            "trade_date": "2026-04-23",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6555
+          },
+          {
+            "trade_date": "2026-04-23",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94895
+          },
+          {
+            "trade_date": "2026-04-24",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.949
+          },
+          {
+            "trade_date": "2026-04-24",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6557
+          },
+          {
+            "trade_date": "2026-04-27",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6502
+          },
+          {
+            "trade_date": "2026-04-27",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94305
+          },
+          {
+            "trade_date": "2026-04-28",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.95695
+          },
+          {
+            "trade_date": "2026-04-28",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.647
+          },
+          {
+            "trade_date": "2026-04-29",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9663
+          },
+          {
+            "trade_date": "2026-04-29",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.64777
+          },
+          {
+            "trade_date": "2026-04-30",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6467
+          },
+          {
+            "trade_date": "2026-04-30",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93825
+          },
+          {
+            "trade_date": "2026-05-01",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6432
+          },
+          {
+            "trade_date": "2026-05-04",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93755
+          },
+          {
+            "trade_date": "2026-05-04",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.64162
+          },
+          {
+            "trade_date": "2026-05-05",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93805
+          },
+          {
+            "trade_date": "2026-05-05",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6405
+          },
+          {
+            "trade_date": "2026-05-06",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.63815
+          },
+          {
+            "trade_date": "2026-05-06",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93805
+          },
+          {
+            "trade_date": "2026-05-07",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6342
+          },
+          {
+            "trade_date": "2026-05-07",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9376
+          },
+          {
+            "trade_date": "2026-05-08",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93655
+          },
+          {
+            "trade_date": "2026-05-08",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.63275
+          },
+          {
+            "trade_date": "2026-05-11",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.63045
+          },
+          {
+            "trade_date": "2026-05-11",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93675
+          },
+          {
+            "trade_date": "2026-05-12",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6278
+          },
+          {
+            "trade_date": "2026-05-12",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93505
+          },
+          {
+            "trade_date": "2026-05-13",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.93505
+          },
+          {
+            "trade_date": "2026-05-13",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.6235
+          },
+          {
+            "trade_date": "2026-05-14",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.94135
+          },
+          {
+            "trade_date": "2026-05-14",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.61101
+          },
+          {
+            "trade_date": "2026-05-15",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.603
+          },
+          {
+            "trade_date": "2026-05-15",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.949
+          },
+          {
+            "trade_date": "2026-05-18",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.969
+          },
+          {
+            "trade_date": "2026-05-18",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.59473
+          },
+          {
+            "trade_date": "2026-05-19",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.969
+          },
+          {
+            "trade_date": "2026-05-19",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.57632
+          },
+          {
+            "trade_date": "2026-05-20",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.9663
+          },
+          {
+            "trade_date": "2026-05-20",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.5789
+          },
+          {
+            "trade_date": "2026-05-21",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.98875
+          },
+          {
+            "trade_date": "2026-05-21",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.606
+          },
+          {
+            "trade_date": "2026-05-22",
+            "curve_family": "USD_SOFR_OIS",
+            "field_value": 3.61785
+          },
+          {
+            "trade_date": "2026-05-22",
+            "curve_family": "EUR_ESTR_OIS",
+            "field_value": 1.99725
+          }
+        ]
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-05-22",
+      "pair": "EURUSD",
+      "tenor": "1M",
+      "fx_tenor": "1M",
+      "ois_tenor": "1M",
+      "local_currency": "EUR",
+      "local_ois_curve": "EUR_ESTR_OIS",
+      "usd_ois_curve": "USD_SOFR_OIS",
+      "sign_convention": "bloomberg_bcrx_usd_scarcity_negative",
+      "current_fx_implied_yield_diff_pct": -1.6755,
+      "current_ois_diff_pct": -1.6206,
+      "current_basis_bps": -5.49,
+      "daily_change_bps": 0.41,
+      "weekly_change_bps": 16.67,
+      "monthly_change_bps": -5.95,
+      "z_score": 0.0187,
+      "high_252d_bps": 15.31,
+      "low_252d_bps": -30.99,
+      "percentile_252d": 55.08,
+      "observation_count": 257
+    }
+  }
+}
