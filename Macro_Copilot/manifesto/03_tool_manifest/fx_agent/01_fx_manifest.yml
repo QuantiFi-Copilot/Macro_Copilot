@@ -1193,6 +1193,71 @@ tools:
       Identity check: |iyd| == |fx_carry.carry_annualized_pct| within
       5 bp across G10 + EM cases. EURJPY (no USD leg) fails-loud.
 
+  - name: get_fx_cross_currency_basis
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: snapshots
+    status: draft
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_cross_currency_basis_tool
+      schema: fx_agent/forwards/tools/cross_currency_basis/schemas.py::FXCrossCurrencyBasisInput
+      compute: fx_agent/forwards/tools/cross_currency_basis/compute.py::get_fx_cross_currency_basis
+      config: fx_agent/forwards/tools/cross_currency_basis/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX cross-currency basis (CIP-violation
+      spread). Composes the FX implied yield differential with the
+      observed OIS local-vs-USD spread. SIGN CONVENTION Bloomberg/
+      BCRX-style: NEGATIVE basis = USD scarcity. First fx_agent
+      primitive consuming rates_agent OIS substrate via
+      shared.analytics.rates_fetch.fetch_cross_market_pair. V1 scope
+      G10 USD-leg only (EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD).
+
+    bucket_rationale: >-
+      Deterministic cross-domain compute. FX leg: inline
+      implied_yield_differential math (joined spot+forward + JPY
+      divisor + 252-day annualization + sign-flip per usd_leg_position).
+      OIS leg: shared.analytics.rates_fetch.fetch_cross_market_pair
+      (existing helper, no rates_agent modification). Single
+      methodology choice (sign convention) HARD-LOCKED Bloomberg-style
+      with 3 independent corroborations (Sreeram + Codex + Claude
+      re-derivation). No central PR8 knob — sign-flip would be
+      presentation not methodology.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_carry_tool
+      - rates_agent.ois.tools.rate_level.get_ois_rate_level
+
+    workflows:
+      - fx_carry_monitor
+      - fx_funding_stress_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/implied_yield_differential
+      - rates_agent/ois/tools/rate_level
+      - shared/analytics/rates_fetch.py::fetch_cross_market_pair
+
+    built_date: 2026-05-27
+    validation_status: >-
+      DRAFT — sign convention SELECTED for V1 (Bloomberg/BCRX-style),
+      not yet VALIDATED+FROZEN. Live OIS validation pending on full
+      QFin DB (local dev DB has FX-only substrates so SQL validation
+      SKIPs gracefully). Pydantic gates + 3-test triplet structurel
+      + MCP/API/manifest wiring complete. Strict-DONE conditional on
+      Sreeram's sanity check that DM basis numbers fall in expected
+      -50 to -5 bp range.
+
   - name: get_fx_carry_basket
     domain: fx
     sub_agent: forwards

@@ -20,6 +20,11 @@ from fx_agent.forwards.tools.carry_basket import (  # noqa: E402
     FXCarryBasketInput,
     get_fx_carry_basket,
 )
+from fx_agent.forwards.tools.cross_currency_basis import (  # noqa: E402
+    CONFIG_PATH as FX_XCCY_BASIS_CONFIG_PATH,
+    FXCrossCurrencyBasisInput,
+    get_fx_cross_currency_basis,
+)
 from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     CONFIG_PATH as FX_FORWARD_CURVE_CONFIG_PATH,
     FXForwardCurveInput,
@@ -1062,6 +1067,53 @@ def get_fx_vol_smile_tool(
     except Exception as exc:
         logger.exception("FX vol smile failed for %s %s", pair, tenor)
         return json.dumps({"error": f"FX vol smile failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_cross_currency_basis_tool(
+    pair: str,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, tenor) FX cross-currency basis snapshot.
+
+    The CIP-violation spread between what FX forwards imply about the
+    local-vs-USD rate spread and what the observed OIS curves show.
+
+    SIGN CONVENTION (Bloomberg/BCRX-style, hard-locked):
+      basis_bps = (fx_iyd - (local_ois - usd_ois)) * 100
+      NEGATIVE basis = USD scarcity (FX-implied USD funding rate > USD
+      OIS — USD funder demands premium via swap). POSITIVE = USD
+      abundance. For DM pairs in normal regimes, typical -50 to -5 bp.
+
+    First fx_agent primitive consuming the rates_agent OIS substrate
+    via shared.analytics.rates_fetch.fetch_cross_market_pair.
+
+    V1 SCOPE: G10 USD-leg only with OIS coverage — EURUSD, GBPUSD,
+    USDJPY, AUDUSD, USDCAD. Other pairs fail-loud at Pydantic.
+
+    Parameters
+    ----------
+    pair : str — one of {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD}.
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXCrossCurrencyBasisInput(
+            pair=pair, tenor=tenor,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_XCCY_BASIS_CONFIG_PATH)
+        result = get_fx_cross_currency_basis(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX cross-currency basis failed for %s %s", pair, tenor)
+        return json.dumps({"error": f"FX cross-currency basis failed: {exc}"}, default=str)
     return json.dumps(result, default=str)
 
 
