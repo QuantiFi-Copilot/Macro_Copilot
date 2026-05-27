@@ -283,7 +283,8 @@ def emit_sql(
             "    updated_at         = NOW();\n"
         )
 
-    return "\n".join(lines) + "\n"
+    # Single trailing newline (no extra blank line at EOF).
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def _sql_string(value: str) -> str:

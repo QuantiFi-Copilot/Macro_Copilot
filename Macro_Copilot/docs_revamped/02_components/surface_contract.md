@@ -46,7 +46,7 @@ No surface code may be added, removed, or modified without updating the correspo
 ## 2. The 3 backend building blocks
 
 ### 2.1 Primitive
-A single backend tool with a typed input + typed output, registered in `rates_agent/workflows/__init__.py:_PRIMITIVE_SPECS`. Today: 55 primitive specs + 3 workflow-incompatible tools = **58 total primitives the frontend must consider**.
+A single backend tool with a typed input + typed output.  Today the backend ships **58 total primitives** the frontend must consider, broken down as: **52** in `rates_agent/workflows/__init__.py:_PRIMITIVE_SPECS` (with executable PrimitiveSpec) + **3** in `WORKFLOW_INCOMPATIBLE_TOOLS` (real backend tools whose output shape can't lift to a Series/Panel artifact) + **3** manifest-only / typed-detail tools (have typed-detail endpoints but no PrimitiveSpec entry — e.g. `calculate_butterfly_tool`, `scan_extremes_tool`).
 
 Output kinds (drives Build / Monitor archetype choice):
 - `single-series-bps` — time series in basis points (spreads, butterflies)

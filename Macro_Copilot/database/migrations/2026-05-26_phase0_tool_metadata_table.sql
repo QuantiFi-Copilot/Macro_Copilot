@@ -61,7 +61,17 @@ CREATE TABLE IF NOT EXISTS macro_data.tool_metadata (
 
     -- Audit columns.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Closed-family domain enforcement.
+    CONSTRAINT tool_metadata_domain_check CHECK (domain IN (
+        'sovereign_bonds',
+        'ois',
+        'inflation_indexed_bonds',
+        'inflation_swaps',
+        'policy_futures',
+        'bond_futures'
+    ))
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_metadata_domain

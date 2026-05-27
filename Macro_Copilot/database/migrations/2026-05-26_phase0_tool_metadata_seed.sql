@@ -540,4 +540,3 @@ ON CONFLICT (tool_name) DO UPDATE SET
     category           = EXCLUDED.category,
     output_field_units = EXCLUDED.output_field_units,
     updated_at         = NOW();
-

@@ -38,7 +38,7 @@ The decision does NOT apply to:
 
 - **Methodology conventions** (z-score windows, day-count rules, threshold values) — these stay in `config.yaml` because they are USER-OVERRIDABLE per [`tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §1.  The user reconstructs any prior methodology by editing the config; the DB doesn't track methodology history.
 - **Status flags** that change frequently — `validation_status`, `built_date`, etc. continue to live in `manifesto/.../*.yml` because they are state, not metadata.
-- **Frontend module display fields** — `displayName`, `oneLineSummary`, `category` — these stay in the frontend module spec because the frontend has its own load path; they are FACTS the frontend owns.  (Could be unified later if drift becomes a problem.)
+- **Frontend module display fields** that have no cross-language consumer — `displayName` and `oneLineSummary` stay in the frontend module spec because the frontend has its own load path and those strings are not consulted from backend / lineage.  (`category` IS in the DB per the "applies to" list above; the frontend module's `category` field becomes a mirror of the DB row for fast render-time access without an API round-trip.)
 - **Pydantic Input/Output schemas** — these are executable contracts, not metadata; they stay in Python.
 
 ## Schema
@@ -144,6 +144,33 @@ Backend / API / frontend reading code is out of scope for Phase 0.  Phase 0 land
 - **Should methodology conventions also move to DB?**  Currently NO — they're user-overridable, fundamentally configurable.  Revisit if drift between config.yaml and the actual Python execution path becomes a problem.
 - **Should frontend `displayName` / `oneLineSummary` move to DB?**  Currently NO — frontend owns its own load path.  Revisit if multi-frontend or multi-locale requirements appear.
 - **Should there be a `tool_metadata_history` table for audit?**  Currently NO — `updated_at` is sufficient for V1; full history (who changed `desk_narrative` when) is V2 hardening.
+- **Should `output_field_units` carry richer per-field metadata than a unit string?**  Today the JSONB shape is ``{field_name: unit_string}`` (e.g. ``{"time_series": "bps"}``).  The JSONB column type makes the shape EXTENSIBLE without DDL: future enrichment could move to ``{field_name: {unit: "bps", scale: 1.0, precision: 1, native_unit: "decimal", description: "..."}}`` for tools that need scaling factors / display precision / native vs display unit distinction / per-field documentation.  Currently deferred per [`tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §1 (build when needed, not preemptively).  When the FIRST tool needs a richer shape, this ADR gets a follow-up + the JSONB shape evolves; the column type itself stays JSONB so no schema migration is required.  Per-tool readers must be defensive: read the unit string OR the unit object form.
+- **Should the schema add JSONB shape checks?**  Currently NO — Postgres has no easy way to enforce JSONB structure without trigger functions or JSON schemas.  Defense-in-depth comes from (a) the closed-family domain CHECK constraint on the `domain` column, (b) ``tests/test_tool_metadata_population.py`` validating the generator's output before any apply, (c) Phase 1+ consumer code being defensive about the JSON shape it reads.  Revisit if drift becomes a problem.
+
+### Known backend data gap surfaced by Phase 0
+
+When the populate script runs against `_PRIMITIVE_SPECS` today, **12 tools currently have an empty `output_field_units` declaration on the backend side**:
+
+```
+calculate_half_life_tool
+calculate_yield_change_attribution_pca_tool
+get_futures_price_level_tool
+get_futures_volume_oi_tool
+get_scan_policy_futures_extremes_tool
+policy_futures_get_futures_calendar_spread_tool
+policy_futures_get_futures_price_level_tool
+policy_futures_get_futures_strip_snapshot_tool
+policy_futures_get_volume_open_interest_snapshot_tool
+scan_bond_futures_extremes_tool
+scan_inflation_linkers_extremes_tool
+scan_inflation_swaps_extremes_tool
+```
+
+These tools DO have unit-bearing output fields in practice (futures prices, scanner z-scores, etc.) but `PrimitiveSpec.output_field_units` in `rates_agent/workflows/__init__.py:_PRIMITIVE_SPECS` is `{}` for them.  This is a backend data gap, not a Phase 0 implementation issue — the populate script faithfully mirrors the source.
+
+Plus 6 more tools (workflow_incompatible + manifest-only) have no `PrimitiveSpec` to read units from at all.
+
+**Resolution policy:** these rows get filled per-tool in Phase 1+ when each tool is touched for any reason (per the lifecycle's Phase 3 opportunistic-migration policy).  The fill happens by editing the backend `_PRIMITIVE_SPECS` entry first (source of truth), then re-running the populate script — the seed regenerates with the now-populated units in the `output_field_units` JSONB.
 
 ## Acceptance
 

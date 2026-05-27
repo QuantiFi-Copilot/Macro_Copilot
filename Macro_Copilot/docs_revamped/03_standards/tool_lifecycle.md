@@ -136,7 +136,7 @@ Workflows (`event_study`, `regime_conditioned_relationship`, `backtest`) follow 
 - **§2 axis 6 (frontend surfaces)** — workflows render via specialised dashboards (`src/components/build/results/dashboards/<Workflow>Dashboard.tsx`) plus a workflow-level row in surface contract §5.
 - **DAG-node role schema** — each workflow declares which template node IDs map to which dashboard "roles" (Setup, Events, Windows, Aggregate, Output for event_study; etc.).  Currently hardcoded in `src/components/build/results/lib/resolveWorkflowArtifacts.ts`.  Phase 1+ work standardises this declaration.
 
-Workflows are **out of scope for the pilot trio** — primitives only.  Workflow standardisation happens after the primitive standard proves out.
+Workflows are **out of scope for the pilot pair** — primitives only.  Workflow standardisation happens after the primitive standard proves out.
 
 ---
 
@@ -149,7 +149,7 @@ Workflows are **out of scope for the pilot trio** — primitives only.  Workflow
 | **Phase 2** | Apply standard to every new tool going forward. | `revamp` → eventual merge back to `build` | Standard stable; new-tool PRs follow the framework by default. |
 | **Phase 3** | Opportunistic retroactive migration. | per-tool sub-branches off `revamp` | Tools brought up to standard when touched for any reason.  No mass migration pass. |
 
-**Pilot trio (Phase 1):**
+**Pilot pair (Phase 1):**
 
 1. `get_real_yield_level_tool` — direct analog of the already-polished `get_yield_levels_tool`.  Tests the standard for a typical single-series tool with the lowest risk.
 2. `calculate_breakeven_inflation_simple_tool` — methodologically richer (derived calculation: linker yield − nominal yield with day-count alignment).  Tests the standard for a derived primitive.  Already has `tests/test_breakeven_inflation_simple_sql_validation.py`.
@@ -175,4 +175,4 @@ In addition to the existing 4 gates, a tool-touching PR must:
 
 | Version | Date | Change |
 |---|---|---|
-| v1 | 2026-05-26 | Initial drafting (Phase 0).  Defined the 7 axes (theoretical reference, methodology, three-way testing, input/output contracts, known limitations, frontend surfaces, user-facing copy).  Codified the §1 methodology principle (user-config architecture).  Pinned pilot trio to 2 primitives.  Workflows scoped out of pilot.  Cross-references to ADR 0015 (DB metadata table) and surface contract registry. |
+| v1 | 2026-05-26 | Initial drafting (Phase 0).  Defined the 7 axes (theoretical reference, methodology, three-way testing, input/output contracts, known limitations, frontend surfaces, user-facing copy).  Codified the §1 methodology principle (user-config architecture).  Pinned pilot pair to 2 primitives (`get_real_yield_level_tool` + `calculate_breakeven_inflation_simple_tool`).  Workflows scoped out of pilot.  Cross-references to ADR 0015 (DB metadata table) and surface contract registry. |
