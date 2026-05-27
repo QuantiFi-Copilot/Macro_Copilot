@@ -6,10 +6,18 @@ tool:
     LOCAL-minus-USD rate spread implied from forward points via
     Covered Interest Parity (CIP). PM-friendly framing of the same
     math fx_carry uses internally (carry_annualized_pct = quote-base
-    rate). Pair must contain a USD leg; non-USD G10 crosses fail-
-    loud V1. Sign convention HARD-LOCKED to local_minus_usd (no fake
-    PR8 knob — sign-flipping is presentation, not methodology).
-    Quoted in PERCENT, annualized at 252 trading days/year.
+    rate).
+
+    SCOPE — pair MUST contain a USD leg. Non-USD G10 crosses (EURJPY,
+    GBPCHF, EURGBP, ...) fail loud at compute time. This is BY DESIGN,
+    NOT A BUG: the local_minus_usd convention is mathematically
+    undefined when neither leg is USD. Future cross extensions (via
+    synthetic-leg triangulation or quote-aware cross variant) are
+    planned as separate tools, not a V1 override.
+
+    Sign convention HARD-LOCKED to local_minus_usd (no fake PR8 knob
+    — sign-flipping is presentation, not methodology). Quoted in
+    PERCENT, annualized at 252 trading days/year.
   category: desk_invariant_primitive
 
 conventions:
@@ -204,7 +212,7 @@ methodology:
   assumptions:
     - "Implied yield differential = LOCAL minus USD rate, where 'local' is the non-USD leg of the pair (EURUSD → EUR; USDMXN → MXN; USDJPY → JPY). Positive = local rate exceeds USD rate; negative = local rate below USD rate."
     - "CIP math: (F/S - 1) * (annual/tenor_days) ≈ rate_quote - rate_base for small spreads. Sign-adjusted via usd_leg_position to always express LOCAL minus USD regardless of quote convention. Exact identity vs fx_carry.carry_annualized_pct: |diff| equal within rounding for the same (pair, tenor)."
-    - "Pair MUST contain a USD leg. Non-USD G10 crosses (EURJPY, GBPCHF, EURGBP, ...) raise ValueError at compute time. 'Local vs USD' is undefined when no leg is USD; a future quote-aware cross variant would land as a separate tool."
+    - "INTENTIONAL SCOPE LIMITATION: pair MUST contain a USD leg. Non-USD G10 crosses (EURJPY, GBPCHF, EURGBP, ...) raise ValueError at compute time BY DESIGN, NOT AS A BUG. 'local minus USD' is mathematically undefined when no leg is USD. Two future-extension paths (neither in V1, each a separate tool when needed): (a) synthetic-leg triangulation deriving EURJPY iyd from EURUSD and USDJPY iyds, accepting the JPY-USD-EUR routing risk in stressed regimes; (b) quote-aware cross variant with a numerator_currency selector replacing the implicit USD anchor."
     - "Annualization at 252 trading days / year — same as fx_carry / forward_curve / vol_risk_premium so any cross-tool identity / drift check holds."
     - "JPY-aware divisor handling via shared.fx_agent.forwards._shared.points_to_spot_units — JPY pairs use 100, non-JPY use 10000."
   citations: []

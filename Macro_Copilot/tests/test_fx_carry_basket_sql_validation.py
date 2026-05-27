@@ -146,14 +146,22 @@ def _reproduce_carry_wide(
 
 def _select_constituents_at_latest_rebalance(
     carry_wide: pd.DataFrame, *, top_n: int, basket_construction: str,
-) -> Tuple[Set[str], Set[str]]:
-    """Replay the rebalance schedule and return (long_set, short_set)
-    at the LAST rebalance period."""
+) -> Tuple[Set[str], Set[str], pd.Timestamp, pd.Timestamp]:
+    """Replay the rebalance schedule and return:
+       (long_set, short_set, signal_date, period_start_date)
+    at the LAST rebalance period.
+
+    Returns signal_date and period_start_date so the caller can
+    enforce the no-lookahead invariant explicitly:
+        signal_date < period_start_date  (signal lag fired)
+    """
     trading_dates = list(carry_wide.index)
     n = len(trading_dates)
     cursor = _SIGNAL_LAG
     last_long: Set[str] = set()
     last_short: Set[str] = set()
+    last_signal_date: pd.Timestamp = pd.NaT
+    last_period_start: pd.Timestamp = pd.NaT
     while cursor < n:
         signal_idx = cursor - _SIGNAL_LAG
         if signal_idx < 0:
@@ -178,8 +186,10 @@ def _select_constituents_at_latest_rebalance(
             sorted_pairs = signal_row.sort_values(ascending=False)
             last_long = set(sorted_pairs.head(top_n).index.tolist())
             last_short = set()
+        last_signal_date = signal_date
+        last_period_start = trading_dates[cursor]
         cursor += _REBALANCE_DAYS
-    return last_long, last_short
+    return last_long, last_short, last_signal_date, last_period_start
 
 
 def main() -> int:
@@ -216,8 +226,10 @@ def main() -> int:
             engine, market_scope=scope, tenor=tenor,
             field_name=args.field, lookback_days=args.lookback_days,
         )
-        sql_long, sql_short = _select_constituents_at_latest_rebalance(
-            carry_wide, top_n=top_n, basket_construction=construction,
+        sql_long, sql_short, sql_signal_date, sql_period_start = (
+            _select_constituents_at_latest_rebalance(
+                carry_wide, top_n=top_n, basket_construction=construction,
+            )
         )
 
         mismatches: List[str] = []
@@ -229,6 +241,26 @@ def main() -> int:
             mismatches.append(
                 f"short mismatch: tool={sorted(tool_short)} sql={sorted(sql_short)}"
             )
+
+        # EXPLICIT NO-LOOKAHEAD INVARIANT — the load-bearing piece of
+        # the strategy index. signal_date must be STRICTLY BEFORE the
+        # period_start_date by exactly signal_lag_days trading days.
+        # If this fails, the rebalance is using contemporaneous info
+        # (lookahead bias) and the strategy index is corrupt.
+        if pd.notna(sql_signal_date) and pd.notna(sql_period_start):
+            lookahead_ok = sql_signal_date < sql_period_start
+            if not lookahead_ok:
+                mismatches.append(
+                    f"NO-LOOKAHEAD VIOLATION: signal_date={sql_signal_date} not < "
+                    f"period_start={sql_period_start} (signal_lag={_SIGNAL_LAG} not applied)"
+                )
+            # Also assert the gap is exactly signal_lag trading days
+            day_gap = list(carry_wide.index).index(sql_period_start) - list(carry_wide.index).index(sql_signal_date)
+            if day_gap != _SIGNAL_LAG:
+                mismatches.append(
+                    f"SIGNAL_LAG MISMATCH: tool spec signal_lag={_SIGNAL_LAG}, "
+                    f"reproduced day_gap={day_gap}"
+                )
 
         status = "PASS" if not mismatches else "FAIL"
         if mismatches:
