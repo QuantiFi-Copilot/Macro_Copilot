@@ -1332,3 +1332,385 @@ tools:
       headwind regime; EM Sharpe ~1.4 on TRY/MXN/ZAR carry capture).
       SQL constituent-selection reproduction matches tool output for
       G10 / EM / long_short / long_only combos.
+
+  # ===========================================================================
+  # Phase F1 (2026-05-27): 3 cross-sectional panels + 4 scanners
+  #
+  # Asset-agnostic shared-compute discipline (G2): these are pure
+  # fetcher+pivot+package primitives (panels) and pure composition
+  # primitives (scanners). They do NOT duplicate correlation / PCA /
+  # factor loadings / regression — those live in shared/operators and
+  # consume the returned Panel artifact directly.
+  # ===========================================================================
+
+  - name: calculate_fx_vol_panel
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_vol_panel_tool
+      schema: fx_agent/vol/tools/fx_vol_panel/schemas.py::FXVolPanelInput
+      compute: fx_agent/vol/tools/fx_vol_panel/compute.py::calculate_fx_vol_panel
+      config: fx_agent/vol/tools/fx_vol_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX implied vols for a (market_scope,
+      tenor, smile_point) slice. ATM smile_point routes to
+      instrument_type='fx_vol' substrate; 25R/25B/10R/10B routes to
+      instrument_type='fx_vol_smile'. Returns typed Panel
+      (rows=dates, columns=pairs, units=PERCENT) ready for downstream
+      cross-sectional operators (correlation, PCA, factor loadings).
+
+    bucket_rationale: >-
+      Deterministic pivot of the fx_vol / fx_vol_smile substrate into
+      a wide Panel with pair-name columns. Filter (market_scope →
+      fx_family with parallel ATM vs smile family maps) and missing-
+      data / calendar / ffill conventions are YAML-locked. Substrate-
+      primitive discipline: fail-loud on empty fetch / unknown scope.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - smile_point
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - calculate_fx_panel_tool
+      - scan_fx_calendar_spread_tool
+      - scan_fx_vol_skew_tool
+
+    workflows:
+      - fx_vol_workspace
+      - fx_correlation_monitor
+
+    references:
+      - fx_agent/spot/tools/fx_panel
+      - shared/analytics/fx_fetch.py::fetch_fx_vol_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 9/9 PASS live-DB (G10 1M ATM = 625 obs
+      × 6 pairs; G10 1M 25R = smile substrate routed correctly).
+      Typed Panel round-trips cleanly via FXVolPanelOutput.model_validate.
+      Empty window + invalid scope/tenor/smile_point correctly raise
+      ValueError / ValidationError.
+
+  - name: calculate_fx_forwards_panel
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_forwards_panel_tool
+      schema: fx_agent/forwards/tools/fx_forwards_panel/schemas.py::FXForwardsPanelInput
+      compute: fx_agent/forwards/tools/fx_forwards_panel/compute.py::calculate_fx_forwards_panel
+      config: fx_agent/forwards/tools/fx_forwards_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of FX forward points (in pips) for a
+      (market_scope, tenor) slice. Mirror of calculate_fx_panel for
+      the fx_forward substrate. Returns typed Panel (rows=dates,
+      columns=pairs, units=PRICE) ready for downstream operators.
+
+    bucket_rationale: >-
+      Deterministic pivot of the fx_forward substrate. market_scope
+      restricted to G10/EM/ALL (no G10_CROSSES fx_family for fwd
+      substrate). Same conventions stack as fx_panel / fx_vol_panel.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - calculate_fx_panel_tool
+      - get_fx_implied_yield_differential_tool
+      - scan_fx_implied_yield_differential_tool
+
+    workflows:
+      - fx_forwards_workspace
+
+    references:
+      - fx_agent/spot/tools/fx_panel
+      - shared/analytics/fx_fetch.py::fetch_fx_forwards_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 10/10 PASS live-DB (G10 1M = 625 obs
+      × 6 pairs; ALL ≥ G10 ∪ EM coverage). G10_CROSSES correctly
+      rejected at Pydantic boundary (no fwd substrate for crosses).
+
+  - name: calculate_fx_basis_panel
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_panel
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: calculate_fx_basis_panel_tool
+      schema: fx_agent/forwards/tools/fx_basis_panel/schemas.py::FXBasisPanelInput
+      compute: fx_agent/forwards/tools/fx_basis_panel/compute.py::calculate_fx_basis_panel
+      config: fx_agent/forwards/tools/fx_basis_panel/config.yaml
+
+    one_liner: >-
+      Cross-sectional Panel of CIP basis (in bps) for the V1 closed
+      pair set {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD}. Composition
+      of FX implied yield differential + OIS rate differential at one
+      tenor. Sign convention HARD-LOCKED Bloomberg BCRX-style
+      (NEGATIVE = USD scarcity) — inherited from cross_currency_basis
+      primitive (PR #239) which validated the sign convention via
+      four independent corroborations. Returns typed Panel (rows=
+      dates, columns=pairs, units=BPS).
+
+    bucket_rationale: >-
+      Composition primitive. Per-pair basis math is INLINED here
+      (duplicates cross_currency_basis math intentionally for self-
+      containedness — both use the same divisors, same annualisation,
+      same sign convention). V1 closed pair set wire-frozen at the
+      5 G10 pairs with both FX-forward AND local/USD OIS coverage.
+
+    pm_overridable:
+      - tenor
+      - start_date
+      - end_date
+      - missing_data_policy
+      - field_name
+
+    related_tools:
+      - get_fx_cross_currency_basis_tool
+      - scan_fx_cross_currency_basis_tool
+
+    workflows:
+      - fx_basis_monitor
+
+    references:
+      - fx_agent/forwards/tools/cross_currency_basis
+      - shared/analytics/rates_fetch.py::fetch_cross_market_pair
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute test 8/8 PASS live-DB (G10_BASIS_V1 1M = 624
+      obs × 5 pairs). sign_convention round-trips as
+      'bloomberg_bcrx_usd_scarcity_negative'. Sign-sanity check
+      verifies DM basis avg < 5bp (USD-scarcity convention).
+
+  - name: scan_fx_cross_currency_basis
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_cross_currency_basis_tool
+      schema: fx_agent/forwards/tools/scan_fx_cross_currency_basis/schemas.py::FXBasisScannerInput
+      compute: fx_agent/forwards/tools/scan_fx_cross_currency_basis/compute.py::run_fx_cross_currency_basis_scanner
+      config: fx_agent/forwards/tools/scan_fx_cross_currency_basis/config.yaml
+
+    one_liner: >-
+      Cross-sectional CIP basis ranker over the V1 closed pair set.
+      Pure composition primitive: consumes calculate_fx_basis_panel
+      and ranks pairs by current basis level / |basis| / |z-score|.
+      rank_by='basis_signed' puts the most-negative basis at rank #1
+      (greatest USD scarcity first).
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate basis math (that lives
+      in cross_currency_basis + fx_basis_panel). Z-score uses
+      ddof=1, min_periods=60 on 252d trailing window (YAML-locked).
+      Sign convention inherited.
+
+    pm_overridable:
+      - tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_basis_panel_tool
+      - get_fx_cross_currency_basis_tool
+
+    workflows:
+      - fx_basis_monitor
+
+    references:
+      - fx_agent/forwards/tools/fx_basis_panel
+      - fx_agent/forwards/tools/cross_currency_basis
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests 8/8 PASS (basis ranking
+      monotone for both 'basis_signed' and 'abs_basis' modes).
+
+  - name: scan_fx_implied_yield_differential
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_implied_yield_differential_tool
+      schema: fx_agent/forwards/tools/scan_fx_implied_yield_differential/schemas.py::FXIYDScannerInput
+      compute: fx_agent/forwards/tools/scan_fx_implied_yield_differential/compute.py::run_fx_implied_yield_differential_scanner
+      config: fx_agent/forwards/tools/scan_fx_implied_yield_differential/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX implied yield differential scanner — carry
+      leader-board. For each pair in market_scope, computes the
+      FX-implied (local-USD) annualised rate spread series via joined
+      spot+forward history and ranks the cross-section. Math inlined
+      from implied_yield_differential primitive (PR #237) — same
+      divisors, same annualisation, same sign convention.
+
+    bucket_rationale: >-
+      Math is intentionally INLINED to keep the scanner self-contained
+      without re-touching the frozen implied_yield_differential PR.
+      Single math source of truth via the per-pair primitive (the
+      scanner's math is byte-identical via shared.fx_agent.forwards.
+      _shared helpers).
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_forwards_panel_tool
+      - calculate_fx_carry_basket_tool
+
+    workflows:
+      - fx_carry_monitor
+
+    references:
+      - fx_agent/forwards/tools/implied_yield_differential
+      - fx_agent/forwards/_shared.py
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 top-5 iyd_signed
+      ranking monotone; EM scope returns non-empty result).
+
+  - name: scan_fx_calendar_spread
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_calendar_spread_tool
+      schema: fx_agent/vol/tools/scan_fx_calendar_spread/schemas.py::FXCalendarSpreadScannerInput
+      compute: fx_agent/vol/tools/scan_fx_calendar_spread/compute.py::run_fx_calendar_spread_scanner
+      config: fx_agent/vol/tools/scan_fx_calendar_spread/config.yaml
+
+    one_liner: >-
+      Cross-sectional ATM vol calendar-spread scanner — vol term-
+      structure ranker. Composes calculate_fx_vol_panel at
+      (front_tenor, ATM) and (back_tenor, ATM); inner-joins per pair;
+      computes spread = front - back; ranks cross-section.
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate vol math (that lives
+      in fx_vol_panel + per-pair vol_calendar_spread primitive).
+      Z-score on 252d trailing window (ddof=1, min_periods=60).
+      Pydantic guard ensures front_tenor ≠ back_tenor.
+
+    pm_overridable:
+      - market_scope
+      - front_tenor
+      - back_tenor
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_vol_panel_tool
+      - get_fx_vol_calendar_spread_tool
+      - get_fx_vol_term_structure_tool
+
+    workflows:
+      - fx_vol_workspace
+
+    references:
+      - fx_agent/vol/tools/fx_vol_panel
+      - fx_agent/vol/tools/vol_calendar_spread
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 1M-vs-3M top-3
+      ranking monotone; spread = front - back identity verified
+      to 0.01 vol pct; front==back rejected at Pydantic boundary).
+
+  - name: scan_fx_vol_skew
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: cross_sectional_scanner
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: scan_fx_vol_skew_tool
+      schema: fx_agent/vol/tools/scan_fx_vol_skew/schemas.py::FXVolSkewScannerInput
+      compute: fx_agent/vol/tools/scan_fx_vol_skew/compute.py::run_fx_vol_skew_scanner
+      config: fx_agent/vol/tools/scan_fx_vol_skew/config.yaml
+
+    one_liner: >-
+      Cross-sectional FX vol skew (risk-reversal / butterfly)
+      scanner. Composes calculate_fx_vol_panel at the requested
+      smile_point ('25R'/'10R'/'25B'/'10B') and ranks pairs by
+      current skew level / |skew| / |z-score|.
+
+    bucket_rationale: >-
+      Pure composition — does NOT duplicate smile-point math (lives
+      in fx_vol_panel substrate routing + per-pair risk_reversal /
+      butterfly primitives). Sign convention inherited from substrate.
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - smile_point
+      - rank_by
+      - top_n
+      - lookback_days
+
+    related_tools:
+      - calculate_fx_vol_panel_tool
+      - get_fx_risk_reversal_tool
+      - get_fx_butterfly_tool
+      - get_fx_vol_smile_tool
+
+    workflows:
+      - fx_vol_workspace
+
+    references:
+      - fx_agent/vol/tools/fx_vol_panel
+      - fx_agent/vol/tools/risk_reversal
+      - fx_agent/vol/tools/butterfly
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Phase F1 scanner compute tests PASS (G10 1M 25R skew_signed
+      ranking monotone; G10 1M 25B butterfly returns non-empty).
