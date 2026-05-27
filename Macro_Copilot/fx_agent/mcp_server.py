@@ -122,6 +122,44 @@ from fx_agent.spot.tools.spot_levels import (  # noqa: E402
     FXSpotLevelInput,
     get_fx_spot_level,
 )
+
+# ---- Phase F1 (2026-05-27): 3 panels + 4 scanners ----
+from fx_agent.vol.tools.fx_vol_panel import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_PANEL_CONFIG_PATH,
+    FXVolPanelInput,
+    calculate_fx_vol_panel,
+)
+from fx_agent.forwards.tools.fx_forwards_panel import (  # noqa: E402
+    CONFIG_PATH as FX_FORWARDS_PANEL_CONFIG_PATH,
+    FXForwardsPanelInput,
+    calculate_fx_forwards_panel,
+)
+from fx_agent.forwards.tools.fx_basis_panel import (  # noqa: E402
+    CONFIG_PATH as FX_BASIS_PANEL_CONFIG_PATH,
+    FXBasisPanelInput,
+    calculate_fx_basis_panel,
+)
+from fx_agent.forwards.tools.scan_fx_cross_currency_basis import (  # noqa: E402
+    CONFIG_PATH as FX_BASIS_SCANNER_CONFIG_PATH,
+    FXBasisScannerInput,
+    run_fx_cross_currency_basis_scanner,
+)
+from fx_agent.forwards.tools.scan_fx_implied_yield_differential import (  # noqa: E402
+    CONFIG_PATH as FX_IYD_SCANNER_CONFIG_PATH,
+    FXIYDScannerInput,
+    run_fx_implied_yield_differential_scanner,
+)
+from fx_agent.vol.tools.scan_fx_calendar_spread import (  # noqa: E402
+    CONFIG_PATH as FX_CALSPREAD_SCANNER_CONFIG_PATH,
+    FXCalendarSpreadScannerInput,
+    run_fx_calendar_spread_scanner,
+)
+from fx_agent.vol.tools.scan_fx_vol_skew import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_SKEW_SCANNER_CONFIG_PATH,
+    FXVolSkewScannerInput,
+    run_fx_vol_skew_scanner,
+)
+
 from shared.config import load_tool_config  # noqa: E402
 
 
@@ -1211,6 +1249,320 @@ def get_fx_carry_basket_tool(
             market_scope, tenor, top_n,
         )
         return json.dumps({"error": f"FX carry basket failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+# ============================================================================
+# Phase F1 (2026-05-27): 3 cross-sectional panels + 4 scanners
+# ============================================================================
+
+
+@mcp.tool()
+def calculate_fx_vol_panel_tool(
+    market_scope: str,
+    start_date: str,
+    end_date: Optional[str] = None,
+    tenor: str = "1M",
+    smile_point: str = "ATM",
+    missing_data_policy: Optional[str] = None,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Cross-sectional FX vol Panel for a (market_scope, tenor, smile_point) slice.
+
+    Mirror of calculate_fx_panel_tool for the fx_vol substrate.
+    ATM smile_point routes to instrument_type='fx_vol'; 25R/25B/
+    10R/10B routes to instrument_type='fx_vol_smile' (the fetcher
+    handles substrate routing). Returns metadata only — the typed
+    Panel artifact is stripped before serialisation.
+
+    Parameters
+    ----------
+    market_scope : str — one of {"G10", "EM", "G10_CROSSES", "ALL"}.
+    start_date : str — ISO date "YYYY-MM-DD" (inclusive).
+    end_date : str | None — ISO date; None = latest.
+    tenor : str, default "1M" — one of {"1W","1M","3M","6M","12M"}.
+    smile_point : str, default "ATM" — one of {"ATM","25R","25B","10R","10B"}.
+    missing_data_policy : str | None — one of {"forward_fill_only",
+        "raise", "drop_rows_any_missing"}; None = config default.
+    field_name : str, default "PX_LAST".
+    """
+    from datetime import date as _date
+
+    try:
+        params = FXVolPanelInput(
+            market_scope=market_scope,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date) if end_date else None,
+            tenor=tenor,
+            smile_point=smile_point,
+            missing_data_policy=missing_data_policy,
+            field_name=field_name,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_VOL_PANEL_CONFIG_PATH)
+        result = calculate_fx_vol_panel(_get_engine(), params, config=config)
+        result.pop("panel", None)
+    except Exception as exc:
+        logger.exception(
+            "FX vol panel failed for scope=%s tenor=%s smile=%s",
+            market_scope, tenor, smile_point,
+        )
+        return json.dumps({"error": f"FX vol panel failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def calculate_fx_forwards_panel_tool(
+    market_scope: str,
+    start_date: str,
+    end_date: Optional[str] = None,
+    tenor: str = "1M",
+    missing_data_policy: Optional[str] = None,
+    field_name: str = "PX_LAST",
+) -> str:
+    """Cross-sectional FX forwards Panel for a (market_scope, tenor) slice.
+
+    Mirror of calculate_fx_panel_tool for the fx_forward substrate.
+    Returns metadata only — the typed Panel artifact (forward
+    points in pips) is stripped before serialisation.
+
+    Parameters
+    ----------
+    market_scope : str — one of {"G10", "EM", "ALL"} (no G10_CROSSES
+        family in fwd substrate).
+    start_date : str — ISO date "YYYY-MM-DD" (inclusive).
+    end_date : str | None — ISO date; None = latest.
+    tenor : str, default "1M" — one of {"1W","1M","3M","6M","12M"}.
+    missing_data_policy : str | None — see fx_panel.
+    field_name : str, default "PX_LAST".
+    """
+    from datetime import date as _date
+
+    try:
+        params = FXForwardsPanelInput(
+            market_scope=market_scope,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date) if end_date else None,
+            tenor=tenor,
+            missing_data_policy=missing_data_policy,
+            field_name=field_name,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_FORWARDS_PANEL_CONFIG_PATH)
+        result = calculate_fx_forwards_panel(_get_engine(), params, config=config)
+        result.pop("panel", None)
+    except Exception as exc:
+        logger.exception(
+            "FX forwards panel failed for scope=%s tenor=%s",
+            market_scope, tenor,
+        )
+        return json.dumps({"error": f"FX forwards panel failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def calculate_fx_basis_panel_tool(
+    start_date: str,
+    end_date: Optional[str] = None,
+    market_scope: str = "G10_BASIS_V1",
+    tenor: str = "1M",
+    missing_data_policy: Optional[str] = None,
+    field_name: Optional[str] = None,
+) -> str:
+    """Cross-sectional FX CIP basis Panel for the V1 closed pair set.
+
+    Composition primitive: assembles per-pair basis_bps series
+    using the same math as cross_currency_basis (sign convention
+    Bloomberg BCRX-style — NEGATIVE = USD scarcity). V1 pair set
+    is wire-frozen at {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD}.
+
+    Returns metadata only — the typed Panel artifact is stripped
+    before serialisation.
+
+    Parameters
+    ----------
+    start_date : str — ISO date "YYYY-MM-DD" (inclusive).
+    end_date : str | None — ISO date; None = latest.
+    market_scope : str, default "G10_BASIS_V1" (only valid V1 value).
+    tenor : str, default "1M" — applied to FX leg AND OIS leg
+        (FX 12M aliased to OIS 1Y internally).
+    missing_data_policy : str | None — see fx_panel.
+    field_name : str | None — overrides PX_LAST on both legs.
+    """
+    from datetime import date as _date
+
+    try:
+        params = FXBasisPanelInput(
+            market_scope=market_scope,
+            start_date=_date.fromisoformat(start_date),
+            end_date=_date.fromisoformat(end_date) if end_date else None,
+            tenor=tenor,
+            missing_data_policy=missing_data_policy,
+            field_name=field_name,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_BASIS_PANEL_CONFIG_PATH)
+        result = calculate_fx_basis_panel(_get_engine(), params, config=config)
+        result.pop("panel", None)
+    except Exception as exc:
+        logger.exception(
+            "FX basis panel failed for scope=%s tenor=%s", market_scope, tenor,
+        )
+        return json.dumps({"error": f"FX basis panel failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_cross_currency_basis_tool(
+    tenor: str = "1M",
+    rank_by: str = "basis_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+) -> str:
+    """Cross-sectional CIP basis scanner — V1 closed pair set ranker.
+
+    Pure composition primitive: calls calculate_fx_basis_panel and
+    ranks the {EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD} cross-
+    section by current basis level / |basis| / |z-score|.
+
+    Sign convention inherited (NEGATIVE basis = USD scarcity).
+    rank_by='basis_signed' puts the most-negative basis at rank #1.
+    """
+    try:
+        params = FXBasisScannerInput(
+            tenor=tenor, rank_by=rank_by, top_n=top_n,
+            lookback_days=lookback_days,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_BASIS_SCANNER_CONFIG_PATH)
+        result = run_fx_cross_currency_basis_scanner(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX basis scanner failed for tenor=%s", tenor)
+        return json.dumps({"error": f"FX basis scanner failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_implied_yield_differential_tool(
+    market_scope: str = "G10",
+    tenor: str = "1M",
+    rank_by: str = "iyd_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+) -> str:
+    """Cross-sectional FX implied yield differential scanner — carry leader-board.
+
+    For each pair in (market_scope ∩ fx_forward at tenor), computes
+    the FX-implied (local-USD) annualised rate spread series and
+    ranks the cross-section. Math inlined from
+    implied_yield_differential primitive (PR #237).
+    """
+    try:
+        params = FXIYDScannerInput(
+            market_scope=market_scope, tenor=tenor, rank_by=rank_by,
+            top_n=top_n, lookback_days=lookback_days,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_IYD_SCANNER_CONFIG_PATH)
+        result = run_fx_implied_yield_differential_scanner(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX iyd scanner failed for scope=%s tenor=%s", market_scope, tenor)
+        return json.dumps({"error": f"FX iyd scanner failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_calendar_spread_tool(
+    market_scope: str = "G10",
+    front_tenor: str = "1M",
+    back_tenor: str = "3M",
+    rank_by: str = "spread_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+) -> str:
+    """Cross-sectional ATM vol calendar spread scanner — vol term-structure ranker.
+
+    Composes fx_vol_panel at (front_tenor, ATM) and (back_tenor,
+    ATM); inner-joins per pair; computes spread = front - back;
+    ranks cross-section. Identifies dislocations in the vol term
+    structure across the universe.
+    """
+    try:
+        params = FXCalendarSpreadScannerInput(
+            market_scope=market_scope,
+            front_tenor=front_tenor, back_tenor=back_tenor,
+            rank_by=rank_by, top_n=top_n, lookback_days=lookback_days,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_CALSPREAD_SCANNER_CONFIG_PATH)
+        result = run_fx_calendar_spread_scanner(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX calendar spread scanner failed for scope=%s front=%s back=%s",
+            market_scope, front_tenor, back_tenor,
+        )
+        return json.dumps({"error": f"FX calendar spread scanner failed: {exc}"}, default=str)
+
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def scan_fx_vol_skew_tool(
+    market_scope: str = "G10",
+    tenor: str = "1M",
+    smile_point: str = "25R",
+    rank_by: str = "skew_signed",
+    top_n: Optional[int] = None,
+    lookback_days: int = 365,
+) -> str:
+    """Cross-sectional FX vol skew (risk reversal / butterfly) scanner.
+
+    Composes fx_vol_panel at the requested smile_point ('25R',
+    '10R', '25B', '10B') and ranks pairs by current skew level /
+    |skew| / |z-score|. Pure composition primitive — vol math
+    lives in fx_vol_panel + per-pair primitives.
+    """
+    try:
+        params = FXVolSkewScannerInput(
+            market_scope=market_scope, tenor=tenor, smile_point=smile_point,
+            rank_by=rank_by, top_n=top_n, lookback_days=lookback_days,
+        )
+    except (ValidationError, ValueError) as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc}"}, default=str)
+
+    try:
+        config = load_tool_config(FX_VOL_SKEW_SCANNER_CONFIG_PATH)
+        result = run_fx_vol_skew_scanner(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX vol skew scanner failed for scope=%s tenor=%s smile=%s",
+            market_scope, tenor, smile_point,
+        )
+        return json.dumps({"error": f"FX vol skew scanner failed: {exc}"}, default=str)
+
     return json.dumps(result, default=str)
 
 

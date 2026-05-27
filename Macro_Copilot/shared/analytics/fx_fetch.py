@@ -328,7 +328,281 @@ def fetch_fx_spot_series(
     return df.reset_index(drop=True)
 
 
+# ============================================================================
+# FX VOL PANEL (Phase F1 — 2026-05-27)
+# ============================================================================
+
+# market_scope → fx_family list for fx_vol substrate. Mirror of the spot
+# scope map but adapted to vol family naming (G10_FX_VOL / EM_FX_VOL /
+# G10_CROSSES_FX_VOL). Defined separately so vol-only callers can't
+# accidentally pick up spot-only scopes.
+_SCOPE_TO_FX_VOL_FAMILIES: Dict[str, Optional[Tuple[str, ...]]] = {
+    "G10":         ("G10_FX_VOL",),
+    "EM":          ("EM_FX_VOL",),
+    "G10_CROSSES": ("G10_CROSSES_FX_VOL",),
+    "ALL":         None,
+}
+# Parallel map for the fx_vol_smile substrate — ingestion tags those
+# instruments under '..._FX_VOL_SMILE' fx_family rather than the ATM
+# '..._FX_VOL'. Switching here (instead of synthesising the suffix
+# on the fly) keeps the family taxonomy explicit and auditable.
+_SCOPE_TO_FX_VOL_SMILE_FAMILIES: Dict[str, Optional[Tuple[str, ...]]] = {
+    "G10":         ("G10_FX_VOL_SMILE",),
+    "EM":          ("EM_FX_VOL_SMILE",),
+    "G10_CROSSES": ("G10_CROSSES_FX_VOL_SMILE",),
+    "ALL":         None,
+}
+_VALID_VOL_MARKET_SCOPES: frozenset[str] = frozenset(_SCOPE_TO_FX_VOL_FAMILIES.keys())
+
+
+def fetch_fx_vol_panel(
+    engine: Engine,
+    market_scope: str,
+    start_date: date,
+    *,
+    tenor: str = "1M",
+    smile_point: str = "ATM",
+    end_date: Optional[date] = None,
+    field_name: str = "PX_LAST",
+) -> Tuple[pd.DataFrame, List[Dict[str, str]]]:
+    """Fetch the long-format FX vol panel for a (market_scope, tenor,
+    smile_point) slice.
+
+    Mirror of fetch_fx_spot_panel for the fx_vol substrate. Returns
+    (long_df, instrument_meta) — caller pivots into the wide Panel.
+
+    ATM lives in instrument_type='fx_vol' (per existing E1 substrate
+    convention); 25R/25B/10R/10B live in instrument_type='fx_vol_smile'.
+    The function routes to the right substrate based on smile_point.
+
+    Returns (empty_df, []) on no rows — caller decides whether to raise.
+    """
+    if market_scope not in _VALID_VOL_MARKET_SCOPES:
+        raise ValueError(
+            f"market_scope={market_scope!r} not in closed set "
+            f"{sorted(_VALID_VOL_MARKET_SCOPES)} for fx_vol panel. "
+            "Extend _SCOPE_TO_FX_VOL_FAMILIES and the consumer Pydantic "
+            "Literal together if adding a new scope."
+        )
+    if end_date is not None and end_date < start_date:
+        raise ValueError(
+            f"end_date={end_date} cannot be before start_date={start_date}."
+        )
+
+    # Route ATM → fx_vol substrate; smile points → fx_vol_smile substrate.
+    if smile_point == "ATM":
+        instrument_type = "fx_vol"
+    elif smile_point in {"25R", "25B", "10R", "10B"}:
+        instrument_type = "fx_vol_smile"
+    else:
+        raise ValueError(
+            f"smile_point={smile_point!r} not in supported set "
+            "{'ATM','25R','25B','10R','10B'}."
+        )
+
+    # The smile substrate is tagged under '..._FX_VOL_SMILE' families,
+    # NOT '..._FX_VOL'. Pick the right map based on the routed
+    # instrument_type so the scope filter actually matches the data.
+    if instrument_type == "fx_vol_smile":
+        fx_families = _SCOPE_TO_FX_VOL_SMILE_FAMILIES[market_scope]
+    else:
+        fx_families = _SCOPE_TO_FX_VOL_FAMILIES[market_scope]
+    scope_predicate = ""
+    if fx_families is not None:
+        scope_predicate = " AND attributes->>'fx_family' = ANY(:fx_families)"
+
+    smile_predicate = ""
+    if instrument_type == "fx_vol_smile":
+        smile_predicate = " AND attributes->>'smile_point' = :smile_point"
+
+    sql_instruments = text(f"""
+        SELECT
+            instrument_id,
+            vendor_ticker AS ticker,
+            attributes->>'pair'         AS pair,
+            attributes->>'base_ccy'     AS base_ccy,
+            attributes->>'quote_ccy'    AS quote_ccy,
+            attributes->>'market_scope' AS market_scope,
+            attributes->>'fx_family'    AS fx_family
+        FROM macro_data.instrument_master
+        WHERE instrument_type = :instrument_type
+          AND tenor = :tenor
+          {smile_predicate}
+          {scope_predicate}
+        ORDER BY attributes->>'pair'
+    """)
+    inst_params: Dict[str, object] = {
+        "instrument_type": instrument_type,
+        "tenor": tenor,
+    }
+    if smile_predicate:
+        inst_params["smile_point"] = smile_point
+    if fx_families is not None:
+        inst_params["fx_families"] = list(fx_families)
+
+    with engine.connect() as conn:
+        rows = conn.execute(sql_instruments, inst_params).mappings().all()
+
+    if not rows:
+        return pd.DataFrame(columns=["trade_date", "pair", "field_value"]), []
+
+    instrument_ids = [int(r["instrument_id"]) for r in rows]
+    pair_by_id = {int(r["instrument_id"]): str(r["pair"]) for r in rows}
+    instrument_meta: List[Dict[str, str]] = [
+        {
+            "ticker": str(r["ticker"]),
+            "pair": str(r["pair"]),
+            "base_ccy": str(r["base_ccy"]) if r["base_ccy"] else "",
+            "quote_ccy": str(r["quote_ccy"]) if r["quote_ccy"] else "",
+            "market_scope": str(r["market_scope"]) if r["market_scope"] else "",
+            "fx_family": str(r["fx_family"]) if r["fx_family"] else "",
+            "tenor": tenor,
+            "smile_point": smile_point,
+        }
+        for r in rows
+    ]
+
+    end_predicate = " AND trade_date <= :end_date" if end_date is not None else ""
+    sql_data = text(f"""
+        SELECT
+            d.trade_date,
+            d.instrument_id,
+            d.field_value
+        FROM macro_data.market_data_daily d
+        WHERE d.instrument_id = ANY(:instrument_ids)
+          AND d.field_name    = :field_name
+          AND d.trade_date   >= :start_date
+          {end_predicate}
+        ORDER BY d.instrument_id, d.trade_date
+    """)
+    data_params: Dict[str, object] = {
+        "instrument_ids": instrument_ids,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if end_date is not None:
+        data_params["end_date"] = end_date.isoformat()
+
+    with engine.connect() as conn:
+        rows_data = conn.execute(sql_data, data_params).fetchall()
+    if not rows_data:
+        return pd.DataFrame(columns=["trade_date", "pair", "field_value"]), instrument_meta
+
+    long_df = pd.DataFrame(rows_data, columns=["trade_date", "instrument_id", "field_value"])
+    long_df["pair"] = long_df["instrument_id"].map(pair_by_id)
+    long_df["trade_date"] = pd.to_datetime(long_df["trade_date"])
+    long_df["field_value"] = pd.to_numeric(long_df["field_value"], errors="coerce")
+    long_df = long_df[["trade_date", "pair", "field_value"]].sort_values(["pair", "trade_date"]).reset_index(drop=True)
+    return long_df, instrument_meta
+
+
+# ============================================================================
+# FX FORWARDS PANEL (Phase F1 — 2026-05-27)
+# ============================================================================
+
+_SCOPE_TO_FX_FORWARDS_FAMILIES: Dict[str, Optional[Tuple[str, ...]]] = {
+    "G10": ("G10_FORWARDS",),
+    "EM":  ("EM_FORWARDS",),
+    "ALL": ("G10_FORWARDS", "EM_FORWARDS"),
+}
+_VALID_FORWARDS_MARKET_SCOPES: frozenset[str] = frozenset(_SCOPE_TO_FX_FORWARDS_FAMILIES.keys())
+
+
+def fetch_fx_forwards_panel(
+    engine: Engine,
+    market_scope: str,
+    start_date: date,
+    *,
+    tenor: str = "1M",
+    end_date: Optional[date] = None,
+    field_name: str = "PX_LAST",
+) -> Tuple[pd.DataFrame, List[Dict[str, str]]]:
+    """Fetch the long-format FX forwards (points) panel for a
+    (market_scope, tenor) slice. Mirror of fetch_fx_vol_panel for
+    instrument_type='fx_forward'.
+    """
+    if market_scope not in _VALID_FORWARDS_MARKET_SCOPES:
+        raise ValueError(
+            f"market_scope={market_scope!r} not in closed set "
+            f"{sorted(_VALID_FORWARDS_MARKET_SCOPES)} for fx_forwards panel."
+        )
+    if end_date is not None and end_date < start_date:
+        raise ValueError(
+            f"end_date={end_date} cannot be before start_date={start_date}."
+        )
+
+    fx_families = _SCOPE_TO_FX_FORWARDS_FAMILIES[market_scope]
+
+    sql_instruments = text("""
+        SELECT
+            instrument_id,
+            vendor_ticker AS ticker,
+            attributes->>'pair'         AS pair,
+            attributes->>'fx_family'    AS fx_family
+        FROM macro_data.instrument_master
+        WHERE instrument_type = 'fx_forward'
+          AND tenor = :tenor
+          AND attributes->>'fx_family' = ANY(:fx_families)
+        ORDER BY attributes->>'pair'
+    """)
+    with engine.connect() as conn:
+        rows = conn.execute(sql_instruments, {
+            "tenor": tenor,
+            "fx_families": list(fx_families),
+        }).mappings().all()
+
+    if not rows:
+        return pd.DataFrame(columns=["trade_date", "pair", "field_value"]), []
+
+    instrument_ids = [int(r["instrument_id"]) for r in rows]
+    pair_by_id = {int(r["instrument_id"]): str(r["pair"]) for r in rows}
+    instrument_meta: List[Dict[str, str]] = [
+        {
+            "ticker": str(r["ticker"]),
+            "pair": str(r["pair"]),
+            "fx_family": str(r["fx_family"]) if r["fx_family"] else "",
+            "tenor": tenor,
+        }
+        for r in rows
+    ]
+
+    end_predicate = " AND trade_date <= :end_date" if end_date is not None else ""
+    sql_data = text(f"""
+        SELECT
+            d.trade_date,
+            d.instrument_id,
+            d.field_value
+        FROM macro_data.market_data_daily d
+        WHERE d.instrument_id = ANY(:instrument_ids)
+          AND d.field_name    = :field_name
+          AND d.trade_date   >= :start_date
+          {end_predicate}
+        ORDER BY d.instrument_id, d.trade_date
+    """)
+    data_params: Dict[str, object] = {
+        "instrument_ids": instrument_ids,
+        "field_name": field_name,
+        "start_date": start_date.isoformat(),
+    }
+    if end_date is not None:
+        data_params["end_date"] = end_date.isoformat()
+
+    with engine.connect() as conn:
+        rows_data = conn.execute(sql_data, data_params).fetchall()
+    if not rows_data:
+        return pd.DataFrame(columns=["trade_date", "pair", "field_value"]), instrument_meta
+
+    long_df = pd.DataFrame(rows_data, columns=["trade_date", "instrument_id", "field_value"])
+    long_df["pair"] = long_df["instrument_id"].map(pair_by_id)
+    long_df["trade_date"] = pd.to_datetime(long_df["trade_date"])
+    long_df["field_value"] = pd.to_numeric(long_df["field_value"], errors="coerce")
+    long_df = long_df[["trade_date", "pair", "field_value"]].sort_values(["pair", "trade_date"]).reset_index(drop=True)
+    return long_df, instrument_meta
+
+
 __all__ = [
     "fetch_fx_spot_panel",
     "fetch_fx_spot_series",
+    "fetch_fx_vol_panel",
+    "fetch_fx_forwards_panel",
 ]

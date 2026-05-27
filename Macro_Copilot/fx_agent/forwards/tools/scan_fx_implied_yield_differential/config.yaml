@@ -1,0 +1,121 @@
+tool:
+  name: scan_fx_implied_yield_differential_tool
+  domain: fx_forwards
+  description: |
+    Cross-sectional FX implied yield differential scanner.
+    For each pair in market_scope, computes the FX-implied
+    (local-USD) rate spread series via joined spot+forward
+    history, ranks the cross-section by signed iyd / |iyd| /
+    |z-score|. Carry leader-board — most-positive iyd = highest
+    local-vs-USD rate spread priced into the forward.
+  category: desk_invariant_primitive
+
+conventions:
+  default_fx_spot_field:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX observation; same default as cross_currency_basis.
+
+  z_score_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: 1-year trailing window for normalised richness signal.
+
+  z_score_min_periods:
+    value: 60
+    source: industry_standard_1y_window
+    rationale: At least 60 obs required for stable z-score.
+
+  z_score_ddof:
+    value: 1
+    source: numpy_default
+    rationale: Sample std (ddof=1) for unbiased rolling estimator.
+
+  trailing_range_window_days:
+    value: 252
+    source: industry_standard_1y_window
+    rationale: 1-year trailing range for percentile_252d.
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: 5 trading days for holiday-gap bridging.
+
+  jpy_forward_points_divisor:
+    value: 100.0
+    source: bloomberg_fx_forward_convention
+    rationale: JPY pairs quote points in 1/100 (consistent with fx_carry / cross_currency_basis).
+
+  default_forward_points_divisor:
+    value: 10000.0
+    source: bloomberg_fx_forward_convention
+    rationale: Non-JPY G10 pairs quote points in 1/10000 (consistent with fx_carry / cross_currency_basis).
+
+  annualization_days:
+    value: 252
+    source: industry_standard_business_days
+    rationale: Trading-day count per year.
+
+  tenor_1w_days:
+    value: 5
+    source: industry_standard_business_days
+    rationale: 1W tenor expressed in trading days.
+
+  tenor_1m_days:
+    value: 21
+    source: industry_standard_business_days
+    rationale: 1M tenor expressed in trading days.
+
+  tenor_3m_days:
+    value: 63
+    source: industry_standard_business_days
+    rationale: 3M tenor expressed in trading days.
+
+  tenor_6m_days:
+    value: 126
+    source: industry_standard_business_days
+    rationale: 6M tenor expressed in trading days.
+
+  tenor_12m_days:
+    value: 252
+    source: industry_standard_business_days
+    rationale: 12M tenor expressed in trading days.
+
+  iyd_pct_round_decimals:
+    value: 4
+    source: numerical_convention
+    rationale: 4 decimals on percent-rate spread (basis-point precision).
+
+  z_score_round_decimals:
+    value: 3
+    source: numerical_convention
+    rationale: 3 decimals for z-score.
+
+  percentile_round_decimals:
+    value: 1
+    source: numerical_convention
+    rationale: 1 decimal on 0-100 percentile.
+
+methodology:
+  what_it_does: |
+    1. Resolve the closed pair list for market_scope by querying
+       instrument_master for (fx_spot, fx_forward) joint coverage
+       at the requested tenor.
+    2. For each pair: fetch joined (spot, forward_points) history
+       over lookback_days, compute the iyd series using the same
+       math as get_fx_implied_yield_differential:
+         iyd_pct = sign * (outright/spot - 1) * (252/tenor_days) * 100
+       where outright = spot + forward_points * pip_divisor and
+       sign = +1 for USD-base pairs, -1 for USD-quote pairs.
+    3. Per-pair: current = last value, z-score = (current - mean) /
+       std (252d, ddof=1, min_periods=60), percentile_252d on the
+       252d range.
+    4. Sort cross-section by rank_by descending; truncate to top_n.
+  assumptions:
+    - "Math is INLINED from implied_yield_differential primitive (single math source of truth — same divisors, same annualisation, same sign convention)."
+    - "Pure FX-side primitive (no rates_agent dependency)."
+    - "Universe is the union of fx_spot ∩ fx_forward pairs at the tenor; pairs missing either substrate are silently skipped."
+  citations:
+    - "implied_yield_differential primitive (PR #237) — math reference."
+  planned_extensions:
+    - "Bid/ask-aware iyd once Phase E3+ bid/ask consumers materialise."

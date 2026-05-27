@@ -8,9 +8,13 @@
 
 ## Current status
 
-**Date:** 2026-05-26
+**Date:** 2026-05-27
 
-**Branch:** `codex/fx-tradability-warehouse-seed` — stacked on `codex/fx-data-universe-bbg-warehouse-seed` (PR #207 visibility-only). Full stack: PR #178 → #184 → #189 → #191 → #198 → #203 → #207 → tradability (this branch).
+**Phase F1 ✅ SHIPPED on `codex/fx-phase-f1-fx-panels-scanners` (PR #240 draft, stacked on #239).** 7 cross-sectional FX tools landed: 3 substrate panels (`calculate_fx_vol_panel`, `calculate_fx_forwards_panel`, `calculate_fx_basis_panel`) + 4 composition scanners (`scan_fx_cross_currency_basis`, `scan_fx_implied_yield_differential`, `scan_fx_calendar_spread`, `scan_fx_vol_skew`). FX manifest: 23 → 30 tools. All 35 Phase F1 tests PASS live-DB. Asset-agnostic discipline (G2) preserved: panels emit typed `Panel`; scanners are pure composition; cross-sectional math (correlation / PCA / factor loadings) deliberately NOT duplicated FX-side (consumes `Panel` in shared/operators).
+
+**Phase C ✅ SHIPPED on `codex/fx-phase-c-cip-basis` (PR #239 VALIDATED+FROZEN).** First FX→rates cross-domain primitive (`get_fx_cross_currency_basis`). Sign convention HARD-LOCKED Bloomberg BCRX-style validated via four independent corroborations (Sreeram via Bloomberg ref, Codex algebraic, Claude concrete EURUSD/-30bp, empirical end-to-end PASS on Sreeram-provided OIS data). 1.14M OIS rows ingested locally via Sreeram's official helpers (load_audit IDs 53 + 54).
+
+**Branch (previous status):** `codex/fx-tradability-warehouse-seed` — stacked on `codex/fx-data-universe-bbg-warehouse-seed` (PR #207 visibility-only). Full stack: PR #178 → #184 → #189 → #191 → #198 → #203 → #207 → tradability → #235 (E2) → #236 (E3) → #237 (B+) → #238 (helper) → #239 (Phase C) → #240 (Phase F1).
 
 **Phase in flight:** **FX TRADABILITY layer ✅ COMPLETE.** All substrate seeding done. Bid/ask layer added to spot, forwards, NDFs, ATM vol (std tenors), smile (std tenors). Cross G10 vol ATM seeded. Static convention matrix (NAME / SECURITY_DES / MARKET_SECTOR_DES) ingested for all 638 prior instruments. **695 FX instruments in DB across 6 instrument_types** (was 638 pre-tradability). 32 distinct (instrument_type, field_name) tuples across PX_LAST + PX_BID + PX_ASK.
 
