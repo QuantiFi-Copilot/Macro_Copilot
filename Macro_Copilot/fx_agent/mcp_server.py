@@ -50,6 +50,16 @@ from fx_agent.vol.tools.risk_reversal import (  # noqa: E402
     FXRiskReversalInput,
     get_fx_risk_reversal,
 )
+from fx_agent.vol.tools.vol_calendar_spread import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_CALENDAR_SPREAD_CONFIG_PATH,
+    FXVolCalendarSpreadInput,
+    get_fx_vol_calendar_spread,
+)
+from fx_agent.vol.tools.vol_risk_premium import (  # noqa: E402
+    CONFIG_PATH as FX_VOL_RISK_PREMIUM_CONFIG_PATH,
+    FXVolRiskPremiumInput,
+    get_fx_vol_risk_premium,
+)
 from fx_agent.vol.tools.vol_scanner import (  # noqa: E402
     CONFIG_PATH as FX_VOL_SCANNER_CONFIG_PATH,
     FXVolScannerInput,
@@ -900,6 +910,107 @@ def get_fx_butterfly_tool(
             "FX butterfly failed for %s %sB %s", pair, delta_anchor, tenor,
         )
         return json.dumps({"error": f"FX butterfly failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_vol_risk_premium_tool(
+    pair: str,
+    tenor: str = "1M",
+    realized_window_basis: str = "tenor_matched",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, tenor) FX vol risk premium snapshot.
+
+    VRP = implied ATM vol minus realized vol over a matched horizon.
+    Positive VRP = implied rich vs realized (vol-seller positive
+    carry); negative = implied cheap (vol-buyer positive carry).
+    Quoted in absolute vol points. The canonical vol-carry primitive.
+
+    Joins fx_vol implied with fx_spot-derived realized by trade_date,
+    computes the premium per date, then snapshot + rolling 252d.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair (e.g. 'EURUSD').
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    realized_window_basis : str, default 'tenor_matched'. Choices:
+        'tenor_matched' (default, realized window = tenor trading days)
+        or 'fixed_30d' (30 trading days, useful for cross-tenor
+        comparability). SINGLE central methodology knob.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolRiskPremiumInput(
+            pair=pair, tenor=tenor,
+            realized_window_basis=realized_window_basis,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_RISK_PREMIUM_CONFIG_PATH)
+        result = get_fx_vol_risk_premium(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX vol risk premium failed for %s %s basis=%s",
+            pair, tenor, realized_window_basis,
+        )
+        return json.dumps({"error": f"FX vol risk premium failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_vol_calendar_spread_tool(
+    pair: str,
+    short_tenor: str = "1M",
+    long_tenor: str = "3M",
+    spread_direction: str = "long_minus_short",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, short_tenor, long_tenor) FX vol calendar spread.
+
+    Calendar spread = long-tenor ATM minus short-tenor ATM (signed
+    per spread_direction). Captures vol term-structure carry:
+    positive long_minus_short = contango (upward-sloping curve);
+    negative = backwardation.
+
+    Inner-joins two ATM implied histories by trade_date, then runs
+    snapshot + rolling 252d on the spread series.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair.
+    short_tenor : str, default '1M'.
+    long_tenor : str, default '3M'. Must be strictly later than
+        short_tenor (in trading-day terms; Pydantic-enforced).
+    spread_direction : str, default 'long_minus_short'. Choices:
+        'long_minus_short' (contango +ve, the canonical convention)
+        or 'short_minus_long' (backwardation +ve). SINGLE central
+        methodology knob.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXVolCalendarSpreadInput(
+            pair=pair, short_tenor=short_tenor, long_tenor=long_tenor,
+            spread_direction=spread_direction,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_VOL_CALENDAR_SPREAD_CONFIG_PATH)
+        result = get_fx_vol_calendar_spread(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX vol calendar spread failed for %s %s/%s direction=%s",
+            pair, short_tenor, long_tenor, spread_direction,
+        )
+        return json.dumps({"error": f"FX vol calendar spread failed: {exc}"}, default=str)
     return json.dumps(result, default=str)
 
 

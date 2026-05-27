@@ -1002,3 +1002,128 @@ tools:
       as_of_date = MIN of per-point latest dates. SQL parity within
       0.001 across 4 anchor (pair, tenor) cases x 5 smile points = 20
       series.
+
+  # ---------------------------------------------------------------------------
+  # VOL CARRY TOOLS (Phase E3 — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_vol_risk_premium
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_risk_premium_tool
+      schema: fx_agent/vol/tools/vol_risk_premium/schemas.py::FXVolRiskPremiumInput
+      compute: fx_agent/vol/tools/vol_risk_premium/compute.py::get_fx_vol_risk_premium
+      config: fx_agent/vol/tools/vol_risk_premium/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) FX vol risk premium snapshot — implied ATM
+      vol minus realized vol over a matched horizon. Positive VRP =
+      implied rich vs realized (vol-seller positive carry); negative =
+      implied cheap (vol-buyer positive carry). Quoted in absolute vol
+      points. The canonical vol-carry primitive. Joins fx_vol implied
+      with fx_spot-derived realized by trade_date.
+
+    bucket_rationale: >-
+      Deterministic inner-join of implied (fx_vol) and realized
+      (fx_spot-derived via shared.analytics.fx_fetch) series, then the
+      standard rolling 252-day stats on the premium series. Single
+      methodology knob (realized_window_basis) surfaces the genuine
+      methodological choice between tenor-matched (default) and fixed
+      30d windows. Other conventions (sqrt(252) annualization, ddof=1,
+      ffill_limit) YAML-locked and aligned with fx_realized_vol.
+
+    pm_overridable:
+      - pair
+      - tenor
+      - realized_window_basis
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_realized_vol_tool
+      - get_fx_vol_calendar_spread_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_vol_carry_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+      - fx_agent/spot/tools/realized_vol
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase E3 PR. EURUSD 1M VRP = implied 5.885 - realized
+      4.71 = +1.17 vol pts (vol-seller carry, ~+0.5 z-score). Identity
+      check: |VRP - (implied - realized)| < 0.001 across all cases.
+      Tenor → trading-day map (1W→5, 1M→21, 3M→63, 6M→126, 12M→252)
+      sourced from fx_agent.vol._shared.TENOR_TO_TRADING_DAYS.
+
+  - name: get_fx_vol_calendar_spread
+    domain: fx
+    sub_agent: vol
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_vol_calendar_spread_tool
+      schema: fx_agent/vol/tools/vol_calendar_spread/schemas.py::FXVolCalendarSpreadInput
+      compute: fx_agent/vol/tools/vol_calendar_spread/compute.py::get_fx_vol_calendar_spread
+      config: fx_agent/vol/tools/vol_calendar_spread/config.yaml
+
+    one_liner: >-
+      Single-(pair, short_tenor, long_tenor) FX vol calendar spread —
+      ATM implied vol differential between two standard tenors, signed
+      per spread_direction. Captures vol term-structure carry: positive
+      long_minus_short = contango (upward-sloping curve); negative =
+      backwardation. Quoted in absolute vol points. Pydantic model
+      validator enforces short_tenor < long_tenor (trading-day terms).
+
+    bucket_rationale: >-
+      Deterministic inner-join of two ATM implied histories by
+      trade_date, then standard rolling 252-day stats on the signed
+      spread series. Single methodology knob (spread_direction)
+      surfaces the genuine sign-convention choice. Tenor ordering is
+      Pydantic-enforced (short_tenor strictly < long_tenor) so the
+      spread label is unambiguous.
+
+    pm_overridable:
+      - pair
+      - short_tenor
+      - long_tenor
+      - spread_direction
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - get_fx_atm_vol_level_tool
+      - get_fx_vol_term_structure_tool
+      - get_fx_vol_risk_premium_tool
+
+    workflows:
+      - fx_vol_monitor
+      - fx_vol_carry_workspace
+
+    references:
+      - fx_agent/playbooks/fx_vol.yml
+      - fx_agent/vol/tools/atm_vol_level
+      - fx_agent/vol/tools/vol_term_structure
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase E3 PR. EURUSD 1M-3M spread = 0.0 vol pts (short
+      end flat). EURUSD 1M-12M long_minus_short = +0.715 (contango).
+      Sign-flip check: |LMS + SML| < 1e-6 exact negation. Pydantic
+      catches inverted tenors and equal tenors with fail-loud.

@@ -21,6 +21,10 @@ from fx_agent.vol.tools.butterfly import get_fx_butterfly
 from fx_agent.vol.tools.butterfly.schemas import FXButterflyInput
 from fx_agent.vol.tools.risk_reversal import get_fx_risk_reversal
 from fx_agent.vol.tools.risk_reversal.schemas import FXRiskReversalInput
+from fx_agent.vol.tools.vol_calendar_spread import get_fx_vol_calendar_spread
+from fx_agent.vol.tools.vol_calendar_spread.schemas import FXVolCalendarSpreadInput
+from fx_agent.vol.tools.vol_risk_premium import get_fx_vol_risk_premium
+from fx_agent.vol.tools.vol_risk_premium.schemas import FXVolRiskPremiumInput
 from fx_agent.vol.tools.vol_scanner import run_fx_vol_scanner
 from fx_agent.vol.tools.vol_scanner.schemas import FXVolScannerInput
 from fx_agent.vol.tools.vol_smile import get_fx_vol_smile
@@ -561,3 +565,75 @@ def vol_smile(
         raise HTTPException(status_code=422, detail=f"FX vol smile failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX vol smile failed: {exc}")
+
+
+@router.get("/vol-risk-premium", summary="FX Vol Risk Premium Snapshot")
+def vol_risk_premium(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    tenor: str = Query(default="1M"),
+    realized_window_basis: str = Query(
+        default="tenor_matched",
+        description=(
+            "'tenor_matched' (default) aligns realized window with tenor "
+            "(1M→21d, 3M→63d, ...). 'fixed_30d' uses 30 trading days for "
+            "cross-tenor comparability."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, tenor) vol risk premium snapshot — implied minus realized.
+
+    VRP > 0 = implied rich vs realized = vol-seller positive carry.
+    Quoted in absolute vol points.
+    """
+    try:
+        return get_fx_vol_risk_premium(
+            engine,
+            FXVolRiskPremiumInput(
+                pair=pair, tenor=tenor,
+                realized_window_basis=realized_window_basis,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol risk premium failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol risk premium failed: {exc}")
+
+
+@router.get("/vol-calendar-spread", summary="FX Vol Calendar Spread Snapshot")
+def vol_calendar_spread(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    short_tenor: str = Query(default="1M"),
+    long_tenor: str = Query(default="3M"),
+    spread_direction: str = Query(
+        default="long_minus_short",
+        description=(
+            "'long_minus_short' (default, contango +ve) or "
+            "'short_minus_long' (backwardation +ve)."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, short_tenor, long_tenor) vol calendar spread.
+
+    Spread = long ATM minus short ATM (signed per spread_direction).
+    Quoted in absolute vol points.
+    """
+    try:
+        return get_fx_vol_calendar_spread(
+            engine,
+            FXVolCalendarSpreadInput(
+                pair=pair, short_tenor=short_tenor, long_tenor=long_tenor,
+                spread_direction=spread_direction,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol calendar spread failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol calendar spread failed: {exc}")

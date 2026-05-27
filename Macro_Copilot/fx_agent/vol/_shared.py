@@ -98,6 +98,36 @@ SMILE_POINTS_BF: tuple[str, ...] = ("25B", "10B")
 FXSmileDelta = Literal[25, 10]
 
 
+# ============================================================================
+# Tenor → trading-day map (Phase E3 — 2026-05-27)
+# ============================================================================
+# Standard tenor → trading-day count, used by vol_risk_premium's
+# tenor_matched realized-window basis. Aligned with the platform-wide
+# 252 trading days / year convention (matches realized_vol's
+# annualization_trading_days_per_year config and fx_carry's
+# trading-day annualization). Keeping it here as a SINGLE SOURCE OF
+# TRUTH so vol_risk_premium and any future vol-curve tool agree.
+TENOR_TO_TRADING_DAYS: Dict[str, int] = {
+    "1W": 5,
+    "1M": 21,
+    "3M": 63,
+    "6M": 126,
+    "12M": 252,
+}
+
+
+def tenor_trading_days(tenor: str) -> int:
+    """Resolve a vol-standard tenor to its trading-day count.
+
+    Raises ValueError on unsupported tenor.
+    """
+    if tenor not in TENOR_TO_TRADING_DAYS:
+        raise ValueError(
+            f"Unsupported vol tenor {tenor!r}. Supported: {sorted(TENOR_TO_TRADING_DAYS.keys())}"
+        )
+    return TENOR_TO_TRADING_DAYS[tenor]
+
+
 def smile_vendor_ticker(pair: str, smile_point: str, tenor: str) -> str:
     """Build the Bloomberg vendor_ticker for a smile observation.
 
