@@ -2,12 +2,20 @@ tool:
   name: get_fx_vol_risk_premium_tool
   domain: fx_vol
   description: |
-    Single-(pair, tenor) FX vol risk premium snapshot — implied ATM
-    vol minus realized vol over a matched horizon. Positive VRP =
-    implied rich vs realized (vol-seller positive carry); negative
-    VRP = implied cheap (vol-buyer positive carry). Quoted in
-    absolute vol points. The canonical vol-carry primitive. Central
-    methodology knob: realized_window_basis (PR8).
+    Single-(pair, tenor) FX vol risk premium snapshot — defined
+    EXACTLY as VRP = implied_vol_pct - realized_vol_pct, quoted in
+    ABSOLUTE vol points. Positive VRP = implied > realized (implied
+    is rich vs the recent realized path); negative = implied <
+    realized.
+
+    POSITIONING SIGNAL ONLY — VRP measures the implied-vs-realized
+    differential, NOT a P&L estimate. Net P&L of any vol-seller /
+    vol-buyer trade depends on execution price, bid-ask, hedging
+    path / gamma exposure, and forward realized path — none of which
+    this primitive estimates.
+
+    The canonical vol-carry primitive. Central methodology knob:
+    realized_window_basis (PR8).
   category: desk_invariant_primitive
 
 conventions:
@@ -151,10 +159,11 @@ methodology:
       6. Snapshot + 1/5/21-day changes + rolling 252-day z-score /
          percentile / high / low on the VRP series.
   assumptions:
-    - "Implied vol and realized vol are both quoted in PERCENT — subtraction yields ABSOLUTE vol points (e.g. implied=8.0pct, realized=6.5pct → VRP=+1.5 vol pts)."
-    - "Positive VRP = implied rich vs realized = vol-seller positive carry. Negative VRP = vol-buyer positive carry. Standard trader convention."
-    - "Realized vol uses the same sqrt(252) annualization as fx_realized_vol so any cross-tool VRP recompute matches."
-    - "Realized window for tenor_matched: 1W→5, 1M→21, 3M→63, 6M→126, 12M→252. From fx_agent.vol._shared.TENOR_TO_TRADING_DAYS — single source of truth."
+    - "VRP definition: VRP = implied_vol_pct - realized_vol_pct. Both legs quoted in PERCENT — subtraction yields ABSOLUTE vol points (e.g. implied=8.0pct, realized=6.5pct → VRP=+1.5 vol pts)."
+    - "Sign convention: positive VRP = implied > realized (implied is rich vs the recent realized path); negative = implied < realized."
+    - "VRP IS A POSITIONING SIGNAL, NOT A P&L ESTIMATE. The premium measures the implied-vs-realized differential at a point in time. Realized P&L of any vol-seller / vol-buyer trade depends on execution price, bid-ask spreads, hedging path / gamma exposure, and forward realized path — none of which this primitive estimates. Use VRP for ranking and historical extremeness comparisons; do not interpret a positive VRP as a guaranteed seller carry."
+    - "Realized vol uses sqrt(252) annualization, ddof=1, std of daily log returns — identical to fx_realized_vol so any cross-tool VRP recompute matches."
+    - "Realized window for tenor_matched: 1W→5, 1M→21, 3M→63, 6M→126, 12M→252. From fx_agent.vol._shared.TENOR_TO_TRADING_DAYS — single source of truth. Values = 252 / tenor_years, coherent with the 252 trading-days-per-year annualization shared with realized_vol."
     - "Inner-join on trade_date means the observation_count reflects the date intersection post-realized-vol-warmup, which is shorter than the raw fetch window."
   citations: []
   planned_extensions:

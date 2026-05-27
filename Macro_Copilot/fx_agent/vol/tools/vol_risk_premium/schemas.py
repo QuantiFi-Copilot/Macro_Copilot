@@ -114,9 +114,15 @@ class FXVolRiskPremiumMetrics(BaseModel):
     current_vol_risk_premium_vol_pts: float = Field(
         ...,
         description=(
-            "Latest VRP in ABSOLUTE vol points (implied - realized). "
-            "Positive = implied rich (vol-seller positive carry); "
-            "negative = implied cheap (vol-buyer positive carry)."
+            "Latest VRP in ABSOLUTE vol points, defined exactly as "
+            "VRP = current_implied_vol_pct - current_realized_vol_pct. "
+            "Positive = implied vol > realized vol (implied is rich vs "
+            "the recent realized path). Negative = implied < realized. "
+            "POSITIONING SIGNAL ONLY — VRP is the implied-vs-realized "
+            "differential, NOT a P&L estimate. Net P&L of any vol-"
+            "seller / vol-buyer trade depends on execution price, bid-"
+            "ask, hedging path / gamma exposure, and forward realized "
+            "path — none of which this primitive estimates."
         ),
     )
     daily_change_vol_pts: Optional[float] = Field(
