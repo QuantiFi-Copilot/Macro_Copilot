@@ -1127,3 +1127,140 @@ tools:
       end flat). EURUSD 1M-12M long_minus_short = +0.715 (contango).
       Sign-flip check: |LMS + SML| < 1e-6 exact negation. Pydantic
       catches inverted tenors and equal tenors with fail-loud.
+
+  # ---------------------------------------------------------------------------
+  # FORWARDS CARRY EXTENSIONS (Phase B+ — 2026-05-27)
+  # ---------------------------------------------------------------------------
+
+  - name: get_fx_implied_yield_differential
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: snapshots
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_implied_yield_differential_tool
+      schema: fx_agent/forwards/tools/implied_yield_differential/schemas.py::FXImpliedYieldDifferentialInput
+      compute: fx_agent/forwards/tools/implied_yield_differential/compute.py::get_fx_implied_yield_differential
+      config: fx_agent/forwards/tools/implied_yield_differential/config.yaml
+
+    one_liner: >-
+      Single-(pair, tenor) implied LOCAL-minus-USD rate differential
+      from forward points via Covered Interest Parity (CIP). PM-
+      friendly framing of the same math fx_carry uses internally
+      (carry_annualized_pct = quote-base rate). Sign HARD-LOCKED to
+      local_minus_usd. Pair must contain a USD leg; non-USD G10
+      crosses fail-loud V1. Quoted in PERCENT, annualized at 252
+      trading days.
+
+    bucket_rationale: >-
+      Deterministic SQL join of spot and forward-points history at
+      the requested tenor, JPY-aware divisor (shared helper),
+      annualized to PERCENT, sign-adjusted per usd_leg_position so
+      the output is always local-minus-USD. No PR8 central knob
+      (sign-flipping is presentation not methodology, match
+      vol_smile precedent on PR4 parsimony). Rolling 252-day stats
+      on the differential series via inline pandas (same convention
+      as fx_carry / vol_risk_premium).
+
+    pm_overridable:
+      - pair
+      - tenor
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_forward_curve_tool
+      - get_fx_carry_basket_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_forwards_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/fx_carry
+      - fx_agent/forwards/_shared
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase B+ PR. EURUSD 1M = -1.68% (EUR < USD). USDMXN
+      3M = +3.19% (MXN >> USD). USDJPY 1M = -3.05% (JPY << USD).
+      Identity check: |iyd| == |fx_carry.carry_annualized_pct| within
+      5 bp across G10 + EM cases. EURJPY (no USD leg) fails-loud.
+
+  - name: get_fx_carry_basket
+    domain: fx
+    sub_agent: forwards
+    bucket: 1A
+    category: derived_series
+    status: built
+
+    implementation:
+      mcp_server: fx_agent/mcp_server.py
+      tool_function: get_fx_carry_basket_tool
+      schema: fx_agent/forwards/tools/carry_basket/schemas.py::FXCarryBasketInput
+      compute: fx_agent/forwards/tools/carry_basket/compute.py::get_fx_carry_basket
+      config: fx_agent/forwards/tools/carry_basket/config.yaml
+
+    one_liner: >-
+      FX carry basket STRATEGY INDEX — daily mark-to-market excess
+      return of a paper long-top-N / short-bottom-N FX carry
+      portfolio, cross-sectional equal-weight, rebalanced monthly
+      (21 trading days) with 1-day signal lag for no look-ahead.
+      Returns the cumulative index TimeSeries (RATIO) plus snapshot
+      annualized return / vol / Sharpe / max drawdown. NOT an
+      executable backtest — V1 applies NO transaction costs / bid-
+      ask / slippage / forward roll. Real-money equivalent diverges
+      by typically 200-400 bp annualized after frictions.
+
+    bucket_rationale: >-
+      Deterministic cross-sectional compute over the (spot, forward)
+      panel for the market_scope universe. All methodology choices
+      HARD-LOCKED in config (rebalance=21d, signal_lag=1d, weighting=
+      equal_weight, TC=none, sign=long-pair-carry). Single
+      methodology knob (basket_construction) surfaces the genuine
+      zero-cost-cross-sectional vs unidirectional structural choice.
+      Sign convention = -(F/S-1)*(annual/tenor)*100 = r_base - r_quote
+      (carry of going LONG the pair), so high signal = currency to
+      long for canonical FX carry (avoids the easy-to-get-wrong
+      inverted strategy).
+
+    pm_overridable:
+      - market_scope
+      - tenor
+      - top_n
+      - basket_construction
+      - lookback_days
+      - field_name
+
+    related_tools:
+      - calculate_fx_carry_tool
+      - get_fx_implied_yield_differential_tool
+      - calculate_fx_panel_tool
+
+    workflows:
+      - fx_carry_monitor
+      - fx_strategy_workspace
+
+    references:
+      - fx_agent/playbooks/fx_forwards.yml
+      - fx_agent/forwards/tools/fx_carry
+      - fx_agent/spot/tools/fx_panel
+
+    built_date: 2026-05-27
+    validation_status: >-
+      Targeted compute + wiring + SQL-validation + PR15 parity tests
+      shipped in Phase B+ PR. G10 1M long_short canonical
+      constituents: long USDxxx (JPY/CHF/CAD, high USD vs low-yielder
+      carry), short xxxUSD (EUR/GBP/AUD). EM 3M canonical: USDTRY in
+      short leg (highest-yielder long). Long-only returns only the
+      long leg. Sharpe / vol / drawdown numerics in plausible ranges
+      for 2y FX carry backtests (G10 Sharpe near zero in 2024-2026
+      headwind regime; EM Sharpe ~1.4 on TRY/MXN/ZAR carry capture).
+      SQL constituent-selection reproduction matches tool output for
+      G10 / EM / long_short / long_only combos.

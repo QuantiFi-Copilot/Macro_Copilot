@@ -15,6 +15,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 from database.database import get_db_engine  # noqa: E402
+from fx_agent.forwards.tools.carry_basket import (  # noqa: E402
+    CONFIG_PATH as FX_CARRY_BASKET_CONFIG_PATH,
+    FXCarryBasketInput,
+    get_fx_carry_basket,
+)
 from fx_agent.forwards.tools.forward_curve import (  # noqa: E402
     CONFIG_PATH as FX_FORWARD_CURVE_CONFIG_PATH,
     FXForwardCurveInput,
@@ -24,6 +29,11 @@ from fx_agent.forwards.tools.fx_carry import (  # noqa: E402
     CONFIG_PATH as FX_CARRY_CONFIG_PATH,
     FXCarryInput,
     get_fx_carry,
+)
+from fx_agent.forwards.tools.implied_yield_differential import (  # noqa: E402
+    CONFIG_PATH as FX_IMPLIED_YIELD_DIFF_CONFIG_PATH,
+    FXImpliedYieldDifferentialInput,
+    get_fx_implied_yield_differential,
 )
 from fx_agent.ndf.tools.ndf_implied_carry import (  # noqa: E402
     CONFIG_PATH as FX_NDF_IMPLIED_CARRY_CONFIG_PATH,
@@ -1052,6 +1062,103 @@ def get_fx_vol_smile_tool(
     except Exception as exc:
         logger.exception("FX vol smile failed for %s %s", pair, tenor)
         return json.dumps({"error": f"FX vol smile failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_implied_yield_differential_tool(
+    pair: str,
+    tenor: str = "1M",
+    lookback_days: int = 365,
+    field_name: Optional[str] = None,
+) -> str:
+    """Single-(pair, tenor) FX implied yield differential snapshot.
+
+    The local-minus-USD rate spread implied from forward points via
+    Covered Interest Parity (CIP). PM-friendly framing of the same
+    math fx_carry uses internally. Sign convention HARD-LOCKED:
+    positive = local rate > USD rate, negative = local rate < USD rate.
+
+    Pair MUST contain a USD leg. Non-USD G10 crosses (EURJPY, GBPCHF,
+    ...) fail-loud at compute time. Identity check vs fx_carry:
+    |this.differential| == |fx_carry.carry_annualized_pct|.
+
+    Parameters
+    ----------
+    pair : str — six-char FX pair with a USD leg.
+    tenor : str, default '1M' — one of '1W', '1M', '3M', '6M', '12M'.
+    lookback_days : int, default 365.
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXImpliedYieldDifferentialInput(
+            pair=pair, tenor=tenor,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_IMPLIED_YIELD_DIFF_CONFIG_PATH)
+        result = get_fx_implied_yield_differential(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception("FX implied yield differential failed for %s %s", pair, tenor)
+        return json.dumps({"error": f"FX implied yield differential failed: {exc}"}, default=str)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_fx_carry_basket_tool(
+    market_scope: str = "G10",
+    tenor: str = "1M",
+    top_n: int = 3,
+    basket_construction: str = "long_short_top_n",
+    lookback_days: int = 730,
+    field_name: Optional[str] = None,
+) -> str:
+    """FX carry basket STRATEGY INDEX (not an executable backtest).
+
+    Daily mark-to-market excess return of a paper long-top-N /
+    short-bottom-N FX carry portfolio (cross-sectional equal-weight,
+    rebalanced monthly = 21 trading days, 1-day signal lag for no
+    look-ahead). Returns the cumulative index TimeSeries plus
+    snapshot annualized return / vol / Sharpe / max drawdown.
+
+    POSITIONING SIGNAL ONLY — NOT an executable backtest. V1 applies
+    NO transaction costs / bid-ask / slippage / forward roll costs.
+    Real-money equivalent typically diverges by 200-400 bp annualized
+    after those frictions.
+
+    Parameters
+    ----------
+    market_scope : str, default 'G10' — one of 'G10', 'EM', 'ALL'.
+    tenor : str, default '1M' — forward tenor for signal + holding.
+    top_n : int, default 3 — number of long (and short) legs.
+    basket_construction : str, default 'long_short_top_n' — one of
+        'long_short_top_n' (zero-cost cross-sectional, default) or
+        'long_only_top_n' (unidirectional bet). SINGLE methodology
+        knob.
+    lookback_days : int, default 730 — fetch window for the strategy
+        index series (2y default for ~1y of valid daily basket
+        returns after rebalance warmup).
+    field_name : str | None — Bloomberg field; None ⇒ PX_LAST.
+    """
+    try:
+        params = FXCarryBasketInput(
+            market_scope=market_scope, tenor=tenor, top_n=top_n,
+            basket_construction=basket_construction,
+            lookback_days=lookback_days, field_name=field_name,
+        )
+    except ValidationError as exc:
+        return json.dumps({"error": f"Invalid parameters: {exc.errors()}"}, default=str)
+    try:
+        config = load_tool_config(FX_CARRY_BASKET_CONFIG_PATH)
+        result = get_fx_carry_basket(_get_engine(), params, config=config)
+    except Exception as exc:
+        logger.exception(
+            "FX carry basket failed for scope=%s tenor=%s top_n=%s",
+            market_scope, tenor, top_n,
+        )
+        return json.dumps({"error": f"FX carry basket failed: {exc}"}, default=str)
     return json.dumps(result, default=str)
 
 
