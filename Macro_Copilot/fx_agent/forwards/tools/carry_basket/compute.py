@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from fx_agent.forwards._shared import (
+    long_pair_carry_signal,
     points_to_spot_units,
     tenor_days_from_config,
 )
@@ -128,35 +129,24 @@ def _compute_wide_signals(
     df["forward_points"] = pd.to_numeric(df["forward_points"], errors="coerce")
     df = df.dropna(subset=["spot", "forward_points"])
 
-    df["fp_spot_units"] = df.apply(
-        lambda r: points_to_spot_units(
-            r["pair"], r["forward_points"],
+    # Compute the carry-of-going-LONG-the-pair signal via the shared
+    # helper (fx_agent.forwards._shared.long_pair_carry_signal). The
+    # helper encapsulates the load-bearing sign convention:
+    #   long_pair_carry = r_base - r_quote = -(F/S - 1) * (annual/tenor) * 100
+    # which is the NEGATIVE of fx_carry.carry_annualized_pct (= r_quote -
+    # r_base). Using the helper means any future tool building a long-
+    # position carry signal will get the right sign by construction.
+    # See the helper's docstring for the rationale and the bug-history
+    # (carry_basket V1 first implementation had the sign inverted).
+    df["carry_signal_pct"] = df.apply(
+        lambda r: long_pair_carry_signal(
+            r["forward_points"], r["spot"], r["pair"],
+            tenor_days=tenor_days,
             jpy_divisor=jpy_divisor, default_divisor=default_divisor,
+            annualization_days=annualization_days,
         ),
         axis=1,
     )
-    # forward_implied_rate_diff = (F/S - 1) * (annual/tenor) * 100
-    # ≈ r_quote - r_base per CIP. This is the SAME number fx_carry's
-    # carry_annualized_pct emits.
-    df["forward_implied_rate_diff_pct"] = (
-        (df["fp_spot_units"] / df["spot"])
-        * (annualization_days / tenor_days)
-        * 100.0
-    )
-    # CRITICAL SIGN CONVENTION for the strategy index:
-    #
-    # "long-pair carry" = carry of going LONG the pair (long base,
-    # short quote) = r_base - r_quote = -forward_implied_rate_diff.
-    #
-    # Canonical FX carry strategy goes LONG high-yielders. In pair
-    # terms: LONG USDxxx (when r_USD > r_xxx) OR LONG xxxUSD (when
-    # r_xxx > r_USD). Both reduce to "long the pair when r_base >
-    # r_quote", i.e. long_pair_carry > 0.
-    #
-    # If we ranked by forward_implied_rate_diff descending and longed
-    # the top, we would systematically long LOW-yielders against
-    # HIGH-yielders — the INVERTED strategy. So we negate.
-    df["carry_signal_pct"] = -df["forward_implied_rate_diff_pct"]
 
     carry_wide = (
         df.pivot_table(
