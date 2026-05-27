@@ -1,0 +1,61 @@
+tool:
+  name: calculate_fx_forwards_panel_tool
+  domain: fx_forwards
+  description: |
+    Cross-sectional FX forwards Panel for a (market_scope, tenor)
+    slice. Mirror of calculate_fx_panel for the fx_forward
+    substrate. Returns typed Panel (rows=dates, columns=pairs,
+    values=forward points in pips) ready for consumption by
+    shared cross-sectional operators (correlation matrix, PCA,
+    factor loadings, etc.) — those operators are NOT duplicated
+    FX-side per the asset-agnostic shared-compute discipline.
+  category: desk_invariant_primitive
+
+conventions:
+  default_field_name:
+    value: PX_LAST
+    source: bloomberg_field_convention
+    rationale: Canonical FX forward points observation.
+
+  default_tenor:
+    value: 1M
+    source: team_judgment_pending_review
+    rationale: 1M is the standard fwd points monitor tenor.
+
+  default_missing_data_policy:
+    value: forward_fill_only
+    source: industry_standard_1y_window
+    rationale: >-
+      Mirror of fx_panel default. ffill bridges holiday gaps
+      without injecting fake data; residual NaN flagged downstream.
+
+  ffill_limit_days:
+    value: 5
+    source: legacy_default_pre_pilot
+    rationale: 5 trading days covers standard holiday clusters.
+    valid_range: [0, 10]
+
+  calendar_policy:
+    value: business_days
+    source: industry_standard_1y_window
+    rationale: Filter to weekdays only — FX forwards substrate is BD-only.
+
+methodology:
+  what_it_does: |
+    For one (market_scope, tenor):
+      1. Fetch fx_forward rows via shared.analytics.fx_fetch.
+         fetch_fx_forwards_panel.
+      2. Pivot long-format to wide Panel (rows=dates, columns=pairs).
+      3. Apply calendar_policy (business_days only) and
+         missing_data_policy (ffill_limit_days then raise/drop/None).
+      4. Construct typed Panel artifact with PRICE units + lineage step.
+      5. Fail-loud on empty fetch, fully-empty columns, post-policy empty.
+  assumptions:
+    - "Panel values are forward points in pips (absolute pip quotes — NOT a percentage)."
+    - "Units = TimeSeriesUnits.PRICE because forward points are an absolute level series. Downstream operators may transform pips → annualised carry via the implied_yield_differential primitive."
+    - "Returns typed Panel artifact (shared.artifacts.types.Panel) consumable by any cross-sectional operator (correlation_matrix, panel_pca, etc.) — those operators belong in shared/, NOT in fx_agent. This is a pure fetcher+pivot+package primitive."
+    - "market_scope restricted to G10 / EM / ALL — no G10_CROSSES fx_family exists for fx_forward (closed map fetch_fx_forwards_panel._SCOPE_TO_FX_FORWARDS_FAMILIES)."
+  citations: []
+  planned_extensions:
+    - "Multi-tenor Panel returning a 3D-indexed artifact once a downstream consumer needs the full term structure."
+    - "Annualised-yield Panel variant (pips → carry %) once a consumer needs apples-to-apples vs. OIS rates."
