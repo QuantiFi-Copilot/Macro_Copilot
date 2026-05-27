@@ -7,6 +7,12 @@ the spot domain (single-pair derived TimeSeries).
 
 For a current-snapshot single value, use get_fx_atm_vol_level instead
 (this tool's snapshot field is just the last point of the series).
+
+V1.1 (2026-05-27 compliance follow-up): output now emits the canonical
+``shared.schemas.time_series.TimeSeries`` shape (PR13 / WT-binding /
+event-study composability). The legacy ``rows`` field is preserved
+alongside ``time_series`` for backward compatibility during the
+transition.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from fx_agent.vol._shared import FXVolStandardTenor
+from shared.schemas import TimeSeries
 
 
 class FXVolZScoreInput(BaseModel):
@@ -45,6 +52,13 @@ class FXVolZScoreInput(BaseModel):
 
 
 class FXVolZScoreRow(BaseModel):
+    """Legacy row shape kept for backward compatibility.
+
+    Consumers building on the canonical TimeSeries shape should use
+    ``output.time_series.rows`` instead (which has the standard
+    ``date`` / ``value`` field names).
+    """
+
     trade_date: str
     z_score: float
 
@@ -86,13 +100,23 @@ class FXVolZScoreOutput(BaseModel):
     rows: list[FXVolZScoreRow] = Field(
         ...,
         description=(
-            "Rolling z-score time series. Each row is a (trade_date, "
-            "z_score) tuple. Rows where the z-score would be None "
-            "(insufficient trailing observations) are EXCLUDED from "
-            "the output so consumers don't need to filter."
+            "LEGACY row shape — (trade_date, z_score) tuples. Kept for "
+            "backward compatibility. New consumers should use the "
+            "``time_series`` field which carries the canonical "
+            "shared.schemas.TimeSeries shape."
+        ),
+    )
+    time_series: TimeSeries = Field(
+        ...,
+        description=(
+            "Canonical TimeSeries shape (PR13 / event-study composable). "
+            "units = Z_SCORE, series_name = "
+            "'<pair_lower>_v<tenor>_atm_vol_zscore_252d'. Each row's "
+            "date is YYYY-MM-DD. Rows where the trailing window is too "
+            "short for a valid z-score are EXCLUDED."
         ),
     )
     units: str = Field(
         default="z_score",
-        description="Closed enum; matches the shared TimeSeriesUnits.Z_SCORE convention.",
+        description="Legacy field — matches TimeSeriesUnits.Z_SCORE.",
     )

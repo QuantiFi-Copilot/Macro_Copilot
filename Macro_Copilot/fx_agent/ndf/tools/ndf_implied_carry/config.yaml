@@ -27,7 +27,7 @@ conventions:
 
   default_tenor:
     value: 1M
-    source: desk_default
+    source: team_judgment_pending_review
     rationale: >-
       One-month tenor is the standard NDF carry monitor tenor (matches
       the deliverable-forwards fx_carry convention).
@@ -70,7 +70,7 @@ conventions:
 
   annualization_days:
     value: 252
-    source: industry_standard_trading_year
+    source: industry_standard_1y_window
     rationale: >-
       Trading-day annualization convention used across the macro stack
       and matching the deliverable-forwards fx_carry tool.
@@ -100,7 +100,7 @@ conventions:
 
   z_score_window_days:
     value: 252
-    source: industry_standard_trading_year
+    source: industry_standard_1y_window
     rationale: >-
       One trading year. Matches fx_carry so cross-asset readers see
       comparable z-scores at the same horizon.
@@ -108,7 +108,7 @@ conventions:
 
   z_score_min_periods:
     value: 60
-    source: industry_standard
+    source: industry_standard_1y_window
     rationale: >-
       Minimum observations before a z-score is emitted; sparse history
       below this returns None to fail loud.
@@ -116,14 +116,14 @@ conventions:
 
   z_score_ddof:
     value: 1
-    source: industry_standard
+    source: industry_standard_sample_std
     rationale: >-
       Sample (Bessel-corrected) standard deviation. Same as fx_carry.
     valid_range: [0, 1]
 
   trailing_range_window_days:
     value: 252
-    source: wire_frozen_v1
+    source: legacy_default_pre_pilot
     rationale: >-
       Locked at 252 in V1; the output schema's field names
       (carry_high_252d / carry_low_252d / carry_percentile_252d) embed
@@ -133,7 +133,7 @@ conventions:
 
   ffill_limit_days:
     value: 5
-    source: industry_standard
+    source: trading_day_convention
     rationale: >-
       Maximum forward-fill window for missing daily observations before
       a gap is treated as a true NA. Same as fx_carry.
