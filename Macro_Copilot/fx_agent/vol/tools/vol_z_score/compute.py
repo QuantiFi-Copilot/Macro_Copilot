@@ -22,6 +22,7 @@ from fx_agent.vol.tools.vol_z_score.schemas import (
     FXVolZScoreSnapshot,
 )
 from shared.config import ToolConfig, load_tool_config
+from shared.schemas import TimeSeries, TimeSeriesRow, TimeSeriesUnits
 
 
 CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
@@ -112,6 +113,7 @@ def get_fx_vol_z_score(
     # OR std == 0).
     emitted = df.dropna(subset=["z_score"]).reset_index(drop=True)
 
+    # Legacy row shape (kept for backward compat)
     rows = [
         FXVolZScoreRow(
             trade_date=row["trade_date"].strftime("%Y-%m-%d"),
@@ -119,6 +121,26 @@ def get_fx_vol_z_score(
         )
         for _, row in emitted.iterrows()
     ]
+    # Canonical TimeSeries shape (PR13 / event-study composable).
+    ts_series_name = (
+        f"{pair.lower()}_v{tenor.lower()}_atm_vol_zscore_252d"
+    )
+    ts_description = (
+        f"Rolling 252-day z-score of {pair} {tenor} ATM implied vol "
+        f"(unit: z-score; min_periods={z_min_periods}; ddof={z_ddof})."
+    )
+    time_series = TimeSeries(
+        series_name=ts_series_name,
+        units=TimeSeriesUnits.Z_SCORE,
+        description=ts_description,
+        rows=[
+            TimeSeriesRow(
+                date=row["trade_date"].strftime("%Y-%m-%d"),
+                value=round(float(row["z_score"]), z_decimals),
+            )
+            for _, row in emitted.iterrows()
+        ],
+    )
 
     current_z = (
         round(float(emitted["z_score"].iloc[-1]), z_decimals)
@@ -150,5 +172,8 @@ def get_fx_vol_z_score(
     )
 
     return FXVolZScoreOutput(
-        snapshot=snapshot, rows=rows, units="z_score"
+        snapshot=snapshot,
+        rows=rows,
+        time_series=time_series,
+        units="z_score",
     ).model_dump()
