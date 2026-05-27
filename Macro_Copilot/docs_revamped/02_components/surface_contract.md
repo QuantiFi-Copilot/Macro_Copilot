@@ -1,11 +1,12 @@
 # Surface Contract
 
-> The authoritative per-tool, per-surface status registry for the Macro_Copilot frontend.
+> The authoritative per-tool, per-surface status registry for the Macro_Copilot frontend.  As of v5 (Phase 0 of the `revamp` branch) the contract also tracks lifecycle-axis status per the [tool lifecycle standard](../03_standards/tool_lifecycle.md).
 
-**Version:** v1 (initial drafting)
+**Version:** v5 (Phase 0 of `revamp` — lifecycle axes added)
 **Last reviewed:** 2026-05-26
-**Status:** draft — pending sign-off
-**Branch discipline:** all rows are written against the `build` branch.
+**Status:** draft — Phase 0 in progress
+**Branch discipline:** as of v5, rows live on the `revamp` branch.  `build` stays at v4 until `revamp` merges back.
+**See also:** [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) (lifecycle standard); [`../05_decisions/0015-tool-metadata-db-table.md`](../05_decisions/0015-tool-metadata-db-table.md) (DB metadata architecture).
 
 ---
 
@@ -16,6 +17,7 @@ Every backend artifact in this system — a **primitive**, an **operator**, or a
 1. Which surface each backend artifact **should** have (eligibility).
 2. Which surface each backend artifact **currently has** (status).
 3. The **classifications** that pin down what "having a surface" actually means for that artifact + surface combination.
+4. **(v5)** Which lifecycle axes (per [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §2) each tool has shipped — see §10.
 
 No surface code may be added, removed, or modified without updating the corresponding row in this document in the same PR. That is the gate.
 
@@ -336,10 +338,47 @@ A PR may land iff:
 2. **No central-file leakage.** PRs that add `case`/`if`/entries for a specific tool in any file under `src/components/{build,library,monitor,ask,layout}/` or in `src/lib/{toolNames,contextDecoder,modelRegistry,persistedModelAdapters}.ts` must be rejected unless the change is generic (i.e. applies to all tools symmetrically). Per-tool exceptions go inside the module folder.
 3. **`tiers` claim matches delivery.** A module's `MODULE.tiers` array is a contract. Adding `monitor_surface` to the array requires shipping a non-stub widget in the same PR. Removing a tier requires removing the surface file.
 4. **Tests track the contract.** `__tests__/module.spec.ts` calls `assertStandardModuleInvariants`, which already cross-checks tier claims against `surfaces.*` files. Strengthening the invariant to also reject stub widgets (e.g. via a minimum-line-count or a manifest of "approved-non-stub" files) is a separate hardening item.
+5. **(v5) Lifecycle gates** — per [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §7.  Tool-touching PRs additionally update the affected tool's lifecycle row in §10; static metadata edits go through the DB (`macro_data.tool_metadata`) with YAML mirrors updated in the same PR; methodology (config.yaml) changes require a parity-fixture regeneration + rationale + per-tool README update.
 
 ---
 
-## 10. Change log
+## 10. Lifecycle status (per tool — Phase 0+)
+
+> Tracks the 7 lifecycle axes per tool per [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §2.
+
+### 10.1 Lifecycle axis status enum
+
+For each tool × each of the 7 lifecycle axes, the status is one of:
+
+| Status | Meaning |
+|---|---|
+| **`not-started`** | Axis not yet shipped for this tool. |
+| **`in-progress`** | Work landed but not complete (e.g. pytest exists but SQL ground-truth doesn't). |
+| **`shipped`** | Axis is complete per the lifecycle standard's definition. |
+| **`n/a`** | Axis is not applicable to this tool (e.g. some tools have no Monitor widget by eligibility rule). |
+
+### 10.2 Policy
+
+- **Pilot tools (Phase 1)** — shown explicitly in §11.3 below.  All 7 axes get tracked.
+- **All other 56 primitives** — defaulted to `not-started` for axes 1, 5, 7 (theoretical reference, known limitations, desk narrative — the human-curated DB fields); inherit existing status for axes 2, 3, 4, 6 (methodology, testing, contracts, frontend — most have partial state today).
+- Per Phase 3 policy: a tool's lifecycle row gets fully filled only when the tool is touched for any reason.  No mass back-fill pass.
+
+### 10.3 Pilot tools (Phase 1)
+
+Two primitives selected per [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §6.  Lifecycle rows for these will be populated in Phase 1; Phase 0 records the pilot selection only.
+
+| tool_name | ax1 theoretical_ref | ax2 methodology (config) | ax3 testing (pytest + SQL + source) | ax4 input/output contracts | ax5 known_limitations | ax6 frontend surfaces | ax7 desk_narrative |
+|---|---|---|---|---|---|---|---|
+| `get_real_yield_level_tool` | not-started | shipped (config.yaml exists) | in-progress (pytest + SQL exist; source-material sign-off pending) | shipped (Pydantic + schemas.py) | not-started | not-started (Phase 1 will polish Build typed-renderer + Monitor widget) | not-started |
+| `calculate_breakeven_inflation_simple_tool` | not-started | shipped (config.yaml exists) | in-progress (pytest + SQL exist; source-material sign-off pending) | shipped (Pydantic + schemas.py) | not-started | not-started (Phase 1 will polish Build typed-renderer + Monitor widget) | not-started |
+
+### 10.4 Workflow pilot — deferred
+
+Workflows (`event_study`, `regime_conditioned_relationship`, `backtest`) are **out of scope for the primitive pilot**.  Workflow lifecycle standardisation happens after the primitive standard proves out — see [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) §5 (workflow caveats).
+
+---
+
+## 11. Change log
 
 | Version | Date | Change |
 |---|---|---|
@@ -347,3 +386,4 @@ A PR may land iff:
 | v2 | 2026-05-26 | Stage C resolution.  Retracted the 3 containment violations from v1: CPI / NFP modules dropped `monitor_surface` + `ask_surface` tier claims (stub widget + regression Ask card); OTR-OFR module dropped `monitor_surface` tier claim (stub widget).  All 3 modules now `generic_runnable` only.  OTR-OFR row updated: Monitor eligibility corrected from `not-required` to `required (deferred)` — it IS desk-glanceable but needs the typed-detail endpoint first. |
 | v3 | 2026-05-26 | Decoder + event_study audit.  §8 item 2 (decoder coverage) marked RESOLVED — audit found the `isRunnablePrimitive` fallback already covers every module by construction; added a coverage assertion in `routingCoverage.test.ts` as a permanent CI guard.  §8 item 4 (event_study frontend) split — frontend chain verified clean; "garbage numbers" attributed to backend payload (out of session scope).  §5 `event_study` row notes updated with audit findings.  No production code changes; test + doc only. |
 | v4 | 2026-05-26 | Operator-surfacing + fork-pipeline audit.  §8 item 5 (operator intermediate-output surfacing) marked RESOLVED — pre-flight read found the existing "Show all artifacts" toggle in `ResultsView.SpecialisedShell` already renders every non-terminal node through the per-artifact widget registry; PR renamed the toggle to "Show intermediate stages (N)" + tightened descriptions across `ResultsView` + `EventStudyDashboard` + `RegimeRelationshipDashboard` + `BacktestDashboard` for vocabulary alignment with §6.  §8 item 3 (workspace fork loop) marked RESOLVED — end-to-end traced; pipeline fully wired through `WorkspaceOverridesProvider.apply` → `forkWorkspace` API → `navigate` to the new slug; already covered by existing tests (`buildE2E.test.ts`, `regressionLock.test.ts §C`).  §6 operator visibility policy expanded with the shipped intermediate-step surfacing details.  `dashboardContract.test.ts` updated to lock the new toggle copy.  100% backwards compatible — same toggle, same state, same per-artifact rendering; only the user-facing copy + count changed. |
+| v5 | 2026-05-26 | **Phase 0 of `revamp` branch.**  Contract extended to track tool lifecycle per the new [`../03_standards/tool_lifecycle.md`](../03_standards/tool_lifecycle.md) standard.  New §10 "Lifecycle status" tracks 7 axes per tool (theoretical_reference, methodology, three-way testing, input/output contracts, known_limitations, frontend surfaces, desk_narrative).  Existing §10 (changelog) renumbered to §11.  §0 + §9 updated to reference the lifecycle doc + the new lifecycle PR gate (#5).  Pilot trio scoped to TWO primitives (`get_real_yield_level_tool` + `calculate_breakeven_inflation_simple_tool`); workflows deferred until primitive standard proves out.  Companion ADR [`../05_decisions/0015-tool-metadata-db-table.md`](../05_decisions/0015-tool-metadata-db-table.md) lands the DB-backed metadata table (`macro_data.tool_metadata`) as the source of truth for units + theoretical reference + known_limitations + desk_narrative.  No code changes outside docs + database/ folders. |

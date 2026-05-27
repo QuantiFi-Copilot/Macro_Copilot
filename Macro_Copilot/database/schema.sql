@@ -468,3 +468,53 @@ CREATE INDEX IF NOT EXISTS idx_futures_deliverables_deliverable_instrument
 
 CREATE INDEX IF NOT EXISTS idx_futures_deliverables_attributes
     ON macro_data.futures_deliverables USING GIN (attributes);
+
+-- ================================================================================================
+-- 8. TOOL METADATA (per-tool static facts: units, theoretical reference, narrative, limitations)
+-- Goal: single DB-backed source of truth for the per-tool static metadata that multiple consumers
+--       (frontend Library, chart unit labels, backend operator unit checks, lineage) read often.
+--       YAML / Python / module-spec mirrors continue to exist for human readability but the DB
+--       row is authoritative.  See ADR docs_revamped/05_decisions/0015-tool-metadata-db-table.md.
+--
+-- Scope: STATIC facts only.  User-overridable methodology stays in
+--        rates_agent/<domain>/tools/<tool>/config.yaml (per tool_lifecycle.md §1 — the user-
+--        config architecture is the source of truth for "which methodology produced this output").
+--        Frequently-changing status flags stay in manifesto/03_tool_manifest/*.yml.
+--
+-- Population: see database/populate_tool_metadata.py.  Mechanical fields (tool_name, domain,
+--             category, output_field_units) populated from existing registries; human-curated
+--             fields (theoretical_reference, known_limitations, desk_narrative,
+--             source_material_verified) stay NULL until per-tool Phase 1 work fills them in.
+--
+-- UPSERT discipline:
+--   Natural key (tool_name) — PRIMARY KEY.  Re-running the populator updates mechanical fields
+--   safely; ON CONFLICT (tool_name) DO UPDATE preserves human-curated NULLs / values.
+-- ================================================================================================
+CREATE TABLE IF NOT EXISTS macro_data.tool_metadata (
+    tool_name           VARCHAR(255) PRIMARY KEY,
+
+    -- Static facts (mechanically derivable; populated by the seed script).
+    domain              VARCHAR(64)  NOT NULL,
+    category            VARCHAR(64),
+    output_field_units  JSONB        NOT NULL DEFAULT '{}'::jsonb,
+
+    -- Human-curated facts (NULL until per-tool Phase 1 work fills them).
+    theoretical_reference     TEXT,
+    known_limitations         TEXT,
+    desk_narrative            TEXT,
+    source_material_verified  JSONB,  -- {verifier: str, date: ISO date, source: str}
+
+    -- Audit columns.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Domain-keyed lookups ("all OIS tools", "all sovereign_bonds tools") for cross-cutting frontend
+-- queries + backend operator-chain validation.
+CREATE INDEX IF NOT EXISTS idx_tool_metadata_domain
+    ON macro_data.tool_metadata (domain);
+
+-- Category-keyed lookups (Library-page grouping by curve_shape, yield_level, scanner, etc.).
+CREATE INDEX IF NOT EXISTS idx_tool_metadata_category
+    ON macro_data.tool_metadata (category)
+    WHERE category IS NOT NULL;
