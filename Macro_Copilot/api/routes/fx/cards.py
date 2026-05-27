@@ -7,10 +7,14 @@ from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
 from api.dependencies import get_engine
+from fx_agent.forwards.tools.carry_basket import get_fx_carry_basket
+from fx_agent.forwards.tools.carry_basket.schemas import FXCarryBasketInput
 from fx_agent.forwards.tools.forward_curve import get_fx_forward_curve
 from fx_agent.forwards.tools.forward_curve.schemas import FXForwardCurveInput
 from fx_agent.forwards.tools.fx_carry import get_fx_carry
 from fx_agent.forwards.tools.fx_carry.schemas import FXCarryInput
+from fx_agent.forwards.tools.implied_yield_differential import get_fx_implied_yield_differential
+from fx_agent.forwards.tools.implied_yield_differential.schemas import FXImpliedYieldDifferentialInput
 from fx_agent.ndf.tools.ndf_implied_carry import calculate_fx_ndf_implied_carry
 from fx_agent.ndf.tools.ndf_implied_carry.schemas import FXNDFImpliedCarryInput
 from fx_agent.ndf.tools.ndf_outright import get_fx_ndf_outright
@@ -601,6 +605,67 @@ def vol_risk_premium(
         raise HTTPException(status_code=422, detail=f"FX vol risk premium failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX vol risk premium failed: {exc}")
+
+
+@router.get("/implied-yield-differential", summary="FX Implied Yield Differential Snapshot")
+def implied_yield_differential(
+    pair: str = Query(..., description="FX pair with USD leg (e.g. EURUSD, USDMXN)."),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, tenor) implied LOCAL-minus-USD rate differential from forward points.
+
+    Positive = local rate > USD rate. Non-USD G10 crosses fail-loud
+    (422). Quoted in PERCENT, annualized at 252 trading days.
+    """
+    try:
+        return get_fx_implied_yield_differential(
+            engine,
+            FXImpliedYieldDifferentialInput(
+                pair=pair, tenor=tenor,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX implied yield differential failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX implied yield differential failed: {exc}")
+
+
+@router.get("/carry-basket", summary="FX Carry Basket Strategy Index")
+def carry_basket(
+    market_scope: str = Query(default="G10", description="G10 | EM | ALL"),
+    tenor: str = Query(default="1M"),
+    top_n: int = Query(default=3, ge=1, le=10),
+    basket_construction: str = Query(
+        default="long_short_top_n",
+        description="'long_short_top_n' (default) or 'long_only_top_n'.",
+    ),
+    lookback_days: int = Query(default=730, ge=60, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """FX carry basket STRATEGY INDEX — not an executable backtest.
+
+    Daily MtM excess return of a paper long-top-N / short-bottom-N
+    portfolio, monthly rebalance, equal-weight, no TC. Use for
+    relative-value / regime analysis only.
+    """
+    try:
+        return get_fx_carry_basket(
+            engine,
+            FXCarryBasketInput(
+                market_scope=market_scope, tenor=tenor, top_n=top_n,
+                basket_construction=basket_construction,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX carry basket failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX carry basket failed: {exc}")
 
 
 @router.get("/vol-calendar-spread", summary="FX Vol Calendar Spread Snapshot")
