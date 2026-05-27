@@ -1,0 +1,2132 @@
+{
+  "fixture_name": "eurusd_1m_3m_long_minus_short",
+  "tool_module": "fx_agent.vol.tools.vol_calendar_spread",
+  "tool_function": "get_fx_vol_calendar_spread",
+  "capture": {
+    "captured_at": "2026-05-27T11:27:08Z",
+    "capture_method": "live_db_v1",
+    "database_name": "macrodata",
+    "raw_rows_count": 518,
+    "raw_rows_sha256": "778f156d252eb93764f4ab16fc15517081b9f9c443c67826abea1085b996f5fe"
+  },
+  "input": {
+    "params": {
+      "pair": "EURUSD",
+      "short_tenor": "1M",
+      "long_tenor": "3M",
+      "spread_direction": "long_minus_short",
+      "lookback_days": 365,
+      "field_name": "PX_LAST"
+    },
+    "queries": [
+      {
+        "substrate": "fx_vol",
+        "tenor": "1M",
+        "tenor_role": "short",
+        "rows": [
+          {
+            "trade_date": "2025-05-27",
+            "field_value": 8.16
+          },
+          {
+            "trade_date": "2025-05-28",
+            "field_value": 8.1375
+          },
+          {
+            "trade_date": "2025-05-29",
+            "field_value": 8.22
+          },
+          {
+            "trade_date": "2025-05-30",
+            "field_value": 8.03
+          },
+          {
+            "trade_date": "2025-06-02",
+            "field_value": 8.605
+          },
+          {
+            "trade_date": "2025-06-03",
+            "field_value": 8.3275
+          },
+          {
+            "trade_date": "2025-06-04",
+            "field_value": 8.3225
+          },
+          {
+            "trade_date": "2025-06-05",
+            "field_value": 8.1575
+          },
+          {
+            "trade_date": "2025-06-06",
+            "field_value": 7.6825
+          },
+          {
+            "trade_date": "2025-06-09",
+            "field_value": 7.6
+          },
+          {
+            "trade_date": "2025-06-10",
+            "field_value": 7.68
+          },
+          {
+            "trade_date": "2025-06-11",
+            "field_value": 7.445
+          },
+          {
+            "trade_date": "2025-06-12",
+            "field_value": 7.855
+          },
+          {
+            "trade_date": "2025-06-13",
+            "field_value": 8.22
+          },
+          {
+            "trade_date": "2025-06-16",
+            "field_value": 8.135
+          },
+          {
+            "trade_date": "2025-06-17",
+            "field_value": 8.7875
+          },
+          {
+            "trade_date": "2025-06-18",
+            "field_value": 8.37
+          },
+          {
+            "trade_date": "2025-06-19",
+            "field_value": 8.215
+          },
+          {
+            "trade_date": "2025-06-20",
+            "field_value": 7.7525
+          },
+          {
+            "trade_date": "2025-06-23",
+            "field_value": 8.1675
+          },
+          {
+            "trade_date": "2025-06-24",
+            "field_value": 8.1625
+          },
+          {
+            "trade_date": "2025-06-25",
+            "field_value": 8.225
+          },
+          {
+            "trade_date": "2025-06-26",
+            "field_value": 8.4525
+          },
+          {
+            "trade_date": "2025-06-27",
+            "field_value": 8.26
+          },
+          {
+            "trade_date": "2025-06-30",
+            "field_value": 8.5825
+          },
+          {
+            "trade_date": "2025-07-01",
+            "field_value": 8.8325
+          },
+          {
+            "trade_date": "2025-07-02",
+            "field_value": 8.5725
+          },
+          {
+            "trade_date": "2025-07-03",
+            "field_value": 7.995
+          },
+          {
+            "trade_date": "2025-07-04",
+            "field_value": 7.9525
+          },
+          {
+            "trade_date": "2025-07-07",
+            "field_value": 8.155
+          },
+          {
+            "trade_date": "2025-07-08",
+            "field_value": 7.8325
+          },
+          {
+            "trade_date": "2025-07-09",
+            "field_value": 7.5675
+          },
+          {
+            "trade_date": "2025-07-10",
+            "field_value": 7.3925
+          },
+          {
+            "trade_date": "2025-07-11",
+            "field_value": 7.6375
+          },
+          {
+            "trade_date": "2025-07-14",
+            "field_value": 7.9225
+          },
+          {
+            "trade_date": "2025-07-15",
+            "field_value": 7.9075
+          },
+          {
+            "trade_date": "2025-07-16",
+            "field_value": 8.18
+          },
+          {
+            "trade_date": "2025-07-17",
+            "field_value": 7.68
+          },
+          {
+            "trade_date": "2025-07-18",
+            "field_value": 7.7525
+          },
+          {
+            "trade_date": "2025-07-21",
+            "field_value": 7.855
+          },
+          {
+            "trade_date": "2025-07-22",
+            "field_value": 8.0
+          },
+          {
+            "trade_date": "2025-07-23",
+            "field_value": 7.73
+          },
+          {
+            "trade_date": "2025-07-24",
+            "field_value": 7.4025
+          },
+          {
+            "trade_date": "2025-07-25",
+            "field_value": 7.3375
+          },
+          {
+            "trade_date": "2025-07-28",
+            "field_value": 7.41
+          },
+          {
+            "trade_date": "2025-07-29",
+            "field_value": 7.2925
+          },
+          {
+            "trade_date": "2025-07-30",
+            "field_value": 7.3525
+          },
+          {
+            "trade_date": "2025-07-31",
+            "field_value": 7.3125
+          },
+          {
+            "trade_date": "2025-08-01",
+            "field_value": 7.8
+          },
+          {
+            "trade_date": "2025-08-04",
+            "field_value": 7.8725
+          },
+          {
+            "trade_date": "2025-08-05",
+            "field_value": 7.6025
+          },
+          {
+            "trade_date": "2025-08-06",
+            "field_value": 7.985
+          },
+          {
+            "trade_date": "2025-08-07",
+            "field_value": 7.9075
+          },
+          {
+            "trade_date": "2025-08-08",
+            "field_value": 7.64
+          },
+          {
+            "trade_date": "2025-08-11",
+            "field_value": 7.53
+          },
+          {
+            "trade_date": "2025-08-12",
+            "field_value": 7.38
+          },
+          {
+            "trade_date": "2025-08-13",
+            "field_value": 7.395
+          },
+          {
+            "trade_date": "2025-08-14",
+            "field_value": 7.05
+          },
+          {
+            "trade_date": "2025-08-15",
+            "field_value": 7.055
+          },
+          {
+            "trade_date": "2025-08-18",
+            "field_value": 6.9875
+          },
+          {
+            "trade_date": "2025-08-19",
+            "field_value": 7.0075
+          },
+          {
+            "trade_date": "2025-08-20",
+            "field_value": 7.225
+          },
+          {
+            "trade_date": "2025-08-21",
+            "field_value": 7.1525
+          },
+          {
+            "trade_date": "2025-08-22",
+            "field_value": 7.255
+          },
+          {
+            "trade_date": "2025-08-25",
+            "field_value": 7.6025
+          },
+          {
+            "trade_date": "2025-08-26",
+            "field_value": 7.64
+          },
+          {
+            "trade_date": "2025-08-27",
+            "field_value": 7.62
+          },
+          {
+            "trade_date": "2025-08-28",
+            "field_value": 7.42
+          },
+          {
+            "trade_date": "2025-08-29",
+            "field_value": 7.375
+          },
+          {
+            "trade_date": "2025-09-01",
+            "field_value": 7.61
+          },
+          {
+            "trade_date": "2025-09-02",
+            "field_value": 7.815
+          },
+          {
+            "trade_date": "2025-09-03",
+            "field_value": 7.86
+          },
+          {
+            "trade_date": "2025-09-04",
+            "field_value": 7.665
+          },
+          {
+            "trade_date": "2025-09-05",
+            "field_value": 7.345
+          },
+          {
+            "trade_date": "2025-09-08",
+            "field_value": 7.3275
+          },
+          {
+            "trade_date": "2025-09-09",
+            "field_value": 7.115
+          },
+          {
+            "trade_date": "2025-09-10",
+            "field_value": 6.8825
+          },
+          {
+            "trade_date": "2025-09-11",
+            "field_value": 6.54
+          },
+          {
+            "trade_date": "2025-09-12",
+            "field_value": 6.3775
+          },
+          {
+            "trade_date": "2025-09-15",
+            "field_value": 6.595
+          },
+          {
+            "trade_date": "2025-09-16",
+            "field_value": 7.5375
+          },
+          {
+            "trade_date": "2025-09-17",
+            "field_value": 7.0625
+          },
+          {
+            "trade_date": "2025-09-18",
+            "field_value": 6.6175
+          },
+          {
+            "trade_date": "2025-09-19",
+            "field_value": 6.2675
+          },
+          {
+            "trade_date": "2025-09-22",
+            "field_value": 6.5025
+          },
+          {
+            "trade_date": "2025-09-23",
+            "field_value": 6.4725
+          },
+          {
+            "trade_date": "2025-09-24",
+            "field_value": 6.4175
+          },
+          {
+            "trade_date": "2025-09-25",
+            "field_value": 6.4575
+          },
+          {
+            "trade_date": "2025-09-26",
+            "field_value": 6.305
+          },
+          {
+            "trade_date": "2025-09-29",
+            "field_value": 6.6825
+          },
+          {
+            "trade_date": "2025-09-30",
+            "field_value": 6.67
+          },
+          {
+            "trade_date": "2025-10-01",
+            "field_value": 6.55
+          },
+          {
+            "trade_date": "2025-10-02",
+            "field_value": 6.3725
+          },
+          {
+            "trade_date": "2025-10-03",
+            "field_value": 6.02
+          },
+          {
+            "trade_date": "2025-10-06",
+            "field_value": 6.445
+          },
+          {
+            "trade_date": "2025-10-07",
+            "field_value": 6.5675
+          },
+          {
+            "trade_date": "2025-10-08",
+            "field_value": 6.6
+          },
+          {
+            "trade_date": "2025-10-09",
+            "field_value": 6.845
+          },
+          {
+            "trade_date": "2025-10-10",
+            "field_value": 7.01
+          },
+          {
+            "trade_date": "2025-10-13",
+            "field_value": 6.985
+          },
+          {
+            "trade_date": "2025-10-14",
+            "field_value": 6.8625
+          },
+          {
+            "trade_date": "2025-10-15",
+            "field_value": 6.5625
+          },
+          {
+            "trade_date": "2025-10-16",
+            "field_value": 6.525
+          },
+          {
+            "trade_date": "2025-10-17",
+            "field_value": 6.3425
+          },
+          {
+            "trade_date": "2025-10-20",
+            "field_value": 6.135
+          },
+          {
+            "trade_date": "2025-10-21",
+            "field_value": 6.2025
+          },
+          {
+            "trade_date": "2025-10-22",
+            "field_value": 6.1775
+          },
+          {
+            "trade_date": "2025-10-23",
+            "field_value": 6.04
+          },
+          {
+            "trade_date": "2025-10-24",
+            "field_value": 5.72
+          },
+          {
+            "trade_date": "2025-10-27",
+            "field_value": 5.5525
+          },
+          {
+            "trade_date": "2025-10-28",
+            "field_value": 5.3675
+          },
+          {
+            "trade_date": "2025-10-29",
+            "field_value": 5.4675
+          },
+          {
+            "trade_date": "2025-10-30",
+            "field_value": 5.2575
+          },
+          {
+            "trade_date": "2025-10-31",
+            "field_value": 5.29
+          },
+          {
+            "trade_date": "2025-11-03",
+            "field_value": 5.3425
+          },
+          {
+            "trade_date": "2025-11-04",
+            "field_value": 5.65
+          },
+          {
+            "trade_date": "2025-11-05",
+            "field_value": 5.445
+          },
+          {
+            "trade_date": "2025-11-06",
+            "field_value": 5.445
+          },
+          {
+            "trade_date": "2025-11-07",
+            "field_value": 5.69
+          },
+          {
+            "trade_date": "2025-11-10",
+            "field_value": 5.7625
+          },
+          {
+            "trade_date": "2025-11-11",
+            "field_value": 6.1
+          },
+          {
+            "trade_date": "2025-11-12",
+            "field_value": 6.235
+          },
+          {
+            "trade_date": "2025-11-13",
+            "field_value": 6.3125
+          },
+          {
+            "trade_date": "2025-11-14",
+            "field_value": 6.335
+          },
+          {
+            "trade_date": "2025-11-17",
+            "field_value": 6.3075
+          },
+          {
+            "trade_date": "2025-11-18",
+            "field_value": 6.4225
+          },
+          {
+            "trade_date": "2025-11-19",
+            "field_value": 6.525
+          },
+          {
+            "trade_date": "2025-11-20",
+            "field_value": 5.975
+          },
+          {
+            "trade_date": "2025-11-21",
+            "field_value": 5.95
+          },
+          {
+            "trade_date": "2025-11-24",
+            "field_value": 5.85
+          },
+          {
+            "trade_date": "2025-11-25",
+            "field_value": 5.59
+          },
+          {
+            "trade_date": "2025-11-26",
+            "field_value": 5.4925
+          },
+          {
+            "trade_date": "2025-11-27",
+            "field_value": 5.48
+          },
+          {
+            "trade_date": "2025-11-28",
+            "field_value": 5.35
+          },
+          {
+            "trade_date": "2025-12-01",
+            "field_value": 5.395
+          },
+          {
+            "trade_date": "2025-12-02",
+            "field_value": 5.345
+          },
+          {
+            "trade_date": "2025-12-03",
+            "field_value": 5.4125
+          },
+          {
+            "trade_date": "2025-12-04",
+            "field_value": 5.0725
+          },
+          {
+            "trade_date": "2025-12-05",
+            "field_value": 4.9325
+          },
+          {
+            "trade_date": "2025-12-08",
+            "field_value": 5.0325
+          },
+          {
+            "trade_date": "2025-12-09",
+            "field_value": 4.8975
+          },
+          {
+            "trade_date": "2025-12-10",
+            "field_value": 4.9075
+          },
+          {
+            "trade_date": "2025-12-11",
+            "field_value": 5.385
+          },
+          {
+            "trade_date": "2025-12-12",
+            "field_value": 5.2325
+          },
+          {
+            "trade_date": "2025-12-15",
+            "field_value": 5.46
+          },
+          {
+            "trade_date": "2025-12-16",
+            "field_value": 5.1575
+          },
+          {
+            "trade_date": "2025-12-17",
+            "field_value": 4.9525
+          },
+          {
+            "trade_date": "2025-12-18",
+            "field_value": 4.605
+          },
+          {
+            "trade_date": "2025-12-19",
+            "field_value": 4.4475
+          },
+          {
+            "trade_date": "2025-12-22",
+            "field_value": 4.665
+          },
+          {
+            "trade_date": "2025-12-23",
+            "field_value": 5.0
+          },
+          {
+            "trade_date": "2025-12-24",
+            "field_value": 5.0975
+          },
+          {
+            "trade_date": "2025-12-25",
+            "field_value": 5.14
+          },
+          {
+            "trade_date": "2025-12-26",
+            "field_value": 5.125
+          },
+          {
+            "trade_date": "2025-12-29",
+            "field_value": 5.2675
+          },
+          {
+            "trade_date": "2025-12-30",
+            "field_value": 5.3475
+          },
+          {
+            "trade_date": "2025-12-31",
+            "field_value": 5.375
+          },
+          {
+            "trade_date": "2026-01-01",
+            "field_value": 5.39
+          },
+          {
+            "trade_date": "2026-01-02",
+            "field_value": 5.205
+          },
+          {
+            "trade_date": "2026-01-05",
+            "field_value": 5.38
+          },
+          {
+            "trade_date": "2026-01-06",
+            "field_value": 5.225
+          },
+          {
+            "trade_date": "2026-01-07",
+            "field_value": 5.26
+          },
+          {
+            "trade_date": "2026-01-08",
+            "field_value": 5.265
+          },
+          {
+            "trade_date": "2026-01-09",
+            "field_value": 5.11
+          },
+          {
+            "trade_date": "2026-01-12",
+            "field_value": 5.435
+          },
+          {
+            "trade_date": "2026-01-13",
+            "field_value": 5.265
+          },
+          {
+            "trade_date": "2026-01-14",
+            "field_value": 5.2625
+          },
+          {
+            "trade_date": "2026-01-15",
+            "field_value": 5.1025
+          },
+          {
+            "trade_date": "2026-01-16",
+            "field_value": 4.9925
+          },
+          {
+            "trade_date": "2026-01-19",
+            "field_value": 5.4175
+          },
+          {
+            "trade_date": "2026-01-20",
+            "field_value": 6.045
+          },
+          {
+            "trade_date": "2026-01-21",
+            "field_value": 5.285
+          },
+          {
+            "trade_date": "2026-01-22",
+            "field_value": 5.37
+          },
+          {
+            "trade_date": "2026-01-23",
+            "field_value": 6.47
+          },
+          {
+            "trade_date": "2026-01-26",
+            "field_value": 6.4225
+          },
+          {
+            "trade_date": "2026-01-27",
+            "field_value": 9.205
+          },
+          {
+            "trade_date": "2026-01-28",
+            "field_value": 7.2
+          },
+          {
+            "trade_date": "2026-01-29",
+            "field_value": 7.375
+          },
+          {
+            "trade_date": "2026-01-30",
+            "field_value": 7.2625
+          },
+          {
+            "trade_date": "2026-02-02",
+            "field_value": 6.26
+          },
+          {
+            "trade_date": "2026-02-03",
+            "field_value": 6.095
+          },
+          {
+            "trade_date": "2026-02-04",
+            "field_value": 6.12
+          },
+          {
+            "trade_date": "2026-02-05",
+            "field_value": 6.1125
+          },
+          {
+            "trade_date": "2026-02-06",
+            "field_value": 6.18
+          },
+          {
+            "trade_date": "2026-02-09",
+            "field_value": 6.705
+          },
+          {
+            "trade_date": "2026-02-10",
+            "field_value": 6.6075
+          },
+          {
+            "trade_date": "2026-02-11",
+            "field_value": 6.5025
+          },
+          {
+            "trade_date": "2026-02-12",
+            "field_value": 6.36
+          },
+          {
+            "trade_date": "2026-02-13",
+            "field_value": 6.0
+          },
+          {
+            "trade_date": "2026-02-16",
+            "field_value": 5.64
+          },
+          {
+            "trade_date": "2026-02-17",
+            "field_value": 5.575
+          },
+          {
+            "trade_date": "2026-02-18",
+            "field_value": 5.7375
+          },
+          {
+            "trade_date": "2026-02-19",
+            "field_value": 6.0375
+          },
+          {
+            "trade_date": "2026-02-20",
+            "field_value": 6.005
+          },
+          {
+            "trade_date": "2026-02-23",
+            "field_value": 5.9925
+          },
+          {
+            "trade_date": "2026-02-24",
+            "field_value": 5.9125
+          },
+          {
+            "trade_date": "2026-02-25",
+            "field_value": 5.885
+          },
+          {
+            "trade_date": "2026-02-26",
+            "field_value": 5.715
+          },
+          {
+            "trade_date": "2026-02-27",
+            "field_value": 5.8575
+          },
+          {
+            "trade_date": "2026-03-02",
+            "field_value": 6.43
+          },
+          {
+            "trade_date": "2026-03-03",
+            "field_value": 6.9925
+          },
+          {
+            "trade_date": "2026-03-04",
+            "field_value": 6.56
+          },
+          {
+            "trade_date": "2026-03-05",
+            "field_value": 7.0975
+          },
+          {
+            "trade_date": "2026-03-06",
+            "field_value": 7.5575
+          },
+          {
+            "trade_date": "2026-03-09",
+            "field_value": 7.235
+          },
+          {
+            "trade_date": "2026-03-10",
+            "field_value": 7.015
+          },
+          {
+            "trade_date": "2026-03-11",
+            "field_value": 7.4925
+          },
+          {
+            "trade_date": "2026-03-12",
+            "field_value": 7.795
+          },
+          {
+            "trade_date": "2026-03-13",
+            "field_value": 8.5475
+          },
+          {
+            "trade_date": "2026-03-16",
+            "field_value": 7.7325
+          },
+          {
+            "trade_date": "2026-03-17",
+            "field_value": 7.58
+          },
+          {
+            "trade_date": "2026-03-18",
+            "field_value": 7.9925
+          },
+          {
+            "trade_date": "2026-03-19",
+            "field_value": 7.835
+          },
+          {
+            "trade_date": "2026-03-20",
+            "field_value": 8.0325
+          },
+          {
+            "trade_date": "2026-03-23",
+            "field_value": 7.965
+          },
+          {
+            "trade_date": "2026-03-24",
+            "field_value": 7.885
+          },
+          {
+            "trade_date": "2026-03-25",
+            "field_value": 7.655
+          },
+          {
+            "trade_date": "2026-03-26",
+            "field_value": 7.73
+          },
+          {
+            "trade_date": "2026-03-27",
+            "field_value": 7.795
+          },
+          {
+            "trade_date": "2026-03-30",
+            "field_value": 7.76
+          },
+          {
+            "trade_date": "2026-03-31",
+            "field_value": 7.405
+          },
+          {
+            "trade_date": "2026-04-01",
+            "field_value": 7.07
+          },
+          {
+            "trade_date": "2026-04-02",
+            "field_value": 7.215
+          },
+          {
+            "trade_date": "2026-04-03",
+            "field_value": 6.985
+          },
+          {
+            "trade_date": "2026-04-06",
+            "field_value": 7.175
+          },
+          {
+            "trade_date": "2026-04-07",
+            "field_value": 7.225
+          },
+          {
+            "trade_date": "2026-04-08",
+            "field_value": 6.675
+          },
+          {
+            "trade_date": "2026-04-09",
+            "field_value": 6.395
+          },
+          {
+            "trade_date": "2026-04-10",
+            "field_value": 6.535
+          },
+          {
+            "trade_date": "2026-04-13",
+            "field_value": 6.525
+          },
+          {
+            "trade_date": "2026-04-14",
+            "field_value": 6.45
+          },
+          {
+            "trade_date": "2026-04-15",
+            "field_value": 6.305
+          },
+          {
+            "trade_date": "2026-04-16",
+            "field_value": 6.015
+          },
+          {
+            "trade_date": "2026-04-17",
+            "field_value": 5.825
+          },
+          {
+            "trade_date": "2026-04-20",
+            "field_value": 6.005
+          },
+          {
+            "trade_date": "2026-04-21",
+            "field_value": 6.105
+          },
+          {
+            "trade_date": "2026-04-22",
+            "field_value": 6.06
+          },
+          {
+            "trade_date": "2026-04-23",
+            "field_value": 6.085
+          },
+          {
+            "trade_date": "2026-04-24",
+            "field_value": 5.775
+          },
+          {
+            "trade_date": "2026-04-27",
+            "field_value": 5.625
+          },
+          {
+            "trade_date": "2026-04-28",
+            "field_value": 5.66
+          },
+          {
+            "trade_date": "2026-04-29",
+            "field_value": 5.865
+          },
+          {
+            "trade_date": "2026-04-30",
+            "field_value": 5.845
+          },
+          {
+            "trade_date": "2026-05-01",
+            "field_value": 5.975
+          },
+          {
+            "trade_date": "2026-05-04",
+            "field_value": 6.245
+          },
+          {
+            "trade_date": "2026-05-05",
+            "field_value": 5.87
+          },
+          {
+            "trade_date": "2026-05-06",
+            "field_value": 5.725
+          },
+          {
+            "trade_date": "2026-05-07",
+            "field_value": 5.605
+          },
+          {
+            "trade_date": "2026-05-08",
+            "field_value": 5.485
+          },
+          {
+            "trade_date": "2026-05-11",
+            "field_value": 5.38
+          },
+          {
+            "trade_date": "2026-05-12",
+            "field_value": 5.52
+          },
+          {
+            "trade_date": "2026-05-13",
+            "field_value": 5.435
+          },
+          {
+            "trade_date": "2026-05-14",
+            "field_value": 5.435
+          },
+          {
+            "trade_date": "2026-05-15",
+            "field_value": 5.815
+          },
+          {
+            "trade_date": "2026-05-18",
+            "field_value": 5.775
+          },
+          {
+            "trade_date": "2026-05-19",
+            "field_value": 5.885
+          },
+          {
+            "trade_date": "2026-05-20",
+            "field_value": 5.77
+          },
+          {
+            "trade_date": "2026-05-21",
+            "field_value": 5.84
+          },
+          {
+            "trade_date": "2026-05-22",
+            "field_value": 5.885
+          }
+        ]
+      },
+      {
+        "substrate": "fx_vol",
+        "tenor": "3M",
+        "tenor_role": "long",
+        "rows": [
+          {
+            "trade_date": "2025-05-27",
+            "field_value": 8.04
+          },
+          {
+            "trade_date": "2025-05-28",
+            "field_value": 7.9775
+          },
+          {
+            "trade_date": "2025-05-29",
+            "field_value": 8.095
+          },
+          {
+            "trade_date": "2025-05-30",
+            "field_value": 7.925
+          },
+          {
+            "trade_date": "2025-06-02",
+            "field_value": 8.19
+          },
+          {
+            "trade_date": "2025-06-03",
+            "field_value": 8.0125
+          },
+          {
+            "trade_date": "2025-06-04",
+            "field_value": 8.0225
+          },
+          {
+            "trade_date": "2025-06-05",
+            "field_value": 8.1275
+          },
+          {
+            "trade_date": "2025-06-06",
+            "field_value": 7.735
+          },
+          {
+            "trade_date": "2025-06-09",
+            "field_value": 7.5525
+          },
+          {
+            "trade_date": "2025-06-10",
+            "field_value": 7.5975
+          },
+          {
+            "trade_date": "2025-06-11",
+            "field_value": 7.5275
+          },
+          {
+            "trade_date": "2025-06-12",
+            "field_value": 7.8525
+          },
+          {
+            "trade_date": "2025-06-13",
+            "field_value": 7.95
+          },
+          {
+            "trade_date": "2025-06-16",
+            "field_value": 7.915
+          },
+          {
+            "trade_date": "2025-06-17",
+            "field_value": 8.31
+          },
+          {
+            "trade_date": "2025-06-18",
+            "field_value": 8.1675
+          },
+          {
+            "trade_date": "2025-06-19",
+            "field_value": 8.2475
+          },
+          {
+            "trade_date": "2025-06-20",
+            "field_value": 7.9075
+          },
+          {
+            "trade_date": "2025-06-23",
+            "field_value": 8.03
+          },
+          {
+            "trade_date": "2025-06-24",
+            "field_value": 8.005
+          },
+          {
+            "trade_date": "2025-06-25",
+            "field_value": 8.0325
+          },
+          {
+            "trade_date": "2025-06-26",
+            "field_value": 8.295
+          },
+          {
+            "trade_date": "2025-06-27",
+            "field_value": 8.1375
+          },
+          {
+            "trade_date": "2025-06-30",
+            "field_value": 8.1675
+          },
+          {
+            "trade_date": "2025-07-01",
+            "field_value": 8.33
+          },
+          {
+            "trade_date": "2025-07-02",
+            "field_value": 8.29
+          },
+          {
+            "trade_date": "2025-07-03",
+            "field_value": 7.9575
+          },
+          {
+            "trade_date": "2025-07-04",
+            "field_value": 7.82
+          },
+          {
+            "trade_date": "2025-07-07",
+            "field_value": 7.8325
+          },
+          {
+            "trade_date": "2025-07-08",
+            "field_value": 7.655
+          },
+          {
+            "trade_date": "2025-07-09",
+            "field_value": 7.49
+          },
+          {
+            "trade_date": "2025-07-10",
+            "field_value": 7.4425
+          },
+          {
+            "trade_date": "2025-07-11",
+            "field_value": 7.5175
+          },
+          {
+            "trade_date": "2025-07-14",
+            "field_value": 7.6425
+          },
+          {
+            "trade_date": "2025-07-15",
+            "field_value": 7.665
+          },
+          {
+            "trade_date": "2025-07-16",
+            "field_value": 7.8
+          },
+          {
+            "trade_date": "2025-07-17",
+            "field_value": 7.66
+          },
+          {
+            "trade_date": "2025-07-18",
+            "field_value": 7.6325
+          },
+          {
+            "trade_date": "2025-07-21",
+            "field_value": 7.6625
+          },
+          {
+            "trade_date": "2025-07-22",
+            "field_value": 7.795
+          },
+          {
+            "trade_date": "2025-07-23",
+            "field_value": 7.6425
+          },
+          {
+            "trade_date": "2025-07-24",
+            "field_value": 7.56
+          },
+          {
+            "trade_date": "2025-07-25",
+            "field_value": 7.485
+          },
+          {
+            "trade_date": "2025-07-28",
+            "field_value": 7.3325
+          },
+          {
+            "trade_date": "2025-07-29",
+            "field_value": 7.145
+          },
+          {
+            "trade_date": "2025-07-30",
+            "field_value": 7.1075
+          },
+          {
+            "trade_date": "2025-07-31",
+            "field_value": 7.29
+          },
+          {
+            "trade_date": "2025-08-01",
+            "field_value": 7.6625
+          },
+          {
+            "trade_date": "2025-08-04",
+            "field_value": 7.7525
+          },
+          {
+            "trade_date": "2025-08-05",
+            "field_value": 7.685
+          },
+          {
+            "trade_date": "2025-08-06",
+            "field_value": 8.075
+          },
+          {
+            "trade_date": "2025-08-07",
+            "field_value": 7.9425
+          },
+          {
+            "trade_date": "2025-08-08",
+            "field_value": 7.74
+          },
+          {
+            "trade_date": "2025-08-11",
+            "field_value": 7.475
+          },
+          {
+            "trade_date": "2025-08-12",
+            "field_value": 7.3425
+          },
+          {
+            "trade_date": "2025-08-13",
+            "field_value": 7.415
+          },
+          {
+            "trade_date": "2025-08-14",
+            "field_value": 7.2975
+          },
+          {
+            "trade_date": "2025-08-15",
+            "field_value": 7.19
+          },
+          {
+            "trade_date": "2025-08-18",
+            "field_value": 6.9975
+          },
+          {
+            "trade_date": "2025-08-19",
+            "field_value": 6.995
+          },
+          {
+            "trade_date": "2025-08-20",
+            "field_value": 7.15
+          },
+          {
+            "trade_date": "2025-08-21",
+            "field_value": 7.17
+          },
+          {
+            "trade_date": "2025-08-22",
+            "field_value": 7.2025
+          },
+          {
+            "trade_date": "2025-08-25",
+            "field_value": 7.3725
+          },
+          {
+            "trade_date": "2025-08-26",
+            "field_value": 7.4075
+          },
+          {
+            "trade_date": "2025-08-27",
+            "field_value": 7.4
+          },
+          {
+            "trade_date": "2025-08-28",
+            "field_value": 7.4
+          },
+          {
+            "trade_date": "2025-08-29",
+            "field_value": 7.4175
+          },
+          {
+            "trade_date": "2025-09-01",
+            "field_value": 7.42
+          },
+          {
+            "trade_date": "2025-09-02",
+            "field_value": 7.49
+          },
+          {
+            "trade_date": "2025-09-03",
+            "field_value": 7.51
+          },
+          {
+            "trade_date": "2025-09-04",
+            "field_value": 7.4475
+          },
+          {
+            "trade_date": "2025-09-05",
+            "field_value": 7.4125
+          },
+          {
+            "trade_date": "2025-09-08",
+            "field_value": 7.3225
+          },
+          {
+            "trade_date": "2025-09-09",
+            "field_value": 7.17
+          },
+          {
+            "trade_date": "2025-09-10",
+            "field_value": 7.0275
+          },
+          {
+            "trade_date": "2025-09-11",
+            "field_value": 6.9725
+          },
+          {
+            "trade_date": "2025-09-12",
+            "field_value": 6.9225
+          },
+          {
+            "trade_date": "2025-09-15",
+            "field_value": 6.8525
+          },
+          {
+            "trade_date": "2025-09-16",
+            "field_value": 7.3325
+          },
+          {
+            "trade_date": "2025-09-17",
+            "field_value": 7.1275
+          },
+          {
+            "trade_date": "2025-09-18",
+            "field_value": 6.98
+          },
+          {
+            "trade_date": "2025-09-19",
+            "field_value": 6.775
+          },
+          {
+            "trade_date": "2025-09-22",
+            "field_value": 6.7875
+          },
+          {
+            "trade_date": "2025-09-23",
+            "field_value": 6.8175
+          },
+          {
+            "trade_date": "2025-09-24",
+            "field_value": 6.795
+          },
+          {
+            "trade_date": "2025-09-25",
+            "field_value": 6.865
+          },
+          {
+            "trade_date": "2025-09-26",
+            "field_value": 6.6775
+          },
+          {
+            "trade_date": "2025-09-29",
+            "field_value": 6.72
+          },
+          {
+            "trade_date": "2025-09-30",
+            "field_value": 6.7375
+          },
+          {
+            "trade_date": "2025-10-01",
+            "field_value": 6.7125
+          },
+          {
+            "trade_date": "2025-10-02",
+            "field_value": 6.6425
+          },
+          {
+            "trade_date": "2025-10-03",
+            "field_value": 6.3225
+          },
+          {
+            "trade_date": "2025-10-06",
+            "field_value": 6.5475
+          },
+          {
+            "trade_date": "2025-10-07",
+            "field_value": 6.735
+          },
+          {
+            "trade_date": "2025-10-08",
+            "field_value": 6.7025
+          },
+          {
+            "trade_date": "2025-10-09",
+            "field_value": 6.805
+          },
+          {
+            "trade_date": "2025-10-10",
+            "field_value": 6.93
+          },
+          {
+            "trade_date": "2025-10-13",
+            "field_value": 6.835
+          },
+          {
+            "trade_date": "2025-10-14",
+            "field_value": 6.8
+          },
+          {
+            "trade_date": "2025-10-15",
+            "field_value": 6.68
+          },
+          {
+            "trade_date": "2025-10-16",
+            "field_value": 6.77
+          },
+          {
+            "trade_date": "2025-10-17",
+            "field_value": 6.5575
+          },
+          {
+            "trade_date": "2025-10-20",
+            "field_value": 6.39
+          },
+          {
+            "trade_date": "2025-10-21",
+            "field_value": 6.43
+          },
+          {
+            "trade_date": "2025-10-22",
+            "field_value": 6.405
+          },
+          {
+            "trade_date": "2025-10-23",
+            "field_value": 6.37
+          },
+          {
+            "trade_date": "2025-10-24",
+            "field_value": 6.2075
+          },
+          {
+            "trade_date": "2025-10-27",
+            "field_value": 6.0525
+          },
+          {
+            "trade_date": "2025-10-28",
+            "field_value": 5.88
+          },
+          {
+            "trade_date": "2025-10-29",
+            "field_value": 5.895
+          },
+          {
+            "trade_date": "2025-10-30",
+            "field_value": 5.9225
+          },
+          {
+            "trade_date": "2025-10-31",
+            "field_value": 5.7875
+          },
+          {
+            "trade_date": "2025-11-03",
+            "field_value": 5.795
+          },
+          {
+            "trade_date": "2025-11-04",
+            "field_value": 5.97
+          },
+          {
+            "trade_date": "2025-11-05",
+            "field_value": 5.885
+          },
+          {
+            "trade_date": "2025-11-06",
+            "field_value": 5.91
+          },
+          {
+            "trade_date": "2025-11-07",
+            "field_value": 6.005
+          },
+          {
+            "trade_date": "2025-11-10",
+            "field_value": 6.0225
+          },
+          {
+            "trade_date": "2025-11-11",
+            "field_value": 6.0925
+          },
+          {
+            "trade_date": "2025-11-12",
+            "field_value": 6.1925
+          },
+          {
+            "trade_date": "2025-11-13",
+            "field_value": 6.3275
+          },
+          {
+            "trade_date": "2025-11-14",
+            "field_value": 6.2825
+          },
+          {
+            "trade_date": "2025-11-17",
+            "field_value": 6.1875
+          },
+          {
+            "trade_date": "2025-11-18",
+            "field_value": 6.1925
+          },
+          {
+            "trade_date": "2025-11-19",
+            "field_value": 6.27
+          },
+          {
+            "trade_date": "2025-11-20",
+            "field_value": 6.0075
+          },
+          {
+            "trade_date": "2025-11-21",
+            "field_value": 5.995
+          },
+          {
+            "trade_date": "2025-11-24",
+            "field_value": 5.84
+          },
+          {
+            "trade_date": "2025-11-25",
+            "field_value": 5.815
+          },
+          {
+            "trade_date": "2025-11-26",
+            "field_value": 5.79
+          },
+          {
+            "trade_date": "2025-11-27",
+            "field_value": 5.79
+          },
+          {
+            "trade_date": "2025-11-28",
+            "field_value": 5.7
+          },
+          {
+            "trade_date": "2025-12-01",
+            "field_value": 5.715
+          },
+          {
+            "trade_date": "2025-12-02",
+            "field_value": 5.6375
+          },
+          {
+            "trade_date": "2025-12-03",
+            "field_value": 5.7175
+          },
+          {
+            "trade_date": "2025-12-04",
+            "field_value": 5.635
+          },
+          {
+            "trade_date": "2025-12-05",
+            "field_value": 5.5375
+          },
+          {
+            "trade_date": "2025-12-08",
+            "field_value": 5.5875
+          },
+          {
+            "trade_date": "2025-12-09",
+            "field_value": 5.4725
+          },
+          {
+            "trade_date": "2025-12-10",
+            "field_value": 5.4875
+          },
+          {
+            "trade_date": "2025-12-11",
+            "field_value": 5.795
+          },
+          {
+            "trade_date": "2025-12-12",
+            "field_value": 5.645
+          },
+          {
+            "trade_date": "2025-12-15",
+            "field_value": 5.765
+          },
+          {
+            "trade_date": "2025-12-16",
+            "field_value": 5.585
+          },
+          {
+            "trade_date": "2025-12-17",
+            "field_value": 5.41
+          },
+          {
+            "trade_date": "2025-12-18",
+            "field_value": 5.335
+          },
+          {
+            "trade_date": "2025-12-19",
+            "field_value": 5.2
+          },
+          {
+            "trade_date": "2025-12-22",
+            "field_value": 5.32
+          },
+          {
+            "trade_date": "2025-12-23",
+            "field_value": 5.53
+          },
+          {
+            "trade_date": "2025-12-24",
+            "field_value": 5.5875
+          },
+          {
+            "trade_date": "2025-12-25",
+            "field_value": 5.615
+          },
+          {
+            "trade_date": "2025-12-26",
+            "field_value": 5.6025
+          },
+          {
+            "trade_date": "2025-12-29",
+            "field_value": 5.6625
+          },
+          {
+            "trade_date": "2025-12-30",
+            "field_value": 5.635
+          },
+          {
+            "trade_date": "2025-12-31",
+            "field_value": 5.6225
+          },
+          {
+            "trade_date": "2026-01-01",
+            "field_value": 5.635
+          },
+          {
+            "trade_date": "2026-01-02",
+            "field_value": 5.4975
+          },
+          {
+            "trade_date": "2026-01-05",
+            "field_value": 5.4925
+          },
+          {
+            "trade_date": "2026-01-06",
+            "field_value": 5.4025
+          },
+          {
+            "trade_date": "2026-01-07",
+            "field_value": 5.425
+          },
+          {
+            "trade_date": "2026-01-08",
+            "field_value": 5.4575
+          },
+          {
+            "trade_date": "2026-01-09",
+            "field_value": 5.37
+          },
+          {
+            "trade_date": "2026-01-12",
+            "field_value": 5.5875
+          },
+          {
+            "trade_date": "2026-01-13",
+            "field_value": 5.475
+          },
+          {
+            "trade_date": "2026-01-14",
+            "field_value": 5.4925
+          },
+          {
+            "trade_date": "2026-01-15",
+            "field_value": 5.4925
+          },
+          {
+            "trade_date": "2026-01-16",
+            "field_value": 5.4525
+          },
+          {
+            "trade_date": "2026-01-19",
+            "field_value": 5.6675
+          },
+          {
+            "trade_date": "2026-01-20",
+            "field_value": 6.0875
+          },
+          {
+            "trade_date": "2026-01-21",
+            "field_value": 5.5775
+          },
+          {
+            "trade_date": "2026-01-22",
+            "field_value": 5.7775
+          },
+          {
+            "trade_date": "2026-01-23",
+            "field_value": 6.45
+          },
+          {
+            "trade_date": "2026-01-26",
+            "field_value": 6.445
+          },
+          {
+            "trade_date": "2026-01-27",
+            "field_value": 8.16
+          },
+          {
+            "trade_date": "2026-01-28",
+            "field_value": 7.075
+          },
+          {
+            "trade_date": "2026-01-29",
+            "field_value": 7.2575
+          },
+          {
+            "trade_date": "2026-01-30",
+            "field_value": 7.135
+          },
+          {
+            "trade_date": "2026-02-02",
+            "field_value": 6.535
+          },
+          {
+            "trade_date": "2026-02-03",
+            "field_value": 6.4875
+          },
+          {
+            "trade_date": "2026-02-04",
+            "field_value": 6.4475
+          },
+          {
+            "trade_date": "2026-02-05",
+            "field_value": 6.4775
+          },
+          {
+            "trade_date": "2026-02-06",
+            "field_value": 6.4825
+          },
+          {
+            "trade_date": "2026-02-09",
+            "field_value": 6.85
+          },
+          {
+            "trade_date": "2026-02-10",
+            "field_value": 6.945
+          },
+          {
+            "trade_date": "2026-02-11",
+            "field_value": 6.7275
+          },
+          {
+            "trade_date": "2026-02-12",
+            "field_value": 6.7075
+          },
+          {
+            "trade_date": "2026-02-13",
+            "field_value": 6.5325
+          },
+          {
+            "trade_date": "2026-02-16",
+            "field_value": 6.285
+          },
+          {
+            "trade_date": "2026-02-17",
+            "field_value": 6.13
+          },
+          {
+            "trade_date": "2026-02-18",
+            "field_value": 6.0625
+          },
+          {
+            "trade_date": "2026-02-19",
+            "field_value": 6.1975
+          },
+          {
+            "trade_date": "2026-02-20",
+            "field_value": 6.11
+          },
+          {
+            "trade_date": "2026-02-23",
+            "field_value": 6.195
+          },
+          {
+            "trade_date": "2026-02-24",
+            "field_value": 6.13
+          },
+          {
+            "trade_date": "2026-02-25",
+            "field_value": 6.04
+          },
+          {
+            "trade_date": "2026-02-26",
+            "field_value": 5.9875
+          },
+          {
+            "trade_date": "2026-02-27",
+            "field_value": 6.0275
+          },
+          {
+            "trade_date": "2026-03-02",
+            "field_value": 6.2975
+          },
+          {
+            "trade_date": "2026-03-03",
+            "field_value": 6.6175
+          },
+          {
+            "trade_date": "2026-03-04",
+            "field_value": 6.355
+          },
+          {
+            "trade_date": "2026-03-05",
+            "field_value": 6.8475
+          },
+          {
+            "trade_date": "2026-03-06",
+            "field_value": 7.1425
+          },
+          {
+            "trade_date": "2026-03-09",
+            "field_value": 6.965
+          },
+          {
+            "trade_date": "2026-03-10",
+            "field_value": 6.7375
+          },
+          {
+            "trade_date": "2026-03-11",
+            "field_value": 7.1675
+          },
+          {
+            "trade_date": "2026-03-12",
+            "field_value": 7.46
+          },
+          {
+            "trade_date": "2026-03-13",
+            "field_value": 7.9025
+          },
+          {
+            "trade_date": "2026-03-16",
+            "field_value": 7.3025
+          },
+          {
+            "trade_date": "2026-03-17",
+            "field_value": 7.2875
+          },
+          {
+            "trade_date": "2026-03-18",
+            "field_value": 7.5425
+          },
+          {
+            "trade_date": "2026-03-19",
+            "field_value": 7.5575
+          },
+          {
+            "trade_date": "2026-03-20",
+            "field_value": 7.6325
+          },
+          {
+            "trade_date": "2026-03-23",
+            "field_value": 7.365
+          },
+          {
+            "trade_date": "2026-03-24",
+            "field_value": 7.295
+          },
+          {
+            "trade_date": "2026-03-25",
+            "field_value": 7.155
+          },
+          {
+            "trade_date": "2026-03-26",
+            "field_value": 7.39
+          },
+          {
+            "trade_date": "2026-03-27",
+            "field_value": 7.45
+          },
+          {
+            "trade_date": "2026-03-30",
+            "field_value": 7.335
+          },
+          {
+            "trade_date": "2026-03-31",
+            "field_value": 7.04
+          },
+          {
+            "trade_date": "2026-04-01",
+            "field_value": 6.81
+          },
+          {
+            "trade_date": "2026-04-02",
+            "field_value": 6.865
+          },
+          {
+            "trade_date": "2026-04-03",
+            "field_value": 6.7725
+          },
+          {
+            "trade_date": "2026-04-06",
+            "field_value": 6.805
+          },
+          {
+            "trade_date": "2026-04-07",
+            "field_value": 6.8425
+          },
+          {
+            "trade_date": "2026-04-08",
+            "field_value": 6.485
+          },
+          {
+            "trade_date": "2026-04-09",
+            "field_value": 6.4
+          },
+          {
+            "trade_date": "2026-04-10",
+            "field_value": 6.435
+          },
+          {
+            "trade_date": "2026-04-13",
+            "field_value": 6.32
+          },
+          {
+            "trade_date": "2026-04-14",
+            "field_value": 6.275
+          },
+          {
+            "trade_date": "2026-04-15",
+            "field_value": 6.205
+          },
+          {
+            "trade_date": "2026-04-16",
+            "field_value": 6.13
+          },
+          {
+            "trade_date": "2026-04-17",
+            "field_value": 5.95
+          },
+          {
+            "trade_date": "2026-04-20",
+            "field_value": 5.965
+          },
+          {
+            "trade_date": "2026-04-21",
+            "field_value": 5.96
+          },
+          {
+            "trade_date": "2026-04-22",
+            "field_value": 5.995
+          },
+          {
+            "trade_date": "2026-04-23",
+            "field_value": 6.19
+          },
+          {
+            "trade_date": "2026-04-24",
+            "field_value": 6.01
+          },
+          {
+            "trade_date": "2026-04-27",
+            "field_value": 5.78
+          },
+          {
+            "trade_date": "2026-04-28",
+            "field_value": 5.825
+          },
+          {
+            "trade_date": "2026-04-29",
+            "field_value": 6.025
+          },
+          {
+            "trade_date": "2026-04-30",
+            "field_value": 6.0
+          },
+          {
+            "trade_date": "2026-05-01",
+            "field_value": 6.09
+          },
+          {
+            "trade_date": "2026-05-04",
+            "field_value": 6.245
+          },
+          {
+            "trade_date": "2026-05-05",
+            "field_value": 6.09
+          },
+          {
+            "trade_date": "2026-05-06",
+            "field_value": 5.845
+          },
+          {
+            "trade_date": "2026-05-07",
+            "field_value": 5.82
+          },
+          {
+            "trade_date": "2026-05-08",
+            "field_value": 5.68
+          },
+          {
+            "trade_date": "2026-05-11",
+            "field_value": 5.575
+          },
+          {
+            "trade_date": "2026-05-12",
+            "field_value": 5.7
+          },
+          {
+            "trade_date": "2026-05-13",
+            "field_value": 5.71
+          },
+          {
+            "trade_date": "2026-05-14",
+            "field_value": 5.77
+          },
+          {
+            "trade_date": "2026-05-15",
+            "field_value": 5.875
+          },
+          {
+            "trade_date": "2026-05-18",
+            "field_value": 5.87
+          },
+          {
+            "trade_date": "2026-05-19",
+            "field_value": 5.94
+          },
+          {
+            "trade_date": "2026-05-20",
+            "field_value": 5.845
+          },
+          {
+            "trade_date": "2026-05-21",
+            "field_value": 5.87
+          },
+          {
+            "trade_date": "2026-05-22",
+            "field_value": 5.885
+          }
+        ]
+      }
+    ]
+  },
+  "expected_output": {
+    "current_metrics": {
+      "as_of_date": "2026-05-22",
+      "pair": "EURUSD",
+      "short_tenor": "1M",
+      "long_tenor": "3M",
+      "spread_direction": "long_minus_short",
+      "vendor_ticker_short": "EURUSDV1M Curncy",
+      "vendor_ticker_long": "EURUSDV3M Curncy",
+      "current_short_vol_pct": 5.885,
+      "current_long_vol_pct": 5.885,
+      "current_spread_vol_pts": 0.0,
+      "daily_change_vol_pts": -0.03,
+      "weekly_change_vol_pts": -0.06,
+      "monthly_change_vol_pts": -0.105,
+      "z_score": -0.2358,
+      "high_252d": 0.7525,
+      "low_252d": -1.045,
+      "percentile_252d": 58.14,
+      "observation_count": 259
+    }
+  }
+}
