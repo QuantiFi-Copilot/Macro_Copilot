@@ -17,8 +17,14 @@ from fx_agent.ndf.tools.ndf_outright import get_fx_ndf_outright
 from fx_agent.ndf.tools.ndf_outright.schemas import FXNDFOutrightInput
 from fx_agent.vol.tools.atm_vol_level import get_fx_atm_vol_level
 from fx_agent.vol.tools.atm_vol_level.schemas import FXAtmVolLevelInput
+from fx_agent.vol.tools.butterfly import get_fx_butterfly
+from fx_agent.vol.tools.butterfly.schemas import FXButterflyInput
+from fx_agent.vol.tools.risk_reversal import get_fx_risk_reversal
+from fx_agent.vol.tools.risk_reversal.schemas import FXRiskReversalInput
 from fx_agent.vol.tools.vol_scanner import run_fx_vol_scanner
 from fx_agent.vol.tools.vol_scanner.schemas import FXVolScannerInput
+from fx_agent.vol.tools.vol_smile import get_fx_vol_smile
+from fx_agent.vol.tools.vol_smile.schemas import FXVolSmileInput
 from fx_agent.vol.tools.vol_term_structure import get_fx_vol_term_structure
 from fx_agent.vol.tools.vol_term_structure.schemas import FXVolTermStructureInput
 from fx_agent.vol.tools.vol_z_score import get_fx_vol_z_score
@@ -471,3 +477,87 @@ def vol_z_score_series(
         raise HTTPException(status_code=422, detail=f"FX vol z-score failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"FX vol z-score failed: {exc}")
+
+
+@router.get("/risk-reversal", summary="FX Risk Reversal Snapshot")
+def risk_reversal(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    delta_anchor: int = Query(
+        default=25,
+        description="25 or 10 — desk-standard / wing-side skew anchor.",
+    ),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, delta_anchor, tenor) risk reversal snapshot.
+
+    RR is the call_Δ - put_Δ vol differential. Positive = call skew
+    dominant; negative = put skew dominant. Quoted in vol points.
+    """
+    try:
+        return get_fx_risk_reversal(
+            engine,
+            FXRiskReversalInput(
+                pair=pair, delta_anchor=delta_anchor, tenor=tenor,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX risk reversal failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX risk reversal failed: {exc}")
+
+
+@router.get("/butterfly", summary="FX Butterfly Snapshot")
+def butterfly(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    delta_anchor: int = Query(
+        default=25,
+        description="25 or 10 — desk-standard / wing-side kurtosis anchor.",
+    ),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Single-(pair, delta_anchor, tenor) butterfly snapshot.
+
+    BF is the average OTM wing vol minus ATM. Positive = wings rich
+    (tail-risk priced); negative = wings cheap. Quoted in vol points.
+    """
+    try:
+        return get_fx_butterfly(
+            engine,
+            FXButterflyInput(
+                pair=pair, delta_anchor=delta_anchor, tenor=tenor,
+                lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX butterfly failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX butterfly failed: {exc}")
+
+
+@router.get("/vol-smile", summary="FX Aggregate Vol Smile Snapshot")
+def vol_smile(
+    pair: str = Query(..., description="FX pair, e.g. EURUSD."),
+    tenor: str = Query(default="1M"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(default=None),
+    engine: Engine = Depends(get_engine),
+):
+    """Aggregate 5-point smile (ATM + 25R + 25B + 10R + 10B) for one (pair, tenor)."""
+    try:
+        return get_fx_vol_smile(
+            engine,
+            FXVolSmileInput(
+                pair=pair, tenor=tenor, lookback_days=lookback_days, field_name=field_name,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"FX vol smile failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"FX vol smile failed: {exc}")
