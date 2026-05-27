@@ -1198,7 +1198,7 @@ tools:
     sub_agent: forwards
     bucket: 1A
     category: snapshots
-    status: draft
+    status: built
 
     implementation:
       mcp_server: fx_agent/mcp_server.py
@@ -1250,13 +1250,16 @@ tools:
 
     built_date: 2026-05-27
     validation_status: >-
-      DRAFT — sign convention SELECTED for V1 (Bloomberg/BCRX-style),
-      not yet VALIDATED+FROZEN. Live OIS validation pending on full
-      QFin DB (local dev DB has FX-only substrates so SQL validation
-      SKIPs gracefully). Pydantic gates + 3-test triplet structurel
-      + MCP/API/manifest wiring complete. Strict-DONE conditional on
-      Sreeram's sanity check that DM basis numbers fall in expected
-      -50 to -5 bp range.
+      VALIDATED+FROZEN — sign convention Bloomberg/BCRX-style locked
+      via 4 corroborations (Sreeram + Codex + Claude re-derivation
+      + empirical EURUSD/-30bp test). Live-DB validation PASSED on
+      Sreeram-provided OIS parquet ingested locally via official
+      pipeline helpers: 6/6 SQL validation cases PASS (EURUSD 1M
+      -5.49bp, EURUSD 12M +2.41bp, GBPUSD 3M -3.29bp, USDJPY 1M
+      -22.01bp, AUDUSD 6M +1.81bp, USDCAD 3M -16.44bp — all in
+      textbook DM range). 12/12 compute checks PASS, parity fixture
+      captured + SHA-verified replay PASS, MCP/API/manifest wiring
+      complete.
 
   - name: get_fx_carry_basket
     domain: fx

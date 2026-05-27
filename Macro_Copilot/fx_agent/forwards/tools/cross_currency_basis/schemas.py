@@ -144,9 +144,10 @@ class FXCrossCurrencyBasisMetrics(BaseModel):
             "USD OIS — USD funder demands a premium via swap). "
             "POSITIVE = USD abundance (rare post-2008). For DM pairs "
             "in normal regimes, typical magnitude -50 to -5 bp. "
-            "Sign convention confirmed 2026-05-27 via three independent "
-            "sources: Sreeram (Bloomberg reference), Codex (algebraic), "
-            "Claude (concrete EURUSD/-30bp re-derivation)."
+            "Sign convention VALIDATED+FROZEN 2026-05-27 via four "
+            "corroborations: Sreeram (Bloomberg reference), Codex "
+            "(algebraic), Claude (concrete EURUSD/-30bp re-derivation), "
+            "and empirical end-to-end PASS on Sreeram-provided OIS data."
         ),
     )
     daily_change_bps: Optional[float] = Field(
