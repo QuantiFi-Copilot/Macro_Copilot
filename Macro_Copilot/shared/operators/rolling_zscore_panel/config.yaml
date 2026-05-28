@@ -1,0 +1,73 @@
+operator:
+  name: rolling_zscore_panel
+  method_family: aggregation
+  version: "1.0.0"
+  description: >-
+    Finance-blind rolling z-score normalization of every column of a
+    typed ``Panel``.  For each column independently, computes
+    (value - rolling_mean(window)) / rolling_std(window, ddof) and
+    emits a ``Panel`` with the same index/columns and
+    ``units_by_column = Z_SCORE``.  Owns the rolling-normalization
+    structural method family.  Z-score ONLY — cross-sectional rank /
+    percentile are distinct families shipped as separate operators.
+    Generalises the per-pair "trailing-window z-score" logic that the
+    FX scanners (scan_fx_calendar_spread, scan_fx_vol_skew,
+    scan_fx_cross_currency_basis, scan_fx_implied_yield_differential)
+    and the legacy vol_z_score / vol_scanner each re-implemented — six
+    FX call sites collapse onto this one operator.  Runs unchanged on
+    rates / equities / temperature panels (finance-blind).
+
+defaults:
+  min_periods:
+    value: 60
+    source: fx_scanner_convention_v1
+    rationale: >-
+      Matches the FX scanner / vol_z_score V1 convention: a 252-day
+      (1y) window needs roughly a quarter of observations before the
+      rolling z-score is trustworthy.  Below this the early estimates
+      are too noisy to act on, so the operator emits NaN until
+      min_periods is reached.
+    valid_values: null
+
+  ddof:
+    value: 1
+    source: fx_scanner_convention_v1
+    rationale: >-
+      Default 1 (sample std) matches the FX scanner / vol_z_score
+      convention and pandas' own default.  0 selects population std;
+      relevant only when the window is the entire population rather
+      than a sample.
+    valid_values: [0, 1]
+
+methodology:
+  what_it_does: >-
+    Given a typed ``Panel`` (rows = DatetimeIndex, columns = named
+    series, per-column units), the operator:
+
+      1. For each column independently, computes a trailing rolling
+         mean and rolling std over ``window`` rows with the configured
+         ``min_periods`` and ``ddof``.
+      2. z(t) = (value(t) - rolling_mean(t)) / rolling_std(t).  The
+         current row IS included in its own trailing window (standard
+         z-score convention; the last row reproduces the FX scanners'
+         single trailing-window z value exactly).
+      3. Rows before ``min_periods`` is reached are NaN.  Columns whose
+         rolling std is exactly 0 (a constant window) yield NaN at
+         those rows — a constant series cannot be normalized; the
+         operator never emits +/-inf.
+      4. Emits a ``Panel`` with the SAME index and columns,
+         ``units_by_column`` set to Z_SCORE for every column, the input
+         Panel's ``missingness_policy`` carried forward, and lineage =
+         input lineage + this operator's step.
+
+    Unit algebra:
+      - every output column is Z_SCORE regardless of the input column's
+        unit (PERCENT, BPS, PRICE, RATIO ...).  A z-score is
+        dimensionless by construction, so input units are deliberately
+        discarded (recorded in the lineage step params as
+        ``input_units_by_column`` for provenance).
+  planned_extensions:
+    - "expanding-window mode (min_periods-anchored, no fixed window)"
+    - "robust z-score (median / MAD instead of mean / std)"
+    - "centered vs trailing window selector (V1 is trailing-only)"
+    - "cross_sectional_rank as a SEPARATE ranking-family operator"
