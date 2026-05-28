@@ -140,5 +140,28 @@ export function defaultFxAgentLayout(): LayoutState {
         params: { pair: 'EURUSD', lookback_days: '365' },
       },
     ],
+    [
+      'fx_carry_basket',
+      {
+        params: {
+          market_scope: 'G10',
+          tenor: '1M',
+          top_n: 3,
+          basket_construction: 'long_short_top_n',
+        },
+      },
+    ],
+    [
+      'fx_vol_smile',
+      {
+        params: { pair: 'EURUSD', tenor: '1M', lookback_days: '365' },
+      },
+    ],
+    [
+      'fx_cross_currency_basis',
+      {
+        params: { pair: 'EURUSD', tenor: '1M', lookback_days: '365' },
+      },
+    ],
   ]);
 }

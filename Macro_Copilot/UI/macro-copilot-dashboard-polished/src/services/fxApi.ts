@@ -3,6 +3,9 @@ import type {
   FXForwardCurveResponse,
   FXScannerResponse,
   FXSpotLevelResponse,
+  FXCarryBasketResponse,
+  FXVolSmileResponse,
+  FXCrossCurrencyBasisResponse,
 } from '@/types/fx';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -67,4 +70,43 @@ export function fetchFXForwardCurve(
   if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days));
   if (params.field_name) qs.set('field_name', params.field_name);
   return fetchJSON(`${FX_PREFIX}/forward-curve?${qs.toString()}`);
+}
+
+export function fetchFXCarryBasket(
+  params?: {
+    market_scope?: string;
+    tenor?: string;
+    top_n?: number;
+    basket_construction?: string;
+    lookback_days?: number;
+  },
+): Promise<FXCarryBasketResponse> {
+  const qs = new URLSearchParams();
+  if (params?.market_scope) qs.set('market_scope', params.market_scope);
+  if (params?.tenor) qs.set('tenor', params.tenor);
+  if (params?.top_n) qs.set('top_n', String(params.top_n));
+  if (params?.basket_construction) qs.set('basket_construction', params.basket_construction);
+  if (params?.lookback_days) qs.set('lookback_days', String(params.lookback_days));
+  const query = qs.toString();
+  return fetchJSON(`${FX_PREFIX}/carry-basket${query ? `?${query}` : ''}`);
+}
+
+export function fetchFXVolSmile(
+  params: { pair: string; tenor?: string; lookback_days?: number },
+): Promise<FXVolSmileResponse> {
+  const qs = new URLSearchParams();
+  qs.set('pair', params.pair);
+  if (params.tenor) qs.set('tenor', params.tenor);
+  if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days));
+  return fetchJSON(`${FX_PREFIX}/vol-smile?${qs.toString()}`);
+}
+
+export function fetchFXCrossCurrencyBasis(
+  params: { pair: string; tenor?: string; lookback_days?: number },
+): Promise<FXCrossCurrencyBasisResponse> {
+  const qs = new URLSearchParams();
+  qs.set('pair', params.pair);
+  if (params.tenor) qs.set('tenor', params.tenor);
+  if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days));
+  return fetchJSON(`${FX_PREFIX}/cross-currency-basis?${qs.toString()}`);
 }
