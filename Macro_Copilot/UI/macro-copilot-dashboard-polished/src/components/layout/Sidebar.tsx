@@ -3,10 +3,11 @@
 // ----------------------------------------------------------------------------
 // Composition (top → bottom):
 //   1. WORKSPACE   — Home (single row)
-//   2. AGENTS      — six rows, two-line each.  Live agents (Rates) are
-//                    expandable with a chevron and reveal sub-items
-//                    (sovereign bonds, OIS, swap spreads, saved
-//                    analyses).  Dimmed agents show their planned
+//   2. AGENTS      — six rows, two-line each.  Live agents (Rates, FX)
+//                    are expandable with a chevron and reveal sub-items
+//                    (Rates: sovereign bonds, OIS, swap spreads; FX:
+//                    spot, forwards, volatility, NDFs; both end with
+//                    saved analyses).  Dimmed agents show their planned
 //                    scope as a single subtext line, no expansion.
 //   3. TODAY       — small live-state panel: market session, scanner
 //                    summary, last data refresh.  Reads from the
@@ -113,6 +114,17 @@ const AGENTS: AgentItem[] = [
     icon: <LineChart size={13} />,
     status: 'live',
     scope: 'G10 · EM',
+    subItems: [
+      // V1: sub-items are navigation anchors to the FX surface, mirroring
+      // the Rates Agent pattern.  V2 will read a `?scope=...` query param
+      // to filter the widget catalog to that FX sub-domain (matching the
+      // fx_agent/{spot,forwards,vol,ndf} backend split).
+      { label: 'Spot', to: '/fx' },
+      { label: 'Forwards', to: '/fx' },
+      { label: 'Volatility', to: '/fx' },
+      { label: 'NDFs', to: '/fx' },
+      { label: 'Saved analyses', hint: 'V2' },
+    ],
   },
   {
     label: 'Credit Agent',
