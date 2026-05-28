@@ -1,0 +1,74 @@
+operator:
+  name: cross_sectional_rank
+  method_family: ranking
+  version: "1.0.0"
+  description: >-
+    Finance-blind cross-sectional ranking of the columns of a typed
+    ``Panel`` WITHIN each row (date).  For every timestamp, ranks the
+    N column values against each other and emits a ``Panel`` of the
+    same shape whose cells are the per-date ranks.  Exposes the
+    ranking family's variants explicitly: ``method`` (rank /
+    percentile / normalized), ``ascending`` (direction), ``tie_method``
+    (tie handling).  Listed as a Pass example in
+    docs/architecture/operator_architecture.md.  Lets desk scanners
+    emit a typed ranked Panel instead of hand-sorting; runs unchanged
+    on rates / FX / equities / temperature panels.
+
+defaults:
+  method:
+    value: rank
+    source: operator_v1_default
+    rationale: >-
+      Default 'rank' (ordinal 1..N) is the most direct cross-sectional
+      ordering.  'percentile' (0..100) and 'normalized' (0..1) are the
+      scale-free variants for comparing cross-sections of different
+      widths.
+    valid_values: [rank, percentile, normalized]
+
+  ascending:
+    value: true
+    source: pandas_default
+    rationale: >-
+      Default 'true' matches pandas' rank() default (smallest value
+      gets rank 1).  Set 'false' for the desk-scanner convention where
+      rank #1 is the largest value (top of the screen).  Left explicit
+      so the caller always declares the direction — no hidden
+      finance-specific default.
+    valid_values: [true, false]
+
+  tie_method:
+    value: average
+    source: pandas_default
+    rationale: >-
+      Default 'average' matches pandas' rank() default — tied values
+      receive the average of the ranks they span.  'min'/'max' assign
+      the low/high rank to all ties; 'first' breaks ties by column
+      order (deterministic); 'dense' leaves no rank gaps after a tie.
+    valid_values: [average, min, max, first, dense]
+
+methodology:
+  what_it_does: >-
+    Given a typed ``Panel`` (rows = DatetimeIndex, columns = named
+    series), the operator:
+
+      1. For each row independently, ranks the columns against each
+         other via pandas ``DataFrame.rank(axis=1, ...)`` with the
+         configured ``ascending`` and ``tie_method``.
+      2. ``method`` selects the output scale:
+           - 'rank'        ordinal 1..N      (pct=False)        → COUNT
+           - 'percentile'  0..100            (pct=True * 100)   → PCT_RANK
+           - 'normalized'  0..1              (pct=True)         → RATIO
+      3. NaN cells stay NaN (na_option='keep') — a missing value is
+         not ranked, and does not consume a rank slot.
+      4. Emits a ``Panel`` with the SAME index and columns, the
+         method-appropriate ``units_by_column``, the input Panel's
+         ``missingness_policy`` carried forward, and lineage = input
+         lineage + this operator's step.
+
+    Cross-sectional, NOT time-series: ranking is across columns at a
+    fixed date (axis=1), so the operator never looks across rows.  A
+    single-row Panel is a valid input (ranks that one cross-section).
+  planned_extensions:
+    - "rank within a sub-group of columns (group_by a column-label map)"
+    - "top-k masking variant (emit EventSet of rank<=k membership)"
+    - "SeriesSet input adapter (the doc's illustrative signature) once a SeriesSet-native consumer appears"
