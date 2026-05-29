@@ -17,7 +17,7 @@
 | Module folder name | `snake_case` matching backend `tool_name` EXACTLY | `calculate_cpi_surprise_tool/` | FM1 |
 | Workflow module folder name | `snake_case` matching backend `template_id` EXACTLY | `event_study/` | FM1 |
 | Module spec file | `module.ts` | — | FM7 |
-| Surface files | Per FM8 fixed names | `BuildSurface.tsx`, `MonitorWidget.tsx`, etc. | FM8 |
+| Surface files | Per FM8 fixed names; `custom_build_surface` ships the **dual-view pair** `BuildExtended.tsx` + `BuildCompact.tsx` per [`rendering_density.md`](rendering_density.md) §1 (the legacy single `BuildSurface.tsx` is non-compliant for new modules) | `BuildExtended.tsx`, `BuildCompact.tsx`, `MonitorWidget.tsx`, etc. | FM8, rendering_density.md §1 |
 | Module test file | `module.spec.ts` | — | FM11 |
 | THESIS file | `THESIS.md` (uppercase) | — | FM10 |
 | Closed-family enum string values | `snake_case`, matching backend identifier conventions | `'generic_runnable'`, `'workflow_incompatible'` | P8 |
@@ -106,7 +106,9 @@ Renaming a wire field locally (e.g. mapping `daily_change_bps` to `dailyChangeBp
 | Pattern | Why forbidden |
 |---|---|
 | Module folder named with friendly short form (`pca/` instead of `calculate_pca_yield_curve_tool/`) | FM1 |
-| Surface file named outside the FM8 fixed list (`MyView.tsx` instead of `BuildSurface.tsx`) | FM8 |
+| Surface file named outside the FM8 fixed list (`MyView.tsx` instead of `BuildExtended.tsx` / `BuildCompact.tsx`) | FM8 |
+| `custom_build_surface` module that ships only one of the dual-view pair (only `BuildExtended.tsx` or only `BuildCompact.tsx`) | FM8 + rendering_density.md §1 — dual-view is a structural obligation, not opt-in |
+| Legacy `BuildSurface.tsx` (singular) in a new module instead of `BuildExtended.tsx` + `BuildCompact.tsx` | rendering_density.md §5.2 |
 | Wire field renamed to TypeScript-idiom camelCase | P10 |
 | Display-string-only label that drifts from backend identifier (a card shows "Italian BTP" when the backend slug is `IT_BTP` and the display string would more honestly read "BTP · Italy") | Cosmetic vs identifier confusion |
 | Hook named without `use` prefix | React convention |

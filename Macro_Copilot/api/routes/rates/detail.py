@@ -50,6 +50,33 @@ from rates_agent.sovereign_bonds.tools.yield_levels import (
     CONFIG_PATH as YIELD_LEVELS_CONFIG_PATH,
     get_yield_levels,
 )
+# Phase-1 pilot: standalone-bridge endpoint for the linker
+# real_yield_level primitive.  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new
+# tool ships its OWN typed-detail endpoint; this is the first one.
+from rates_agent.inflation_indexed_bonds.tools.real_yield_level import (
+    CONFIG_PATH as REAL_YIELD_LEVEL_CONFIG_PATH,
+    RealYieldLevelInput,
+    RealYieldLevelOutput,
+    get_real_yield_level,
+)
+# Phase-1 pilot Stage B/C: standalone-bridge endpoints for the linker
+# breakeven_inflation_simple + real_yield_curve_spread primitives.  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new
+# tool ships its OWN typed-detail endpoint consumed by both the
+# extended and compact Build views (rendering_density dual-view).
+from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple import (
+    CONFIG_PATH as BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH,
+    BreakevenInflationSimpleInput,
+    BreakevenInflationSimpleOutput,
+    calculate_breakeven_inflation_simple,
+)
+from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
+    CONFIG_PATH as REAL_YIELD_CURVE_SPREAD_CONFIG_PATH,
+    RealYieldCurveSpreadInput,
+    RealYieldCurveSpreadOutput,
+    calculate_real_yield_curve_spread,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -180,6 +207,314 @@ def yield_detail(
         raise HTTPException(status_code=503, detail=f"Database error: {exc}")
 
     _tool_result_or_raise(result, f"Yield level for {curve_family} {tenor}")
+    return result
+
+
+# ============================================================================
+# /detail/real_yield  — Phase-1 pilot standalone-bridge endpoint
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new
+# primitive ships its OWN typed-detail endpoint (no shared shell reuse).
+# This route mirrors ``/detail/yield``'s shape but operates on the linker
+# real-yield primitive AND exposes the three Phase-1 methodology overrides
+# (z_score_window_days / z_score_min_periods / z_score_ddof) per the
+# rendering_density standard so both the extended and compact Build
+# surfaces can pass them through to compute().
+#
+# The same payload feeds BOTH the extended Build view (mounted in
+# single-tool queries) and the compact Build view (mounted in multi-
+# tool query DAG nodes); per rendering_density.md §10 the compact view
+# just renders less of the payload.  No separate "summary" endpoint.
+# ============================================================================
+@router.get(
+    "/detail/real_yield",
+    response_model=RealYieldLevelOutput,
+    summary="Real Yield Level Detail (linker, standalone bridge)",
+)
+def real_yield_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    tenor: str = Query(..., description="Tenor point on the linker curve, e.g. '10Y'"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic.  Omit (None) to use the tool's "
+            "bundled ``default_field_name`` convention from "
+            "real_yield_level/config.yaml (currently 'YLD_YTM_MID' — "
+            "the linker real-yield-to-maturity mnemonic).  Per the "
+            "Phase-1 exposure decision in config.yaml:default_field_name.exposure."
+        ),
+    ),
+    z_score_window_days: Optional[int] = Query(
+        default=None,
+        ge=60,
+        le=1260,
+        description=(
+            "Trading-day window for the rolling z-score.  Omit (None) "
+            "to use the YAML default (currently 252).  Pass 60 / 126 "
+            "for tactical framing or 504 for structural-regime work.  "
+            "Per config.yaml:z_score_window_days.exposure."
+        ),
+    ),
+    z_score_min_periods: Optional[int] = Query(
+        default=None,
+        ge=20,
+        le=252,
+        description=(
+            "Minimum observations before the rolling z-score is "
+            "emitted.  Omit (None) to use the YAML default (60).  "
+            "Scale with ``z_score_window_days`` when overriding."
+        ),
+    ),
+    z_score_ddof: Optional[int] = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Standard-deviation degrees of freedom.  Omit (None) to "
+            "use the YAML default (1 — sample std).  0 = population std."
+        ),
+    ),
+):
+    """Same payload + override semantics as the MCP wrapper; consumed by
+    the frontend module's ``surfaces/BuildExtended.tsx`` AND
+    ``surfaces/BuildCompact.tsx`` per the rendering-density dual-view
+    contract.  None-sentinels on the four exposed Phase-1 conventions
+    fall through to the YAML defaults via compute._conventions_from_config.
+    """
+    try:
+        params = RealYieldLevelInput(
+            curve_family=curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+            z_score_window_days=z_score_window_days,
+            z_score_min_periods=z_score_min_periods,
+            z_score_ddof=z_score_ddof,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        ryl_config = load_tool_config(REAL_YIELD_LEVEL_CONFIG_PATH)
+        result = get_real_yield_level(
+            engine=engine, params=params, config=ryl_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/real_yield: tool failed for %s %s", curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result, f"Real yield level for {curve_family} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/breakeven  — Stage-B standalone-bridge endpoint
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# breakeven_inflation_simple primitive ships its OWN typed-detail
+# endpoint (no shared shell reuse).  Exposes the same four Phase-1
+# methodology overrides as real_yield (z_score_window_days /
+# z_score_min_periods / z_score_ddof / field_name) so both the
+# extended and compact Build surfaces pass them through to compute().
+# The same payload feeds BOTH views (rendering_density.md §10).
+# ============================================================================
+@router.get(
+    "/detail/breakeven",
+    response_model=BreakevenInflationSimpleOutput,
+    summary="Bond-Implied Breakeven Inflation Detail (linker, standalone bridge)",
+)
+def breakeven_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    tenor: str = Query(..., description="Tenor point on both curves, e.g. '10Y'"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for BOTH legs.  Omit (None) to use "
+            "the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID').  Per "
+            "config.yaml:default_field_name.exposure."
+        ),
+    ),
+    z_score_window_days: Optional[int] = Query(
+        default=None,
+        ge=60,
+        le=1260,
+        description=(
+            "Trading-day window for the rolling z-score of the breakeven "
+            "(bps) series.  Omit (None) to use the YAML default "
+            "(currently 252).  Pass 60 / 126 for tactical framing or 504 "
+            "for structural-regime work.  Per "
+            "config.yaml:z_score_window_days.exposure."
+        ),
+    ),
+    z_score_min_periods: Optional[int] = Query(
+        default=None,
+        ge=20,
+        le=252,
+        description=(
+            "Minimum observations before the rolling z-score is emitted.  "
+            "Omit (None) to use the YAML default (60).  Scale with "
+            "``z_score_window_days`` when overriding."
+        ),
+    ),
+    z_score_ddof: Optional[int] = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Standard-deviation degrees of freedom.  Omit (None) to use "
+            "the YAML default (1 — sample std).  0 = population std."
+        ),
+    ),
+):
+    """Same payload + override semantics as the MCP wrapper; consumed by
+    the frontend module's ``surfaces/BuildExtended.tsx`` AND
+    ``surfaces/BuildCompact.tsx`` per the rendering-density dual-view
+    contract.  None-sentinels on the four exposed Phase-1 conventions
+    fall through to the YAML defaults via compute._conventions_from_config.
+    """
+    try:
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+            z_score_window_days=z_score_window_days,
+            z_score_min_periods=z_score_min_periods,
+            z_score_ddof=z_score_ddof,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bei_config = load_tool_config(BREAKEVEN_INFLATION_SIMPLE_CONFIG_PATH)
+        result = calculate_breakeven_inflation_simple(
+            engine=engine, params=params, config=bei_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/breakeven: tool failed for %s vs %s @ %s",
+            nominal_curve_family, linker_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Breakeven inflation for {nominal_curve_family} vs "
+        f"{linker_curve_family} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/real_yield_curve_spread  — Stage-C standalone-bridge endpoint
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# real_yield_curve_spread primitive ships its OWN typed-detail endpoint.
+# The three rolling-z-score overrides apply to the spread's own z-score +
+# the fetch-window buffer; field_name flows to both endpoint level calls.
+# The same payload feeds BOTH the extended and compact Build views.
+# ============================================================================
+@router.get(
+    "/detail/real_yield_curve_spread",
+    response_model=RealYieldCurveSpreadOutput,
+    summary="Real-Yield Curve Spread Detail (linker, standalone bridge)",
+)
+def real_yield_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short tenor of the spread, e.g. '5Y' for 5s10s"),
+    long_tenor: str = Query(..., description="Long tenor of the spread, e.g. '10Y' for 5s10s — must be strictly longer than short_tenor"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for BOTH endpoint real-yield "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_field_name`` convention (currently 'YLD_YTM_MID'). "
+            "Per config.yaml:default_field_name.exposure."
+        ),
+    ),
+    z_score_window_days: Optional[int] = Query(
+        default=None,
+        ge=60,
+        le=1260,
+        description=(
+            "Trading-day window for the rolling z-score of the real-yield "
+            "curve spread (percent) series.  Omit (None) to use the YAML "
+            "default (currently 252).  Applies to the spread's own "
+            "z-score AND the fetch-window buffer; the inner endpoint "
+            "level calls use the YAML default.  Per "
+            "config.yaml:z_score_window_days.exposure."
+        ),
+    ),
+    z_score_min_periods: Optional[int] = Query(
+        default=None,
+        ge=20,
+        le=252,
+        description=(
+            "Minimum observations before the rolling z-score is emitted.  "
+            "Omit (None) to use the YAML default (60).  Scale with "
+            "``z_score_window_days`` when overriding."
+        ),
+    ),
+    z_score_ddof: Optional[int] = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Standard-deviation degrees of freedom.  Omit (None) to use "
+            "the YAML default (1 — sample std).  0 = population std."
+        ),
+    ),
+):
+    """Same payload + override semantics as the MCP wrapper; consumed by
+    the frontend module's ``surfaces/BuildExtended.tsx`` AND
+    ``surfaces/BuildCompact.tsx`` per the rendering-density dual-view
+    contract.  None-sentinels on the four exposed Phase-1 conventions
+    fall through to the YAML defaults via compute._conventions_from_config.
+    """
+    try:
+        params = RealYieldCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+            z_score_window_days=z_score_window_days,
+            z_score_min_periods=z_score_min_periods,
+            z_score_ddof=z_score_ddof,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        rycs_config = load_tool_config(REAL_YIELD_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_real_yield_curve_spread(
+            engine=engine, params=params, config=rycs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/real_yield_curve_spread: tool failed for %s %s%s",
+            curve_family, short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Real-yield curve spread for {curve_family} "
+        f"{short_tenor}/{long_tenor}",
+    )
     return result
 
 

@@ -48,7 +48,11 @@
 // original order.
 // ============================================================================
 
-import type { WorkspaceContext } from '@/types/copilot';
+import type {
+  WorkspaceContext,
+  WorkspaceContextEdge,
+  WorkspaceContextTool,
+} from '@/types/copilot';
 import { hasModelMetadata } from '@/lib/modelRegistry';
 import {
   isKnownBackendTool,
@@ -389,6 +393,71 @@ export function decodePrimitiveList(raw: string): DecodedPrimitive[] {
     out.push(decoded);
   }
   return out;
+}
+
+// ----------------------------------------------------------------------------
+// Stage D — detailed multi-tool decode for the generic DAG container.
+// ----------------------------------------------------------------------------
+
+/** One decoded entry zipped with its source ``WorkspaceContextTool`` and
+ *  its index in the ORIGINAL ``tools`` array.  ``sourceIndex`` is the
+ *  original index (NOT the filtered position) so dependency edges
+ *  (which reference original indices) resolve correctly even when some
+ *  entries were dropped (builder / truly-unknown). */
+export interface DecodedContextEntry {
+  decoded: DecodedPrimitive;
+  source: WorkspaceContextTool;
+  sourceIndex: number;
+}
+
+/** Full detailed decode of a multi-tool ``?context=`` payload: the
+ *  originating prompt (if the supervisor recorded one), the dependency
+ *  edges (if any — absent ⇒ parallel), and the decoded entries each
+ *  carrying their source tool (so the DAG can surface per-node status /
+ *  error / domain that the flat ``decodePrimitiveList`` drops). */
+export interface DecodedWorkspaceContext {
+  prompt?: string;
+  edges: WorkspaceContextEdge[];
+  entries: DecodedContextEntry[];
+}
+
+/** Stage D — parse the context ONCE and return the prompt + edges +
+ *  decoded entries (with source meta) for the generic multi-tool DAG
+ *  container.  Builder-class entries are excluded (they take the
+ *  ``?builder=`` redirect, same policy as ``decodePrimitiveList``).
+ *  Truly-unknown tool names are dropped.  Single source of truth for
+ *  the DAG's data model — the dagModel builder consumes this. */
+export function decodeWorkspaceContextDetailed(
+  raw: string,
+): DecodedWorkspaceContext {
+  let parsed: WorkspaceContext;
+  try {
+    parsed = JSON.parse(decodeURIComponent(raw)) as WorkspaceContext;
+  } catch {
+    return { edges: [], entries: [] };
+  }
+  if (!parsed?.tools?.length) return { edges: [], entries: [] };
+
+  const entries: DecodedContextEntry[] = [];
+  parsed.tools.forEach((t, sourceIndex) => {
+    const decoded = decodeOne(t.tool, t.params);
+    if (decoded === null) return;
+    // Builder entries take the ?builder= redirect — same exclusion as
+    // decodePrimitiveList.  They never appear as a DAG node.
+    if (decoded.kind === 'builder') return;
+    entries.push({ decoded, source: t, sourceIndex });
+  });
+
+  const prompt =
+    typeof parsed.prompt === 'string' && parsed.prompt.trim()
+      ? parsed.prompt.trim()
+      : undefined;
+
+  return {
+    prompt,
+    edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+    entries,
+  };
 }
 
 // ----------------------------------------------------------------------------

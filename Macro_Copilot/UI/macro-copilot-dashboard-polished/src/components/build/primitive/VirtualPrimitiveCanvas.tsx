@@ -206,17 +206,28 @@ export function VirtualPrimitiveCanvas({
     return <DecodeError contextParam={contextParam} />;
   }
 
-  // ---- Stage 5 — module-first dispatch -------------------------------
+  // ---- Stage 5 + rendering-density dispatch -------------------------
   //
-  // If the owning primitive module ships a full Build surface
-  // (``MODULE.surfaces.build``), mount IT and skip every legacy
-  // dispatch branch below.  The module owns the entire canvas:
-  // controls strip, fetch dispatch, output rendering, error states.
+  // If the owning primitive module ships a full Build surface, mount
+  // IT and skip every legacy dispatch branch below.  The module owns
+  // the entire canvas: controls strip, fetch dispatch, output
+  // rendering, error states.
   //
-  // This is the page-shell-respects-module-shelf contract Stage 5
-  // delivers.  Any new tool that wants total ownership of its Build
-  // surface just ships a ``surfaces/BuildSurface.tsx`` + claims
-  // ``custom_build_surface`` — no edits to this file needed.
+  // PREFERENCE ORDER (per docs_revamped/03_standards/rendering_density.md §5):
+  //   1. ``MODULE.surfaces.buildExtended`` — Phase-1 dual-view contract
+  //      field.  All new primitives populate this.  This canvas's
+  //      single-tool dispatch mounts the EXTENDED view; the compact
+  //      view fires only inside multi-tool DAG infrastructure (see
+  //      MultiPrimitiveCanvas + future DAG container).
+  //   2. ``MODULE.surfaces.build`` — LEGACY field pre-dating the
+  //      dual-view contract.  Kept for backward compatibility with
+  //      Stage-5-era modules that haven't migrated yet.
+  //
+  // The first non-null match wins.  Any new tool that wants total
+  // ownership of its Build surface just ships
+  // ``surfaces/BuildExtended.tsx`` + ``surfaces/BuildCompact.tsx``
+  // + claims ``custom_build_surface`` — no edits to this file
+  // needed.
   //
   // Skipped for ``decoded.kind === 'builder'`` (rich-model) — the
   // useEffect above already redirects to ``?builder=<toolName>`` so
@@ -232,7 +243,9 @@ export function VirtualPrimitiveCanvas({
   // canvas provide chrome.
   if (decoded.kind !== 'builder') {
     const moduleForBuild = getPrimitiveModule(decoded.toolName);
-    const ModuleBuildSurface = moduleForBuild?.surfaces?.build;
+    const ModuleBuildSurface =
+      moduleForBuild?.surfaces?.buildExtended
+      ?? moduleForBuild?.surfaces?.build;
     if (ModuleBuildSurface) {
       return (
         <ModuleBuildSurface

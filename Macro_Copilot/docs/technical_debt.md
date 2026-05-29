@@ -1139,6 +1139,145 @@ WHEN: Same trigger as #29 — when a Phase-3 / Phase-4 primitive that
       and both unblock the same `financing_rate` primitive methods.
 
 
+### 31. Bloomberg generic-ticker roll artifacts (linker front-end specifically)
+
+WHERE: `macro_data.market_data_daily` rows for any Bloomberg "generic"
+       benchmark ticker (e.g. `GTGBPII1Y Govt`, `GTII5 Govt`, etc.) in
+       the final ~2 weeks before the underlying bond rolls.  Most
+       visible on `inflation_linker` 1Y series (`GBP_LINKER`,
+       `EUR_FR_LINKER`, `CAD_RRB` short-end) because UK / Euro / CAD
+       linker generics track a single front-end bond whose YTM
+       computation becomes unstable as it approaches maturity.
+       Sibling under TD #26's umbrella; the cleaning-pipeline FIX
+       documented there subsumes the FIX needed here.
+WHAT: Bloomberg generic tickers always point at "the closest <tenor> bond
+      right now".  When the underlying bond gets within ~3 months of
+      maturity it stops trading liquidly and its yield-to-maturity
+      becomes mathematically unstable (tiny price moves divided by
+      tiny remaining maturity → huge YTM swings).  Bloomberg keeps
+      publishing the quote because the vendor contract is "raw feed,
+      not curated" — the cleaning is the consumer's responsibility.
+      When Bloomberg rolls the generic to a new underlying bond the
+      yield snaps back to normal.  Net pattern: ~5-10 days of
+      escalating bad values, then a step back to truth on roll.
+
+      Confirmed occurrence captured during the
+      `get_real_yield_level_tool` Phase-1 pilot:
+
+        - Ticker: `GTGBPII1Y Govt` (UK 1Y index-linked gilt generic)
+        - Rows: 2026-02-20 → 2026-02-27 (6 consecutive trading days)
+        - Values: 6.62% → 7.07% → 7.60% → 8.12% → 8.69% → 10.13%
+        - Snap-back on 2026-03-02: -0.16% (normal 1Y linker yield range)
+        - Load_ids producing the bad rows: 100 (Apr 9), 166 (May 24)
+          — i.e. BOTH ingestion runs faithfully replicated Bloomberg's
+          published values; this is NOT an ingestion bug.
+
+      This is a STRUCTURAL recurring pattern, not a one-time bad row.
+      Expect the same shape every roll cycle (roughly annually for 1Y
+      generics).  Sibling classes — TD #26 documents an INT32_MAX
+      sentinel leak (different root cause, same outlier-filtering
+      umbrella).  Both deserve the same shared FIX: a documented
+      plausibility screen in the fetch/cleaning layer.
+IMPACT: Downstream primitives that consume linker series naively (z-score
+      tools, percentile tools, future regression / PCA tools on linker
+      curves) silently render impossible values.  The
+      `get_real_yield_level_tool` chart visualised this on
+      2026-05-28 — the chart's y-axis stretched to fit the 10% spike,
+      making the actual ~1.5% real-yield trend look like a flat line
+      at the bottom of the chart.  Z-score + percentile + trailing-
+      range outputs were similarly distorted (the +10% value blew up
+      the trailing-range mean / std).
+
+      No DOWNSTREAM data corruption — the spike is a display + stats
+      artifact only.  But it directly undermines user trust in the
+      product, since a 10% real yield in any G7 market is implausible
+      on its face.
+POLICY: Same as TD #26 — preserve raw vendor observations in
+      `market_data_daily`; do NOT hand-edit individual Bloomberg
+      values silently.  Cleaning happens at the fetch/primitive layer
+      with explicit, documented, field-aware plausibility screens and
+      filtered-row counts surfaced in methodology metadata (P5).
+TEMPORARY FIX APPLIED (2026-05-28):
+      Two narrow remediations to unblock the `get_real_yield_level_tool`
+      Phase-1 pilot:
+
+      (a) **One-off DB cleanup for the unambiguous sibling case** — the
+          single `GTCAD1Y Govt YLD_YTM_ASK = 2147484` row originally
+          cited in TD #26 was NULLed:
+
+              UPDATE macro_data.market_data_daily
+              SET field_value = NULL
+              WHERE field_name = 'YLD_YTM_ASK'
+                AND field_value > 1000;
+
+          (1 row affected; the load_id chain is preserved so the audit
+          trail is intact.)  The GBP_LINKER 1Y rows were NOT cleaned —
+          they are 6 contiguous rows representing a STRUCTURAL pattern
+          (not a single bad row), and the user's instruction was to
+          "tell me if it's a deeper issue" rather than auto-fix.  Those
+          rows remain in the DB pending either (i) explicit one-off
+          cleanup authorization OR (ii) the shared cleaning-pipeline
+          fix per TD #26.
+
+      (b) **Per-tool frontend sanity filter** at
+          `UI/.../src/modules/primitives/get_real_yield_level_tool/surfaces/realYieldShared.ts`
+          (`sanitiseTimeSeries` + `REAL_YIELD_SANITY_MIN/MAX = ±6%`).
+          Out-of-bound values are nulled at the per-tool data-prep
+          layer so the chart + reference-band computation cannot be
+          distorted.  This is a DEFENSIVE PER-TOOL layer; it does NOT
+          remediate the underlying data and does NOT generalise to
+          other tools.
+
+      Both fixes are TEMPORARY.  They block the user-visible chart
+      regression but do not address the structural class.  The proper
+      fix is TD #26's shared cleaning-pipeline layer, which subsumes
+      this case automatically.
+FIX (permanent — subsumed by TD #26):
+      The shared cleaning-layer FIX documented in TD #26 ("Add a
+      shared data-quality/filtering layer used by rates fetchers
+      before primitives compute") covers both this manifestation and
+      the original sentinel-leak case.  Specific additions this entry
+      surfaces for the umbrella FIX:
+
+        - The cleaning layer should be aware of the GENERIC-ROLL
+          pattern (escalating outliers near a known maturity / roll
+          date), not just static range bounds.  Simplest first cut:
+          a rolling-window median-deviation filter (reject points
+          where |value - rolling_median(N)| > k × rolling_MAD(N))
+          with N = 21 trading days, k = 6.  This catches both
+          sentinel leaks AND generic-roll artifacts without needing
+          a per-ticker bond-master.
+        - Per-tool output should expose a `data_quality_warnings`
+          field listing rejected rows + the reason (P5 honest
+          disclosure — the user sees that 6 days were filtered, not
+          a silent gap).
+        - Regression-fixture coverage for both the
+          `GTCAD1Y Govt 2147484` sentinel case (TD #26's example) AND
+          the `GTGBPII1Y Govt 2026-02-20-27` generic-roll case (this
+          entry's example).
+
+EFFORT: Medium (per TD #26's existing assessment).  This entry adds
+      generic-roll-pattern detection on top of static range bounds —
+      adds ~1 working session to TD #26's scope.
+
+WHEN: Same trigger as TD #26 — before any new linker / inflation /
+      bond-futures primitive that consumes vendor data without a
+      manual quality screen.  Until then the per-tool sanity filter
+      in `get_real_yield_level_tool` is the workaround; copy the
+      pattern to sibling tools that hit the same class (the
+      `calculate_breakeven_inflation_simple_tool` pilot is the
+      immediate next consumer).
+
+CROSS-REF:
+      - TD #26 (parent / shared-infrastructure fix; same outlier-
+        filtering umbrella)
+      - `docs_revamped/03_standards/methodology_disclosure.md`
+        (P5 disclosure obligation when filtering)
+      - `tests/test_real_yield_level_compute.py::TestCanonicalTimeSeries`
+        (place to add the per-tool regression test once the bad rows
+        are cleaned)
+
+
 ## Phase 1 closure punch list (for reference)
 
 Per the original Phase 1 Week 7-8 plan:

@@ -211,8 +211,14 @@ export async function assertStandardModuleInvariants(
   //
   // Stage 5: ``resultRenderer`` is recognised as a build-surface variant —
   // it satisfies ``custom_build_surface`` (same tier as the full builder).
+  // Dual-view rendering-density contract (rendering_density.md §5.2):
+  // ``buildExtended`` + ``buildCompact`` are the new Build-surface field
+  // names; both satisfy ``custom_build_surface`` (the same tier the legacy
+  // ``build`` / ``resultRenderer`` fields satisfy).
   const surfaceKeyToTier: Record<string, string> = {
     build: 'custom_build_surface',
+    buildExtended: 'custom_build_surface',
+    buildCompact: 'custom_build_surface',
     resultRenderer: 'custom_build_surface',
     preview: 'custom_preview_widget',
     monitor: 'monitor_surface',
@@ -224,7 +230,7 @@ export async function assertStandardModuleInvariants(
     if (!tierForKey) {
       throw new Error(
         `FM8 violation — surfaces.${key} is populated but no capability ` +
-          `tier maps to that key (closed mapping is build/resultRenderer/preview/monitor/ask).`,
+          `tier maps to that key (closed mapping is build/buildExtended/buildCompact/resultRenderer/preview/monitor/ask).`,
       );
     }
     if (!tierSet.has(tierForKey as SurfaceTier)) {
@@ -325,7 +331,26 @@ export async function assertStandardModuleInvariants(
   // ``monitorWidgets`` array, which can carry many components per
   // module under ``surfaces/monitor/``.
   const expectedSurfaceFiles: Array<{ key: string; path: string }> = [];
-  if (module.surfaces?.build != null) {
+  // Dual-view rendering-density contract (rendering_density.md §5.2):
+  // ``buildExtended`` → surfaces/BuildExtended.tsx and ``buildCompact`` →
+  // surfaces/BuildCompact.tsx are the canonical Build-surface files.  When a
+  // module ships the dual-view fields, the legacy ``build`` alias points at
+  // BuildExtended (no separate BuildSurface.tsx file is required).
+  if (module.surfaces?.buildExtended != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.buildExtended',
+      path: `${folderPath}/surfaces/BuildExtended.tsx`,
+    });
+  }
+  if (module.surfaces?.buildCompact != null) {
+    expectedSurfaceFiles.push({
+      key: 'surfaces.buildCompact',
+      path: `${folderPath}/surfaces/BuildCompact.tsx`,
+    });
+  }
+  // Legacy single-view modules (``surfaces.build`` WITHOUT the dual-view
+  // fields) map ``build`` → surfaces/BuildSurface.tsx as before.
+  if (module.surfaces?.build != null && module.surfaces?.buildExtended == null) {
     expectedSurfaceFiles.push({
       key: 'surfaces.build',
       path: `${folderPath}/surfaces/BuildSurface.tsx`,

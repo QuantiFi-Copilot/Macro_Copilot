@@ -9,6 +9,8 @@
 **Operationalises principles:** P1 (built right, not as a placeholder), P3 (every primitive follows the same shape), P11 (each agent owns its own primitives), and primitive-specific PR1–PR16 throughout.
 **AC class:** Adding a new primitive is **Load-bearing** per [`../../00_thesis/02_ai_agent_development_contract.md`](../../00_thesis/02_ai_agent_development_contract.md). Run the full self-check; do not skip the gate.
 
+> **Scope note.** This runbook covers the **BACKEND slice only** — the four-file tool folder + MCP wrapper + manifest entry + Stage-2 test triplet (Steps 1–11 below). For the full end-to-end procedure across all 8 lifecycle stages (Backend → DB curated migration → Frontend module → Frontend bridge endpoint → Frontend dual-view + Monitor + Mockups → Mirrors + per-tool README → Closeout sign-off), read [`BUILD_GUIDE.md`](BUILD_GUIDE.md) instead. BUILD_GUIDE is the single front-door manual and references this runbook for the backend stages.
+
 ---
 
 ## When to use this runbook

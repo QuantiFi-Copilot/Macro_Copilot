@@ -53,19 +53,34 @@ tools:
       config: rates_agent/inflation_indexed_bonds/tools/real_yield_level/config.yaml
 
     one_liner: >-
-      Single-tenor sovereign-linker real-yield snapshot — current yield,
-      daily / weekly / monthly change in bps, rolling 252-day z-score,
-      trailing 252-day high / low / percentile, and full chartable time
-      series. Linker analogue of get_yield_levels.
+      Where do real yields sit right now for US TIPS, UK linkers,
+      French OATei, or Canadian RRBs?  See the level, today's move,
+      and how stretched it is vs the past year — at a glance.
+    # PM-facing tagline (shown on the Library card).  Lock convention
+    # per docs_revamped/03_standards/lifecycle_checklist_template.md
+    # Stage 1C: one_liner must be desk-PM-facing prose, NOT internal
+    # engineer-facing.  Technical detail belongs in this tool's
+    # README + the DB tool_metadata.desk_narrative field.
 
     bucket_rationale: >-
       Deterministic rolling z-score over stored daily real yields on the
-      linker generic-ticker universe. Fixed 252-day window; conventions
-      YAML-locked; no model inference and no LLM-facing override path in
-      V1. `instrument_type='inflation_linker'` filter guards the linker
-      universe per the ADR-0006 isolation rationale.
+      linker generic-ticker universe. Default 252-day window with the
+      rolling-z-score model surface (window / min_periods / ddof) exposed
+      as Pydantic Input overrides per the Phase-1 methodology-exposure
+      standard (docs_revamped/03_standards/methodology_exposure.md);
+      remaining conventions (period offsets, fetch buffer, ffill,
+      rounding, trailing range) stay YAML-locked. `instrument_type='inflation_linker'`
+      filter guards the linker universe per the ADR-0006 isolation
+      rationale.
 
-    pm_overridable: []
+    # Mirror of config.yaml ``conventions.<name>.exposure.expose: true``
+    # entries.  Derived; do not hand-edit without updating the YAML.
+    # See docs_revamped/03_standards/methodology_exposure.md §4 (propagation chain).
+    pm_overridable:
+      - z_score_window_days
+      - z_score_min_periods
+      - z_score_ddof
+      - default_field_name
 
     related_tools:
       - calculate_breakeven_inflation_simple_tool
@@ -76,10 +91,19 @@ tools:
 
     references:
       - docs_revamped/05_decisions/0006-inflation-domain-agents.md
+      # Mirror of macro_data.tool_metadata.theoretical_reference for this
+      # tool (set in database/migrations/2026-05-28_phase1_get_real_yield_level_curated.sql).
+      # Per ADR 0015 the DB is the authoritative source; this mirror is
+      # for human readability.
+      - "Tuckman & Serrat (2022), Fixed Income Securities, 4th ed., Wiley, Ch. 22 (Inflation-Indexed Bonds)"
+      - "Per-country primary issuer documentation: US Treasury / TreasuryDirect (TIPS); UK DMO (Index-Linked Gilts); Agence France Trésor (OATei); Bank of Canada (Real Return Bonds)"
 
     built_date: 2026-05-21
     validation_status: >-
-      Not validated yet
+      Stage 1–3 complete (Phase-1 pilot under the new standards);
+      source-material verification pending — tracked at
+      rates_agent/inflation_indexed_bonds/tools/real_yield_level/LIFECYCLE_CHECKLIST.md
+      Stage 8.
 
   # ---------------------------------------------------------------------------
   # BOND-IMPLIED BREAKEVEN INFLATION (nominal − linker real yield)
@@ -100,19 +124,40 @@ tools:
       config: rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/config.yaml
 
     one_liner: >-
-      Bond-implied breakeven inflation at a matched (country, tenor) —
-      nominal sovereign yield minus the linker real yield in bps, with
-      rolling 252-day z-score, period changes and a full chartable time
-      series. The "simple" name denotes the unadjusted nominal − real
-      pairing (no carry / seasonals adjustment, which would be the
-      TD #32 / TD #33 carry-adjusted primitive).
+      What inflation rate is the bond market pricing in for the US, UK,
+      France, or Canada?  See breakeven inflation — the gap between a
+      nominal government bond yield and the matching inflation-linked
+      bond's real yield — with today's move and how stretched it is vs
+      the past year.  (Inflation compensation, not a clean
+      expected-inflation read.)
+    # PM-facing tagline (shown on the Library card).  Lock convention
+    # per docs_revamped/03_standards/lifecycle_checklist_template.md
+    # Stage 1C: one_liner must be desk-PM-facing prose, NOT internal
+    # engineer-facing.  The inflation-compensation caveat is kept
+    # because misreading a breakeven as expected inflation is a desk
+    # error; the full methodology detail lives in this tool's README +
+    # the DB tool_metadata.desk_narrative field.
 
     bucket_rationale: >-
-      Deterministic arithmetic on two stored yield series. Methodology
-      pinned in config.yaml; no model state. Same z-score conventions as
-      the other Bucket-1A simple-spread primitives.
+      Deterministic arithmetic on two stored yield series (nominal −
+      linker real, same country + tenor). Methodology pinned in
+      config.yaml; no model state. The rolling-z-score model surface
+      (window / min_periods / ddof) plus field_name are exposed as
+      Pydantic Input overrides per the Phase-1 methodology-exposure
+      standard (docs_revamped/03_standards/methodology_exposure.md);
+      remaining conventions (period offsets, fetch buffer, ffill,
+      rounding, trailing range) stay YAML-locked. Same z-score
+      conventions as the other Bucket-1A simple-spread primitives;
+      the same-country / no-proxy guards live in code.
 
-    pm_overridable: []
+    # Mirror of config.yaml ``conventions.<name>.exposure.expose: true``
+    # entries.  Derived; do not hand-edit without updating the YAML.
+    # See docs_revamped/03_standards/methodology_exposure.md §4 (propagation chain).
+    pm_overridable:
+      - z_score_window_days
+      - z_score_min_periods
+      - z_score_ddof
+      - default_field_name
 
     related_tools:
       - get_real_yield_level_tool
@@ -125,10 +170,20 @@ tools:
     references:
       - docs/technical_debt.md  # TD #32 — carry-adjusted breakeven blocker
       - docs/technical_debt.md  # TD #33 — composition cascade
+      # Mirror of macro_data.tool_metadata.theoretical_reference for this
+      # tool (set in database/migrations/2026-05-28_phase1_calculate_breakeven_inflation_simple_curated.sql).
+      # Per ADR 0015 the DB is the authoritative source; this mirror is
+      # for human readability.
+      - "Tuckman & Serrat (2022), Fixed Income Securities, 4th ed., Wiley, Ch. 22 (Inflation-Indexed Bonds; breakeven decomposition)"
+      - "Per-country primary issuer documentation: US Treasury / TreasuryDirect (TIPS); UK DMO (Index-Linked Gilts); Agence France Trésor (OATei); Bank of Canada (Real Return Bonds)"
 
     built_date: 2026-05-21
     validation_status: >-
-      Not validated yet
+      Stages 1–7 implemented under the Phase-1 standards; Stage 3
+      curated-metadata migration checked in but not yet applied to the
+      live DB, and source-material verification pending — tracked at
+      rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/LIFECYCLE_CHECKLIST.md
+      Stage 8.
 
   - name: calculate_forward_breakeven_simple
     domain: rates
@@ -267,16 +322,36 @@ tools:
       config: rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/config.yaml
 
     one_liner: >-
-      Basis-point spread between two tenors of one country's linker
-      real-yield curve (e.g. US TIPS 5s30s) with rolling 252-day z-score,
-      daily change, and a full chartable time series. Real-yield
-      analogue of calculate_curve_spread.
+      How steep is a country's real-yield curve right now?  See the
+      real-yield curve spread between two tenors of US TIPS, UK linkers,
+      French OATei, or Canadian RRBs (e.g. TIPS 5s10s) — the curve
+      shape, today's move, and how stretched it is vs the past year.
+    # PM-facing tagline (shown on the Library card).  Lock convention
+    # per docs_revamped/03_standards/lifecycle_checklist_template.md
+    # Stage 1C: one_liner must be desk-PM-facing prose, NOT internal
+    # engineer-facing ("analogue of X" / method-name references are
+    # rejected).  Technical detail belongs in this tool's README + the
+    # DB tool_metadata.desk_narrative field.
 
     bucket_rationale: >-
-      Deterministic arithmetic on two real-yield legs. Same z-score
-      conventions as the nominal sovereign curve_spread.
+      Deterministic arithmetic on two real-yield legs (long − short,
+      same linker curve), composed from two get_real_yield_level calls
+      so the no-proxy guard is inherited transitively. The
+      rolling-z-score model surface (window / min_periods / ddof) plus
+      field_name are exposed as Pydantic Input overrides per the
+      Phase-1 methodology-exposure standard
+      (docs_revamped/03_standards/methodology_exposure.md); remaining
+      conventions stay YAML-locked. Same z-score conventions as the
+      nominal sovereign curve_spread.
 
-    pm_overridable: []
+    # Mirror of config.yaml ``conventions.<name>.exposure.expose: true``
+    # entries.  Derived; do not hand-edit without updating the YAML.
+    # See docs_revamped/03_standards/methodology_exposure.md §4 (propagation chain).
+    pm_overridable:
+      - z_score_window_days
+      - z_score_min_periods
+      - z_score_ddof
+      - default_field_name
 
     related_tools:
       - get_real_yield_level_tool
@@ -285,11 +360,21 @@ tools:
 
     workflows: []
 
-    references: []
+    references:
+      # Mirror of macro_data.tool_metadata.theoretical_reference for this
+      # tool (set in database/migrations/2026-05-28_phase1_calculate_real_yield_curve_spread_curated.sql).
+      # Per ADR 0015 the DB is the authoritative source; this mirror is
+      # for human readability.
+      - "Tuckman & Serrat (2022), Fixed Income Securities, 4th ed., Wiley, Ch. 22 (Inflation-Indexed Bonds) + Ch. 5 (term-structure / curve shape)"
+      - "Per-country primary issuer documentation: US Treasury / TreasuryDirect (TIPS); UK DMO (Index-Linked Gilts); Agence France Trésor (OATei); Bank of Canada (Real Return Bonds)"
 
     built_date: 2026-05-21
     validation_status: >-
-      Not validated yet
+      Stages 1–7 implemented under the Phase-1 standards; Stage 3
+      curated-metadata migration checked in but not yet applied to the
+      live DB, and source-material verification pending — tracked at
+      rates_agent/inflation_indexed_bonds/tools/real_yield_curve_spread/LIFECYCLE_CHECKLIST.md
+      Stage 8.
 
   - name: calculate_cross_country_real_yield_spread_simple
     domain: rates

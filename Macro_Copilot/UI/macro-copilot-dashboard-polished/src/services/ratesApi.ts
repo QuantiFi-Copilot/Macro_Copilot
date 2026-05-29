@@ -14,6 +14,9 @@ import type {
   CrossMarketSpreadOutput,
   ButterflyOutput,
   RegimeOutput,
+  RealYieldLevelOutput,
+  BreakevenInflationSimpleOutput,
+  RealYieldCurveSpreadOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -97,6 +100,88 @@ export function fetchDetailYield(
   params: YieldDetailParams,
 ): Promise<YieldLevelOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/yield${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/real_yield  — Phase-1 pilot standalone bridge
+// ---------------------------------------------------------------------------
+// Per docs_revamped/03_standards/methodology_exposure.md §5 every new
+// primitive ships its OWN typed-detail endpoint + its OWN service
+// helper.  Consumed by BOTH the extended Build view (single-tool
+// queries) and the compact Build view (multi-tool query DAG nodes) —
+// same payload, different rendering density per
+// docs_revamped/03_standards/rendering_density.md §1.
+//
+// The four Phase-1 exposed methodology overrides (z_score_window_days,
+// z_score_min_periods, z_score_ddof, field_name) are all optional
+// query params; the backend falls through to YAML defaults when omitted.
+
+export type RealYieldDetailParams = {
+  curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+  z_score_window_days?: number;
+  z_score_min_periods?: number;
+  z_score_ddof?: number;
+};
+
+export function fetchDetailRealYield(
+  params: RealYieldDetailParams,
+): Promise<RealYieldLevelOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/real_yield${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/breakeven  — Stage-B standalone bridge
+// ---------------------------------------------------------------------------
+// Bond-implied breakeven inflation (nominal − linker real).  Own typed
+// helper per the standalone-bridge contract; consumed by BOTH the
+// extended and compact Build views (same payload, different density).
+// The four exposed methodology overrides are optional query params.
+
+export type BreakevenDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+  z_score_window_days?: number;
+  z_score_min_periods?: number;
+  z_score_ddof?: number;
+};
+
+export function fetchDetailBreakeven(
+  params: BreakevenDetailParams,
+): Promise<BreakevenInflationSimpleOutput> {
+  return fetchJSON(`${RATES_PREFIX}/detail/breakeven${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/real_yield_curve_spread  — Stage-C standalone bridge
+// ---------------------------------------------------------------------------
+// Same-country linker real-yield curve spread (long − short real yield).
+// Own typed helper; consumed by BOTH Build views.  The three rolling-
+// z-score overrides apply to the spread's own z-score; field_name flows
+// to both endpoint level calls.
+
+export type RealYieldCurveSpreadDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+  z_score_window_days?: number;
+  z_score_min_periods?: number;
+  z_score_ddof?: number;
+};
+
+export function fetchDetailRealYieldCurveSpread(
+  params: RealYieldCurveSpreadDetailParams,
+): Promise<RealYieldCurveSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/real_yield_curve_spread${buildQuery(params)}`,
+  );
 }
 
 export type SpreadDetailParams = {

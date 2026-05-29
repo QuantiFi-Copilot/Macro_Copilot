@@ -361,6 +361,361 @@ class TestConventionOverrides:
 
 
 # ===========================================================================
+# 3b. Pydantic Input overrides — Phase-1 methodology-exposure surface
+# ===========================================================================
+#
+# Pins the Phase-1 exposure decisions recorded in
+# rates_agent/inflation_indexed_bonds/tools/real_yield_level/config.yaml
+# (per docs_revamped/03_standards/methodology_exposure.md).  Three
+# rolling-z-score conventions are now exposed as Pydantic Input fields
+# with per-call overrides; the None sentinel falls through to the YAML
+# default.  Tests cover:
+#
+#   (a) override path — explicit Input value changes the output;
+#   (b) sentinel-fallback — None Input → YAML default behaviour
+#       (regression guard: same as no exposure work landed at all);
+#   (c) precedence — caller's explicit Input value wins over YAML;
+#   (d) Pydantic constraint enforcement (ge/le bounds).
+#
+# YAML-level override tests live in TestConventionOverrides above; this
+# class is the Input-level analog.
+
+class TestInputOverrides:
+    """Per-call Input overrides for the three Phase-1 exposed conventions
+    (``z_score_window_days``, ``z_score_min_periods``, ``z_score_ddof``).
+
+    Mirror class to ``TestConventionOverrides`` above: the existing one
+    tests YAML-level overrides (the legacy single-source-of-truth);
+    this one tests Pydantic-Input-level overrides (the new exposure
+    surface) and the precedence between the two.
+    """
+
+    def _run(self, params, raw_df, config=None):
+        with patch(
+            "rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute.fetch_single_tenor",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute.date",
+            _FrozenDate,
+        ):
+            return get_real_yield_level(engine=None, params=params, config=config)
+
+    # ------------------------------------------------------------------
+    # (a) Override path — explicit Input changes the output.
+    # ------------------------------------------------------------------
+
+    def test_z_window_input_override_changes_z(self):
+        """Passing z_score_window_days via Input changes the z-score
+        the same way a YAML-level override would."""
+        raw_df = _synthetic_raw_df()
+        out_default = self._run(
+            RealYieldLevelInput(curve_family="USD_TIPS", tenor="10Y"),
+            raw_df,
+        )
+        out_override = self._run(
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_window_days=120,
+            ),
+            raw_df,
+        )
+        assert (
+            out_default["current_metrics"]["z_score"]
+            != out_override["current_metrics"]["z_score"]
+        )
+
+    def test_z_min_periods_input_flows_to_metrics(self):
+        """Passing z_score_min_periods via Input flows through to
+        ``compute_level_metrics``.  Verified by spy because whether the
+        observable LAST z-score value differs depends on series length
+        + warmup boundary; the mechanism we're guarding is the kwarg
+        plumbing.  Mirrors the spy pattern in
+        ``TestConventionOverrides.test_ffill_limit_passed_to_clean``.
+        """
+        from rates_agent.inflation_indexed_bonds.tools.real_yield_level \
+            import compute as compute_mod
+
+        raw_df = _synthetic_raw_df()
+        params = RealYieldLevelInput(
+            curve_family="USD_TIPS", tenor="10Y",
+            z_score_window_days=80, z_score_min_periods=45,
+        )
+        with patch(
+            "rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute.fetch_single_tenor",
+            return_value=raw_df,
+        ), patch(
+            "rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute.date",
+            _FrozenDate,
+        ), patch.object(
+            compute_mod,
+            "compute_level_metrics",
+            wraps=compute_mod.compute_level_metrics,
+        ) as spy:
+            get_real_yield_level(engine=None, params=params)
+        assert spy.call_count == 1
+        assert spy.call_args.kwargs["z_min_periods"] == 45
+        assert spy.call_args.kwargs["z_window"] == 80  # paired override
+
+    def test_z_ddof_input_override_changes_z(self):
+        """Passing z_score_ddof via Input changes the z-score
+        (sample vs population std)."""
+        raw_df = _synthetic_raw_df()
+        out_sample = self._run(
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_ddof=1,
+            ),
+            raw_df,
+        )
+        out_pop = self._run(
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_ddof=0,
+            ),
+            raw_df,
+        )
+        assert (
+            out_sample["current_metrics"]["z_score"]
+            != out_pop["current_metrics"]["z_score"]
+        )
+
+    # ------------------------------------------------------------------
+    # (b) Sentinel fallback — None Input → YAML default.
+    # ------------------------------------------------------------------
+
+    def test_none_input_falls_through_to_yaml(self):
+        """When all override fields are None (Pydantic default), the
+        output matches what we'd get with no exposure work at all.
+        Regression guard against the override path accidentally
+        changing the default behaviour."""
+        raw_df = _synthetic_raw_df()
+        params_omit = RealYieldLevelInput(curve_family="USD_TIPS", tenor="10Y")
+        params_explicit_none = RealYieldLevelInput(
+            curve_family="USD_TIPS", tenor="10Y",
+            z_score_window_days=None,
+            z_score_min_periods=None,
+            z_score_ddof=None,
+        )
+        out_omit = self._run(params_omit, raw_df)
+        out_explicit_none = self._run(params_explicit_none, raw_df)
+        assert out_omit == out_explicit_none
+
+    def test_omitted_z_window_resolves_to_yaml_default(self):
+        """Explicit pin: omitted Input z_score_window_days resolves to
+        the YAML's 252.  Captured by reading the effective metrics_kwargs
+        through compute()."""
+        from rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute import (
+            _conventions_from_config,
+        )
+        from shared.config import load_tool_config
+        params = RealYieldLevelInput(curve_family="USD_TIPS", tenor="10Y")
+        cfg = load_tool_config(CONFIG_PATH)
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 252
+        assert kw["z_min_periods"] == 60
+        assert kw["z_ddof"] == 1
+
+    # ------------------------------------------------------------------
+    # (c) Precedence — Input wins over YAML.
+    # ------------------------------------------------------------------
+
+    def test_input_wins_over_yaml(self):
+        """When BOTH the YAML carries one value AND the Input carries
+        another, the Input wins (per the exposure protocol)."""
+        from rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute import (
+            _conventions_from_config,
+        )
+        # YAML says z_score_window_days=999; Input says 120.
+        cfg = _build_config(z_score_window_days=999)
+        params = RealYieldLevelInput(
+            curve_family="USD_TIPS", tenor="10Y",
+            z_score_window_days=120,
+        )
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 120, (
+            "Input override must win over YAML — saw "
+            f"z_window={kw['z_window']}"
+        )
+
+    def test_yaml_wins_when_input_is_none(self):
+        """When the Input field is None and the YAML carries an
+        explicit non-default value, the YAML wins."""
+        from rates_agent.inflation_indexed_bonds.tools.real_yield_level.compute import (
+            _conventions_from_config,
+        )
+        cfg = _build_config(z_score_window_days=180)
+        params = RealYieldLevelInput(
+            curve_family="USD_TIPS", tenor="10Y",
+            z_score_window_days=None,  # explicit None sentinel
+        )
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 180
+
+    # ------------------------------------------------------------------
+    # (d) Pydantic constraint enforcement (ge/le bounds).
+    # ------------------------------------------------------------------
+
+    def test_z_window_ge_60_constraint(self):
+        """``z_score_window_days`` Field is ge=60 per the YAML's
+        valid_range — mirrors the convention's [60, 1260] bound."""
+        with pytest.raises(Exception):  # pydantic.ValidationError
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_window_days=30,
+            )
+
+    def test_z_window_le_1260_constraint(self):
+        with pytest.raises(Exception):
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_window_days=2000,
+            )
+
+    def test_z_min_periods_ge_20_constraint(self):
+        with pytest.raises(Exception):
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_min_periods=10,
+            )
+
+    def test_z_min_periods_le_252_constraint(self):
+        with pytest.raises(Exception):
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_min_periods=400,
+            )
+
+    def test_z_ddof_ge_0_constraint(self):
+        with pytest.raises(Exception):
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_ddof=-1,
+            )
+
+    def test_z_ddof_le_1_constraint(self):
+        """ddof=2 is mathematically meaningful for pandas but the tool
+        constrains to {0, 1} because no desk methodology calls for
+        higher ddof on a rolling z-score."""
+        with pytest.raises(Exception):
+            RealYieldLevelInput(
+                curve_family="USD_TIPS", tenor="10Y",
+                z_score_ddof=2,
+            )
+
+    def test_schema_defaults_all_three_exposures_to_none(self):
+        """Belt-and-braces: the new exposure fields default to None so
+        the sentinel-fallback path is the default behaviour."""
+        params = RealYieldLevelInput(curve_family="USD_TIPS", tenor="10Y")
+        assert params.z_score_window_days is None
+        assert params.z_score_min_periods is None
+        assert params.z_score_ddof is None
+
+
+# ===========================================================================
+# 3c. Exposure-block contract — pin the per-convention exposure decisions
+# ===========================================================================
+#
+# These tests pin the exposure decisions in config.yaml to the
+# Pydantic Input surface, so that a YAML edit that changes the
+# decision (e.g. flipping an exposure from true → false) MUST update
+# the Pydantic Input too — otherwise this test catches the drift.
+#
+# This is the operational expression of the propagation chain in
+# docs_revamped/03_standards/methodology_exposure.md §4.
+
+class TestExposureBlockContract:
+    """The set of ``expose: true`` conventions in config.yaml MUST equal
+    the set of Pydantic Input fields whose presence is explained by the
+    exposure protocol.  Any drift here means either:
+      (a) a convention was promoted YAML → Input but the YAML's
+          exposure block was not updated, or
+      (b) the YAML promoted a convention but the Pydantic Input was
+          not extended.
+    """
+
+    EXPECTED_EXPOSED: set[str] = {
+        # Three rolling-z-score conventions promoted to Pydantic Input
+        # in the Phase-1 pilot (see config.yaml exposure blocks).
+        "z_score_window_days",
+        "z_score_min_periods",
+        "z_score_ddof",
+        # Pre-existing exposure (legacy single-source surface; documented
+        # in config.yaml:default_field_name.exposure).
+        "default_field_name",
+    }
+
+    def test_yaml_exposure_blocks_match_expected_set(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        exposed_yaml = {
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is not None and conv.exposure.expose
+        }
+        assert exposed_yaml == self.EXPECTED_EXPOSED, (
+            f"YAML exposure set drift.  Expected {sorted(self.EXPECTED_EXPOSED)}; "
+            f"saw {sorted(exposed_yaml)}.  Either update the test's "
+            "EXPECTED_EXPOSED constant (with a paired PR-description "
+            "rationale + LIFECYCLE_CHECKLIST.md Stage 1A row update) "
+            "or fix the YAML."
+        )
+
+    def test_every_convention_has_an_exposure_block(self):
+        """Per the Phase-1 standard, every convention in this tool's
+        YAML MUST carry an exposure block (Optional at the schema level
+        for legacy tools, but required for this Phase-1 pilot tool).
+        """
+        cfg = load_tool_config(CONFIG_PATH)
+        missing = [
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is None
+        ]
+        assert not missing, (
+            f"Conventions missing exposure: block: {missing}.  Per "
+            "docs_revamped/03_standards/methodology_exposure.md §1, "
+            "every convention in a Phase-1 pilot tool's YAML must "
+            "carry an exposure decision."
+        )
+
+    def test_every_exposure_decision_has_a_rationale(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        empty = [
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is not None and not conv.exposure.rationale.strip()
+        ]
+        assert not empty, f"Conventions with empty exposure rationale: {empty}"
+
+    def test_expose_true_conventions_have_propagation_fields(self):
+        """If expose: true, the four propagation fields (input_field,
+        pydantic_type, default_source, promoted_from_yaml_in_pr) must
+        all be populated.  Enforced by ConventionExposure's validator
+        but tested here too as a belt-and-braces guard."""
+        cfg = load_tool_config(CONFIG_PATH)
+        for name, conv in cfg.conventions.items():
+            if conv.exposure is None or not conv.exposure.expose:
+                continue
+            for field in (
+                "input_field", "pydantic_type",
+                "default_source", "promoted_from_yaml_in_pr",
+            ):
+                value = getattr(conv.exposure, field)
+                assert value, f"{name}.exposure.{field} is empty"
+
+    def test_input_field_names_match_pydantic_class(self):
+        """Every YAML expose: true entry's input_field must correspond
+        to an actual field on RealYieldLevelInput."""
+        cfg = load_tool_config(CONFIG_PATH)
+        pydantic_fields = set(RealYieldLevelInput.model_fields.keys())
+        for name, conv in cfg.conventions.items():
+            if conv.exposure is None or not conv.exposure.expose:
+                continue
+            assert conv.exposure.input_field in pydantic_fields, (
+                f"YAML says convention {name!r} is exposed via Input "
+                f"field {conv.exposure.input_field!r}, but that field "
+                f"is not on RealYieldLevelInput "
+                f"(fields: {sorted(pydantic_fields)})"
+            )
+
+
+# ===========================================================================
 # 4. Honest-placeholder guard on trailing_range_window_days
 # ===========================================================================
 

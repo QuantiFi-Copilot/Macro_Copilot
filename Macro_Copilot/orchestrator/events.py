@@ -345,7 +345,10 @@ def workspace_tools_snapshot() -> list[str]:
     return sorted(_get_workspace_tools())
 
 
-def extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
+def extract_workspace_context(
+    tool_calls: list[dict],
+    prompt: Optional[str] = None,
+) -> Optional[dict]:
     """Given the list of tool calls seen in a turn, return the workspace
     context dict (or None if nothing qualifies).
 
@@ -369,6 +372,15 @@ def extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
     ``WorkspaceContext`` TypeScript type was widened to declare the
     optional fields so future surfaces (e.g. an honest "this tool
     failed" tile next to the working cards) can consume them safely.
+
+    The optional ``prompt`` parameter — when a non-empty string — is
+    written to the top-level ``"prompt"`` key on the returned dict.
+    The frontend multi-tool DAG container surfaces it verbatim in the
+    "Your query" root node (and the DagHeaderStrip title) so the user
+    sees the question that produced the multi-tool plan instead of a
+    generic "Stitched into the tool calls" placeholder.  Backward
+    compatible: when ``prompt`` is None / empty, no ``"prompt"`` key
+    is emitted and the wire shape is unchanged from PR-B-α.
     """
     ws_tools = _get_workspace_tools()
     workspace_items: list[dict[str, Any]] = []
@@ -397,4 +409,13 @@ def extract_workspace_context(tool_calls: list[dict]) -> Optional[dict]:
         workspace_items.append(item)
     if not workspace_items:
         return None
-    return {"tools": workspace_items, "tool_count": len(workspace_items)}
+    result: dict[str, Any] = {
+        "tools": workspace_items,
+        "tool_count": len(workspace_items),
+    }
+    # Emit the originating prompt only when present + non-empty.  The
+    # frontend treats absence as the legacy "no prompt available" case
+    # and falls back to the generic placeholder.
+    if isinstance(prompt, str) and prompt.strip():
+        result["prompt"] = prompt.strip()
+    return result

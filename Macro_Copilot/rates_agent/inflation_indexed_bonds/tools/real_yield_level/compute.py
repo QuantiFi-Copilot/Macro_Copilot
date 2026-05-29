@@ -28,6 +28,25 @@ terminology end-to-end (``real_yield_pct`` field, ``_real_yield``
 series suffix) so downstream operator panels cannot silently mix real
 and nominal series.
 
+Phase-1 methodology-exposure surface
+------------------------------------
+Per ``docs_revamped/03_standards/methodology_exposure.md`` (Phase 1
+of the ``revamp`` branch), three rolling-z-score conventions are
+exposed as Pydantic Input fields with per-call overrides:
+
+    z_score_window_days   z_score_min_periods   z_score_ddof
+
+Plus the existing ``field_name`` (overrides ``default_field_name``).
+All four follow the same None-sentinel / YAML-fallthrough pattern:
+when the caller supplies None (the schema default), ``compute()``
+resolves against the YAML default; when set, the explicit value
+overrides per call.  ``_conventions_from_config(config, params)`` is
+the one place where the resolution happens.
+
+The remaining nine conventions stay YAML-locked.  See each
+convention's ``exposure:`` block in ``config.yaml`` for per-decision
+Criterion-A / Criterion-B rationale.
+
 Honest placeholder
 ------------------
 ``trailing_range_window_days`` is locked at 252 in V1.  The output
@@ -36,7 +55,9 @@ schema's field names (``high_252d_pct``, ``low_252d_pct``,
 renaming the wire fields would silently lie about what the percentile
 is computed against.  The compute path raises ``NotImplementedError`` if
 this is set to anything else; see ``methodology.planned_extensions`` in
-the YAML for the path to making it configurable.
+the YAML for the path to making it configurable.  This guard fires at
+the convention layer (YAML-side); the corresponding Input field is
+NOT exposed.
 
 Observation-count anchoring
 ---------------------------
@@ -106,13 +127,44 @@ _LINKER_INSTRUMENT_TYPE: str = "inflation_linker"
 # CONFIG → KWARGS RESOLVER
 # ============================================================================
 
-def _conventions_from_config(config: ToolConfig) -> dict:
+def _conventions_from_config(
+    config: ToolConfig,
+    params: Optional[RealYieldLevelInput] = None,
+) -> dict:
     """Pull the methodology kwargs ``compute_level_metrics`` needs from
-    a ToolConfig.
+    a ToolConfig, applying any caller overrides from ``params``.
+
+    Override semantics
+    ------------------
+    For each Pydantic Input field whose corresponding YAML convention
+    has ``exposure.expose: true`` (see
+    ``docs_revamped/03_standards/methodology_exposure.md``):
+
+      - When the Input field is ``None`` (the schema default) the YAML
+        value is used.
+      - When the Input field carries an explicit value, that value
+        overrides the YAML for this call.
+
+    The three rolling-z-score conventions are the currently-exposed
+    methodology surface:
+      - ``z_score_window_days``
+      - ``z_score_min_periods``
+      - ``z_score_ddof``
+
+    The nine YAML-locked conventions (period offsets, fetch buffer,
+    rounding, ffill limit, trailing range) are read straight from the
+    config regardless of ``params`` — no override path.
 
     Raises NotImplementedError if ``trailing_range_window_days`` is set
     to anything other than 252 — see the wire-freeze rationale in the
     module docstring.
+
+    Backward compatibility
+    ----------------------
+    ``params`` is optional (default None) so legacy callers that
+    invoked this helper without an Input continue to work — the
+    no-params path returns the pure-YAML resolution that pre-dated
+    the Phase-1 exposure work.
     """
     trailing = config.convention_value("trailing_range_window_days")
     if trailing != _FROZEN_TRAILING_WINDOW:
@@ -127,10 +179,25 @@ def _conventions_from_config(config: ToolConfig) -> dict:
             f"frontend update documented in planned_extensions."
         )
 
+    def _override(convention_name: str) -> Any:
+        """Return the caller's Input value when non-None, else the YAML value.
+
+        Mirrors the field_name sentinel pattern: caller's explicit
+        value wins; None falls through to YAML.  Defensive against
+        future schema changes via ``getattr(..., default=None)``.
+        """
+        if params is not None:
+            input_value = getattr(params, convention_name, None)
+            if input_value is not None:
+                return input_value
+        return config.convention_value(convention_name)
+
     return {
-        "z_window": config.convention_value("z_score_window_days"),
-        "z_min_periods": config.convention_value("z_score_min_periods"),
-        "z_ddof": config.convention_value("z_score_ddof"),
+        # Exposed methodology surface — Input overrides accepted.
+        "z_window": _override("z_score_window_days"),
+        "z_min_periods": _override("z_score_min_periods"),
+        "z_ddof": _override("z_score_ddof"),
+        # YAML-locked conventions — read straight from config.
         "period_offsets": {
             "daily": config.convention_value("daily_change_offset_rows"),
             "weekly": config.convention_value("weekly_change_offset_rows"),
@@ -177,13 +244,21 @@ def get_real_yield_level(
         config = load_tool_config(CONFIG_PATH)
 
     # ------------------------------------------------------------------
-    # Pull conventions
+    # Pull conventions.  ``metrics_kwargs`` applies any per-call
+    # Input overrides for the exposed rolling-z-score surface
+    # (z_score_window_days / z_score_min_periods / z_score_ddof);
+    # see _conventions_from_config + config.yaml exposure blocks.
+    # ``z_window`` below is used ONLY for fetch-window math (it
+    # determines how far back to query the DB so the rolling z-score
+    # is fully populated from the first displayed trading day) and
+    # therefore reads the SAME effective value the metrics layer will
+    # use — pull it from metrics_kwargs to preserve the override.
     # ------------------------------------------------------------------
-    z_window = config.convention_value("z_score_window_days")
+    metrics_kwargs = _conventions_from_config(config, params)
+    z_window = metrics_kwargs["z_window"]
     buffer_mult = config.convention_value("z_score_buffer_multiplier")
     ffill_limit = config.convention_value("ffill_limit_days")
     default_field_name = config.convention_value("default_field_name")
-    metrics_kwargs = _conventions_from_config(config)
 
     # Resolve field_name: caller's explicit value wins; None falls
     # through to the YAML default.

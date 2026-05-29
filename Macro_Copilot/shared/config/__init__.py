@@ -5,6 +5,9 @@ Public API
 ----------
 - ``ToolConfig``         the validated representation of a tool's ``config.yaml``.
 - ``Convention``         one entry inside ``ToolConfig.conventions``.
+- ``ConventionExposure`` the optional ``exposure:`` sub-block on a ``Convention`` —
+                         per the methodology-exposure standard
+                         (``docs_revamped/03_standards/methodology_exposure.md``).
 - ``ToolMeta``           the ``tool:`` block (name, domain, description).
 - ``MethodologyMeta``    the ``methodology:`` block (what_it_does, assumptions, citations).
 - ``load_tool_config``   read + validate a YAML, with process-wide caching.
@@ -25,6 +28,7 @@ exporting it from this package init causes a ``RuntimeWarning`` when
 
 from shared.config.tool_config import (
     Convention,
+    ConventionExposure,
     MethodologyMeta,
     ToolConfig,
     ToolConfigError,
@@ -35,6 +39,7 @@ from shared.config.tool_config import (
 
 __all__ = [
     "Convention",
+    "ConventionExposure",
     "MethodologyMeta",
     "ToolConfig",
     "ToolConfigError",

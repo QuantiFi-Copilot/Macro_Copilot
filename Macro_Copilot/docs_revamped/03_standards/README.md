@@ -18,9 +18,11 @@ The acid test: if a standards file's main content is "see [component]/runbook.md
 
 ## Files
 
+### Backend-facing standards
+
 | File | Concern | Cross-references |
 |---|---|---|
-| [`naming_conventions.md`](naming_conventions.md) | Module / file / function / class / convention-key / test-file naming | P3 |
+| [`naming_conventions.md`](naming_conventions.md) | Backend module / file / function / class / convention-key / test-file naming | P3 |
 | [`file_and_folder_layout.md`](file_and_folder_layout.md) | Where each component lives; agent isolation; substrate vs agent vs shared | P3, P11 |
 | [`typed_boundary_discipline.md`](typed_boundary_discipline.md) | Frozen Pydantic with `extra="forbid"` at every typed boundary; no loose dicts crossing layers | PR8, OPR8, ART7 |
 | [`error_handling.md`](error_handling.md) | Per-layer error conventions; no silent fallback; raise vs envelope per boundary | P6, PR11, OPR13, WT12 |
@@ -28,7 +30,31 @@ The acid test: if a standards file's main content is "see [component]/runbook.md
 | [`methodology_disclosure.md`](methodology_disclosure.md) | Methodology visible at every layer; source-tag registry | P5, PR7, OPR7, WT8, WT13 |
 | [`hash_determinism.md`](hash_determinism.md) | Lineage step hash recipe; what's in vs out; cross-deploy stability | P4, ART10 |
 | [`closed_family_discipline.md`](closed_family_discipline.md) | Closed enums + ADR-gated extension; "open catalogue within closed family" pattern | P8, PR8, OPR3, ART2, ART4, ART12, WT2, WT4, WT9 |
+
+### Frontend-facing standards
+
+| File | Concern | Cross-references |
+|---|---|---|
+| [`frontend_naming_conventions.md`](frontend_naming_conventions.md) | Module folder / file / component / spec-field naming | P3, FM1, FM8 |
+| [`frontend_file_layout.md`](frontend_file_layout.md) | Where frontend modules / shared components / page shells / lib helpers live | P3, P11, FM2, FM8 |
+| [`frontend_test_patterns.md`](frontend_test_patterns.md) | Module round-trip test + `assertStandardModuleInvariants` + dual-view contract enforcement | FM11 |
+| [`rendering_density.md`](rendering_density.md) | The **dual Build-view mandate** — every primitive ships both `surfaces.buildExtended` AND `surfaces.buildCompact`; multi-tool DAG dispatch | P3, P5, P8, P10, PR8, FM3, FM4 (overridden), FM8 |
+
+### Lifecycle + methodology-exposure standards (Phase-1 pilot)
+
+| File | Concern | Cross-references |
+|---|---|---|
+| [`methodology_exposure.md`](methodology_exposure.md) | Per-convention `exposure:` block decision protocol + the standalone-module bridge contract (typed-detail endpoint per tool, no shared `typedView` reuse) | P5, P8, P10, PR7, PR8, PR11, PR13 |
+| [`tool_lifecycle.md`](tool_lifecycle.md) | The 7 axes of a fully-shipped tool — theoretical reference, methodology, three-way testing, I/O contracts, known limitations, frontend surfaces, user copy | P3, P5, P10, P11 |
+| [`lifecycle_checklist_template.md`](lifecycle_checklist_template.md) | The 8-stage assembly-line per-tool `LIFECYCLE_CHECKLIST.md` template (☐ ☑ ⏸ ⊘ status convention; `pending`-state treatment for source-material verification) | P10, P11 |
+
+### Cross-cutting review
+
+| File | Concern | Cross-references |
+|---|---|---|
 | [`code_review_checklist.md`](code_review_checklist.md) | **Central artifact.** Universal PR gate + commit-message + PR-description discipline. Routes to component runbooks for component-specific items. | P12, AC2, AC6, AC8 |
+
+> **Adding a new primitive?** Read [`../02_components/primitive/BUILD_GUIDE.md`](../02_components/primitive/BUILD_GUIDE.md) — the single front-door manual that walks all 8 stages end-to-end and links to every standard above in order.
 
 ## How to read this folder
 

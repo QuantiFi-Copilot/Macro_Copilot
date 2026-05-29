@@ -1926,18 +1926,31 @@ def _build_domain_boundaries(domains: list[Domain]) -> dict[Domain, str]:
 def _merge_workspace_contexts(parts: list[dict]) -> Optional[dict]:
     """Combine per-child workspace_context dicts into one.  Each child
     contributes a list under the ``tools`` key; we concatenate preserving
-    domain attribution."""
+    domain attribution.  When children carry a ``prompt`` (the originating
+    user question — same for every fan-out child by construction), the
+    first non-empty value is preserved in the merged context so the
+    frontend DAG's "Your query" root node still surfaces it after a
+    multi-domain fan-out."""
     if not parts:
         return None
     merged_tools: list = []
+    merged_prompt: Optional[str] = None
     for p in parts:
         if not isinstance(p, dict):
             continue
         tools = p.get("tools")
         if isinstance(tools, list):
             merged_tools.extend(tools)
+        if merged_prompt is None:
+            candidate = p.get("prompt")
+            if isinstance(candidate, str) and candidate.strip():
+                merged_prompt = candidate
     # Re-compute via extract_workspace_context semantics for consistency.
-    merged = extract_workspace_context(merged_tools) if merged_tools else None
+    merged = (
+        extract_workspace_context(merged_tools, prompt=merged_prompt)
+        if merged_tools
+        else None
+    )
     return merged
 
 

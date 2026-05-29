@@ -85,9 +85,20 @@ type Props = {
    *  callers keep working because every ``Record<string, string>``
    *  is also a ``Record<string, unknown>``. */
   initialParams: Record<string, unknown>;
+  /** Stage D — when mounted INSIDE the multi-tool expand modal, suppress
+   *  the global-URL form-sync below (it would replace the multi-tool DAG
+   *  context behind the modal).  The builder still configures + runs
+   *  in-place; its form state is local.  Default false preserves the
+   *  full-page behaviour (single-tool Build canvas keeps the URL in sync
+   *  so the config is deep-linkable). */
+  embedded?: boolean;
 };
 
-export function GenericPrimitiveBuilder({ toolName, initialParams }: Props) {
+export function GenericPrimitiveBuilder({
+  toolName,
+  initialParams,
+  embedded = false,
+}: Props) {
   const { data: card, isLoading, error } = useTool(toolName);
 
   if (error) {
@@ -97,7 +108,11 @@ export function GenericPrimitiveBuilder({ toolName, initialParams }: Props) {
     return <LoadingCard toolName={toolName} />;
   }
   return (
-    <GenericPrimitiveBuilderBody card={card} initialParams={initialParams} />
+    <GenericPrimitiveBuilderBody
+      card={card}
+      initialParams={initialParams}
+      embedded={embedded}
+    />
   );
 }
 
@@ -108,9 +123,13 @@ export function GenericPrimitiveBuilder({ toolName, initialParams }: Props) {
 function GenericPrimitiveBuilderBody({
   card,
   initialParams,
+  embedded,
 }: {
   card: ToolCard;
   initialParams: Record<string, unknown>;
+  /** Stage D — suppress the URL form-sync when embedded in the multi-tool
+   *  expand modal (see the outer GenericPrimitiveBuilder doc). */
+  embedded: boolean;
 }) {
   const navigate = useNavigate();
 
@@ -149,6 +168,9 @@ function GenericPrimitiveBuilderBody({
   // form change but writes ``replace: true`` so the back button stays
   // useful (one history entry per page nav, not per keystroke).
   useEffect(() => {
+    // Stage D — embedded in the multi-tool expand modal: do NOT sync the
+    // URL (it would replace the multi-tool DAG context behind the modal).
+    if (embedded) return;
     const scalarOnly: Record<string, string> = {};
     for (const f of card.input_fields) {
       const v = form[f.name];
@@ -168,7 +190,7 @@ function GenericPrimitiveBuilderBody({
     // changes; ``navigate`` is stable across the lifetime of the
     // router so this is a safe exclusion.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, card.tool_name, card.input_fields]);
+  }, [form, card.tool_name, card.input_fields, embedded]);
 
   const handleRun = async () => {
     setIsRunning(true);

@@ -224,10 +224,11 @@ For each claimed capability tier, the corresponding file in `surfaces/` MUST exi
 - `tiers: ['generic_runnable', 'monitor_surface']` with no `surfaces/MonitorWidget.tsx`.
 - `surfaces/AskCard.tsx` present but `tiers` does not include `ask_surface`.
 - A new tier added to the union literal without a corresponding ADR amending the closed family.
+- **(Phase-1+)** A module claiming `custom_build_surface` that ships only `surfaces/BuildExtended.tsx` and not `surfaces/BuildCompact.tsx` (or vice versa).  Per [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md) the dual-view contract is mandatory for every new primitive — both files required.  Tier-set parsimony (FM4) does NOT apply to the dual-view obligation; this is the one explicit override of FM4 in the platform.
 
 **Exceptions.** None.
 
-**Relates to.** FP3, FP8, [`tiers.md`](tiers.md) (full per-tier semantics), [`../../05_decisions/0014-frontend-module-architecture.md`](../../05_decisions/0014-frontend-module-architecture.md).
+**Relates to.** FP3, FP8, [`tiers.md`](tiers.md) (full per-tier semantics), [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md) (the dual-view mandate for new modules under `custom_build_surface`), [`../../05_decisions/0014-frontend-module-architecture.md`](../../05_decisions/0014-frontend-module-architecture.md).
 
 ---
 
@@ -263,9 +264,13 @@ A new module that claims four capability tiers from day one without a THESIS-sta
 - A new module's `tiers` claims all four capability tiers from day one without an answered THESIS Question 3.
 - A capability tier added "preemptively" because "we might need it later." Build when the use case is real.
 
-**Exceptions.** Rich-model primitives (PCA, rolling regression, attribution, half-life, beta-adjusted spread) have an established bespoke surface pattern (`BuilderCanvas` + `OutputCanvas` + interpretation cards). They claim `custom_build_surface` from day one; the THESIS cites the rich-model precedent.
+**Exceptions.**
 
-**Relates to.** FP3, backend PR4, [`tiers.md`](tiers.md), [`thesis_template.md`](thesis_template.md) (Question 3).
+1. Rich-model primitives (PCA, rolling regression, attribution, half-life, beta-adjusted spread) have an established bespoke surface pattern (`BuilderCanvas` + `OutputCanvas` + interpretation cards). They claim `custom_build_surface` from day one; the THESIS cites the rich-model precedent.
+
+2. **(Phase-1+) The `custom_build_surface` dual-view mandate explicitly OVERRIDES FM4 parsimony.** Per [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md), every new primitive module is REQUIRED to ship both `surfaces.buildExtended` AND `surfaces.buildCompact` — no opt-in. The justification is that multi-tool queries are the baseline reality, not an edge case; defaulting to a generic artifact-type fallback in multi-tool contexts produces an inconsistent user experience. The compact view is not a "capability you may add"; it is a structural obligation paired 1:1 with the extended view.  FM4 continues to apply unchanged to the other capability tiers (`custom_preview_widget`, `monitor_surface`, `ask_surface`).
+
+**Relates to.** FP3, backend PR4, [`tiers.md`](tiers.md), [`thesis_template.md`](thesis_template.md) (Question 3), [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md) (the dual-view mandate that overrides FM4 for `custom_build_surface`).
 
 ### FM5 — Display-metadata sourcing
 
@@ -623,3 +628,4 @@ These patterns are documented as references, not contracts. New modules pick the
 | Version | Date | Change | ADR |
 |---|---|---|---|
 | v1 | 2026-05-25 | Initial frontend module contract. 12 numbered principles (FM1–FM12) covering module identity, admission, standardness, and operational conventions. | [`../../05_decisions/0014-frontend-module-architecture.md`](../../05_decisions/0014-frontend-module-architecture.md) |
+| v1.1 | 2026-05-28 | **Phase-1 dual-view mandate** (rendering-density standard).  FM3 anti-patterns extended: a new module claiming `custom_build_surface` MUST ship BOTH `surfaces/BuildExtended.tsx` AND `surfaces/BuildCompact.tsx`.  FM4 gains an explicit override exception: the `custom_build_surface` dual-view requirement is a structural obligation, NOT subject to tier-set parsimony.  Other capability tiers (preview / monitor / ask) remain FM4-governed.  See [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md). | [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md) |

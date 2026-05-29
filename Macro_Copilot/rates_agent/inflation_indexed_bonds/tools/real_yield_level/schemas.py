@@ -9,6 +9,25 @@ desk math (z-score, period changes, trailing range) is the same; the
 *concept* the tool owns (a linker curve point's real yield) is genuinely
 new and distinct from a nominal sovereign yield.
 
+Phase-1 pilot exposure surface
+------------------------------
+This tool is the first under the methodology-exposure standard
+(``docs_revamped/03_standards/methodology_exposure.md``).  Per-
+convention exposure decisions live in ``config.yaml``'s ``exposure:``
+sub-blocks; the Pydantic ``Input`` surface below MIRRORS those
+decisions.  Four conventions are exposed as Pydantic Input fields:
+
+  - ``z_score_window_days``  (cohesive rolling-z-score model)
+  - ``z_score_min_periods``  (cohesive rolling-z-score model)
+  - ``z_score_ddof``         (cohesive rolling-z-score model)
+  - ``default_field_name`` ← already exposed as ``field_name``
+                             (Bloomberg-field identity)
+
+The remaining nine conventions stay YAML-locked (display precision,
+fetch-window math, wire-frozen field-name anchors, data-cleaning).
+See each convention's ``exposure:`` block for the per-decision
+Criterion-A / Criterion-B rationale.
+
 Validation layering
 -------------------
 - ``field_name`` defaults to ``None`` — the sentinel that means "use
@@ -20,11 +39,18 @@ Validation layering
   curve_move_classifier sovereign migration (commit 9f741ea) and
   tightened by commit b2605ee.
 
+- ``z_score_window_days``, ``z_score_min_periods``, ``z_score_ddof``
+  follow the SAME None-sentinel pattern: when None, ``compute()``
+  resolves against the YAML default; when set, the explicit value
+  overrides per call.  The three together specify the rolling-
+  z-score model — cohesive multi-knob surface admissible per PR8.
+
 - ``lookback_days`` controls the fetch window AND the
   ``observation_count`` cutoff window.  It does NOT control the
-  rolling z-score window (fixed by ``z_score_window_days``, currently
-  252) or the trailing range window (fixed by
-  ``trailing_range_window_days``, locked at 252 in V1).
+  rolling z-score window (now overridable via ``z_score_window_days``;
+  default 252 from YAML) or the trailing range window (still locked
+  at 252 in V1 via the ``trailing_range_window_days`` YAML convention
+  and the ``NotImplementedError`` guard in compute._conventions_from_config).
 
 Validators that encode invariants stay here in code; this tool has no
 cross-field invariants beyond what Pydantic's basic Field constraints
@@ -96,12 +122,70 @@ class RealYieldLevelInput(BaseModel):
             "tool falls through to ``default_field_name`` from "
             "config.yaml (currently 'YLD_YTM_MID' — the linker "
             "real-yield-to-maturity mnemonic).  Pass an explicit field "
-            "name to override per query.  LLM/HTTP wrappers MUST "
-            "translate their wire-level sentinel (empty string for MCP, "
-            "missing param for FastAPI) to None before constructing "
-            "this input — otherwise the YAML default is silently "
-            "shadowed.  See the curve_move_classifier wrapper-shadowing "
-            "fix (commit b2605ee) for the canonical pattern."
+            "name to override per query (e.g. 'YLD_YTM_BID' / "
+            "'YLD_YTM_ASK').  LLM/HTTP wrappers MUST translate their "
+            "wire-level sentinel (empty string for MCP, missing param "
+            "for FastAPI) to None before constructing this input — "
+            "otherwise the YAML default is silently shadowed.  See the "
+            "curve_move_classifier wrapper-shadowing fix (commit "
+            "b2605ee) for the canonical pattern.  Exposure decision "
+            "recorded in config.yaml:default_field_name.exposure."
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # Methodology surface — rolling-z-score model (cohesive multi-knob,
+    # admissible per PR8 because the three fields together specify the
+    # rolling-z-score "model").  All three follow the None-sentinel /
+    # YAML-fallthrough pattern established by ``field_name`` above;
+    # ``compute()`` is the one place that resolves the sentinels.
+    # Exposure decisions recorded in config.yaml's per-convention
+    # exposure: blocks; see docs_revamped/03_standards/methodology_exposure.md.
+    # ------------------------------------------------------------------
+    z_score_window_days: Optional[int] = Field(
+        default=None,
+        ge=60,
+        le=1260,
+        description=(
+            "Trading-day window for the rolling z-score.  When None "
+            "(default), the tool falls through to "
+            "``z_score_window_days`` in config.yaml (currently 252 — "
+            "1-year window matching every sovereign rates tool and OIS "
+            "rate_level).  Override to 60d / 126d for tactical / "
+            "short-horizon framing or 504d for structural-regime work "
+            "(desk-doc 04_inflation_indexed_bonds.md §10 + §3).  "
+            "Cross-config lint enforces DEFAULT alignment; per-call "
+            "overrides do not violate the lint.  Exposure decision "
+            "recorded in config.yaml:z_score_window_days.exposure."
+        ),
+    )
+    z_score_min_periods: Optional[int] = Field(
+        default=None,
+        ge=20,
+        le=252,
+        description=(
+            "Minimum number of observations before the rolling z-score "
+            "is emitted (NaN otherwise).  When None (default), the "
+            "tool falls through to ``z_score_min_periods`` in "
+            "config.yaml (currently 60 — ~3 months of observations).  "
+            "Scale together with ``z_score_window_days`` when "
+            "overriding (e.g. window=60 → min_periods=20).  Exposure "
+            "decision recorded in config.yaml:z_score_min_periods.exposure."
+        ),
+    )
+    z_score_ddof: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Standard-deviation degrees of freedom for the rolling "
+            "z-score.  When None (default), the tool falls through to "
+            "``z_score_ddof`` in config.yaml (currently 1 — sample "
+            "standard deviation, Bessel-corrected, matching pandas' "
+            "default).  Practical values are {0 (population std), "
+            "1 (sample std)}; constrained ge=0, le=1.  Cross-config "
+            "lint enforces DEFAULT alignment.  Exposure decision "
+            "recorded in config.yaml:z_score_ddof.exposure."
         ),
     )
 

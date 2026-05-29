@@ -68,16 +68,23 @@ src/modules/primitives/<tool_name>/        # FM1: folder name = backend tool_nam
 ├── THESIS.md                              # REQUIRED (FM10)
 ├── module.ts                              # REQUIRED (FM7) — pure spec export
 ├── surfaces/                              # Per-capability-tier JSX
-│   ├── BuildSurface.tsx                   # if tiers ∋ custom_build_surface
+│   ├── BuildExtended.tsx                  # REQUIRED if tiers ∋ custom_build_surface (rendering_density.md §1 — dual-view mandate)
+│   ├── BuildCompact.tsx                   # REQUIRED if tiers ∋ custom_build_surface (rendering_density.md §1 — dual-view mandate)
+│   ├── <tool_slug>Shared.ts               # OPTIONAL but conventional — cross-surface constants/hooks consumed by both Build views + Monitor
 │   ├── PreviewWidget.tsx                  # if tiers ∋ custom_preview_widget
 │   ├── MonitorWidget.tsx                  # if tiers ∋ monitor_surface AND single-widget legacy shape
 │   ├── monitor/                           # if tiers ∋ monitor_surface AND Stage 4d multi-variant shape
 │   │   └── <WidgetName>.tsx               # one file per MODULE.monitorWidgets[i].component
 │   └── AskCard.tsx                        # if tiers ∋ ask_surface
+├── mockups/                               # REQUIRED if tiers ∋ custom_build_surface — design source-of-truth
+│   ├── Compact.png                        # asserted by `assertStandardModuleInvariants`
+│   └── Extended.png
 ├── types.ts                               # OPTIONAL — bespoke wire shapes
 └── __tests__/
-    └── module.spec.ts                     # REQUIRED (FM11) — round-trip
+    └── module.spec.ts                     # REQUIRED (FM11) — round-trip + dual-view contract
 ```
+
+> The legacy single `surfaces/BuildSurface.tsx` filename is superseded by the dual `BuildExtended.tsx` + `BuildCompact.tsx` pair per [`rendering_density.md`](rendering_density.md) §1. Pre-standard modules using the single-file shape are non-compliant and tracked for migration; new modules ship the dual-view from day one.
 
 ## Per-workflow module folder
 

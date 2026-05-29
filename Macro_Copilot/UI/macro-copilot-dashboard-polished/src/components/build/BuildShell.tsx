@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useCopilotContext } from '@/context/CopilotContext';
 import { useWorkspaceDetail } from '@/hooks/useWorkspaceDetail';
 import { WorkspacesSidebar } from './sidebar/WorkspacesSidebar';
@@ -37,8 +37,16 @@ import { BuildEmptyState } from './empty/BuildEmptyState';
 import { BuildBuilding } from './building/BuildBuilding';
 import { BuildCompleted } from './completed/BuildCompleted';
 import { WorkspaceOverridesProvider } from './lib/workspaceOverridesContext';
+import {
+  FocusedModeProvider,
+  resolvePanelVisibility,
+  useFocusedMode,
+} from './lib/focusedMode';
 import { VirtualPrimitiveCanvas } from './primitive/VirtualPrimitiveCanvas';
-import { MultiPrimitiveCanvas } from './primitive/MultiPrimitiveCanvas';
+// Stage D — the generic multi-tool DAG page replaces the legacy
+// MultiPrimitiveCanvas for ≥2-tool contexts.  Registry-driven (renders each
+// tool's surfaces.buildCompact); tool-agnostic.
+import { MultiToolDagCanvas } from './multitool/MultiToolDagCanvas';
 import {
   decodePrimitiveContext,
   decodePrimitiveList,
@@ -56,12 +64,17 @@ export function BuildShell() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
 
-  // Slug-present → completed mode.  Slug-absent → empty | building
-  // (depending on whether a prompt is in flight).
-  if (slug) {
-    return <SlugBoundShell slug={slug} />;
-  }
-  return <SlugFreeShell navigate={navigate} />;
+  // FocusedModeProvider wraps both shell variants so per-tool
+  // surfaces (mounted deep inside either variant's canvas) can
+  // request focused mode via ``useRequestFocusedMode``.  See
+  // docs_revamped/03_standards/rendering_density.md §2.1 — the
+  // extended view owns the WHOLE canvas; the sidebar + rail
+  // around it are shell furniture that collapses on request.
+  return (
+    <FocusedModeProvider>
+      {slug ? <SlugBoundShell slug={slug} /> : <SlugFreeShell navigate={navigate} />}
+    </FocusedModeProvider>
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -248,7 +261,9 @@ function SlugFreeShell({
 //
 //   1. Builder match wins — short-circuit through the single canvas
 //      which has the ``useEffect`` redirect to ``?builder=``.
-//   2. Multiple typed primitives → MultiPrimitiveCanvas (N-card grid).
+//   2. Multiple tool calls (≥2) → MultiToolDagCanvas (Stage-D generic
+//      multi-tool DAG page: query header + node/edge strip + a cards body
+//      that renders each tool's surfaces.buildCompact via the registry).
 //   3. Otherwise → VirtualPrimitiveCanvas (single-card with editable
 //      dropdowns + the decode-error path for unrecognised tools).
 
@@ -281,7 +296,7 @@ function ContextCanvasRouter({
   const list = decodePrimitiveList(contextParam);
   if (list.length > 1) {
     return (
-      <MultiPrimitiveCanvas
+      <MultiToolDagCanvas
         contextParam={contextParam}
         askHandoff={askHandoff}
       />
@@ -361,18 +376,102 @@ function BuildShellLayout({
   canvas: React.ReactNode;
   copilotRail: React.ReactNode;
 }) {
+  // Focused mode (per docs_revamped/03_standards/rendering_density.md):
+  //   - Default: 3-column grid (sidebar | canvas | rail)
+  //   - Focused: canvas-only with small edge-toggle buttons letting the
+  //     user re-open either panel on demand
+  //   - User overrides per panel are respected even in focused mode
+  const focusCtx = useFocusedMode();
+  const isFocused = focusCtx?.isFocused ?? false;
+  const showSidebar = resolvePanelVisibility(
+    isFocused,
+    focusCtx?.sidebarOverride ?? null,
+  );
+  const showRail = resolvePanelVisibility(
+    isFocused,
+    focusCtx?.railOverride ?? null,
+  );
+
+  // Compute grid template based on which panels are visible.
+  const sidebarCol = showSidebar ? 'clamp(220px, 16vw, 280px)' : '0px';
+  const railCol = showRail ? 'clamp(300px, 22vw, 360px)' : '0px';
+  const gridTemplateColumns = `${sidebarCol} minmax(0, 1fr) ${railCol}`;
+
   return (
     <div
-      className="grid h-full min-h-0 w-full"
-      style={{
-        gridTemplateColumns:
-          'clamp(220px, 16vw, 280px) minmax(0, 1fr) clamp(300px, 22vw, 360px)',
-      }}
+      className="relative grid h-full min-h-0 w-full transition-[grid-template-columns] duration-200 ease-out"
+      style={{ gridTemplateColumns }}
     >
-      <WorkspacesSidebar />
-      <main className="min-h-0 min-w-0 overflow-hidden">{canvas}</main>
-      {copilotRail}
+      {showSidebar ? <WorkspacesSidebar /> : <div aria-hidden />}
+      <main className="relative min-h-0 min-w-0 overflow-hidden">
+        {canvas}
+        {/* Edge toggle buttons — only render when focused mode is
+            active OR a user has explicitly hidden a panel.  Otherwise
+            the buttons are hidden so the default 3-col layout stays
+            chrome-free. */}
+        {focusCtx && (
+          <EdgeTogglesOverlay
+            showSidebar={showSidebar}
+            showRail={showRail}
+            onToggleSidebar={focusCtx.toggleSidebar}
+            onToggleRail={focusCtx.toggleRail}
+            visible={isFocused || focusCtx.sidebarOverride === false || focusCtx.railOverride === false}
+          />
+        )}
+      </main>
+      {showRail ? copilotRail : <div aria-hidden />}
     </div>
+  );
+}
+
+/** Floating edge toggle buttons — appear on the left/right edges of
+ *  the canvas in focused mode to let the user re-open hidden panels.
+ *  Buttons render INSIDE the canvas main element (absolutely
+ *  positioned) so they ride along with the canvas width and don't
+ *  consume their own grid track. */
+function EdgeTogglesOverlay({
+  showSidebar,
+  showRail,
+  onToggleSidebar,
+  onToggleRail,
+  visible,
+}: {
+  showSidebar: boolean;
+  showRail: boolean;
+  onToggleSidebar: () => void;
+  onToggleRail: () => void;
+  visible: boolean;
+}) {
+  if (!visible) return null;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggleSidebar}
+        title={showSidebar ? 'Hide workspaces sidebar' : 'Show workspaces sidebar'}
+        aria-label={showSidebar ? 'Hide workspaces sidebar' : 'Show workspaces sidebar'}
+        className="absolute left-0 top-1/2 z-20 flex h-12 w-5 -translate-y-1/2 items-center justify-center rounded-r-md border border-l-0 border-line-subtle bg-bg-elevated/85 text-fg-muted backdrop-blur transition-colors hover:bg-bg-elevated hover:text-fg-secondary"
+      >
+        {showSidebar ? (
+          <ChevronLeft size={12} strokeWidth={1.75} />
+        ) : (
+          <ChevronRight size={12} strokeWidth={1.75} />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleRail}
+        title={showRail ? 'Hide copilot rail' : 'Show copilot rail'}
+        aria-label={showRail ? 'Hide copilot rail' : 'Show copilot rail'}
+        className="absolute right-0 top-1/2 z-20 flex h-12 w-5 -translate-y-1/2 items-center justify-center rounded-l-md border border-r-0 border-line-subtle bg-bg-elevated/85 text-fg-muted backdrop-blur transition-colors hover:bg-bg-elevated hover:text-fg-secondary"
+      >
+        {showRail ? (
+          <ChevronRight size={12} strokeWidth={1.75} />
+        ) : (
+          <ChevronLeft size={12} strokeWidth={1.75} />
+        )}
+      </button>
+    </>
   );
 }
 

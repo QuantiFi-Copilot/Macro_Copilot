@@ -13,7 +13,13 @@ For every PR, identify which component layers it touches and run the matching ru
 
 | If the PR touches… | Run this runbook checklist | Cite by |
 |---|---|---|
-| A primitive (`<agent>/<domain>/tools/<tool>/`) | [`02_components/primitive/runbook.md`](../02_components/primitive/runbook.md) | PR1–PR16 |
+| **A new primitive (end-to-end across the 8-stage lifecycle)** | [`02_components/primitive/BUILD_GUIDE.md`](../02_components/primitive/BUILD_GUIDE.md) — the single front-door manual; subsumes the backend `runbook.md` | PR1–PR16, FM1–FM12, AC1–AC8 |
+| An existing primitive's backend body (no methodology default change) | [`02_components/primitive/runbook.md`](../02_components/primitive/runbook.md) (backend procedure only) | PR1–PR16 |
+| A frontend module folder (`UI/.../src/modules/primitives/<tool>/`) | [`02_components/frontend_module/runbook.md`](../02_components/frontend_module/runbook.md) + [`rendering_density.md`](rendering_density.md) (dual-view) + [`frontend_test_patterns.md`](frontend_test_patterns.md) | FM1–FM12 |
+| A convention `exposure:` decision (YAML-locked ↔ exposed promotion / demotion) | [`methodology_exposure.md`](methodology_exposure.md) §2–4 + the per-tool `LIFECYCLE_CHECKLIST.md` Stage 1A row | PR7, PR8, PR13 |
+| A DB-metadata curated migration (`database/migrations/YYYY-MM-DD_phase1_<tool>_curated.sql`) | [`tool_lifecycle.md §2 axes 1/5/7`](tool_lifecycle.md) + [ADR 0015](../05_decisions/0015-tool-metadata-db-table.md) | ADR 0015 |
+| A per-tool `LIFECYCLE_CHECKLIST.md` (stage progression / ☑/⏸/⊘ markers) | [`lifecycle_checklist_template.md`](lifecycle_checklist_template.md) §3–§7 | per-tool checklist standard |
+| The standalone bridge typed-detail endpoint (`api/routes/rates/detail/<tool_kind>.py`) | [`methodology_exposure.md §5`](methodology_exposure.md) | methodology_exposure §5 |
 | An operator (`shared/operators/<op>/`) | [`02_components/operator/runbook.md`](../02_components/operator/runbook.md) | OPR1–OPR16 |
 | An artifact type / metadata enum / codec | [`02_components/artifact/runbook.md`](../02_components/artifact/runbook.md) | ART1–ART16 |
 | A workflow template | [`02_components/workflow_template/runbook.md`](../02_components/workflow_template/runbook.md) | WT1–WT16 |
@@ -69,6 +75,36 @@ If the PR touches no component layer (a substrate-internal change, a test-only c
 - [ ] Every `defaults` entry has a `source` from the canonical tag registry. (See [`methodology_disclosure.md`](methodology_disclosure.md).)
 - [ ] No vague tags (`"default"`, `"standard"`, `"convention"`, `"tbd"`, `"bloomberg"` alone).
 - [ ] `python -m shared.config.lint` passes (cross-component convention-drift check).
+
+### 1I. Methodology exposure (primitives — Phase 1 onward)
+
+- [ ] Every convention under `conventions:` in a new primitive's `config.yaml` carries an `exposure:` block (`expose` + `rationale` + `decided_at` + `decided_in_pr`). (See [`methodology_exposure.md §3`](methodology_exposure.md).)
+- [ ] For each `expose: true` convention: the matching Pydantic Input field exists with `Optional[T]` + None default; its `ge=` / `le=` mirror the YAML `valid_range`; the MCP wrapper exposes the integer/string sentinel kwarg; the manifest `pm_overridable` list includes it.
+- [ ] The `compute.py` resolver helper (`_conventions_from_config(config, params)`) is the single place that maps None-sentinel Input overrides to YAML defaults — no override resolution scattered through `compute()`.
+- [ ] `methodology_label` on the Output is sourced from `config.methodology.what_it_does` at runtime, NOT hardcoded as a Python literal. A test (`TestMethodologyLabelThreading`) proves the thread.
+- [ ] `TestInputOverrides` + `TestExposureBlockContract` are present and cover every `expose: true` convention.
+- [ ] **Standalone bridge:** `MODULE.typedView` is `null` for new modules; the typed-detail endpoint is mounted at `/api/v1/rates/detail/<tool_kind>` (per-tool, NOT `/api/v1/tools/{name}/run`). (See [`methodology_exposure.md §5`](methodology_exposure.md).)
+
+### 1J. Dual Build-view + Frontend module (primitives — Phase 1 onward)
+
+- [ ] The module's folder name matches the backend `tool.name` exactly (FM1).
+- [ ] `tiers: ['generic_runnable', 'custom_build_surface', ...]` — `custom_build_surface` claimed (rendering_density.md §1 dual-view mandate).
+- [ ] BOTH `surfaces.buildExtended` AND `surfaces.buildCompact` populated; the transitional alias `surfaces.build === buildExtended` is documented inline (see [`rendering_density.md §5.2`](rendering_density.md) for the alias rationale).
+- [ ] Both files exist at `surfaces/BuildExtended.tsx` + `surfaces/BuildCompact.tsx`. The Compact view does NOT carry the controls strip and does NOT mount its own modal (it calls `onExpand`).
+- [ ] `THESIS.md` Q1 enumerates BOTH views; Q2 describes what the PM reads off EACH view; Q3 justifies the compact view's curated metrics.
+- [ ] `mockups/Compact.png` + `mockups/Extended.png` are committed alongside the module.
+- [ ] `__tests__/module.spec.ts` calls `assertStandardModuleInvariants` + asserts the dual-view contract + the mockups folder. (See [`frontend_test_patterns.md`](frontend_test_patterns.md).)
+- [ ] Loader entry in `src/modules/index.ts` is alphabetical (FM12).
+
+### 1K. Lifecycle (primitives — Phase 1 onward)
+
+- [ ] Per-tool `LIFECYCLE_CHECKLIST.md` exists in the tool folder; sections + stages match [`lifecycle_checklist_template.md §10`](lifecycle_checklist_template.md) verbatim (no renames / reorders).
+- [ ] Every checklist item carries one of `☐ ☑ ⏸ ⊘` — no markerless items. Every `⊘` has a one-line reason; every `⏸` has an assignee + target.
+- [ ] Stages 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 promote sequentially — no out-of-order ☑ markers.
+- [ ] DB curated migration `database/migrations/YYYY-MM-DD_phase1_<tool>_curated.sql` is checked in (idempotent UPDATE + INSERT fallback). DB apply may stay ⏸ (manual). (See [ADR 0015](../05_decisions/0015-tool-metadata-db-table.md).)
+- [ ] Per-tool `README.md` exists per [`tool_lifecycle.md §4`](tool_lifecycle.md), quoting DB curated text verbatim — README mirrors DB, NEVER source of truth.
+- [ ] `surface_contract.md §10` row is in lock-step with the per-tool checklist (drift between the two is a PR-gate violation).
+- [ ] `graphify update .` run.
 
 ### 1F. Hash / lineage (when applicable)
 
@@ -169,6 +205,11 @@ If the routing in Section 0 misses a layer, add the row + link.
 
 ## Links
 
-- All standards files: [`naming_conventions.md`](naming_conventions.md), [`file_and_folder_layout.md`](file_and_folder_layout.md), [`typed_boundary_discipline.md`](typed_boundary_discipline.md), [`error_handling.md`](error_handling.md), [`test_patterns.md`](test_patterns.md), [`methodology_disclosure.md`](methodology_disclosure.md), [`hash_determinism.md`](hash_determinism.md), [`closed_family_discipline.md`](closed_family_discipline.md)
-- Component runbooks: [`primitive/runbook.md`](../02_components/primitive/runbook.md), [`operator/runbook.md`](../02_components/operator/runbook.md), [`artifact/runbook.md`](../02_components/artifact/runbook.md), [`workflow_template/runbook.md`](../02_components/workflow_template/runbook.md), [`playbook/runbook.md`](../02_components/playbook/runbook.md)
+- **Front-door manual for primitives:** [`02_components/primitive/BUILD_GUIDE.md`](../02_components/primitive/BUILD_GUIDE.md) — the single end-to-end walk for any new primitive.
+- Backend-facing standards: [`naming_conventions.md`](naming_conventions.md), [`file_and_folder_layout.md`](file_and_folder_layout.md), [`typed_boundary_discipline.md`](typed_boundary_discipline.md), [`error_handling.md`](error_handling.md), [`test_patterns.md`](test_patterns.md), [`methodology_disclosure.md`](methodology_disclosure.md), [`hash_determinism.md`](hash_determinism.md), [`closed_family_discipline.md`](closed_family_discipline.md)
+- Frontend-facing standards: [`frontend_naming_conventions.md`](frontend_naming_conventions.md), [`frontend_file_layout.md`](frontend_file_layout.md), [`frontend_test_patterns.md`](frontend_test_patterns.md), [`rendering_density.md`](rendering_density.md)
+- Lifecycle + methodology-exposure standards: [`methodology_exposure.md`](methodology_exposure.md), [`tool_lifecycle.md`](tool_lifecycle.md), [`lifecycle_checklist_template.md`](lifecycle_checklist_template.md)
+- Component contracts + runbooks: [`primitive/README.md`](../02_components/primitive/README.md) (PR1–PR16) + [`primitive/runbook.md`](../02_components/primitive/runbook.md) (backend procedure) + [`frontend_module/README.md`](../02_components/frontend_module/README.md) (FM1–FM12) + [`frontend_module/runbook.md`](../02_components/frontend_module/runbook.md) + [`operator/runbook.md`](../02_components/operator/runbook.md), [`artifact/runbook.md`](../02_components/artifact/runbook.md), [`workflow_template/runbook.md`](../02_components/workflow_template/runbook.md), [`playbook/runbook.md`](../02_components/playbook/runbook.md)
+- Cross-tool roll-up: [`02_components/surface_contract.md`](../02_components/surface_contract.md) (§4, §10, §11 — the per-tool lifecycle registry)
 - Thesis: [`P-numbers`](../00_thesis/01_non_negotiables.md), [`AC-numbers`](../00_thesis/02_ai_agent_development_contract.md)
+- ADRs of note: [ADR 0014 frontend-module-architecture](../05_decisions/0014-frontend-module-architecture.md), [ADR 0015 tool-metadata-db-table](../05_decisions/0015-tool-metadata-db-table.md)

@@ -6,7 +6,9 @@
 **Last reviewed:** 2026-05-17
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
 **Operationalises principles:** P1 (future-proofed), P2 (accuracy), P3 (consistency by contract), P4 (determinism), P5 (honest disclosure), P6 (no silent failure), P7 (vendor SDK isolation), P9 (finance-blind operator boundary — *primitives are the finance-aware layer; this contract enforces what that means*), P10 (single source of truth), P11 (domain isolation), P12 (Bloomberg Accuracy Boundary).
-**See also:** [`runbook.md`](runbook.md) — the procedure for adding a new primitive.
+**See also:** [`BUILD_GUIDE.md`](BUILD_GUIDE.md) — **the single front-door manual for adding a new primitive end-to-end (8-stage assembly line, copy-paste skeletons, every cross-reference in order)**. [`runbook.md`](runbook.md) — the backend-only procedure (Steps 1–11) that `BUILD_GUIDE.md` subsumes.
+
+> **If you are about to build a new primitive, read [`BUILD_GUIDE.md`](BUILD_GUIDE.md) first.** This file is the WHY (PR1–PR16 doctrine); BUILD_GUIDE is the HOW (the 8 stages end-to-end, including DB curated migration + dual-view frontend + standalone bridge + per-tool README + lifecycle checklist). A contributor who reads only this README will ship a backend-only four-file primitive and miss the standardised frontend / DB / lifecycle artifacts the pilot tools require.
 
 ---
 

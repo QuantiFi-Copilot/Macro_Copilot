@@ -344,10 +344,26 @@ export interface PrimitiveModuleSpec {
   // message however they want.
   // -------------------------------------------------------------------
   surfaces?: {
-    /** Full Build experience.  Module owns the entire canvas.
-     *  When populated, ``VirtualPrimitiveCanvas`` mounts this
-     *  directly and skips its own controls / fetch / output flow. */
+    /** Full Build experience.  LEGACY field pre-dating the dual-view
+     *  rendering-density contract.  ``VirtualPrimitiveCanvas`` reads
+     *  this directly today; modules under the new standard set BOTH
+     *  ``buildExtended`` AND ``buildCompact`` and ALSO populate ``build``
+     *  with the same component as ``buildExtended`` for backward
+     *  compatibility until the dispatcher is updated. */
     build?: ComponentType<any>; // relaxed Stage 4a; aspirational ComponentType<BuildSurfaceProps>
+    /** Phase-1 dual-view extended Build surface — full canvas mounted
+     *  for single-tool queries.  REQUIRED for every new primitive per
+     *  docs_revamped/03_standards/rendering_density.md §1.  Mounted by
+     *  VirtualPrimitiveCanvas's module-first dispatch AND by the click-
+     *  to-expand modal infrastructure when invoked from a compact card. */
+    buildExtended?: ComponentType<any>; // ComponentType<BuildExtendedProps>
+    /** Phase-1 dual-view compact Build surface — grid card mounted as a
+     *  node body inside multi-tool query DAG visualizations.  REQUIRED
+     *  for every new primitive per
+     *  docs_revamped/03_standards/rendering_density.md §1.  Carries an
+     *  expand affordance that opens buildExtended via shared modal
+     *  infrastructure. */
+    buildCompact?: ComponentType<any>; // ComponentType<BuildCompactProps>
     /** Payload renderer.  Module ships ONLY the result body; the
      *  parent canvas provides chrome (controls strip, fetch dispatch,
      *  loading + error states).  Used by typed-view tools.  Mutually

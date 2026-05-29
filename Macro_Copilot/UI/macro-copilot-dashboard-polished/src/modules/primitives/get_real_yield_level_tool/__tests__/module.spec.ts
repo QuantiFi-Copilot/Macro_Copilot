@@ -34,6 +34,75 @@ check('module satisfies the standard invariants', async () => {
   });
 });
 
+// ----------------------------------------------------------------------------
+// Phase-1 dual-view rendering-density contract (per
+// docs_revamped/03_standards/rendering_density.md §1):
+// every new primitive MUST ship BOTH surfaces.buildExtended AND
+// surfaces.buildCompact.  These checks pin the contract for this
+// specific module.  Generic checks (every module in
+// ALL_PRIMITIVE_MODULES under the rendering_density standard ships
+// both) belong in a shared loader-level test once more pilot tools
+// migrate to the new contract.
+// ----------------------------------------------------------------------------
+
+check('claims custom_build_surface tier', () => {
+  if (!MODULE.tiers.includes('custom_build_surface')) {
+    throw new Error(
+      `tiers missing 'custom_build_surface'; Phase-1 pilot tools must claim it per rendering_density.md.  Got tiers=${JSON.stringify(MODULE.tiers)}`,
+    );
+  }
+});
+
+check('surfaces.buildExtended is populated', () => {
+  if (!MODULE.surfaces?.buildExtended) {
+    throw new Error(
+      'surfaces.buildExtended is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('surfaces.buildCompact is populated', () => {
+  if (!MODULE.surfaces?.buildCompact) {
+    throw new Error(
+      'surfaces.buildCompact is missing.  Phase-1 dual-view contract requires both buildExtended + buildCompact for every primitive claiming custom_build_surface.',
+    );
+  }
+});
+
+check('typedView is null (standalone-module pattern)', () => {
+  if (MODULE.typedView != null) {
+    throw new Error(
+      `typedView must be null for new modules under the standalone-bridge contract; got '${MODULE.typedView}'.  See methodology_exposure.md §5.`,
+    );
+  }
+});
+
+check('mockups folder exists alongside the module', async () => {
+  // Mockup PNGs are committed in mockups/ per the user's mockup-first
+  // workflow.  At minimum we expect Compact.png + Extended.png.  We
+  // skip this check at runtime if filesystem access isn't available
+  // (browser test env) — it primarily guards against the workflow
+  // convention being silently dropped in a future refactor.
+  try {
+    const fs = await import('node:fs/promises');
+    const path = `${cwd()}/src/modules/primitives/${FOLDER}/mockups`;
+    const entries = await fs.readdir(path);
+    const required = ['Compact.png', 'Extended.png'];
+    const missing = required.filter((r) => !entries.includes(r));
+    if (missing.length > 0) {
+      throw new Error(`mockups/ missing required PNGs: ${missing.join(', ')}`);
+    }
+  } catch (err) {
+    // Filesystem unavailable (browser env) — skip silently.  The
+    // Node-side CI run + the parity script's fs check catch the real
+    // regression case.
+    if ((err as NodeJS.ErrnoException).code === 'ERR_MODULE_NOT_FOUND') {
+      return;
+    }
+    throw err;
+  }
+});
+
 export async function runAllModuleSpecTests(): Promise<void> {
   let passed = 0;
   let failed = 0;

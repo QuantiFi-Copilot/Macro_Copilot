@@ -173,11 +173,21 @@ Capability tiers describe what bespoke UI the module ships beyond the runtime-st
 
 ### `custom_build_surface`
 
-**Means.** The module ships a bespoke React component at `surfaces/BuildSurface.tsx` (default export) that the Build canvas renders when this tool is opened. Replaces the generic `GenericPrimitiveBuilder` for this tool.
+**Means.** The module ships bespoke React components for the Build surface. Replaces the generic `GenericPrimitiveBuilder` for this tool.
 
-**Files.** `surfaces/BuildSurface.tsx` with default export `React.FC<BuildSurfaceProps>`.
+**Phase-1 dual-view contract.** Under [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md), every new primitive that claims `custom_build_surface` MUST ship BOTH:
+- `surfaces/BuildExtended.tsx` (full canvas — mounted for single-tool queries) referenced from `MODULE.surfaces.buildExtended`
+- `surfaces/BuildCompact.tsx` (grid card — mounted as a node body inside multi-tool query DAG visualizations) referenced from `MODULE.surfaces.buildCompact`
 
-**Spec field.** `MODULE.surfaces.build` references the component.
+Both are required. There is no opt-in. The compact view is NOT a smaller copy of the extended view; it is a deliberately-curated condensed representation with an expand affordance that opens the extended view in a modal/drawer. See the rendering-density standard §2 for the full per-view content spec.
+
+**Legacy modules** that pre-date the dual-view contract ship only `surfaces/BuildSurface.tsx` (referenced from `MODULE.surfaces.build`). Those modules are non-compliant with the standard and recorded as `⊘ legacy carve-out` in their per-tool LIFECYCLE_CHECKLIST; the frontend dispatcher falls back to the artifact-type generic card in multi-tool contexts for them.
+
+**Files (new modules under the rendering-density standard).** Both `surfaces/BuildExtended.tsx` and `surfaces/BuildCompact.tsx`, default-exporting components matching `BuildExtendedProps` and `BuildCompactProps` respectively (see rendering_density.md §5.1).
+
+**Files (legacy modules).** `surfaces/BuildSurface.tsx` with default export `React.FC<BuildSurfaceProps>`. Reserved for pre-standard tools; new modules MUST NOT use this name.
+
+**Spec fields.** `MODULE.surfaces.buildExtended` + `MODULE.surfaces.buildCompact` (new); `MODULE.surfaces.build` (legacy only).
 
 **When to claim.** The module's runtime status is `workflow_incompatible` (so there's no generic-run path and the user needs a real surface), OR the module is rich-model and uses `BuilderCanvas` (`richModel: true`), OR the THESIS justifies a bespoke layout the generic builder cannot achieve.
 
@@ -295,5 +305,6 @@ The closed family exists to prevent UI-tier proliferation. Extensions are delibe
 | Version | Date | Change |
 |---|---|---|
 | v3 | 2026-05-26 | Stage 4f doctrine sweep: fixed combination matrix (every observed pattern now reflects the actually-claimed tiers; `scan_extremes` + `calculate_butterfly` are `manifest_typed_view`, not `workflow_incompatible`; sovereign + cross-market spreads include `custom_build_surface` + `monitor_surface`).  Added `manifest_typed_view` to the four runtime tiers' Mutually-exclusive-with lines. |
+| v4 | 2026-05-28 | **Phase-1 dual-view mandate.**  `custom_build_surface` semantics updated: under the new [`../../03_standards/rendering_density.md`](../../03_standards/rendering_density.md) standard, every new primitive claiming this tier MUST ship BOTH `surfaces/BuildExtended.tsx` AND `surfaces/BuildCompact.tsx` (no opt-in).  Multi-tool queries mount the compact view; single-tool queries mount the extended view; click-to-expand inside compact opens extended in a modal/drawer.  Legacy modules using `surfaces/BuildSurface.tsx` are carved out as non-compliant; migrated opportunistically.  Other capability tiers (`custom_preview_widget`, `monitor_surface`, `ask_surface`) remain FM4-parsimony-governed opt-in.  Workflow templates explicitly out of scope for the rendering-density standard (provisional same-rule via the future workflow contract). |
 | v2 | 2026-05-26 | Stage 4e: added `manifest_typed_view` runtime tier (5 runtime-status + 4 capability = 9 tiers total).  Relaxed `monitor_surface` to accept EITHER `surfaces/MonitorWidget.tsx` OR `MODULE.monitorWidgets[]` (Stage 4d multi-variant shape). |
 | v1 | 2026-05-25 | Initial tier catalogue. 4 runtime-status + 4 capability tiers; validation rules; per-tier semantics; combination matrix. |

@@ -25,6 +25,25 @@ honesty disclosure lives in the YAML's
 YAML at runtime — NOT hardcoded as a Python literal — so a YAML edit
 flows through to runtime behaviour.
 
+Phase-1 methodology-exposure surface
+------------------------------------
+Per ``docs_revamped/03_standards/methodology_exposure.md`` (Phase 1
+of the ``revamp`` branch), the same four conventions the sibling
+linker real_yield_level tool exposes are exposed here as Pydantic
+Input fields with per-call overrides:
+
+    z_score_window_days   z_score_min_periods   z_score_ddof
+    field_name (overrides default_field_name)
+
+All four follow the None-sentinel / YAML-fallthrough pattern: when
+the caller supplies None (the schema default), ``compute()`` resolves
+against the YAML default; when set, the explicit value overrides per
+call.  ``_conventions_from_config(config, params)`` is the one place
+where the rolling-z-score resolution happens.  The remaining
+conventions stay YAML-locked.  See each convention's ``exposure:``
+block in ``config.yaml`` for per-decision Criterion-A / Criterion-B
+rationale.
+
 Fetch shape
 -----------
 We reuse ``shared.analytics.rates_fetch.fetch_single_tenor`` twice —
@@ -173,14 +192,45 @@ _NOMINAL_INSTRUMENT_TYPE: str = "sovereign_benchmark"
 # CONFIG → KWARGS RESOLVER
 # ============================================================================
 
-def _conventions_from_config(config: ToolConfig) -> dict:
+def _conventions_from_config(
+    config: ToolConfig,
+    params: Optional[BreakevenInflationSimpleInput] = None,
+) -> dict:
     """Pull the methodology kwargs the breakeven compute() needs from a
-    ToolConfig.  Centralised so future callers (e.g. a batch surface)
-    use identical resolution.
+    ToolConfig, applying any caller overrides from ``params``.
+
+    Override semantics
+    ------------------
+    For each Pydantic Input field whose corresponding YAML convention
+    has ``exposure.expose: true`` (see
+    ``docs_revamped/03_standards/methodology_exposure.md``):
+
+      - When the Input field is ``None`` (the schema default) the YAML
+        value is used.
+      - When the Input field carries an explicit value, that value
+        overrides the YAML for this call.
+
+    The three rolling-z-score conventions are the currently-exposed
+    methodology surface (mirroring the sibling linker real_yield_level
+    tool):
+      - ``z_score_window_days``
+      - ``z_score_min_periods``
+      - ``z_score_ddof``
+
+    The remaining YAML-locked conventions (period offsets, buffer,
+    ffill, trailing range, rounding) are read straight from the config
+    regardless of ``params`` — no override path.
 
     Raises NotImplementedError if ``trailing_range_window_days`` is set
     to anything other than 252 — see the wire-freeze rationale in the
     module docstring.
+
+    Backward compatibility
+    ----------------------
+    ``params`` is optional (default None) so legacy callers that
+    invoked this helper without an Input continue to work — the
+    no-params path returns the pure-YAML resolution that pre-dated
+    the Phase-1 exposure work.
     """
     trailing = config.convention_value("trailing_range_window_days")
     if trailing != _FROZEN_TRAILING_WINDOW:
@@ -195,10 +245,25 @@ def _conventions_from_config(config: ToolConfig) -> dict:
             f"frontend update documented in planned_extensions."
         )
 
+    def _override(convention_name: str) -> Any:
+        """Return the caller's Input value when non-None, else the YAML value.
+
+        Mirrors the field_name sentinel pattern: caller's explicit
+        value wins; None falls through to YAML.  Defensive against
+        future schema changes via ``getattr(..., default=None)``.
+        """
+        if params is not None:
+            input_value = getattr(params, convention_name, None)
+            if input_value is not None:
+                return input_value
+        return config.convention_value(convention_name)
+
     return {
-        "z_window": config.convention_value("z_score_window_days"),
-        "z_min_periods": config.convention_value("z_score_min_periods"),
-        "z_ddof": config.convention_value("z_score_ddof"),
+        # Exposed methodology surface — Input overrides accepted.
+        "z_window": _override("z_score_window_days"),
+        "z_min_periods": _override("z_score_min_periods"),
+        "z_ddof": _override("z_score_ddof"),
+        # YAML-locked conventions — read straight from config.
         "z_round_decimals": config.convention_value("z_score_round_decimals"),
         "buffer_multiplier": config.convention_value("z_score_buffer_multiplier"),
         "ffill_limit": config.convention_value("ffill_limit_days"),
@@ -492,9 +557,12 @@ def calculate_breakeven_inflation_simple(
         config = load_tool_config(CONFIG_PATH)
 
     # ------------------------------------------------------------------
-    # Pull conventions
+    # Pull conventions.  Applies any per-call Input overrides for the
+    # exposed rolling-z-score surface (z_score_window_days /
+    # z_score_min_periods / z_score_ddof); see
+    # _conventions_from_config + config.yaml exposure blocks.
     # ------------------------------------------------------------------
-    conv = _conventions_from_config(config)
+    conv = _conventions_from_config(config, params)
     z_window = conv["z_window"]
     z_min_periods = conv["z_min_periods"]
     z_ddof = conv["z_ddof"]

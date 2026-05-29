@@ -229,9 +229,12 @@ def get_real_yield_level_tool(
     tenor: str,
     lookback_days: int = 365,
     field_name: str = "",
+    z_score_window_days: int = 0,
+    z_score_min_periods: int = 0,
+    z_score_ddof: int = -1,
 ) -> str:
     """Get the current real-yield level for a single point on a
-    sovereign-linker curve, plus period changes, 1-year z-score, and
+    sovereign-linker curve, plus period changes, rolling z-score, and
     deterministic historical context (high, low, percentile).
 
     Use this tool when the user asks about:
@@ -242,6 +245,8 @@ def get_real_yield_level_tool(
       1-year low?")
     - Decomposing a breakeven move (call this for the linker leg, then
       the sovereign-bond agent for the nominal leg)
+    - Tactical-window framing (e.g. "TIPS 10Y real yield z-score on a
+      60-day window" — set ``z_score_window_days=60``)
 
     Do NOT use this tool for:
     - Nominal sovereign bond yields (UST, Bund, Gilt, etc.) — use the
@@ -271,10 +276,33 @@ def get_real_yield_level_tool(
         ""  to use the bundled ``default_field_name`` convention from
         real_yield_level/config.yaml (currently 'YLD_YTM_MID' — the
         linker real-yield-to-maturity mnemonic).  Pass an explicit
-        field name to override per call.  Mirrors the empty-string
-        sentinel pattern used by sovereign get_yield_levels_tool /
+        field name to override per call (e.g. 'YLD_YTM_BID' /
+        'YLD_YTM_ASK').  Mirrors the empty-string sentinel pattern
+        used by sovereign get_yield_levels_tool /
         curve_move_classifier so the YAML default actually flows
         through.
+    z_score_window_days : int, optional
+        Trading-day window for the rolling z-score.  Leave as the
+        default ``0`` (sentinel) to use the YAML default — currently
+        252 (1-year window matching every sovereign rates tool).  Pass
+        60 for tactical / short-horizon framing, 126 for medium-
+        horizon, or 504 for structural-regime work (desk-doc
+        04_inflation_indexed_bonds.md §10).  Exposure decision
+        recorded in real_yield_level/config.yaml:z_score_window_days.exposure;
+        see docs_revamped/03_standards/methodology_exposure.md.
+    z_score_min_periods : int, optional
+        Minimum observations before the rolling z-score is emitted
+        (NaN otherwise).  Leave as the default ``0`` (sentinel) to use
+        the YAML default (currently 60).  Scale together with
+        ``z_score_window_days`` when overriding (e.g. window=60 →
+        min_periods=20).
+    z_score_ddof : int, optional
+        Standard-deviation degrees of freedom.  Leave as the default
+        ``-1`` (sentinel) to use the YAML default (currently 1 —
+        sample std, Bessel-corrected, matching pandas' default).
+        Practical values are {0 (population std), 1 (sample std)}.
+        ``-1`` is the sentinel because ``0`` is a valid value (cannot
+        use ``0`` as sentinel as we do for the window-day knobs).
     """
     # Translate the empty-string sentinel into None so the schema +
     # compute layers resolve against the YAML's ``default_field_name``.
@@ -283,12 +311,29 @@ def get_real_yield_level_tool(
     # shadowing pattern fixed for sovereign curve_move_classifier in
     # commit b2605ee.
     field_name_arg = field_name if field_name else None
+
+    # Translate the integer sentinels for the rolling-z-score Input
+    # surface into None so compute._conventions_from_config falls
+    # through to the YAML default.  Sentinel choices:
+    #   - z_score_window_days: 0 is invalid (ge=60 in schema) → safe
+    #   - z_score_min_periods: 0 is invalid (ge=20 in schema) → safe
+    #   - z_score_ddof: -1 (0 is a valid value, so we cannot use 0)
+    # See docs_revamped/03_standards/methodology_exposure.md §3 for
+    # the sentinel-resolution pattern + the per-convention exposure
+    # blocks in real_yield_level/config.yaml.
+    z_window_arg = z_score_window_days if z_score_window_days > 0 else None
+    z_minp_arg = z_score_min_periods if z_score_min_periods > 0 else None
+    z_ddof_arg = z_score_ddof if z_score_ddof >= 0 else None
+
     try:
         params = RealYieldLevelInput(
             curve_family=curve_family,
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name_arg,
+            z_score_window_days=z_window_arg,
+            z_score_min_periods=z_minp_arg,
+            z_score_ddof=z_ddof_arg,
         )
     except ValidationError as exc:
         logger.warning(
@@ -367,6 +412,9 @@ def calculate_breakeven_inflation_simple_tool(
     tenor: str,
     lookback_days: int = 365,
     field_name: str = "",
+    z_score_window_days: int = 0,
+    z_score_min_periods: int = 0,
+    z_score_ddof: int = -1,
 ) -> str:
     """Get the current generic bond-implied breakeven inflation between
     a nominal sovereign curve and the corresponding sovereign linker
@@ -438,10 +486,45 @@ def calculate_breakeven_inflation_simple_tool(
         override per call.  Mirrors the empty-string sentinel pattern
         used by the other rates tools so the YAML default actually
         flows through.
+    z_score_window_days : int, optional
+        Trading-day window for the rolling z-score of the breakeven
+        (bps) series.  Leave as the default ``0`` (sentinel) to use the
+        YAML default — currently 252 (1-year window matching every
+        sovereign rates tool and the linker real_yield_level tool).
+        Pass 60 for tactical / short-horizon framing, 126 for medium-
+        horizon, or 504 for structural-regime work.  Exposure decision
+        recorded in breakeven_inflation_simple/config.yaml:z_score_window_days.exposure;
+        see docs_revamped/03_standards/methodology_exposure.md.
+    z_score_min_periods : int, optional
+        Minimum observations before the rolling z-score is emitted
+        (NaN otherwise).  Leave as the default ``0`` (sentinel) to use
+        the YAML default (currently 60).  Scale together with
+        ``z_score_window_days`` when overriding (e.g. window=60 →
+        min_periods=20).
+    z_score_ddof : int, optional
+        Standard-deviation degrees of freedom.  Leave as the default
+        ``-1`` (sentinel) to use the YAML default (currently 1 —
+        sample std, Bessel-corrected, matching pandas' default).
+        Practical values are {0 (population std), 1 (sample std)}.
+        ``-1`` is the sentinel because ``0`` is a valid value (cannot
+        use ``0`` as sentinel as we do for the window-day knobs).
     """
     # Translate the empty-string sentinel into None so the schema +
     # compute layers resolve against the YAML's ``default_field_name``.
     field_name_arg = field_name if field_name else None
+
+    # Translate the integer sentinels for the rolling-z-score Input
+    # surface into None so compute._conventions_from_config falls
+    # through to the YAML default.  Sentinel choices mirror the
+    # get_real_yield_level_tool wrapper:
+    #   - z_score_window_days: 0 is invalid (ge=60 in schema) → safe
+    #   - z_score_min_periods: 0 is invalid (ge=20 in schema) → safe
+    #   - z_score_ddof: -1 (0 is a valid value, so we cannot use 0)
+    # See docs_revamped/03_standards/methodology_exposure.md §3.
+    z_window_arg = z_score_window_days if z_score_window_days > 0 else None
+    z_minp_arg = z_score_min_periods if z_score_min_periods > 0 else None
+    z_ddof_arg = z_score_ddof if z_score_ddof >= 0 else None
+
     try:
         params = BreakevenInflationSimpleInput(
             nominal_curve_family=nominal_curve_family,
@@ -449,6 +532,9 @@ def calculate_breakeven_inflation_simple_tool(
             tenor=tenor,
             lookback_days=lookback_days,
             field_name=field_name_arg,
+            z_score_window_days=z_window_arg,
+            z_score_min_periods=z_minp_arg,
+            z_score_ddof=z_ddof_arg,
         )
     except ValidationError as exc:
         logger.warning(
@@ -1188,6 +1274,9 @@ def calculate_real_yield_curve_spread_tool(
     long_tenor: str,
     lookback_days: int = 365,
     field_name: str = "",
+    z_score_window_days: int = 0,
+    z_score_min_periods: int = 0,
+    z_score_ddof: int = -1,
 ) -> str:
     """Get the current same-country linker real-yield curve spread
     between two real-yield tenors of the same sovereign linker
@@ -1269,11 +1358,49 @@ def calculate_real_yield_curve_spread_tool(
         per call.  Mirrors the empty-string sentinel pattern used
         by the other rates tools so the YAML default actually
         flows through.
+    z_score_window_days : int, optional
+        Trading-day window for the rolling z-score of the real-yield
+        curve spread (percent) series.  Leave as the default ``0``
+        (sentinel) to use the YAML default — currently 252 (1-year
+        window matching every sovereign rates tool and the linker
+        real_yield_level tool).  Pass 60 for tactical / short-horizon
+        framing, 126 for medium-horizon, or 504 for structural-regime
+        work.  The override applies to the spread's own z-score AND
+        the fetch-window buffer; the inner endpoint level calls use
+        the YAML default (their z-score is not consumed).  Exposure
+        decision recorded in
+        real_yield_curve_spread/config.yaml:z_score_window_days.exposure.
+    z_score_min_periods : int, optional
+        Minimum observations before the rolling z-score is emitted
+        (NaN otherwise).  Leave as the default ``0`` (sentinel) to use
+        the YAML default (currently 60).  Scale together with
+        ``z_score_window_days`` when overriding (e.g. window=60 →
+        min_periods=20).
+    z_score_ddof : int, optional
+        Standard-deviation degrees of freedom.  Leave as the default
+        ``-1`` (sentinel) to use the YAML default (currently 1 —
+        sample std, Bessel-corrected, matching pandas' default).
+        Practical values are {0 (population std), 1 (sample std)}.
+        ``-1`` is the sentinel because ``0`` is a valid value (cannot
+        use ``0`` as sentinel as we do for the window-day knobs).
     """
     # Translate the empty-string sentinel into None so the schema +
     # compute layers resolve against the YAML's
     # ``default_field_name``.
     field_name_arg = field_name if field_name else None
+
+    # Translate the integer sentinels for the rolling-z-score Input
+    # surface into None so compute._conventions_from_config falls
+    # through to the YAML default.  Sentinel choices mirror the
+    # get_real_yield_level_tool wrapper:
+    #   - z_score_window_days: 0 is invalid (ge=60 in schema) → safe
+    #   - z_score_min_periods: 0 is invalid (ge=20 in schema) → safe
+    #   - z_score_ddof: -1 (0 is a valid value, so we cannot use 0)
+    # See docs_revamped/03_standards/methodology_exposure.md §3.
+    z_window_arg = z_score_window_days if z_score_window_days > 0 else None
+    z_minp_arg = z_score_min_periods if z_score_min_periods > 0 else None
+    z_ddof_arg = z_score_ddof if z_score_ddof >= 0 else None
+
     try:
         params = RealYieldCurveSpreadInput(
             curve_family=curve_family,
@@ -1281,6 +1408,9 @@ def calculate_real_yield_curve_spread_tool(
             long_tenor=long_tenor,
             lookback_days=lookback_days,
             field_name=field_name_arg,
+            z_score_window_days=z_window_arg,
+            z_score_min_periods=z_minp_arg,
+            z_score_ddof=z_ddof_arg,
         )
     except ValidationError as exc:
         logger.warning(

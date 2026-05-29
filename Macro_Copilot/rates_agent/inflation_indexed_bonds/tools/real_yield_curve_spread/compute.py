@@ -160,14 +160,54 @@ _LINKER_INSTRUMENT_TYPE: str = "inflation_linker"
 # CONFIG → KWARGS RESOLVER
 # ============================================================================
 
-def _conventions_from_config(config: ToolConfig) -> dict:
+def _conventions_from_config(
+    config: ToolConfig,
+    params: Optional[RealYieldCurveSpreadInput] = None,
+) -> dict:
     """Pull the methodology kwargs the real_yield_curve_spread
-    compute() needs from a ToolConfig.
+    compute() needs from a ToolConfig, applying any caller overrides
+    from ``params``.
+
+    Override semantics
+    ------------------
+    For each Pydantic Input field whose corresponding YAML convention
+    has ``exposure.expose: true`` (see
+    ``docs_revamped/03_standards/methodology_exposure.md``):
+
+      - When the Input field is ``None`` (the schema default) the YAML
+        value is used.
+      - When the Input field carries an explicit value, that value
+        overrides the YAML for this call.
+
+    The three rolling-z-score conventions are the currently-exposed
+    methodology surface (mirroring the sibling linker real_yield_level
+    tool):
+      - ``z_score_window_days``
+      - ``z_score_min_periods``
+      - ``z_score_ddof``
+
+    These overrides apply to the SPREAD's own rolling z-score AND the
+    fetch-window buffer math (``extended_lookback_days`` is derived
+    from ``z_window``).  The inner endpoint ``get_real_yield_level``
+    calls intentionally receive the bundled config WITHOUT these Input
+    overrides because their z-scores are NOT consumed — only their
+    real-yield level ``time_series`` rows feed the spread.
+
+    The remaining YAML-locked conventions (period offsets, buffer,
+    ffill, trailing range, rounding, window-year display rounding) are
+    read straight from the config regardless of ``params``.
 
     Raises NotImplementedError if ``trailing_range_window_days``
     is set to a value the V1 wire surface cannot honestly
     represent.  See the module docstring for the wire-freeze
     rationale.
+
+    Backward compatibility
+    ----------------------
+    ``params`` is optional (default None) so legacy callers that
+    invoked this helper without an Input continue to work — the
+    no-params path returns the pure-YAML resolution that pre-dated
+    the Phase-1 exposure work.
     """
     trailing = config.convention_value("trailing_range_window_days")
     if trailing != _FROZEN_TRAILING_WINDOW:
@@ -182,10 +222,25 @@ def _conventions_from_config(config: ToolConfig) -> dict:
             f"frontend update documented in planned_extensions."
         )
 
+    def _override(convention_name: str) -> Any:
+        """Return the caller's Input value when non-None, else the YAML value.
+
+        Mirrors the field_name sentinel pattern: caller's explicit
+        value wins; None falls through to YAML.  Defensive against
+        future schema changes via ``getattr(..., default=None)``.
+        """
+        if params is not None:
+            input_value = getattr(params, convention_name, None)
+            if input_value is not None:
+                return input_value
+        return config.convention_value(convention_name)
+
     return {
-        "z_window": config.convention_value("z_score_window_days"),
-        "z_min_periods": config.convention_value("z_score_min_periods"),
-        "z_ddof": config.convention_value("z_score_ddof"),
+        # Exposed methodology surface — Input overrides accepted.
+        "z_window": _override("z_score_window_days"),
+        "z_min_periods": _override("z_score_min_periods"),
+        "z_ddof": _override("z_score_ddof"),
+        # YAML-locked conventions — read straight from config.
         "z_round_decimals": config.convention_value("z_score_round_decimals"),
         "buffer_multiplier": config.convention_value("z_score_buffer_multiplier"),
         "ffill_limit": config.convention_value("ffill_limit_days"),
@@ -377,9 +432,15 @@ def calculate_real_yield_curve_spread(
         config = load_tool_config(CONFIG_PATH)
 
     # ------------------------------------------------------------------
-    # Pull conventions
+    # Pull conventions.  Applies any per-call Input overrides for the
+    # exposed rolling-z-score surface (z_score_window_days /
+    # z_score_min_periods / z_score_ddof) — these flow into BOTH the
+    # spread's own rolling z-score AND the fetch-window buffer math
+    # below.  The inner endpoint level calls intentionally use the
+    # bundled YAML default (their z-score is not consumed).  See
+    # _conventions_from_config + config.yaml exposure blocks.
     # ------------------------------------------------------------------
-    conv = _conventions_from_config(config)
+    conv = _conventions_from_config(config, params)
     z_window = conv["z_window"]
     z_min_periods = conv["z_min_periods"]
     z_ddof = conv["z_ddof"]

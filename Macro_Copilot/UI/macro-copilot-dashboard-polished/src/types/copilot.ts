@@ -71,6 +71,35 @@ export type ToolCallSummary = {
 export type WorkspaceContext = {
   tools: Array<WorkspaceContextTool>;
   tool_count: number;
+  /** Optional originating user prompt — the question that produced this
+   *  multi-tool plan.  When present the multi-tool DAG header surfaces it
+   *  verbatim; when absent the header falls back to a generic title.
+   *  Additive — older ``workspace_context`` payloads omit it, and the
+   *  multi-tool DAG degrades gracefully (generic "From your Ask answer"
+   *  header). */
+  prompt?: string;
+  /** Optional dependency edges between tool calls (indices into
+   *  ``tools``).  When present the DAG renders a multi-step pipeline
+   *  (arrows + dependency labels per the multi_tool.png mockup); when
+   *  absent every tool is treated as a parallel sibling (the common
+   *  case today — the supervisor emits edges only for genuine
+   *  multi-step plans).  Additive + backward-compatible. */
+  edges?: Array<WorkspaceContextEdge>;
+};
+
+/** One dependency edge in a multi-step multi-tool plan.  ``from`` /
+ *  ``to`` are indices into ``WorkspaceContext.tools``.  Emitted by the
+ *  supervisor only when one tool's output feeds another; absent for
+ *  parallel comparisons.  Consumed by the multi-tool DAG strip to draw
+ *  the data-flow arrow + dependency label. */
+export type WorkspaceContextEdge = {
+  /** Source tool index (the upstream tool whose output is consumed). */
+  from: number;
+  /** Target tool index (the downstream tool that consumes it). */
+  to: number;
+  /** Optional human-readable dependency label (e.g. "uses output of").
+   *  The DAG strip renders a default when omitted. */
+  label?: string;
 };
 
 /** One tool entry in the ``workspace_context`` block emitted on the

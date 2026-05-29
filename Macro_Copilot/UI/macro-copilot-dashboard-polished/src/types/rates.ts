@@ -199,6 +199,174 @@ export type YieldLevelOutput = {
   time_series?: TimeSeries;
 };
 
+// --- /detail/real_yield (Phase-1 pilot, standalone bridge) ---
+//
+// Mirrors rates_agent/inflation_indexed_bonds/tools/real_yield_level/schemas.py.
+// Per the methodology-exposure standalone-bridge contract
+// (docs_revamped/03_standards/methodology_exposure.md §5) the linker
+// real-yield primitive ships its own typed-detail endpoint at
+// /api/v1/rates/detail/real_yield and its OWN frontend type — no
+// reuse of the sovereign YieldLevelOutput type (the underlying instrument
+// family is different: inflation_linker vs sovereign_benchmark; the
+// wire field name is ``real_yield_pct`` not ``current_yield_pct`` so
+// operator panels don't silently mix real and nominal series).
+
+export type RealYieldLevelMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  tenor: string;
+  /** Current real yield in percent.  Distinct from the nominal-sovereign
+   *  ``current_yield_pct`` field — units agree (percent) but the
+   *  underlying series is the linker's real-yield-to-maturity, not a
+   *  nominal yield.  Can be negative across parts of the post-2008 /
+   *  post-2020 history. */
+  real_yield_pct: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score by default; the window is
+   *  overridable per call via the ``z_score_window_days`` Phase-1
+   *  exposed convention. */
+  z_score: number | null;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  observation_count: number;
+};
+
+export type RealYieldLevelOutput = {
+  current_metrics: RealYieldLevelMetrics;
+  /** Historical linker real-yield levels.  Closed-enum
+   *  ``TimeSeriesUnits.PERCENT`` units; series_name follows
+   *  ``<curve_family_lower>_<tenor_lower>_real_yield`` so downstream
+   *  operator panels cannot silently mix with nominal sovereign
+   *  series (suffix is the load-bearing distinction).  Each row
+   *  rounded with the same ``yield_round_decimals`` convention the
+   *  snapshot uses so the latest row matches
+   *  ``current_metrics.real_yield_pct`` STRICTLY (not just within
+   *  tolerance — pinned by
+   *  tests/test_real_yield_level_compute.py::TestCanonicalTimeSeries). */
+  time_series?: TimeSeries;
+};
+
+// --- /detail/breakeven ---
+// Standalone-bridge type for the linker bond-implied breakeven primitive
+// (docs_revamped/03_standards/methodology_exposure.md §5).  Own type — NOT
+// reused from any sovereign spread type — because the underlying object is
+// a nominal-minus-linker differential (inflation compensation, NOT
+// expected inflation; carries IRP + liquidity premium).
+
+export type BreakevenInflationSimpleCurrentMetrics = {
+  as_of_date: string;
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  tenor: string;
+  /** Human-readable label, e.g. "UST-USD_TIPS 10Y breakeven". */
+  breakeven_label: string;
+  /** Current breakeven inflation in percent (nominal_yield_pct - real_yield_pct).
+   *  Inflation compensation, not pure expected inflation — see methodology_label. */
+  breakeven_pct: number;
+  /** Current breakeven in basis points (breakeven_pct * 100). */
+  breakeven_bps: number;
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score by default; window overridable per call
+   *  via the z_score_window_days Phase-1 exposed convention. */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** The two underlying yields used to form the breakeven — exposed so the
+   *  desk can audit the decomposition without a second tool call. */
+  nominal_yield_pct: number | null;
+  real_yield_pct: number | null;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does —
+   *  carries the "inflation compensation, not expected inflation" caveat. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (breakeven + z-score in one row). */
+export type BreakevenInflationSimpleTimeSeriesRow = {
+  date: string;
+  breakeven_bps: number;
+  z_score: number | null;
+};
+
+export type BreakevenInflationSimpleOutput = {
+  current_metrics: BreakevenInflationSimpleCurrentMetrics;
+  /** Bespoke wire-frozen shape — breakeven (bps) + z-score per row. */
+  time_series: BreakevenInflationSimpleTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the breakeven over the
+   *  displayed window.  Optional defensively (cached / LLM-stripped
+   *  payloads omit it); the REST detail endpoint always returns it. */
+  time_series_breakeven?: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore?: TimeSeries;
+};
+
+// --- /detail/real_yield_curve_spread ---
+// Standalone-bridge type for the same-country linker real-yield curve-spread
+// primitive.  Own type — the object is the term structure of REAL YIELDS
+// (real-yield curve shape), distinct from a breakeven curve spread and from
+// a nominal sovereign curve spread.  The spread is in PERCENT (same units as
+// the underlying real yields); changes are in BPS.
+
+export type RealYieldCurveSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  /** Human-readable label, e.g. "USD_TIPS 5s10s real-yield". */
+  spread_label: string;
+  /** Current real-yield curve spread in PERCENT (long_real_yield_pct -
+   *  short_real_yield_pct).  Can be negative (curve inversion). */
+  current_spread_pct: number | null;
+  /** Daily / weekly / monthly change of the percent-units spread, in BPS. */
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the spread by default; window
+   *  overridable per call. */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** The two endpoint real yields used to form the spread (PERCENT). */
+  short_real_yield_pct: number | null;
+  long_real_yield_pct: number | null;
+  short_years: number;
+  long_years: number;
+  observation_count: number;
+  /** Resolved from instrument_master — surfaced so the desk can confirm the
+   *  linker identity without a second call. */
+  country: string;
+  currency: string;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (spread % + z-score in one row). */
+export type RealYieldCurveSpreadTimeSeriesRow = {
+  date: string;
+  spread_pct: number;
+  z_score: number | null;
+};
+
+export type RealYieldCurveSpreadOutput = {
+  current_metrics: RealYieldCurveSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (percent) + z-score per row. */
+  time_series: RealYieldCurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.PERCENT series of the spread over the
+   *  displayed window.  Optional defensively; the REST detail endpoint
+   *  always returns it. */
+  time_series_spread?: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore?: TimeSeries;
+};
+
 // --- /detail/spread ---
 
 export type CurveSpreadCurrentMetrics = {

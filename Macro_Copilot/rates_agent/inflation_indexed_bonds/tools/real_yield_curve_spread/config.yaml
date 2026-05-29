@@ -42,9 +42,24 @@
 # synthetic spread points are produced on dates where one endpoint
 # has no data.
 #
-# In V1 deterministic mode there is NO LLM-facing override path for
-# conventions.  See docs/architecture/tool_architecture.md.
-# =============================================================================
+# Phase-1 methodology-exposure surface
+# ------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md`` (Phase 1
+# of the ``revamp`` branch), the same four conventions the sibling
+# linker real_yield_level tool exposes are exposed here as Pydantic
+# Input fields with per-call overrides:
+#
+#     z_score_window_days   z_score_min_periods   z_score_ddof
+#     default_field_name (via field_name)
+#
+# The three rolling-z-score overrides apply to the SPREAD's own
+# rolling z-score AND the fetch-window buffer math; the inner
+# get_real_yield_level endpoint calls intentionally use the YAML
+# default z-score conventions because their z-scores are NOT consumed
+# (only their real-yield level series feed the spread).  All four
+# follow the None-sentinel / YAML-fallthrough pattern; the remaining
+# conventions stay YAML-locked.  See each convention's ``exposure:``
+# block for per-decision Criterion-A / Criterion-B rationale.
 
 tool:
   name: calculate_real_yield_curve_spread_tool
@@ -106,6 +121,30 @@ conventions:
       forward_breakeven_simple / breakeven_curve_spread tools — the
       cross-config lint enforces the match.
     valid_range: [60, 1260]
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: changing the window materially changes the
+        z-score (252 vs 60 → tactical reframing of the same real-yield
+        curve-spread series).  Criterion B passes: the window IS the
+        rolling-z-score definition.  Exposed as part of the cohesive
+        rolling-z-score surface (z_score_window_days +
+        z_score_min_periods + z_score_ddof together specify the model,
+        per PR8) — the same surface the sibling linker real_yield_level
+        tool exposes, so a PM can ask for a tactical 60d / 126d or a
+        structural 504d real-yield-curve-spread z-score at runtime.
+        The override applies to the SPREAD's own rolling z-score AND
+        the fetch-window buffer math; the inner endpoint level calls
+        use the YAML default (their z-score is not consumed).
+        Cross-config lint still enforces the DEFAULT value alignment;
+        per-call overrides are runtime behaviour and do not violate
+        the lint.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_window_days
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Minimum observations before the rolling stat is emitted
@@ -120,6 +159,23 @@ conventions:
       real_yield_level / breakeven_inflation_simple /
       forward_breakeven_simple / breakeven_curve_spread.
     valid_range: [20, 252]
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: changing min_periods changes WHICH days
+        emit a non-NaN z-score and therefore the early-window output.
+        Criterion B passes: it parameterises the rolling-z-score model.
+        Exposed as part of the cohesive rolling-z-score surface
+        (together with z_score_window_days + z_score_ddof, per PR8
+        cohesive-multi-knob admissibility) so callers tactically
+        reconfiguring the window can scale min_periods consistently
+        (e.g. window=60 → min_periods=20).
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_min_periods
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Standard-deviation degrees of freedom
@@ -130,6 +186,24 @@ conventions:
     rationale: >-
       Sample standard deviation (Bessel-corrected, ddof=1).  Matches
       pandas' default and the convention every other rates tool uses.
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: ddof choice (sample vs population) changes
+        the numerical z-score value.  Criterion B passes: it
+        parameterises the std computation inside the rolling-z model.
+        Exposed as part of the cohesive rolling-z-score surface
+        (z_score_window_days + z_score_min_periods + z_score_ddof
+        together specify the model, per PR8).  Practical values are
+        {0, 1}; the Pydantic field constrains ge=0, le=1.  Default 1
+        remains the industry standard; cross-config lint still enforces
+        the DEFAULT alignment.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_ddof
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Calendar-day buffer for the fetch window
@@ -143,6 +217,17 @@ conventions:
       from the first displayed trading day.  1.5x trading-day window
       covers weekends + holidays.  Matches every other rates tool.
     valid_range: [1.2, 2.0]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A is weak — the buffer multiplier affects which days
+        the warm-up rolling-z-score is populated for, but does NOT
+        change the numerical value of the z-score on days already past
+        the warm-up.  Criterion B fails — buffer math is fetch-window
+        arithmetic, not part of the analytical z-score definition.
+        Derived from z_score_window_days; keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Period-change offsets (in trading-day rows after ffill)
@@ -156,6 +241,18 @@ conventions:
       period_changes(already_bps=False), i.e. (current - prior) *
       100 — produces BPS change of a PERCENT-units spread.
     valid_range: [2, 5]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A passes (different offset → different change value).
+        Criterion B fails — "daily / weekly / monthly" are canonical
+        desk-language anchors; the OFFSET is the convention that pins
+        what "daily" MEANS, not a parameter of the analytical math
+        operating on the series.  Exposing per-call would let the
+        output's "daily_change_bps" field-name lie about what it
+        contains (PR14 wire-format honesty).  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   weekly_change_offset_rows:
     value: 6
@@ -163,6 +260,15 @@ conventions:
     rationale: >-
       iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
     valid_range: [5, 10]
+    exposure:
+      expose: false
+      rationale: >-
+        Same rationale as daily_change_offset_rows — "weekly" is the
+        desk-language anchor; the offset defines what the anchor means
+        and is wire-encoded in the weekly_change_bps field name.
+        Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   monthly_change_offset_rows:
     value: 22
@@ -170,6 +276,15 @@ conventions:
     rationale: >-
       iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
     valid_range: [20, 30]
+    exposure:
+      expose: false
+      rationale: >-
+        Same rationale as daily_change_offset_rows — "monthly" is the
+        desk-language anchor; the offset defines what the anchor means
+        and is wire-encoded in the monthly_change_bps field name.
+        Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Trailing range / percentile window — LOCKED at 252 in V1
@@ -186,6 +301,22 @@ conventions:
       1Y trailing for high/low/percentile.  Locked at 252 in V1
       because the wire field names embed the number.
     valid_range: [60, 1260]
+    exposure:
+      expose: false
+      rationale: >-
+        WIRE-FROZEN.  The output field names (high_252d_pct,
+        low_252d_pct, percentile_252d) embed the number 252 on the
+        wire (PR14 wire-format honesty); changing the convention
+        without renaming the fields would silently lie about what the
+        percentile is computed against.  compute._conventions_from_config
+        raises NotImplementedError if this is set to anything other
+        than 252.  Path to configurability documented in
+        methodology.planned_extensions: rename schema fields to
+        high_window_pct / low_window_pct / percentile_window + add
+        trailing_window_days to the output; remove the
+        NotImplementedError guard.  Until then, keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Forward-fill limit for missing observations
@@ -201,6 +332,19 @@ conventions:
       curve-spread layer itself uses a strict inner join on
       trade_date to avoid synthesising spread points.
     valid_range: [1, 10]
+    exposure:
+      expose: false
+      rationale: >-
+        Borderline.  Criterion A passes (different ffill changes which
+        days enter each endpoint's cleaned series).  Criterion B is
+        weak — ffill is a data-cleaning step inside the composed level
+        primitive, upstream of the spread math, not a parameter of the
+        spread math itself.  Per the methodology_exposure protocol
+        §2.3 (borderline cases default to expose: false), keeping
+        YAML-locked.  Revisit if a desk use case for per-call override
+        emerges.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Output rounding precision — yields / pct (curve spread,
@@ -220,6 +364,16 @@ conventions:
       long_real_yield_pct display fields and the trailing
       high_252d_pct / low_252d_pct fields.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the percent-scale
+        spread / endpoint-yield / trailing-range fields; does not
+        change the underlying answer, only the displayed digits.
+        Cross-tool lint enforces alignment across rates level /
+        spread tools.  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Output rounding precision — bps (period changes)
@@ -239,6 +393,14 @@ conventions:
       Threaded explicitly into period_changes(decimals=...) so the
       delta_bps default of 2 cannot silently shadow a YAML override.
     valid_range: [0, 6]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the bps-scale
+        period-change fields; does not change the underlying answer.
+        Cross-tool lint enforces alignment.  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Output rounding precision — z-score
@@ -253,6 +415,14 @@ conventions:
       safe_float at the output boundary so a YAML override above 4
       is not silently truncated by safe_float's own default of 4.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the z-score scalar;
+        does not change the underlying analytical answer.  Cross-tool
+        lint enforces alignment.  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Per-window-year display rounding (short_years, long_years)
@@ -267,6 +437,15 @@ conventions:
       / inflation_swap_curve_spread value the cross-config lint
       enforces; this tool reuses the same convention name + value.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the short_years /
+        long_years display fields; does not change the underlying
+        answer.  Cross-tool lint enforces alignment.  Keeping YAML-
+        locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Trailing range high / low rounding precision (passed to the
@@ -282,6 +461,15 @@ conventions:
       tools — required because this primitive's ToolConfig is
       threaded into the level primitive's compute.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the trailing-range
+        stats inside the composed level primitive; does not change the
+        underlying answer.  Cross-tool lint enforces alignment.
+        Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Default Bloomberg observation field for both endpoint legs
@@ -306,6 +494,24 @@ conventions:
       from the level primitive's no-proxy guard); this default
       applies to each endpoint unless the caller explicitly
       overrides per query.
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes (different Bloomberg field → different
+        numerical value).  Criterion B passes (the field choice IS
+        the data-source identity).  Already exposed via the existing
+        ``RealYieldCurveSpreadInput.field_name: Optional[str]``
+        Pydantic field (empty-string sentinel at the MCP boundary,
+        None sentinel in Python).  This exposure block documents the
+        existing surface; no new field promotion required.  The same
+        field_name override flows to BOTH endpoint level calls (short
+        + long tenor).
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: field_name
+      pydantic_type: Optional[str]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "n/a"
 
 methodology:
   what_it_does: |
@@ -393,6 +599,15 @@ methodology:
        length), NOT the rolling z-score window or the trailing
        range window — those are independent conventions in this
        YAML."
+    - "Three rolling-z-score conventions (z_score_window_days /
+       z_score_min_periods / z_score_ddof) plus the field_name are
+       exposed as per-call Pydantic Input overrides per
+       docs_revamped/03_standards/methodology_exposure.md.  The
+       z-score overrides apply to the SPREAD's own rolling z-score
+       and the fetch-window buffer math; the inner endpoint level
+       calls use the YAML default z-score (their z-score is not
+       consumed).  Per-call overrides are runtime behaviour and do
+       not violate the cross-config DEFAULT lint."
     - "Latest-observation cutoff for the displayed window is
        anchored to the data's latest aligned trade_date (matching
        real_yield_level / breakeven_curve_spread /

@@ -40,3 +40,49 @@ export const LOOKBACK_OPTIONS: ReadonlyArray<{ value: string; label: string }> =
   { value: '504', label: '2Y · 504 days' },
   { value: '1260', label: '5Y · 1260 days' },
 ];
+
+// ----------------------------------------------------------------------------
+// Linker (inflation-indexed bond) curve + tenor options.
+// ----------------------------------------------------------------------------
+// Separate from the sovereign CURVE_OPTIONS above because the linker
+// universe is disjoint — different curve_family codes, different
+// tenor sets per family.  Used by Monitor widgets for the
+// inflation-indexed-bonds primitives (real_yield_level, breakeven
+// primitives, real-yield curve spreads).  Tenor sets per family
+// mirror the institutional doc + manifest universe at
+// manifesto/01_instruments/rates_agent/04_inflation_indexed_bonds.md.
+
+export const LINKER_CURVE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'USD_TIPS', label: 'TIPS · US' },
+  { value: 'GBP_LINKER', label: 'Linker · UK' },
+  { value: 'EUR_FR_LINKER', label: 'OATei · France' },
+  { value: 'CAD_RRB', label: 'RRB · Canada' },
+];
+
+/** Tenor sets per linker curve_family.  Empty array fallback for an
+ *  unrecognised curve_family — caller's responsibility to validate. */
+export const LINKER_TENOR_OPTIONS_BY_CURVE: Record<
+  string,
+  ReadonlyArray<{ value: string; label: string }>
+> = {
+  USD_TIPS: ['5Y', '10Y', '20Y', '30Y'].map((t) => ({ value: t, label: t })),
+  GBP_LINKER: ['1Y', '2Y', '3Y', '5Y', '10Y', '15Y', '20Y', '30Y', '50Y'].map(
+    (t) => ({ value: t, label: t }),
+  ),
+  EUR_FR_LINKER: ['2Y', '5Y', '7Y', '10Y', '15Y'].map((t) => ({
+    value: t,
+    label: t,
+  })),
+  CAD_RRB: ['5Y', '10Y', '15Y', '20Y', '25Y', '30Y'].map((t) => ({
+    value: t,
+    label: t,
+  })),
+};
+
+/** Default linker tenor set when the curve_family hasn't been selected
+ *  yet — used by the Monitor add-widget form's initial render. */
+export const LINKER_DEFAULT_TENORS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '5Y', label: '5Y' },
+  { value: '10Y', label: '10Y' },
+  { value: '30Y', label: '30Y' },
+];

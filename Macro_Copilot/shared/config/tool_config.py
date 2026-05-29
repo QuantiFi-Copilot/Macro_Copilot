@@ -113,6 +113,118 @@ ToolCategory = Literal[
 
 
 # ============================================================================
+# CONVENTION EXPOSURE
+# ============================================================================
+
+class ConventionExposure(BaseModel):
+    """The exposure decision for one ``Convention``.
+
+    Per ``docs_revamped/03_standards/methodology_exposure.md`` — every
+    convention records whether it is YAML-locked (system constant) or
+    exposed as a per-call Pydantic ``Input`` field.  The decision is
+    binary; the rationale is required either way.
+
+    The four conditional fields (``input_field``, ``pydantic_type``,
+    ``default_source``, ``promoted_from_yaml_in_pr``) are required if
+    and only if ``expose: true``.  Validated by the model validator
+    below.
+
+    Optional on ``Convention`` during the migration window — existing
+    tools may have no ``exposure:`` block (``= None``).  New tools and
+    Phase-1 pilot tools MUST populate one per convention.  Presence is
+    enforced at the per-tool ``LIFECYCLE_CHECKLIST.md`` Stage 1A level,
+    not by this schema, so existing tools' YAMLs continue to load
+    cleanly without per-convention back-fill.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    expose: bool = Field(
+        ...,
+        description=(
+            "True → convention surfaces as a Pydantic Input field; "
+            "False → YAML-only."
+        ),
+    )
+    rationale: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Decision justification.  Required regardless of `expose`.  "
+            "For `expose: false`: cite which Criterion A/B failed.  For "
+            "`expose: true`: cite the desk use case."
+        ),
+    )
+    decided_at: str = Field(
+        ...,
+        min_length=10,
+        max_length=10,
+        description="ISO date of the decision (YYYY-MM-DD).",
+    )
+    decided_in_pr: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            'PR reference (e.g. "#123"); use "n/a" for pre-pilot '
+            "legacy decisions back-filled during retroactive migration."
+        ),
+    )
+
+    # Conditional fields — required iff expose: true.
+    input_field: Optional[str] = Field(
+        default=None,
+        description=(
+            "Pydantic field name in <Tool>Input.  Required if "
+            "`expose: true`."
+        ),
+    )
+    pydantic_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "Pydantic type expression for the Input field (e.g. "
+            "'Optional[int]', 'Literal[\\\"A\\\",\\\"B\\\"]').  Required "
+            "if `expose: true`."
+        ),
+    )
+    default_source: Optional[Literal["yaml", "input_explicit"]] = Field(
+        default=None,
+        description=(
+            "'yaml' → Input field defaults to the YAML value via the "
+            "sentinel-resolve pattern; 'input_explicit' → Input field "
+            "is required (no fall-through).  Required if `expose: true`."
+        ),
+    )
+    promoted_from_yaml_in_pr: Optional[str] = Field(
+        default=None,
+        description=(
+            'PR that promoted this convention from YAML-locked → '
+            'exposed, or "n/a" if exposed from day-one.  Required if '
+            "`expose: true`."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _conditional_requireds(self) -> "ConventionExposure":
+        """When ``expose: true``, the four propagation fields must be present."""
+        if self.expose:
+            missing: List[str] = []
+            if self.input_field is None:
+                missing.append("input_field")
+            if self.pydantic_type is None:
+                missing.append("pydantic_type")
+            if self.default_source is None:
+                missing.append("default_source")
+            if self.promoted_from_yaml_in_pr is None:
+                missing.append("promoted_from_yaml_in_pr")
+            if missing:
+                raise ValueError(
+                    f"exposure.expose=true requires fields: {missing}.  See "
+                    "docs_revamped/03_standards/methodology_exposure.md §3."
+                )
+        return self
+
+
+# ============================================================================
 # CONVENTION
 # ============================================================================
 
@@ -122,6 +234,13 @@ class Convention(BaseModel):
     A scalar value plus the metadata needed to audit it: where the
     value came from, why it was chosen, and (for numeric values) the
     range of legitimate alternatives.
+
+    The optional ``exposure`` sub-block records the per-convention
+    exposure decision per
+    ``docs_revamped/03_standards/methodology_exposure.md``.  Optional
+    during the migration window; required for Phase-1 pilot tools and
+    every new tool going forward (enforced at the per-tool checklist
+    level, not by this schema).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -148,6 +267,16 @@ class Convention(BaseModel):
         description=(
             "Optional [lo, hi] window of acceptable values.  Numeric "
             "values only; ignored for str/bool conventions."
+        ),
+    )
+    exposure: Optional[ConventionExposure] = Field(
+        default=None,
+        description=(
+            "Per-convention exposure decision (YAML-locked vs Pydantic-"
+            "Input-exposed).  Required for Phase-1 pilot tools + every "
+            "new tool per "
+            "docs_revamped/03_standards/methodology_exposure.md; Optional "
+            "during the migration window for legacy tools."
         ),
     )
 

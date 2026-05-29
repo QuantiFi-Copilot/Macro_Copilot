@@ -61,6 +61,23 @@ conventions:
       curve_move_classifier, butterfly, cross_market_spread) and the
       OIS rate_level tool — the cross-config lint enforces the match.
     valid_range: [60, 1260]
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: changing the window materially changes the
+        z-score (252 vs 60 → tactical reframing of the same series).
+        Criterion B passes: the window IS the rolling-z-score
+        definition.  Desk-doc 04_inflation_indexed_bonds.md §10 + §3
+        explicitly flag 60d / 126d / 504d as tactical / structural
+        alternatives a PM may want at runtime.  Cross-config lint still
+        enforces the DEFAULT value alignment; per-call overrides are
+        runtime behaviour and do not violate the lint.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_window_days
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Minimum observations before the rolling stat is emitted
@@ -73,6 +90,23 @@ conventions:
       deemed trustworthy.  Matches sovereign yield_levels /
       curve_spread / OIS rate_level.
     valid_range: [20, 252]
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: changing min_periods changes WHICH days
+        emit a non-NaN z-score and therefore the early-window output.
+        Criterion B passes: it parameterises the rolling-z-score model.
+        Exposed as part of the cohesive rolling-z-score surface
+        (together with z_score_window_days + z_score_ddof, per PR8
+        cohesive-multi-knob admissibility) so callers tactically
+        reconfiguring the window can scale min_periods consistently
+        (e.g. window=60 → min_periods=20).
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_min_periods
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Standard-deviation degrees of freedom
@@ -83,6 +117,24 @@ conventions:
     rationale: >-
       Sample standard deviation (Bessel-corrected, ddof=1).  Matches
       pandas' default and the convention every other rates tool uses.
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes: ddof choice (sample vs population) changes
+        the numerical z-score value.  Criterion B passes: it
+        parameterises the std computation inside the rolling-z model.
+        Exposed as part of the cohesive rolling-z-score surface
+        (z_score_window_days + z_score_min_periods + z_score_ddof
+        together specify the model, per PR8).  Practical values are
+        {0, 1}; the Pydantic field constrains ge=0, le=1.  Default 1
+        remains the industry standard; cross-config lint still enforces
+        the DEFAULT alignment.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: z_score_ddof
+      pydantic_type: Optional[int]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Calendar-day buffer for the fetch window
@@ -96,6 +148,17 @@ conventions:
       1.5x trading-day window covers weekends + holidays.  Matches
       every sovereign rates tool and OIS rate_level.
     valid_range: [1.2, 2.0]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A is weak — the buffer multiplier affects which days
+        the warm-up rolling-z-score is populated for, but does NOT
+        change the numerical value of the z-score on days already past
+        the warm-up.  Criterion B fails — buffer math is fetch-window
+        arithmetic, not part of the analytical z-score definition.
+        Derived from z_score_window_days; keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Period-change offsets (in trading-day rows after ffill)
@@ -106,6 +169,18 @@ conventions:
     rationale: >-
       iloc[-1] vs iloc[-2] = 1 trading day back.
     valid_range: [2, 5]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A passes (different offset → different change value).
+        Criterion B fails — "daily / weekly / monthly" are canonical
+        desk-language anchors; the OFFSET is the convention that pins
+        what "daily" MEANS, not a parameter of the analytical math
+        operating on the series.  Exposing per-call would let the
+        output's "daily_change_bps" field-name lie about what it
+        contains (PR14 wire-format honesty).  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   weekly_change_offset_rows:
     value: 6
@@ -113,6 +188,15 @@ conventions:
     rationale: >-
       iloc[-1] vs iloc[-6] = 5 trading days back ≈ 1 calendar week.
     valid_range: [5, 10]
+    exposure:
+      expose: false
+      rationale: >-
+        Same rationale as daily_change_offset_rows — "weekly" is the
+        desk-language anchor; the offset defines what the anchor means
+        and is wire-encoded in the weekly_change_bps field name.
+        Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   monthly_change_offset_rows:
     value: 22
@@ -120,6 +204,15 @@ conventions:
     rationale: >-
       iloc[-1] vs iloc[-22] = ~1 calendar month of trading days.
     valid_range: [20, 30]
+    exposure:
+      expose: false
+      rationale: >-
+        Same rationale as daily_change_offset_rows — "monthly" is the
+        desk-language anchor; the offset defines what the anchor means
+        and is wire-encoded in the monthly_change_bps field name.
+        Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Trailing range / percentile window — LOCKED at 252 in V1
@@ -137,6 +230,22 @@ conventions:
       1Y trailing for high/low/percentile.  Locked at 252 in V1
       because the wire field names embed the number — same situation
       as sovereign yield_levels and OIS rate_level.
+    exposure:
+      expose: false
+      rationale: >-
+        WIRE-FROZEN.  The output field names (high_252d_pct,
+        low_252d_pct, percentile_252d) embed the number 252 on the
+        wire (PR14 wire-format honesty); changing the convention
+        without renaming the fields would silently lie about what the
+        percentile is computed against.  compute._conventions_from_config
+        raises NotImplementedError if this is set to anything other
+        than 252.  Path to configurability documented in
+        methodology.planned_extensions: rename schema fields to
+        high_window_pct / low_window_pct / percentile_window + add
+        trailing_window_days to the output; remove the
+        NotImplementedError guard.  Until then, keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Forward-fill limit for missing observations
@@ -149,6 +258,19 @@ conventions:
       gaps.  Matches every sovereign rates tool and OIS rate_level —
       the cross-config lint enforces the match.
     valid_range: [1, 10]
+    exposure:
+      expose: false
+      rationale: >-
+        Borderline.  Criterion A passes (different ffill changes which
+        days enter the series).  Criterion B is weak — ffill is a
+        data-cleaning step upstream of the analytical math, not a
+        parameter of the math itself.  Per the methodology_exposure
+        protocol §2.3 (borderline cases default to expose: false),
+        keeping YAML-locked.  Revisit if a desk use case for per-call
+        override emerges (e.g. a workflow that wants strict no-ffill
+        treatment for a stress-replay).
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   # ---------------------------------------------------------------------------
   # Default Bloomberg observation field for linker real yield
@@ -171,6 +293,25 @@ conventions:
       the field code.  LLM/HTTP wrappers must use the empty/None
       sentinel so this default flows through — see the
       curve_move_classifier wrapper-shadowing fix (commit b2605ee).
+    exposure:
+      expose: true
+      rationale: >-
+        Criterion A passes (different Bloomberg field → different
+        numerical value).  Criterion B passes (the field choice IS
+        the data-source identity).  Already exposed via the existing
+        ``RealYieldLevelInput.field_name: Optional[str]`` Pydantic
+        field (empty-string sentinel at the MCP boundary, None
+        sentinel in Python).  This exposure block documents the
+        existing surface; no new field promotion required.  Pattern:
+        the YAML default is the linker real-yield-to-maturity
+        mnemonic; per-call override lets the caller request bid/ask
+        or a different field code (e.g. YLD_YTM_BID).
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
+      input_field: field_name
+      pydantic_type: Optional[str]
+      default_source: yaml
+      promoted_from_yaml_in_pr: "n/a"
 
   # ---------------------------------------------------------------------------
   # Boundary rounding — applied to both the snapshot's real_yield_pct
@@ -190,6 +331,15 @@ conventions:
       AND the canonical TimeSeries builder so the two cannot disagree
       numerically.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision; does not change the
+        underlying answer, only the displayed digits.  Cross-tool lint
+        enforces alignment across rates level tools.  Keeping YAML-
+        locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   z_score_round_decimals:
     value: 4
@@ -201,6 +351,14 @@ conventions:
       through to runtime behaviour.  Matches sovereign yield_levels
       and OIS rate_level.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the z-score scalar;
+        does not change the underlying analytical answer.  Cross-tool
+        lint enforces alignment.  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
   high_low_round_decimals:
     value: 4
@@ -211,6 +369,14 @@ conventions:
       percentile stats.  Matches sovereign yield_levels and OIS
       rate_level.
     valid_range: [0, 8]
+    exposure:
+      expose: false
+      rationale: >-
+        Criterion A fails — display precision for the trailing-range
+        stats; does not change the underlying analytical answer.
+        Cross-tool lint enforces alignment.  Keeping YAML-locked.
+      decided_at: "2026-05-28"
+      decided_in_pr: "#TBD"
 
 methodology:
   what_it_does: |

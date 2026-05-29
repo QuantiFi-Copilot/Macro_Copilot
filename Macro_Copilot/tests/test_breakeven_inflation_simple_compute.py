@@ -1326,3 +1326,252 @@ class TestCanonicalTimeSeries:
         out = self._run(params, nominal_df, linker_df)
         dates = [r["date"] for r in out["time_series_breakeven"]["rows"]]
         assert dates == sorted(dates)
+
+
+# ===========================================================================
+# Pydantic Input overrides — Phase-1 methodology-exposure surface
+# ===========================================================================
+#
+# Pins the Phase-1 exposure decisions recorded in
+# rates_agent/inflation_indexed_bonds/tools/breakeven_inflation_simple/config.yaml
+# (per docs_revamped/03_standards/methodology_exposure.md).  Three
+# rolling-z-score conventions are now exposed as Pydantic Input fields
+# with per-call overrides; the None sentinel falls through to the YAML
+# default.  Mirrors the sibling real_yield_level tool's TestInputOverrides.
+# YAML-level override tests live in TestConventionOverrides above; this
+# class is the Input-level analog.
+
+class TestInputOverrides:
+    """Per-call Input overrides for the three Phase-1 exposed conventions
+    (``z_score_window_days``, ``z_score_min_periods``, ``z_score_ddof``).
+    """
+
+    def _run(self, params, nominal_df, linker_df, config=None):
+        with patch(
+            "rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute.fetch_single_tenor",
+            new=_patched_fetch_factory(nominal_df, linker_df),
+        ), patch(
+            "rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute.date",
+            _FrozenDate,
+        ):
+            return calculate_breakeven_inflation_simple(
+                engine=None, params=params, config=config,
+            )
+
+    # ------------------------------------------------------------------
+    # (a) Override path — explicit Input changes the output.
+    # ------------------------------------------------------------------
+
+    def test_z_window_input_override_changes_z(self):
+        nominal_df = _synthetic_single_leg(base_pct=4.20, drift_pct=-0.30)
+        linker_df = _synthetic_single_leg(base_pct=1.85, drift_pct=-0.40)
+        base = dict(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y", lookback_days=365,
+        )
+        out_default = self._run(
+            BreakevenInflationSimpleInput(**base), nominal_df, linker_df,
+        )
+        out_override = self._run(
+            BreakevenInflationSimpleInput(**base, z_score_window_days=120),
+            nominal_df, linker_df,
+        )
+        assert (
+            out_default["current_metrics"]["current_z_score"]
+            != out_override["current_metrics"]["current_z_score"]
+        )
+
+    def test_z_ddof_input_override_changes_z(self):
+        nominal_df = _synthetic_single_leg(base_pct=4.20, drift_pct=-0.30)
+        linker_df = _synthetic_single_leg(base_pct=1.85, drift_pct=-0.40)
+        base = dict(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y", lookback_days=365,
+        )
+        out_sample = self._run(
+            BreakevenInflationSimpleInput(**base, z_score_ddof=1),
+            nominal_df, linker_df,
+        )
+        out_pop = self._run(
+            BreakevenInflationSimpleInput(**base, z_score_ddof=0),
+            nominal_df, linker_df,
+        )
+        assert (
+            out_sample["current_metrics"]["current_z_score"]
+            != out_pop["current_metrics"]["current_z_score"]
+        )
+
+    # ------------------------------------------------------------------
+    # (b) Sentinel fallback — None Input → YAML default.
+    # ------------------------------------------------------------------
+
+    def test_none_input_falls_through_to_yaml(self):
+        nominal_df = _synthetic_single_leg(base_pct=4.20, drift_pct=-0.30)
+        linker_df = _synthetic_single_leg(base_pct=1.85, drift_pct=-0.40)
+        base = dict(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y", lookback_days=365,
+        )
+        out_omit = self._run(
+            BreakevenInflationSimpleInput(**base), nominal_df, linker_df,
+        )
+        out_explicit_none = self._run(
+            BreakevenInflationSimpleInput(
+                **base, z_score_window_days=None,
+                z_score_min_periods=None, z_score_ddof=None,
+            ),
+            nominal_df, linker_df,
+        )
+        assert out_omit == out_explicit_none
+
+    def test_omitted_z_window_resolves_to_yaml_default(self):
+        from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute import (
+            _conventions_from_config,
+        )
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y",
+        )
+        cfg = load_tool_config(CONFIG_PATH)
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 252
+        assert kw["z_min_periods"] == 60
+        assert kw["z_ddof"] == 1
+
+    # ------------------------------------------------------------------
+    # (c) Precedence — Input wins over YAML.
+    # ------------------------------------------------------------------
+
+    def test_input_wins_over_yaml(self):
+        from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute import (
+            _conventions_from_config,
+        )
+        cfg = _build_config(z_score_window_days=999)
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y", z_score_window_days=120,
+        )
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 120
+
+    def test_yaml_wins_when_input_is_none(self):
+        from rates_agent.inflation_indexed_bonds.tools.breakeven_inflation_simple.compute import (
+            _conventions_from_config,
+        )
+        cfg = _build_config(z_score_window_days=180)
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y", z_score_window_days=None,
+        )
+        kw = _conventions_from_config(cfg, params)
+        assert kw["z_window"] == 180
+
+    # ------------------------------------------------------------------
+    # (d) Pydantic constraint enforcement (ge/le bounds).
+    # ------------------------------------------------------------------
+
+    def test_z_window_bounds(self):
+        for bad in (30, 2000):
+            with pytest.raises(Exception):
+                BreakevenInflationSimpleInput(
+                    nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+                    tenor="10Y", z_score_window_days=bad,
+                )
+
+    def test_z_min_periods_bounds(self):
+        for bad in (10, 400):
+            with pytest.raises(Exception):
+                BreakevenInflationSimpleInput(
+                    nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+                    tenor="10Y", z_score_min_periods=bad,
+                )
+
+    def test_z_ddof_bounds(self):
+        for bad in (-1, 2):
+            with pytest.raises(Exception):
+                BreakevenInflationSimpleInput(
+                    nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+                    tenor="10Y", z_score_ddof=bad,
+                )
+
+    def test_schema_defaults_all_three_exposures_to_none(self):
+        params = BreakevenInflationSimpleInput(
+            nominal_curve_family="UST", linker_curve_family="USD_TIPS",
+            tenor="10Y",
+        )
+        assert params.z_score_window_days is None
+        assert params.z_score_min_periods is None
+        assert params.z_score_ddof is None
+
+
+# ===========================================================================
+# Exposure-block contract — pin the per-convention exposure decisions
+# ===========================================================================
+#
+# Pins the exposure decisions in config.yaml to the Pydantic Input
+# surface, so a YAML edit that changes a decision MUST update the
+# Pydantic Input too — otherwise this test catches the drift.  The
+# operational expression of the propagation chain in
+# docs_revamped/03_standards/methodology_exposure.md §4.
+
+class TestExposureBlockContract:
+    EXPECTED_EXPOSED: set[str] = {
+        "z_score_window_days",
+        "z_score_min_periods",
+        "z_score_ddof",
+        "default_field_name",
+    }
+
+    def test_yaml_exposure_blocks_match_expected_set(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        exposed_yaml = {
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is not None and conv.exposure.expose
+        }
+        assert exposed_yaml == self.EXPECTED_EXPOSED, (
+            f"YAML exposure set drift.  Expected {sorted(self.EXPECTED_EXPOSED)}; "
+            f"saw {sorted(exposed_yaml)}."
+        )
+
+    def test_every_convention_has_an_exposure_block(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        missing = [
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is None
+        ]
+        assert not missing, (
+            f"Conventions missing exposure: block: {missing}."
+        )
+
+    def test_every_exposure_decision_has_a_rationale(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        empty = [
+            name for name, conv in cfg.conventions.items()
+            if conv.exposure is not None and not conv.exposure.rationale.strip()
+        ]
+        assert not empty, f"Conventions with empty exposure rationale: {empty}"
+
+    def test_expose_true_conventions_have_propagation_fields(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        for name, conv in cfg.conventions.items():
+            if conv.exposure is None or not conv.exposure.expose:
+                continue
+            for field in (
+                "input_field", "pydantic_type",
+                "default_source", "promoted_from_yaml_in_pr",
+            ):
+                assert getattr(conv.exposure, field), (
+                    f"{name}.exposure.{field} is empty"
+                )
+
+    def test_input_field_names_match_pydantic_class(self):
+        cfg = load_tool_config(CONFIG_PATH)
+        pydantic_fields = set(BreakevenInflationSimpleInput.model_fields.keys())
+        for name, conv in cfg.conventions.items():
+            if conv.exposure is None or not conv.exposure.expose:
+                continue
+            assert conv.exposure.input_field in pydantic_fields, (
+                f"YAML says {name!r} is exposed via Input field "
+                f"{conv.exposure.input_field!r}, not on "
+                f"BreakevenInflationSimpleInput"
+            )

@@ -166,6 +166,64 @@ class BreakevenInflationSimpleInput(BaseModel):
         ),
     )
 
+    # ------------------------------------------------------------------
+    # Methodology surface — rolling-z-score model (cohesive multi-knob,
+    # admissible per PR8 because the three fields together specify the
+    # rolling-z-score "model").  All three follow the None-sentinel /
+    # YAML-fallthrough pattern established by ``field_name`` above;
+    # ``compute._conventions_from_config`` is the one place that
+    # resolves the sentinels.  Exposure decisions recorded in
+    # config.yaml's per-convention exposure: blocks; see
+    # docs_revamped/03_standards/methodology_exposure.md.  Mirrors the
+    # sibling linker real_yield_level tool's exposed surface 1:1.
+    # ------------------------------------------------------------------
+    z_score_window_days: Optional[int] = Field(
+        default=None,
+        ge=60,
+        le=1260,
+        description=(
+            "Trading-day window for the rolling z-score of the "
+            "breakeven (bps) series.  When None (default), the tool "
+            "falls through to ``z_score_window_days`` in config.yaml "
+            "(currently 252 — 1-year window matching every sovereign "
+            "rates tool and the linker real_yield_level tool).  "
+            "Override to 60d / 126d for tactical / short-horizon "
+            "framing or 504d for structural-regime work.  Cross-config "
+            "lint enforces DEFAULT alignment; per-call overrides do not "
+            "violate the lint.  Exposure decision recorded in "
+            "config.yaml:z_score_window_days.exposure."
+        ),
+    )
+    z_score_min_periods: Optional[int] = Field(
+        default=None,
+        ge=20,
+        le=252,
+        description=(
+            "Minimum number of observations before the rolling z-score "
+            "is emitted (NaN otherwise).  When None (default), the "
+            "tool falls through to ``z_score_min_periods`` in "
+            "config.yaml (currently 60 — ~3 months of observations).  "
+            "Scale together with ``z_score_window_days`` when "
+            "overriding (e.g. window=60 → min_periods=20).  Exposure "
+            "decision recorded in config.yaml:z_score_min_periods.exposure."
+        ),
+    )
+    z_score_ddof: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Standard-deviation degrees of freedom for the rolling "
+            "z-score.  When None (default), the tool falls through to "
+            "``z_score_ddof`` in config.yaml (currently 1 — sample "
+            "standard deviation, Bessel-corrected, matching pandas' "
+            "default).  Practical values are {0 (population std), "
+            "1 (sample std)}; constrained ge=0, le=1.  Cross-config "
+            "lint enforces DEFAULT alignment.  Exposure decision "
+            "recorded in config.yaml:z_score_ddof.exposure."
+        ),
+    )
+
     @model_validator(mode="after")
     def _curve_families_must_differ(
         self,

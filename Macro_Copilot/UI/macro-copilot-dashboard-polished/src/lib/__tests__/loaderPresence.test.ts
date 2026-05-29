@@ -304,8 +304,12 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
     ask_surface: 'ask',
   };
   // Stage 5: surfaces.resultRenderer also satisfies custom_build_surface.
+  // Dual-view (rendering_density.md §5.2): buildExtended + buildCompact are
+  // the new Build-surface field names; both satisfy custom_build_surface.
   const surfaceKeyToTier: Record<string, string> = {
     build: 'custom_build_surface',
+    buildExtended: 'custom_build_surface',
+    buildCompact: 'custom_build_surface',
     resultRenderer: 'custom_build_surface',
     preview: 'custom_preview_widget',
     monitor: 'monitor_surface',
@@ -385,6 +389,43 @@ check('every primitive module: tiers ↔ surfaces consistency', () => {
 // ---------------------------------------------------------------------------
 // Runner — same shim as the build-folder tests.
 // ---------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Stage D — dual-view rendering-density contract (rendering_density.md §1 + §11).
+// ----------------------------------------------------------------------------
+// SHARED, loader-level enforcement: any module that has ADOPTED the dual-view
+// Build contract (ships EITHER surfaces.buildExtended OR surfaces.buildCompact)
+// MUST ship BOTH.  This guarantees no future module can land with an
+// asymmetric dual-view (one half of the contract) — the multi-tool DAG page
+// relies on buildCompact being present whenever buildExtended is, and the
+// single-tool canvas relies on the reverse.
+//
+// Legacy modules that ship neither dual-view field (only the pre-contract
+// surfaces.build / surfaces.resultRenderer) are an explicit carve-out per
+// rendering_density.md §9 and are NOT flagged here — they fall back to the
+// generic artifact-type card in the DAG.
+check('dual-view contract: adopting either build view requires BOTH', () => {
+  const offenders: string[] = [];
+  for (const m of ALL_PRIMITIVE_MODULES) {
+    const s = (m.surfaces ?? {}) as Record<string, unknown>;
+    const hasExtended = s.buildExtended != null;
+    const hasCompact = s.buildCompact != null;
+    // Only modules that adopted at least one dual-view field are bound.
+    if (!hasExtended && !hasCompact) continue;
+    if (!hasExtended || !hasCompact) {
+      offenders.push(
+        `${m.toolName} (buildExtended=${hasExtended}, buildCompact=${hasCompact})`,
+      );
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      'Dual-view contract violation (rendering_density.md §1 + §11) — these ' +
+        'modules ship one Build view but not both:\n  ' +
+        offenders.join('\n  '),
+    );
+  }
+});
 
 export async function runAllLoaderPresenceTests(): Promise<void> {
   let passed = 0;

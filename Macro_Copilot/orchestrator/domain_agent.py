@@ -517,6 +517,13 @@ class DomainAgentSession:
         # alongside the working cards instead of silently dropping the
         # entry.  Backward compatible: extract_workspace_context only
         # emits the optional fields when the source dict has them.
+        # The originating ``user_message`` is threaded in as ``prompt``
+        # so the frontend multi-tool DAG container can render the user's
+        # question verbatim in the "Your query" root node (instead of
+        # the generic "Stitched into the tool calls" placeholder).  The
+        # raw ``user_message`` is the actual question — NOT the scoped
+        # form ``"[scope for this query] {boundary}\n\n{user_message}"``
+        # that's constructed only for the LLM's HumanMessage above.
         trace_dicts = [
             {
                 "tool": t.tool,
@@ -527,7 +534,9 @@ class DomainAgentSession:
             }
             for t in tool_calls_seen
         ]
-        workspace_context = extract_workspace_context(trace_dicts)
+        workspace_context = extract_workspace_context(
+            trace_dicts, prompt=user_message,
+        )
 
         status, follow_up_question, error_message = _classify_status(
             answer_markdown=answer_markdown,
