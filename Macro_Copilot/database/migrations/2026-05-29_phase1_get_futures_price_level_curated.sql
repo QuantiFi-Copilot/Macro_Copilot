@@ -37,7 +37,7 @@ SET
     desk_narrative = $narr$Returns the latest price and implied rate for ONE rolling-generic policy-futures strip slot (front contract, front+1, etc.) on ONE STIR curve — SOFR_FUT for the US Fed strip, EUR_SHORT_RATE_FUT for the ECB Euribor strip, SONIA_FUT for the BOE strip — together with daily changes in BOTH raw-price and implied-rate space, a rolling 252-day z-score of the implied-rate level, trailing 252-day high / low / mid on both axes plus the percentile rank of the current implied rate, observation count over the displayed window, and the as_of-bounded SCD2 disclosure block (underlying_contract_code, security_name, expiry_date, contract_size, tick_size, tick_value) so the desk knows which underlying contract the strip slot resolves to today. Computed by fetching the (curve_family, strip_position) price series, applying up-to-5d ffill across holiday gaps, deriving the implied rate via the metadata-driven inverse-pricing rule (implied_rate_pct = 100 − raw_price for the V1 inverse-priced universe), and computing 252-day z and range stats on the IMPLIED-RATE axis (the desk-recognised view). Sign convention on changes: positive daily_change_implied_rate_pct = implied rate moved UP (the strip is pricing tighter policy); positive daily_change_raw_price = price moved up (which for inverse-priced strips equals the implied rate moved DOWN — easier policy pricing). The two are mirror images by construction; both are surfaced so the desk reader can read in whichever space matches the neighbouring desk view. The canonical desk use is reading the strip's pricing of forward policy: SFR1 implied_rate_pct = 4.85% says the market is pricing 3-month compounded SOFR over the front-contract reference window at 4.85% — directly readable as a near-term Fed policy expectation. A z = +2 on SFR1 says the front-contract implied rate is two-plus standard deviations above its trailing-year mean — typically a Fed-hawkish-repricing read worth investigating. Pair with the matching futures_calendar_spread / futures_butterfly_simple / futures_pack_average_simple primitives to read curve shape across the strip, with futures_strip_snapshot to see all 8 strip slots in one view, and with scan_policy_futures_extremes for the morning sweep. Critical framing: this is a ROLLING-GENERIC STRIP READ at the requested position — NOT a CTD-of-futures-of-OIS curve (that primitive is Phase-4 per ADR 0013, not yet shipped). The methodology disclosure surfaces the strip-position scope, the per-strip RFR/IBOR regime label, the inverse-pricing rule, and the 252-day z-score lookback window verbatim on every response so consumers cannot strip the caveats when relaying the snapshot.$narr$,
 
     updated_at = NOW()
-WHERE tool_name = 'policy_futures_get_futures_price_level_tool';
+WHERE tool_name = 'get_futures_price_level_tool';
 
 -- ----------------------------------------------------------------------------
 -- Defensive INSERT fallback (Phase-0 seed not applied → row absent).
@@ -53,7 +53,7 @@ INSERT INTO macro_data.tool_metadata (
     desk_narrative
 )
 SELECT
-    'policy_futures_get_futures_price_level_tool',
+    'get_futures_price_level_tool',
     'policy_futures',
     'snapshot',
     '{}'::jsonb,
@@ -63,7 +63,7 @@ SELECT
 WHERE NOT EXISTS (
     SELECT 1
     FROM macro_data.tool_metadata
-    WHERE tool_name = 'policy_futures_get_futures_price_level_tool'
+    WHERE tool_name = 'get_futures_price_level_tool'
 );
 
 -- ----------------------------------------------------------------------------
