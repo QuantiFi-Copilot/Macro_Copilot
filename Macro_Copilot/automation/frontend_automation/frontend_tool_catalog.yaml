@@ -395,7 +395,81 @@ tools:
     commit_sha: a0364d4
 
   - id: policy_futures__futures_price_level
-    status: in_progress
+    status: blocked
+    human_action_required: true
+    last_review_heading: CHANGES REQUIRED
+    last_gate_result: not_run
+    block_reason: |
+      reviewer_findings_structural_no_fix_attempt: Dispatch 2 reviewer
+      (fresh-context Claude) emitted CHANGES REQUIRED with 3 findings on
+      the builder's Dispatch 1 diff (then discarded per default
+      blocked-and-discardable rule):
+
+        Finding 1 (CONCRETE) — surfaces/BuildCompact.tsx:67 — double
+          "·" separator in identity row.  BuildCompactShell already
+          inserts a `·` glyph between identity.primary + identity.secondary;
+          builder prepends another `·` to `secondary`
+          (`const secondary = \`· ${stripFamilyLabel}\`;`) producing
+          "SFR1 · · SOFR Whites Pack" — Compact.png shows a single `·`.
+          Reference twin get_real_yield_level_tool/surfaces/BuildCompact.tsx:72-76
+          passes `secondary: tenor` (bare label).  Fix: change line 67 to
+          `const secondary = stripFamilyLabel;`.  Rule violated:
+          rendering_density.md §2.2.
+
+        Finding 2 (CONCRETE) — surfaces/BuildExtended.tsx:243 — same
+          double "·" bug in extended identity.  BuildExtendedShell's
+          IdentityBlock inserts a `·` between primary + secondary spans;
+          builder passes `secondary: \`· ${identitySecondary}\``.
+          Rendered output will be "SFR1 · · SOFR Whites Pack" in Extended
+          title.  Fix: change line 243 to
+          `secondary: identitySecondary,`.  Rule violated:
+          rendering_density.md §2.1.
+
+        Finding 3 (STRUCTURAL) — surfaces/BuildCompact.tsx +
+          mockups/Compact.png — compact card mockup demands density the
+          shared shell cannot deliver.  Compact.png depicts (a) a second
+          identity line "WHITES · SOFR 1st Quarterly" beneath
+          "SFR1 · SOFR Whites Pack", and (b) SIX secondary KPIs below
+          the mini-chart (5D -12.0 bp / 1M -18.5 bp / 252D PCTL 82nd /
+          252D HIGH 4.68% / 252D LOW 3.52% / OBSERVATIONS 365).  The
+          shared BuildCompactShell
+          (src/components/shared/build/compact/BuildCompactShell.tsx:48-54)
+          enforces exactly 3 KPIs (dev-mode warning on overflow +
+          truncation) and exposes no subtitle / secondary-KPI strip in
+          its props (BuildCompactShellProps in
+          src/components/shared/build/lib/types.ts).  Builder conformed
+          to the shell + the reference twin pattern (get_real_yield_level
+          does the same), but the mockup contradicts the shell.
+          Resolution is a HUMAN DESIGN CALL between:
+            (a) extend BuildCompactShell + BuildCompactShellProps with
+                `subtitle` + `secondaryKpis` slots — touches every
+                existing compact view across the factory (10+ shipped
+                tools); well outside the 4-file blast-radius rule for a
+                fix pass; AND/OR
+            (b) revise Compact.png down to the shell's standard density
+                (3 KPIs, single identity line) — then re-flip status
+                back to `todo` and re-dispatch on next wake.
+
+      Per SINGLE_REVIEW_ROUND_POLICY.md §3 + ORCHESTRATOR_PROMPT.md
+      Case D step 1: ANY `STRUCTURAL:` prefix → mark human_required,
+      SKIP Dispatch 3.  No Dispatch 3 was attempted.
+
+      Pipeline summary:
+        Dispatch 1 (builder)                   exit 0 22:19 (~13m,
+                                                full BUILDER REPORT;
+                                                self-tests green)
+        Dispatch 2 (reviewer)                  CHANGES REQUIRED 22:26
+                                                (~6m, 5576-byte review)
+        Adjudication                           STRUCTURAL → human_required;
+                                                SKIP Dispatch 3
+        Blocked-diff disposition               discarded (default rule;
+                                                no explicit human
+                                                preservation directive
+                                                this wake)
+
+      Full reviewer log:
+      /tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log
+      (5576 bytes).
     build_order: 9
     backend_tool_name: policy_futures_get_futures_price_level_tool
     instrument_family: policy_futures

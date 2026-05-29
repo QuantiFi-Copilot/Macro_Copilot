@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: policy_futures__futures_price_level
-current_tool_backend_name: policy_futures_get_futures_price_level_tool
-current_step: builder_dispatched
-dispatch_round: 1
-last_dispatch_at: '2026-05-29T22:03:00Z'
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
+current_step: human_required
+dispatch_round: 0
+last_dispatch_at: '2026-05-29T22:20:00Z'
 last_successful_tool: ois__curve_spread
 last_successful_commit: a0364d4
-last_reviewer_heading: APPROVED
-last_gate_result: pass
-last_stop_reason: tool_9_builder_dispatched
+last_reviewer_heading: CHANGES REQUIRED
+last_gate_result: not_run
+last_stop_reason: reviewer_findings_structural_no_fix_attempt
 last_error: null
-last_updated: '2026-05-29T22:03:00Z'
+last_updated: '2026-05-29T22:28:00Z'
 done: 7
-blocked: 1
-remaining: 1
+blocked: 2
+remaining: 0
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,9 +37,110 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: null
-human_required: null
+catalog_exhausted_at: '2026-05-29T22:28:00Z'
+human_required:
+  reason: reviewer_findings_structural_no_fix_attempt
+  tool_id: policy_futures__futures_price_level
+  decision_required: |
+    Resolve the structural mockup-vs-shell mismatch for tool 9.  The
+    Compact.png mockup demands density (2-line identity + 6 secondary
+    KPIs) the shared BuildCompactShell cannot deliver without API
+    changes that touch every existing compact view in the factory
+    (10+ shipped tools).  Decide between:
+      (a) extend BuildCompactShell + BuildCompactShellProps with
+          `subtitle` + `secondaryKpis` slots in
+          src/components/shared/build/compact/BuildCompactShell.tsx
+          + src/components/shared/build/lib/types.ts, then re-flip
+          status: blocked → todo and re-dispatch on next wake; OR
+      (b) revise UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line), then re-flip status:
+          blocked → todo and re-dispatch on next wake.
+    Either path can be combined with hand-applying findings #1 + #2
+    (single-line double-"·" fixes per the catalog block_reason) if the
+    builder reproduces the same identity-row code on the re-dispatch.
+  full_reviewer_log: /tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log
+  blocked_at: '2026-05-29T22:28:00Z'
 status_notes:
+  - at: '2026-05-29T22:28:00Z'
+    kind: tool_9_blocked_catalog_exhausted
+    text: |
+      Tool 9 (policy_futures__futures_price_level) Dispatch 2 reviewer
+      verdict: CHANGES REQUIRED with 3 findings, 1 prefixed `STRUCTURAL:`.
+      Reviewer log
+      /tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log
+      (5576 bytes) parsed: heading=CHANGES REQUIRED, environment_failure=
+      false, reviewer_quota_exhausted=false.
+
+      Findings (verbatim summary, full text in catalog block_reason):
+        #1 CONCRETE  surfaces/BuildCompact.tsx:67 — double "·" separator
+                     (BuildCompactShell already inserts the glyph).  1-line
+                     fix.
+        #2 CONCRETE  surfaces/BuildExtended.tsx:243 — same double "·" bug
+                     in extended identity.  1-line fix.
+        #3 STRUCTURAL Compact.png mockup demands density (2-line identity
+                      + 6 secondary KPIs) the shared BuildCompactShell
+                      cannot deliver without API changes touching 10+
+                      shipped compact views.  Human design call:
+                      extend shell OR revise mockup down.
+
+      Adjudication per SINGLE_REVIEW_ROUND_POLICY.md §3 + ORCHESTRATOR_PROMPT
+      Case D step 1:
+        ANY STRUCTURAL: prefix → mark human_required, SKIP Dispatch 3.
+      Decision: NO Dispatch 3.  Tool 9 → status: blocked +
+      human_action_required: true.  Builder diff discarded per default
+      blocked-and-discardable rule (no explicit human preservation
+      directive on entry).  Tree clean against HEAD 2a22a5e after
+      `git restore` (THESIS.md, module.ts, __tests__/module.spec.ts,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) + `git clean -fd` (surfaces/ folder).
+
+      Pipeline summary (this wake):
+        Entry state                            tool 8 builder_dispatched
+                                                @21:33; this wake @21:52
+                                                reconstructed
+        Dispatch 1 reviewer (tool 8)           parsed builder log
+                                                @21:50 (full BUILDER
+                                                REPORT, ~17m runtime)
+        Dispatch 2 reviewer (tool 8)           APPROVED @21:59 (~5m)
+        Pre-commit gate (tool 8)               npm run test:modules ✓
+                                                test:build ✓ typecheck ✓
+        Mirrors update (tool 8)                surface_contract.md §4.2
+                                                row updated; v15 §11
+                                                entry added.  graphify
+                                                SKIPPED (not on PATH).
+        Commit (tool 8)                        a0364d4 frontend(curve_spread)
+        Backfill + advance commit              2a22a5e chore(automation)
+        Dispatch 1 builder (tool 9)            exit 0 @22:19 (~13m, full
+                                                BUILDER REPORT;
+                                                self-tests green;
+                                                documented Extended.png
+                                                vol/OI deviation per
+                                                NO_GO_RULES)
+        Dispatch 2 reviewer (tool 9)           CHANGES REQUIRED @22:26
+                                                (~6m, 5576-byte review)
+        Adjudication                           STRUCTURAL → human_required;
+                                                NO Dispatch 3
+        Blocked-diff disposition               discarded (default rule)
+        Catalog state                          done: 7, blocked: 2,
+                                                remaining: 0
+
+      Catalog exhaustion rule triggered: every entry is `done` or
+      `blocked` (tool 2 mockup_content_mismatch + tool 9 structural
+      findings).  Setting orchestrator_status: catalog_exhausted,
+      last_stop_reason: reviewer_findings_structural_no_fix_attempt
+      (the proximate cause for THIS wake's stop; the catalog-exhausted
+      state is the durable downstream consequence).
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule + the cron
+      entry-point script (BACKGROUND_EXECUTION_POLICY §8), future cron
+      wakes will read `orchestrator_status: catalog_exhausted` at the
+      top and exit without invoking this prompt.  Resumption requires
+      human action on either tool 2 (re-author mockups) or tool 9
+      (resolve structural mismatch + flip status: blocked → todo).
+
+      Wake exits cleanly with no additional dispatches.
+
   - at: '2026-05-29T22:03:00Z'
     kind: wake_continued_tool_9_dispatched
     text: |
