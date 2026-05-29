@@ -355,7 +355,10 @@ tools:
     commit_sha: 8dfaad6
 
   - id: ois__curve_spread
-    status: todo
+    status: done
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    committed_at: '2026-05-29T21:59:00Z'
     build_order: 8
     backend_tool_name: calculate_ois_curve_spread_tool
     instrument_family: ois
@@ -389,6 +392,7 @@ tools:
       - "Mirror calculate_real_yield_curve_spread_tool's design (same shape; different curve family)"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-curve-spread"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+    commit_sha: PLACEHOLDER_OIS_CURVE_SPREAD
 
   - id: policy_futures__futures_price_level
     status: todo

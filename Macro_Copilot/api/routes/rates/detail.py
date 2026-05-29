@@ -157,6 +157,21 @@ from rates_agent.ois.tools.calculate_ois_butterfly import (
     OISButterflyOutput,
     calculate_ois_butterfly,
 )
+# Standalone-bridge endpoint for the same-curve OIS curve-spread primitive
+# (2-point tenor spread on ONE OIS par-swap curve family — e.g. USD_SOFR_OIS
+# 2s10s).  Same standalone-bridge contract as the OIS butterfly bridge: own
+# typed-detail endpoint consumed by both the extended and compact Build views
+# (rendering_density dual-view) + the Monitor tile.  Single-curve, raw OIS
+# par-rate-space spread (long − short, in BPS).  Risk-neutral policy-pricing
+# caveat surfaces on the methodology card (OIS prices the expected policy
+# path, not realised outcomes).  Rolling-z-score conventions are YAML-locked
+# on this primitive — only ``lookback_days`` + ``field_name`` are exposed.
+from rates_agent.ois.tools.curve_spread import (
+    CONFIG_PATH as OIS_CURVE_SPREAD_CONFIG_PATH,
+    OISCurveSpreadInput,
+    OISCurveSpreadOutput,
+    calculate_ois_curve_spread,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -984,6 +999,101 @@ def ois_butterfly_detail(
         result,
         f"OIS butterfly for {curve_family} "
         f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/ois-curve-spread  — same-curve OIS tenor spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# calculate_ois_curve_spread primitive ships its OWN typed-detail endpoint.
+# Single-curve, two-tenor primitive — one OIS ``curve_family`` (USD_SOFR_OIS
+# / EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS) plus a
+# (short_tenor, long_tenor) pair; the schema layer rejects identical tenors
+# at construction time.  The same payload feeds BOTH the extended and compact
+# Build views and the Monitor tile (rendering_density.md §10).  Rolling-
+# z-score conventions are YAML-locked on this primitive (mirrors the sibling
+# OIS butterfly bridge — no input-layer overrides for window / min-periods /
+# ddof); only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+# ============================================================================
+@router.get(
+    "/detail/ois-curve-spread",
+    response_model=OISCurveSpreadOutput,
+    summary="Same-Curve OIS Tenor Spread Detail (standalone bridge)",
+)
+def ois_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family identifier.  Examples: 'USD_SOFR_OIS', "
+            "'EUR_ESTR_OIS', 'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', "
+            "'CAD_OIS'."
+        ),
+    ),
+    short_tenor: str = Query(
+        ...,
+        description=(
+            "Short leg of the spread.  OIS curves have a dense short-end "
+            "grid: '1W', '1M', '2M', '3M', '6M', '9M', '1Y', '2Y', '3Y'."
+        ),
+    ),
+    long_tenor: str = Query(
+        ...,
+        description=(
+            "Long leg of the spread.  Examples: '2Y', '5Y', '10Y', '20Y', "
+            "'30Y'.  Must differ from short_tenor."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for both endpoint OIS par-swap rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_swap_rate_field`` convention (currently 'PX_LAST' — "
+            "the OIS Bloomberg mid-rate field, NOT the sovereign "
+            "'YLD_YTM_MID' yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OIS curve-spread primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling OIS
+    butterfly bridge.
+    """
+    try:
+        params = OISCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        cs_config = load_tool_config(OIS_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_ois_curve_spread(
+            engine=engine, params=params, config=cs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-curve-spread: tool failed for %s %s/%s",
+            curve_family, short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS curve spread for {curve_family} {short_tenor}/{long_tenor}",
     )
     return result
 

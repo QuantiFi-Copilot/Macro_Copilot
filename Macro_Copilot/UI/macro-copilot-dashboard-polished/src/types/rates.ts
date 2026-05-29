@@ -687,6 +687,65 @@ export type OisButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/ois-curve-spread ---
+// Standalone-bridge type for the same-curve OIS tenor spread primitive.
+// Mirrors ``OISCurveSpreadOutput`` from rates_agent/ois/tools/curve_spread/
+// schemas.py exactly (snake_case wire fields preserved).  Two-point spread on
+// a SINGLE OIS curve family (long_tenor − short_tenor, in BPS).  The wire is
+// LEAN compared to the linker / sovereign curve_spread siblings: NO
+// ``methodology_label``, NO ``weekly_change_bps`` / ``monthly_change_bps``,
+// NO ``percentile_252d`` / ``high_252d_bps`` / ``low_252d_bps``, NO
+// ``observation_count``, NO ``short_tenor`` / ``long_tenor`` strings (only
+// the combined ``spread_label`` like '2s10s').  The frontend re-derives
+// percentile / 252d high-low / observation_count CLIENT-SIDE from
+// ``time_series_spread.rows`` so the mockup's extended KPI strip is honoured
+// without inventing wire data.
+
+export type OisCurveSpreadCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  /** Human-readable label, e.g. "2s10s" (pure-year pairs) or "3M/2Y" (sub-year
+   *  short legs).  The per-tenor identity is reconstructed from the request
+   *  params on the frontend — the wire does not carry separate short_tenor /
+   *  long_tenor strings. */
+  spread_label: string;
+  /** Current OIS curve spread in BASIS POINTS ((long_rate_pct -
+   *  short_rate_pct) * 100).  Already bps on the wire — no unit conversion
+   *  needed at the display layer.  Can be negative (curve inversion). */
+  current_spread_bps: number;
+  /** 1-day change in the spread (BPS). */
+  daily_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the bps spread.  Z-score conventions
+   *  are YAML-locked on this primitive — no input-layer overrides
+   *  (z_score_window_days / z_score_min_periods / z_score_ddof live in
+   *  config.yaml). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  /** Latest OIS par-swap rate on the short leg (PERCENT — natural rate unit
+   *  for an OIS par-swap rate).  Used for the decomposition row. */
+  short_tenor_rate: number | null;
+  /** Latest OIS par-swap rate on the long leg (PERCENT). */
+  long_tenor_rate: number | null;
+};
+
+/** Bespoke per-row shape (spread bps + z-score in one row). */
+export type OisCurveSpreadTimeSeriesRow = {
+  date: string;
+  spread_bps: number;
+  z_score: number | null;
+};
+
+export type OisCurveSpreadOutput = {
+  current_metrics: OisCurveSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (bps) + z-score per row. */
+  time_series: OisCurveSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the OIS spread.  Required —
+   *  mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/zcis-scanner ---
 // Standalone-bridge type for the universe-wide ZCIS rate-extremes scanner.
 // SCANNER shape — the wire returns a ranked LIST of (curve_family, tenor)
