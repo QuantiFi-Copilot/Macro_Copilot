@@ -64,7 +64,7 @@ let _sourceCache: Record<string, string> | null = null;
 
 async function loadSources(): Promise<Record<string, string>> {
   if (_sourceCache) return _sourceCache;
-  // @ts-expect-error - node-only; esbuild --platform=node resolves it.
+  // @ts-ignore - node-only; esbuild --platform=node resolves it.
   const fs = (await import('fs')) as NodeFs;
   const _g = globalThis as unknown as NodeGlobal;
   const cwd = _g.process?.cwd?.() ?? '.';
