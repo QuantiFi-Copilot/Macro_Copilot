@@ -6,17 +6,17 @@ current_tool: null
 current_tool_backend_name: null
 current_step: ready_to_dispatch
 dispatch_round: 0
-last_dispatch_at: '2026-05-29T19:39:00Z'
-last_successful_tool: inflation_swaps__cross_market_inflation_swap_spread
-last_successful_commit: 302a388fac7d2cbad86c57aaab673cbafac62798
-last_reviewer_heading: APPROVED
+last_dispatch_at: '2026-05-29T20:12:00Z'
+last_successful_tool: inflation_swaps__inflation_swap_butterfly
+last_successful_commit: 8e95e1cce67ba47a84af5d164f6dfce2e07fcf68
+last_reviewer_heading: APPROVED-AFTER-FIX
 last_gate_result: pass
-last_stop_reason: tool_4_committed_advance
+last_stop_reason: tool_5_committed_after_fix_advance
 last_error: null
-last_updated: '2026-05-29T19:46:00Z'
-done: 3
+last_updated: '2026-05-29T20:16:00Z'
+done: 4
 blocked: 1
-remaining: 5
+remaining: 4
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,62 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T20:16:00Z'
+    kind: tool_5_committed_after_fix_advance
+    text: |
+      Tool 5 (inflation_swaps__inflation_swap_butterfly) committed as
+      8e95e1cce67ba47a84af5d164f6dfce2e07fcf68 with
+      last_reviewer_heading: APPROVED-AFTER-FIX.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 19:47
+        Dispatch 1 (builder)                   exit 0 at 20:00 (~13m)
+        Dispatch 2 (reviewer) — FIRST ATTEMPT  empty 1-byte log at 20:05
+          The reviewer wrapper exited cleanly with the branch-check
+          line in wrapper.out but claude --print produced 0 bytes of
+          stdout to the tee log.  Parser returned heading: null,
+          environment_failure: false, reviewer_quota_exhausted: false
+          (no marker substrings in the 1-byte log).  No quota / env
+          signals — looks like a transient claude --print failure
+          (network blip, buffer issue, or one-off process glitch).
+        Dispatch 2 (reviewer) — RETRY            CHANGES REQUIRED at 20:11 (~5m)
+          Re-ran with the same prompt verbatim; produced a substantive
+          3150-byte review.  Verdict: CHANGES REQUIRED.  2 findings,
+          both concrete + actionable + bounded + within the module
+          folder (surfaces/BuildExtended.tsx only):
+            #1 identity primary deviates from mockup (rendering_density
+                §2.1 + THESIS Mockup-conformance) — exact fix provided
+            #2 inlined bucketForPercentile bypasses shared helper
+                (BUILD_GUIDE §6B + FM contract) — exact fix provided;
+                bucketForPercentile verified to exist at
+                lib/tone.ts:92-99 and already imported in the shared
+                helper.
+        Dispatch 3 (fix pass)                  exit 0 at 20:14 (~2m)
+          Both findings applied verbatim to surfaces/BuildExtended.tsx
+          ONLY (no other files touched).  Self-tests green.
+        Pre-commit gate (orchestrator)         all 3 exit 0 at 20:15
+        Mirrors update                         at 20:15
+          surface_contract.md §4.4 row updated; §11 v12 entry added
+        Commit                                 8e95e1c at 20:15
+          11 files changed, 1827 insertions(+), 31 deletions(-)
+          last_reviewer_heading recorded as APPROVED-AFTER-FIX (honest
+          disclosure that Dispatch 3 bypassed re-review per
+          SINGLE_REVIEW_ROUND_POLICY §6 / §1).
+
+      Lesson learned (for future wakes): a 1-byte reviewer log with no
+      parser markers can be a transient claude --print failure — a
+      single retry can disambiguate before escalating to Case F /
+      waiting_quota.  Recommend codifying this in
+      QUOTA_AND_RESUME_POLICY.md as "Case F handling protocol: try
+      ONE retry before marking human_required, log the retry decision
+      to status_notes for audit".  Out of scope for this wake — a
+      separate human-authored policy edit.
+
+      State: done: 4, blocked: 1, remaining: 4.  Factory advancing to
+      tool 6 (inflation_swaps__scan_inflation_swaps_extremes,
+      build_order 6, SCANNER shape — compact view is a top-N ranked
+      table, NOT a sparkline).
+
   - at: '2026-05-29T19:46:00Z'
     kind: tool_4_committed_advance
     text: |

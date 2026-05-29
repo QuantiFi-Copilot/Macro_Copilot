@@ -236,7 +236,12 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
 
   - id: inflation_swaps__inflation_swap_butterfly
-    status: todo
+    status: done
+    human_action_required: false
+    last_review_heading: APPROVED-AFTER-FIX
+    last_gate_result: pass
+    commit_sha: 8e95e1cce67ba47a84af5d164f6dfce2e07fcf68
+    committed_at: '2026-05-29T20:15:00Z'
     build_order: 5
     backend_tool_name: calculate_inflation_swap_butterfly_tool
     instrument_family: inflation_swaps
