@@ -245,7 +245,15 @@ tools:
     pre_flight_backend_audit:
       backend_folder: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/
       mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
-      mcp_tool_name: scan_inflation_swaps_extremes_tool
+      # The actual Python function name in mcp_server.py — what the pre-flight
+      # Check 2 grep matches against.  Differs from `backend_tool_name` (the
+      # canonical workflow-registry name used by the frontend dispatcher +
+      # FM1 folder name) because the inflation_swaps MCP wrapper was scaffolded
+      # with an extra `get_` prefix.  The canonical name is what
+      # rates_agent/workflows/__init__.py L1187 registers; the MCP function
+      # name diverged.  Documenting both fields cleanly here so pre-flight
+      # finds the wrapper without conflating it with the canonical name.
+      mcp_tool_name: get_scan_inflation_swaps_extremes_tool
       tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='scan_inflation_swaps_extremes_tool'"
       curated_migration_file: database/migrations/2026-05-29_phase1_scan_inflation_swaps_extremes_curated.sql
       mockups_required:
@@ -351,7 +359,17 @@ tools:
     pre_flight_backend_audit:
       backend_folder: rates_agent/policy_futures/tools/futures_price_level/
       mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
-      mcp_tool_name: policy_futures_get_futures_price_level_tool
+      # The actual Python function name in mcp_server.py — what the pre-flight
+      # Check 2 grep matches against.  Differs from `backend_tool_name` (the
+      # canonical workflow-registry name used by the frontend dispatcher +
+      # FM1 folder name) because the policy_futures MCP wrapper is registered
+      # under the unprefixed name `get_futures_price_level_tool` inside its
+      # own domain namespace.  The workflow registry at
+      # rates_agent/workflows/__init__.py L1147 disambiguates with the
+      # `policy_futures_` prefix because the bond_futures domain ALSO
+      # registers a `get_futures_price_level_tool` (L1079).  Two different
+      # tools, same MCP-local name, disambiguated at workflow-registry level.
+      mcp_tool_name: get_futures_price_level_tool
       tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_price_level_tool'"
       curated_migration_file: database/migrations/2026-05-29_phase1_policy_futures_get_futures_price_level_curated.sql
       mockups_required:

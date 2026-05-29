@@ -49,10 +49,22 @@ The catalog entry's `pre_flight_backend_audit.backend_folder` field names the ex
 Per BUILD_GUIDE Stage 1E, the MCP wrapper lives in `rates_agent/<sub_agent>/mcp_server.py`. Verify:
 
 ```bash
-grep -q "<MCP tool name>" rates_agent/<sub_agent>/mcp_server.py
+grep -q "<mcp_tool_name>" rates_agent/<sub_agent>/mcp_server.py
 ```
 
-Where `<MCP tool name>` is the catalog entry's `backend_tool_name` field (e.g. `calculate_breakeven_butterfly_tool`).
+Where `<mcp_tool_name>` is the catalog entry's `pre_flight_backend_audit.mcp_tool_name` field. This is the **actual Python function name in the mcp_server.py file** — which is normally the same as `backend_tool_name`, but for a few legacy-named tools it diverges.
+
+**The distinction between `backend_tool_name` and `mcp_tool_name`:**
+
+- `backend_tool_name` (catalog top-level field) — the CANONICAL workflow-registry name. This is what the frontend dispatcher routes by, what the FM1 folder is named after, and what the `tool_metadata.tool_name` row uses.
+- `pre_flight_backend_audit.mcp_tool_name` (nested field) — the literal Python function name registered with `@mcp.tool()` in the matching `mcp_server.py`. For most tools both fields are identical (e.g. `calculate_breakeven_butterfly_tool`); for two known tools they differ:
+
+| Tool | `backend_tool_name` (canonical / workflow registry) | `mcp_tool_name` (actual function in mcp_server.py) |
+|---|---|---|
+| inflation_swaps scanner | `scan_inflation_swaps_extremes_tool` | `get_scan_inflation_swaps_extremes_tool` |
+| policy_futures price-level | `policy_futures_get_futures_price_level_tool` | `get_futures_price_level_tool` |
+
+Why they diverge: the `inflation_swaps` MCP wrapper was scaffolded with an extra `get_` prefix that doesn't match the registry. The `policy_futures` MCP wrapper uses the unprefixed name locally because the `bond_futures` domain ALSO registers `get_futures_price_level_tool` in its own `mcp_server.py` (a distinct tool on a different instrument family); the workflow registry disambiguates them with the `policy_futures_` prefix. Both inconsistencies are pre-existing backend bugs; the catalog accommodates them rather than papering over them.
 
 A loose `grep` is acceptable here — the orchestrator is just checking the wrapper has been added; the builder will read the actual function signature.
 
