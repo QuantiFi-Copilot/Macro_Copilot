@@ -317,10 +317,10 @@ tools:
       - "Extended view shows the full universe scan; compact shows top 3-5 extremes only"
       - "Same dual-view + standalone-bridge contract; standalone-bridge endpoint at /api/v1/rates/detail/zcis-scanner"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
-    commit_sha: PENDING
+    commit_sha: 07372dbdae096941ea07c2db1bd19edf9c231087
 
   - id: ois__calculate_ois_butterfly
-    status: todo
+    status: done
     build_order: 7
     backend_tool_name: calculate_ois_butterfly_tool
     instrument_family: ois
@@ -352,6 +352,7 @@ tools:
       - "Same dual-view + standalone-bridge contract"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-butterfly"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+    commit_sha: PENDING_COMMIT
 
   - id: ois__curve_spread
     status: todo

@@ -143,6 +143,20 @@ from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
     ScanInflationSwapsExtremesOutput,
     calculate_scan_inflation_swaps_extremes,
 )
+# Standalone-bridge endpoint for the same-curve OIS butterfly primitive (3-point
+# curvature on ONE OIS par-swap curve family — e.g. USD_SOFR_OIS 2s5s10s).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Single-curve, raw OIS par-rate-space curvature — POSITIVE = belly cheap,
+# NEGATIVE = belly rich.  Risk-neutral policy-pricing caveat surfaces on the
+# methodology card (OIS prices the expected policy path, not realised outcomes).
+from rates_agent.ois.tools.calculate_ois_butterfly import (
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    OISButterflyInput,
+    OISButterflyOutput,
+    calculate_ois_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -882,6 +896,93 @@ def zcis_butterfly_detail(
     _tool_result_or_raise(
         result,
         f"ZCIS butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/ois-butterfly  — same-curve OIS butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# calculate_ois_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve, three-tenor primitive — one OIS ``curve_family`` (closed enum
+# sourced from rates_agent/playbooks/ois.yml: USD_SOFR_OIS / EUR_ESTR_OIS /
+# GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS) plus three distinct tenors;
+# the schema layer rejects duplicate tenors at construction time.  The same
+# payload feeds BOTH the extended and compact Build views and the Monitor
+# tile (rendering_density.md §10).  Rolling-z-score conventions are YAML-
+# locked on this primitive (mirrors the sibling sovereign / linker / ZCIS
+# butterflies — no input-layer overrides for window / min-periods / ddof);
+# only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+# ============================================================================
+@router.get(
+    "/detail/ois-butterfly",
+    response_model=OISButterflyOutput,
+    summary="Same-Curve OIS Butterfly Detail (standalone bridge)",
+)
+def ois_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family — closed enum sourced from "
+            "rates_agent/playbooks/ois.yml: USD_SOFR_OIS / EUR_ESTR_OIS / "
+            "GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS."
+        ),
+    ),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint OIS par-swap "
+            "rate series.  Omit (None) to use the tool's bundled "
+            "``default_swap_rate_field`` convention (currently 'PX_LAST' — "
+            "the OIS Bloomberg mid-rate field, NOT the sovereign "
+            "'YLD_YTM_MID' yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OIS butterfly primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling
+    sovereign / linker / ZCIS butterfly bridges.
+    """
+    try:
+        params = OISButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        oisfly_config = load_tool_config(OIS_BUTTERFLY_CONFIG_PATH)
+        result = calculate_ois_butterfly(
+            engine=engine, params=params, config=oisfly_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS butterfly for {curve_family} "
         f"{short_tenor}/{belly_tenor}/{long_tenor}",
     )
     return result

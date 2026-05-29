@@ -619,6 +619,74 @@ export type InflationSwapButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/ois-butterfly ---
+// Standalone-bridge type for the same-curve OIS butterfly primitive.  Mirrors
+// ``OISButterflyOutput`` from rates_agent/ois/tools/calculate_ois_butterfly/
+// schemas.py exactly (snake_case wire fields preserved).  Single-curve
+// 3-point curvature in raw OIS par-rate space — the curve_family closed enum
+// is sourced from rates_agent/playbooks/ois.yml.  Sign convention: POSITIVE =
+// belly CHEAP (belly OIS rate HIGH relative to the linear interpolation of
+// the wings); NEGATIVE = belly RICH.  Butterfly + 252d high / low / wing
+// spreads ship in BPS directly from the backend; per-leg OIS endpoint rates
+// ship in PERCENT (the natural unit for an OIS par-swap rate).
+//
+// NB the backend Output does NOT carry the optional fields the linker /
+// ZCIS butterfly siblings carry (no ``methodology_label``, no
+// ``weekly_change_bps`` / ``monthly_change_bps``, no
+// ``observation_count``, no ``short_years`` / ``belly_years`` /
+// ``long_years``, no ``short_tenor`` / ``belly_tenor`` / ``long_tenor``
+// strings — only the ``butterfly_label`` and per-leg rate fields).  The
+// frontend re-derives the per-tenor identity from the request params + the
+// per-tool registry (see ``oisButterflyShared.ts``).
+
+export type OisButterflyCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  /** Human-readable label, e.g. "2s5s10s" or "3M/2Y/5Y" for sub-year
+   *  triplets. */
+  butterfly_label: string;
+  /** Current OIS butterfly in BASIS POINTS
+   *  ((2*belly_rate_pct - short_rate_pct - long_rate_pct) * 100).
+   *  Sign convention: POSITIVE = belly CHEAP; NEGATIVE = belly RICH.  Already
+   *  bps on the wire — no unit conversion needed at the display layer. */
+  current_butterfly_bps: number;
+  /** 1-day change of the butterfly (BPS, already-bps subtraction). */
+  daily_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the butterfly (bps).  The z-score
+   *  conventions are YAML-locked on this primitive — no input-layer
+   *  overrides (mirrors the sibling sovereign / linker / ZCIS butterflies). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Component wing spreads (decomposition, BPS):
+   *    wing_short_bps = (belly_rate - short_rate) * 100
+   *    wing_long_bps  = (long_rate  - belly_rate) * 100 */
+  wing_short_bps: number | null;
+  wing_long_bps: number | null;
+  /** Three endpoint OIS par-swap rates used to form the butterfly (PERCENT —
+   *  the natural unit for an OIS par-swap rate level). */
+  short_tenor_rate: number | null;
+  belly_tenor_rate: number | null;
+  long_tenor_rate: number | null;
+};
+
+export type OisButterflyTimeSeriesRow = {
+  date: string;
+  butterfly_bps: number;
+  z_score: number | null;
+};
+
+export type OisButterflyOutput = {
+  current_metrics: OisButterflyCurrentMetrics;
+  time_series: OisButterflyTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the OIS butterfly. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/zcis-scanner ---
 // Standalone-bridge type for the universe-wide ZCIS rate-extremes scanner.
 // SCANNER shape — the wire returns a ranked LIST of (curve_family, tenor)

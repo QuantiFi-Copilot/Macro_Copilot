@@ -21,6 +21,7 @@ import type {
   RealYieldCurveSpreadOutput,
   CrossMarketInflationSwapSpreadOutput,
   InflationSwapButterflyOutput,
+  OisButterflyOutput,
   ScanInflationSwapsExtremesOutput,
 } from '@/types/rates';
 
@@ -263,6 +264,34 @@ export function fetchDetailInflationSwapButterfly(
 ): Promise<InflationSwapButterflyOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/zcis-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-butterfly  — same-curve OIS butterfly bridge
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE OIS curve family (e.g. USD_SOFR_OIS
+// 2s5s10s, EUR_ESTR_OIS 2s5s10s, GBP_SONIA_OIS 2s5s10s).  Own typed helper
+// per the standalone-bridge contract; consumed by BOTH Build views and the
+// Monitor tile.  Rolling-z-score conventions are YAML-locked on this
+// primitive (no input-layer overrides — mirrors the sibling sovereign /
+// linker / ZCIS butterfly bridges); ``field_name`` + ``lookback_days``
+// remain exposed.
+
+export type OisButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisButterfly(
+  params: OisButterflyDetailParams,
+): Promise<OisButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-butterfly${buildQuery(params)}`,
   );
 }
 

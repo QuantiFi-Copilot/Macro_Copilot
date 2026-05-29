@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: inflation_swaps__scan_inflation_swaps_extremes
-current_tool_backend_name: scan_inflation_swaps_extremes_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: '2026-05-29T20:38:00Z'
-last_successful_tool: inflation_swaps__scan_inflation_swaps_extremes
-last_successful_commit: PENDING
+current_tool: null
+current_tool_backend_name: null
+current_step: ready_to_dispatch
+dispatch_round: 0
+last_dispatch_at: '2026-05-29T21:23:00Z'
+last_successful_tool: ois__calculate_ois_butterfly
+last_successful_commit: PENDING_COMMIT
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_6_committed_advance
+last_stop_reason: tool_7_committed_advance
 last_error: null
-last_updated: '2026-05-29T20:53:00Z'
-done: 5
+last_updated: '2026-05-29T21:31:00Z'
+done: 6
 blocked: 1
-remaining: 3
+remaining: 2
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,96 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T21:31:00Z'
+    kind: tool_7_committed_advance
+    text: |
+      Tool 7 (ois__calculate_ois_butterfly) APPROVED on first review.
+      Reviewer log /tmp/claude_frontend_reviewer_run_ois_butterfly_round2.log
+      (3787 bytes) parsed: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false.
+
+      Wake reconstructed state on entry: prior wake's Dispatch 1 builder
+      (dispatched 20:55 UTC) had completed by ~21:10 UTC.  Builder stdout
+      log was 1 byte (transient claude --print buffering — same pattern
+      as tool 5 reviewer Dispatch 2 first attempt at 20:05 UTC), but ALL
+      8 frontend artifact slots were populated on-disk: module.ts +
+      THESIS.md + __tests__/module.spec.ts (overwritten Stage-3 scaffold)
+      + surfaces/{BuildExtended,BuildCompact,oisButterflyShared,monitor/
+      OisButterflyWidget}.tsx (new) + shared infra (types/rates.ts +
+      services/ratesApi.ts + api/routes/rates/detail.py).  No retry
+      needed since the diff was complete and the reviewer doesn't see
+      the builder's stdout.
+
+      Pipeline summary:
+        Dispatch 1 (builder)                   exit 0 ~21:10 (~15m,
+                                               1-byte stdout but full diff)
+        Dispatch 2 (reviewer)                  APPROVED ~21:30 (~6m)
+        Pre-commit gate (orchestrator):
+          npm run test:modules ✓
+            calculate_ois_butterfly_tool: 6 passed, 0 failed
+            all module + registry tests passed
+          npm run test:build   ✓ (all build-folder tests passed,
+            including widget-format 53 / widget-contract 11 / dashboard-
+            registry 18 / routing 48)
+          npm run typecheck    ✓ (tsc --noEmit clean)
+        Mirrors update:
+          surface_contract.md §4.2 row updated in place
+            (build_archetype generic-builder → typed-result-renderer,
+             build_status scaffolded → dual-view-built,
+             monitor_elig not-required → required,
+             monitor_status n/a → built (OisButterfly widget)).
+          §11 v14 changelog entry added.
+          §10.3 untouched (pilot-pinned to original 3 Phase-1 pilots).
+          graphify update: SKIPPED — not on PATH on this VM (recorded
+            per ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      Reviewer notes (verbatim from log):
+        A. Dual-view contract — tiers + surfaces + size prop + tone all
+          honored.  Compact has no controls strip, calls onExpand,
+          surfaces caveat in footer.  Extended has full controls, KPI
+          strip, decomposition row, chart with z-bands, methodology
+          card, lineage footer.
+        B. Mockup conformance — Compact matches mockup beat-for-beat
+          (identity "SOFR · 2-5-10 OIS FLY", USD flag, 3 KPIs with the
+          mockup's "Elevated Cheap" caption, sparkline with ±2σ/±1.5σ
+          bands, caveat + flag chip footer).  Extended reproduces the
+          mockup layout per the sibling factory pattern.
+        C. Standalone bridge — typedView: null, /api/v1/rates/detail/
+          ois-butterfly endpoint, fetchDetailOisButterfly added, type
+          mirror matches Pydantic field-by-field, both views share the
+          same useOisButterfly hook.
+        D. FM1-FM12 — all satisfied; alphabetical loader entry at
+          index.ts:62.
+        E. Methodology honesty — Documented carve-out: OIS sub-domain
+          Output does NOT carry methodology_label (distinct from the
+          linker/ZCIS sibling Outputs), so disclosure is sourced from
+          OIS_BUTTERFLY_COMPACT_CAVEAT in the shared helper with a
+          TODO(PR10) marker.  Honest disclosure honored.
+        F. Shared cross-surface helper — oisButterflyShared.ts houses
+          family registry + triplet registry + KPI builders + reference
+          bands + stretch context + methodology rows + sanitiser + hook.
+          Extended + Compact + Monitor all import from it.  No drift.
+        G. Pre-commit gates — all three pass.
+
+      Non-blocking observations (NOT findings):
+        - THESIS "Mockup conformance" sub-section mentions 2 cards
+          while Q2 enumerates all 3 — minor prose self-inconsistency
+          in THESIS only; implementation matches mockup.  Not worth a
+          fix pass.
+        - surfaces.build = BuildExtended retained for the legacy
+          VirtualPrimitiveCanvas dispatcher; consistent with the
+          sibling pattern.
+        - Family registry honestly uses short-form curve_family ids
+          (USD_SOFR / EUR_ESTR / GBP_SONIA / JPY_OIS / AUD_OIS /
+          CAD_OIS) while labelling the overnight index (SOFR / ESTR /
+          SONIA / TONA / AONIA / CORRA) — matches backend schema's
+          "honest disclosure" comment.
+
+      State: done: 6, blocked: 1, remaining: 2.  Factory advancing to
+      tool 8 (ois__curve_spread, build_order 8).  Wake remaining budget
+      should permit a fresh tool dispatch; will probe eligibility on
+      next entry per BACKGROUND_EXECUTION_POLICY §3 selection order.
+
   - at: '2026-05-29T20:53:00Z'
     kind: tool_6_committed_advance
     text: |
