@@ -6,59 +6,28 @@ current_tool: null
 current_tool_backend_name: null
 current_step: ready_to_dispatch
 dispatch_round: 0
-last_dispatch_at: null
-last_successful_tool: null
-last_successful_commit: null
-last_reviewer_heading: null
-last_gate_result: null
-last_stop_reason: armed_proceed_after_rename_revert
+last_dispatch_at: '2026-05-29T16:11:43Z'
+last_successful_tool: inflation_indexed_bonds__breakeven_butterfly
+last_successful_commit: fdac7d2821fc61ecdab7b122b8ede4d18d1c3374
+last_reviewer_heading: APPROVED-AFTER-HUMAN-FIX
+last_gate_result: pass
+last_stop_reason: tool_1_human_resolved_advance
 last_error: null
-last_updated: '2026-05-29T14:30:00Z'
-done: 0
+last_updated: '2026-05-29T18:45:59Z'
+done: 1
 blocked: 0
-remaining: 9
-quota_state: not_probed
+remaining: 8
+quota_state: probe_unavailable
 quota_snapshot: null
+quota_snapshot_at: '2026-05-29T15:52:00Z'
 quota_snapshot_fresh: false
 quota_note: |
-  FACTORY IS ARMED AND READY.  The previous human_required block
-  (`pre_commit_gate_test_build_pre_existing_baseline_drift`) has been
-  remediated by the human via commit at HEAD:
-
-    1. Reverted the bad rename commits 2b8b36b + cd4aa0d. The earlier
-       "fix" renamed
-         - policy_futures_get_futures_price_level_tool →
-           get_futures_price_level_tool  (WRONG — name-collides with
-           the EXISTING bond_futures tool of that name)
-         - scan_inflation_swaps_extremes_tool →
-           get_scan_inflation_swaps_extremes_tool  (WRONG — workflow
-           registry + index.ts convention use the no-`get_` form)
-       The folders, mockups, loader entries, Stage-3 scaffolds, and
-       migrations are now restored to their original canonical names.
-
-    2. Added `node` to tsconfig.app.json `types` so the `@types/node`
-       dependency (already in package.json) is picked up by the
-       typechecker.  This clears the 8+ pre-existing baseline errors
-       related to `node:fs/promises`, `NodeJS.*` namespace, and `process`.
-
-  Known residual mismatches the orchestrator may encounter:
-
-    - inflation_swaps__scan_inflation_swaps_extremes — pre-flight
-      Check 2 (MCP grep) may fail because the inflation_swaps
-      mcp_server.py has the function named
-      `get_scan_inflation_swaps_extremes_tool` (legacy primitive
-      factory bug; backend layer concern, NOT the frontend factory's
-      job to fix).  Mark blocked at pre-flight if grep misses; advance.
-    - policy_futures__futures_price_level — same shape: MCP-local
-      function name is `get_futures_price_level_tool` (collides with
-      bond_futures in the local namespace); workflow registry
-      disambiguates as `policy_futures_get_futures_price_level_tool`.
-      Mark blocked at pre-flight if grep misses; advance.
-
-  Proceed normally per ORCHESTRATOR_PROMPT.md §"Required loop":
-  select first eligible tool, run pre-flight, dispatch builder.  Do
-  NOT yield, do NOT treat any field below as a "wait for human"
-  signal.  All previous blockers have been remediated.
+  `claude /status` is not available in non-interactive automation
+  ("/status isn't available in this environment").  Per
+  QUOTA_AND_RESUME_POLICY.md §3 the orchestrator proceeds in
+  runtime-enforced mode: dispatch normally, stop only if the
+  actual provider returns a real quota signal (detected by
+  parse_reviewer_log.py setting reviewer_quota_exhausted: true).
 reviewer_mode: claude_only
 reviewer_mode_history:
   - at: '2026-05-29T00:00:00Z'
@@ -71,6 +40,338 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T18:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 18:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 18:22 wake.  This is the 10th consecutive NO-OP wake on
+      the same blocker (16:22 → 16:37 → 16:52 → 17:07 → 17:22 → 17:37
+      → 17:52 → 18:07 → 18:22 → 18:37).
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T18:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 18:07 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 18:07 wake.  This is the 9th consecutive NO-OP wake on
+      the same blocker (16:22 → 16:37 → 16:52 → 17:07 → 17:22 → 17:37
+      → 17:52 → 18:07 → 18:22).
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T18:07:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:07 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 17:52 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:52 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:52:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:52 UTC.  Read ORCHESTRATOR_PROMPT,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:37 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:37 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:22 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:07 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:07 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:07:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:07 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      DISCORD_STATUS_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 16:52 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 16:52 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
   - at: '2026-05-29T14:30:00Z'
     kind: factory_armed_after_rename_revert
     text: |
@@ -103,3 +404,246 @@ status_notes:
 
       On this wake: select the first eligible tool, run pre-flight,
       dispatch the builder.
+  - at: '2026-05-29T15:52:00Z'
+    kind: wake_start_breakeven_butterfly_round1
+    text: |
+      Wake start.  Discarded stale builder diff sitting in working
+      tree from prior wake (THESIS.md / module.ts / __tests__/module.spec.ts
+      modifications + surfaces/ folder untracked + ratesApi.ts /
+      types/rates.ts / detail.py mods) per default
+      blocked-and-discardable rule (no human preservation
+      directive).  Tree is clean against HEAD.
+
+      Selected first eligible `todo` tool:
+      inflation_indexed_bonds__breakeven_butterfly
+      (backend: calculate_breakeven_butterfly_tool).
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+        Check 2 (MCP wrapper grep)             PASS
+        Check 3 (curated migration file)       PASS
+        Check 4 (mockups Compact+Extended)     PASS
+
+      Dispatching Dispatch 1 (builder) via
+      run_claude_builder.sh on `frontend_automation` branch.
+      Quota probe unavailable; proceeding runtime-enforced.
+  - at: '2026-05-29T16:07:30Z'
+    kind: wake_detected_inflight_builder
+    text: |
+      New cron wake at 16:07 UTC.  Prior wake's Dispatch 1 builder
+      (PID 200737 wrapper / 200744 claude CLI; tee log
+      /tmp/claude_frontend_builder_run_breakeven_butterfly_round1.log)
+      still in flight after ~12m runtime; `claude --print` buffers
+      stdout so the tee log is currently 0 bytes (expected).
+
+      Per BACKGROUND_EXECUTION_POLICY §7 no-overlap rule, will NOT
+      dispatch a parallel builder.  Per §1 / §6, will wait
+      synchronously (bounded ~20m) for the in-flight builder to
+      complete, then continue the single-round loop on this same
+      wake (reviewer dispatch → parse → commit or fix → next tool).
+      If the wait times out, this wake will exit cleanly leaving
+      `current_step: builder_dispatched` for the next cron wake.
+  - at: '2026-05-29T16:09:00Z'
+    kind: builder_completed_round1
+    text: |
+      Dispatch 1 builder exited cleanly at ~16:08.  BUILDER REPORT
+      reports all 8 frontend artifact slots populated (module.ts +
+      THESIS.md + surfaces/BuildExtended.tsx + surfaces/BuildCompact.tsx
+      + surfaces/breakevenButterflyShared.ts + surfaces/monitor/
+      BreakevenButterflyWidget.tsx + __tests__/module.spec.ts +
+      mockups/{Compact,Extended}.png input).  Shared infra updates:
+      src/types/rates.ts + src/services/ratesApi.ts + api/routes/
+      rates/detail.py (route ADDED, not replaced).  FM12 loader entry
+      already present from prior Stage-3 import; no edit needed.
+      Builder self-reports `npm run test:modules` + `test:build` +
+      `typecheck` all exit 0 (NOT independently verified by
+      orchestrator yet — gate runs post-reviewer per protocol).
+      Dispatching Dispatch 2 reviewer via run_claude_reviewer.sh.
+  - at: '2026-05-29T16:17:33Z'
+    kind: reviewer_changes_required_structural
+    text: |
+      Dispatch 2 reviewer completed in ~6m.  Verdict: CHANGES REQUIRED
+      with 5 findings, of which two are explicitly prefixed
+      `STRUCTURAL:`.  Parser output:
+        {ok:true, heading:"CHANGES REQUIRED",
+         environment_failure:false, reviewer_quota_exhausted:false}
+
+      Adjudication per SINGLE_REVIEW_ROUND_POLICY §3 + ORCHESTRATOR_PROMPT
+      Case D:
+        ANY STRUCTURAL: prefix → mark human_required, SKIP Dispatch 3.
+
+      Decision: NO Dispatch 3.  Tool → human_required.  Wake stops
+      cleanly.  Full finding text + working-tree disposition recorded
+      under the runtime-state `human_required` block above.
+
+      Reviewer notes findings #3 (type-mirror nullability) + #4
+      (Monitor triplet options) are concrete + actionable in
+      isolation, but cannot be applied without first resolving #1
+      (mockup default unreachable in USD_TIPS playbook) and #2
+      (identity-string drift coupled to #1).  A piecemeal fix-pass
+      that addressed only #3/#4 would not satisfy the reviewer's
+      structural concerns and would risk needing to be re-done after
+      the human design call lands.
+  - at: '2026-05-29T16:52:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:52 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, DISCORD_STATUS_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 16:37 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  No human action since 16:37 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T16:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 16:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per prior wake's explicit
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  No human action yet.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions: cannot advance to next eligible tool
+      (`inflation_indexed_bonds__breakeven_curve_spread`) on top of a
+      dirty tree; cannot discard the preserved diff (non-default
+      preservation was the explicit prior-wake choice); cannot
+      re-dispatch builder/reviewer for breakeven_butterfly because the
+      structural findings require a human design call (per
+      SINGLE_REVIEW_ROUND_POLICY §3, NO Dispatch 4 / NO re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T16:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY, and
+      DISCORD_STATUS_POLICY.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state:
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per prior wake's explicit
+                             non-default preservation directive)
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications from the prior wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a:
+        "if a human explicitly wants the blocked scaffold preserved,
+         stop and surface that preservation requirement as the reason
+         for the halt"
+        "Disallowed: leaving blocked generated code in the tree and
+         starting the next tool on top of it"
+
+      Decision: NO-OP wake.  Do NOT discard the preserved diff
+      (non-default preservation was an explicit prior-wake choice).
+      Do NOT advance to next eligible tool
+      (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+      a dirty tree — that would violate §4a.  Do NOT re-dispatch
+      builder/reviewer for breakeven_butterfly — the structural
+      findings (#1 mockup default unreachable from USD_TIPS playbook;
+      #2 identity-string drift coupled to #1) require a human design
+      call, not another automated round.
+
+      Re-surfacing the existing human_required block.  The factory
+      remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`)
+            and resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended playbook OR THESIS Mockup-conformance section),
+            then re-stages + commits + sets orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.  Next cron
+      wake will again read state, observe human_required + dirty
+      tree, and again no-op until the human acts.
+  - at: '2026-05-29T18:45:59Z'
+    kind: tool_1_advanced_via_human_resolution
+    text: |
+      Tool 1 (inflation_indexed_bonds__breakeven_butterfly) committed as
+      fdac7d2821fc61ecdab7b122b8ede4d18d1c3374.  Reviewer's 2 STRUCTURAL findings resolved via
+      Option (c): accept USD_TIPS data-driven deviation + document in
+      THESIS Mockup-conformance subsection.  Findings #3 (over-permissive
+      types — time_series_butterfly + time_series_zscore tightened to
+      REQUIRED to mirror Pydantic Output) and #4 (single-pair
+      BUTTERFLY_TRIPLET_OPTIONS — widened to union across all four linker
+      pairs) addressed alongside.  Loading-state stub in BuildExtended.tsx
+      extended to satisfy the now-required TimeSeries fields.
+
+      Gate green on the VM (npm run test:modules + test:build + typecheck
+      all exit 0).  Tool commit pushed to origin/frontend_automation.
+
+      State reset: orchestrator_status: processing, current_tool: null,
+      current_step: ready_to_dispatch, dispatch_round: 0, done: 1,
+      blocked: 0, remaining: 8.  Factory advancing to tool 2
+      (inflation_indexed_bonds__breakeven_curve_spread) on next cron
+      wake.
