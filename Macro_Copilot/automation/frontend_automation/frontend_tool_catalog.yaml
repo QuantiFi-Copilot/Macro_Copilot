@@ -194,7 +194,12 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
 
   - id: inflation_swaps__cross_market_inflation_swap_spread
-    status: todo
+    status: done
+    human_action_required: false
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: 302a388fac7d2cbad86c57aaab673cbafac62798
+    committed_at: '2026-05-29T19:45:00Z'
     build_order: 4
     backend_tool_name: calculate_cross_market_inflation_swap_spread_tool
     instrument_family: inflation_swaps

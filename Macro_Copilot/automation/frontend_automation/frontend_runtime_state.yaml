@@ -6,17 +6,17 @@ current_tool: null
 current_tool_backend_name: null
 current_step: ready_to_dispatch
 dispatch_round: 0
-last_dispatch_at: '2026-05-29T19:11:30Z'
-last_successful_tool: inflation_indexed_bonds__real_yield_butterfly
-last_successful_commit: 48e4230ae68c75f78fd1f2237b8b71ce3fb85fd6
+last_dispatch_at: '2026-05-29T19:39:00Z'
+last_successful_tool: inflation_swaps__cross_market_inflation_swap_spread
+last_successful_commit: 302a388fac7d2cbad86c57aaab673cbafac62798
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_3_committed_advance
+last_stop_reason: tool_4_committed_advance
 last_error: null
-last_updated: '2026-05-29T19:20:00Z'
-done: 2
+last_updated: '2026-05-29T19:46:00Z'
+done: 3
 blocked: 1
-remaining: 6
+remaining: 5
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,30 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T19:46:00Z'
+    kind: tool_4_committed_advance
+    text: |
+      Tool 4 (inflation_swaps__cross_market_inflation_swap_spread)
+      committed as 302a388fac7d2cbad86c57aaab673cbafac62798.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 19:22
+        Dispatch 1 (builder)                   exit 0 at 19:38 (~16m)
+          all 8 frontend artifact slots populated; index.ts already had
+          alphabetical entry; self-tests green
+        Dispatch 2 (reviewer)                  APPROVED at 19:43 (~4m)
+          fresh-context Claude; no findings; explicitly confirmed
+          methodology honesty (index_family_caveat sourced from wire,
+          not hardcoded)
+        Pre-commit gate                        all 3 exit 0 at 19:44
+        Mirrors update                         at 19:45
+          surface_contract.md §4.4 row updated; §11 v11 entry added
+        Commit                                 302a388 at 19:45
+          11 files changed, 1597 insertions(+), 36 deletions(-)
+
+      State: done: 3, blocked: 1, remaining: 5.  Factory advancing to
+      tool 5 (inflation_swaps__inflation_swap_butterfly, build_order 5).
+
   - at: '2026-05-29T19:19:00Z'
     kind: tool_3_committed_advance
     text: |
