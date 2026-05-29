@@ -20,6 +20,7 @@ import type {
   RealYieldButterflyOutput,
   RealYieldCurveSpreadOutput,
   CrossMarketInflationSwapSpreadOutput,
+  InflationSwapButterflyOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -234,6 +235,33 @@ export function fetchDetailCrossMarketZcis(
 ): Promise<CrossMarketInflationSwapSpreadOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/cross-market-zcis${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/zcis-butterfly  — same-curve ZCIS butterfly bridge
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE ZCIS curve family (e.g. USD_ZCIS 2s5s10s,
+// EUR_ZCIS 5s10s30s, GBP_ZCIS 2s10s30s).  Own typed helper per the standalone-
+// bridge contract; consumed by BOTH Build views and the Monitor tile.  The
+// rolling-z-score conventions are YAML-locked on this primitive (no input-
+// layer overrides — mirrors the sibling breakeven-butterfly / real-yield-
+// butterfly bridges); ``field_name`` + ``lookback_days`` remain exposed.
+
+export type InflationSwapButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailInflationSwapButterfly(
+  params: InflationSwapButterflyDetailParams,
+): Promise<InflationSwapButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/zcis-butterfly${buildQuery(params)}`,
   );
 }
 

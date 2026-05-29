@@ -115,6 +115,20 @@ from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import
     CrossMarketInflationSwapSpreadOutput,
     calculate_cross_market_inflation_swap_spread,
 )
+# Standalone-bridge endpoint for the same-curve zero-coupon inflation swap
+# (ZCIS) butterfly primitive (3-point curvature on ONE ZCIS curve family).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Surfaces the load-bearing index-family caveat (CPI-U / HICPxT / RPI are
+# distinct inflation measures) via the same-curve invariant — all three legs
+# share inflation_index_family / index_lag / interpolation / underlying_index.
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
+    CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+    InflationSwapButterflyInput,
+    InflationSwapButterflyOutput,
+    calculate_inflation_swap_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -779,6 +793,82 @@ def cross_market_zcis_detail(
         result,
         f"Cross-market ZCIS spread for {leg_a_curve_family} - "
         f"{leg_b_curve_family} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/zcis-butterfly  — same-curve ZCIS butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# inflation_swap_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve, three-tenor primitive — one ZCIS ``curve_family`` (e.g.
+# USD_ZCIS, EUR_ZCIS, GBP_ZCIS) plus three strictly-ordered tenors; cross-
+# curve butterflies are forbidden by the schema layer.  The same payload
+# feeds BOTH the extended and compact Build views and the Monitor tile
+# (rendering_density.md §10).  Rolling-z-score conventions are YAML-locked
+# on this primitive (no input-layer overrides — mirrors the breakeven-
+# butterfly / real-yield-butterfly siblings).
+# ============================================================================
+@router.get(
+    "/detail/zcis-butterfly",
+    response_model=InflationSwapButterflyOutput,
+    summary="Same-Curve ZCIS Butterfly Detail (standalone bridge)",
+)
+def zcis_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Inflation-swap curve family — USD_ZCIS / EUR_ZCIS / GBP_ZCIS"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s, '5Y' for 5s10s30s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s, '10Y' for 5s10s30s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s, '30Y' for 5s10s30s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint ZCIS rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The inflation_swap_butterfly primitive intentionally does NOT expose the
+    z-score conventions at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  Mirrors
+    the sibling breakeven-butterfly / real-yield-butterfly bridges.
+    """
+    try:
+        params = InflationSwapButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        zcisfly_config = load_tool_config(INFLATION_SWAP_BUTTERFLY_CONFIG_PATH)
+        result = calculate_inflation_swap_butterfly(
+            engine=engine, params=params, config=zcisfly_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zcis-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
     )
     return result
 

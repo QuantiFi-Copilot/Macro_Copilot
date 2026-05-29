@@ -529,6 +529,96 @@ export type CrossMarketInflationSwapSpreadOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/zcis-butterfly ---
+// Standalone-bridge type for the same-curve zero-coupon inflation swap (ZCIS)
+// butterfly primitive (3-point curvature on ONE ZCIS curve family, e.g.
+// USD_ZCIS 2s5s10s, EUR_ZCIS 5s10s30s, GBP_ZCIS 2s10s30s).  Three strictly-
+// ordered tenors on a single curve_family; no cross-market counterparty.
+// Inherits the load-bearing index-family metadata (CPI-U / HICPxT / RPI) from
+// the underlying ZCIS curve — the same-curve invariant guarantees all three
+// legs share the same inflation_index_family / index_lag / interpolation /
+// underlying_index.  Butterfly + 252d high / low / wing spreads ship in BPS
+// directly from the backend (the inflation_swaps domain's BPS convention);
+// per-leg ZCIS rates ship in PERCENT (the natural rate unit).
+
+export type InflationSwapButterflyCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  /** Human-readable label, e.g. "USD_ZCIS 2s5s10s" or "EUR_ZCIS 5s10s30s". */
+  butterfly_label: string;
+  /** Current ZCIS butterfly in BASIS POINTS
+   *  ((belly_zcis_pct - 0.5*(short_zcis_pct + long_zcis_pct)) * 100).
+   *  Sign convention: POSITIVE = belly CHEAP (belly ZCIS rate high vs the
+   *  half-weighted wings); NEGATIVE = belly RICH.  Already bps on the wire
+   *  per the inflation_swaps domain BPS convention. */
+  current_butterfly_bps: number | null;
+  /** Daily / weekly / monthly change of the butterfly, BPS (already-bps
+   *  subtraction). */
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the butterfly (bps) by default;
+   *  the z-score conventions are YAML-locked on this primitive (no input-
+   *  layer overrides — mirrors the breakeven-butterfly / real-yield-
+   *  butterfly siblings). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Component wing spreads (decomposition, BPS):
+   *    wing_short_bps = (belly_zcis_pct - short_zcis_pct) * 100
+   *    wing_long_bps  = (long_zcis_pct  - belly_zcis_pct) * 100 */
+  wing_short_bps: number | null;
+  wing_long_bps: number | null;
+  /** Three endpoint ZCIS rates used to form the butterfly (PERCENT — the
+   *  natural unit for an inflation-swap rate level). */
+  short_zcis_rate_pct: number | null;
+  belly_zcis_rate_pct: number | null;
+  long_zcis_rate_pct: number | null;
+  short_years: number;
+  belly_years: number;
+  long_years: number;
+  observation_count: number;
+  /** Load-bearing reference metadata (shared by all three legs by the same-
+   *  curve invariant).  Surfaced on the wire so a desk reader can interpret
+   *  the butterfly honestly (e.g. "this is a CPI-U curvature object, not
+   *  HICPxT and not RPI"). */
+  inflation_index_family: string;
+  index_lag: string;
+  interpolation: string;
+  underlying_index: string | null;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does —
+   *  spells out the fixed (-0.5, +1.0, -0.5) weighting, the BPS conversion,
+   *  the sign convention (POSITIVE = belly cheap), the raw-inflation-swap-
+   *  rate-space promise (no basis subtraction, no IRP adjustment, no fitted
+   *  curve), and the same-curve invariant so downstream operators cannot
+   *  misread the output. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (butterfly bps + z-score in one row). */
+export type InflationSwapButterflyTimeSeriesRow = {
+  date: string;
+  butterfly_bps: number;
+  z_score: number | null;
+};
+
+export type InflationSwapButterflyOutput = {
+  current_metrics: InflationSwapButterflyCurrentMetrics;
+  /** Bespoke wire-frozen shape — butterfly (bps) + z-score per row. */
+  time_series: InflationSwapButterflyTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the ZCIS butterfly.  Required —
+   *  mirrors the Pydantic Output where the field is non-optional. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
