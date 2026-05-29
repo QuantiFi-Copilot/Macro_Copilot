@@ -1,0 +1,55 @@
+version: '1.0'
+branch: frontend_automation
+backend: claude-cli
+orchestrator_status: idle
+current_tool: null
+current_tool_backend_name: null
+current_step: not_started
+dispatch_round: 0
+last_dispatch_at: null
+last_successful_tool: null
+last_successful_commit: null
+last_reviewer_heading: null
+last_gate_result: null
+last_stop_reason: never_started
+last_error: null
+last_updated: '2026-05-29T00:00:00Z'
+done: 0
+blocked: 0
+remaining: 10
+quota_state: not_probed
+quota_snapshot: null
+quota_snapshot_fresh: false
+quota_note: |
+  Initial state.  Factory has never run.  10 tools in the catalog,
+  all in status `todo`.  Cron job is DISABLED in ~/.openclaw/cron/jobs.json
+  (enabled: false) until the user finishes the 10 mockup PNGs and
+  explicitly arms the factory.
+reviewer_mode: claude_only
+reviewer_mode_history:
+  - at: '2026-05-29T00:00:00Z'
+    note: |
+      This factory uses Claude for BOTH builder and reviewer (single-engine
+      design).  There is NO fallback engine.  See DESIGN_PRINCIPLES.md §10
+      and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
+      dispatch triggers a clean waiting_quota stop; the next cron wake
+      retries.
+catalog_exhausted_at: null
+human_required: null
+status_notes:
+  - at: '2026-05-29T00:00:00Z'
+    kind: factory_initialised
+    text: |
+      Frontend automation factory initialised.  Repo branch
+      `frontend_automation` created off `revamp` at commit 75b8e06.
+      Package shipped at automation/frontend_automation/ mirroring the
+      primitive_automation pattern with three deliberate differences:
+        (1) Claude for both builder + reviewer (no Codex / no fallback)
+        (2) Single review round per tool (build → review → optional
+            one-shot fix → commit; see SINGLE_REVIEW_ROUND_POLICY.md)
+        (3) Pre-flight checks backend folder + MCP wrapper + mockups
+            (not load_audit) — see PRE_FLIGHT_BACKEND_AUDIT.md
+      Catalog has 10 entries spread across 5 instrument families.
+      Waiting on the user to commit mockup PNGs into each tool's
+      UI/.../src/modules/primitives/<verb>_<slug>_tool/mockups/
+      folder before arming the cron job.

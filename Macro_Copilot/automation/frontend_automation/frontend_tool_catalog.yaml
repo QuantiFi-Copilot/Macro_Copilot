@@ -1,0 +1,367 @@
+catalog_name: frontend_automation_initial_batch
+catalog_version: "1.1"
+branch: frontend_automation
+execution_mode: one_tool_at_a_time
+status_policy:
+  allowed_statuses:
+    - todo
+    - in_progress
+    - changes_required          # set after Dispatch 2 if going to Dispatch 3 fix pass
+    - waiting_quota
+    - blocked
+    - done
+runtime_managed_fields:
+  - status
+  - active_step
+  - dispatch_round              # 1 (builder), 2 (reviewer), 3 (fix), per SINGLE_REVIEW_ROUND_POLICY.md
+  - human_action_required
+  - last_error
+  - last_review_heading
+  - last_gate_result
+  - block_reason
+selection_principles:
+  - Include only backend tools that already pass BUILD_GUIDE.md Stages 1–3 (backend folder + tests + DB curated metadata; the curated migration file is sufficient — the DB write is deferred until human apply).
+  - Exclude tools whose backend is blocked or pending source-material verification beyond what we accept.
+  - Exclude tools requiring complex bespoke chart shapes (PCA loadings, rolling-regression diagnostics, panel builders) — those need per-tool human design.
+  - Exclude tools that already have a real frontend (the Phase-1 dual-view pilots and the legacy regime classifier).
+  - Every entry names its reference frontend module (the dual-view parity target the builder reads first).
+  - Every entry's `pre_flight_backend_audit` names the four artifacts that must exist on disk BEFORE the builder dispatches (PRE_FLIGHT_BACKEND_AUDIT.md).
+  - Every entry depends on the user committing `mockups/Compact.png` + `mockups/Extended.png` into the tool's frontend module folder BEFORE the cron job arms.
+  - Every entry carries an explicit `endpoint_slug` for the standalone-bridge typed-detail endpoint at `/api/v1/rates/detail/<endpoint_slug>`.
+notes:
+  - v1.1 — dropped classify_curve_move_tool (legacy `typedView: 'regime'` + existing surfaces would conflict; deferred to a separate human-led migration). Initial batch is now 9 tools spread across 4 instrument families (3 inflation_indexed_bonds + 3 inflation_swaps + 2 ois + 1 policy_futures).
+  - v1.0 — initial batch of 10 tools. Superseded.
+  - Bias toward concrete visualisable shapes — 6 butterfly/spread shapes (direct charting), 1 snapshot (scalar), 1 scanner (ranked list), 1 cross-market spread.
+  - Two parity targets in use:  `calculate_breakeven_inflation_simple_tool` for spread / multi-leg shapes (its dual-view + Monitor + Shared helper pattern is the most complete reference), and  `get_real_yield_level_tool` for snapshot / scanner shapes (cleaner single-leg shape).
+  - Mockup PNGs are the design SOURCE-OF-TRUTH per BUILD_GUIDE.md §Stage 6. The builder reads them as images (Claude Opus vision); the reviewer compares the implementation against the same images.
+  - The orchestrator must NOT dispatch the builder until the pre-flight backend audit shows both mockup files committed.
+  - The `endpoint_slug` field is the curated kebab-case path the typed-detail route mounts at. These slugs were chosen to mirror the existing pattern in `api/routes/rates/detail.py` (`/detail/spread`, `/detail/cross-market`, `/detail/butterfly`, `/detail/regime`, etc.). The agent MUST use these slugs verbatim — do not invent variations.
+
+tools:
+
+  - id: inflation_indexed_bonds__breakeven_butterfly
+    status: todo
+    build_order: 1
+    backend_tool_name: calculate_breakeven_butterfly_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: breakeven_butterfly
+    endpoint_slug: breakeven-butterfly
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Three-point butterfly curvature on the same-country breakeven
+      inflation curve.  Standard 50-50 wing weighting; surfaces breakeven
+      belly richness/cheapness independent of overall breakeven level.
+    why_needs_frontend: |
+      Backend exists at rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/
+      but no frontend module under src/modules/primitives/.  Tool is desk-canonical
+      for inflation curve-shape RV — must be available on Build for multi-tool
+      curve-vs-curve comparisons.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/breakeven_butterfly/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: calculate_breakeven_butterfly_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_breakeven_butterfly_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_breakeven_butterfly_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_butterfly_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_butterfly_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_butterfly_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "FM3 + rendering_density.md §1: BOTH surfaces/BuildExtended.tsx AND surfaces/BuildCompact.tsx REQUIRED"
+      - "FM9 + methodology_exposure.md §5: MODULE.typedView=null; standalone bridge endpoint at /api/v1/rates/detail/breakeven-butterfly"
+      - "rendering_density.md §2.2: compact view NO controls strip, calls onExpand, methodology disclosure compact form, tone cues"
+      - "PR10/P5: methodology_label sourced from backend, NOT hardcoded as TS literal"
+      - "FM12: alphabetical loader entry in src/modules/index.ts"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts — they are stub scaffolds with tiers=['generic_runnable'] only; the factory must replace them with the dual-view + standalone-bridge versions"
+
+  - id: inflation_indexed_bonds__breakeven_curve_spread
+    status: todo
+    build_order: 2
+    backend_tool_name: calculate_breakeven_curve_spread_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: breakeven_curve_spread
+    endpoint_slug: breakeven-curve-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Same-country tenor spread on the breakeven inflation curve
+      (e.g. US 2Y-10Y breakeven).  Surfaces breakeven curve shape
+      independent of any single tenor's level.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Breakeven curve spreads are
+      the canonical metric for "is the breakeven curve flattening or
+      steepening" — required on Build for term-structure questions.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: calculate_breakeven_curve_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_breakeven_curve_spread_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_breakeven_curve_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_curve_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_curve_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_curve_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Same dual-view + standalone-bridge contract as breakeven_butterfly above"
+      - "Mirror the proven pair pattern from calculate_real_yield_curve_spread_tool (Phase-1 pilot) — same shape; different concept (breakeven not real yield)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/breakeven-curve-spread"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: inflation_indexed_bonds__real_yield_butterfly
+    status: todo
+    build_order: 3
+    backend_tool_name: calculate_real_yield_butterfly_tool
+    instrument_family: inflation_indexed_bonds
+    sub_agent: inflation_indexed_bonds
+    tool_slug: real_yield_butterfly
+    endpoint_slug: real-yield-butterfly
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Single-curve linker real-yield butterfly (3-point curvature, 50-50
+      wing weights).  The linker analogue of sovereign curve butterfly;
+      surfaces real-yield belly richness/cheapness independent of level.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Real-yield butterfly is the
+      single-curve linker analogue of sovereign butterfly — required for
+      linker RV term-structure work.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/
+      mcp_wrapper_in: rates_agent/inflation_indexed_bonds/mcp_server.py
+      mcp_tool_name: calculate_real_yield_butterfly_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_real_yield_butterfly_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_real_yield_butterfly_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_real_yield_butterfly_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_real_yield_butterfly_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_real_yield_butterfly_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Same dual-view + standalone-bridge contract"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/real-yield-butterfly"
+      - "Single linker curve (no nominal pair) — input is one curve_family + three tenors; mockup should reflect this"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: inflation_swaps__cross_market_inflation_swap_spread
+    status: todo
+    build_order: 4
+    backend_tool_name: calculate_cross_market_inflation_swap_spread_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: cross_market_inflation_swap_spread
+    endpoint_slug: cross-market-zcis
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Same-tenor cross-market ZCIS spread (USD vs EUR vs GBP differential
+      at a chosen tenor).  Index-family caveats applied automatically:
+      CPI-U vs HICPxT vs RPI are not fungible inflation measures.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Cross-market ZCIS spreads are
+      the canonical cross-currency inflation-divergence read — required for
+      cross-CB inflation regime work.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/cross_market_inflation_swap_spread/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_cross_market_inflation_swap_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_cross_market_inflation_swap_spread_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_cross_market_inflation_swap_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_cross_market_inflation_swap_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Same dual-view + standalone-bridge contract"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/cross-market-zcis"
+      - "Index-family caveat (CPI-U vs HICPxT vs RPI not fungible) MUST be surfaced in compact view methodology disclosure"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: inflation_swaps__inflation_swap_butterfly
+    status: todo
+    build_order: 5
+    backend_tool_name: calculate_inflation_swap_butterfly_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: inflation_swap_butterfly
+    endpoint_slug: zcis-butterfly
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Three-point ZCIS butterfly on the same curve family (e.g. USD 2-5-10
+      ZCIS).  Surfaces inflation-expectations term-structure belly RV.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  ZCIS butterflies are the
+      canonical curve-shape metric for inflation-expectations term-structure.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/inflation_swap_butterfly/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: calculate_inflation_swap_butterfly_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_inflation_swap_butterfly_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_inflation_swap_butterfly_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_butterfly_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_butterfly_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_inflation_swap_butterfly_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Same dual-view + standalone-bridge contract"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/zcis-butterfly"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: inflation_swaps__scan_inflation_swaps_extremes
+    status: todo
+    build_order: 6
+    backend_tool_name: scan_inflation_swaps_extremes_tool
+    instrument_family: inflation_swaps
+    sub_agent: inflation_swaps
+    tool_slug: scan_inflation_swaps_extremes
+    endpoint_slug: zcis-scanner
+    category: scanner
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Universe-wide ZCIS rate-level extremes ranked by 252-day z-score.
+      Scanner archetype — returns a ranked list, not a single time series.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  Scanner shape — the compact
+      view should be a top-N ranked table, NOT a sparkline.  Distinct
+      design from the spread/butterfly tools above.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/
+      mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
+      mcp_tool_name: scan_inflation_swaps_extremes_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='scan_inflation_swaps_extremes_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_scan_inflation_swaps_extremes_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "SCANNER SHAPE — compact view is a top-N ranked table (instrument + level + z-score), NOT a sparkline.  Mockup must reflect this."
+      - "Extended view shows the full universe scan; compact shows top 3-5 extremes only"
+      - "Same dual-view + standalone-bridge contract; standalone-bridge endpoint at /api/v1/rates/detail/zcis-scanner"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: ois__calculate_ois_butterfly
+    status: todo
+    build_order: 7
+    backend_tool_name: calculate_ois_butterfly_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: calculate_ois_butterfly
+    endpoint_slug: ois-butterfly
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Three-point OIS curve butterfly on the same curve family (e.g.
+      USD-SOFR 2-5-10 OIS fly).  Surfaces OIS curve-shape belly RV.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  OIS butterflies are the
+      curve-shape metric for the front-end policy-expectations curve.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/calculate_ois_butterfly/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_ois_butterfly_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_ois_butterfly_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_ois_butterfly_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_butterfly_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_butterfly_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_butterfly_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Same dual-view + standalone-bridge contract"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-butterfly"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: ois__curve_spread
+    status: todo
+    build_order: 8
+    backend_tool_name: calculate_ois_curve_spread_tool
+    instrument_family: ois
+    sub_agent: ois
+    tool_slug: curve_spread
+    endpoint_slug: ois-curve-spread
+    category: cross_market_rv
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Same-curve OIS tenor spread (e.g. USD-SOFR 2Y-10Y spread).  The
+      cleanest measure of OIS curve shape — no supply / credit noise, only
+      term structure of expected policy.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  OIS curve spreads are the
+      canonical "what does the curve think about policy term structure"
+      metric.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/ois/tools/curve_spread/
+      mcp_wrapper_in: rates_agent/ois/mcp_server.py
+      mcp_tool_name: calculate_ois_curve_spread_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='calculate_ois_curve_spread_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_calculate_ois_curve_spread_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_curve_spread_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_curve_spread_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_breakeven_inflation_simple_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/calculate_ois_curve_spread_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror calculate_real_yield_curve_spread_tool's design (same shape; different curve family)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-curve-spread"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+
+  - id: policy_futures__futures_price_level
+    status: todo
+    build_order: 9
+    backend_tool_name: policy_futures_get_futures_price_level_tool
+    instrument_family: policy_futures
+    sub_agent: policy_futures
+    tool_slug: futures_price_level
+    endpoint_slug: policy-futures-price
+    category: snapshot
+    ready_to_build: true
+    depends_on: []
+    concept_summary: |
+      Policy-futures (STIR) contract price level with daily change and
+      252-day z-score.  Snapshot shape — single contract + tenor + price
+      history + range stats.
+    why_needs_frontend: |
+      Backend exists; no frontend module.  STIR futures price level is
+      a desk-canonical morning read; needs Monitor tile + Build canvas.
+    pre_flight_backend_audit:
+      backend_folder: rates_agent/policy_futures/tools/futures_price_level/
+      mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
+      mcp_tool_name: policy_futures_get_futures_price_level_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_price_level_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_policy_futures_get_futures_price_level_curated.sql
+      mockups_required:
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/mockups/Compact.png
+    reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/
+    required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
+    design_guardrails:
+      - "Mirror get_real_yield_level_tool's snapshot shape (level + change + z-score + range strip)"
+      - "Quote convention: 100-minus-rate; note in methodology disclosure that an UP price = DOWN implied rate (dovish)"
+      - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-price"
+      - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
