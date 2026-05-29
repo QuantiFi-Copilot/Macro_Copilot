@@ -392,10 +392,10 @@ tools:
       - "Mirror calculate_real_yield_curve_spread_tool's design (same shape; different curve family)"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-curve-spread"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
-    commit_sha: PLACEHOLDER_OIS_CURVE_SPREAD
+    commit_sha: a0364d4
 
   - id: policy_futures__futures_price_level
-    status: todo
+    status: in_progress
     build_order: 9
     backend_tool_name: policy_futures_get_futures_price_level_tool
     instrument_family: policy_futures

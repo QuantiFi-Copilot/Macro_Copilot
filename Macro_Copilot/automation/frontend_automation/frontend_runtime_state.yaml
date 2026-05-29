@@ -2,18 +2,18 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: ois__curve_spread
-current_tool_backend_name: calculate_ois_curve_spread_tool
-current_step: committed
-dispatch_round: 2
-last_dispatch_at: '2026-05-29T21:53:00Z'
+current_tool: policy_futures__futures_price_level
+current_tool_backend_name: policy_futures_get_futures_price_level_tool
+current_step: builder_dispatched
+dispatch_round: 1
+last_dispatch_at: '2026-05-29T22:03:00Z'
 last_successful_tool: ois__curve_spread
-last_successful_commit: PLACEHOLDER_OIS_CURVE_SPREAD
+last_successful_commit: a0364d4
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_8_committed_advance
+last_stop_reason: tool_9_builder_dispatched
 last_error: null
-last_updated: '2026-05-29T22:00:00Z'
+last_updated: '2026-05-29T22:03:00Z'
 done: 7
 blocked: 1
 remaining: 1
@@ -40,6 +40,69 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T22:03:00Z'
+    kind: wake_continued_tool_9_dispatched
+    text: |
+      Same wake as tool 8 commit.  Advancing to last eligible tool per
+      BACKGROUND_EXECUTION_POLICY §3 selection order: tool 9
+      (policy_futures__futures_price_level, build_order 9).
+      Categorically distinct from tools 1-8 — SNAPSHOT shape, not a
+      butterfly/spread chart.  Reference is get_real_yield_level_tool
+      (Phase-1 snapshot pilot).
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/policy_futures/tools/futures_price_level/
+          {__init__.py, config.yaml, schemas.py, compute.py}
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/policy_futures/mcp_server.py:200
+          def get_futures_price_level_tool(
+          (matches catalog's pre_flight_backend_audit.mcp_tool_name
+           which differs from backend_tool_name policy_futures_get_*_tool
+           — wrapper unprefixed inside its own domain namespace; workflow
+           registry at workflows/__init__.py L1147 disambiguates from the
+           bond_futures sibling at L1079)
+        Check 3 (curated migration file)       PASS via 3(b)
+          database/migrations/2026-05-29_phase1_policy_futures_get_futures_price_level_curated.sql
+        Check 4 (mockups Compact+Extended)     PASS
+          sha256 C=39c4e5f… E=ecad482… (unique in catalog from
+          tool 2's catalog-wide audit; no byte-collision with any
+          other tool)
+
+      Defensive vision sanity check (post-tool-2 lesson): viewed both
+      PNGs as images via the Read tool.  Confirmed content matches the
+      catalog's tool 9 SNAPSHOT concept:
+        - Compact: "Policy Futures Price Level · SNAPSHOT" header,
+          "SFR1 · SOFR Whites Pack" identity, "WHITES · SOFR 1st
+          Quarterly" sub-tag, 3 KPIs (IMPLIED RATE 4.25% (Price 95.75) /
+          1D CHANGE -4.5 bp (-1.05%) / Z-SCORE 252D +1.36 Elevated),
+          implied-rate sparkline with ±2σ / ±1.5σ bands, range strip
+          (5D / 1M change + 252D PCTL/HIGH/LOW/OBSERVATIONS), caveat
+          footer "100-minus-rate; UP price = DOWN implied rate (dovish)"
+          + "Rolling-generic strip read at position 1." + flag chip +
+          freshness indicator + expand affordance.
+        - Extended: same identity + KPI strip (PRICE 95.75 / 1D / 5D /
+          IMPLIED-RATE z-score / 252D pctl) + volume & open-interest
+          side panel + implied-rate chart with bands + methodology card
+          + lineage footer + controls strip (FAMILY / TENOR / CONTRACT
+          / LAST_PRICE / etc.).
+        - Snapshot shape per catalog design guardrails: "Mirror
+          get_real_yield_level_tool's snapshot shape (level + change +
+          z-score + range strip)" + "Quote convention: 100-minus-rate;
+          note in methodology disclosure that an UP price = DOWN implied
+          rate (dovish)".  Both honored on the mockup.
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      policy_futures__futures_price_level, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via run_claude_builder.sh on
+      `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_policy_futures_price_level_round1.md.  Log:
+      /tmp/claude_frontend_builder_run_policy_futures_price_level_round1.log.
+      Quota probe still unavailable; runtime-enforced.
+
   - at: '2026-05-29T22:00:00Z'
     kind: tool_8_committed_advance
     text: |
