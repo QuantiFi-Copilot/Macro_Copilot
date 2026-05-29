@@ -16,6 +16,7 @@ import type {
   RegimeOutput,
   RealYieldLevelOutput,
   BreakevenInflationSimpleOutput,
+  BreakevenButterflyOutput,
   RealYieldCurveSpreadOutput,
 } from '@/types/rates';
 
@@ -155,6 +156,32 @@ export function fetchDetailBreakeven(
   params: BreakevenDetailParams,
 ): Promise<BreakevenInflationSimpleOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/breakeven${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/breakeven-butterfly  — standalone bridge for the 3-point
+// same-country breakeven butterfly (curvature of the bond-implied
+// breakeven curve).  Own typed helper; consumed by BOTH the extended
+// and compact Build views and the Monitor tile.  Same four exposed
+// methodology overrides as the spot breakeven primitive.
+// ---------------------------------------------------------------------------
+
+export type BreakevenButterflyDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBreakevenButterfly(
+  params: BreakevenButterflyDetailParams,
+): Promise<BreakevenButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/breakeven-butterfly${buildQuery(params)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -77,6 +77,17 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
     RealYieldCurveSpreadOutput,
     calculate_real_yield_curve_spread,
 )
+# Standalone-bridge endpoint for the same-country bond-implied breakeven
+# butterfly primitive (3-point breakeven curvature).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
+    CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+    BreakevenButterflyInput,
+    BreakevenButterflyOutput,
+    calculate_breakeven_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -514,6 +525,83 @@ def real_yield_curve_spread_detail(
         result,
         f"Real-yield curve spread for {curve_family} "
         f"{short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/breakeven-butterfly  — same-country breakeven butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# breakeven_butterfly primitive ships its OWN typed-detail endpoint.
+# The same payload feeds BOTH the extended and compact Build views and
+# the Monitor tile (rendering_density.md §10).  Same four Phase-1
+# methodology overrides as the spot breakeven primitive (the inner
+# composed calls share the same z-score window / min-periods / ddof
+# / field_name semantics).
+# ============================================================================
+@router.get(
+    "/detail/breakeven-butterfly",
+    response_model=BreakevenButterflyOutput,
+    summary="Bond-Implied Breakeven Butterfly Detail (standalone bridge)",
+)
+def breakeven_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL SIX underlying series "
+            "(nominal + linker at each endpoint tenor).  Omit (None) to "
+            "use the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The breakeven-butterfly primitive intentionally does NOT expose the
+    Phase-1 z-score overrides at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.
+    """
+    try:
+        params = BreakevenButterflyInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bbf_config = load_tool_config(BREAKEVEN_BUTTERFLY_CONFIG_PATH)
+        result = calculate_breakeven_butterfly(
+            engine=engine, params=params, config=bbf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/breakeven-butterfly: tool failed for %s vs %s %s/%s/%s",
+            nominal_curve_family, linker_curve_family,
+            short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Breakeven butterfly for {nominal_curve_family} vs "
+        f"{linker_curve_family} {short_tenor}/{belly_tenor}/{long_tenor}",
     )
     return result
 
