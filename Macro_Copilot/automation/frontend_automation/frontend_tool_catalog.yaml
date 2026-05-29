@@ -85,7 +85,37 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts — they are stub scaffolds with tiers=['generic_runnable'] only; the factory must replace them with the dual-view + standalone-bridge versions"
 
   - id: inflation_indexed_bonds__breakeven_curve_spread
-    status: todo
+    status: blocked
+    human_action_required: true
+    last_review_heading: null
+    last_gate_result: not_run
+    block_reason: |
+      mockup_content_mismatch: the two PNGs at
+      UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,Extended}.png
+      are byte-identical (sha256 a47e9746… + adf8ad5…) to the
+      corresponding files under calculate_breakeven_butterfly_tool/mockups/.
+      Their visual content depicts a 3-leg BREAKEVEN BUTTERFLY (title "US
+      2-5-10 BE FLY", three tenors, headline KPI "FLY -18 bp", 3-leg
+      caveat) — NOT a 2-leg curve spread.  The backend
+      BreakevenCurveSpreadOutput has no `fly_bps` / belly field; faking it
+      would violate P5 honest disclosure.  Both pairs were committed in
+      `5ea7ecc "changes"`, almost certainly a cp/mv into the wrong folder
+      during mockup intake.  PRE_FLIGHT Check 4 verified path existence
+      only — it cannot verify content-vs-concept match (audit blind
+      spot).  The Builder REFUSED the Dispatch-1 build at
+      2026-05-29T18:53Z per its blocker policy
+      (CLAUDE_BUILDER_PROMPT.md "the backend Output shape doesn't match
+      what the mockup implies").  No files were written; the existing
+      Stage-3 scaffold remains untouched on disk and the tree is clean
+      against HEAD 9c6c30c.  Remediation requires a human to re-author
+      Compact.png + Extended.png for this tool to depict a 2-leg
+      breakeven curve spread (e.g. "UST/USD_TIPS 2s10s breakeven" —
+      current_spread_bps + endpoint decomposition + z-score + sparkline
+      + percentile), then flip status back to `todo`.  The natural
+      template is `calculate_real_yield_curve_spread_tool/mockups/`
+      adapted from PERCENT → BPS (per the catalog entry's existing
+      design guardrail).  Full builder log:
+      /tmp/claude_frontend_builder_run_breakeven_curve_spread_round1.log
     build_order: 2
     backend_tool_name: calculate_breakeven_curve_spread_tool
     instrument_family: inflation_indexed_bonds
@@ -122,7 +152,12 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
 
   - id: inflation_indexed_bonds__real_yield_butterfly
-    status: todo
+    status: done
+    human_action_required: false
+    last_review_heading: APPROVED
+    last_gate_result: pass
+    commit_sha: 48e4230ae68c75f78fd1f2237b8b71ce3fb85fd6
+    committed_at: '2026-05-29T19:18:00Z'
     build_order: 3
     backend_tool_name: calculate_real_yield_butterfly_tool
     instrument_family: inflation_indexed_bonds

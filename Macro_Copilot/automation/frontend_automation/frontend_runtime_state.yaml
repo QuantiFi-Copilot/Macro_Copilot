@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: null
-current_tool_backend_name: null
-current_step: ready_to_dispatch
-dispatch_round: 0
-last_dispatch_at: '2026-05-29T16:11:43Z'
+current_tool: inflation_indexed_bonds__real_yield_butterfly
+current_tool_backend_name: calculate_real_yield_butterfly_tool
+current_step: reviewer_dispatched
+dispatch_round: 2
+last_dispatch_at: '2026-05-29T19:11:30Z'
 last_successful_tool: inflation_indexed_bonds__breakeven_butterfly
 last_successful_commit: fdac7d2821fc61ecdab7b122b8ede4d18d1c3374
 last_reviewer_heading: APPROVED-AFTER-HUMAN-FIX
 last_gate_result: pass
-last_stop_reason: tool_1_human_resolved_advance
+last_stop_reason: tool_2_builder_refused_mockup_content_mismatch_advance
 last_error: null
-last_updated: '2026-05-29T18:45:59Z'
+last_updated: '2026-05-29T18:55:00Z'
 done: 1
-blocked: 0
-remaining: 8
+blocked: 1
+remaining: 7
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,239 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T19:19:00Z'
+    kind: tool_3_committed_advance
+    text: |
+      Tool 3 (inflation_indexed_bonds__real_yield_butterfly) committed
+      as 48e4230ae68c75f78fd1f2237b8b71ce3fb85fd6.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 18:55
+        Dispatch 1 (builder)                   exit 0 at 19:11 (~16m)
+          builder report: all 8 frontend artifact slots populated,
+          self-reported npm test:modules / test:build / typecheck all 0
+        Dispatch 2 (reviewer)                  APPROVED at 19:16 (~5m)
+          fresh-context Claude; no findings; documented the THESIS
+          Mockup-conformance "TIPS"→"linkers" generalization rationale
+          as the lone known deviation
+        Pre-commit gate                        all 3 exit 0 at 19:17
+          npm run test:modules ✓ (per-module 6 checks pass; full registry
+                                   passes; loader-presence test enforces
+                                   dual-view for this module)
+          npm run test:build   ✓ (all build-folder tests pass — DAG,
+                                   build-empty-state, parameters,
+                                   slot-controls, routing, dashboard,
+                                   widget contracts, etc.)
+          npm run typecheck    ✓ (tsc --noEmit clean, no NEW errors)
+        Mirrors update                         at 19:18
+          surface_contract.md §4.3 row: build_archetype generic-builder
+            → typed-result-renderer; build_status scaffolded →
+            dual-view-built; monitor_elig not-required → required;
+            monitor_status n/a → built (RealYieldButterfly widget)
+          surface_contract.md §11: v10 changelog entry added
+          §10.3 skipped (pilot-pinned to original 3 Phase-1 pilots)
+          graphify: SKIPPED — not on PATH (recorded per
+            ORCHESTRATOR_PROMPT Case C Mirrors §2 fallback)
+        Commit                                 48e4230 at 19:18
+          11 files changed, 1753 insertions(+), 31 deletions(-)
+          on `frontend_automation`; never touched main / revamp /
+          primitive_automation
+
+      State reset: orchestrator_status: processing, current_tool: null,
+      current_step: ready_to_dispatch, dispatch_round: 0, done: 2,
+      blocked: 1, remaining: 6.  Factory advancing to next eligible
+      tool per BACKGROUND_EXECUTION_POLICY §3 selection order: tool 4
+      (inflation_swaps__cross_market_inflation_swap_spread,
+      build_order: 4).
+
+      Note: tool 1's §4.3 row in surface_contract.md remains stale
+      (scaffolded / not-required) — tool 1's commit (fdac7d2) shipped
+      without the mirror update.  This is a separately-trackable docs
+      drift but not a blocker.  Future wake could batch-fix it; current
+      wake stays focused on `current_tool` per NO_GO_RULES §16.
+  - at: '2026-05-29T18:55:00Z'
+    kind: wake_start_real_yield_butterfly_round1
+    text: |
+      After tool 2 blocked on misfiled mockups (see prior status_notes
+      entry), advanced to next eligible `todo` per
+      BACKGROUND_EXECUTION_POLICY §3:
+
+        inflation_indexed_bonds__real_yield_butterfly
+        (backend: calculate_real_yield_butterfly_tool;
+         endpoint slug: real-yield-butterfly;
+         build_order: 3)
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/inflation_indexed_bonds/mcp_server.py:1743
+          def calculate_real_yield_butterfly_tool(
+        Check 3 (curated migration file)       PASS via 3(b)
+          database/migrations/2026-05-29_phase1_calculate_real_yield_butterfly_curated.sql
+        Check 4 (mockups Compact+Extended)     PASS
+          sha256 C=81187a08… E=68f7e114… (unique in catalog; no
+          byte-collision with any other tool)
+
+      Defensive vision sanity check (post-tool-2 lesson): viewed both
+      PNGs as images via the Read tool.  Confirmed content matches the
+      catalog's tool 3 concept:
+        - Compact: "Real Yield Butterfly · SNAPSHOT", "USD_TIPS 5-10-30
+          RY FLY", 3 KPIs (FLY -14 bp Belly Rich · 1D CHANGE -1.8 bp ·
+          Z-SCORE -2.07 Extreme Rich), sparkline w/ ±2σ z-score bands,
+          identity chip "USD_TIPS Linker curve", expand affordance
+          top-right.
+        - Extended: "USD_TIPS 5-10-30 REAL YIELD BUTTERFLY", FLY KPI
+          strip + z-score + percentile + history range, time-series
+          chart, FLY-vs-decomposition panel (belly vs wings), real-yield
+          curve snapshot panel (3 points), methodology card on right,
+          lineage footer.
+        - Matches the catalog's design guardrail "Single linker curve
+          (no nominal pair) — input is one curve_family + three tenors"
+          (single USD_TIPS curve, 5Y / 10Y / 30Y).
+        - No byte-collision with any other tool's mockups (verified by
+          catalog-wide sha256 audit).
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      inflation_indexed_bonds__real_yield_butterfly, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via run_claude_builder.sh on
+      `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_real_yield_butterfly_round1.md.  Log:
+      /tmp/claude_frontend_builder_run_real_yield_butterfly_round1.log.
+      Quota probe still unavailable; runtime-enforced.
+  - at: '2026-05-29T18:54:00Z'
+    kind: tool_2_builder_refused_mockup_content_mismatch
+    text: |
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) was
+      dispatched to Dispatch 1 (Claude builder, --print --model opus
+      --effort xhigh) at 18:48 UTC after a CLEAN pre-flight (all four
+      checks PASS including Check 4 path-existence of the mockup PNGs).
+
+      The builder ran for ~5 minutes and REFUSED the build per the
+      builder-prompt "blocker" policy.  Builder evidence (verbatim,
+      from /tmp/claude_frontend_builder_run_breakeven_curve_spread_round1.log):
+
+        - The two mockup PNGs at
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,
+          Extended}.png are byte-identical to the corresponding files
+          under calculate_breakeven_butterfly_tool/mockups/ (sha256
+          a47e9746c90537c22183c6d8f7ec7cec6fee6cdf7a3cd97892ccd5836af97fda
+          + adf8ad5d4a3711731eed42fb165f1ea201050303c24a7687f3ff2c2301631e5e).
+        - The PNGs' visual content depicts a 3-leg BREAKEVEN BUTTERFLY
+          (title "US 2-5-10 BE FLY", three tenors UST/USD_TIPS 2Y/5Y/10Y,
+          headline KPI "FLY -18 bp", 3-leg caveat footer), NOT a 2-leg
+          curve spread.
+        - The backend tool's schemas
+          (rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/schemas.py)
+          unambiguously model a 2-leg spread:
+          BreakevenCurveSpreadInput exposes only short_tenor + long_tenor;
+          BreakevenCurveSpreadCurrentMetrics exposes current_spread_bps +
+          short_breakeven_bps + long_breakeven_bps (NO belly_bps /
+          fly_bps); _short_must_precede_long validator enforces
+          short_years < long_years; docstring spread_label examples are
+          "UST/USD_TIPS 2s10s breakeven", "FR_OAT/EUR_FR_LINKER 5s10s
+          breakeven".  No third leg anywhere.
+        - The mockup's headline `FLY -18 bp` KPI has no backing field in
+          BreakevenCurveSpreadOutput.  Faking it (e.g. relabelling
+          current_spread_bps as "FLY") would mis-shape the module to
+          PMs and violate P5 honest disclosure (the methodology_label
+          threaded from the backend YAML would visibly contradict the
+          headline).
+        - Both pairs were committed in `5ea7ecc "changes"` together —
+          almost certainly a cp/mv into the wrong folder during
+          mockup intake.  No alternate mockups exist elsewhere in the
+          repo for this tool.
+
+      Catalog-wide mockup audit (sha256 of all 9 tools' Compact + Extended
+      PNGs) confirms tool 2 is the ONLY misfile in the catalog.  Tools
+      3-9 each have unique mockup hashes — none collide with each other
+      or with tool 1.  Hashes:
+        tool 1 breakeven_butterfly:                C=a47e974… E=adf8ad5…  ← reference
+        tool 2 breakeven_curve_spread:             C=a47e974… E=adf8ad5…  ← DUPLICATE (blocker)
+        tool 3 real_yield_butterfly:               C=81187a0… E=68f7e11…
+        tool 4 cross_market_inflation_swap_spread: C=3069d05… E=e1fc747…
+        tool 5 inflation_swap_butterfly:           C=7c75285… E=15b3fa6…
+        tool 6 scan_inflation_swaps_extremes:      C=513299b… E=b705a94…
+        tool 7 ois_butterfly:                      C=0c90439… E=1f74c86…
+        tool 8 ois_curve_spread:                   C=a7c2853… E=d49faec…
+        tool 9 policy_futures_price_level:         C=39c4e5f… E=ecad482…
+
+      Disposition per ORCHESTRATOR_PROMPT "Blocked-diff disposition rule"
+      + NO_GO_RULES §1 (functional mockups-missing) + PRE_FLIGHT §4
+      (read-only — orchestrator MUST NOT manufacture mockups):
+        - Tool 2 → status: blocked, block_reason: mockup_content_mismatch
+          (verbatim in catalog entry).
+        - Tree is already clean: builder wrote 0 files (refusal exited
+          before any edit), so blocked-and-discardable disposition is
+          a no-op; HEAD remains 9c6c30c.
+        - Counts: done:1, blocked:1, remaining:7.
+        - Per BACKGROUND_EXECUTION_POLICY §3 selection order and the
+          ORCHESTRATOR_PROMPT loop rule ("Continue to the next eligible
+          tool — one missing artifact blocks only its dependent tool"),
+          advance to next eligible: tool 3
+          (inflation_indexed_bonds__real_yield_butterfly, build_order 3).
+
+      Remediation (for human): re-author the two PNGs at
+      UI/.../calculate_breakeven_curve_spread_tool/mockups/ to depict a
+      2-leg breakeven curve spread (current spread bps + endpoint
+      decomposition + 252d z-score + sparkline + percentile), e.g.
+      "UST/USD_TIPS 2s10s breakeven".  Natural template:
+      calculate_real_yield_curve_spread_tool/mockups/ adapted PERCENT →
+      BPS (matches the catalog entry's existing design guardrail).  Then
+      flip catalog status: blocked → todo and the factory will pick it
+      up on the next eligible-selection pass.
+
+      Optional gate-extension (recommended, per builder's third
+      remediation point): extend PRE_FLIGHT Check 4 with a sha256
+      collision check across all catalog tools' mockup folders — would
+      have caught this misfile at audit time rather than burning ~5min
+      of Claude builder quota.  Out of scope for this wake; would be a
+      separate human-authored PR.
+  - at: '2026-05-29T18:48:00Z'
+    kind: wake_start_breakeven_curve_spread_round1
+    text: |
+      New cron wake at 18:47 UTC.  Tree clean at HEAD 9c6c30c (tool 1
+      committed at fdac7d2; state-reset commit at 9c6c30c).  Selected
+      first eligible `todo` tool per BACKGROUND_EXECUTION_POLICY §3
+      selection order (no in_progress / changes_required / waiting_quota
+      entries; tool 1 done; tool 2 is first todo):
+
+        inflation_indexed_bonds__breakeven_curve_spread
+        (backend: calculate_breakeven_curve_spread_tool;
+         endpoint slug: breakeven-curve-spread;
+         build_order: 2)
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/
+          {__init__.py, config.yaml, schemas.py, compute.py}
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/inflation_indexed_bonds/mcp_server.py:831
+          def calculate_breakeven_curve_spread_tool(
+        Check 3 (curated migration file)       PASS via Check 3(b)
+          database/migrations/2026-05-29_phase1_calculate_breakeven_curve_spread_curated.sql
+          (Check 3(a) DB row probe returned `relation "macro_data.tool_metadata"
+          does not exist` — table not created on this VM; migration file
+          presence satisfies the gate per PRE_FLIGHT_BACKEND_AUDIT.md §2)
+        Check 4 (mockups Compact+Extended)     PASS
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,Extended}.png
+          (1.3 MB + 1.6 MB committed)
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      inflation_indexed_bonds__breakeven_curve_spread, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via
+      run_claude_builder.sh on `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_breakeven_curve_spread_round1.md (309 lines —
+      catalog entry verbatim + pre-flight output + resolved paths +
+      CLAUDE_BUILDER_PROMPT.md body).  Log:
+      /tmp/claude_frontend_builder_run_breakeven_curve_spread_round1.log.
+      Quota probe unavailable; proceeding runtime-enforced.
   - at: '2026-05-29T18:37:30Z'
     kind: wake_noop_dirty_tree_preserved
     text: |
