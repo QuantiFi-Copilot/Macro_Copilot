@@ -2,21 +2,21 @@ version: '1.0'
 branch: frontend_automation
 backend: claude-cli
 orchestrator_status: processing
-current_tool: null
-current_tool_backend_name: null
-current_step: ready_to_dispatch
-dispatch_round: 0
-last_dispatch_at: '2026-05-29T20:12:00Z'
-last_successful_tool: inflation_swaps__inflation_swap_butterfly
-last_successful_commit: 8e95e1cce67ba47a84af5d164f6dfce2e07fcf68
-last_reviewer_heading: APPROVED-AFTER-FIX
+current_tool: inflation_swaps__scan_inflation_swaps_extremes
+current_tool_backend_name: scan_inflation_swaps_extremes_tool
+current_step: committed
+dispatch_round: 2
+last_dispatch_at: '2026-05-29T20:38:00Z'
+last_successful_tool: inflation_swaps__scan_inflation_swaps_extremes
+last_successful_commit: PENDING
+last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: tool_5_committed_after_fix_advance
+last_stop_reason: tool_6_committed_advance
 last_error: null
-last_updated: '2026-05-29T20:16:00Z'
-done: 4
+last_updated: '2026-05-29T20:53:00Z'
+done: 5
 blocked: 1
-remaining: 4
+remaining: 3
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -40,6 +40,63 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
+  - at: '2026-05-29T20:53:00Z'
+    kind: tool_6_committed_advance
+    text: |
+      Tool 6 (inflation_swaps__scan_inflation_swaps_extremes) APPROVED on
+      first review.  Reviewer log
+      /tmp/claude_frontend_reviewer_run_zcis_scanner_round2.log (4663
+      bytes) parsed: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false.
+
+      Wake reconstructed state on entry: prior wake's reviewer dispatch
+      at 20:38 UTC (state showed current_step=reviewer_dispatched,
+      dispatch_round=2) completed at 20:45 UTC on the slug
+      `zcis_scanner` (NOT `scan_inflation_swaps_extremes` — the wrappers
+      use the short tool_slug stem so logs/prompts are at
+      /tmp/{builder,reviewer}_*_zcis_scanner_round*.{md,log}).  No
+      claude / wrapper processes still in flight.
+
+      Reviewer affirmed dual-view (A1-A5), mockup conformance (B6-B8),
+      standalone bridge (C9-C13), FM1-FM12, methodology honesty (E21-E22),
+      shared helper (F23-F27).  One non-blocking observation
+      (BuildExtended.tsx:43 imports `instrumentLabel` without referencing
+      it — code-hygiene smell, not a typecheck failure; not worth a fix
+      pass).  Documented mockup-vs-wire delta: mockup's TIMEFRAME /
+      RANK BY / per-row PCTILE absent in impl because backend
+      ScanInflationSwapsExtremesInput schema YAML-locks lookback_days,
+      single-metric ranking, and does not emit a percentile column.
+      THESIS Q3 ("single-metric per catalog") + Q4 ("Multi-metric scan
+      adoption" as future scenario) document this — builder aligned to
+      wire over aspirational mockup.
+
+      Pre-commit gate (orchestrator):
+        npm run test:modules ✓
+          scan_inflation_swaps_extremes_tool: 7 passed, 0 failed
+          all module + registry tests passed
+        npm run test:build  ✓ (all build-folder tests passed)
+        npm run typecheck   ✓ (tsc --noEmit clean)
+
+      Mirrors update:
+        surface_contract.md §4.4 row (line 235) updated in place
+          (output_kind scanner-result → scanner-rankedlist,
+           build_archetype generic-builder → typed-result-renderer,
+           build_status scaffolded → dual-view-built,
+           monitor_status deferred → built (ZcisScanner widget)).
+        Redundant §4.7a "Inflation-swap scanner (shipped this wake)"
+          sub-section the builder added removed — consolidated into the
+          §4.4 row in place, matching the v10-v12 pattern.
+        §11 v13 changelog entry added.
+        §10.3 untouched (pilot-pinned to original 3 Phase-1 pilots).
+        graphify update: SKIPPED — not on PATH on this VM (recorded per
+          ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      State: done: 5, blocked: 1, remaining: 3.  Factory advancing to
+      tool 7 (ois__calculate_ois_butterfly, build_order 7).  Wake
+      remaining budget should permit a fresh tool dispatch; will probe
+      eligibility on next entry per BACKGROUND_EXECUTION_POLICY §3
+      selection order.
+
   - at: '2026-05-29T20:16:00Z'
     kind: tool_5_committed_after_fix_advance
     text: |

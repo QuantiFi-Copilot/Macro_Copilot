@@ -275,7 +275,7 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
 
   - id: inflation_swaps__scan_inflation_swaps_extremes
-    status: todo
+    status: done
     build_order: 6
     backend_tool_name: scan_inflation_swaps_extremes_tool
     instrument_family: inflation_swaps
@@ -317,6 +317,7 @@ tools:
       - "Extended view shows the full universe scan; compact shows top 3-5 extremes only"
       - "Same dual-view + standalone-bridge contract; standalone-bridge endpoint at /api/v1/rates/detail/zcis-scanner"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+    commit_sha: PENDING
 
   - id: ois__calculate_ois_butterfly
     status: todo

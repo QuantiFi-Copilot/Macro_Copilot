@@ -12,6 +12,7 @@ Each returns the complete tool output including time_series for charts.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -128,6 +129,19 @@ from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
     InflationSwapButterflyInput,
     InflationSwapButterflyOutput,
     calculate_inflation_swap_butterfly,
+)
+# Standalone-bridge endpoint for the universe-wide ZCIS rate-extremes scanner.
+# First SCANNER-shape primitive under the dual-view contract — the wire
+# returns a ranked LIST of (curve_family, tenor) extremes rather than a single
+# time series, so this endpoint feeds the per-tool BuildCompact (top-N table)
+# and BuildExtended (universe scan + ranked detail) per
+# ``docs_revamped/03_standards/rendering_density.md §10`` + the standalone-
+# bridge contract (``methodology_exposure.md §5``).
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    calculate_scan_inflation_swaps_extremes,
 )
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
@@ -869,6 +883,122 @@ def zcis_butterfly_detail(
         result,
         f"ZCIS butterfly for {curve_family} "
         f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/zcis-scanner  — universe-wide ZCIS rate-extremes scanner bridge
+# ----------------------------------------------------------------------------
+# First SCANNER-shape primitive under the standalone-bridge contract.  Wire
+# shape is a ranked LIST (top-N rows by |z| of the 252d-rolling ZCIS rate
+# level z-score) rather than a single time series — the BuildCompact view
+# renders this as a top-N table (NOT a sparkline) and the BuildExtended view
+# renders the same payload as a universe scan + full ranked detail.  The
+# rolling-z-score conventions are YAML-locked on this primitive (no input-
+# layer overrides — mirrors the sibling linker / bond_futures scanners);
+# ``curve_families`` / ``top_n`` / ``min_abs_z_score`` / ``as_of_date``
+# remain exposed.
+# ============================================================================
+@router.get(
+    "/detail/zcis-scanner",
+    response_model=ScanInflationSwapsExtremesOutput,
+    summary="ZCIS Universe Extremes Scan (standalone bridge)",
+)
+def zcis_scanner_detail(
+    engine: Engine = Depends(get_engine),
+    curve_families: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated list of ZCIS curve families to scan.  Omit "
+            "(None) for the full universe (USD_ZCIS / EUR_ZCIS / "
+            "GBP_ZCIS).  Pass a CSV to narrow (e.g. 'USD_ZCIS,EUR_ZCIS')."
+            "  Non-ZCIS families are refused at schema-validation time."
+        ),
+    ),
+    top_n: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Number of extreme stems to return.  Omit (None) to fall "
+            "through to the YAML default (currently 5)."
+        ),
+    ),
+    min_abs_z_score: Optional[float] = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Minimum absolute z-score threshold for inclusion.  Omit "
+            "(None) to fall through to the YAML default (currently 1.5)."
+        ),
+    ),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the scan.  Omit "
+            "(None) to anchor to the most-recent shared trading day in "
+            "the DB across the universe."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
+    AND ``surfaces/BuildCompact.tsx`` (top-N table) per the rendering-
+    density dual-view contract + the Monitor widget per the standalone-
+    bridge contract.
+
+    The rolling-z-score conventions are YAML-locked on this primitive —
+    only scope / threshold / anchor inputs are exposed at the API layer.
+    """
+    parsed_families: Optional[List[str]] = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    as_of_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Invalid as_of_date {as_of_date!r}: must be ISO "
+                    f"YYYY-MM-DD (e.g. '2026-04-08'). Detail: {exc}"
+                ),
+            )
+    else:
+        as_of_arg = None
+
+    try:
+        params = ScanInflationSwapsExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n,
+            min_abs_z_score=min_abs_z_score,
+            as_of_date=as_of_arg,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        scan_config = load_tool_config(
+            SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_inflation_swaps_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zcis-scanner: tool failed for curve_families=%s",
+            parsed_families,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
     )
     return result
 

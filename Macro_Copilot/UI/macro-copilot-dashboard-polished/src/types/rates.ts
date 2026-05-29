@@ -619,6 +619,49 @@ export type InflationSwapButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/zcis-scanner ---
+// Standalone-bridge type for the universe-wide ZCIS rate-extremes scanner.
+// SCANNER shape — the wire returns a ranked LIST of (curve_family, tenor)
+// extremes ordered by |z| of the 252d-rolling ZCIS rate LEVEL z-score, NOT
+// a single time series.  Mirrors ``ScanInflationSwapsExtremesOutput`` from
+// rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/schemas.py
+// exactly (snake_case wire fields preserved).
+
+/** One ranked extreme on the ZCIS universe scan.  Mirrors
+ *  ``ScanInflationSwapsExtremesResultRow``. */
+export type ScanInflationSwapsExtremesResultRow = {
+  rank: number;
+  curve_family: string;
+  tenor: string;
+  as_of_date: string;
+  zcis_rate_pct: number | null;
+  daily_change_zcis_rate_bps: number | null;
+  monthly_change_zcis_rate_bps: number | null;
+  z_score_zcis_rate: number | null;
+  /** Closed enum derived from z-score sign on rows that pass the
+   *  ``min_abs_z_score`` filter. */
+  signal: 'EXTREME_HIGH' | 'EXTREME_LOW';
+  maturity_date: string | null;
+  underlying_index: string | null;
+  vendor_ticker: string | null;
+  /** P5 / catalog-guardrail disclosure — REQUIRED on every row (not just
+   *  on the response).  Includes the universe-wide ZCIS rate-level label,
+   *  the explicit z-score lookback window, the INDEX-FAMILY +
+   *  MARKET-STRUCTURE caveats, and the morning-screen scope statement. */
+  methodology_disclosure: string;
+};
+
+export type ScanInflationSwapsExtremesOutput = {
+  /** Human-readable one-line summary (e.g. "Scanned 21 ZCIS stems (21
+   *  scoreable). Stems with |z| >= 1.5: 7. Showing top 5..."). */
+  scan_summary: string;
+  results: ScanInflationSwapsExtremesResultRow[];
+  /** Response-level methodology disclosure — full multi-line caveat
+   *  flowing through from compute() (NOT a hardcoded TS literal).
+   *  Surfaced on the extended view's methodology card. */
+  methodology_disclosure: string;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
