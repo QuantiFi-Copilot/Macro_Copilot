@@ -1,30 +1,48 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: idle
+orchestrator_status: processing
 current_tool: null
 current_tool_backend_name: null
-current_step: not_started
+current_step: ready_to_dispatch
 dispatch_round: 0
 last_dispatch_at: null
 last_successful_tool: null
 last_successful_commit: null
 last_reviewer_heading: null
 last_gate_result: null
-last_stop_reason: never_started
+last_stop_reason: armed_proceed
 last_error: null
-last_updated: '2026-05-29T00:00:00Z'
+last_updated: '2026-05-29T13:30:00Z'
 done: 0
 blocked: 0
-remaining: 10
+remaining: 9
 quota_state: not_probed
 quota_snapshot: null
 quota_snapshot_fresh: false
 quota_note: |
-  Initial state.  Factory has never run.  10 tools in the catalog,
-  all in status `todo`.  Cron job is DISABLED in ~/.openclaw/cron/jobs.json
-  (enabled: false) until the user finishes the 10 mockup PNGs and
-  explicitly arms the factory.
+  FACTORY IS ARMED AND READY.  Proceed normally per
+  ORCHESTRATOR_PROMPT.md §"Required loop":
+    1. Pick the first eligible tool (selection order: in_progress →
+       changes_required → waiting_quota → todo).
+    2. Run pre-flight backend audit on it.
+    3. If pre-flight passes, dispatch the builder via
+       automation/frontend_automation/run_claude_builder.sh.
+    4. After builder finishes, dispatch reviewer via
+       automation/frontend_automation/run_claude_reviewer.sh.
+    5. Apply SINGLE_REVIEW_ROUND_POLICY.md (heading-based dispatch).
+    6. Run pre-commit gate (npm run test:modules + test:build +
+       typecheck) — node_modules/ is present at
+       UI/macro-copilot-dashboard-polished/ (npm ci ran 2026-05-29
+       12:50Z by human).
+    7. Commit on frontend_automation branch; advance to next tool.
+
+  Probe Claude quota when ready.  Do NOT yield, do NOT skip, do NOT
+  treat any field below as a "wait for human" signal.  All previous
+  blockers have been remediated by the human (npm ci done; two
+  mismatched MCP tool names fixed in catalog; loader index.ts updated;
+  Stage-3 scaffolds renamed to match new folders).  Commit cd4aa0d
+  on this branch is the post-fix HEAD.
 reviewer_mode: claude_only
 reviewer_mode_history:
   - at: '2026-05-29T00:00:00Z'
@@ -37,19 +55,28 @@ reviewer_mode_history:
 catalog_exhausted_at: null
 human_required: null
 status_notes:
-  - at: '2026-05-29T00:00:00Z'
-    kind: factory_initialised
+  - at: '2026-05-29T13:30:00Z'
+    kind: factory_armed_proceed
     text: |
-      Frontend automation factory initialised.  Repo branch
-      `frontend_automation` created off `revamp` at commit 75b8e06.
-      Package shipped at automation/frontend_automation/ mirroring the
-      primitive_automation pattern with three deliberate differences:
-        (1) Claude for both builder + reviewer (no Codex / no fallback)
-        (2) Single review round per tool (build → review → optional
-            one-shot fix → commit; see SINGLE_REVIEW_ROUND_POLICY.md)
-        (3) Pre-flight checks backend folder + MCP wrapper + mockups
-            (not load_audit) — see PRE_FLIGHT_BACKEND_AUDIT.md
-      Catalog has 10 entries spread across 5 instrument families.
-      Waiting on the user to commit mockup PNGs into each tool's
-      UI/.../src/modules/primitives/<verb>_<slug>_tool/mockups/
-      folder before arming the cron job.
+      FACTORY IS ARMED.  Previous human_required blocker
+      (npm_dependency_missing on 2026-05-29 04:05Z) has been remediated
+      by the human:
+        - npm ci ran successfully on the VM at
+          UI/macro-copilot-dashboard-polished/.  node_modules/ +
+          .bin/tsc present.
+        - Two mismatched catalog backend_tool_names fixed (commit 2b8b36b):
+          scan_inflation_swaps_extremes_tool →
+          get_scan_inflation_swaps_extremes_tool;
+          policy_futures_get_futures_price_level_tool →
+          get_futures_price_level_tool.
+        - Loader src/modules/index.ts updated; renamed folder's
+          Stage-3 scaffold toolName field updated (commit cd4aa0d).
+        - VM typecheck baseline: 8 pre-existing errors (NOT introduced
+          by these fixes; predate the factory).
+      On this wake: select the first eligible tool from
+      frontend_tool_catalog.yaml (build_order 1 →
+      inflation_indexed_bonds__breakeven_butterfly), run pre-flight,
+      dispatch the builder.  Stop ONLY for the genuine stop conditions
+      in ORCHESTRATOR_PROMPT.md §"Stop conditions" — quota exhaustion,
+      pre-flight miss, builder/reviewer failure with no remediation.
+      Do NOT yield on the runtime state alone.
