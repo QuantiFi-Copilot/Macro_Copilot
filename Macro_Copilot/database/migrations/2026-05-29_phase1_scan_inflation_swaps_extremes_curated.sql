@@ -35,7 +35,7 @@ SET
     desk_narrative = $narr$Morning sweep across the zero-coupon inflation swap universe — ranks every (curve_family, tenor) ZCIS pillar in USD_ZCIS / EUR_ZCIS / GBP_ZCIS (scope-narrowable via curve_families) by absolute 252-day rolling z-score of the quoted ZCIS rate LEVEL, and returns the top-N extremes. Each result row carries the latest cleaned ZCIS rate in percent, 1-day and ~1-month bps changes for snapshot context, the ranking z-score, an EXTREME_HIGH / EXTREME_LOW signal derived from the z's sign, plus per-row reference columns (maturity_date, underlying_index, vendor_ticker) so the desk knows which contract ranked extreme and which inflation index it references. The canonical desk use is the morning "what moved overnight, and what's stretched?" screen — a USD_ZCIS 5Y showing z = +2.3 says the 5Y CPI-U swap rate is two-plus standard deviations above its trailing-year mean, flagging it for closer attention. The intent is RANKING, not tactical signalling: a 2σ extreme is a question to investigate (via the matching inflation_swap_curve_spread to see curve-shape context, inflation_swap_forward to read forward inflation pricing, or cross_market_inflation_swap_spread / swap_breakeven_basis_simple to cross-check the bond-implied side), NOT a trade. Two load-bearing caveats every consumer must internalise: (1) the three curve families reference DIFFERENT inflation indices (CPI-U vs HICPxT vs RPI), so ranking z-scores across the universe mixes distributions with different basket weights / energy exposure / shelter conventions; (2) the markets differ in index-publication lag (USD/EUR 3M, GBP 2M), interpolation convention (USD Daily vs EUR/GBP Monthly), and dealer-quote liquidity, so an extreme reading on one market can reflect structural / liquidity moves as much as inflation-expectation divergence. Both caveats surface verbatim on the per-row methodology_disclosure AND on the response-level disclosure, so a downstream relay cannot strip them. Tunable display thresholds: top_n (default 5) and min_abs_z_score (default 1.5σ) — both YAML-defaulted, both LLM-overridable per query.$narr$,
 
     updated_at = NOW()
-WHERE tool_name = 'get_scan_inflation_swaps_extremes_tool';
+WHERE tool_name = 'scan_inflation_swaps_extremes_tool';
 
 -- ----------------------------------------------------------------------------
 -- Defensive INSERT fallback (Phase-0 seed not applied → row absent).
@@ -51,7 +51,7 @@ INSERT INTO macro_data.tool_metadata (
     desk_narrative
 )
 SELECT
-    'get_scan_inflation_swaps_extremes_tool',
+    'scan_inflation_swaps_extremes_tool',
     'inflation_swaps',
     'scanner',
     '{}'::jsonb,
@@ -61,7 +61,7 @@ SELECT
 WHERE NOT EXISTS (
     SELECT 1
     FROM macro_data.tool_metadata
-    WHERE tool_name = 'get_scan_inflation_swaps_extremes_tool'
+    WHERE tool_name = 'scan_inflation_swaps_extremes_tool'
 );
 
 -- ----------------------------------------------------------------------------

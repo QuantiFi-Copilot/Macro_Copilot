@@ -1,5 +1,5 @@
 // ============================================================================
-// src/modules/primitives/get_scan_inflation_swaps_extremes_tool/module.ts — Stage 3 scaffold.
+// src/modules/primitives/scan_inflation_swaps_extremes_tool/module.ts — Stage 3 scaffold.
 // ----------------------------------------------------------------------------
 // Minimum-viable module spec — declares only the runtime-status tier.
 // Stage 4 PRs add capability tiers (custom_build_surface, etc.) when the
@@ -10,7 +10,7 @@
 import type { PrimitiveModuleSpec } from '../../types';
 
 export const MODULE: PrimitiveModuleSpec = {
-  toolName: 'get_scan_inflation_swaps_extremes_tool',
+  toolName: 'scan_inflation_swaps_extremes_tool',
   tiers: ['generic_runnable'],
   displayName: 'Scan Inflation Swaps Extremes',
   category: 'scanners',

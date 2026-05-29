@@ -17,7 +17,7 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "types": []
+    "types": ["node"]
   },
   "include": ["src"]
 }

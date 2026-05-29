@@ -227,7 +227,7 @@ tools:
   - id: inflation_swaps__scan_inflation_swaps_extremes
     status: todo
     build_order: 6
-    backend_tool_name: get_scan_inflation_swaps_extremes_tool
+    backend_tool_name: scan_inflation_swaps_extremes_tool
     instrument_family: inflation_swaps
     sub_agent: inflation_swaps
     tool_slug: scan_inflation_swaps_extremes
@@ -245,14 +245,14 @@ tools:
     pre_flight_backend_audit:
       backend_folder: rates_agent/inflation_swaps/tools/scan_inflation_swaps_extremes/
       mcp_wrapper_in: rates_agent/inflation_swaps/mcp_server.py
-      mcp_tool_name: get_scan_inflation_swaps_extremes_tool
-      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='get_scan_inflation_swaps_extremes_tool'"
-      curated_migration_file: database/migrations/2026-05-29_phase1_get_scan_inflation_swaps_extremes_curated.sql
+      mcp_tool_name: scan_inflation_swaps_extremes_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='scan_inflation_swaps_extremes_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_scan_inflation_swaps_extremes_curated.sql
       mockups_required:
-        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_inflation_swaps_extremes_tool/mockups/Extended.png
-        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_inflation_swaps_extremes_tool/mockups/Compact.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/mockups/Compact.png
     reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
-    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_scan_inflation_swaps_extremes_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/scan_inflation_swaps_extremes_tool/
     required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
     design_guardrails:
       - "SCANNER SHAPE — compact view is a top-N ranked table (instrument + level + z-score), NOT a sparkline.  Mockup must reflect this."
@@ -333,7 +333,7 @@ tools:
   - id: policy_futures__futures_price_level
     status: todo
     build_order: 9
-    backend_tool_name: get_futures_price_level_tool
+    backend_tool_name: policy_futures_get_futures_price_level_tool
     instrument_family: policy_futures
     sub_agent: policy_futures
     tool_slug: futures_price_level
@@ -351,14 +351,14 @@ tools:
     pre_flight_backend_audit:
       backend_folder: rates_agent/policy_futures/tools/futures_price_level/
       mcp_wrapper_in: rates_agent/policy_futures/mcp_server.py
-      mcp_tool_name: get_futures_price_level_tool
-      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='get_futures_price_level_tool'"
-      curated_migration_file: database/migrations/2026-05-29_phase1_get_futures_price_level_curated.sql
+      mcp_tool_name: policy_futures_get_futures_price_level_tool
+      tool_metadata_check: "SELECT 1 FROM macro_data.tool_metadata WHERE tool_name='policy_futures_get_futures_price_level_tool'"
+      curated_migration_file: database/migrations/2026-05-29_phase1_policy_futures_get_futures_price_level_curated.sql
       mockups_required:
-        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/mockups/Extended.png
-        - UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/mockups/Compact.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/mockups/Extended.png
+        - UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/mockups/Compact.png
     reference_frontend_module: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_real_yield_level_tool/
-    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/get_futures_price_level_tool/
+    target_frontend_folder: UI/macro-copilot-dashboard-polished/src/modules/primitives/policy_futures_get_futures_price_level_tool/
     required_tiers: [generic_runnable, custom_build_surface, monitor_surface]
     design_guardrails:
       - "Mirror get_real_yield_level_tool's snapshot shape (level + change + z-score + range strip)"
