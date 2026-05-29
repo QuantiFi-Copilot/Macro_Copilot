@@ -86,13 +86,12 @@ import { MODULE as policy_futures_get_futures_butterfly_simple_tool } from './pr
 import { MODULE as policy_futures_get_futures_calendar_spread_tool } from './primitives/policy_futures_get_futures_calendar_spread_tool/module';
 import { MODULE as policy_futures_get_futures_cross_market_spread_tool } from './primitives/policy_futures_get_futures_cross_market_spread_tool/module';
 import { MODULE as policy_futures_get_futures_pack_average_simple_tool } from './primitives/policy_futures_get_futures_pack_average_simple_tool/module';
-import { MODULE as policy_futures_get_futures_price_level_tool } from './primitives/policy_futures_get_futures_price_level_tool/module';
 import { MODULE as policy_futures_get_futures_strip_snapshot_tool } from './primitives/policy_futures_get_futures_strip_snapshot_tool/module';
 import { MODULE as policy_futures_get_volume_open_interest_snapshot_tool } from './primitives/policy_futures_get_volume_open_interest_snapshot_tool/module';
 import { MODULE as scan_bond_futures_extremes_tool } from './primitives/scan_bond_futures_extremes_tool/module';
 import { MODULE as scan_extremes_tool } from './primitives/scan_extremes_tool/module';
 import { MODULE as scan_inflation_linkers_extremes_tool } from './primitives/scan_inflation_linkers_extremes_tool/module';
-import { MODULE as scan_inflation_swaps_extremes_tool } from './primitives/scan_inflation_swaps_extremes_tool/module';
+import { MODULE as get_scan_inflation_swaps_extremes_tool } from './primitives/get_scan_inflation_swaps_extremes_tool/module';
 import { MODULE as scan_ois_extremes_tool } from './primitives/scan_ois_extremes_tool/module';
 
 // ----------------------------------------------------------------------------
@@ -159,13 +158,12 @@ export const ALL_PRIMITIVE_MODULES: ReadonlyArray<PrimitiveModuleSpec> = [
   policy_futures_get_futures_calendar_spread_tool,
   policy_futures_get_futures_cross_market_spread_tool,
   policy_futures_get_futures_pack_average_simple_tool,
-  policy_futures_get_futures_price_level_tool,
   policy_futures_get_futures_strip_snapshot_tool,
   policy_futures_get_volume_open_interest_snapshot_tool,
   scan_bond_futures_extremes_tool,
   scan_extremes_tool,
   scan_inflation_linkers_extremes_tool,
-  scan_inflation_swaps_extremes_tool,
+  get_scan_inflation_swaps_extremes_tool,
   scan_ois_extremes_tool,
 ];
 

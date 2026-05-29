@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // ============================================================================
-// src/modules/primitives/scan_inflation_swaps_extremes_tool/__tests__/module.spec.ts
+// src/modules/primitives/get_scan_inflation_swaps_extremes_tool/__tests__/module.spec.ts
 // ----------------------------------------------------------------------------
 // Stage 3 per-module round-trip — calls assertStandardModuleInvariants
 // from src/modules/__test-utils.ts.  Catches FM11 invariants 1-8 in
@@ -11,7 +11,7 @@
 import { assertStandardModuleInvariants } from '../../../__test-utils';
 import { MODULE } from '../module';
 
-const FOLDER = 'scan_inflation_swaps_extremes_tool';
+const FOLDER = 'get_scan_inflation_swaps_extremes_tool';
 
 interface NodeGlobal { process?: { cwd?: () => string } }
 
