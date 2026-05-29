@@ -100,6 +100,21 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
     RealYieldButterflyOutput,
     calculate_real_yield_butterfly,
 )
+# Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
+# primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
+# under the standalone-bridge contract — per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Surfaces the load-bearing index-family caveat (USD_ZCIS / EUR_ZCIS /
+# GBP_ZCIS reference different indices — NOT a clean expected-inflation
+# divergence) via the wire's per-leg metadata + ``index_family_caveat``.
+from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import (
+    CONFIG_PATH as CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+    CrossMarketInflationSwapSpreadInput,
+    CrossMarketInflationSwapSpreadOutput,
+    calculate_cross_market_inflation_swap_spread,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -689,6 +704,81 @@ def real_yield_butterfly_detail(
         result,
         f"Real-yield butterfly for {curve_family} "
         f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/cross-market-zcis  — same-tenor cross-market ZCIS spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# cross_market_inflation_swap_spread primitive ships its OWN typed-detail
+# endpoint.  Two-curve, single-tenor primitive — two ZCIS curve families
+# (e.g. USD_ZCIS, EUR_ZCIS, GBP_ZCIS) at a shared pillar (e.g. 5Y).
+# Schema layer rejects ``leg_a_curve_family == leg_b_curve_family`` (same-
+# curve, two-tenor spreads belong to ``inflation_swap_curve_spread``).
+# The same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  Rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof; only ``lookback_days`` + ``field_name`` are exposed.
+# ============================================================================
+@router.get(
+    "/detail/cross-market-zcis",
+    response_model=CrossMarketInflationSwapSpreadOutput,
+    summary="Cross-Market ZCIS Spread Detail (standalone bridge)",
+)
+def cross_market_zcis_detail(
+    engine: Engine = Depends(get_engine),
+    leg_a_curve_family: str = Query(..., description="Left (numerator) ZCIS curve family — USD_ZCIS / EUR_ZCIS / GBP_ZCIS"),
+    leg_b_curve_family: str = Query(..., description="Right (denominator) ZCIS curve family.  Must differ from leg_a_curve_family"),
+    tenor: str = Query(..., description="Single tenor pillar shared by both legs (e.g. '5Y', '10Y')"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic threaded into BOTH endpoint ZCIS "
+            "level series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The cross-market ZCIS spread primitive intentionally does NOT expose
+    the z-score conventions at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  This
+    mirrors the sibling breakeven-butterfly / real-yield-butterfly bridges.
+    """
+    try:
+        params = CrossMarketInflationSwapSpreadInput(
+            leg_a_curve_family=leg_a_curve_family,
+            leg_b_curve_family=leg_b_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        cmzcis_config = load_tool_config(CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH)
+        result = calculate_cross_market_inflation_swap_spread(
+            engine=engine, params=params, config=cmzcis_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cross-market-zcis: tool failed for %s - %s %s",
+            leg_a_curve_family, leg_b_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Cross-market ZCIS spread for {leg_a_curve_family} - "
+        f"{leg_b_curve_family} {tenor}",
     )
     return result
 

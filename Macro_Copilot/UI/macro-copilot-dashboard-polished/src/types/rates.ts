@@ -449,6 +449,86 @@ export type RealYieldButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/cross-market-zcis ---
+// Standalone-bridge type for the same-tenor cross-market zero-coupon inflation
+// swap (ZCIS) spread primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  Two
+// distinct ZCIS curve families at a shared pillar.  The two legs reference
+// DIFFERENT inflation indices (US CPI-U / Eurozone HICP-xT / UK RPI), so the
+// spread captures BOTH inflation-expectation differentials AND structural
+// index-family differences — NOT a clean expected-inflation divergence.
+// Per-leg metadata (inflation_index_family / index_lag / interpolation /
+// underlying_index) is surfaced on current_metrics so the desk reader can
+// decompose the spread without a second tool call.  Spread reported in BOTH
+// percent (the natural unit) and bps (desk display).  Sign convention:
+// spread = leg_a - leg_b (left minus right).
+
+export type CrossMarketInflationSwapSpreadCurrentMetrics = {
+  as_of_date: string;
+  leg_a_curve_family: string;
+  leg_b_curve_family: string;
+  tenor: string;
+  tenor_years: number;
+  /** Human-readable label, e.g. "USD_ZCIS-EUR_ZCIS 5Y". */
+  spread_label: string;
+  /** Current cross-market ZCIS spread in PERCENT (leg_a_pct - leg_b_pct). */
+  spread_pct: number;
+  /** Current cross-market ZCIS spread in basis points (spread_pct * 100). */
+  spread_bps: number;
+  change_1d_bps: number | null;
+  change_1w_bps: number | null;
+  change_1m_bps: number | null;
+  /** Rolling 252-trading-day z-score of the spread (in bps). */
+  z_score_252d: number | null;
+  high_252d_bps: number | null;
+  low_252d_bps: number | null;
+  percentile_252d: number | null;
+  /** Latest per-leg ZCIS rates in percent — auditable decomposition. */
+  leg_a_pct: number | null;
+  leg_b_pct: number | null;
+  observation_count: number;
+  /** Per-leg index-family metadata — the load-bearing index-family caveat. */
+  leg_a_inflation_index_family: string;
+  leg_b_inflation_index_family: string;
+  /** Derived top-level summary: true iff both legs share the same family. */
+  index_families_match: boolean;
+  /** Wire-honesty caveat naming both index families verbatim; null when
+   *  index_families_match is true (rare in V1 — every cross-market pair
+   *  drawn from USD_ZCIS / EUR_ZCIS / GBP_ZCIS has distinct families). */
+  index_family_caveat: string | null;
+  leg_a_index_lag: string;
+  leg_b_index_lag: string;
+  leg_a_interpolation: string;
+  leg_b_interpolation: string;
+  leg_a_underlying_index: string | null;
+  leg_b_underlying_index: string | null;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does —
+   *  carries the spread formula, alignment discipline, the load-bearing
+   *  index-family caveat, AND the sign convention so downstream operators
+   *  and the LLM cannot misread the output. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (spread + each leg in one row). */
+export type CrossMarketInflationSwapSpreadTimeSeriesRow = {
+  date: string;
+  spread_pct: number;
+  spread_bps: number;
+  leg_a_pct: number;
+  leg_b_pct: number;
+};
+
+export type CrossMarketInflationSwapSpreadOutput = {
+  current_metrics: CrossMarketInflationSwapSpreadCurrentMetrics;
+  /** Bespoke wire-frozen shape — spread (pct + bps) + each leg per row. */
+  time_series: CrossMarketInflationSwapSpreadTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.BPS series of the cross-market ZCIS spread.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_spread: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS
