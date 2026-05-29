@@ -88,6 +88,18 @@ from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
     BreakevenButterflyOutput,
     calculate_breakeven_butterfly,
 )
+# Standalone-bridge endpoint for the same-country linker real-yield
+# butterfly primitive (3-point curvature on a SINGLE linker curve — no
+# nominal pair).  Per ``docs_revamped/03_standards/methodology_exposure.md
+# §5`` every new tool ships its OWN typed-detail endpoint consumed by
+# both the extended and compact Build views (rendering_density dual-view)
+# + the Monitor tile.
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
+    CONFIG_PATH as REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+    RealYieldButterflyInput,
+    RealYieldButterflyOutput,
+    calculate_real_yield_butterfly,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -602,6 +614,81 @@ def breakeven_butterfly_detail(
         result,
         f"Breakeven butterfly for {nominal_curve_family} vs "
         f"{linker_curve_family} {short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/real-yield-butterfly  — same-country linker real-yield butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# real_yield_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve primitive — one linker ``curve_family`` + three strictly-
+# ordered tenors; no nominal counterparty (distinct from breakeven-butterfly).
+# The same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  The rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof.
+# ============================================================================
+@router.get(
+    "/detail/real-yield-butterfly",
+    response_model=RealYieldButterflyOutput,
+    summary="Linker Real-Yield Butterfly Detail (standalone bridge)",
+)
+def real_yield_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '5Y' for 5s10s30s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '10Y' for 5s10s30s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '30Y' for 5s10s30s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint real-yield "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_field_name`` convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The real-yield-butterfly primitive intentionally does NOT expose the
+    Phase-1 z-score overrides at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  This
+    mirrors the sibling breakeven-butterfly bridge.
+    """
+    try:
+        params = RealYieldButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        ryb_config = load_tool_config(REAL_YIELD_BUTTERFLY_CONFIG_PATH)
+        result = calculate_real_yield_butterfly(
+            engine=engine, params=params, config=ryb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/real-yield-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Real-yield butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
     )
     return result
 

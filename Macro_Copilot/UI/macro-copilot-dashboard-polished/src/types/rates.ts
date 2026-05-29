@@ -369,6 +369,86 @@ export type BreakevenButterflyOutput = {
   time_series_zscore: TimeSeries;
 };
 
+// --- /detail/real-yield-butterfly ---
+// Standalone-bridge type for the same-country linker real-yield butterfly
+// (3-point curvature on a SINGLE linker curve, e.g. USD_TIPS 5s10s30s
+// real-yield butterfly).  Own type — the object is the CURVATURE of the
+// REAL-YIELD curve.  Distinct from a real-yield curve spread (2-point
+// difference) and from a breakeven butterfly (3-point curvature of bond-
+// implied breakevens carrying inflation compensation).  Snapshot units:
+// PERCENT (same units as the underlying real yields); period changes
+// and the 252d high/low are in BPS per desk convention; daily changes
+// of a percent-units series are reported in bps.
+//
+// Single-curve primitive: a single ``curve_family`` (linker) + three
+// strictly-ordered tenors.  No nominal counterparty in the input shape.
+
+export type RealYieldButterflyCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  /** Human-readable label, e.g. "USD_TIPS 5s10s30s real-yield". */
+  butterfly_label: string;
+  /** Current real-yield butterfly in PERCENT (belly − 0.5×(short + long)).
+   *  Curvature of the REAL-YIELD curve.  Sign convention: POSITIVE = belly
+   *  CHEAP versus the half-weighted wings; NEGATIVE = belly RICH.  Display
+   *  layer multiplies by 100 for the bps presentation per desk convention. */
+  current_butterfly_pct: number | null;
+  /** Daily / weekly / monthly change of the percent-units butterfly,
+   *  reported in BPS per desk convention. */
+  daily_change_bps: number | null;
+  weekly_change_bps: number | null;
+  monthly_change_bps: number | null;
+  /** Rolling 252-trading-day z-score of the butterfly (percent) by
+   *  default; the z-score conventions are YAML-locked on this primitive
+   *  (no input-layer overrides). */
+  current_z_score: number | null;
+  rolling_window_days: number;
+  high_252d_pct: number | null;
+  low_252d_pct: number | null;
+  percentile_252d: number | null;
+  /** Component wing spreads (decomposition, PERCENT). */
+  wing_short_pct: number | null;
+  wing_long_pct: number | null;
+  /** Three endpoint real yields used to form the butterfly (PERCENT). */
+  short_real_yield_pct: number | null;
+  belly_real_yield_pct: number | null;
+  long_real_yield_pct: number | null;
+  short_years: number;
+  belly_years: number;
+  long_years: number;
+  observation_count: number;
+  /** Resolved from instrument_master — surfaced so the desk can confirm
+   *  the linker identity without a second tool call. */
+  country: string;
+  currency: string;
+  /** Wire-honesty disclosure threaded from config.yaml:methodology.what_it_does —
+   *  carries the explicit butterfly formula AND the curvature-of-real-yields
+   *  framing so downstream operators cannot misread the sign convention. */
+  methodology_label: string;
+};
+
+/** Bespoke per-row shape (butterfly % + z-score in one row). */
+export type RealYieldButterflyTimeSeriesRow = {
+  date: string;
+  butterfly_pct: number;
+  z_score: number | null;
+};
+
+export type RealYieldButterflyOutput = {
+  current_metrics: RealYieldButterflyCurrentMetrics;
+  /** Bespoke wire-frozen shape — butterfly (percent) + z-score per row. */
+  time_series: RealYieldButterflyTimeSeriesRow[];
+  /** Canonical TimeSeriesUnits.PERCENT series of the butterfly.  Required —
+   *  mirrors the Pydantic Output where the field is non-optional. */
+  time_series_butterfly: TimeSeries;
+  /** Canonical TimeSeriesUnits.Z_SCORE series of the rolling z-score.
+   *  Required — mirrors the Pydantic Output where the field is non-optional. */
+  time_series_zscore: TimeSeries;
+};
+
 // --- /detail/real_yield_curve_spread ---
 // Standalone-bridge type for the same-country linker real-yield curve-spread
 // primitive.  Own type — the object is the term structure of REAL YIELDS

@@ -17,6 +17,7 @@ import type {
   RealYieldLevelOutput,
   BreakevenInflationSimpleOutput,
   BreakevenButterflyOutput,
+  RealYieldButterflyOutput,
   RealYieldCurveSpreadOutput,
 } from '@/types/rates';
 
@@ -181,6 +182,32 @@ export function fetchDetailBreakevenButterfly(
 ): Promise<BreakevenButterflyOutput> {
   return fetchJSON(
     `${RATES_PREFIX}/detail/breakeven-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/real-yield-butterfly  — same-country linker real-yield butterfly
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE linker curve (no nominal pair — distinct
+// from breakeven-butterfly).  Own typed helper per the standalone-bridge
+// contract; consumed by BOTH Build views and the Monitor tile.  The
+// rolling-z-score conventions are YAML-locked on this primitive (no
+// input-layer overrides); field_name remains overridable.
+
+export type RealYieldButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailRealYieldButterfly(
+  params: RealYieldButterflyDetailParams,
+): Promise<RealYieldButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/real-yield-butterfly${buildQuery(params)}`,
   );
 }
 
