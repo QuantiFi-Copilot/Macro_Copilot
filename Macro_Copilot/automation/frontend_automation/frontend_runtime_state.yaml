@@ -8,7 +8,7 @@ current_step: ready_to_dispatch
 dispatch_round: 0
 last_dispatch_at: '2026-05-29T21:23:00Z'
 last_successful_tool: ois__calculate_ois_butterfly
-last_successful_commit: PENDING_COMMIT
+last_successful_commit: 8dfaad6
 last_reviewer_heading: APPROVED
 last_gate_result: pass
 last_stop_reason: tool_7_committed_advance

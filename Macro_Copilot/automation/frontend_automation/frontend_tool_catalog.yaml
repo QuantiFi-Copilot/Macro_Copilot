@@ -352,7 +352,7 @@ tools:
       - "Same dual-view + standalone-bridge contract"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/ois-butterfly"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
-    commit_sha: PENDING_COMMIT
+    commit_sha: 8dfaad6
 
   - id: ois__curve_spread
     status: todo
