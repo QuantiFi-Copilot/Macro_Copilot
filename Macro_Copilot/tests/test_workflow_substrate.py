@@ -492,8 +492,10 @@ class TestValidate:
             validate_workflow(wf)
 
     def test_scalar_accepting_slot_may_be_unbound(self):
-        """``series_arithmetic.right`` is in ``accepts_scalar_input``
-        — leaving it unbound is legal (unary diff/pct_change)."""
+        """``series_arithmetic.right`` is declared with
+        ``SlotDescriptor(..., accepts_scalar=True)`` (the per-slot
+        replacement for the prior ``OperatorSpec.accepts_scalar_input``
+        tuple) — leaving it unbound is legal (unary diff/pct_change)."""
         wf = Workflow(
             workflow_id="x",
             nodes=[
@@ -1019,11 +1021,12 @@ from shared.workflow import LiteralBinding
 
 class TestArityValidator_SeriesArithmetic:
     """Codex P2 follow-up #1: per-operator arity hook.  The prior
-    blanket ``accepts_scalar_input`` skip allowed binary ops to
-    validate without a ``right`` operand.  The new
-    ``arity_validator`` on series_arithmetic's OperatorSpec fixes
-    that — binary ops require ``right`` (via edge OR literal),
-    unary ops forbid it."""
+    blanket skip on the operator-level ``accepts_scalar_input`` tuple
+    (now superseded by the per-slot ``SlotDescriptor.accepts_scalar``
+    flag) allowed binary ops to validate without a ``right`` operand.
+    The ``arity_validator`` declared on series_arithmetic's
+    OperatorSpec fixes that — binary ops require ``right`` (via edge
+    OR literal), unary ops forbid it."""
 
     def _wf_with_op(self, op: str, *, bind_right: bool, right_via: str = "edge"):
         """Build a workflow with series_arithmetic at op=op.

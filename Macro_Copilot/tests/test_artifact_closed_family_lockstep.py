@@ -25,13 +25,13 @@ Derived sites asserted equal to ``set(ARTIFACT_TYPE_NAMES)`` (ART2):
   4. ``state.artifact_store._ARTIFACT_CLASSES``       — store codec (name, class) map
   5. ``state.artifact_store.Artifact``                — store put/get union
 
-The operator-side direction (every registry ``output_type`` / ``input_slots``
-type is a family member) is owned by OPR16 —
+The operator-side direction (every registry ``output.artifact_type`` /
+``input_slots[*].artifact_type`` is a closed-family member) is owned by OPR16 —
 ``tests/test_operator_registry_consistency.py`` check (d) — and is not
 duplicated here.  Note that OPR16 alone does *not* catch the drift this file
-guards: ``construct_trades`` declares ``output_type='TradeSet'`` which *is* a
-member of ``ARTIFACT_TYPE_NAMES``, so OPR16 stays green while a derived site
-silently omits ``TradeSet``.  The derived-site equality below is what bites.
+guards: historically ``construct_trades`` declared output ``"TradeSet"`` which
+*was* in ``ARTIFACT_TYPE_NAMES``, so OPR16 stayed green while a derived site
+silently omitted ``TradeSet``.  The derived-site equality below is what bites.
 """
 
 from __future__ import annotations
