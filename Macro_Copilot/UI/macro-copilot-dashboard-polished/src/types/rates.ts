@@ -1031,3 +1031,72 @@ export type RegimeOutput = {
   current_metrics: RegimeCurrentMetrics;
 };
 
+// --- /detail/policy-futures-price ---
+// Standalone-bridge type for the policy_futures strip-position price-level
+// primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots keyed by
+// curve_family + strip_position).  Own type — mirrors the bespoke
+// Pydantic schema (FuturesPriceLevelOutput) byte-for-byte.  Two unit
+// spaces side-by-side per row: raw_price (contract native quote space,
+// e.g. 100 − rate for SFR / ER / SFI) AND implied_rate_pct (desk-
+// recognised PERCENT).  Z-score lives on the IMPLIED-RATE axis because
+// inverse-priced raw prices would flip the sign of every extreme reading.
+
+export type PolicyFuturesPriceTimeSeriesRow = {
+  date: string;
+  raw_price: number;
+  implied_rate_pct: number;
+};
+
+export type PolicyFuturesPriceCurrentMetrics = {
+  as_of_date: string;
+  curve_family: string;
+  strip_position: number;
+  /** Strip-slot master stem (e.g. 'SFR1', 'ER2', 'SFI1') — stable across rolls. */
+  contract_code: string;
+  /** Current-front underlying that the strip slot resolves to as_of (e.g. 'SFRM26'). */
+  underlying_contract_code: string | null;
+  security_name: string | null;
+  expiry_date: string | null;
+  contract_size: number | null;
+  tick_size: number | null;
+  tick_value: number | null;
+  /** When true (SFR / ER / SFI in V1), implied_rate_pct = 100 − raw_price. */
+  inverse_priced: boolean;
+  /** 'RFR' (SOFR / SONIA) or 'IBOR' (Euribor) — methodology disclosure label. */
+  short_rate_regime: string;
+  /** Quote-unit label for raw_price ('100 - rate' for inverse; 'rate (%)' for direct). */
+  quote_units: string;
+  /** Latest cleaned price in the contract's native quote space (NOT a rate). */
+  raw_price: number;
+  /** Desk-recognised implied rate in PERCENT (PR14 wire-frozen name). */
+  implied_rate_pct: number;
+  /** 1-day raw-price change (raw subtraction; NOT *100). */
+  daily_change_raw_price: number | null;
+  /** 1-day implied-rate change in PERCENT POINTS (NOT bps; multiply by 100 for bps). */
+  daily_change_implied_rate_pct: number | null;
+  /** Rolling 252-trading-day z-score of the IMPLIED-RATE level. */
+  z_score_implied_rate: number | null;
+  high_252d_implied_rate_pct: number | null;
+  low_252d_implied_rate_pct: number | null;
+  mid_252d_implied_rate_pct: number | null;
+  high_252d_raw_price: number | null;
+  low_252d_raw_price: number | null;
+  mid_252d_raw_price: number | null;
+  /** Percentile rank of implied_rate_pct within the trailing 252d (0-100). */
+  percentile_252d: number | null;
+  observation_count: number;
+};
+
+export type PolicyFuturesPriceLevelOutput = {
+  current_metrics: PolicyFuturesPriceCurrentMetrics;
+  /** Bespoke wire shape — each row carries BOTH raw_price + implied_rate_pct
+   *  (TimeSeriesUnits has no PRICE member in V1; ADR-gated extension). */
+  time_series: PolicyFuturesPriceTimeSeriesRow[];
+  /** P5 / ADR 0013 caveat composed at runtime by compute() — includes the
+   *  rolling-generic-strip-read label, regime (RFR / IBOR), inverse-pricing
+   *  rule, implied-rate computation formula, and z-score lookback window.
+   *  Surfaced verbatim on the extended view's methodology card (NOT a
+   *  hardcoded TS literal). */
+  methodology_disclosure: string;
+};
+

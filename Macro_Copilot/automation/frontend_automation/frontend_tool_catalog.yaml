@@ -100,6 +100,7 @@ tools:
     reviewer_dispatched_at: "2026-05-30T00:55:00Z"
     reviewer_finished_at: "2026-05-30T01:01:00Z"
     committed_at: "2026-05-30T01:05:00Z"
+    commit_sha: 134b4b6
     previous_block_reason: |
       mockup_content_mismatch: the two PNGs at
       UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,Extended}.png
@@ -406,13 +407,20 @@ tools:
     commit_sha: a0364d4
 
   - id: policy_futures__futures_price_level
-    status: todo
+    status: done
     human_action_required: false
-    last_review_heading: null
-    last_gate_result: not_run
+    last_review_heading: APPROVED
+    last_gate_result: pass
     block_reason: null
     last_resolution_applied: option_c_shell_density_acceptance
     last_resolution_at: "2026-05-30T00:35:00Z"
+    dispatch_round: 2
+    active_step: committed
+    dispatched_at: "2026-05-30T01:08:00Z"
+    builder_finished_at: "2026-05-30T01:21:00Z"
+    reviewer_dispatched_at: "2026-05-30T01:23:00Z"
+    reviewer_finished_at: "2026-05-30T01:30:00Z"
+    committed_at: "2026-05-30T01:38:00Z"
     previous_block_reason: |
       reviewer_findings_structural_no_fix_attempt: Dispatch 2 reviewer
       (fresh-context Claude) emitted CHANGES REQUIRED with 3 findings on

@@ -25,6 +25,7 @@ import type {
   OisButterflyOutput,
   OisCurveSpreadOutput,
   ScanInflationSwapsExtremesOutput,
+  PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -449,6 +450,39 @@ export function fetchDetailButterfly(
   params: ButterflyDetailParams,
 ): Promise<ButterflyOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/butterfly${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-price  — policy_futures strip-position price level
+// ---------------------------------------------------------------------------
+// Standalone bridge for the policy_futures futures_price_level primitive
+// (SFR1 / SFR2 / ER1 / SFI1 / ... strip slots on SOFR_FUT / SONIA_FUT /
+// EUR_SHORT_RATE_FUT).  Keyed by ``(curve_family, strip_position)`` per
+// ADR 0013 — strip-position-keyed monitors.  Consumed by BOTH the
+// extended and compact Build views and the Monitor tile (single payload,
+// different rendering density per rendering_density.md §1.1).
+//
+// Per ADR 0013 V1 there are no LLM-facing override paths for conventions
+// (z_score_window_days / trailing_range_window_days etc. are YAML-locked);
+// only the structural ``(curve_family, strip_position)`` keys plus
+// ``lookback_days`` / ``as_of_date`` / ``field_name`` are exposed.
+
+export type PolicyFuturesPriceDetailParams = {
+  curve_family: string;
+  strip_position: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed
+   *  trade_date for the requested strip (post-fetch data-max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesPrice(
+  params: PolicyFuturesPriceDetailParams,
+): Promise<PolicyFuturesPriceLevelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-price${buildQuery(params)}`,
+  );
 }
 
 export type RegimeDetailParams = {

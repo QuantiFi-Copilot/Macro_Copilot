@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: processing
-current_tool: inflation_indexed_bonds__breakeven_curve_spread
-current_tool_backend_name: calculate_breakeven_curve_spread_tool
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
 current_step: committed
-dispatch_round: 2
-last_dispatch_at: '2026-05-30T00:55:00Z'
-last_successful_tool: inflation_indexed_bonds__breakeven_curve_spread
-last_successful_commit: pending
+dispatch_round: null
+last_dispatch_at: '2026-05-30T01:23:00Z'
+last_successful_tool: policy_futures__futures_price_level
+last_successful_commit: pending-backfill
 last_reviewer_heading: APPROVED
 last_gate_result: pass
-last_stop_reason: null
+last_stop_reason: catalog_exhausted
 last_error: null
-last_updated: "2026-05-30T01:05:00Z"
-done: 8
+last_updated: "2026-05-30T01:38:00Z"
+done: 9
 blocked: 0
-remaining: 1
+remaining: 0
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,9 +37,65 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: null
+catalog_exhausted_at: '2026-05-30T01:38:00Z'
 human_required: null
 status_notes:
+  - at: '2026-05-30T01:38:00Z'
+    kind: tool_shipped_catalog_exhausted
+    text: |
+      Cron-fired wake at 01:37 UTC (cron id 450aa21c-625d-4ad7-b3da-
+      ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md + frontend_tool_catalog.yaml +
+      frontend_runtime_state.yaml.  Branch check passed (on `frontend_automation`,
+      HEAD 134b4b6).  On entry the tree carried an in-flight dispatch for tool 9
+      (`policy_futures__futures_price_level`): builder finished @01:21, reviewer
+      dispatched @01:23 with the builder's diff sitting unstaged.  Reviewer log
+      finalized @01:30 (`/tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log`,
+      2362 bytes).  `parse_reviewer_log.py` returned
+      `{"ok": true, "heading": "APPROVED", "environment_failure": false,
+        "reviewer_quota_exhausted": false}` — Case C.  Reviewer confirmed all
+      three round-1 findings addressed (the two double-`·` identity bugs +
+      the structural shell-density mismatch resolved per Option (c) acceptance,
+      documented in THESIS `## Mockup conformance`).
+
+      Pre-commit gate (orchestrator-run, all from
+      UI/macro-copilot-dashboard-polished/):
+        npm run typecheck         clean
+        npm run test:modules      `policy_futures_get_futures_price_level_tool:
+                                    8 passed, 0 failed`; all 58 modules + registry pass
+        npm run test:build        all build-folder tests pass
+
+      Mirrors:
+        surface_contract.md §4.5 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status:    scaffolded      → dual-view-built
+          monitor_status:  deferred        → built (PolicyFuturesPriceLevel widget)
+          (monitor_elig was already `required`)
+        surface_contract.md §11 added v17 entry covering the ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v16, v15, v14, v13, etc.).
+
+      Commit on `frontend_automation` per the template; catalog tool 9 flipped
+      → `status: done`, `last_review_heading: APPROVED`, `last_gate_result: pass`,
+      `active_step: committed`.  Tool 2's already-uncommitted commit_sha backfill
+      (`commit_sha: 134b4b6` line for `inflation_indexed_bonds__breakeven_curve_spread`)
+      is bundled into the same work commit so the tree returns clean.
+
+      Counts on exit: done=9 / blocked=0 / remaining=0 — catalog fully shipped.
+      orchestrator_status flips → `catalog_exhausted`, last_stop_reason →
+      `catalog_exhausted`, catalog_exhausted_at → 01:38.
+      last_successful_tool → `policy_futures__futures_price_level`,
+      last_successful_commit → `pending-backfill` (a second tiny automation
+      commit will land the actual SHA after the work commit, mirroring the
+      tool 7 / tool 8 pattern at 1a41454 + 2a22a5e).
+
+      Next cron wake: the entry-point script
+      (BACKGROUND_EXECUTION_POLICY §8) should short-circuit on
+      `orchestrator_status: catalog_exhausted` and exit before invoking
+      this prompt.  If it fires anyway, the wake should be a clean no-op
+      (no eligible work under the selection order; no dispatches).
+
   - at: '2026-05-30T00:07:00Z'
     kind: cron_wake_noop_catalog_exhausted
     text: |

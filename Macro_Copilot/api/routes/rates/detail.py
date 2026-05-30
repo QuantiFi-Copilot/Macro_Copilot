@@ -186,6 +186,20 @@ from rates_agent.ois.tools.curve_spread import (
     OISCurveSpreadOutput,
     calculate_ois_curve_spread,
 )
+# Standalone-bridge endpoint for the policy_futures strip-position price level
+# primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots on
+# SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT).  Keyed by
+# ``(curve_family, strip_position)`` per ADR 0013.  Same standalone-bridge
+# contract as the other rates primitives: own typed-detail endpoint consumed
+# by both the extended and compact Build views (rendering_density dual-view)
+# + the Monitor tile.  Methodology disclosure flows verbatim from
+# compute()'s ``methodology_disclosure`` string (NOT a hardcoded TS literal).
+from rates_agent.policy_futures.tools.futures_price_level import (
+    CONFIG_PATH as POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    FuturesPriceLevelOutput,
+    calculate_futures_price_level,
+)
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
     ZscoreCustomInput,
@@ -1737,5 +1751,106 @@ def pca_yield_curve_detail(
         result,
         f"PCA for {curve_family} (n_components={n_components}, "
         f"{change_frequency}, lookback={lookback_days}d)",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-price  — policy_futures strip-position price level
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_price_level_tool`` primitive ships its OWN
+# typed-detail endpoint.  Keyed by ``(curve_family, strip_position)`` per
+# ADR 0013 (strip-position-keyed monitors).  Conventions are YAML-locked
+# in V1; only the structural keys plus ``lookback_days`` / ``as_of_date``
+# / ``field_name`` are exposed (mirrors the MCP wrapper's input surface).
+@router.get(
+    "/detail/policy-futures-price",
+    response_model=FuturesPriceLevelOutput,
+    summary="Policy Futures Strip-Position Price Level Detail (standalone bridge)",
+)
+def policy_futures_price_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR), 'SONIA_FUT' (UK RFR)."
+        ),
+    ),
+    strip_position: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position. 1 = front contract; whites = 1-4, "
+            "reds = 5-8 in the V1 universe."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed trade_date for "
+            "the requested strip (post-fetch data-max anchor).  A date "
+            "BEYOND the universe's last observed trade_date returns the "
+            "documented controlled-error envelope rather than silently "
+            "re-labelling an unbounded read."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_price_field`` convention from "
+            "futures_price_level/config.yaml (currently 'PX_LAST').  "
+            "Per config.yaml:default_price_field."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinels on ``field_name`` / ``as_of_date`` fall through to the
+    YAML default / data-max anchor via compute() — same shadowing fix
+    pattern as sovereign get_yield_levels / linker real_yield_level.
+    """
+    parsed_as_of: Optional[date] = None
+    if as_of_date and as_of_date.strip():
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid as_of_date {as_of_date!r}: {exc}",
+            )
+
+    try:
+        params = FuturesPriceLevelInput(
+            curve_family=curve_family,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=parsed_as_of,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pf_config = load_tool_config(POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH)
+        result = calculate_futures_price_level(
+            engine=engine, params=params, config=pf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-price: tool failed for %s strip=%d",
+            curve_family, strip_position,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures price level for {curve_family} strip={strip_position}",
     )
     return result
