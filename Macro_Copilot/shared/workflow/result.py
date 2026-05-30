@@ -34,6 +34,7 @@ from typing import Any, Dict, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shared.artifacts.trades import TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
@@ -44,11 +45,22 @@ from shared.artifacts.types import (
 )
 
 
-# Closed-family terminal artifact union — matches the artifact
-# family the operator layer can produce.  Adding a new artifact
-# wrapper requires extending this union AND the operator
-# registry's ``output_type`` enum.
-TerminalArtifact = Union[Series, SeriesSet, EventSet, Panel, WindowedPanel, ScalarMetric]
+# Closed-family terminal artifact union — a DERIVED site of the
+# canonical ``ARTIFACT_TYPE_NAMES`` (``shared/workflow/registry.py``);
+# it must enumerate exactly that family.  The lock-step test
+# ``tests/test_artifact_closed_family_lockstep.py`` asserts the two stay
+# in sync (ART2/ART6) — it is the gate that would have caught the v1
+# drift where this union omitted ``TradeSet`` though the registry's
+# ``construct_trades`` produced it (a workflow ending on that node then
+# failed ``WorkflowResult`` validation).
+#
+# ``TradeSet`` is a member while the trade trio still lives in the
+# operator family.  ADR 0016 step (6) relocates the trio to the
+# primitive layer; when ``TradeSet`` leaves the canonical enum it must
+# leave this union in the same PR (the lock-step test forces it).
+TerminalArtifact = Union[
+    Series, SeriesSet, EventSet, Panel, WindowedPanel, ScalarMetric, TradeSet,
+]
 
 
 class WorkflowResult(BaseModel):

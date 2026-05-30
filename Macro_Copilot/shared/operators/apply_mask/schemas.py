@@ -1,6 +1,7 @@
 """Pydantic parameter schema for apply_mask.
 
-Two consequential parameters:
+Two consequential parameters plus the two OPR11 structural-metadata
+controls (``require_matching_frequency`` / ``require_matching_missingness``):
 
   - ``index_policy``  ∈ {intersect, strict_match}
         intersect    : the operator computes the intersection of
@@ -26,6 +27,43 @@ Two consequential parameters:
                        when a downstream operator wants to preserve
                        the same date axis (e.g. for index-aligned
                        arithmetic with another series).
+
+OPR11 structural-metadata controls
+----------------------------------
+``apply_mask`` consumes TWO artifacts (a ``Series`` + an ``EventSet``),
+so OPR11 requires it to expose **both** ``require_matching_frequency``
+and ``require_matching_missingness``, strict-by-default, with the same
+naming/semantics as every other multi-artifact operator.  The two axes
+are **not symmetric** here, because of how the EventSet artifact is
+modelled:
+
+  - ``require_matching_frequency``  bool = True
+        REAL check.  An ``EventSet`` carries a ``frequency`` tag
+        (propagated from its source Series by ``threshold_events``),
+        so the operator can — and does — compare ``series.frequency``
+        against ``mask.frequency``.  In strict mode (default) a
+        mismatch raises ``ApplyMaskError`` (a mask detected on one
+        cadence applied to a differently-tagged target is the
+        canonical hazard this check exists to surface — the same
+        discipline ``event_windows`` enforces against its
+        EventSet + target pair).  Pass ``False`` to opt into
+        mixed-frequency masking explicitly; the choice is recorded
+        in lineage either way.
+
+  - ``require_matching_missingness``  bool = True
+        UNIFORMITY flag.  An ``EventSet`` is a *boolean mask*, not a
+        value series — it has no ``missingness_policy`` (a NaN-handling
+        regime is meaningless for a True/False indicator), so there is
+        no second missingness regime to compare against.  The flag is
+        exposed (strict-by-default) and recorded in lineage for OPR11
+        uniformity and forward-compatibility, but the comparison is
+        vacuous: the output Series inherits the input Series's
+        ``missingness_policy`` unchanged regardless of the flag's
+        value.  (Threading a missingness regime onto the EventSet was
+        considered and rejected — the mask-source and the subsampled
+        target are frequently *different* series with legitimately
+        different cleaning in the regime/event archetypes, so a strict
+        match would reject valid workflows.)
 """
 
 from __future__ import annotations
@@ -58,6 +96,30 @@ class ApplyMaskParams(BaseModel):
             "over time).  When True, the output keeps the full "
             "(intersected) date axis with mask=False cells set to "
             "NaN."
+        ),
+    )
+    require_matching_frequency: bool = Field(
+        default=True,
+        description=(
+            "OPR11 structural-metadata control (mirrors event_windows / "
+            "series_arithmetic / align_series).  When True (default), "
+            "refuse to mask a Series with an EventSet whose frequency "
+            "tag disagrees — the EventSet carries a real ``frequency`` "
+            "propagated from its source Series, so this is an enforced "
+            "check.  Pass False to opt into mixed-frequency masking "
+            "explicitly; the choice is recorded in lineage either way."
+        ),
+    )
+    require_matching_missingness: bool = Field(
+        default=True,
+        description=(
+            "OPR11 structural-metadata control, exposed for uniformity. "
+            "An EventSet is a boolean mask with no missingness regime, "
+            "so there is no second policy to compare against — the flag "
+            "is strict-by-default and recorded in lineage, but the check "
+            "is vacuous and the output inherits the input Series's "
+            "missingness_policy unchanged.  See the module docstring for "
+            "why the missingness axis is not modelled on the EventSet."
         ),
     )
 

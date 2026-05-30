@@ -110,6 +110,23 @@ ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
 )
 
 
+# Runtime class -> closed-enum name map.  A DERIVED companion to
+# ``ARTIFACT_TYPE_NAMES`` (identical membership, keyed by class for the
+# ``isinstance`` dispatch in ``artifact_type_name`` below).  Hoisted to
+# module scope so it is built once (not per call) AND importable, so the
+# lock-step test ``tests/test_artifact_closed_family_lockstep.py`` can
+# assert it stays in sync with the canonical enum (ART2/ART6).
+_ARTIFACT_TYPE_MAP: dict[type, str] = {
+    Series: "Series",
+    SeriesSet: "SeriesSet",
+    EventSet: "EventSet",
+    Panel: "Panel",
+    WindowedPanel: "WindowedPanel",
+    ScalarMetric: "ScalarMetric",
+    TradeSet: "TradeSet",
+}
+
+
 def artifact_type_name(artifact: Any) -> str:
     """Return the closed-enum artifact type name for a runtime
     artifact instance.  Used by the executor to label produced
@@ -121,16 +138,7 @@ def artifact_type_name(artifact: Any) -> str:
     dict) surfaces at execution time rather than silently
     propagating downstream.
     """
-    type_map = {
-        Series: "Series",
-        SeriesSet: "SeriesSet",
-        EventSet: "EventSet",
-        Panel: "Panel",
-        WindowedPanel: "WindowedPanel",
-        ScalarMetric: "ScalarMetric",
-        TradeSet: "TradeSet",
-    }
-    for cls, name in type_map.items():
+    for cls, name in _ARTIFACT_TYPE_MAP.items():
         if isinstance(artifact, cls):
             return name
     raise ValueError(

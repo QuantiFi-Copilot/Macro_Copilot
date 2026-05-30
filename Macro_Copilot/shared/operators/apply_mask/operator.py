@@ -94,7 +94,40 @@ def apply_mask(
         params = ApplyMaskParams(
             index_policy=config.default_value("index_policy"),
             preserve_full_index=config.default_value("preserve_full_index"),
+            require_matching_frequency=config.default_value(
+                "require_matching_frequency"
+            ),
+            require_matching_missingness=config.default_value(
+                "require_matching_missingness"
+            ),
         )
+
+    # ------------------------------------------------------------------
+    # Structural-metadata compatibility (OPR11)
+    # ------------------------------------------------------------------
+    # Frequency — REAL check.  The EventSet carries a ``frequency`` tag
+    # propagated from its source Series by ``threshold_events``, so a
+    # mismatch against the target Series is genuinely detectable.  This
+    # mirrors the discipline ``event_windows`` enforces against its
+    # EventSet + target pair: a mask detected on one cadence applied to
+    # a differently-tagged target is the canonical hazard.  Strict mode
+    # (default) raises; lenient mode accepts and records the choice in
+    # lineage.  Cases: both None → pass; equal → pass; differing
+    # values (incl. one None / other concrete partial tagging) → strict
+    # raise.
+    if params.require_matching_frequency and series.frequency != mask.frequency:
+        raise ApplyMaskError(
+            f"apply_mask: incompatible frequencies "
+            f"series={series.frequency!r} vs mask={mask.frequency!r}.  "
+            "Pass require_matching_frequency=False to opt into "
+            "mixed-frequency masking explicitly."
+        )
+    # Missingness — uniformity flag only.  An EventSet is a boolean
+    # mask with no ``missingness_policy``, so there is no second regime
+    # to compare against; ``require_matching_missingness`` is recorded
+    # in lineage (below) but the check is vacuous and the output
+    # inherits ``series.missingness_policy`` unchanged.  See the schema
+    # docstring for why the missingness axis is not modelled here.
 
     series_index = series.payload.index
     mask_index = mask.mask.index
@@ -169,6 +202,14 @@ def apply_mask(
         params={
             "index_policy": params.index_policy,
             "preserve_full_index": params.preserve_full_index,
+            # OPR11 structural-metadata controls, recorded for lineage
+            # honesty so a reviewer sees a relaxed flag where it was
+            # relaxed.  ``require_matching_missingness`` is a uniformity
+            # flag — vacuous for a boolean EventSet — but recorded for
+            # symmetry with the frequency control and the sibling
+            # multi-artifact operators (series_arithmetic / event_windows).
+            "require_matching_frequency": params.require_matching_frequency,
+            "require_matching_missingness": params.require_matching_missingness,
             # Pin the realized mask cardinality for diagnostic clarity
             # (a templater reading the lineage can confirm the mask
             # actually fired on a non-empty subset).

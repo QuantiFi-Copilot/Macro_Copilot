@@ -43,6 +43,39 @@ defaults:
       that mode.
     valid_values: [true, false]
 
+  require_matching_frequency:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      OPR11 structural-metadata control (mirrors event_windows /
+      series_arithmetic / align_series).  When true (default), the
+      Series and the EventSet must declare the same ``frequency`` tag
+      (or both be None).  The EventSet carries a real frequency
+      propagated from its source Series by ``threshold_events``, so
+      this is an ENFORCED check — masking a daily target with a mask
+      detected on a weekly cadence is exactly the hazard the
+      structural-metadata contract exists to catch.  Pass false to opt
+      into mixed-frequency masking explicitly; the choice is recorded
+      in lineage.
+    valid_values: [true, false]
+
+  require_matching_missingness:
+    value: true
+    source: operator_v1_default
+    rationale: >-
+      OPR11 structural-metadata control, exposed for uniformity so
+      apply_mask carries BOTH require_matching_* flags like every other
+      multi-artifact operator.  An EventSet is a boolean mask with no
+      missingness regime, so there is no second policy to compare
+      against — the flag is strict-by-default and recorded in lineage,
+      but the check is vacuous and the output inherits the input
+      Series's missingness policy unchanged.  Threading a missingness
+      regime onto the EventSet was rejected: the mask-source and the
+      subsampled target are frequently different series with
+      legitimately different cleaning, so a strict match would reject
+      valid regime/event workflows.
+    valid_values: [true, false]
+
 methodology:
   what_it_does: >-
     Given a typed ``Series`` and a typed ``EventSet`` (whose ``mask``
@@ -67,7 +100,12 @@ methodology:
                 with mask=False cells set to NaN.
 
     Units / frequency / missingness propagate 1:1 from the input
-    Series.
+    Series.  Before subsampling, the operator enforces the OPR11
+    structural-metadata algebra: ``require_matching_frequency`` (real
+    check — Series vs EventSet ``frequency`` tag) and
+    ``require_matching_missingness`` (uniformity flag — vacuous because
+    an EventSet carries no missingness regime).  Both flags default
+    strict and are recorded in the lineage step.
   planned_extensions:
     - "categorical-mask support (when a CategoricalMask artifact lands)"
     - "negation knob (apply_mask with rule=invert returning the complement)"

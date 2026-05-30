@@ -15,11 +15,17 @@ Covers the "split sample by mask" load-bearing primitive of the
      EventSet chain in auxiliary_lineages).
   9. Units / frequency / missingness propagate 1:1 from input Series.
  10. Registry entry registered with correct slot types.
+ 11. OPR11 structural-metadata algebra: require_matching_frequency is a
+     REAL check vs the EventSet's frequency tag (strict raises on
+     mismatch, lenient opt-out accepts); require_matching_missingness
+     is exposed + recorded but vacuous (an EventSet carries no
+     missingness regime).  Both flags recorded in the lineage step.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -69,6 +75,7 @@ def _make_series(
     n: int = 50,
     start: str = "2025-01-01",
     units: TimeSeriesUnits = TimeSeriesUnits.PERCENT,
+    frequency: Optional[str] = "B",
 ) -> Series:
     idx = pd.bdate_range(start, periods=n)
     payload = pd.Series(
@@ -78,7 +85,7 @@ def _make_series(
         series_key=series_key,
         payload=payload,
         units=units,
-        frequency="B",
+        frequency=frequency,
         missingness_policy=RawNoCleaning(),
         lineage=_primitive_lineage(series_key),
     )
@@ -115,6 +122,9 @@ class TestBundledConfig:
         cfg = load_operator_config(CONFIG_PATH)
         assert cfg.default_value("index_policy") == "intersect"
         assert cfg.default_value("preserve_full_index") is False
+        # OPR11 structural-metadata controls — strict by default.
+        assert cfg.default_value("require_matching_frequency") is True
+        assert cfg.default_value("require_matching_missingness") is True
 
 
 # ===========================================================================
@@ -297,6 +307,29 @@ class TestLineagePropagation:
         # survive into the post-apply lineage.
         assert "synthetic_primitive" in names
 
+    def test_lineage_records_opr11_flags(self):
+        """Both OPR11 structural-metadata flags are recorded on the
+        apply_mask step (lineage honesty — a reviewer sees the
+        strict/relaxed choice)."""
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=4.5)
+        out = apply_mask(s, mask)
+        head = out.lineage.steps[-1]
+        assert head.params["require_matching_frequency"] is True
+        assert head.params["require_matching_missingness"] is True
+
+    def test_lineage_records_relaxed_frequency_flag(self):
+        """A frequency opt-out is visible to a lineage walker."""
+        s = _make_series(n=50)
+        s_w = _make_series(series_key="weekly_src", n=50, frequency="W")
+        mask_w = _make_mask_via_threshold(s_w, threshold=4.5)
+        out = apply_mask(
+            s, mask_w,
+            params=ApplyMaskParams(require_matching_frequency=False),
+        )
+        head = out.lineage.steps[-1]
+        assert head.params["require_matching_frequency"] is False
+
 
 # ===========================================================================
 # 7. Metadata propagation
@@ -321,6 +354,82 @@ class TestMetadataPropagation:
         mask = _make_mask_via_threshold(s, threshold=4.5)
         out = apply_mask(s, mask)
         assert out.missingness_policy == s.missingness_policy
+
+    def test_missingness_flag_is_vacuous_output_inherits_series_policy(self):
+        """``require_matching_missingness`` is a uniformity flag: an
+        EventSet has no missingness regime, so the output inherits the
+        input Series's policy REGARDLESS of the flag's value (there is
+        no second policy to combine or refuse)."""
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=4.5)
+        for flag in (True, False):
+            out = apply_mask(
+                s, mask,
+                params=ApplyMaskParams(require_matching_missingness=flag),
+            )
+            assert out.missingness_policy == s.missingness_policy
+
+
+# ===========================================================================
+# 7b. Frequency compatibility (OPR11 — real check vs EventSet.frequency)
+# ===========================================================================
+
+
+class TestFrequencyCompatibility:
+    """``require_matching_frequency`` is an ENFORCED check: the EventSet
+    carries a real ``frequency`` tag (propagated from its source Series
+    by ``threshold_events``), so apply_mask compares it against the
+    target Series and refuses a mismatch in strict mode (default)."""
+
+    def test_matching_frequency_passes_strict_default(self):
+        # Mask built from the same series → identical "B" frequency tag.
+        s = _make_series(n=50)
+        mask = _make_mask_via_threshold(s, threshold=4.5)
+        assert s.frequency == mask.frequency == "B"
+        out = apply_mask(s, mask)  # strict default → no raise
+        assert isinstance(out, Series)
+
+    def test_both_none_frequency_passes_strict(self):
+        # Two untagged inputs agree (None == None) → strict pass.
+        s = _make_series(n=50, frequency=None)
+        mask = _make_mask_via_threshold(s, threshold=4.5)
+        assert s.frequency is None and mask.frequency is None
+        out = apply_mask(s, mask)
+        assert isinstance(out, Series)
+
+    def test_mismatched_frequency_raises_strict_default(self):
+        # Mask source shares the index but is tagged "W" → the EventSet
+        # inherits "W" while the target is "B".  Strict default refuses.
+        s = _make_series(n=50)
+        s_w = _make_series(series_key="weekly_src", n=50, frequency="W")
+        mask_w = _make_mask_via_threshold(s_w, threshold=4.5)
+        assert s.frequency == "B" and mask_w.frequency == "W"
+        with pytest.raises(ApplyMaskError, match="incompatible frequencies"):
+            apply_mask(s, mask_w)
+
+    def test_partial_tagging_one_none_raises_strict(self):
+        # One side tagged, the other None → strict refuses (the same
+        # partial-metadata discipline as event_windows / align_series).
+        s = _make_series(n=50)
+        s_none = _make_series(series_key="untagged", n=50, frequency=None)
+        mask_none = _make_mask_via_threshold(s_none, threshold=4.5)
+        assert s.frequency == "B" and mask_none.frequency is None
+        with pytest.raises(ApplyMaskError, match="incompatible frequencies"):
+            apply_mask(s, mask_none)
+
+    def test_mismatched_frequency_lenient_opt_out_accepts(self):
+        # require_matching_frequency=False opts into mixed-frequency
+        # masking; the output is the subsampled input, so its frequency
+        # stays the input Series's "B".
+        s = _make_series(n=50)
+        s_w = _make_series(series_key="weekly_src", n=50, frequency="W")
+        mask_w = _make_mask_via_threshold(s_w, threshold=4.5)
+        out = apply_mask(
+            s, mask_w,
+            params=ApplyMaskParams(require_matching_frequency=False),
+        )
+        assert isinstance(out, Series)
+        assert out.frequency == "B"
 
 
 # ===========================================================================
