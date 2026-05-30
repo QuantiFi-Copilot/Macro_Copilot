@@ -65,6 +65,13 @@ class ThresholdEventsParams(BaseModel):
     rolling_window: Optional[int] = Field(default=None, ge=2)
     min_periods: Optional[int] = Field(default=None, ge=1)
     look_ahead_safe: Optional[bool] = None
+    ddof: int = Field(
+        default=1, ge=0, le=1,
+        description=(
+            "Delta degrees of freedom for the rolling-zscore std (OPR7). "
+            "Default 1 = sample std; 0 = population std."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_basis_args(self) -> "ThresholdEventsParams":

@@ -294,7 +294,7 @@ def _build_threshold_series(
         ).mean()
         rolling_std = payload.rolling(
             window=window, min_periods=min_periods,
-        ).std(ddof=1)
+        ).std(ddof=params.ddof)
 
         if params.look_ahead_safe:
             # Lookahead-safe: stats at time t use only data ≤ t-1.
@@ -315,7 +315,7 @@ def _build_threshold_series(
             "rolling_window_used": window,
             "min_periods_used": min_periods,
             "lookahead_shift_applied": params.look_ahead_safe,
-            "ddof_used": 1,
+            "ddof_used": params.ddof,
         }
         return zscore.astype(float), basis_metadata
 

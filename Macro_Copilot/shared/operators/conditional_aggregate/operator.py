@@ -85,9 +85,8 @@ _CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 # don't have to reverse-engineer the encoding.
 _OFFSET_ANCHOR: pd.Timestamp = pd.Timestamp("1970-01-01")
 
-# Fixed degrees-of-freedom for std (sample std, Bessel's correction).
-# Configurable ddof is deferred per planned_extensions.
-_FIXED_DDOF: int = 1
+# ddof for std is now a caller-tunable param (OPR7) — params.ddof,
+# default 1 (sample std, Bessel's correction).
 
 
 class ConditionalAggregateError(ValueError):
@@ -205,7 +204,7 @@ def conditional_aggregate(
         elif aggregator == "median":
             values = np.nanmedian(payload, axis=0)
         elif aggregator == "std":
-            values = np.nanstd(payload, axis=0, ddof=_FIXED_DDOF)
+            values = np.nanstd(payload, axis=0, ddof=params.ddof)
         elif aggregator == "count":
             values = n_observations.astype(float)
         else:
@@ -215,7 +214,7 @@ def conditional_aggregate(
             )
 
         if dispersion_kind == "std":
-            dispersions = np.nanstd(payload, axis=0, ddof=_FIXED_DDOF)
+            dispersions = np.nanstd(payload, axis=0, ddof=params.ddof)
         elif dispersion_kind == "none":
             dispersions = None
         else:
@@ -256,7 +255,7 @@ def conditional_aggregate(
         "aggregator": aggregator,
         "dispersion": dispersion_kind,
         "min_n": params.min_n,
-        "ddof_used": _FIXED_DDOF,
+        "ddof_used": params.ddof,
         "n_events_in": int(panel.n_events),
         "window_length": int(panel.window_length),
         "input_units": panel.units.value,

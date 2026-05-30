@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import re
 
 import pytest
 
@@ -184,4 +185,35 @@ def test_v2_operator_conforms(name):
     assert cfg.operator.version == version, (
         f"{name}: config.operator.version={cfg.operator.version!r} != "
         f"module._OPERATOR_VERSION={version!r} (OPR12)"
+    )
+    # OPR12 — the version is strict semver (MAJOR.MINOR.PATCH).
+    assert re.fullmatch(r"\d+\.\d+\.\d+", cfg.operator.version), (
+        f"{name}: version {cfg.operator.version!r} is not MAJOR.MINOR.PATCH"
+    )
+
+
+# Operators that consume >=2 artifacts must expose BOTH OPR11
+# structural-metadata controls (uniform metadata algebra; rolling_regression's
+# frequency DEFAULT is deliberately lenient per ADR F2, but the FLAG must
+# still be present).  correlation is strict-always by design (no opt-out).
+_MULTI_ARTIFACT_OPS = {
+    "align_series",
+    "series_arithmetic",
+    "rolling_regression",
+    "apply_mask",
+    "event_windows",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_MULTI_ARTIFACT_OPS))
+def test_multi_artifact_ops_expose_both_metadata_flags(name):
+    """OPR11 — every multi-artifact operator exposes both
+    require_matching_frequency AND require_matching_missingness."""
+    spec = OPERATOR_REGISTRY[name]
+    fields = set(spec.params_class.model_fields)
+    assert "require_matching_frequency" in fields, (
+        f"{name}: missing require_matching_frequency param (OPR11)"
+    )
+    assert "require_matching_missingness" in fields, (
+        f"{name}: missing require_matching_missingness param (OPR11)"
     )

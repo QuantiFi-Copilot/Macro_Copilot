@@ -58,15 +58,13 @@ class SummarizeSeriesError(ValueError):
     failure (e.g. all-NaN input)."""
 
 
-def _compute_statistic(values: pd.Series, statistic: str) -> float:
+def _compute_statistic(values: pd.Series, statistic: str, ddof: int = 1) -> float:
     if statistic == "mean":
         return float(values.mean())
     if statistic == "median":
         return float(values.median())
     if statistic == "std":
-        # Sample std (ddof=1) — same convention as
-        # conditional_aggregate's std dispersion.
-        return float(values.std(ddof=1))
+        return float(values.std(ddof=ddof))
     if statistic == "sum":
         return float(values.sum())
     if statistic == "count":
@@ -76,11 +74,13 @@ def _compute_statistic(values: pd.Series, statistic: str) -> float:
     )
 
 
-def _compute_dispersion(values: pd.Series, dispersion: str) -> Optional[float]:
+def _compute_dispersion(
+    values: pd.Series, dispersion: str, ddof: int = 1,
+) -> Optional[float]:
     if dispersion == "none":
         return None
     if dispersion == "std":
-        return float(values.std(ddof=1))
+        return float(values.std(ddof=ddof))
     if dispersion == "mad":
         # Median absolute deviation about the median — pandas does not
         # ship a vectorised MAD anymore, so compute it explicitly.
@@ -146,7 +146,7 @@ def summarize_series(
             f"requires >=2 observations; got n={n_used}."
         )
 
-    central = _compute_statistic(cleaned, params.statistic)
+    central = _compute_statistic(cleaned, params.statistic, params.ddof)
     # OPR14(b) / ERR-3: refuse to emit a non-finite central value into the
     # payload (e.g. a sum that overflowed) with the operator's own typed
     # error, rather than letting the artifact layer reject it as a bare
@@ -168,7 +168,7 @@ def summarize_series(
         # default-path crash the audit flagged.
         dispersion_value: Optional[float] = None
     else:
-        dispersion_value = _compute_dispersion(cleaned, params.dispersion)
+        dispersion_value = _compute_dispersion(cleaned, params.dispersion, params.ddof)
 
     payload = pd.Series(
         [central],
@@ -183,6 +183,7 @@ def summarize_series(
         params=sanitize_params_for_lineage({
             "statistic": params.statistic,
             "dispersion": params.dispersion,
+            "ddof": params.ddof,
             "central_value": central,
             "dispersion_value": dispersion_value,
             "n_observations": n_used,

@@ -60,6 +60,14 @@ class ConditionalAggregateParams(BaseModel):
     aggregator: Optional[Aggregator] = None
     dispersion: Optional[DispersionKind] = None
     min_n: int = Field(default=5, ge=1)
+    ddof: int = Field(
+        default=1, ge=0, le=1,
+        description=(
+            "Delta degrees of freedom for the std aggregator/dispersion "
+            "(OPR7 — no longer a hidden constant).  Default 1 = sample "
+            "std (Bessel's correction); 0 = population std."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_count_dispersion_combo(self) -> "ConditionalAggregateParams":

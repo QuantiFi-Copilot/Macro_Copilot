@@ -51,6 +51,13 @@ class SummarizeSeriesParams(BaseModel):
             "for heavy-tailed distributions."
         ),
     )
+    ddof: int = Field(
+        default=1, ge=0, le=1,
+        description=(
+            "Delta degrees of freedom for the std statistic/dispersion "
+            "(OPR7).  Default 1 = sample std; 0 = population std."
+        ),
+    )
 
 
 __all__ = ["SummarizeSeriesParams"]

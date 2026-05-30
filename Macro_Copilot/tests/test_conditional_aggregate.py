@@ -235,13 +235,14 @@ class TestAggregatorMath:
         )
         np.testing.assert_array_equal(out.payload.values, [5.0, 5.0, 5.0])
 
-    def test_ddof_not_a_caller_param(self):
-        """Schema must reject ``ddof`` as input — it was deferred to
-        planned_extensions per the v5 plan."""
-        with pytest.raises(ValueError):
-            ConditionalAggregateParams(
-                aggregator="std", dispersion="none", min_n=1, ddof=0,  # type: ignore[call-arg]
-            )
+    def test_ddof_is_a_caller_param(self):
+        """ddof is now a caller-tunable param (OPR7) — default 1 (sample
+        std); ddof=0 (population std) is accepted."""
+        p = ConditionalAggregateParams(
+            aggregator="std", dispersion="none", min_n=1, ddof=0,
+        )
+        assert p.ddof == 0
+        assert ConditionalAggregateParams().ddof == 1  # default
 
 
 # ===========================================================================

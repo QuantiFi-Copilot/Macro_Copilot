@@ -101,6 +101,15 @@ class RollingRegressionParams(BaseModel):
             "Default False (see require_matching_frequency)."
         ),
     )
+    condition_number_warning_threshold: float = Field(
+        default=1e10,
+        gt=0,
+        description=(
+            "Condition-number ceiling passed to rolling_ols: a window "
+            "whose design matrix exceeds this is refused as near-singular "
+            "(OPR7 — no longer a hidden constant).  Default 1e10."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate(self) -> "RollingRegressionParams":

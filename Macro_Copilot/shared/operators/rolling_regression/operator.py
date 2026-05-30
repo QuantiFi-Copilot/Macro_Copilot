@@ -220,6 +220,7 @@ def rolling_regression(
         window=params.window,
         min_periods=params.min_periods,
         add_constant=params.add_constant,
+        condition_number_warning_threshold=params.condition_number_warning_threshold,
     )
 
     # ------------------------------------------------------------------
@@ -241,6 +242,7 @@ def rolling_regression(
         "lhs_basis": params.lhs_basis,
         "rhs_basis": params.rhs_basis,
         "add_constant": params.add_constant,
+        "condition_number_warning_threshold": params.condition_number_warning_threshold,
         # OPR11 / M5 — record the relaxation so a reviewer sees a relaxed
         # flag where it was relaxed (and so two calls with different
         # strictness aren't conflated).
