@@ -11,12 +11,12 @@ last_successful_tool: ois__curve_spread
 last_successful_commit: a0364d4
 last_reviewer_heading: CHANGES REQUIRED
 last_gate_result: not_run
-last_stop_reason: tool_9_design_call_applied_advance
+last_stop_reason: tools_2_and_9_unblocked_advance
 last_error: null
-last_updated: "2026-05-30T00:35:00Z"
+last_updated: "2026-05-30T00:48:00Z"
 done: 7
-blocked: 1
-remaining: 1
+blocked: 0
+remaining: 2
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -1691,3 +1691,22 @@ status_notes:
       must re-enable to dispatch tool 9, then optionally disable again
       after tool 9 settles to avoid post-exhaustion no-op commit spam
       until tool 2 mockups are authored.
+  - at: "2026-05-30T00:48:00Z"
+    kind: tool_2_mockups_remediated_unblocked
+    text: |
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) unblocked.
+      Human (sreeramandra) authored new mockup PNGs depicting the canonical
+      2-leg breakeven curve spread (US 2s10s, UST/USD_TIPS, 3 KPIs, single
+      identity line — shell-density compatible).  Old butterfly-duplicate
+      mockups (sha256 a47e9746 + adf8ad5d) replaced with new ones (sha256
+      f6f21f1c + 117558a3) in commit 0b1eb86 on frontend_automation.
+
+      Catalog tool 2 entry:
+        status: blocked -> todo
+        human_action_required: true -> false
+        block_reason: <multi-line> -> null  (preserved as previous_block_reason)
+        last_resolution_applied: mockups_remediated_user_authored_2leg_spread
+
+      Counters: done:7  blocked:1  remaining:1  ->  done:7  blocked:0  remaining:2
+      Both tool 2 and tool 9 are now eligible for dispatch on next wake.
+      Cron must be re-enabled to dispatch.

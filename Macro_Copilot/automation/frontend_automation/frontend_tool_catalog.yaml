@@ -85,11 +85,15 @@ tools:
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts — they are stub scaffolds with tiers=['generic_runnable'] only; the factory must replace them with the dual-view + standalone-bridge versions"
 
   - id: inflation_indexed_bonds__breakeven_curve_spread
-    status: blocked
-    human_action_required: true
+    status: todo
+    human_action_required: false
     last_review_heading: null
     last_gate_result: not_run
-    block_reason: |
+    block_reason: null
+    last_resolution_applied: mockups_remediated_user_authored_2leg_spread
+    last_resolution_at: "2026-05-30T00:48:00Z"
+    mockup_intake_commit: "0b1eb86"
+    previous_block_reason: |
       mockup_content_mismatch: the two PNGs at
       UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,Extended}.png
       are byte-identical (sha256 a47e9746… + adf8ad5…) to the
