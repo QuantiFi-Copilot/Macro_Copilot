@@ -35,29 +35,44 @@ from shared.config.operator_config import load_operator_config
 from shared.workflow.registry import ARTIFACT_TYPE_NAMES, OPERATOR_REGISTRY
 
 
-# Operators built to (or migrated to) the v2.0 contract.  The strict
-# conformance checks run over this set; it grows as legacy operators
-# are migrated.
+# Operators built to (or migrated to) the v2.0 contract (ADR 0016).
+# The full OPR16 conformance gate runs over this set; Step 3 grew it
+# from {correlation} to include the 8 migrated finance-blind operators.
 _V2_CONFORMANT = {
     "correlation",
-}
-
-# Operators that predate v2.0 and are scheduled for migration (ADR 0016
-# Step 3).  Listed so the classification test stays green while making
-# any NEW unclassified operator fail loudly.
-_LEGACY_PENDING_MIGRATION = {
     "align_series",
     "apply_mask",
     "conditional_aggregate",
-    "construct_trades",
-    "evaluate_trades",
     "event_windows",
     "rolling_regression",
     "select_from_series_set",
-    "series_arithmetic",
     "summarize_series",
-    "summarize_trades",
     "threshold_events",
+}
+
+# series_arithmetic is finance-blind and otherwise conformant, but its
+# public signature carries an extra ``op`` positional the executor
+# injects by name.  Resolving ``op`` solely from params + deleting the
+# executor's by-name special-case is the OPR15 / SlotDescriptor
+# registry-executor ABI step (ADR 0016 step 4) — a WHOLESALE change
+# across every operator's slot declaration.  Doing it for one operator
+# while the registry stays bare-string would re-introduce the
+# inconsistency Step 2 deliberately avoided, so series_arithmetic's
+# signature-level conformance lands with that ABI step.  It HAS received
+# the Step-3 local fixes (the *Error export, _check_config_identity
+# name+version).  Tracked here — NOT a gap.
+_PENDING_ABI = {
+    "series_arithmetic",
+}
+
+# The trade-lifecycle operators are finance-AWARE (P&L, financing,
+# day-count, Sharpe) and are slated for RELOCATION to a backtest
+# primitive set (ADR 0016 decision 1) — they are NOT migrated to
+# operator conformance; relocation is a separate workstream/ADR.
+_PENDING_TRADE_RELOCATION = {
+    "construct_trades",
+    "evaluate_trades",
+    "summarize_trades",
 }
 
 
@@ -71,21 +86,26 @@ def test_every_registry_operator_is_classified():
     """A new operator must be either v2-conformant or explicitly marked
     legacy-pending — never silently unclassified."""
     keys = set(OPERATOR_REGISTRY)
-    classified = _V2_CONFORMANT | _LEGACY_PENDING_MIGRATION
+    classified = _V2_CONFORMANT | _PENDING_ABI | _PENDING_TRADE_RELOCATION
     unclassified = keys - classified
     assert not unclassified, (
         f"OPERATOR_REGISTRY contains unclassified operators {sorted(unclassified)}. "
-        "Every new operator must conform to OPR1–OPR16 (add to _V2_CONFORMANT) "
-        "or be explicitly tracked for migration (_LEGACY_PENDING_MIGRATION, "
-        "ADR 0016)."
+        "Every new operator must conform to OPR1–OPR16 (add to _V2_CONFORMANT), "
+        "be tracked for the registry/executor ABI step (_PENDING_ABI), or be "
+        "tracked for relocation (_PENDING_TRADE_RELOCATION) — ADR 0016."
     )
 
 
 def test_conformant_set_and_registry_agree():
-    """Both classification sets only name real registry operators."""
+    """All classification buckets only name real registry operators, and
+    they are mutually disjoint (no operator double-classified)."""
     keys = set(OPERATOR_REGISTRY)
     assert _V2_CONFORMANT <= keys
-    assert _LEGACY_PENDING_MIGRATION <= keys
+    assert _PENDING_ABI <= keys
+    assert _PENDING_TRADE_RELOCATION <= keys
+    assert not (_V2_CONFORMANT & _PENDING_ABI)
+    assert not (_V2_CONFORMANT & _PENDING_TRADE_RELOCATION)
+    assert not (_PENDING_ABI & _PENDING_TRADE_RELOCATION)
 
 
 @pytest.mark.parametrize("name", sorted(OPERATOR_REGISTRY))

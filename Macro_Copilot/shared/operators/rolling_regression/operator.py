@@ -51,6 +51,7 @@ from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.rolling_regression.schemas import (
@@ -89,7 +90,7 @@ def _effective_unit(unit: TimeSeriesUnits, basis: str) -> TimeSeriesUnits:
 def rolling_regression(
     lhs: Series,
     rhs: Series,
-    params: RollingRegressionParams,
+    params: Optional[RollingRegressionParams] = None,
     config: Optional[OperatorConfig] = None,
 ) -> SeriesSet:
     """Run a rolling-OLS regression of ``lhs`` on ``rhs``.
@@ -100,15 +101,16 @@ def rolling_regression(
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
 
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"rolling_regression: 'config' must be an OperatorConfig "
-            f"instance; got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"rolling_regression: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
+
+    if params is None:
+        # rolling_regression has a required per-call field (``window``)
+        # with no sensible default — there is nothing to resolve from
+        # config, so refuse cleanly (OPR8 / OPR13) rather than fabricate.
+        raise RollingRegressionError(
+            "rolling_regression requires explicit params (at least "
+            "``window``); none were supplied."
         )
 
     # ------------------------------------------------------------------

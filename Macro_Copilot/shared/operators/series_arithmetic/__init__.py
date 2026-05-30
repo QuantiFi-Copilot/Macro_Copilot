@@ -16,7 +16,7 @@ Public surface (Phase 1A — minimum for Q1/Q3):
 
 from pathlib import Path
 
-from shared.operators.series_arithmetic.operator import series_arithmetic
+from shared.operators.series_arithmetic.operator import series_arithmetic, SeriesArithmeticError
 from shared.operators.series_arithmetic.schemas import SeriesArithmeticParams
 
 
@@ -25,6 +25,7 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 __all__ = [
     "series_arithmetic",
+    "SeriesArithmeticError",
     "SeriesArithmeticParams",
     "CONFIG_PATH",
 ]

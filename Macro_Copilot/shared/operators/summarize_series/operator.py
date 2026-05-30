@@ -32,11 +32,12 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from shared.artifacts.lineage import OperatorStep
+from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
 from shared.artifacts.types import Series
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.summarize_series.schemas import SummarizeSeriesParams
@@ -110,16 +111,8 @@ def summarize_series(
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
 
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"summarize_series: 'config' must be an OperatorConfig "
-            f"instance; got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"summarize_series: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
-        )
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
     if params is None:
         params = SummarizeSeriesParams(
@@ -150,10 +143,13 @@ def summarize_series(
         params.dispersion in ("std", "mad")
         and n_used < 2
     ):
-        # Dispersion undefined on n<2 — record NaN in lineage rather
-        # than raising (the central tendency is still valid for
-        # statistic=mean/median/sum/count).
-        dispersion_value: Optional[float] = math.nan
+        # Dispersion undefined on n<2 — record None in lineage rather
+        # than raising (None is JSON-canonical; the central tendency is
+        # still valid for statistic=mean/median/sum/count).  Per OPR10 a
+        # non-finite computed float must become None before it reaches
+        # the lineage hasher (which rejects NaN/Inf) — this was the
+        # default-path crash the audit flagged.
+        dispersion_value: Optional[float] = None
     else:
         dispersion_value = _compute_dispersion(cleaned, params.dispersion)
 
@@ -167,7 +163,7 @@ def summarize_series(
     step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
-        params={
+        params=sanitize_params_for_lineage({
             "statistic": params.statistic,
             "dispersion": params.dispersion,
             "central_value": central,
@@ -175,7 +171,7 @@ def summarize_series(
             "n_observations": n_used,
             "n_dropped": n_dropped,
             "sentinel_date": SUMMARY_SENTINEL_DATE.strftime("%Y-%m-%d"),
-        },
+        }),
         input_hashes=(series.lineage.head_hash,),
     )
 

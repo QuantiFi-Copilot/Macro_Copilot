@@ -43,6 +43,7 @@ from shared.artifacts.types import EventSet, Series
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.threshold_events.schemas import (
@@ -70,7 +71,7 @@ class ThresholdEventsError(ValueError):
 
 def threshold_events(
     series: Series,
-    params: ThresholdEventsParams,
+    params: Optional[ThresholdEventsParams] = None,
     config: Optional[OperatorConfig] = None,
 ) -> EventSet:
     """Convert ``series`` into an ``EventSet`` per ``params``.
@@ -114,15 +115,15 @@ def threshold_events(
     # ------------------------------------------------------------------
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"threshold_events: 'config' must be OperatorConfig; "
-            f"got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"threshold_events: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
+
+    if params is None:
+        # threshold_events has required per-call fields (``rule`` and
+        # ``threshold``) with no defaults — refuse cleanly (OPR8/OPR13).
+        raise ThresholdEventsError(
+            "threshold_events requires explicit params (``rule`` and "
+            "``threshold``); none were supplied."
         )
 
     # ------------------------------------------------------------------

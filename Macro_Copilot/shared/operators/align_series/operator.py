@@ -34,6 +34,7 @@ from shared.artifacts.types import Series, SeriesSet
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.align_series.schemas import AlignSeriesParams
@@ -107,17 +108,8 @@ def align_series(
             ),
         )
 
-    # Defensive: detect drift between config and operator schema.
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"align_series: 'config' must be an OperatorConfig instance; "
-            f"got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"align_series: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
-        )
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
     # ------------------------------------------------------------------
     # 2. Structural-metadata compatibility checks (per operator

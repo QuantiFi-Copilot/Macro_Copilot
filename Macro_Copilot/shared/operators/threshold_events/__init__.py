@@ -16,7 +16,7 @@ Public surface (Phase 1A — minimum for Q1 / regime detection):
 
 from pathlib import Path
 
-from shared.operators.threshold_events.operator import threshold_events
+from shared.operators.threshold_events.operator import threshold_events, ThresholdEventsError
 from shared.operators.threshold_events.schemas import ThresholdEventsParams
 
 
@@ -25,6 +25,7 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 __all__ = [
     "threshold_events",
+    "ThresholdEventsError",
     "ThresholdEventsParams",
     "CONFIG_PATH",
 ]

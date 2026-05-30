@@ -230,14 +230,17 @@ class TestRefusals:
             )
 
     def test_mean_on_single_observation_works(self):
-        """Central tendency is well-defined on n=1; only dispersion
-        becomes NaN."""
+        """Central tendency is well-defined on n=1; dispersion is
+        undefined and recorded as None (OPR10)."""
         s = _make_series(series_key="x", values=[5.0])
         out = summarize_series(s)
         assert out.payload.iloc[0] == pytest.approx(5.0)
         head = out.lineage.steps[-1]
-        # n<2 ⇒ dispersion_value is NaN.
-        assert math.isnan(head.params["dispersion_value"])
+        # n<2 ⇒ dispersion undefined → recorded as None in lineage
+        # (OPR10: NaN/Inf cannot enter lineage params — there is no
+        # canonical-JSON form; None is the sentinel.  Recording NaN here
+        # was the default-path crash the audit flagged).
+        assert head.params["dispersion_value"] is None
 
 
 # ===========================================================================

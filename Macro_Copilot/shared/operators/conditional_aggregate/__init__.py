@@ -17,7 +17,10 @@ Public surface (Phase 1A — minimum for Q1):
 
 from pathlib import Path
 
-from shared.operators.conditional_aggregate.operator import conditional_aggregate
+from shared.operators.conditional_aggregate.operator import (
+    conditional_aggregate,
+    ConditionalAggregateError,
+)
 from shared.operators.conditional_aggregate.schemas import (
     ConditionalAggregateParams,
 )
@@ -28,6 +31,7 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 __all__ = [
     "conditional_aggregate",
+    "ConditionalAggregateError",
     "ConditionalAggregateParams",
     "CONFIG_PATH",
 ]

@@ -37,6 +37,7 @@ from shared.artifacts.types import EventSet, Series
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.apply_mask.schemas import ApplyMaskParams
@@ -85,20 +86,9 @@ def apply_mask(
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
 
-    # Name-check config BEFORE reading defaults — a wrong-named config
-    # would otherwise surface as a confusing "no default named X"
-    # error from a sibling operator's config rather than the clearer
-    # "config name mismatch" diagnostic.
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"apply_mask: 'config' must be an OperatorConfig "
-            f"instance; got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"apply_mask: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
-        )
+    # Config identity (OPR12) — name AND version — BEFORE reading
+    # defaults so a wrong config surfaces clearly.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
     if params is None:
         params = ApplyMaskParams(

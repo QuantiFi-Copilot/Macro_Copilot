@@ -15,7 +15,7 @@ Public surface (Phase 1A — minimum for Q1):
 
 from pathlib import Path
 
-from shared.operators.align_series.operator import align_series
+from shared.operators.align_series.operator import align_series, AlignSeriesError
 from shared.operators.align_series.schemas import AlignSeriesParams
 
 
@@ -24,6 +24,7 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 __all__ = [
     "align_series",
+    "AlignSeriesError",
     "AlignSeriesParams",
     "CONFIG_PATH",
 ]

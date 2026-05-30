@@ -44,6 +44,7 @@ from shared.artifacts.types import Series, SeriesSet
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.select_from_series_set.schemas import (
@@ -66,7 +67,7 @@ class SelectFromSeriesSetError(ValueError):
 
 def select_from_series_set(
     series_set: SeriesSet,
-    params: SelectFromSeriesSetParams,
+    params: Optional[SelectFromSeriesSetParams] = None,
     config: Optional[OperatorConfig] = None,
 ) -> Series:
     """Extract one named ``Series`` from a ``SeriesSet`` by key.
@@ -103,15 +104,15 @@ def select_from_series_set(
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
 
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"select_from_series_set: 'config' must be an "
-            f"OperatorConfig instance; got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"select_from_series_set: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
+
+    if params is None:
+        # select_from_series_set has a required per-call field
+        # (``series_key``) with no default — refuse cleanly (OPR8/OPR13).
+        raise SelectFromSeriesSetError(
+            "select_from_series_set requires explicit params "
+            "(``series_key``); none were supplied."
         )
 
     if params.series_key not in series_set.series_by_key:

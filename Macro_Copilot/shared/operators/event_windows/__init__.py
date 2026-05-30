@@ -16,7 +16,7 @@ Public surface (Phase 1A — minimum for Q1 event-study):
 
 from pathlib import Path
 
-from shared.operators.event_windows.operator import event_windows
+from shared.operators.event_windows.operator import event_windows, EventWindowsError
 from shared.operators.event_windows.schemas import EventWindowsParams
 
 
@@ -25,6 +25,7 @@ CONFIG_PATH: Path = Path(__file__).resolve().parent / "config.yaml"
 
 __all__ = [
     "event_windows",
+    "EventWindowsError",
     "EventWindowsParams",
     "CONFIG_PATH",
 ]

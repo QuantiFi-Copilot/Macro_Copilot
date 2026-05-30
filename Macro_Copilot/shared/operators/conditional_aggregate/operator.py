@@ -64,6 +64,7 @@ from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
     OperatorConfig,
     OperatorConfigError,
+    _check_config_identity,
     load_operator_config,
 )
 from shared.operators.conditional_aggregate.schemas import (
@@ -138,16 +139,8 @@ def conditional_aggregate(
     # ------------------------------------------------------------------
     if config is None:
         config = load_operator_config(_CONFIG_PATH)
-    if not isinstance(config, OperatorConfig):
-        raise OperatorConfigError(
-            f"conditional_aggregate: 'config' must be OperatorConfig; "
-            f"got {type(config).__name__}."
-        )
-    if config.operator.name != _OPERATOR_NAME:
-        raise OperatorConfigError(
-            f"conditional_aggregate: config name mismatch — expected "
-            f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
-        )
+    # Config identity (OPR12) — name AND version.
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
     # ------------------------------------------------------------------
     # 2. Resolve config-defaulted fields when caller omitted them.
