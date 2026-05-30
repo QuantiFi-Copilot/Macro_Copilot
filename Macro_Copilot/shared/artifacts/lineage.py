@@ -43,7 +43,7 @@ import hashlib
 import json
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # Type alias for the hexdigest hash strings; promotes readability.
@@ -201,6 +201,35 @@ def _compute_step_hash(
     }
     raw = _canonical_json(payload)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _expected_step_hash(step: Any) -> LineageHash:
+    """Recompute a step's content hash exactly as its ``.build()`` does.
+
+    The basis for the ART9 ``.build()``-only integrity guard: a step
+    whose stored ``hash`` does not equal this recomputation was forged or
+    raw-constructed, and is rejected at ``Lineage`` construction.
+    ``PrimitiveStep`` folds four identity bits into a derived dict (see
+    its docstring), so it is reconstructed here the same way.
+    """
+    kind = step.kind
+    input_hashes = tuple(getattr(step, "input_hashes", ()) or ())
+    if kind == "primitive":
+        params = {
+            "input_params": step.params,
+            "tool_config_hash": step.tool_config_hash,
+            "output_field": step.output_field,
+            "as_of_date": step.as_of_date,
+        }
+    else:
+        params = step.params
+    return _compute_step_hash(
+        kind=kind,
+        name=step.name,
+        version=step.version,
+        params=params,
+        input_hashes=input_hashes,
+    )
 
 
 # ============================================================================
@@ -547,6 +576,43 @@ class Lineage(BaseModel):
 
     steps: List[LineageStep] = Field(..., min_length=1)
     head_hash: LineageHash
+
+    @model_validator(mode="after")
+    def _verify_integrity(self) -> "Lineage":
+        # LIN-3 (.build()-only): every step's hash must match its
+        # recomputed content — a raw-constructed / forged step hash is
+        # rejected (ART9).
+        for i, step in enumerate(self.steps):
+            if step.hash != _expected_step_hash(step):
+                raise ValueError(
+                    f"Lineage step {i} ('{step.name}', kind={step.kind}) "
+                    "hash does not match its content; steps must be built via "
+                    ".build(), never raw-constructed with a supplied hash "
+                    "(ART9 integrity)."
+                )
+        # LIN-1: head_hash must mirror the last step's hash (a forged
+        # head_hash is rejected).
+        if self.head_hash != self.steps[-1].hash:
+            raise ValueError(
+                "Lineage.head_hash does not match steps[-1].hash — a forged "
+                "head_hash is rejected; build via from_steps()/append() "
+                "(ART9)."
+            )
+        # LIN-2: chain connectivity — each step after the first must
+        # consume its immediate predecessor (its hash appears in the
+        # step's input_hashes).  Roots (input_hashes == ()) are exempt;
+        # membership not equality, because binary / N-ary ops carry
+        # multiple input hashes.
+        for i in range(1, len(self.steps)):
+            cur_inputs = tuple(getattr(self.steps[i], "input_hashes", ()) or ())
+            if cur_inputs and self.steps[i - 1].hash not in cur_inputs:
+                raise ValueError(
+                    f"Lineage chain is disconnected at step {i} "
+                    f"('{self.steps[i].name}'): its input_hashes do not "
+                    f"include the predecessor '{self.steps[i - 1].name}' hash "
+                    "(ART9 connectivity)."
+                )
+        return self
 
     @classmethod
     def from_steps(cls, steps: List[LineageStep]) -> "Lineage":

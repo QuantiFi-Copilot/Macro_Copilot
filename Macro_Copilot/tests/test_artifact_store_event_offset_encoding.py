@@ -278,13 +278,17 @@ class TestDetectorShapeChecks:
         s = _cond_agg_series("a", offsets=[0, 1])
         # Mutate the step's params in a fresh model copy (steps are
         # frozen Pydantic models).
-        bad_step = s.lineage.steps[-1].model_copy(
-            update={
-                "params": {
-                    **(s.lineage.steps[-1].params or {}),
-                    "offset_anchor": None,  # bad type
-                }
-            }
+        # Rebuild the cond_agg step via .build() with a malformed
+        # offset_anchor so the step's hash is consistent with its (bad)
+        # content (ART9 — steps must be built, not raw-mutated with a
+        # stale hash).  The detector must still return None on the
+        # malformed metadata.
+        _last = s.lineage.steps[-1]
+        bad_step = OperatorStep.build(
+            name=_last.name,
+            version=_last.version,
+            params={**(_last.params or {}), "offset_anchor": None},  # bad type
+            input_hashes=_last.input_hashes,
         )
         s2 = Series(
             series_key=s.series_key,
@@ -300,13 +304,12 @@ class TestDetectorShapeChecks:
 
     def test_malformed_offsets_returns_none(self):
         s = _cond_agg_series("a", offsets=[0, 1])
-        bad_step = s.lineage.steps[-1].model_copy(
-            update={
-                "params": {
-                    **(s.lineage.steps[-1].params or {}),
-                    "event_relative_offsets": "not-a-list",
-                }
-            }
+        _last = s.lineage.steps[-1]
+        bad_step = OperatorStep.build(
+            name=_last.name,
+            version=_last.version,
+            params={**(_last.params or {}), "event_relative_offsets": "not-a-list"},
+            input_hashes=_last.input_hashes,
         )
         s2 = Series(
             series_key=s.series_key,

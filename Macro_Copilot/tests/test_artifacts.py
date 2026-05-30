@@ -137,11 +137,16 @@ class TestSeries:
 class TestSeriesSet:
     def _make_set(self):
         idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        upstream_x = _trivial_lineage("x")
+        upstream_y = _trivial_lineage("y")
+        # align_step's input_hashes are the members' upstream heads — the
+        # realistic shape align_series builds — so the per-key lineage that
+        # get_series composes is connected (ART9 / LIN-2 connectivity).
         align_step = OperatorStep.build(
             name="align_series",
             version="1.0.0",
             params={"join_policy": "inner", "fill_policy": "raw", "fill_limit": None},
-            input_hashes=("a" * 64, "b" * 64),
+            input_hashes=(upstream_x.head_hash, upstream_y.head_hash),
         )
         return SeriesSet(
             series_by_key={
@@ -154,8 +159,8 @@ class TestSeriesSet:
                 "y": CleanSingleSeriesV1(ffill_limit=5),
             },
             upstream_lineage_by_key={
-                "x": _trivial_lineage("x"),
-                "y": _trivial_lineage("y"),
+                "x": upstream_x,
+                "y": upstream_y,
             },
             common_index=idx,
             frequency=None,
@@ -928,3 +933,51 @@ class TestSharedArtifactValidators:
                 units=TimeSeriesUnits.BPS,
                 lineage=self._lin(),
             )
+
+
+# ===========================================================================
+# Lineage integrity guards (ART9 / LIN-1,2,3) — step 4.  A forged head_hash,
+# a disconnected chain, or a raw-constructed/forged step hash must all be
+# rejected at construction, so the content-addressed store cannot be poisoned.
+# ===========================================================================
+
+
+class TestLineageIntegrity:
+    def test_valid_built_chain_passes(self):
+        lin = _trivial_lineage("x")  # [fetch, adapter] via .build()
+        op = OperatorStep.build(
+            name="summarize_series", version="1.0.0", params={},
+            input_hashes=(lin.head_hash,),
+        )
+        chained = lin.append(op)
+        assert chained.head_hash == op.hash
+        assert len(chained.steps) == 3
+
+    def test_forged_head_hash_rejected(self):
+        lin = _trivial_lineage("x")
+        with pytest.raises(ValueError, match="head_hash"):
+            Lineage(steps=list(lin.steps), head_hash="0" * 64)
+
+    def test_forged_step_hash_rejected(self):
+        # Raw-construct an OperatorStep with a hash that does not match its
+        # content (bypassing .build()).
+        forged = OperatorStep(
+            name="x", version="1.0.0", params={}, input_hashes=(),
+            hash="0" * 64,
+        )
+        with pytest.raises(ValueError, match="hash does not match"):
+            Lineage.from_steps([forged])
+
+    def test_disconnected_chain_rejected(self):
+        # Two properly-built steps, but the second does not consume the
+        # first (its input_hashes omit the predecessor's hash).
+        fetch = FetchStep.build(
+            name="fetch_single_tenor", version="1.0.0",
+            params={"series_key": "x"},
+        )
+        orphan = OperatorStep.build(
+            name="summarize_series", version="1.0.0", params={},
+            input_hashes=("d" * 64,),  # not fetch.hash
+        )
+        with pytest.raises(ValueError, match="disconnected"):
+            Lineage.from_steps([fetch, orphan])
