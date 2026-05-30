@@ -278,11 +278,18 @@ def cointegration(
                 maxlag=params.max_lag,
                 autolag=params.autolag,
             )
-    except ValueError as exc:
-        # statsmodels raises bare ValueError for some degenerate paths
-        # (e.g. "Invalid input, x is constant").  Translate to the
-        # operator's own typed error so the substrate's error envelope
-        # treats it uniformly (OPR13 / ERR-1).
+    except (ValueError, np.linalg.LinAlgError, ArithmeticError) as exc:
+        # OPR13 — own every failure surface for the inputs the descriptor
+        # admits.  statsmodels raises:
+        #   * ValueError on flagged-degenerate inputs ("Invalid input, x
+        #     is constant", trend validation, ...).
+        #   * np.linalg.LinAlgError when the internal OLS hits a
+        #     numerically singular design matrix that the pre-checks did
+        #     not screen out.
+        #   * ArithmeticError (FloatingPointError) under numpy err-handlers.
+        # All three are translated to the operator's own typed error so
+        # the substrate's `except ValueError` envelope catches them
+        # uniformly (CointegrationError subclasses ValueError per OPR13).
         raise CointegrationError(
             f"cointegration: statsmodels rejected the inputs: {exc}"
         ) from exc
@@ -315,7 +322,11 @@ def cointegration(
     design = _build_design_matrix(y1, params.trend)
     try:
         ols_fit = OLS(y0, design).fit()
-    except Exception as exc:
+    except (ValueError, np.linalg.LinAlgError, ArithmeticError) as exc:
+        # OPR13 — own this failure surface.  statsmodels.OLS can raise
+        # LinAlgError on a numerically singular design (rare here because
+        # coint() above would have failed first, but defensive); the same
+        # ValueError/LinAlgError/ArithmeticError set as the coint call.
         raise CointegrationError(
             f"cointegration: OLS regression failed: {exc}"
         ) from exc

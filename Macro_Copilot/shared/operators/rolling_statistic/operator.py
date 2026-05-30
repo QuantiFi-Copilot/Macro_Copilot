@@ -221,17 +221,18 @@ def rolling_statistic(
     # 7. Lineage — one OperatorStep; params sanitised before hashing
     #    (OPR10).
     # ------------------------------------------------------------------
+    # OPR14: meaningless params are normalised to None before hashing so
+    # identity tracks CONTENT.  ddof is consumed ONLY by statistic='std';
+    # for every other statistic two calls that differ only in ddof
+    # produce byte-identical payloads, so their lineage hashes must
+    # match.  Set the field to None when ignored (sanitize_params_for_
+    # lineage preserves None as a JSON-canonical value).
+    ddof_for_lineage = int(params.ddof) if params.statistic == "std" else None
     step_params: Dict[str, Any] = {
         "statistic": params.statistic,
         "window": window,
         "min_periods": min_periods,
-        # ddof is only used by std, but we record it unconditionally
-        # so the lineage hash distinguishes (statistic='mean',ddof=0)
-        # from (statistic='mean',ddof=1) — both produce the same
-        # numerical result, but the parameter intent differs and the
-        # lineage should reflect it.  Trivially small surface vs the
-        # ambiguity of dropping it for some variants.
-        "ddof": int(params.ddof),
+        "ddof": ddof_for_lineage,
         "look_ahead_safe": bool(params.look_ahead_safe),
         "input_units": series.units.value,
         "n_input_obs": n_obs,

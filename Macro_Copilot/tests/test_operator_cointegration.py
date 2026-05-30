@@ -272,6 +272,27 @@ class TestRefusals:
         with pytest.raises(CointegrationError, match="non-finite"):
             cointegration(a, b)
 
+    def test_unbuilt_method_refuses_cleanly_defensive(self):
+        """Defensive path: a method that bypasses the schema's Literal
+        must hit the NotImplementedError branch (OPR8 honest refusal).
+        Today the closed Literal only contains 'engle_granger'; this
+        test pins the contract so adding a value to the Literal without
+        a matching dispatch branch fails loudly."""
+        rng = np.random.RandomState(49)
+        n = 100
+        x = rng.randn(n).cumsum()
+        y = x + rng.randn(n) * 0.1
+        dates = pd.bdate_range("2024-01-01", periods=n)
+        a = _series("a", dates=dates, values=list(y))
+        b = _series("b", dates=dates, values=list(x))
+        bogus = CointegrationParams.model_construct(
+            method="johansen",  # not implemented (bypasses Literal validation)
+            trend="c", max_lag=None, autolag="aic", min_periods=30,
+            require_matching_frequency=True, require_matching_missingness=True,
+        )
+        with pytest.raises(NotImplementedError, match="johansen"):
+            cointegration(a, b, params=bogus)
+
 
 # ===========================================================================
 # 4. OPR11 — strict frequency + missingness; unit-invariance

@@ -309,6 +309,39 @@ class TestLineageAndDeterminism:
         )
         assert out_mean.lineage.head_hash != out_sum.lineage.head_hash
 
+    def test_meaningless_ddof_normalised_for_non_std_statistics(self):
+        """OPR14: ``ddof`` is consumed only by statistic='std'.  For every
+        other statistic two calls that differ only in ddof produce
+        byte-identical payloads, so their head_hashes MUST match
+        ('identity tracks content').  And the std case MUST still
+        distinguish ddof=0 vs ddof=1."""
+        dates = pd.bdate_range("2026-01-01", periods=15)
+        values = list(np.linspace(1, 5, 15) ** 2)
+        s = _series("x", dates=dates, values=values)
+        # Non-std: ddof normalised → same hash
+        for stat in ("mean", "min", "max", "sum"):
+            out_d0 = rolling_statistic(
+                s, params=RollingStatisticParams(statistic=stat, window=5, ddof=0),
+            )
+            out_d1 = rolling_statistic(
+                s, params=RollingStatisticParams(statistic=stat, window=5, ddof=1),
+            )
+            assert out_d0.lineage.head_hash == out_d1.lineage.head_hash, (
+                f"statistic={stat}: ddof is meaningless here; the "
+                "head_hash must not depend on it (OPR14)."
+            )
+            # And lineage records None for the ignored field
+            assert out_d0.lineage.steps[-1].params["ddof"] is None
+        # std: ddof matters → different hash
+        out_std0 = rolling_statistic(
+            s, params=RollingStatisticParams(statistic="std", window=5, ddof=0),
+        )
+        out_std1 = rolling_statistic(
+            s, params=RollingStatisticParams(statistic="std", window=5, ddof=1),
+        )
+        assert out_std0.lineage.head_hash != out_std1.lineage.head_hash
+        assert out_std1.lineage.steps[-1].params["ddof"] == 1
+
     def test_rerun_is_deterministic(self):
         dates = pd.bdate_range("2026-01-01", periods=40)
         values = list(np.cos(np.linspace(0, 8, 40)))
@@ -333,3 +366,23 @@ def test_runs_on_synthetic_zscore_data():
     )
     assert out.units == TimeSeriesUnits.Z_SCORE
     assert out.payload.notna().any()
+
+
+def test_no_nan_inf_leakage_across_every_statistic():
+    """OPR14 / ART11: no statistic may emit +/-Inf in the payload (the
+    Series validator rejects it at construction anyway; this pins that
+    the operator's pre-emptive scrub catches the case)."""
+    dates = pd.bdate_range("2026-01-01", periods=30)
+    rng = np.random.RandomState(2027)
+    values = list(rng.randn(30) * 1e3)  # large-magnitude values
+    s = _series("x", dates=dates, values=values)
+    for stat in ("mean", "std", "min", "max", "sum"):
+        out = rolling_statistic(
+            s, params=RollingStatisticParams(statistic=stat, window=5),
+        )
+        arr = out.payload.to_numpy()
+        assert not np.isinf(arr).any(), (
+            f"statistic={stat}: produced +/-Inf in payload (would have "
+            "been rejected by Series construction but the operator must "
+            "scrub it pre-emptively)."
+        )
