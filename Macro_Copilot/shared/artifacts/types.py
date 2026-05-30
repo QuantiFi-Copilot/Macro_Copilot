@@ -48,6 +48,58 @@ from shared.artifacts.units import TimeSeriesUnits
 
 
 # ============================================================================
+# SHARED ARTIFACT VALIDATORS (ART11 — one validator across every indexed /
+# numeric artifact, so the "parts" are held to the same strictness as the
+# operators; ADR 0016 Decision 5).  Every indexed artifact's model_validator
+# calls these at construction, so downstream operators never re-check.
+# ============================================================================
+
+
+def _validate_datetime_index(index: Any, label: str) -> None:
+    """Require a sorted, duplicate-free ``DatetimeIndex`` (ART11)."""
+    if not isinstance(index, pd.DatetimeIndex):
+        raise ValueError(
+            f"{label} must have a DatetimeIndex; got {type(index).__name__}."
+        )
+    if index.has_duplicates:
+        raise ValueError(
+            f"{label} index has duplicate timestamps; deduplicate before "
+            "building the artifact."
+        )
+    if not index.is_monotonic_increasing:
+        raise ValueError(f"{label} index must be sorted ascending.")
+
+
+def _validate_numeric_payload(values: Any, label: str) -> None:
+    """Require numeric dtype and reject ``+/-Inf`` (ART11).
+
+    ``NaN`` is permitted — it is the missingness sentinel — but ``+/-Inf``
+    has no canonical JSON form and silently corrupts to ``null`` on
+    persistence, so it is forbidden at construction.  An operator that
+    would produce ``Inf`` must refuse with its own typed error instead.
+    Accepts a ``pd.Series`` or an ``np.ndarray``.
+    """
+    if isinstance(values, pd.Series):
+        if not pd.api.types.is_numeric_dtype(values.dtype):
+            raise ValueError(
+                f"{label} dtype must be numeric; got {values.dtype}."
+            )
+        arr = values.to_numpy()
+    else:
+        arr = np.asarray(values)
+        if not np.issubdtype(arr.dtype, np.number):
+            raise ValueError(
+                f"{label} dtype must be numeric; got {arr.dtype}."
+            )
+    if np.isinf(arr).any():
+        raise ValueError(
+            f"{label} contains +/-Inf; infinities are forbidden (NaN is "
+            "allowed as the missingness sentinel).  An operator that would "
+            "produce Inf must refuse with its typed error instead."
+        )
+
+
+# ============================================================================
 # SERIES
 # ============================================================================
 
@@ -75,26 +127,9 @@ class Series(BaseModel):
 
     @model_validator(mode="after")
     def _validate_payload(self) -> "Series":
-        if not isinstance(self.payload.index, pd.DatetimeIndex):
-            raise ValueError(
-                f"Series payload must have a DatetimeIndex; got "
-                f"{type(self.payload.index).__name__}."
-            )
-        if self.payload.index.has_duplicates:
-            raise ValueError(
-                f"Series '{self.series_key}' payload index has duplicates; "
-                "deduplicate before building the artifact."
-            )
-        if not self.payload.index.is_monotonic_increasing:
-            raise ValueError(
-                f"Series '{self.series_key}' payload index must be sorted "
-                "ascending."
-            )
-        if not pd.api.types.is_numeric_dtype(self.payload.dtype):
-            raise ValueError(
-                f"Series '{self.series_key}' payload dtype must be numeric; "
-                f"got {self.payload.dtype}."
-            )
+        label = f"Series '{self.series_key}'"
+        _validate_datetime_index(self.payload.index, label)
+        _validate_numeric_payload(self.payload, f"{label} payload")
         return self
 
     def __len__(self) -> int:
@@ -153,12 +188,14 @@ class SeriesSet(BaseModel):
                     "units_by_key, missingness_by_key, "
                     "upstream_lineage_by_key."
                 )
+        _validate_datetime_index(self.common_index, "SeriesSet.common_index")
         for key, payload in self.series_by_key.items():
             if not payload.index.equals(self.common_index):
                 raise ValueError(
                     f"SeriesSet member '{key}' index does not equal "
                     "common_index — alignment contract violated."
                 )
+            _validate_numeric_payload(payload, f"SeriesSet member '{key}'")
         return self
 
     def keys(self) -> List[str]:
@@ -235,10 +272,7 @@ class EventSet(BaseModel):
 
     @model_validator(mode="after")
     def _validate_mask(self) -> "EventSet":
-        if not isinstance(self.mask.index, pd.DatetimeIndex):
-            raise ValueError(
-                "EventSet.mask must have a DatetimeIndex."
-            )
+        _validate_datetime_index(self.mask.index, "EventSet.mask")
         if self.mask.dtype != bool:
             raise ValueError(
                 f"EventSet.mask dtype must be bool; got {self.mask.dtype}."
@@ -248,10 +282,20 @@ class EventSet(BaseModel):
                 f"EventSet event_dates length ({len(self.event_dates)}) "
                 f"!= per_event_metadata length ({len(self.per_event_metadata)})."
             )
-        if int(self.mask.sum()) != len(self.event_dates):
+        # Semantic invariant (ART11): event_dates is EXACTLY the mask's
+        # True positions, in index order.  Because the index is sorted +
+        # duplicate-free, this single check subsumes count-equality,
+        # set-equality, uniqueness of event_dates, and ascending
+        # co-ordering with per_event_metadata — an internally
+        # inconsistent EventSet can no longer be constructed.
+        expected_dates = list(self.mask.index[self.mask.to_numpy(dtype=bool)])
+        if list(self.event_dates) != expected_dates:
             raise ValueError(
-                f"EventSet mask True count ({int(self.mask.sum())}) "
-                f"!= event_dates length ({len(self.event_dates)})."
+                "EventSet.event_dates must equal the mask's True dates in "
+                f"ascending order ({len(self.event_dates)} event_dates vs "
+                f"{len(expected_dates)} True mask positions); fix the "
+                "mask/event_dates disagreement (duplicate, missing, extra, "
+                "or out-of-order date)."
             )
         return self
 
@@ -287,12 +331,13 @@ class Panel(BaseModel):
 
     @model_validator(mode="after")
     def _validate_payload(self) -> "Panel":
-        if not isinstance(self.payload.index, pd.DatetimeIndex):
-            raise ValueError("Panel payload must have a DatetimeIndex.")
+        _validate_datetime_index(self.payload.index, "Panel")
         if set(self.units_by_column.keys()) != set(self.payload.columns):
             raise ValueError(
                 "Panel units_by_column keys must match payload columns."
             )
+        for col in self.payload.columns:
+            _validate_numeric_payload(self.payload[col], f"Panel column '{col}'")
         return self
 
 
@@ -350,6 +395,12 @@ class WindowedPanel(BaseModel):
             raise ValueError(
                 "WindowedPanel event_dates / per_event_metadata length mismatch."
             )
+        if list(self.offsets) != sorted(set(self.offsets)):
+            raise ValueError(
+                "WindowedPanel.offsets must be strictly increasing and "
+                f"unique; got {self.offsets}."
+            )
+        _validate_numeric_payload(self.payload, "WindowedPanel.payload")
         return self
 
     @property

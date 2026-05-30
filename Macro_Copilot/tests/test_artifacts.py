@@ -105,7 +105,7 @@ class TestSeries:
     def test_rejects_duplicate_index(self):
         idx = pd.DatetimeIndex(["2026-01-02", "2026-01-02"])
         bad = pd.Series([1.0, 2.0], index=idx, dtype=float)
-        with pytest.raises(ValueError, match="duplicates"):
+        with pytest.raises(ValueError, match="duplicate"):
             Series(
                 series_key="x",
                 payload=bad,
@@ -721,7 +721,7 @@ class TestOtherArtifacts:
         idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
         mask = pd.Series([True, True], index=idx)
         op_step = OperatorStep.build(name="x", version="1", params={}, input_hashes=())
-        with pytest.raises(ValueError, match="True count"):
+        with pytest.raises(ValueError, match="must equal the mask"):
             EventSet(
                 mask=mask,
                 event_dates=[pd.Timestamp("2026-01-05")],  # only 1; mask has 2
@@ -755,3 +755,176 @@ class TestOtherArtifacts:
             lineage=Lineage.from_steps([op_step]),
         )
         assert list(p.payload.columns) == ["a", "b"]
+
+
+# ===========================================================================
+# Shared artifact validators (ART11 / ART13) — the strict construction-time
+# net added in Phase 1+2 step 3 (one shared index/finiteness/dtype validator
+# across every indexed/numeric artifact + EventSet semantic invariants +
+# WindowedPanel offset checks).  Negative tests so a future refactor cannot
+# silently drop any invariant.
+# ===========================================================================
+
+
+class TestSharedArtifactValidators:
+    @staticmethod
+    def _lin() -> Lineage:
+        return Lineage.from_steps(
+            [OperatorStep.build(name="x", version="1", params={}, input_hashes=())]
+        )
+
+    # --- finiteness: +/-Inf forbidden, NaN allowed ----------------------
+
+    def test_series_rejects_inf(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        with pytest.raises(ValueError, match="Inf"):
+            Series(
+                series_key="x",
+                payload=pd.Series([1.0, np.inf], index=idx, dtype=float),
+                units=TimeSeriesUnits.PERCENT,
+                frequency=None,
+                missingness_policy=RawNoCleaning(),
+                lineage=_trivial_lineage(),
+            )
+
+    def test_series_allows_nan(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        s = Series(
+            series_key="x",
+            payload=pd.Series([1.0, np.nan], index=idx, dtype=float),
+            units=TimeSeriesUnits.PERCENT,
+            frequency=None,
+            missingness_policy=RawNoCleaning(),
+            lineage=_trivial_lineage(),
+        )
+        assert len(s) == 2
+
+    def test_panel_rejects_inf_column(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        with pytest.raises(ValueError, match="Inf"):
+            Panel(
+                payload=pd.DataFrame({"a": [1.0, np.inf]}, index=idx),
+                units_by_column={"a": TimeSeriesUnits.PERCENT},
+                missingness_policy=RawNoCleaning(),
+                lineage=self._lin(),
+            )
+
+    def test_windowed_panel_rejects_inf(self):
+        with pytest.raises(ValueError, match="Inf"):
+            WindowedPanel(
+                payload=np.array([[0.0, np.inf, 2.0]]),
+                offsets=[0, 1, 2],
+                event_dates=[pd.Timestamp("2026-01-05")],
+                per_event_metadata=[{}],
+                target_series_key="ust_10y",
+                units=TimeSeriesUnits.BPS,
+                lineage=self._lin(),
+            )
+
+    def test_windowed_panel_allows_nan(self):
+        wp = WindowedPanel(
+            payload=np.array([[np.nan, 1.0, 2.0]]),
+            offsets=[0, 1, 2],
+            event_dates=[pd.Timestamp("2026-01-05")],
+            per_event_metadata=[{}],
+            target_series_key="ust_10y",
+            units=TimeSeriesUnits.BPS,
+            lineage=self._lin(),
+        )
+        assert wp.n_events == 1
+
+    # --- index: duplicates / unsorted (shared validator) ----------------
+
+    def test_panel_rejects_unsorted_index(self):
+        idx = pd.DatetimeIndex(["2026-01-05", "2026-01-02"])  # descending
+        with pytest.raises(ValueError, match="sorted ascending"):
+            Panel(
+                payload=pd.DataFrame({"a": [1.0, 2.0]}, index=idx),
+                units_by_column={"a": TimeSeriesUnits.PERCENT},
+                missingness_policy=RawNoCleaning(),
+                lineage=self._lin(),
+            )
+
+    def test_eventset_rejects_duplicate_index(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-02"])
+        with pytest.raises(ValueError, match="duplicate"):
+            EventSet(
+                mask=pd.Series([True, False], index=idx),
+                event_dates=[pd.Timestamp("2026-01-02")],
+                per_event_metadata=[{}],
+                source_series_key="s",
+                lineage=self._lin(),
+            )
+
+    # --- Panel non-numeric column ---------------------------------------
+
+    def test_panel_rejects_non_numeric_column(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        with pytest.raises(ValueError, match="numeric"):
+            Panel(
+                payload=pd.DataFrame({"a": ["x", "y"]}, index=idx),
+                units_by_column={"a": TimeSeriesUnits.PERCENT},
+                missingness_policy=RawNoCleaning(),
+                lineage=self._lin(),
+            )
+
+    # --- EventSet semantic invariants -----------------------------------
+
+    def test_eventset_rejects_out_of_order_event_dates(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05", "2026-01-06"])
+        with pytest.raises(ValueError, match="must equal the mask"):
+            EventSet(
+                mask=pd.Series([True, False, True], index=idx),
+                event_dates=[pd.Timestamp("2026-01-06"), pd.Timestamp("2026-01-02")],
+                per_event_metadata=[{}, {}],
+                source_series_key="s",
+                lineage=self._lin(),
+            )
+
+    def test_eventset_rejects_event_date_not_a_true_position(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05"])
+        with pytest.raises(ValueError, match="must equal the mask"):
+            EventSet(
+                mask=pd.Series([True, False], index=idx),
+                event_dates=[pd.Timestamp("2026-01-05")],  # the False date
+                per_event_metadata=[{}],
+                source_series_key="s",
+                lineage=self._lin(),
+            )
+
+    def test_eventset_accepts_consistent(self):
+        idx = pd.DatetimeIndex(["2026-01-02", "2026-01-05", "2026-01-06"])
+        es = EventSet(
+            mask=pd.Series([True, False, True], index=idx),
+            event_dates=[pd.Timestamp("2026-01-02"), pd.Timestamp("2026-01-06")],
+            per_event_metadata=[{}, {}],
+            source_series_key="s",
+            lineage=self._lin(),
+        )
+        assert es.n_events == 2
+
+    # --- WindowedPanel offsets strictly increasing + unique -------------
+
+    def test_windowed_panel_rejects_unsorted_offsets(self):
+        with pytest.raises(ValueError, match="strictly increasing"):
+            WindowedPanel(
+                payload=np.array([[0.0, 1.0, 2.0]]),
+                offsets=[2, 0, 1],
+                event_dates=[pd.Timestamp("2026-01-05")],
+                per_event_metadata=[{}],
+                target_series_key="ust_10y",
+                units=TimeSeriesUnits.BPS,
+                lineage=self._lin(),
+            )
+
+    def test_windowed_panel_rejects_duplicate_offsets(self):
+        with pytest.raises(ValueError, match="strictly increasing"):
+            WindowedPanel(
+                payload=np.array([[0.0, 1.0, 2.0]]),
+                offsets=[0, 1, 1],
+                event_dates=[pd.Timestamp("2026-01-05")],
+                per_event_metadata=[{}],
+                target_series_key="ust_10y",
+                units=TimeSeriesUnits.BPS,
+                lineage=self._lin(),
+            )

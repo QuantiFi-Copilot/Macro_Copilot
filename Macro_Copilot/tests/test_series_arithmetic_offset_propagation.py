@@ -350,7 +350,10 @@ class TestUnaryAndScalarPropagation:
 
     def test_pct_change_inherits_left_metadata(self):
         offsets = [0, 1, 2, 3]
-        left = _cond_agg_series("a", offsets=offsets)
+        # Non-zero-starting values so pct_change is finite — a 0 predecessor
+        # makes pct_change emit +/-Inf, which the Series finiteness validator
+        # now rejects (the operator-side inf guard is ERR-2, step 5).
+        left = _cond_agg_series("a", offsets=offsets, values=[1.0, 2.0, 4.0, 8.0])
         out = series_arithmetic(
             left=left,
             right=None,
