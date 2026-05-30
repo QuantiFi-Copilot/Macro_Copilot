@@ -1,22 +1,22 @@
 version: '1.0'
 branch: frontend_automation
 backend: claude-cli
-orchestrator_status: catalog_exhausted
+orchestrator_status: processing
 current_tool: null
 current_tool_backend_name: null
-current_step: human_required
+current_step: ready_to_dispatch
 dispatch_round: 0
 last_dispatch_at: '2026-05-29T22:20:00Z'
 last_successful_tool: ois__curve_spread
 last_successful_commit: a0364d4
 last_reviewer_heading: CHANGES REQUIRED
 last_gate_result: not_run
-last_stop_reason: catalog_exhausted
+last_stop_reason: tool_9_design_call_applied_advance
 last_error: null
-last_updated: '2026-05-30T00:07:00Z'
+last_updated: "2026-05-30T00:35:00Z"
 done: 7
-blocked: 2
-remaining: 0
+blocked: 1
+remaining: 1
 quota_state: probe_unavailable
 quota_snapshot: null
 quota_snapshot_at: '2026-05-29T15:52:00Z'
@@ -37,30 +37,8 @@ reviewer_mode_history:
       and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
       dispatch triggers a clean waiting_quota stop; the next cron wake
       retries.
-catalog_exhausted_at: '2026-05-29T22:28:00Z'
-human_required:
-  reason: reviewer_findings_structural_no_fix_attempt
-  tool_id: policy_futures__futures_price_level
-  decision_required: |
-    Resolve the structural mockup-vs-shell mismatch for tool 9.  The
-    Compact.png mockup demands density (2-line identity + 6 secondary
-    KPIs) the shared BuildCompactShell cannot deliver without API
-    changes that touch every existing compact view in the factory
-    (10+ shipped tools).  Decide between:
-      (a) extend BuildCompactShell + BuildCompactShellProps with
-          `subtitle` + `secondaryKpis` slots in
-          src/components/shared/build/compact/BuildCompactShell.tsx
-          + src/components/shared/build/lib/types.ts, then re-flip
-          status: blocked → todo and re-dispatch on next wake; OR
-      (b) revise UI/.../policy_futures_get_futures_price_level_tool/
-          mockups/Compact.png down to the shell's standard density
-          (3 KPIs, single identity line), then re-flip status:
-          blocked → todo and re-dispatch on next wake.
-    Either path can be combined with hand-applying findings #1 + #2
-    (single-line double-"·" fixes per the catalog block_reason) if the
-    builder reproduces the same identity-row code on the re-dispatch.
-  full_reviewer_log: /tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log
-  blocked_at: '2026-05-29T22:28:00Z'
+catalog_exhausted_at: null
+human_required: null
 status_notes:
   - at: '2026-05-30T00:07:00Z'
     kind: cron_wake_noop_catalog_exhausted
@@ -1681,3 +1659,35 @@ status_notes:
       blocked: 0, remaining: 8.  Factory advancing to tool 2
       (inflation_indexed_bonds__breakeven_curve_spread) on next cron
       wake.
+  - at: "2026-05-30T00:35:00Z"
+    kind: tool_9_design_call_applied_advance
+    text: |
+      Catalog reset: tool 9 (policy_futures__futures_price_level)
+      flipped status: blocked -> todo with two new design_guardrails
+      added per Option (c) precedent from tool 1 (breakeven_butterfly,
+      commit fdac7d2):
+
+        guardrail (5): keep shell-standard density on Compact +
+        Extended; do NOT extend BuildCompactShell / BuildExtendedShell
+        to add subtitle / secondaryKpis slots (10+ tool blast radius);
+        add a `## Mockup conformance` subsection to THESIS.md.
+
+        guardrail (6): do NOT prepend `· ` to the secondary string
+        on either Build view (IdentityBlock already inserts the glyph).
+        Reference twin: get_real_yield_level_tool/surfaces/BuildCompact.tsx:72-76.
+        Avoiding this prevents review findings #1 + #2 from recurring.
+
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) REMAINS
+      blocked — its mockups are byte-identical to breakeven_butterfly`s
+      mockups (depicting a 3-leg butterfly, not a 2-leg curve spread).
+      Human must author new Compact.png + Extended.png for this tool
+      depicting a 2-leg breakeven curve spread (template:
+      calculate_real_yield_curve_spread_tool/mockups/ adapted from % -> bps),
+      then flip status back to todo.  No safe path from the orchestrator
+      side; PRE_FLIGHT Check 4 is path-existence only.
+
+      Counters: done:7  blocked:1  remaining:1.  Cron is currently
+      DISABLED (`openclaw cron disable 450aa21c-...` at 00:30Z).  User
+      must re-enable to dispatch tool 9, then optionally disable again
+      after tool 9 settles to avoid post-exhaustion no-op commit spam
+      until tool 2 mockups are authored.

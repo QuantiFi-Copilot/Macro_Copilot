@@ -395,11 +395,14 @@ tools:
     commit_sha: a0364d4
 
   - id: policy_futures__futures_price_level
-    status: blocked
-    human_action_required: true
-    last_review_heading: CHANGES REQUIRED
+    status: todo
+    human_action_required: false
+    last_review_heading: null
     last_gate_result: not_run
-    block_reason: |
+    block_reason: null
+    last_resolution_applied: option_c_shell_density_acceptance
+    last_resolution_at: "2026-05-30T00:35:00Z"
+    previous_block_reason: |
       reviewer_findings_structural_no_fix_attempt: Dispatch 2 reviewer
       (fresh-context Claude) emitted CHANGES REQUIRED with 3 findings on
       the builder's Dispatch 1 diff (then discarded per default
@@ -513,3 +516,24 @@ tools:
       - "Quote convention: 100-minus-rate; note in methodology disclosure that an UP price = DOWN implied rate (dovish)"
       - "Standalone-bridge endpoint at /api/v1/rates/detail/policy-futures-price"
       - "OVERWRITE the existing Stage-3 scaffold module.ts + THESIS.md + __tests__/module.spec.ts"
+      - >
+        Per Option (c) precedent from breakeven_butterfly (commit fdac7d2):
+        keep shell-standard density (3 KPIs, single identity line).  Do NOT
+        extend BuildCompactShell or BuildExtendedShell to add `subtitle` or
+        `secondaryKpis` slots — the mockup`s higher density would require
+        a cross-tool shell refactor touching 10+ shipped compact views.
+        Instead, add a `## Mockup conformance` subsection in THESIS.md
+        explaining the deviation is shell-density-driven (not data-driven),
+        noting the data IS available in the typed-detail payload, and that
+        the extra KPIs are deferred to a separate shell-extension epic.
+      - >
+        Identity-row hazard:  do NOT prepend `· ` to the secondary
+        string.  BuildCompactShell + BuildExtendedShell IdentityBlock
+        already insert the `·` glyph between primary and secondary
+        spans.  Pass `secondary: <bare label>` (e.g.
+        `const secondary = stripFamilyLabel;`) — not
+        `const secondary = \`· ${stripFamilyLabel}\`;`.  Same rule
+        applies to BuildExtended.tsx`s identity object.  Reference twin:
+        get_real_yield_level_tool/surfaces/BuildCompact.tsx:72-76 (correct
+        pattern).  Avoiding this fixes review findings #1 + #2 from
+        Dispatch 2 round 1.
