@@ -59,13 +59,7 @@ OperatorMethodFamily = Literal[
     "aggregation",
     "ranking",
     "mapping",
-    "trade_construction",
-    "trade_evaluation",
-    "trade_summary",
-    # v2.0 (ADR 0016) — the composition-toolbox families.  The trade_*
-    # families above are slated for removal when the trade operators
-    # relocate to the primitive layer (OPR6); they remain registered
-    # until that migration lands.
+    # v2.0 (ADR 0016) — the composition-toolbox families.
     "statistical_relationship",
     "single_series_transform",
     "cross_sectional",

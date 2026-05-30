@@ -40,12 +40,6 @@ ArtifactTypeLiteral = Literal[
     # v2.0 (ADR 0016): ScalarMetric — the single-number closed-family
     # shape for full-sample statistics (correlation, covariance, ...).
     "ScalarMetric",
-    # Phase 1 PR 12 — backtest archetype substrate.  TradeSet joins
-    # the closed family; PositionPath is deferred to V2 (the brief's
-    # "if needed" — V1's evaluate_trades derives positions internally
-    # from entry/exit + leg weights without surfacing them as an
-    # artifact).
-    "TradeSet",
 ]
 
 

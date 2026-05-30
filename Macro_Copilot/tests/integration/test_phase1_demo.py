@@ -256,11 +256,3 @@ def test_phase1_demo_workspace_replay_pattern_inherited():
         "is a Panel; without this closed-family membership the "
         "workspace-replay machinery cannot rehydrate it."
     )
-    # The TradeSet intermediate must also be present (it's the
-    # output of construct_trades; the workspace replay needs to
-    # rehydrate it).
-    assert "TradeSet" in ARTIFACT_TYPE_NAMES, (
-        "Closed-family discipline broken: ``TradeSet`` artifact "
-        "missing from ARTIFACT_TYPE_NAMES.  PR 20 was supposed to "
-        "add it; if this asserts has tripped, the migration regressed."
-    )

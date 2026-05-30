@@ -61,16 +61,6 @@ _V2_CONFORMANT = {
 # on a substrate ABI change before it can conform.
 _PENDING_ABI: set[str] = set()
 
-# The trade-lifecycle operators are finance-AWARE (P&L, financing,
-# day-count, Sharpe) and are slated for RELOCATION to a backtest
-# primitive set (ADR 0016 decision 1) — they are NOT migrated to
-# operator conformance; relocation is a separate workstream/ADR.
-_PENDING_TRADE_RELOCATION = {
-    "construct_trades",
-    "evaluate_trades",
-    "summarize_trades",
-}
-
 
 def _strip_list(slot_type: str) -> str:
     if slot_type.startswith("List[") and slot_type.endswith("]"):
@@ -82,13 +72,14 @@ def test_every_registry_operator_is_classified():
     """A new operator must be either v2-conformant or explicitly marked
     legacy-pending — never silently unclassified."""
     keys = set(OPERATOR_REGISTRY)
-    classified = _V2_CONFORMANT | _PENDING_ABI | _PENDING_TRADE_RELOCATION
+    classified = _V2_CONFORMANT | _PENDING_ABI
     unclassified = keys - classified
     assert not unclassified, (
         f"OPERATOR_REGISTRY contains unclassified operators {sorted(unclassified)}. "
-        "Every new operator must conform to OPR1–OPR16 (add to _V2_CONFORMANT), "
-        "be tracked for the registry/executor ABI step (_PENDING_ABI), or be "
-        "tracked for relocation (_PENDING_TRADE_RELOCATION) — ADR 0016."
+        "Every new operator must conform to OPR1–OPR16 (add to _V2_CONFORMANT) "
+        "or be tracked for the registry/executor ABI step (_PENDING_ABI) — "
+        "ADR 0016.  The operator layer is finance-blind: there is no "
+        "trade-relocation bucket (the trade trio was removed)."
     )
 
 
@@ -98,10 +89,10 @@ def test_conformant_set_and_registry_agree():
     keys = set(OPERATOR_REGISTRY)
     assert _V2_CONFORMANT <= keys
     assert _PENDING_ABI <= keys
-    assert _PENDING_TRADE_RELOCATION <= keys
     assert not (_V2_CONFORMANT & _PENDING_ABI)
-    assert not (_V2_CONFORMANT & _PENDING_TRADE_RELOCATION)
-    assert not (_PENDING_ABI & _PENDING_TRADE_RELOCATION)
+    # Finance-blind: every registered operator is conformant (no pending
+    # trade bucket).
+    assert keys == _V2_CONFORMANT | _PENDING_ABI
 
 
 def test_operator_config_error_is_valueerror():

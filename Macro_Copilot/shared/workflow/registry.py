@@ -34,7 +34,6 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shared.artifacts.trades import TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
@@ -51,14 +50,6 @@ from shared.operators.conditional_aggregate import (
 )
 from shared.operators.correlation import correlation, CorrelationParams
 from shared.operators.convert_units import convert_units, ConvertUnitsParams
-from shared.operators.construct_trades import (
-    construct_trades,
-    ConstructTradesParams,
-)
-from shared.operators.evaluate_trades import (
-    evaluate_trades,
-    EvaluateTradesParams,
-)
 from shared.operators.event_windows import event_windows, EventWindowsParams
 from shared.operators.rolling_regression import (
     rolling_regression,
@@ -75,10 +66,6 @@ from shared.operators.series_arithmetic import (
 from shared.operators.summarize_series import (
     summarize_series,
     SummarizeSeriesParams,
-)
-from shared.operators.summarize_trades import (
-    summarize_trades,
-    SummarizeTradesParams,
 )
 from shared.operators.threshold_events import (
     threshold_events,
@@ -103,11 +90,6 @@ ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
     # v2.0 (ADR 0016): ScalarMetric — the single-number closed-family
     # shape for full-sample statistics (correlation, covariance, ...).
     "ScalarMetric",
-    # Phase 1 PR 12 added the TradeSet artifact for the backtest
-    # archetype; PR 20 wires it into the substrate's closed-family
-    # discriminator so the workflow executor can label TradeSet
-    # outputs from ``construct_trades`` correctly.
-    "TradeSet",
 )
 
 
@@ -124,7 +106,6 @@ _ARTIFACT_TYPE_MAP: dict[type, str] = {
     Panel: "Panel",
     WindowedPanel: "WindowedPanel",
     ScalarMetric: "ScalarMetric",
-    TradeSet: "TradeSet",
 }
 
 
@@ -438,58 +419,6 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         # regimes" step.
         input_slots={"series": "Series"},
         output_type="Series",
-    ),
-    # Phase 1 backtest operators (registered in PR 20; PR 12 omitted
-    # them from the substrate registry — the operators existed and
-    # were unit-tested but were not dispatchable through the workflow
-    # executor).
-    "construct_trades": OperatorSpec(
-        operator_name="construct_trades",
-        callable=construct_trades,
-        params_class=ConstructTradesParams,
-        # EventSet of entry dates → TradeSet (one Trade per True date).
-        input_slots={"events": "EventSet"},
-        output_type="TradeSet",
-    ),
-    "evaluate_trades": OperatorSpec(
-        operator_name="evaluate_trades",
-        callable=evaluate_trades,
-        params_class=EvaluateTradesParams,
-        # TradeSet + price Panel → per-trade P&L Panel.  Optional
-        # ``financing_rate_panel`` is bound separately on the params
-        # struct, not as a graph edge — the financing Panel is fetched
-        # by a primitive node upstream and threaded through params.
-        # ``accepts_scalar_input`` is empty: both required slots must
-        # be artifact edges.
-        input_slots={
-            "trades": "TradeSet",
-            "price_panel": "Panel",
-            "financing_rate_panel": "Panel",
-        },
-        # ``financing_rate_panel`` is optional — only required when
-        # ``params.financing_assumption == 'external_series'``.  The
-        # arity validator below enforces that pairing so an unbound
-        # financing slot doesn't crash a no-financing run.
-        accepts_scalar_input=("financing_rate_panel",),
-        output_type="Panel",
-        arity_validator=lambda node_params, bound_edge_slots, bound_literal_slots: (
-            "evaluate_trades: financing_rate_panel is REQUIRED when "
-            "financing_assumption='external_series'; pass it via an "
-            "edge from the financing primitive."
-            if (
-                node_params.get("financing_assumption") == "external_series"
-                and "financing_rate_panel" not in bound_edge_slots
-            )
-            else None
-        ),
-    ),
-    "summarize_trades": OperatorSpec(
-        operator_name="summarize_trades",
-        callable=summarize_trades,
-        params_class=SummarizeTradesParams,
-        # P&L Panel (from evaluate_trades) → single-row summary Panel.
-        input_slots={"pnl_panel": "Panel"},
-        output_type="Panel",
     ),
 }
 
