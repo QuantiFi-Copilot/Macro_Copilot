@@ -1,673 +1,430 @@
 # Artifact
 
-> The contract every artifact in the Macro Copilot platform must satisfy — what makes something a valid artifact at all, what makes a particular artifact well-formed, and the principles that govern when (and how) a new artifact type may be added to the closed family. **Asset-class-blind by design** — artifact types are structural wrappers; the data inside may be finance-domain data (yields, prices, trades), but the *type itself* is shape-only and runs equally on rates, FX, equities, or any indexed data.
+> The contract every artifact in the Macro Copilot platform must satisfy — what makes something a valid artifact at all, what makes a particular artifact well-formed, and the principles that govern when (and how) a new artifact type may be added to the closed family. **Asset-class-blind by design** — artifact types are structural wrappers; the data inside may be finance-domain data (yields, prices), but the *type itself* is shape-only and runs equally on rates, FX, equities, or any indexed data.
 
-**Version:** v1.1
-**Last reviewed:** 2026-05-17
+**Version:** v2.0
+**Last reviewed:** 2026-05-30
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
-**Operationalises principles:** P3 (consistency by contract), P4 (determinism — every artifact is content-addressed by `lineage.head_hash`), P5 (honest disclosure — structural metadata is surfaced on the artifact itself), **P8 (closed-family discipline — this contract is the platform's primary closed family)**, P9 (finance-blind — artifact types are structural, not asset-class-specific), P10 (single source of truth — the `ARTIFACT_TYPE_NAMES` tuple is the only valid set).
-**See also:** [`runbook.md`](runbook.md) — the procedure for adding a new artifact type to the closed family.
+**Operationalises principles:** P3 (consistency by contract), P4 (determinism — every artifact is content-addressed by `lineage.head_hash`), P5 (honest disclosure — structural metadata is surfaced on the artifact itself), **P8 (closed-family discipline — this contract is the platform's primary closed family)**, P9 (finance-blind — artifact types are structural, not asset-class-specific), P10 (single source of truth — one canonical closed-family enum, every other site derived).
+**See also:** [`runbook.md`](runbook.md) — the procedure for adding a new artifact type. [`../operator/README.md`](../operator/README.md) — the **co-equal** operator contract (OPR1–OPR16). Operators are the machines; artifacts are the standardised parts that flow between them. An operator cannot be standard unless the artifact types it consumes and emits are standard, so the two contracts are **hardened in lock-step**.
+
+> **v2.0 is a foundational reset, paired with the operator v2.0 reset.** The operator audit found that the single largest cluster of operator defects was *not* in the operators — it was here: artifact types that do not enforce their own shape (only `Series` validated its index; `EventSet`/`Panel` accepted duplicate/unsorted indices), a lineage layer with **zero integrity guards** (a forgeable `head_hash`, disconnected chains, and `NaN`-in-params all accepted), and a closed family enumerated in three-plus hand-maintained authorities that had already drifted. v2.0 makes "valid artifact" mean the **same strict thing for every type**, adds lineage integrity guards, single-sources the closed family, removes `TradeSet` (its operators are relocated to primitives), and recommends admitting a first-class `ScalarMetric`. Each change is called out in the relevant principle and the Version log (see [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md)).
 
 ---
 
 ## What this folder is
 
-The contract every artifact must satisfy. Artifacts are the **typed wire format** between layers of the substrate: primitives produce them (via the bridge), operators consume and emit them, the workflow executor passes them between nodes, and the artifact store persists them. They are the *only* legal data shape inside the operator and workflow layers — naked `pd.DataFrame`, `pd.Series`, and `np.ndarray` objects do not cross those boundaries.
+The contract every artifact must satisfy. Artifacts are the **typed wire format** between layers: primitives produce them (via the bridge), operators consume and emit them, the workflow executor passes them between nodes, the artifact store persists them. They are the *only* legal data shape inside the operator and workflow layers — naked `pd.DataFrame` / `pd.Series` / `np.ndarray` do not cross those boundaries.
 
 The artifact layer is **structurally different** from the primitive and operator layers:
 
-- **Primitives and operators are *folders***. Each one lives in its own four-file (primitive) or four-file (operator) folder and is one of many instances of the same contract.
-- **Artifacts are *types in a closed family***. Each artifact is one entry in the `ARTIFACT_TYPE_NAMES` tuple (`shared/workflow/registry.py`) plus a corresponding Pydantic class (`shared/artifacts/types.py` or `shared/artifacts/trades.py`). The whole family is the architecture; adding a new entry is a P8-gated closed-family extension, not a routine addition.
+- **Primitives and operators are *folders*** — many instances of one four-file contract.
+- **Artifacts are *types in a closed family*** — each is one entry in the canonical closed-family enum plus a Pydantic class. The whole family is the architecture; adding an entry is a P8-gated extension, not a routine addition.
 
-This document is organised as **principles** (same as primitive and operator), grouped in four bins: definitional (ART1–ART3, *is this actually an artifact?*) → admission (ART4–ART6, *should this artifact type exist at all?*) → well-formedness (ART7–ART11, *what makes a particular artifact instance valid?*) → operational (ART12–ART16, *the build conventions every artifact follows*).
-
-A note on relationship to the primitive and operator contracts:
-
-| Principle | Primitive (PR) | Operator (OPR) | Artifact (ART) |
-|---|---|---|---|
-| Concept ownership | PR1 (finance concept; instrument-parameterised) | OPR1 (structural method family) | ART1 (one structural shape; type-parameterised by payload) |
-| Closed-family / shared residence | PR8 (Convention enum) | OPR3 (shared/operators/ always) | ART2 (closed family in `ARTIFACT_TYPE_NAMES`); ART3 (no domain residence — types are global) |
-| Parsimony / admission | PR4 (composability + LLM clarity) | OPR4 (composability + promotion rule) | ART4 (closed-family extension is ADR-gated); ART5 (new *shape* not new *use case*); ART6 (substrate-wide impact must land together) |
-| Methodology offloading | PR7 (config.yaml) | OPR7 (config.yaml + design-lock allowance) | **N/A** — artifacts have no methodology; they are pure schemas |
-| Determinism / replay | PR4 / PR15 (parity fixture) | OPR14 (pure function) | ART10 (content-addressed via `lineage.head_hash`) |
-| Provenance | PR10 (reachability) | OPR10 (lineage extension) | ART9 (mandatory lineage chain on every instance) |
-| Honest refusal | PR11 (raise or envelope) | OPR13 (raise only) | ART11 (validators raise on malformed input at construction) |
-| Test pattern | PR16 (compute + wiring + SQL parity) | OPR16 (unit + integration; bootstrap-exception on integration) | ART13 (round-trip + validator + lineage propagation; no compute → no SQL parity) |
-| Finance-blind | implicit (primitives carry domain) | OPR6 (asset-class-blind, refined) | ART3 (asset-class-blind types; payload may be finance data, the type itself is not) |
-
-Each principle below cites its primitive / operator analog where one exists and names where artifact-specific behaviour diverges.
+Organised as **principles** in four bins: definitional (ART1–ART3, *is this actually an artifact?*) → admission (ART4–ART6, *should this type exist?*) → well-formedness (ART7–ART11, *what makes an instance valid?*) → operational (ART12–ART16, *the build conventions every artifact follows*).
 
 ## What an artifact *is* — the universal contract
 
-Every artifact is a **frozen Pydantic class** in `shared/artifacts/types.py` or `shared/artifacts/trades.py`, carrying three load-bearing parts:
+Every artifact is a **frozen Pydantic class** in `shared/artifacts/types.py`, carrying three load-bearing parts:
 
 ```python
 class <ArtifactType>(BaseModel):
     model_config = ConfigDict(
         frozen=True,                  # immutable; new artifact = new object
         extra="forbid",               # unknown fields rejected at construction
-        arbitrary_types_allowed=True, # for pd.Series / pd.DataFrame payloads
+        arbitrary_types_allowed=True, # for pd.Series / pd.DataFrame / np.ndarray payloads
     )
 
-    payload: <typed_payload>          # pd.Series, pd.DataFrame, np.ndarray, ...
-    <structural_metadata_fields>      # units, frequency, missingness_policy,
-                                      # index type, etc.; varies by type
-    lineage: Lineage                  # content-addressed chain of steps
-                                      # back to the L1 read
+    payload: <typed_payload>          # pd.Series, pd.DataFrame, np.ndarray, or scalar
+    <structural_metadata_fields>      # units, frequency, missingness_policy, ... (varies by type)
+    lineage: Lineage                  # content-addressed chain back to the L1 read
 
     @model_validator(mode="after")
     def _validate_<shape>(self) -> "<ArtifactType>":
-        # Structural invariants enforced at construction:
-        # index must be DatetimeIndex, dtype must be numeric, mask
-        # must agree with event_dates count, etc.
-        ...
+        _validate_datetime_index(self.payload.index, "<ArtifactType>")   # SHARED, every indexed type (ART11)
+        # + type-specific invariants (numeric/finite dtype, mask==dates, panel-column-units, ...)
         return self
 ```
 
-The closed family today is exactly six types, declared in `ARTIFACT_TYPE_NAMES` in `shared/workflow/registry.py`:
+The closed family (v2.0) is declared **once** in a canonical enum (`shared/workflow/registry.py::ARTIFACT_TYPE_NAMES`), from which every other site is derived (ART2):
 
 | Type | Payload | What it represents |
 |---|---|---|
-| **`Series`** | `pd.Series` (DatetimeIndex, numeric dtype) | A single indexed numeric series — a yield, a price, a rate, anything that maps `date → number`. |
-| **`SeriesSet`** | keyed dict of `Series` (aligned to a common index) | An aligned collection of `Series`, keyed by `series_key`. Output of alignment operators. |
-| **`EventSet`** | `pd.Series[bool]` mask + event-date list + per-event metadata | Discrete events firing at specific timestamps — output of thresholding / event-extraction operators. |
-| **`Panel`** | `pd.DataFrame` (DatetimeIndex, per-column units) | A wide tabular artifact (rows = dates, columns = named series with their own units). Used for multi-series outputs and regression coefficient tables. |
-| **`WindowedPanel`** | `np.ndarray` shape `[n_events, window_length]` + offsets | N event windows over a target series — `[events × event-relative day offset]`. Output of `event_windows`. |
-| **`TradeSet`** | ordered list of `Trade` records (each with leg_specs, entry/exit dates) + `methodology_policy` tag + optional `source_event_key` | A finite, well-formed set of trades fired by a strategy — *pure data* description, no P&L. The `methodology_policy` tag records the trade-construction methodology variant (e.g., `fixed_horizon_v1`); `source_event_key` optionally back-references the upstream `EventSet.source_series_key`. |
+| **`Series`** | `pd.Series` (DatetimeIndex, numeric, finite-or-NaN) | A single indexed numeric series — yield, price, rate, anything `date → number`. |
+| **`SeriesSet`** | keyed dict of `Series` (aligned to a common index) | An aligned keyed collection. Output of alignment / regression. |
+| **`EventSet`** | `pd.Series[bool]` mask + ordered event-dates + per-event metadata | Discrete events firing at timestamps. Output of thresholding. |
+| **`Panel`** | `pd.DataFrame` (DatetimeIndex, per-column units, `sub_kind`) | Wide tabular `[date × column]`. |
+| **`WindowedPanel`** | `np.ndarray [n_events, window_length]` + offsets | N event windows over a target series. |
+| **`ScalarMetric`** | a single finite number + `units` | A single statistic (a full-sample correlation, a cointegration test stat). Replaces the single-row-`Series` + sentinel-date hack. |
 
-Two earlier design-note types — `ScalarMetric` and `RankedResult` — appear in early architecture docs but are **not in the current closed family**. `ScalarMetric` is explicitly deferred per `shared/artifacts/types.py:23`; `RankedResult` is not yet registered. Operators that need single-value or ranked outputs use a single-row `Series` or `Panel` until those two types are admitted via the closed-family-extension procedure.
+**Removed in v2.0:** **`TradeSet`** — its only producer/consumers (`construct_trades`, `evaluate_trades`, `summarize_trades`) are finance-aware and were relocated to the primitive layer per [OPR6](../operator/README.md). `TradeSet` therefore leaves the operator-composable closed family; if a future backtest *primitive* emits it, it becomes a primitive-output type and is re-admitted via the ART4 procedure at that time.
 
-Two structural-metadata families are themselves closed enums used by multiple artifact types:
-
-- **`TimeSeriesUnits`** (re-exported from `shared/schemas/time_series.py`) — the unit taxonomy. Current values: `PERCENT`, `BPS`, `Z_SCORE`, `RATIO`, `PCT_RANK`, `FACTOR_LEVEL`, `COUNT`. Per [`units.py`](../../../shared/artifacts/units.py): *"if a future operator needs a unit the closed enum does not cover, extend `TimeSeriesUnits` centrally — do NOT introduce a second enum here."*
-- **`MissingnessPolicy`** (`shared/artifacts/missingness.py`) — discriminated union: `CleanSingleSeriesV1`, `RawNoCleaning`, `AlignSeriesFFillV1`. Operators check policy compatibility before composing artifacts.
-
-Both taxonomies are closed-family-gated the same way artifact types are.
+Two structural-metadata families are themselves closed enums reused by every type (ART12):
+- **`TimeSeriesUnits`** — `PERCENT, BPS, Z_SCORE, RATIO, PCT_RANK, FACTOR_LEVEL, COUNT` (extend centrally, never fork).
+- **`MissingnessPolicy`** — discriminated union: `CleanSingleSeriesV1`, `RawNoCleaning`, `AlignSeriesFFillV1`.
 
 ## What an artifact is *not*
 
-Five boundary statements that prevent common misclassifications:
-
-- **Not a computation.** Artifacts don't transform data; they describe its shape. Computations live in primitives (L2) and operators (L3); artifacts are the wire format between them. An artifact class has no `__init__` logic beyond Pydantic validation; no method that computes a derived value (`compute_zscore()` on `Series` would be wrong — that's an operator).
-- **Not a domain model.** An artifact doesn't know whether its payload is yields, FX rates, or equity prices. It knows the *structural shape* of the payload (a `pd.Series` with `DatetimeIndex`, numeric dtype, `TimeSeriesUnits.BPS`). The domain interpretation lives in primitive metadata (the `Convention.source` tags, the `Convention.rationale`) and in workflow templates (the desk-concept they compose). Artifacts are domain-blind.
-- **Not a database row.** Artifacts are *in-memory* typed wrappers. They are persisted to the artifact store with their lineage chain, but the persistence layer is `state/artifact_store.py`, not the artifact class itself. The artifact class does not have ORM behaviour, foreign keys, or query methods.
-- **Not a configuration object.** Artifacts have no `defaults:`, no `conventions:`, no YAML — they are pure schemas. The closest analogue to "configuration" is the structural metadata fields (`units`, `frequency`, `missingness_policy`), which are part of the artifact's identity, not a tunable knob.
-- **Not optional.** Every artifact carries a `Lineage` field — this is mandatory, never `None`, never a default-empty chain. An artifact without lineage is a malformed artifact and the validator rejects it at construction.
-
-## How to use this document
-
-For your first read: scan the **Quick index** below, then read every principle's **Rule** line. The **Why**, **Verify**, and **Anti-patterns** sections are reference material for when a question or a PR turns on a specific principle.
-
-For ongoing work: do not re-read this file from top to bottom. Look up the specific principle by ID when it comes up. Cite by ID (`ART3`, `ART10`) in commit messages, PR comments, and code review — same discipline as the P-numbers from [`../../00_thesis/01_non_negotiables.md`](../../00_thesis/01_non_negotiables.md), the PR-numbers from [`../primitive/README.md`](../primitive/README.md), and the OPR-numbers from [`../operator/README.md`](../operator/README.md). The four namespaces are deliberately separate: P-numbers are platform-wide; PR / OPR / ART are component-specific.
+- **Not a computation.** Artifacts describe shape; they don't transform data. No `compute_zscore()` method on `Series` (that's an operator).
+- **Not a domain model.** An artifact doesn't know whether its payload is yields or FX — it knows the structural shape. Domain interpretation lives in primitives and templates.
+- **Not a database row.** In-memory typed wrappers; persistence is `state/artifact_store.py`, not the class.
+- **Not a configuration object.** Pure schemas; no `defaults:`, no YAML.
+- **Not optional.** Every artifact carries a non-empty `Lineage`. An artifact without lineage is malformed and the validator rejects it.
 
 ## Quick index — the ART-numbers
 
 | ID | Group | Principle | One-line rule |
 |---|---|---|---|
-| **ART1** | I | Structural shape ownership | An artifact owns one *structural shape* — a typed wrapper around a payload of a specific kind (single Series, keyed set, event mask, panel, windowed panel, trade set). |
-| **ART2** | I | Closed-family membership | The valid set of artifact types is exactly `ARTIFACT_TYPE_NAMES` in `shared/workflow/registry.py`. Adding a new type is an ADR-gated closed-family extension. |
-| **ART3** | I | Asset-class-blind types | An artifact type is structural; its payload may carry asset-class-specific data, but the *type itself* runs unchanged on rates, FX, equities, credit, commodities, or any indexed data. |
-| **ART4** | II | Closed-family extension is ADR-gated | Adding a new artifact type is the most heavily gated change in the platform. It requires an ADR, simultaneous updates to discriminator unions / registry / bridge / consumer operators / validator / test fixtures, and at least one demonstrated producer-consumer pair landing in the same PR (or explicit prerequisite chain). |
-| **ART5** | II | New shape, not new use case | A new artifact type is admitted only when existing types cannot *structurally* carry the data. New use cases for an existing shape — a new kind of `Series` data, a different `MissingnessPolicy`, a new `TimeSeriesUnits` value — do not warrant a new artifact type. |
-| **ART6** | II | Substrate-wide-impact commitment | A new artifact type touches at least eight sites (Pydantic class, closed-family enum, discriminator union, executor type-map, artifact-store codec, bridge or producer-operator, consumer-operator, tests). All eight must land in the same PR or an explicit prerequisite chain. Half-landed extensions are auto-reject. |
-| **ART7** | III | Frozen, immutable, `extra="forbid"` | Every artifact's `model_config` is `frozen=True, extra="forbid"`, with `arbitrary_types_allowed=True` for pandas / numpy payloads. New artifacts are constructed; existing artifacts are never mutated. |
-| **ART8** | III | Mandatory structural metadata | Every artifact carries the structural-metadata fields its type requires — `units` / `frequency` / `missingness_policy` for `Series`-shaped types; `event_dates` / `per_event_metadata` for event types; etc. Missing or `None` metadata where the type requires it is a malformed artifact. |
-| **ART9** | III | Mandatory lineage chain | Every artifact carries a `Lineage` field with at least one step (typically a `PrimitiveStep` for primitive outputs or an `OperatorStep` for operator outputs). No artifact ever has empty / null lineage. |
-| **ART10** | III | Content-addressed identity | The artifact's identity is `lineage.head_hash`. Two artifacts with the same content (same payload + same metadata + same lineage chain) produce the same hash; the artifact store uses this for dedup and replay. |
-| **ART11** | III | Validators raise at construction | Structural invariants (DatetimeIndex required, numeric dtype required, event-count agreement, panel-column-units agreement) are enforced by Pydantic `@model_validator(mode="after")` blocks. Construction of a malformed artifact raises `ValueError` immediately. |
-| **ART12** | IV | Closed enums for structural metadata | `TimeSeriesUnits` and `MissingnessPolicy` are themselves closed families. New artifact types reuse these taxonomies; introducing a parallel taxonomy is forbidden. |
-| **ART13** | IV | Test pattern | Every artifact ships with round-trip Pydantic JSON tests, validator tests (every malformed-input case raises), lineage-propagation tests (constructing an artifact from upstream lineage produces the expected chain), and immutability tests (`frozen=True` blocks reassignment). **No SQL parity tests** — artifacts have no compute path. |
-| **ART14** | IV | Bridge / adapter required for primitive-produced types | Every artifact type that can be produced by a primitive has a registered adapter in `shared/artifacts/adapters/` lifting the primitive's wire-shaped output into the typed artifact. There is no other legal path from primitives to artifacts. |
-| **ART15** | IV | No naked pandas escape | Inside operator-layer and workflow-layer code, the artifact is the only legal data carrier. Raw `pd.DataFrame`, `pd.Series`, `np.ndarray` may live *inside* an artifact's `payload` field, but never as a top-level value passed between operators or workflow nodes. |
-| **ART16** | IV | Closed-family-extension procedure | Adding a new artifact type follows the documented six-step procedure (ADR → class → discriminator → registry → bridge/producer → consumer → tests). The procedure is the runbook in [`runbook.md`](runbook.md). |
+| **ART1** | I | Structural shape ownership | One structural shape per type; the type name names the shape, never a use case. |
+| **ART2** | I | Closed-family membership (single source) | The valid set is one canonical enum; every other site (discriminator, type-map, terminal, store codec) is **derived** from it. |
+| **ART3** | I | Asset-class-blind types | The type is structural; its payload may be finance data, but the type's fields/validators never branch on asset class. |
+| **ART4** | II | Closed-family extension is ADR-gated | Adding/removing a type is the most heavily gated change in the platform. |
+| **ART5** | II | New shape, not new use case | Admit a type only when no existing type can *structurally* carry the data. |
+| **ART6** | II | Substrate-wide-impact commitment | A type change touches every derived site; all land together (lock-step test). |
+| **ART7** | III | Frozen, immutable, `extra="forbid"` | `frozen=True, extra="forbid", arbitrary_types_allowed=True`; construct, never mutate. |
+| **ART8** | III | Mandatory structural metadata (incl. derived frequency) | Every type carries its required metadata; `frequency` is **derived at the adapter**, not left `None`. |
+| **ART9** | III | Mandatory lineage chain + integrity guards | Non-empty `Lineage`; `head_hash == steps[-1].hash`; chain connectivity; `.build()` is the only correct path. |
+| **ART10** | III | Content-addressed identity | Identity is `lineage.head_hash` over the recipe; producers fold every content-defining choice into `step.params` (sanitised, finite). |
+| **ART11** | III | Validators raise at construction (uniform, strict) | One **shared** index/dtype/finiteness validator across **all** types; `±Inf` forbidden; EventSet semantic invariants enforced. |
+| **ART12** | IV | Closed enums + typed escape hatches | `TimeSeriesUnits` / `MissingnessPolicy` closed; `per_event_metadata` gets a typed per-producer key contract. |
+| **ART13** | IV | Test pattern | Round-trip + validator + lineage-propagation + immutability, plus the cross-type uniform-validator test. |
+| **ART14** | IV | Bridge / adapter for primitive-produced types | The adapter is the only primitive→artifact path; it derives + populates frequency/units/missingness. |
+| **ART15** | IV | No naked pandas escape | Artifacts are the only legal carrier between operator/workflow functions. |
+| **ART16** | IV | Closed-family-extension procedure | The documented runbook procedure; all derived sites land together. |
 
 ---
 
-## Group I — Definitional: is this actually an artifact?
+## Group I — Definitional
 
 ### ART1 — Structural shape ownership
 
-**Rule.** An artifact owns one *structural shape* — the type-level description of how its payload is organised (a single Series, a keyed collection of Series, an event mask + dates, a wide panel, a windowed panel of events, a trade set). The shape is what other artifact types *do not* express: each type captures a structurally distinct organisation of data.
+**Rule.** An artifact owns one *structural shape* — the type-level description of how its payload is organised (a single Series, a keyed collection, an event mask + dates, a wide panel, a windowed panel, a scalar). Each type captures a structurally distinct organisation that no other type expresses.
 
-**Why.** The closed-family discipline (ART2) is what lets the substrate be type-safe end-to-end. Each artifact type is a unique structural shape, and operators dispatch on these shapes. If two artifact types had the same shape, the type algebra would be ambiguous and operators couldn't reliably accept one or the other.
+**Why.** Closed-family type-safety (ART2). Operators dispatch on shapes; if two types had the same shape the algebra would be ambiguous.
 
-**Verify.**
-- The artifact's shape is structurally distinct from every other type in the closed family. *"How is `Series` different from `Panel`?"* — Series is one column over a DatetimeIndex; Panel is multiple columns over a DatetimeIndex. *"How is `Panel` different from `WindowedPanel`?"* — Panel is `[date × series]`; WindowedPanel is `[event × offset]`. Each pair has a one-sentence structural distinction.
-- The Pydantic class name names the shape (`Series`, `EventSet`, `WindowedPanel`), not the use case (`YieldPanel`, `RegimeEvents`).
-- The artifact does not embed asset-class or domain assumptions; the shape would make sense for any indexed numeric data.
+**Verify.** Each type is structurally distinct in one sentence (*"Series is one column over a DatetimeIndex; Panel is many; WindowedPanel is `[event × offset]`; ScalarMetric is a single number"*). The class name names the shape (`Series`, not `YieldSeries`). No asset-class assumptions.
 
-**Anti-patterns.**
-- An artifact named `YieldPanel` (asset-class-specific name; the shape is a `Panel`, with rates yields in the payload).
-- Two artifact types with the same shape (e.g., `Series` and `YieldSeries` — duplicate; one is a `Series` with `units=PERCENT` in the payload).
-- An artifact whose distinction from another is *use-case* not *shape* (`RegimeEvents` vs `BreakoutEvents` — both are `EventSet` shapes).
+**Anti-patterns.** `YieldPanel` (use `Panel` with yields in the payload); `RegimeEvents` vs `BreakoutEvents` (both are `EventSet`).
 
 **Exceptions.** None.
 
-**Relates to.** Analog of [PR1](../primitive/README.md#pr1--concept-ownership-not-instrument-ownership) (primitives own finance concepts) and [OPR1](../operator/README.md#opr1--structural-method-ownership) (operators own structural method families); artifacts own structural shapes.
+**Relates to.** Analog of [PR1](../primitive/README.md) / [OPR1](../operator/README.md).
 
-### ART2 — Closed-family membership
+### ART2 — Closed-family membership (single source of truth)
 
-**Rule.** The valid set of artifact types is exactly the tuple `ARTIFACT_TYPE_NAMES` in `shared/workflow/registry.py`, plus the corresponding Pydantic classes registered in the discriminator union. Today the family is:
+**Rule.** The valid set of artifact types is declared **once**, in the canonical enum `ARTIFACT_TYPE_NAMES` (`shared/workflow/registry.py`). **Every other authority is derived from it, not hand-maintained in parallel**: the discriminator union (`state/schemas.py::ArtifactTypeLiteral`), the executor type-map (`artifact_type_name()`), `WorkflowResult.TerminalArtifact`, and the artifact-store codec map (`_ARTIFACT_CLASSES`). A lock-step test asserts all derived sites equal the canonical enum.
+
+The family today (v2.0):
 
 ```python
-ARTIFACT_TYPE_NAMES = (
-    "Series",
-    "SeriesSet",
-    "EventSet",
-    "Panel",
-    "WindowedPanel",
-    "TradeSet",
-)
+ARTIFACT_TYPE_NAMES = ("Series", "SeriesSet", "EventSet", "Panel", "WindowedPanel", "ScalarMetric")
+# TradeSet removed (relocated to the primitive layer with its operators — OPR6).
+# ScalarMetric admitted in v2.0 (ART4/ART5); lands via the ART16 procedure with the correlation reference build.
 ```
 
-Code that introduces a new artifact-shaped Python class outside this enum is in violation. The validator (and `artifact_type_name()` in the registry) raises on unknown artifact types deliberately, so a slipped-in custom class surfaces at execution time rather than propagating silently.
+**v2.0 supersedes v1**, where the family was enumerated in 3+ hand-maintained places that had **already drifted** — `TerminalArtifact` omitted `TradeSet` though the registry produced it, so a workflow ending on a `TradeSet` failed validation. Single-sourcing makes that class of drift structurally impossible.
 
-**Why.** [P8](../../00_thesis/01_non_negotiables.md) (closed-family discipline) at the artifact layer. The substrate's type algebra is bounded by this set — every operator declares its inputs and outputs in terms of these names, the executor dispatches on them, the validator checks composition against them. Letting the set grow casually breaks every downstream consumer; growing it deliberately (ART4 + ART6) is the only sustainable path.
+**Why.** [P8](../../00_thesis/01_non_negotiables.md) + [P10](../../00_thesis/01_non_negotiables.md). Every downstream consumer reads the family; if the authorities disagree, the substrate breaks in confusing, deferred ways. One source + derived sites + a lock-step test is the only sustainable shape.
 
 **Verify.**
-- A `grep` for `class .*\(BaseModel\)` inside `shared/artifacts/` returns exactly the closed-family classes plus their structural-metadata helpers (`MissingnessPolicy` variants, `LineageStep` variants, `LegSpec`). No artifact-shaped class lives outside this set.
-- Every operator's `OperatorSpec.input_slots` and `output_type` values are members of `ARTIFACT_TYPE_NAMES` (or `"List[<member>]"`).
-- The discriminator union in `state/schemas.py` (and the type-map in `shared/workflow/registry.py::artifact_type_name`) exactly mirror `ARTIFACT_TYPE_NAMES`.
+- A single canonical enum exists; the discriminator, type-map, `TerminalArtifact`, and store-codec map are derived from it (or a lock-step test asserts equality).
+- `grep` for `class .*\(BaseModel\)` in `shared/artifacts/` returns exactly the closed-family classes + helper types.
+- Every operator `SlotDescriptor` type is a member of the enum.
 
-**Anti-patterns.**
-- A primitive that returns a custom Python class shaped like an artifact but not registered in the closed family.
-- An operator that uses a `BaseModel` subclass outside `shared/artifacts/types.py` or `shared/artifacts/trades.py` as if it were an artifact.
-- "Just for this one workflow, we need a `RegressionResult` artifact" — no. Either use an existing type (`Panel` for regression coefficient tables) or file an ADR to extend the closed family.
+**Anti-patterns.** A type in one authority but not another; a new artifact-shaped class outside `shared/artifacts/`; "just for this workflow, a `RegressionResult` type" (use `Panel`/`SeriesSet`, or file an ART4 ADR).
 
-**Exceptions.** None at the level of artifact wrappers. Helper types (`LegSpec`, `MissingnessPolicy` variants, `LineageStep` variants) are part of the artifact contract but not artifact types themselves — they live inside artifacts or inside lineage chains.
+**Exceptions.** Helper types (`MissingnessPolicy` variants, `LineageStep` variants) are part of the contract but not artifact types and don't appear in the enum.
 
-**Relates to.** [P8](../../00_thesis/01_non_negotiables.md) (closed-family discipline) at the artifact layer; [PR8 / OPR8](../primitive/README.md#pr8--single-central-methodology-surface-the-central-knob) bounded-surface principles for compute layers.
+**Relates to.** [P8](../../00_thesis/01_non_negotiables.md), [P10](../../00_thesis/01_non_negotiables.md).
 
 ### ART3 — Asset-class-blind types
 
-**Rule.** An artifact *type* is structural — it knows the shape of its payload but not the asset class. The data *inside* an artifact instance may be asset-class-specific (a `Series` of UST yields, a `TradeSet` of FX trades), but the type's fields and validators do not branch on asset class.
+**Rule.** An artifact *type* is structural — it knows the shape of its payload, not the asset class. The data *inside* an instance may be asset-class-specific (a `Series` of UST yields); the type's fields and validators never branch on asset class. This is the type-level operationalisation of [OPR6](../operator/README.md): operators are finance-blind because the types they consume/emit are.
 
-This is the operationalisation of [OPR6](../operator/README.md#opr6--asset-class--domain-blind-contract) at the type level: operators are asset-class-blind because the types they consume and emit are asset-class-blind.
+**Why.** Cross-asset portability. The same `Series` carries yields today, FX tomorrow; the structural validators hold uniformly. If the type knew the asset class, P9 collapses at the type level.
 
-**Why.** Cross-asset portability. The same `Series` type carries rates yields today, FX rates tomorrow, equity prices later — the type does not change. The same `TradeSet` carries rates trades, FX trades, equity trades. The type's structural validators (`DatetimeIndex`, numeric dtype, mask agreement, etc.) hold uniformly across asset classes. If the type knew the asset class, the substrate's cross-asset claim ([P9](../../00_thesis/01_non_negotiables.md)) would collapse at the type level.
+**Verify.** No artifact branches on asset-class identity; no name embeds an asset class (`YieldSeries`, `EquityPanel` wrong); a non-rates round-trip test passes for every type.
 
-Generic trading concepts (Trade, LegSpec, holding period) are allowed in artifact types when the *structural shape* of the concept is asset-class-blind — a Trade in rates is structurally the same shape as a Trade in FX (entry date, exit date, leg specs, weights). What the leg's `instrument_key` resolves to is data, not type.
+**Anti-patterns.** An `asset_class` field on a type; `if units == BPS:` branching in a validator (data-level reasoning leaking into the type); an asset-class-named type.
 
-**Verify.**
-- No artifact class branches on asset-class identity in its validators or fields.
-- No artifact class name contains an asset-class concept (`YieldSeries`, `FXPair`, `EquityPanel` are wrong; `Series`, `Panel` are right).
-- Cross-asset tests: at least one round-trip test per artifact type uses non-rates synthetic data (random walks, temperature data, equity prices) and the validator accepts it.
+**Exceptions.** None.
 
-**Anti-patterns.**
-- Adding `asset_class: Literal["rates", "fx", ...]` as a field on an artifact type.
-- Validators that check `if units == BPS: ...` — that's branching on a rates-shaped unit, which is data-level reasoning leaking into the type.
-- An artifact type whose name embeds an asset class.
-
-**Exceptions.** None. Artifact types are structural; asset-class-aware code lives in primitives and workflow templates.
-
-**Relates to.** [P9](../../00_thesis/01_non_negotiables.md), [OPR6](../operator/README.md#opr6--asset-class--domain-blind-contract).
+**Relates to.** [P9](../../00_thesis/01_non_negotiables.md), [OPR6](../operator/README.md).
 
 ---
 
-## Group II — Admission: should this artifact type exist at all?
+## Group II — Admission
 
 ### ART4 — Closed-family extension is ADR-gated
 
-**Rule.** Adding a new artifact type is the most heavily gated change in the platform's component system. It requires:
+**Rule.** Adding **or removing** an artifact type is the most heavily gated change in the platform's component system. It requires: (1) an ADR naming the shape, the use case, the structural argument (ART5), and the derived sites (ART6); (2) simultaneous updates to every derived site, all in one PR (or an explicit prerequisite chain); (3) a demonstrated producer-consumer pair. The discipline is *much* tighter than the primitive PR4 or operator OPR4 admission — a primitive or operator may ship for a single use; an artifact type may not.
 
-1. **An ADR** in [`../../05_decisions/`](../../05_decisions/) describing the new shape, why no existing artifact type structurally carries it, and which producer / consumer code is affected.
-2. **Simultaneous updates** to every site listed in ART6 (closed-family enum, Pydantic class, discriminator union, executor type-map, validator, bridge or producer-operator, consumer-operator), all in the same PR (or an explicit prerequisite chain with the producer / consumer landing in follow-up PRs).
-3. **At least one demonstrated producer-consumer pair** — the extension is admitted only when there is a primitive (or operator) that emits the new type *and* an operator (or workflow template) that consumes it. Adding an artifact type with no consumer is forbidden; it accumulates dead substrate.
+**v2.0 note.** The two v2.0 family changes are themselves ART4 decisions, recorded here pending their ADRs: **remove `TradeSet`** (its operators relocated — [OPR6](../operator/README.md)) and **add `ScalarMetric`** (recommended — see ART5 + Open questions).
 
-**Why.** [P8](../../00_thesis/01_non_negotiables.md) is most acute at the artifact layer because every downstream consumer (every operator, every workflow, the executor, the validator, the artifact store) reads from `ARTIFACT_TYPE_NAMES`. A casual addition breaks every site. The ADR + simultaneous-landing rule is what keeps the closed-family discipline intact under change.
+**Why.** [P8](../../00_thesis/01_non_negotiables.md) is most acute here: every operator, the validator, the executor, and the store read the family. A casual change breaks every site.
 
-The discipline here is *much tighter* than the primitive's PR4 parsimony rule or the operator's OPR4 promotion rule. A new primitive or operator may legitimately ship for a single workflow; a new artifact type may not.
+**Verify.** The ADR exists and names the derived sites + rationale; the PR updates every site (lock-step test green); a working producer-consumer pair lands with it.
 
-**Verify.**
-- The ADR exists in `05_decisions/` and names the new shape, the affected sites, and the rationale.
-- The PR (or prerequisite-chained PRs) updates every site in ART6. Half-landed extensions are auto-reject.
-- The PR contains a working producer-consumer pair (a primitive or operator that emits the type, plus an operator or workflow template that consumes it), not just the type declaration.
-
-**Anti-patterns.**
-- A PR adding an artifact class to `shared/artifacts/types.py` without updating `ARTIFACT_TYPE_NAMES`.
-- A PR adding an artifact type with no consumer ("we'll wire up the operator later").
-- A PR adding an artifact type with no ADR — even when the type "obviously" belongs (the bar is the ADR, not the obvious-ness).
-- A "small" artifact extension that touches only the class file and the registry, leaving the discriminator union and bridge stale.
+**Anti-patterns.** A class added without updating the enum; a type with no consumer ("wire it later"); any extension without an ADR.
 
 **Exceptions.** None.
 
-**Relates to.** [P8](../../00_thesis/01_non_negotiables.md) (closed-family discipline) at its most acute. The primitive [PR4](../primitive/README.md#pr4--parsimony-the-composability-check--llm-tool-selection-clarity) and operator [OPR4](../operator/README.md#opr4--parsimony--the-promotion-rule) parsimony rules are much lighter-weight; new artifact admission is qualitatively stricter.
+**Relates to.** [P8](../../00_thesis/01_non_negotiables.md); ART6.
 
 ### ART5 — New shape, not new use case
 
-**Rule.** A new artifact type is admitted only when existing types **cannot structurally carry** the data. New use cases for an existing shape — a new kind of `Series` data, a different `MissingnessPolicy` variant, a new `TimeSeriesUnits` value, a different value pattern on an existing type's fields — do not warrant a new artifact type. They warrant either extending an existing closed-enum metadata family (`TimeSeriesUnits`, `MissingnessPolicy`) or just emitting an existing type with the new value.
+**Rule.** Admit a new type only when existing types **cannot structurally carry** the data. A new *use case* for an existing shape (a new kind of `Series` data, a new `TimeSeriesUnits` value) does not warrant a new type — extend the metadata enum or emit an existing type with new values.
 
-**Why.** Closed-family discipline plus structural distinctness (ART1). Every new artifact type compounds: every operator now has another shape to handle, every test fixture needs another case, every consumer needs another branch. The cost is paid forever; admit only when no existing type carries the shape.
+**The `ScalarMetric` case (why it qualifies).** A full-sample correlation, a covariance, a cointegration test statistic, a Sharpe-free summary number — these are genuinely a *single number*, not a time series. v1 forced them into a single-row `Series` stamped at a fake `SUMMARY_SENTINEL_DATE` so two summaries could compose. That hack is load-bearing and ugly: the "date" is a lie, and the toolbox of statistical operators (correlation/covariance/cointegration — the next build) will *predominantly* output scalars. A first-class `ScalarMetric` (a finite number + `units` + `lineage`) is the structurally-honest shape. **This is admitted in v2.0** (decided); it lands via the ART16 procedure alongside the `correlation` reference build.
 
-The most common mis-classification: thinking that a *new use case* (a new kind of data being computed) requires a *new artifact*. It almost never does. A new use case usually just emits an existing type with different field values.
+**Why.** Every type compounds (every operator gains a shape to handle); admit only when no existing type carries the shape *honestly*. The sentinel-date `Series` fails "honestly" — the index is fictional.
 
-**Verify.**
-- The PR description names at least one existing artifact type and explains explicitly why its shape cannot carry the new data. *"`Panel` carries `[date × series]`; the new data is `[event × offset]` — that's `WindowedPanel`'s shape, not `Panel`'s"* — that's a real structural argument. *"`Panel` rounds floats differently than I'd like"* — that's not.
-- The argument cites the structural fields and validators of the existing type, not the use case.
-- If the answer is *"we just need different metadata values on `Series`"*, the right path is to extend `TimeSeriesUnits` or `MissingnessPolicy`, not to add an artifact type.
+**Verify.** The PR names an existing type and explains why its shape cannot carry the data; the argument cites structural fields, not the use case.
 
-**Anti-patterns.**
-- "We need a `YieldSeries` because we're computing yields" — no, that's `Series` with `units=PERCENT`.
-- "We need a `RegressionResult` artifact" — almost always `Panel` with rows = date and columns = `(beta, alpha, r_squared)` with appropriate per-column units.
-- "We need a `ScalarMetric` artifact for the summary statistic" — that's a single-row `Series` (or `Panel`) until the deferred `ScalarMetric` is admitted via the full procedure.
-- "We need a `RankedResult` artifact for cross-sectional rankings" — that's `SeriesSet` with the rank values as the payload, until `RankedResult` is admitted.
+**Anti-patterns.** `YieldSeries` (that's `Series` + `units`); `RegressionResult` (that's `Panel`); a new type because "rounding differs."
 
 **Exceptions.** None.
 
-**Relates to.** ART4 (admission gate), [PR5 / OPR5](../primitive/README.md#pr5--concept-novelty) concept-novelty tests for primitive and operator layers.
+**Relates to.** ART4; analog of [PR5](../primitive/README.md) / [OPR5](../operator/README.md).
 
 ### ART6 — Substrate-wide-impact commitment
 
-**Rule.** Adding a new artifact type touches at least eight sites. All eight must land in the same PR, or in a documented prerequisite chain where the type can be introduced incrementally without breaking downstream code:
+**Rule.** A type change touches every derived site; all land together (or an explicit prerequisite chain). With ART2's single-source enum, the sites are *derived*, so the commitment is: update the canonical enum **and** confirm (via the lock-step test) that the discriminator, type-map, `TerminalArtifact`, store codec, producer wiring, consumer wiring, and tests all follow. A PR that lands one site without the others is auto-reject.
 
-1. **The Pydantic class** in `shared/artifacts/types.py` (or a sibling file like `shared/artifacts/trades.py` for compound shapes with helper classes).
-2. **The `ARTIFACT_TYPE_NAMES` tuple** in `shared/workflow/registry.py` (the closed-family enum).
-3. **The discriminator union `ArtifactTypeLiteral`** in `state/schemas.py` (so the artifact-metadata row's `artifact_type` discriminator carries the new value).
-4. **The `artifact_type_name()` type-map** in `shared/workflow/registry.py` (so the executor can label runtime artifacts).
-5. **The artifact-store codec** in `state/artifact_store.py` — every new type must be registered in `_ARTIFACT_CLASSES`, dispatched in `_artifact_to_stored` / `_stored_to_artifact`, and given a per-type codec pair (`_<type>_to_stored` + `_<type>_from_stored`) that handles the pandas / numpy payload's JSON-friendly encoding. Without this, `put_artifact` raises `TypeError` and the type cannot be persisted, retrieved, or replayed.
-6. **The bridge or producer-operator** in `shared/artifacts/adapters/` (if the type can be produced by a primitive) OR an `OperatorSpec` with this type as `output_type` (if the type is operator-produced).
-7. **At least one consumer-operator's `OperatorSpec`** with this type in `input_slots`, OR a workflow template that consumes it as a terminal artifact.
-8. **Tests** — artifact-store round-trip, validator tests, lineage propagation, immutability (ART13), plus an integration test using the new type end-to-end through a real producer-consumer pair.
+**Why.** The closed family only works if it stays internally consistent. The lock-step test is what enforces consistency at admission time — it would have caught the v1 `TradeSet`-missing-from-`TerminalArtifact` drift.
 
-A PR that lands one or two of the eight without the others is auto-reject. The substrate stays consistent because the eight sites are kept in lock-step.
+**Verify.** The PR diff touches the canonical enum; the lock-step test passes; `grep -rn "<type>"` finds it at every required site; CI is green.
 
-**Why.** The closed-family discipline only works if the family stays internally consistent. A new type in `ARTIFACT_TYPE_NAMES` without a matching Pydantic class crashes at runtime; a class without registry entry passes Python type checks but the executor refuses to label it; a discriminator entry without the artifact-store codec means `put_artifact` raises on first persistence attempt. The "all eight sites" rule is what enforces consistency at admission time.
+**Anti-patterns.** A "preparation" PR adding only the class + enum; a discriminator entry without a store codec.
 
-**Verify.**
-- The PR diff shows changes at every site listed above.
-- A `grep -rn "<new_type_name>"` finds it in every required site.
-- The CI suite passes — which it won't if any of the eight sites is stale.
+**Exceptions.** Helper/metadata types follow the lighter ART12 procedure.
 
-**Anti-patterns.**
-- A "preparation" PR that adds only the class and the enum, with the rest "coming in follow-up" — auto-reject unless the follow-up is an explicit, named prerequisite chain in the ADR.
-- An artifact type that exists in the discriminator union but isn't in `ARTIFACT_TYPE_NAMES`, or vice versa.
-- A new type with tests but no producer-consumer pair.
-
-**Exceptions.** Helper / metadata types (`LegSpec`, `MissingnessPolicy` variants, `LineageStep` variants) follow a lighter-weight procedure — they live inside artifact types and don't appear in `ARTIFACT_TYPE_NAMES`. Their addition is still ADR-gated (they're closed families too — see ART12) but the eight-site rule doesn't apply.
-
-**Relates to.** ART4 (admission gate). The "all sites land together" rule is what makes ART4's "ADR-gated extension" actually safe.
+**Relates to.** ART4; the lock-step test is what makes ART4 safe.
 
 ---
 
-## Group III — Well-formedness: what makes a particular artifact instance valid?
+## Group III — Well-formedness
 
 ### ART7 — Frozen, immutable, `extra="forbid"`
 
-**Rule.** Every artifact class declares:
+**Rule.** Every artifact class declares `model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)`. `frozen` and `extra="forbid"` are non-negotiable: artifacts are constructed, never mutated; unknown fields fail loudly.
 
-```python
-model_config = ConfigDict(
-    frozen=True,                  # field reassignment blocked
-    extra="forbid",               # unknown fields rejected at construction
-    arbitrary_types_allowed=True, # for pd.Series / pd.DataFrame / np.ndarray payloads
-)
-```
+**Why.** [P4](../../00_thesis/01_non_negotiables.md). A mutable artifact has an unstable identity — the same `head_hash` could refer to different content. The convention "treat the wrapped pandas object as immutable; copy on transformation" is enforced by review (Python can't freeze the payload deeply).
 
-The `frozen=True` is non-negotiable. Artifacts are constructed; they are never mutated. Operators emit *new* artifacts; they do not modify their inputs.
+**Verify.** Every class has the three-flag `model_config`; a test asserts field reassignment raises and an unknown field raises.
 
-The `extra="forbid"` is non-negotiable. An unknown field at construction is a malformed call and should fail loudly — it usually means a caller is passing through stale fields from a different artifact shape.
-
-The `arbitrary_types_allowed=True` is required because Pydantic v2 does not natively validate `pd.Series` / `pd.DataFrame` / `np.ndarray`; the validation lives in the `@model_validator` blocks (ART11) instead.
-
-**Why.** [P4](../../00_thesis/01_non_negotiables.md) (determinism + replayability) at the artifact layer. A mutable artifact would have an unstable identity — the same `head_hash` could refer to different content depending on when the artifact was inspected. With `frozen=True`, an artifact's identity is fixed at construction and replay produces the same content forever.
-
-The payload (pandas / numpy) is still technically mutable in Python — `frozen=True` only blocks reassignment of the wrapper's fields, not deep-copy mutation of the wrapped object. The operator-layer *convention* is "treat artifacts as immutable, copy on transformation" — a convention enforced by code review, not by Python.
-
-**Verify.**
-- Every artifact class has `model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)`.
-- A test asserts `artifact.field = new_value` raises `ValidationError` (or `TypeError` depending on Pydantic version).
-- A test asserts construction with an unknown field raises `ValidationError`.
-
-**Anti-patterns.**
-- An artifact class without `frozen=True`.
-- An artifact class with `extra="allow"` or no `extra` setting (which defaults to `"ignore"`, also wrong here).
-- An artifact "method" that mutates `self.payload` (e.g., `def normalize_in_place(self): self.payload[:] = ...` — wrong; either return a new artifact or move the operation to an operator).
+**Anti-patterns.** A class without `frozen=True`; `extra="ignore"`/unset; a method that mutates `self.payload`.
 
 **Exceptions.** None.
 
-**Relates to.** [P4](../../00_thesis/01_non_negotiables.md) (determinism); analog of [OPR14](../operator/README.md#opr14--pure-function-no-io) (pure functions) and [PR4](../primitive/README.md#pr4--parsimony-the-composability-check--llm-tool-selection-clarity) (determinism at the primitive level).
+**Relates to.** [P4](../../00_thesis/01_non_negotiables.md); analog of [OPR14](../operator/README.md).
 
-### ART8 — Mandatory structural metadata
+### ART8 — Mandatory structural metadata (including derived frequency)
 
-**Rule.** Every artifact carries the structural-metadata fields its type requires. The required fields per type are:
+**Rule.** Every artifact carries the structural-metadata fields its type requires, populated at construction (never `None` where the type requires a value):
 
 | Type | Required structural metadata |
 |---|---|
-| `Series` | `series_key`, `units`, `missingness_policy`, `lineage`, optional `frequency` |
-| `SeriesSet` | `units_by_key`, `missingness_by_key`, `lineage`, plus per-key upstream lineages |
-| `EventSet` | `mask`, `event_dates`, `per_event_metadata`, `source_series_key`, optional `frequency`, `lineage` |
-| `Panel` | `units_by_column`, `missingness_policy`, `lineage` |
+| `Series` | `series_key`, `units`, `missingness_policy`, `frequency`, `lineage` |
+| `SeriesSet` | `units_by_key`, `missingness_by_key`, per-key upstream lineages, `frequency`, `lineage` |
+| `EventSet` | `mask`, ordered `event_dates`, `per_event_metadata`, `source_series_key`, `frequency`, `lineage` |
+| `Panel` | `units_by_column`, `missingness_policy`, `sub_kind`, `lineage` |
 | `WindowedPanel` | `offsets`, `event_dates`, `per_event_metadata`, `target_series_key`, `units`, `lineage` |
-| `TradeSet` | ordered list of `Trade` records, required `methodology_policy` tag, optional `source_event_key`, `lineage` |
+| `ScalarMetric` | `value` (finite), `units`, `lineage` |
 
-These are not optional fields with defaults — they are part of the artifact's identity, populated at construction by whoever builds the artifact (the bridge for primitive outputs; the operator for derived artifacts).
+**`frequency` is load-bearing in v2.0 (founder decision #3).** It is **derived deterministically at the bridge** (`pd.infer_freq` or the primitive's known cadence) and populated on every production artifact — not left `None`. An `'irregular'` value disambiguates event-derived series from `None`-unknown. This is what makes the operator-layer frequency checks ([OPR11](../operator/README.md)) real instead of no-ops.
 
-**Why.** Structural metadata is what makes the operator layer's compatibility checks possible (OPR11). Without `units`, the `series_arithmetic` operator can't refuse a basis-points-plus-percent addition. Without `missingness_policy`, `align_series` can't refuse to silently mix a `CleanSingleSeriesV1` series with a `RawNoCleaning` series. Without `frequency`, daily and weekly series mix invisibly. The metadata is what makes typed artifacts safer than naked pandas.
+**Why.** Structural metadata is what makes the operator compatibility checks possible. Without `units`, `series_arithmetic` can't refuse a BPS+PERCENT add; without a *populated* `frequency`, daily and monthly series mix invisibly.
 
-**Verify.**
-- Every artifact class's field declarations include the metadata above.
-- Every adapter / producer constructs artifacts with the metadata populated — not `units=None` or empty defaults.
-- A test constructs each artifact type with synthetic data and asserts the metadata fields are present and well-typed.
+**Verify.** Every class declares the fields above; every adapter/producer populates them (not `None`, not guessed from the payload); a production artifact has a non-`None` `frequency`; a test constructs each type and asserts metadata presence.
 
-**Anti-patterns.**
-- An artifact constructed with `units=None` where the type requires units.
-- An artifact whose `frequency` is left unset when the data source has a known frequency — leave it `None` only when the source genuinely has no frequency, document why.
-- A bridge / adapter that constructs an artifact by guessing metadata values from the payload instead of taking them as explicit inputs.
+**Anti-patterns.** `units=None` where required; `frequency` left unset when the source has a known cadence; a bridge guessing metadata from the payload instead of taking it explicitly.
 
-**Exceptions.** None.
+**Exceptions.** `frequency=None` is legal only for a genuinely aperiodic source, documented; prefer `'irregular'` for event-derived series.
 
-**Relates to.** [OPR11](../operator/README.md#opr11--structural-metadata-enforcement-and-honest-refusal) (operators enforce metadata agreement); [P5](../../00_thesis/01_non_negotiables.md) (honest disclosure — metadata is what makes methodology visible at the artifact boundary).
+**Relates to.** [OPR11](../operator/README.md); [P5](../../00_thesis/01_non_negotiables.md); ART14 (the adapter derives it).
 
-### ART9 — Mandatory lineage chain
+### ART9 — Mandatory lineage chain + integrity guards
 
-**Rule.** Every artifact carries a non-empty `Lineage` field. The chain's exact shape depends on the producer:
+**Rule.** Every artifact carries a non-empty `Lineage`, and the `Lineage` model itself enforces integrity (v2.0 adds the guards):
 
-- **Primitive output via the canonical bridge** (`tool_output_to_artifact_series` / `tool_output_to_artifact_panel`): the chain is a single `PrimitiveStep` — the primitive *is* the head. (See `shared/artifacts/adapters/from_time_series.py`.)
-- **Raw DataFrame adapter** (`raw_dataframe_to_artifact_series`, used for fixture / synthetic data): the chain is `FetchStep` (the L1 read, or the synthetic-source descriptor) followed by an `AdapterStep` recording the lift parameters. (See `shared/artifacts/adapters/from_raw_dataframe.py`.)
-- **Operator output**: the producer extends the primary input's chain via `Lineage.append(OperatorStep.build(...))` (OPR10), so the head is the new `OperatorStep`.
+1. `head_hash == steps[-1].hash` (the cheap-equality invariant).
+2. **Chain connectivity** — the primary chain's `input_hashes` include the prior head, so a disconnected/forged chain is rejected at construction.
+3. **`.build()` is the only correct path** — direct `OperatorStep(...)`/`Lineage(...)` construction that bypasses hash recomputation is rejected; producers must use `OperatorStep.build` / `Lineage.append`.
+4. **Params are finite** — `step.params` is passed through `sanitize_params_for_lineage` (NaN/Inf → `None`) before hashing; the lineage layer never receives a non-finite float.
 
-The minimum chain length is 1. An empty lineage is forbidden; the model raises at construction.
+**v2.0 supersedes v1**, where `Lineage` had **no guards at all** (verified: a forgeable `head_hash`, a disconnected append-chain, and an `OperatorStep` with `NaN` params + an arbitrary hash were all accepted) — and the NaN-rejection-without-sanitisation turned every computed-float-in-params into a latent crash (`summarize_series` was red on its default path).
 
-**Why.** [P4](../../00_thesis/01_non_negotiables.md) (replayability). Lineage is what makes the artifact reproducible: given the lineage chain and the original L1 data, the artifact can be recomputed deterministically. Lineage is also what makes [P5](../../00_thesis/01_non_negotiables.md) (honest disclosure) possible at the workflow level: a user reading the terminal artifact can walk the lineage to see every transformation that touched the data.
+**Why.** [P4](../../00_thesis/01_non_negotiables.md). Lineage is the replay substrate and the disclosure substrate; if it can be forged or silently broken, the audit story is decorative.
 
-**Verify.**
-- Every artifact instance has `len(artifact.lineage.steps) >= 1`.
-- Every artifact constructed by the canonical `tool_output_to_artifact_*` bridge has a single `PrimitiveStep`; every artifact built via `raw_dataframe_to_artifact_series` has `FetchStep` + `AdapterStep`.
-- Every artifact constructed by an operator has an additional `OperatorStep` appended to its primary input's lineage (per [OPR10](../operator/README.md#opr10--lineage-extension-via-operatorstepbuild--lineageappend)).
-- A test constructs an artifact with an empty lineage list and asserts the validator raises.
+**Verify.** Every instance has `len(lineage.steps) >= 1`; a forged `head_hash`, a disconnected chain, and a NaN-param step each raise at construction; the canonical bridge produces a single `PrimitiveStep`, an operator appends one `OperatorStep`.
 
-**Anti-patterns.**
-- Constructing an artifact with `lineage=None` or `lineage=Lineage(steps=[])` — the validator rejects both.
-- An operator that drops lineage when producing its output (lineage length stays the same as input instead of growing by 1).
-- A bridge / adapter that produces an artifact whose lineage does not match its declared shape (e.g., `tool_output_to_artifact_*` emitting a multi-step chain instead of the single `PrimitiveStep`, or `raw_dataframe_to_artifact_series` omitting the `FetchStep`).
+**Anti-patterns.** `lineage=None` / empty chain; an operator that drops lineage; a producer recording a methodology choice on metadata but **not** in `step.params` (two different choices then collide on `head_hash`).
 
 **Exceptions.** None.
 
-**Relates to.** [P4](../../00_thesis/01_non_negotiables.md), [P5](../../00_thesis/01_non_negotiables.md); originates at [PR10](../primitive/README.md#pr10--provenance-reachability); extended at [OPR10](../operator/README.md#opr10--lineage-extension-via-operatorstepbuild--lineageappend).
+**Relates to.** [P4](../../00_thesis/01_non_negotiables.md), [P5](../../00_thesis/01_non_negotiables.md); [OPR10](../operator/README.md) (operators extend the chain).
 
 ### ART10 — Content-addressed identity
 
-**Rule.** An artifact's identity is `lineage.head_hash` — the SHA-256-style hash of the last step in its lineage chain. The artifact store dedups on `head_hash` (`put_artifact` uses it directly per `state/artifact_store.py`); workflow replay uses `head_hash` to detect whether a recomputed artifact matches its original.
+**Rule.** Identity is `lineage.head_hash` — a SHA-256 over the head step's `kind/name/version/params/input_hashes`, **not** over payload bytes and **not** over the artifact's structural metadata. The artifact store dedups and replay-checks on it. **Producers must fold every content-defining choice into `step.params`** (units selection, alignment policy, window size, ddof, …) so the hash captures it; a choice recorded only on artifact metadata is an identity hazard (two artifacts from different choices collide).
 
-The hash recipe (see `shared/artifacts/lineage.py`) is **over the step's `kind`, `name`, `version`, `params`, and `input_hashes`** — *not* over the payload bytes and *not* over the artifact's structural-metadata fields directly. Two artifacts with the same lineage chain (same `head_hash`) are the *same* artifact from the substrate's perspective. The structural-metadata fields on the artifact are *not* part of the hash recipe — which means:
+**Why.** [P4](../../00_thesis/01_non_negotiables.md). Hash-of-recipe (not bytes) survives float-representation differences across machines/versions; recipe completeness is what makes it correct.
 
-**Producers are responsible for folding every content-defining choice into the lineage step's params.** If an adapter or operator makes a methodology-affecting choice (units selection, missingness-policy choice, alignment policy, window size, ddof, etc.), that choice must appear in the step's `params` dict so the hash captures it. A producer that records a choice only on the artifact metadata (e.g., setting `units=PERCENT` on the `Series` instance but not in the `PrimitiveStep.params`) creates an identity hazard: two artifacts produced from different choices can collide on `head_hash`. The discipline is "if it affects the output content, it goes in lineage params; the artifact-side metadata is a structural view of what lineage already captured."
+**Verify.** `head_hash == steps[-1].hash`; constructing the same artifact twice yields the same hash; a serialise→deserialise round-trip preserves the hash; a methodology choice not in `step.params` is flagged in review.
 
-Hash-not-of-bytes is deliberate: floating-point representations of the same logical value can differ across machines or NumPy versions; using a hash over the *recipe* (lineage chain) bypasses that.
-
-**Why.** [P4](../../00_thesis/01_non_negotiables.md). Content-addressed identity is what makes replay possible: the artifact store can confirm by hash that a re-execution produced the same artifact, even six months later, without comparing payload bytes (which might vary in trivial floating-point representation).
-
-Hash-not-of-bytes is deliberate: floating-point representations of the same logical value can differ across machines or NumPy versions; using a hash over the *recipe* (lineage chain) bypasses that.
-
-**Verify.**
-- `Lineage.head_hash` mirrors `Lineage.steps[-1].hash` (cheap equality without walking the chain — codified in `Lineage.from_steps`).
-- Constructing the same artifact twice (same lineage chain) produces the same `head_hash`.
-- A test asserts: build artifact A with lineage chain L; serialise A; deserialise to A'; A.head_hash == A'.head_hash.
-
-**Anti-patterns.**
-- Computing identity from payload bytes (would fail across float-format differences).
-- Constructing an artifact and then *mutating* it — breaks `head_hash` invariance.
-- An artifact whose `head_hash` doesn't match the hash of its last lineage step (constructed bypassing `Lineage.from_steps` / `Lineage.append`).
-- A producer that records a methodology choice on the artifact's structural metadata but **not** in the lineage step's `params` — two artifacts produced from different choices can then collide on `head_hash`, breaking content-addressed identity.
+**Anti-patterns.** Identity from payload bytes; mutating after construction; a choice on metadata but not in `step.params`.
 
 **Exceptions.** None.
 
-**Relates to.** [P4](../../00_thesis/01_non_negotiables.md); [OPR10](../operator/README.md#opr10--lineage-extension-via-operatorstepbuild--lineageappend) (operators extend the chain so the new head_hash is the operator's step hash).
+**Relates to.** [P4](../../00_thesis/01_non_negotiables.md); [OPR10](../operator/README.md).
 
-### ART11 — Validators raise at construction
+### ART11 — Validators raise at construction (uniform, strict)
 
-**Rule.** Structural invariants of every artifact type are enforced by `@model_validator(mode="after")` blocks that run at construction. Malformed input — index that isn't a `DatetimeIndex`, non-numeric dtype, mask length disagreeing with event-dates length, panel columns disagreeing with `units_by_column` keys — raises `ValueError` (or `ValidationError`) immediately.
+**Rule.** Structural invariants are enforced by `@model_validator(mode="after")` at construction, and v2.0 makes them **uniform across every type** via shared helpers:
 
-Validators are mandatory; default Pydantic field validation is necessary but not sufficient. The invariants enforced today, by type:
+- **One shared index validator.** `_validate_datetime_index(index, label)` — `DatetimeIndex` + monotonic-increasing + no duplicates — is called from **every indexed type**: `Series`, `SeriesSet.common_index` (and members), `EventSet.mask`, `Panel.payload`. `WindowedPanel.offsets` must be unique + sorted. (v1: only `Series` validated its index; `EventSet`/`Panel` accepted duplicate/unsorted indices — the root cause of the operator-layer raw-crash cluster.)
+- **Numeric + finite dtype.** Every numeric payload must be a numeric dtype, and **`±Inf` is forbidden** (NaN is allowed as "missing"; `Inf` is not — it survives a dtype check but detonates at JSON persistence). Forbidding it at construction turns a late, non-obvious failure into a loud, immediate one.
+- **EventSet semantic invariants.** `event_dates` are unique; `event_dates[i] ↔ per_event_metadata[i]` are co-ordered; `set(True-mask dates) == set(event_dates)` (v1 enforced only a *count* match, so `event_windows` double-counted duplicate dates and misattributed reversed metadata).
 
-| Type | Validator invariants |
-|---|---|
-| `Series` | DatetimeIndex required; no duplicate index entries; sorted ascending; numeric dtype |
-| `SeriesSet` | Every member is a valid `Series`; common_index keys match member series_keys |
-| `EventSet` | Mask has DatetimeIndex; mask dtype is bool; `len(event_dates) == len(per_event_metadata)`; `mask.sum() == len(event_dates)` |
-| `Panel` | DatetimeIndex required; `units_by_column.keys()` matches `payload.columns` |
-| `WindowedPanel` | Payload is 2D; `payload.shape[0] == len(event_dates) == len(per_event_metadata)`; `payload.shape[1] == len(offsets)` |
-| `TradeSet` | Each `Trade` is a valid `Trade`; entry/exit dates well-formed; weights well-formed |
+Malformed input raises `ValueError`/`ValidationError` immediately, with a message naming the type and the specific invariant.
 
-**Why.** [P6](../../00_thesis/01_non_negotiables.md) (no silent failure) at the artifact construction layer. A malformed artifact must fail loudly at the *moment of construction*, not propagate downstream and surface as a confusing error inside an operator three layers later. The validator is the first line of defence and it must be loud.
+**Why.** [P6](../../00_thesis/01_non_negotiables.md) at construction. A malformed artifact must fail at the moment of construction, not three operators downstream as a raw pandas error. Making "valid" mean the *same strict thing* for every type is what closes the ≥6-operator raw-leak cluster at the root.
 
-**Verify.**
-- Every artifact class has at least one `@model_validator(mode="after")` block enforcing its structural invariants.
-- Every invariant has a corresponding negative test: construct an artifact with the invariant violated, assert the validator raises with a specific message.
-- The error message names the artifact type and the specific invariant ("`Series` payload index must be sorted ascending") — generic error messages are insufficient.
+**Verify.** Every indexed type calls the shared index validator; every numeric payload rejects `±Inf`; `EventSet` enforces the three semantic invariants; every invariant has a negative test with a specific message.
 
-**Anti-patterns.**
-- An artifact class with only Pydantic field-type checks, no `@model_validator`.
-- A validator that returns silently when it should raise (a bool return type, or a print statement instead of `raise ValueError`).
-- A validator whose error message is generic ("invalid input") — name the specific invariant.
+**Anti-patterns.** A type with only field-type checks; a type accepting a duplicate/unsorted index; an `Inf` admitted into a payload; a generic "invalid input" message.
 
 **Exceptions.** None.
 
-**Relates to.** [P6](../../00_thesis/01_non_negotiables.md) (no silent failure); [OPR11](../operator/README.md#opr11--structural-metadata-enforcement-and-honest-refusal) (operators enforce metadata downstream — but the *artifact* enforces its own shape at construction).
+**Relates to.** [P6](../../00_thesis/01_non_negotiables.md); [OPR11](../operator/README.md) (operators enforce *agreement* downstream; the artifact enforces its own *shape* here).
 
 ---
 
 ## Group IV — Operational
 
-### ART12 — Closed enums for structural metadata
+### ART12 — Closed enums + typed escape hatches
 
-**Rule.** `TimeSeriesUnits` and `MissingnessPolicy` are themselves closed families, governed by P8. New artifact types reuse these taxonomies; introducing a parallel taxonomy is forbidden. Per [`shared/artifacts/units.py`](../../../shared/artifacts/units.py): *"If a future operator needs a unit the closed enum does not cover (e.g., `unitless` distinct from `ratio`), extend `TimeSeriesUnits` centrally — do NOT introduce a second enum here."*
+**Rule.** `TimeSeriesUnits` and `MissingnessPolicy` are closed families (P8); reuse them, never fork a parallel enum. v2.0 also closes the two **untyped escape hatches** the audit flagged: `per_event_metadata` (`List[Dict[str,Any]]`) gets a **documented per-producer required-key contract** (each producer declares which keys it populates — e.g. `threshold_events` populates `{triggering_value, threshold, zscore_value?}`), validated at construction. (`LegSpec.units`, the other v1 escape hatch, leaves with `TradeSet`.)
 
-The current `MissingnessPolicy` discriminated union is:
+**Why.** Structural-metadata coherence + honest disclosure. An untyped `Dict[str,Any]` is a place where meaning silently varies between producers; a per-producer key contract makes it inspectable.
 
-| Variant | What it means |
-|---|---|
-| `CleanSingleSeriesV1` | The policy applied by `shared.analytics.levels.clean_single_series` (sort + dedup + ffill_limit). Used when a primitive produces a series via the canonical clean step. |
-| `RawNoCleaning` | Explicit marker that no cleaning was applied. Operators that take ≥2 inputs MUST explicitly accept this policy (or refuse it). |
-| `AlignSeriesFFillV1` | Wraps an upstream policy when `align_series` materially changed the payload by ffilling alignment-introduced gaps. Without this wrapper the metadata would still claim the upstream policy even though the operator imputed cells — metadata-dishonest. |
+**Verify.** Artifacts use `TimeSeriesUnits`/`MissingnessPolicy` consistently (no parallel enums); a new unit/policy is added to the existing enum via ADR; each `per_event_metadata` producer's key contract is documented and validated.
 
-Adding a new `MissingnessPolicy` variant or a new `TimeSeriesUnits` value is itself an ADR-gated closed-family extension; the discipline is identical to ART4 for artifact types.
-
-**Why.** Structural-metadata coherence. If `Series` had `units: TimeSeriesUnits` while `Panel` had `units_by_column: Dict[str, SomeOtherUnitsEnum]`, operators couldn't reason about unit compatibility across artifact boundaries. The single taxonomy ensures that an operator consuming a `Series` and a `Panel` can compare units uniformly.
-
-**Verify.**
-- The artifact types use `TimeSeriesUnits` and `MissingnessPolicy` consistently — no per-type parallel taxonomies.
-- A new artifact type's metadata fields reuse these enums; if it needs a unit / policy that doesn't exist, the new variant is added to the existing enum, not invented locally.
-
-**Anti-patterns.**
-- Defining `class PanelUnits(Enum)` alongside `TimeSeriesUnits` for a Panel-specific need.
-- An artifact field typed as `units: Literal[...]` with an inline enum instead of referencing `TimeSeriesUnits`.
-- A new `MissingnessPolicy` variant added without an ADR.
+**Anti-patterns.** `class PanelUnits(Enum)` alongside `TimeSeriesUnits`; an inline `Literal[...]` instead of the enum; an undocumented `per_event_metadata` shape.
 
 **Exceptions.** None.
 
-**Relates to.** [P8](../../00_thesis/01_non_negotiables.md) (closed families everywhere); [P10](../../00_thesis/01_non_negotiables.md) (single source of truth — the metadata taxonomies are themselves single sources).
+**Relates to.** [P8](../../00_thesis/01_non_negotiables.md), [P10](../../00_thesis/01_non_negotiables.md).
 
 ### ART13 — Test pattern
 
-**Rule.** Every artifact type ships with four test layers:
+**Rule.** Every type ships four layers: (1) **artifact-store round-trip** through real `put_artifact`/`get_artifact` (raw `model_dump_json()` is **not** a substitute — pandas/numpy payloads need the per-type codec); (2) **validator tests** — every invariant has a negative test with the expected message + a positive test; (3) **lineage-propagation** — chain preserved, `head_hash == steps[-1].hash`; (4) **immutability** — reassignment and unknown-field both raise. v2.0 adds a **cross-type uniform-validator test** asserting every indexed type rejects a duplicate/unsorted index and an `Inf` payload (the shared-validator guarantee). No SQL parity (artifacts have no compute path).
 
-1. **Artifact-store round-trip tests** — construct an artifact, `put_artifact(...)` it through the real artifact store, `get_artifact(...)` it back, assert content identity. The artifact store routes through `_artifact_to_stored` / `_stored_to_artifact` plus the per-type codec; a raw `model_dump_json()` on the artifact class is **not** a substitute (pandas / numpy payloads are not JSON-serializable by Pydantic alone — the typed codec is where the pandas-to-JSON shape lives). The round-trip test is what catches codec regressions, discriminator drift, and `_NAME_TO_CLASS` staleness.
-2. **Validator tests** — for every `@model_validator` invariant, one negative test that constructs a malformed artifact and asserts the validator raises with the expected message; one positive test that constructs a valid artifact and confirms it passes.
-3. **Lineage-propagation tests** — construct an artifact with an upstream lineage chain, confirm the chain is preserved; confirm `head_hash` matches `steps[-1].hash`.
-4. **Immutability tests** — assert `artifact.field = new_value` raises (Pydantic `frozen=True` enforcement); assert construction with an unknown field raises (`extra="forbid"`).
+**Why.** Each layer catches a different bug class; the round-trip catches codec/discriminator drift that ships to production.
 
-**No SQL parity tests.** Artifacts have no compute path — there's nothing to parity-check against an SQL baseline. Pure data structures have a different test shape.
+**Verify.** Each type has a test file with the four layers; the cross-type test covers every indexed type; the validator layer covers *every* invariant.
 
-**Why.** Each layer catches a different class of bug. The artifact-store round-trip catches serialization regressions across the full persistence path (codec → bytes → blob/inline → deserialize → validate), which is the persistence contract that ships to production. Validator tests catch construction-path bugs (the artifact built from bad input would otherwise propagate downstream). Lineage tests catch chain-corruption bugs. Immutability tests catch frozen-config regressions.
-
-**Verify.**
-- For each artifact type, a test file `tests/test_artifacts_<type>.py` (or similar) contains the four layers.
-- The validator-test layer covers *every* invariant declared in the model_validator block — not just the happy path.
-
-**Anti-patterns.**
-- An artifact type with only happy-path tests (no validator negative cases).
-- A test that mocks the artifact's construction instead of going through the real Pydantic validator.
-- Missing artifact-store round-trip — codec drift or `_NAME_TO_CLASS` staleness will break persistence silently when the test isn't there.
-- A test that calls `artifact.model_dump_json()` as a stand-in for the round-trip. That bypasses the per-type codec where the pandas / numpy payload is actually serialized; the test passes for synthetic in-memory shapes and fails in production.
-
-**Exceptions.** None. New artifact types ship with all four layers from day one.
-
-**Relates to.** [PR16 / OPR16](../primitive/README.md#pr16--test-triplet) (component test patterns); the artifact test pattern is structurally different because there's no compute path, but the discipline (every shape of bug has a corresponding test layer) is the same.
-
-### ART14 — Bridge / adapter required for primitive-produced types
-
-**Rule.** Every artifact type that can be produced by a primitive has a registered adapter in `shared/artifacts/adapters/` that lifts the primitive's wire-shaped output (a JSON-friendly dict containing a canonical `TimeSeries` payload, etc.) into the typed artifact. The adapter is the *only* legal path from primitive output to artifact.
-
-The current adapter set:
-
-| Adapter | Lifts |
-|---|---|
-| `raw_dataframe_to_artifact_series` | A `pd.DataFrame` (typically from a fetch + clean step in a test or workflow) → `Series` |
-| `time_series_to_artifact_series` | A canonical `TimeSeries` (low-level, caller supplies a pre-built `PrimitiveStep`) → `Series` |
-| `tool_output_to_artifact_series` | A primitive's output dict + tool identity → `Series`, with `PrimitiveStep` constructed automatically and `CleanSingleSeriesV1` derived from tool config. The dominant Series bridge callsite. |
-| `tool_output_to_artifact_panel` | A Panel-emitting primitive's output dict + tool identity → `Panel`, with `PrimitiveStep` constructed automatically. Used by multi-series primitives (`build_sovereign_yield_panel_tool`, `compute_financing_rate_tool`); the executor dispatches Panel-typed primitive outputs to this bridge. |
-| `artifact_series_to_time_series` | The reverse: `Series` → wire-format `TimeSeries` for serialisation to the LLM / frontend / persistence. |
-
-A new artifact type that primitives can produce requires a new adapter following the same pattern. The adapter is part of ART4's eight-site landing.
-
-**Why.** [P9](../../00_thesis/01_non_negotiables.md) at the bridge level. The bridge is what isolates "primitive-side wire format" from "operator-side typed artifact" — without it, primitives would need to construct artifacts directly (and would need to know about lineage chains, structural metadata, every artifact type's fields) and operators would need to handle primitive-shaped dicts (and would need to know about JSON vs Pydantic, NaN-vs-None, etc.). The bridge is the only place that knowledge lives.
-
-**Verify.**
-- For every artifact type primitives can produce, an adapter exists in `shared/artifacts/adapters/`.
-- The adapter constructs the artifact with a complete `Lineage` chain (starting with `PrimitiveStep`) and complete structural metadata.
-- No primitive's `compute.py` constructs an artifact directly — it goes through the adapter at the call site (typically inside the MCP server wrapper or the workflow executor).
-
-**Anti-patterns.**
-- A primitive whose `compute.py` returns an artifact instance directly. Should return a dict; the wrapper / executor calls the adapter.
-- A new artifact type without a registered adapter, leaving primitives unable to produce it.
-- An ad-hoc adapter in operator code that converts primitive output to an artifact, bypassing `shared/artifacts/adapters/`.
-
-**Exceptions.** Operator-produced artifact types do not need an adapter — operators construct artifacts directly (per OPR10). The bridge is specifically the primitive → artifact lift.
-
-**Relates to.** The detailed bridge architecture lives at `01_architecture/06_bridge.md` (forthcoming). [PR9](../primitive/README.md#pr9--composition-inheritance-strict) (composition primitives have related but distinct rules).
-
-### ART15 — No naked pandas escape
-
-**Rule.** Inside the operator layer (`shared/operators/`) and the workflow layer (`shared/workflow/`, `<agent>/workflows/`), the artifact is the only legal data carrier between functions. `pd.DataFrame`, `pd.Series`, `np.ndarray` may live *inside* an artifact's `payload` field, and operators may extract them temporarily to do numerical work, but they never appear as:
-
-- Operator function inputs or outputs (operators consume and emit artifacts).
-- Workflow node outputs (the executor records artifact types from `OperatorSpec.output_type`).
-- Workflow edge payloads (the executor passes artifacts on edges).
-- Workflow template node-output declarations.
-
-The escape valve is *internal* — inside an operator's body, extracting `series.payload` to do `.diff()`, `.rolling()`, `.merge()` is fine. The operator's return value is a fresh artifact built from the result.
-
-**Why.** Type-algebra integrity. The substrate's static guarantee — that an operator declaring `output_type="Series"` actually returns a `Series`, that a workflow edge carrying `"EventSet"` actually carries an `EventSet` — depends on every boundary being typed. A single naked-pandas escape at a boundary blows the guarantee and the validator can no longer reason about composition.
-
-**Verify.**
-- Operator function signatures consume and return artifact types (no `pd.DataFrame` parameters or returns at the public function level).
-- A `grep` for `def .*-> pd\.` inside `shared/operators/` returns zero matches (operators never return pandas at the public API).
-- Workflow templates declare every edge's artifact type; the validator confirms each operator's output type matches the downstream operator's input slot type.
-
-**Anti-patterns.**
-- An operator whose return type is `pd.DataFrame`.
-- A "convenience" operator that takes `pd.Series` as input "to make testing easier" — the test should construct a real `Series` artifact.
-- A workflow template that passes raw pandas between nodes via the executor.
-
-**Exceptions.** None at the API boundaries. Internal payload extraction inside operator bodies is fine and expected.
-
-**Relates to.** ART9 (typed artifact I/O over closed family — the operator's analog rule); the type-algebra integrity is the joint property of ART2 + ART9 + ART15.
-
-### ART16 — Closed-family-extension procedure
-
-**Rule.** Adding a new artifact type follows the procedure documented in [`runbook.md`](runbook.md). The procedure has seven steps:
-
-1. **ADR.** File an ADR in `05_decisions/` documenting the new shape, the use case, the structural argument that no existing type carries the data (ART5), the eight affected sites (ART6), and the producer-consumer pair landing alongside.
-2. **Pydantic class.** Add the class to `shared/artifacts/types.py` (or a sibling file for compound shapes). Match the universal contract: `frozen=True`, `extra="forbid"`, mandatory `lineage` field, structural metadata fields, `@model_validator(mode="after")` for invariants.
-3. **Closed-family enum + discriminator + type-map.** Add to `ARTIFACT_TYPE_NAMES` in `shared/workflow/registry.py`; update the discriminator union (`ArtifactTypeLiteral`) in `state/schemas.py`; update the type-map in `shared/workflow/registry.py::artifact_type_name`.
-4. **Artifact-store codec.** Register in `_ARTIFACT_CLASSES`, extend `_artifact_to_stored` / `_stored_to_artifact`, add per-type encode/decode helpers in `state/artifact_store.py`. Without this the type cannot be persisted.
-5. **Producer wiring.** Either an adapter in `shared/artifacts/adapters/` (if primitive-produced) or an `OperatorSpec` with this type as `output_type` (if operator-produced).
-6. **Consumer wiring.** At least one operator's `OperatorSpec.input_slots` references the new type, or a workflow template that consumes it as a terminal artifact.
-7. **Tests.** All four layers from ART13 (artifact-store round-trip, validator tests, lineage propagation, immutability), plus an end-to-end integration test through a real producer-consumer pair.
-
-All seven steps land together (same PR, or an explicit prerequisite chain documented in the ADR). The procedure exists as a runbook because the closed-family-extension review is itself a multi-reviewer audit and needs a checklist.
-
-**Why.** ART4 + ART6 together make extension safe; the runbook makes the procedure followable. Without a documented procedure, every new artifact type would require re-discovering which eight sites need updating, which makes the gate harder to enforce.
-
-**Verify.**
-- The procedure is documented in [`runbook.md`](runbook.md).
-- Every artifact-type-extension PR cites the runbook's procedure in the description.
-- The PR review checklist (in `runbook.md`) is run against the diff before merging.
-
-**Anti-patterns.**
-- Skipping the runbook because "this extension is small" — small extensions break the closed family the same way large ones do.
-- Filing an ADR without naming the eight sites or providing the producer-consumer pair.
-- Following the runbook but landing in pieces without an explicit prerequisite chain documented.
+**Anti-patterns.** Happy-path-only tests; a `model_dump_json()` stand-in for the round-trip; a missing negative case.
 
 **Exceptions.** None.
 
-**Relates to.** ART4 (admission gate); [P8](../../00_thesis/01_non_negotiables.md) (closed-family discipline).
+**Relates to.** Analog of [PR16](../primitive/README.md) / [OPR16](../operator/README.md).
+
+### ART14 — Bridge / adapter for primitive-produced types
+
+**Rule.** Every artifact type a primitive can produce has a registered adapter in `shared/artifacts/adapters/` that lifts the primitive's wire-shaped output into the typed artifact — the *only* legal primitive→artifact path. The adapter constructs a complete `Lineage` (starting with `PrimitiveStep`) and **populates complete structural metadata, including the derived `frequency`** (ART8). Current adapters: `tool_output_to_artifact_series`, `tool_output_to_artifact_panel`, `raw_dataframe_to_artifact_series`, `time_series_to_artifact_series`, and the reverse `artifact_series_to_time_series`.
+
+**Why.** [P9](../../00_thesis/01_non_negotiables.md) at the bridge. The bridge isolates primitive-side wire format from operator-side typed artifacts; without it, primitives would need to know lineage/metadata internals and operators would need to handle primitive dicts.
+
+**Verify.** Every primitive-produced type has an adapter; the adapter builds a complete chain + metadata (incl. frequency); no primitive `compute.py` constructs an artifact directly.
+
+**Anti-patterns.** A primitive returning an artifact instance; a new type with no adapter; an ad-hoc adapter in operator code.
+
+**Exceptions.** Operator-produced types need no adapter (operators construct directly per OPR10).
+
+**Relates to.** ART8; the bridge architecture (`01_architecture/06_bridge.md`, forthcoming).
+
+### ART15 — No naked pandas escape
+
+**Rule.** Inside the operator layer (`shared/operators/`) and the workflow layer (`shared/workflow/`, `<agent>/workflows/`), the artifact is the only legal data carrier between functions. `pd.DataFrame`/`pd.Series`/`np.ndarray` may live *inside* a `payload` and be extracted temporarily inside an operator body, but never appear as operator inputs/outputs, workflow node outputs, or edge payloads.
+
+**Why.** Type-algebra integrity. A single naked-pandas escape at a boundary blows the static guarantee the validator relies on.
+
+**Verify.** Operator signatures consume/return artifacts; `grep` for `def .*-> pd\.` inside `shared/operators/` is empty; templates declare every edge's artifact type.
+
+**Anti-patterns.** An operator returning `pd.DataFrame`; a "convenience" operator taking `pd.Series`; raw pandas on a workflow edge.
+
+**Exceptions.** None at API boundaries; internal payload extraction is fine.
+
+**Relates to.** [OPR9](../operator/README.md); type-algebra integrity is the joint property of ART2 + ART9 + ART15.
+
+### ART16 — Closed-family-extension procedure
+
+**Rule.** Adding (or removing) a type follows the [`runbook.md`](runbook.md) procedure: ADR → Pydantic class → canonical enum (+ derived sites via the lock-step test) → artifact-store codec → producer wiring → consumer wiring → tests. All land together (or an explicit prerequisite chain in the ADR).
+
+**Why.** ART4 + ART6 make extension safe; the runbook makes it followable.
+
+**Verify.** The procedure is documented; every extension PR cites it; the PR review checklist runs against the diff.
+
+**Anti-patterns.** Skipping the runbook for a "small" extension; an ADR without the derived sites; landing in pieces without a documented chain.
+
+**Exceptions.** None.
+
+**Relates to.** ART4; [P8](../../00_thesis/01_non_negotiables.md).
 
 ---
 
-## The current closed family
-
-For reference, the six artifact types in the closed family today, with their canonical use case and the producer / consumer pattern:
+## The current closed family (v2.0)
 
 | Type | Canonical use case | Primary producers | Primary consumers |
 |---|---|---|---|
-| `Series` | A single indexed numeric series | Almost every primitive that returns a time series; `align_series.get_series(key)`; `series_arithmetic`; `apply_mask`; `conditional_aggregate`; `summarize_series`; many others | Almost every operator that takes a Series input |
-| `SeriesSet` | An aligned keyed collection of Series | `align_series` (consumes a `List[Series]` slot — the substrate's edge-aggregator binds N `Series` edges into the list — and produces a `SeriesSet`); `rolling_regression` | `select_from_series_set` |
-| `EventSet` | Events firing at specific timestamps | `threshold_events` | `event_windows`; `apply_mask`; `construct_trades` |
-| `Panel` | Wide tabular `[date × series]` | Multi-series primitives (`sovereign_yield_panel`, `financing_rate`); `evaluate_trades`; `summarize_trades` | `evaluate_trades` (`price_panel` + optional `financing_rate_panel` slots); `summarize_trades` (`pnl_panel` slot); workflow-template terminal artifacts |
-| `WindowedPanel` | `[event × event-relative offset]` matrix | `event_windows` | `conditional_aggregate` (consumes `WindowedPanel` via its `panel` slot) |
-| `TradeSet` | A finite set of trades | `construct_trades` | `evaluate_trades` |
+| `Series` | A single indexed numeric series | almost every series-returning primitive; `align_series.get_series`; `series_arithmetic`; `apply_mask`; `conditional_aggregate`; `summarize_series`; the new single-series transforms | almost every operator with a Series input |
+| `SeriesSet` | Aligned keyed collection | `align_series`; `rolling_regression` | `select_from_series_set`; the new cross-sectional operators |
+| `EventSet` | Events at timestamps | `threshold_events` | `event_windows`; `apply_mask` |
+| `Panel` | Wide `[date × column]` | multi-series primitives | workflow-template terminal artifacts; aggregation operators |
+| `WindowedPanel` | `[event × offset]` | `event_windows` | `conditional_aggregate` |
+| `ScalarMetric` | A single statistic | the new `correlation`/`covariance`/`cointegration` operators (full-sample); summary operators | workflow-template terminal artifacts; `series_arithmetic` (scalar comparisons) |
 
-Two design-note types are *not* in the current family but appear in earlier docs:
-
-- **`ScalarMetric`** — explicitly deferred per `shared/artifacts/types.py:23`. Use single-row `Series` until admitted.
-- **`RankedResult`** — not yet registered. Use `SeriesSet` with rank values in payloads until admitted.
-
-## Non-standard artifacts (coming soon)
-
-Some artifacts may legitimately not satisfy ART7–ART11 — e.g., wrappers around opaque third-party model objects whose internals are not Pydantic-validatable, or research-only artifact shapes that don't need full closed-family discipline. A non-standard artifact category, its admission tests, and its allowed boundaries are a planned extension. **Until that section opens, every artifact that ships is held to ART7–ART11.**
+**Removed:** `TradeSet` (relocated with the trade operators — [OPR6](../operator/README.md)). `RankedResult` remains unregistered (cross-sectional operators use `SeriesSet`).
 
 ## Anti-patterns (catalogue-wide)
 
-Auto-reject in review:
-
-- **An artifact-shaped class outside `shared/artifacts/types.py` / `shared/artifacts/trades.py`.** ART2 violation. Use an existing type or file an ADR.
-- **An artifact class without `frozen=True`.** ART7 violation.
-- **An artifact class with `extra="ignore"` / no `extra` setting.** ART7 violation.
-- **An artifact class without a `@model_validator(mode="after")` block.** ART11 violation (almost certainly missing invariants).
-- **An artifact instance without a `Lineage` field, or with an empty chain.** ART9 violation.
-- **An artifact field that depends on asset class** (`asset_class`, `instrument_type`). ART3 violation.
-- **A parallel structural-metadata enum** (defining `class FXUnits` next to `TimeSeriesUnits`). ART12 violation.
-- **An operator function whose return type is `pd.DataFrame` or `pd.Series`.** ART15 violation.
-- **A primitive that constructs an artifact directly inside `compute.py`.** ART14 violation; use the bridge.
-- **A new artifact type PR that lands without all eight sites updated.** ART6 violation.
-- **A new artifact type PR without an ADR.** ART4 violation.
-- **A new artifact type added "for one workflow."** Either use an existing type, or land a real producer-consumer pair (ART4 + ART5).
-- **A test for an artifact type that covers only the happy path.** ART13 violation — every validator invariant must have a negative test.
+- An artifact-shaped class outside `shared/artifacts/`. (ART2)
+- A class without `frozen=True` / with `extra="ignore"` / without a `@model_validator`. (ART7/ART11)
+- An indexed type that does **not** call the shared index validator, or admits `±Inf`. (ART11)
+- An artifact without lineage, or a forgeable/disconnected chain. (ART9)
+- A field that depends on asset class; a parallel structural-metadata enum. (ART3/ART12)
+- An operator returning `pd.DataFrame`/`pd.Series`; a primitive constructing an artifact in `compute.py`. (ART15/ART14)
+- A type change that doesn't update the canonical enum + derived sites together, or lands without an ADR. (ART4/ART6)
+- A test covering only the happy path. (ART13)
 
 ## Open questions and known gaps
 
-1. **`ScalarMetric` admission.** Tracked since Phase 1A; operators that need single-value outputs currently use single-row `Series`. When the use case becomes load-bearing enough to justify the closed-family extension, the ART4 procedure applies.
-2. **`RankedResult` admission.** Same status — not yet registered; cross-sectional ranking operators use `SeriesSet` until admission.
-3. **`PositionPath` admission.** Mentioned in `trades.py` as a "Phase 1 V2 concern" — date-indexed position state over a trade's holding window. Use case will arrive when finer-grained trade analytics ship.
-4. **Non-standard artifact category.** Placeholder; the contract for non-standard artifacts (third-party model objects, research-only shapes) is unwritten.
-5. **`AlignSeriesFFillV1` is the only "wrapping" missingness policy.** Future operators that materially change missingness (e.g., a bfill operator, a resample operator) will need parallel wrapping policies — the procedure for adding them is the same as ART12's enum extension.
-6. **The `Lineage` chain's `head_hash` is a SHA-style hash; cross-version stability** of the recipe is tested via `tests/state/test_hash_stability.py`. Any change to the hash recipe (e.g., adding a new field to `OperatorStep`) needs to keep that test green; if it can't, the recipe change is a closed-family-style decision in its own right (the artifact-store's identity contract is `head_hash`).
+1. **`ScalarMetric` — admitted (decision closed).** The statistical-operator toolbox (correlation/covariance/cointegration) predominantly outputs scalars, and the single-row-`Series` + `SUMMARY_SENTINEL_DATE` workaround is dishonest (a fictional index). `ScalarMetric` is admitted as a first-class type and lands via the ART16 procedure alongside the `correlation` reference build. The legacy single-row-`Series` summaries (`summarize_series`) migrate to `ScalarMetric` during the legacy-migration step.
+2. **`TradeSet` re-admission.** When the backtest **primitive** set is built, `TradeSet` (and `LegSpec`, `PositionPath`) are re-admitted via ART16 as primitive-output types — at which point whether they are *operator-composable* is a fresh ART4 question.
+3. **`RankedResult`.** Still unregistered; cross-sectional ranking operators use `SeriesSet` until a load-bearing case justifies the extension.
+4. **Frequency-derivation specifics.** The exact `infer_freq`-vs-known-cadence policy and the `'irregular'` sentinel semantics are pinned when the adapter change lands (ART8/ART14).
+5. **Hash-recipe stability.** Any change to the `OperatorStep`/`PrimitiveStep` hash recipe must keep `tests/state/test_hash_stability.py` green; a recipe change is a closed-family-style decision in its own right.
 
 ## Changing an artifact principle
 
-Same discipline as the primitive and operator principles:
-
-1. Open an ADR in [`../../05_decisions/`](../../05_decisions/) describing the proposed change.
-2. Land the ADR and the contract change in the same PR.
-3. Bump the version of this file.
-
-Artifact-principle changes are higher-stakes than primitive or operator changes because they affect every downstream consumer simultaneously. Expect more reviewers, longer review cycles.
+1. Open an ADR in [`../../05_decisions/`](../../05_decisions/). 2. Land the ADR + change together. 3. Bump the version. Artifact-principle changes are higher-stakes than primitive or operator changes — they affect every downstream consumer simultaneously. Expect more reviewers.
 
 ## Citation cheat sheet
 
 | Use | Pattern |
 |---|---|
-| In a commit message | `feat(artifacts): add Series.frequency field per ART8` |
-| In a PR review comment | `This violates ART15 — the operator returns a pd.DataFrame at the public API.` |
-| In a code comment (rare) | `# ART9: lineage starts with PrimitiveStep here; downstream operators extend.` |
-| In a runbook step | `Step 4 — verify ART6 (all eight sites updated together).` |
-| In an ADR | `This decision extends the closed family by admitting ScalarMetric per ART4.` |
+| Commit | `feat(artifacts): shared _validate_datetime_index on all indexed types per ART11` |
+| PR review | `This violates ART11 — EventSet admits a duplicate event_date.` |
+| Code comment | `# ART9: head_hash == steps[-1].hash invariant` |
+| Runbook step | `Step 3 — update the canonical enum; the lock-step test derives the rest (ART2/ART6).` |
+| ADR | `This decision admits ScalarMetric per ART4/ART5.` |
 
 ## Version log
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1.1 | 2026-05-17 | Pre-canonical corrections after a factual-review pass against the codebase: (a) ART6 promoted the artifact store to a first-class admission site — seven sites → **eight sites** (Pydantic class, `ARTIFACT_TYPE_NAMES`, `ArtifactTypeLiteral`, `artifact_type_name()` type-map, **artifact-store codec in `state/artifact_store.py`**, producer wiring, consumer wiring, tests). (b) ART9 lineage start/end reframed to reflect the real producer shapes — single `PrimitiveStep` for canonical bridge outputs, `FetchStep + AdapterStep` for `raw_dataframe_to_artifact_series`, `OperatorStep` appended for operator outputs. (c) ART10 identity wording corrected — `head_hash` is purely over the lineage step's `kind/name/version/params/input_hashes`; artifact-side structural metadata is NOT in the hash recipe, which means producers must fold every content-defining choice into the lineage params (new anti-pattern added). (d) ART13 test pattern reframed as **artifact-store round-trip** through real `put_artifact` / `get_artifact` — raw `model_dump_json()` is **not** a substitute because pandas / numpy payloads are not Pydantic-serializable; the per-type codec is where the payload encoding lives. (e) ART14 adapter table — added `tool_output_to_artifact_panel` (the real Panel bridge in `from_time_series.py`). (f) ART16 — extension procedure expanded from six to seven steps (artifact-store codec added as Step 4). (g) Structural-metadata table — `TradeSet` row corrected to include required `methodology_policy` and optional `source_event_key`; same correction in the universal-contract table. (h) Closed-family producer/consumer table — `SeriesSet` row corrected (List[Series] is bound from N edges by the validator's edge-aggregator, not from SeriesSet members); `Panel` row corrected (real consumers are `evaluate_trades` / `summarize_trades` slots, not `conditional_aggregate`); `WindowedPanel` row clarified (`conditional_aggregate` consumes via its `panel` slot). (i) `TimeSeriesUnits` enum list corrected — `DIMENSIONLESS` removed (not in the enum); real values are `PERCENT, BPS, Z_SCORE, RATIO, PCT_RANK, FACTOR_LEVEL, COUNT`. (j) Broken codebase paths fixed — `../../shared/...` → `../../../shared/...` (the right depth from `docs_revamped/02_components/artifact/`). | (pending) |
-| v1 | 2026-05-17 | Initial artifact contract. Sixteen principles (ART1–ART16) organised in four groups: definitional (ART1–ART3 — structural shape ownership, closed-family membership, asset-class-blind types), admission (ART4–ART6 — ADR-gated extension, new shape not new use case, substrate-wide-impact commitment), well-formedness (ART7–ART11 — frozen / `extra=forbid`, mandatory structural metadata, mandatory lineage, content-addressed identity, validators raise at construction), operational (ART12–ART16 — closed enums for metadata, test pattern, bridge required for primitive-produced types, no naked pandas escape, closed-family-extension procedure). Closed family of six (Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet) plus deferred-types note. Superseded by v1.1 the same day after a factual-review pass. | — |
+| **v2.0** | 2026-05-30 | **Foundational reset**, paired with operator v2.0, encoding the standardization audit + founder decisions. (1) **ART2/ART6 single-source closed family** — one canonical `ARTIFACT_TYPE_NAMES` enum with every derived site (discriminator, type-map, `TerminalArtifact`, store codec) derived + a lock-step test (fixes the v1 drift where `TerminalArtifact` omitted `TradeSet`). (2) **ART11 uniform strict validators** — one shared `_validate_datetime_index` across *all* indexed types; `±Inf` forbidden at construction; EventSet semantic invariants (uniqueness, co-ordering, mask==dates) — closes the operator-layer raw-crash cluster at the root. (3) **ART9 lineage integrity guards** — `head_hash==steps[-1].hash`, chain connectivity, `.build()`-only, and `sanitize_params_for_lineage` (fixes the v1 forgeable/disconnected/NaN-crash gaps). (4) **ART8 frequency made load-bearing** — derived at the adapter, populated on every production artifact, with an `'irregular'` value (founder decision #3). (5) **`TradeSet` removed** from the closed family (its operators relocated to primitives — OPR6); **`ScalarMetric` admitted** (founder decision #5) because the statistical-operator toolbox outputs scalars and the single-row-`Series`+sentinel-date hack is dishonest. (6) **ART12 typed escape hatch** — `per_event_metadata` gains a per-producer required-key contract. Added `Panel.sub_kind`, the v2.0 closed-family table, and the cross-type uniform-validator test (ART13). | [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md) |
+| v1.1 | 2026-05-17 | Pre-canonical corrections against the codebase (eight admission sites incl. the artifact-store codec; ART9 lineage start/end shapes; ART10 identity-over-recipe; ART13 store-round-trip; `tool_output_to_artifact_panel`; `TimeSeriesUnits` values; path depths). Superseded by v2.0. | — |
+| v1 | 2026-05-17 | Initial artifact contract (ART1–ART16; six-type family incl. `TradeSet`). | — |

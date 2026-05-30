@@ -20,7 +20,8 @@ Phase 1A artifact set (build plan v5 / R5):
   - Panel             wide tabular artifact
   - WindowedPanel     N event windows over a target series
 
-``ScalarMetric`` is deferred to Phase 1B per build plan v5 / R5.
+``ScalarMetric`` — a single finite scalar statistic — was admitted in
+v2.0 (ADR 0016); see the ScalarMetric class below.
 
 A note on Pydantic + pandas
 ---------------------------
@@ -360,10 +361,57 @@ class WindowedPanel(BaseModel):
         return len(self.offsets)
 
 
+# ============================================================================
+# SCALAR METRIC  (admitted v2.0 — ADR 0016 / ART4–ART5)
+# ============================================================================
+
+
+class ScalarMetric(BaseModel):
+    """A single finite scalar statistic + structural metadata.
+
+    The honest closed-family shape for operators whose output is *one
+    number*, not a series — a full-sample correlation, a covariance, a
+    cointegration test statistic.  Admitted in v2.0 (ADR 0016) to
+    replace the prior single-row-``Series`` + ``SUMMARY_SENTINEL_DATE``
+    workaround, which stamped a fictional ``1970-01-01`` date into the
+    data.
+
+    ``value`` is a *finite* float: ``NaN`` / ``+-Inf`` are rejected at
+    construction (ART11).  An undefined statistic (e.g. the correlation
+    of a zero-variance series) is a typed *operator* refusal, never a
+    non-finite ``ScalarMetric``.  Like every artifact it carries a
+    mandatory ``lineage`` chain (ART9) and is content-addressed by
+    ``lineage.head_hash`` (ART10).
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        arbitrary_types_allowed=True,
+    )
+
+    metric_key: str = Field(..., min_length=1)
+    value: float
+    units: TimeSeriesUnits
+    lineage: Lineage
+
+    @model_validator(mode="after")
+    def _validate_value(self) -> "ScalarMetric":
+        if not np.isfinite(self.value):
+            raise ValueError(
+                f"ScalarMetric '{self.metric_key}' value must be finite; "
+                f"got {self.value!r}.  An undefined statistic is a typed "
+                "operator refusal (e.g. CorrelationError), never a "
+                "non-finite ScalarMetric payload."
+            )
+        return self
+
+
 __all__ = [
     "Series",
     "SeriesSet",
     "EventSet",
     "Panel",
     "WindowedPanel",
+    "ScalarMetric",
 ]

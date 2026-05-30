@@ -1,29 +1,29 @@
 # Operator
 
-> The contract every operator in the Macro Copilot platform must satisfy — what makes something an operator at all, what makes it *standard*, and the design principles that govern when to build one (and when to compose existing ones instead). **Finance-blind by design** — the operator layer carries no instrument knowledge, no asset-class enums, no domain references; operators are the structural transformations that domain primitives feed into and that workflow templates compose.
+> The contract every operator in the Macro Copilot platform must satisfy — what makes something an operator at all, what makes it *standard*, and the design principles that govern when to build one (and when to compose existing ones instead). **Finance-blind by design, absolutely** — the operator layer carries no instrument knowledge, no asset-class enums, no domain references, and no finance math. Operators are the pure structural and statistical transformations that domain primitives feed into and that workflow DAGs compose.
 
-**Version:** v1.1
-**Last reviewed:** 2026-05-17
+**Version:** v2.0
+**Last reviewed:** 2026-05-30
 **Status:** load-bearing component contract. Changes require an ADR in [`../../05_decisions/`](../../05_decisions/).
-**Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P6 (no silent failure), P8 (closed-family discipline — operators consume and emit only closed-family artifact types), **P9 (finance-blind operator boundary — this contract is the operational expression of P9 at the operator layer)**, P10 (single source of truth).
-**See also:** [`runbook.md`](runbook.md) — the procedure for adding a new operator.
+**Operationalises principles:** P1 (future-proofed), P3 (consistency by contract), P4 (determinism), P6 (no silent failure), P8 (closed-family discipline — operators consume and emit only closed-family artifact types), **P9 (finance-blind operator boundary — this contract is the operational expression of P9 at the operator layer, now enforced without exception)**, P10 (single source of truth).
+**See also:** [`runbook.md`](runbook.md) — the procedure for adding a new operator. [`BUILD_GUIDE.md`](BUILD_GUIDE.md) — the end-to-end build manual (forthcoming; written alongside the first v2 reference operator). [`../artifact/README.md`](../artifact/README.md) — the **co-equal** artifact contract (ART1–ART16); an operator cannot be standard unless the artifact types it consumes and emits are standard, so the two contracts are hardened in lock-step.
+
+> **v2.0 is a foundational reset, not an incremental edit.** v1.x was written by *describing the operators that already existed* — it codified the shape of a catalogue built to serve two specific workflow recipes (event studies and a paused backtest). v2.0 re-derives the contract from first principles and from five architectural decisions (recorded in [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md)), so that operators become the rock-solid, set-in-stone ingredient the DAG-composition layer is built on. Where a v1.x rule encoded an accident of the old catalogue, v2.0 supersedes it; the change is called out in each principle.
 
 ---
 
 ## What this folder is
 
-The contract every operator must satisfy. Operators are the L3 finance-blind structural transformation layer: they consume typed artifacts produced by primitives or by other operators, apply a single structural method (alignment, masking, windowing, aggregation, ranking, arithmetic, fan-out), and emit a typed artifact downstream. They are the *only* place in the platform where pure structural compute lives.
+The contract every operator must satisfy. Operators are the **L3 finance-blind structural / statistical transformation layer**: they consume typed artifacts produced by primitives or by other operators, apply a single structural or statistical method (alignment, masking, windowing, aggregation, arithmetic, a pairwise statistical relationship, a single-series transform, a cross-sectional reduction, a unit conversion), and emit a typed artifact downstream. They are the *only* place in the platform where pure, finance-blind compute over typed artifacts lives.
 
-This document is organised as **principles, not archetypes** — same as the [primitive contract](../primitive/README.md). The patterns you see in current code (~12 operators across half a dozen method families) are *emergent* from the principles; new method families will arrive without restructuring the architecture. The 16 numbered principles (**OPR1–OPR16**) below are the operator-specific analog of the primitive's PR-numbers, grouped in the same four bins: definitional (OPR1–OPR3, *is this actually an operator?*) → admission (OPR4–OPR6, *should this be built, and as a shared operator?*) → standardness (OPR7–OPR11, *what does "standard operator" mean operationally?*) → operational (OPR12–OPR16, *the build conventions every standard operator follows*).
+This document is organised as **principles, not archetypes** — same as the [primitive contract](../primitive/README.md). The shapes you see in code are *emergent* from the principles. The 16 numbered principles (**OPR1–OPR16**) are the operator-specific analog of the primitive's PR-numbers, grouped in the same four bins: definitional (OPR1–OPR3, *is this actually an operator?*) → admission (OPR4–OPR6, *should this be built?*) → standardness (OPR7–OPR11, *what does "standard operator" mean operationally?*) → operational (OPR12–OPR16, *the build conventions every standard operator follows and the gate that enforces them*).
 
-A note on relationship to the primitive contract: many primitive principles have an operator analog, but **the mappings are not identical** — operators differ from primitives in four load-bearing ways:
+Four load-bearing ways operators differ from primitives (unchanged from v1, restated because they anchor everything below):
 
-1. Operators are **finance-blind** (the single most important rule). Primitives carry domain knowledge; operators forbid it.
-2. Operators are **pure functions over typed artifacts** — no `engine`, no DB, no I/O. Primitives read from L1; operators only read what's already been read.
-3. Operators **extend** lineage rather than **originate** it. Primitives start a lineage chain; operators add their `OperatorStep` to an existing one.
-4. Operators have a **promotion rule** — a new operator is only admitted to the shared catalog when it is reused across ≥3 workflow archetypes OR is algebraically foundational to the operator algebra. Primitives have no equivalent (every primitive is a primitive from day one).
-
-Each principle below cites the primitive analog (if any) and names where the two diverge.
+1. Operators are **finance-blind** (the single most important rule, now absolute — see OPR6).
+2. Operators are **pure functions over typed artifacts** — no `engine`, no DB, no I/O (OPR14).
+3. Operators **extend** lineage rather than **originate** it — they append an `OperatorStep` to an existing chain (OPR10).
+4. Operators consume and emit only the **closed-family artifact types** (OPR9), whose contract is owned by [`../artifact/README.md`](../artifact/README.md).
 
 ## What an operator *is* — the universal contract
 
@@ -31,728 +31,496 @@ Every operator is a folder under `shared/operators/<operator_name>/` containing 
 
 ```
 shared/operators/<operator_name>/
-  __init__.py     # public-API re-exports (CONFIG_PATH, <operator>, <Operator>Params, <Operator>Error)
-  config.yaml     # operator meta + defaults + methodology
+  __init__.py     # public-API re-exports: CONFIG_PATH, <operator>, <Operator>Params, <Operator>Error  (all four, always)
+  config.yaml     # operator meta (name, method_family, version) + defaults + methodology
   schemas.py      # Pydantic <Operator>Params
   operator.py     # def <operator_name>(<artifact inputs>, params=None, config=None) -> <Output Artifact>
 ```
 
-Same number of files as the primitive shape, with one file substituted:
-
-- **`operator.py` instead of `compute.py`.** The naming difference reflects what the file *is*: an operator's compute step *is* the operator. There is no separate fetch step because operators don't read from L1 — that's the primitive's job.
-
-Two parameter layers feed every operator call:
-
-| Layer | Lives in | Per-call or constant? | Who controls? |
-|---|---|---|---|
-| **Params** | `<Operator>Params` Pydantic model | per-call | The workflow template (or test caller) |
-| **Defaults** | `config.yaml` `defaults:` block | system constants | YAML-locked in V1; not overridable by LLM (operators are not LLM-routed; workflow templates choose them) |
-
-Note the naming difference from primitive: operators have `defaults:` blocks (not `conventions:`), and `<Operator>Params` (not `<Tool>Input`). The semantics are analogous — `defaults` are the convention-style declarations every operator carries — but the chosen vocabulary is operator-specific because the consumers are different: primitives are LLM-routed via MCP, so the input is the LLM's "input"; operators are workflow-routed, so the input is the workflow's "params."
-
-The `operator()` signature is canonical, no exceptions:
+The canonical signature — **no exceptions, enforced by the registry meta-test (OPR16)**:
 
 ```python
 def <operator_name>(
     <artifact_input_1>: <ArtifactType>,
-    <artifact_input_2>: Optional[<ArtifactType>] = None,
+    <artifact_input_2>: Optional[<ArtifactType>] = None,   # only for optional slots
     ...,
-    params: <Operator>Params | None = None,
-    config: OperatorConfig | None = None,
+    params: Optional[<Operator>Params] = None,             # ALWAYS Optional, ALWAYS defaults to None
+    config: Optional[OperatorConfig] = None,
 ) -> <OutputArtifactType>:
     if config is None:
-        config = load_operator_config(CONFIG_PATH)
+        config = load_operator_config(_CONFIG_PATH)
+    _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)   # name AND version (OPR12)
     if params is None:
-        params = <Operator>Params()  # uses Pydantic defaults
-    # ... validate structural metadata compatibility (frequency, units, missingness) ...
-    # ... apply the structural transformation ...
-    # ... extend lineage with OperatorStep ...
-    return <output_artifact_with_extended_lineage>
+        params = <Operator>Params(                          # self-resolve every YAML-backed default (OPR8)
+            <variant>=config.default_value("<variant>"),
+            ...,
+        )
+    _validate_structural_metadata(<inputs>, params=params)  # units/frequency/missingness (OPR11)
+    payload = _apply_<operator_name>(<inputs>, params)      # pure transform, no I/O (OPR14)
+    step = OperatorStep.build(
+        name=_OPERATOR_NAME, version=_OPERATOR_VERSION,
+        params=sanitize_params_for_lineage(params.model_dump()),   # NaN/Inf -> None (OPR10)
+        input_hashes=(primary.lineage.head_hash,),
+        auxiliary_lineages=tuple(aux.lineage for aux in <non_primary_inputs>),  # uniform N-ary (OPR10)
+    )
+    return <OutputArtifactType>(payload=payload, lineage=primary.lineage.append(step), ...)
 ```
 
-**No `engine` parameter.** Operators do not talk to the database. They are deterministic functions over typed artifacts.
+**`params` is ALWAYS `Optional[...] = None`** (OPR8). An operator must be callable with no params and resolve every default from its `config.yaml`. This is the most common authoring and execution path; v1 had four operators that broke it.
 
-**Inputs and outputs are typed artifacts**, drawn from the *current* closed family: `Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, `TradeSet`. (Two additional shapes — `ScalarMetric` and `RankedResult` — are mentioned in earlier design notes but are **not** yet in the executable closed family. `ScalarMetric` is explicitly deferred to a later phase; `RankedResult` is not yet registered. New operators must use one of the six currently-supported types.) The artifact type contract is owned by `02_components/artifact/` (forthcoming) and is closed-family by P8 — adding a new artifact type is an ADR-gated decision.
+**No `engine`.** Operators do not touch the database. They transform what primitives already produced.
 
-**Errors raise typed exceptions** (e.g., `AlignSeriesError`, `ThresholdEventsError`), subclasses of `ValueError`. Operators never return `{"error": ...}` envelopes — that envelope conversion happens at the transport boundary (MCP server, workflow executor's exception handler). The operator layer is deep inside the workflow stack; raising is correct here.
+**Inputs and outputs are typed artifacts** from the **closed family** (OPR9): `Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, and `ScalarMetric`. (`TradeSet` was removed from the operator-composable family in v2.0; see *Removed from the operator layer* below.)
+
+**Errors raise one family** (OPR13): `<Operator>Error`, a subclass of `ValueError`. Operators never return `{"error": ...}` envelopes and never leak raw pandas / numpy / pydantic / lineage exceptions; envelope conversion happens once at the transport boundary.
 
 ## What an operator is *not*
 
-Five boundary statements that prevent the most common misclassifications:
-
-- **Not finance-aware.** An operator does not know what an instrument is, what a curve_family means, what a tenor represents, or what asset class its inputs come from. If your candidate operator's signature contains `curve_family`, `tenor`, `bond`, `swap`, `OIS`, `Treasury`, or any other finance concept, it is not an operator — it is a primitive or a workflow template component.
-- **Not a data reader.** Operators have no `engine` parameter, no SQL, no network call, no file I/O (except reading their bundled `config.yaml` at startup). Primitives read from L1; operators only transform what primitives produced.
-- **Not a workflow.** A single operator is one structural transformation. Multi-step analyses are workflow templates that compose operators and primitives (L4/L5), not operators with multi-stage internal logic. If your candidate "operator" is really a sequence of three operators glued together, it is a workflow template.
-- **Not a UI / explanation step.** Operators emit typed artifacts; they do not produce prose, formatted text, or rendered output. Anything that produces user-facing text belongs at the UI / orchestrator layer.
-- **Not lineage-originating.** Operators continue a lineage chain by appending an `OperatorStep`. They do not start one. Lineage origination is the primitive's job (via `PrimitiveStep`).
+- **Not finance-aware — ever.** No instrument, curve_family, tenor, asset class, P&L, Sharpe, day-count, or financing math. A candidate that needs any of these is a **primitive**, not an operator. (v2.0 removed the v1 trade-operator carve-out — see OPR6.)
+- **Not a data reader.** No `engine`, SQL, network, or file I/O (except the bundled `config.yaml` at import).
+- **Not a workflow.** One structural/statistical transformation. A sequence is a workflow template (L4/L5).
+- **Not a UI / explanation step.** Operators emit typed artifacts, never prose or formatted output.
+- **Not lineage-originating.** Operators append an `OperatorStep`; primitives originate via `PrimitiveStep`.
+- **Not a unit converter in disguise.** Operators refuse cross-unit operations; the *only* place a unit transition happens is the dedicated `convert_units` operator (OPR11).
 
 ## How to use this document
 
-For your first read: scan the **Quick index** below, then read every principle's **Rule** line. That alone gives you the whole spec. The **Why**, **Verify**, and **Anti-patterns** sections are reference material for when a question or a PR turns on a specific principle.
-
-For ongoing work: do not re-read this file from top to bottom. Look up the specific principle by ID when it comes up. Cite by ID (`OPR6`, `OPR9`) in commit messages, PR comments, and code review — same discipline as the P-numbers from [`../../00_thesis/01_non_negotiables.md`](../../00_thesis/01_non_negotiables.md) and the PR-numbers from [`../primitive/README.md`](../primitive/README.md). The three namespaces are deliberately separate: P-numbers are platform-wide; PR-numbers are primitive-specific; OPR-numbers are operator-specific.
+First read: scan the **Quick index**, then every principle's **Rule** line. Cite by ID (`OPR6`, `OPR9`) in commits, PR comments, and review. The four namespaces are separate: P (platform-wide), PR (primitive), OPR (operator), ART (artifact).
 
 ## Quick index — the OPR-numbers
 
 | ID | Group | Principle | One-line rule |
 |---|---|---|---|
-| **OPR1** | I | Structural-method ownership | An operator owns one structural method family (alignment, masking, windowing, aggregation, ranking, arithmetic, fan-out). It never owns a finance concept. |
-| **OPR2** | I | One operator, one method family | An operator expresses one cohesive structural method family with its consequential variants exposed as parameters. Multiple unrelated method families split into multiple operators. |
-| **OPR3** | I | Shared-folder residence | An operator lives at `shared/operators/<operator_name>/`. Never under any agent. The shared folder *is* the finance-blind residence. |
-| **OPR4** | II | Parsimony + promotion rule | Do not build a new operator if existing operators compose to the same effect. A new operator is admitted to the shared layer only when (a) the composability argument fails on accuracy / efficiency / interpretability / provenance / workflow-template clarity grounds, AND (b) the candidate is reused across ≥3 workflow archetypes OR is algebraically foundational to the operator set. |
-| **OPR5** | II | Concept novelty | A new operator is a genuinely new structural method family or a genuinely new variant inside an existing family, not a one-off transform that exists for a single workflow. |
-| **OPR6** | II | Asset-class / domain-blind contract | The operator does not know the asset class of its inputs. Generic trading concepts (trade, holding window, P&L) are allowed; asset-class-specific concepts (curve_family, tenor, FX pair, equity sector) are forbidden. The operator must run unchanged on rates, FX, equities — its code does not change when the asset class does. |
-| **OPR7** | III | Defaults offloading | Every methodology default lives in `config.yaml`'s `defaults:` block; mathematical and structural invariants stay in code; no hidden module-level constants. |
-| **OPR8** | III | Bounded parameter surface with explicit variants | `<Operator>Params` exposes every consequential method variant the caller can pick (aggregator, threshold rule, window shape, alignment policy, ranking direction). No hidden hardcoded choices the caller cannot inspect or override. |
-| **OPR9** | III | Typed artifact I/O over the closed family | Inputs and outputs are drawn from the closed-family artifact set (`Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, `TradeSet`). No naked pandas / NumPy, no dicts, no prose. |
-| **OPR10** | III | Lineage extension | Every operator extends the artifact's lineage chain with an `OperatorStep` carrying its name, version, parameters, and policy choices. Operators do not originate lineage; they continue it. |
-| **OPR11** | III | Structural-metadata enforcement and honest refusal | Operators enforce structural metadata compatibility (frequency, units, missingness policy, index type) by default. Mismatches raise typed exceptions (`<Operator>Error`). Callers may opt into mixed inputs explicitly; the choice is recorded in lineage. |
-| **OPR12** | IV | Source-tagged defaults | Every `Convention` / `Default.source` references a registered tag. The operator-default taxonomy currently includes `operator_v1_default`, `derived_from_window`, `team_judgment_pending_review`. New tags require a one-line registry entry. |
-| **OPR13** | IV | Typed exceptions, not envelopes | Operators raise typed `<Operator>Error` exceptions on failure. The envelope conversion (`{"error": "..."}`) happens at the transport boundary, never inside the operator. |
-| **OPR14** | IV | Pure function, no I/O | No DB access, no network, no filesystem except the bundled `config.yaml`. Deterministic on inputs. No wall-clock time, no unfixed random seeds. |
-| **OPR15** | IV | Arity declared in the registry; list slots are first-class | Every operator's arity is declared in `OperatorSpec.input_slots`. List-typed slots (`"List[Series]"`) are first-class and validated by the substrate. No implicit fan-out via `Union[T, List[T]]` branching inside the operator. |
-| **OPR16** | IV | Test pattern | Every operator ships with a unit test against synthetic typed-artifact inputs (covers happy path + edge cases + structural-metadata mismatches), and at least one workflow-integration test through a real workflow template that consumes it. No SQL validation (no DB). |
+| **OPR1** | I | Structural-method ownership | An operator owns one finance-blind structural/statistical method family. It never owns a finance concept. |
+| **OPR2** | I | One operator, one method family | One cohesive method family with its consequential variants as parameters; unrelated families split. |
+| **OPR3** | I | Shared-folder residence | Lives at `shared/operators/<name>/`. Never under an agent. |
+| **OPR4** | II | Toolbox admission (parsimony, no recipe gate) | Admit an operator when it adds a distinct, reusable, finance-blind method the composition layer needs and that existing operators do not compose cleanly. **The v1 ≥3-archetype promotion gate is removed.** |
+| **OPR5** | II | Method novelty | A genuinely new structural/statistical method or variant, not a one-off or a rename. |
+| **OPR6** | II | Finance-blind contract (absolute) | No asset-class concept and no finance math, anywhere. A finance-aware candidate is relocated to a primitive — no carve-out. |
+| **OPR7** | III | Defaults offloading | Every user-choosable default in `config.yaml`; structural invariants in code; one bounded design-locked-constant allowance. |
+| **OPR8** | III | Uniform, bounded parameter surface | `params: Optional[<T>Params]=None` for every operator; every consequential variant exposed; every default config-resolved when `None`. |
+| **OPR9** | III | Typed I/O via structured SlotDescriptor | Inputs/outputs are closed-family artifacts declared by a structured `SlotDescriptor` (type, list, optional, scalar, unit-family, sub-kind). No naked pandas/numpy/dict. |
+| **OPR10** | III | Lineage extension (uniform, finite, deterministic) | One `OperatorStep` via `.build`; all non-primary inputs in `auxiliary_lineages`; NaN/Inf params sanitised to `None`. |
+| **OPR11** | III | Structural-metadata algebra (units/frequency/missingness) | Refuse cross-unit (convert via `convert_units` only); frequency is load-bearing; uniform `require_matching_*` on every multi-artifact operator; honest combined lenient policy. |
+| **OPR12** | IV | Config identity + source taxonomy | A shared helper asserts config `name` **and** `version` match the module; `source` is a closed taxonomy; `version` is semver. |
+| **OPR13** | IV | One error family, owns every failure surface | Every `<Operator>Error` subclasses `ValueError`; `OperatorConfigError` subclasses `ValueError`; `NotImplementedError` is the sole sanctioned non-ValueError; no raw library exceptions leak. |
+| **OPR14** | IV | Purity + determinism | Pure function; idempotent `head_hash` on rerun; `±Inf` forbidden in payloads; meaningless params normalised before hashing; version-bump rule. |
+| **OPR15** | IV | Arity declared in the registry | Single / list / optional / scalar slots declared via `SlotDescriptor`; signature mirrors it; no internal fan-out; no by-name executor special-casing. |
+| **OPR16** | IV | Test pattern + the registry-consistency gate | A parametrized meta-test over `OPERATOR_REGISTRY` is the gate; plus unit (happy/variant/mismatch/lineage/determinism/non-rates) and workflow-integration tests. |
 
 ---
 
 ## Group I — Definitional: is this actually an operator?
 
-The first question. If the answer to any of OPR1–OPR3 is "no, this is not an operator," the conversation stops here and the proposal goes to a different shape (a primitive, a workflow template, a UI helper, or a `shared/analytics/` helper).
-
 ### OPR1 — Structural-method ownership
 
-**Rule.** An operator owns one *structural method family*. Examples of families currently in code: alignment (`align_series`), masking (`apply_mask`), thresholding (`threshold_events`), windowing (`event_windows`), aggregation (`conditional_aggregate`, `summarize_series`, `summarize_trades`), arithmetic (`series_arithmetic`), selection (`select_from_series_set`), construction (`construct_trades`), evaluation (`evaluate_trades`). New operators add to this list of structural method families; they do not own finance concepts.
+**Rule.** An operator owns one *finance-blind structural or statistical method family*. The families are enumerated in `OperatorMethodFamily` (`shared/config/operator_config.py`) and cover the structural transforms *and* the statistical relationships a research DAG needs (see *Method-family taxonomy* below). An operator never owns a finance concept.
 
-**Why.** This is what makes operators reusable across asset classes. An operator named `align_series` runs on rate yields, FX spot rates, equity prices, and temperature time series unchanged — because alignment is a structural operation, not a finance operation. The moment an operator carries a finance concept, the substrate's cross-asset claim collapses (per [P9](../../00_thesis/01_non_negotiables.md)) and the operator becomes a hidden primitive.
+**Why.** Reusability across asset classes (P9). `correlation` runs on yields, FX, equities, or temperatures unchanged because correlation is a statistical operation, not a finance one. The moment an operator carries a finance concept, the cross-asset claim collapses and the operator is a hidden primitive.
 
 **Verify.**
-- The operator's `tool.name` and `methodology.what_it_does` describe a *structural method*, not a finance concept.
-- The operator's name, signature, config, and docstrings do not mention: instrument, asset class, curve_family, tenor, sovereign, bond, swap, OIS, Treasury, equity, currency, yield, spread, rate, or any other finance term except as documentation of what the artifact's units happen to be in *this* call (which is data, not code).
-- A reviewer can describe the operator in one sentence using only structural terms: *"`align_series` combines N indexed Series onto a common index under a join policy."*
+- The operator's `config.yaml` `operator.method_family` is one of the `OperatorMethodFamily` values.
+- Name, signature, config, and docstrings describe a structural/statistical method, never an instrument, asset class, curve_family, tenor, yield, spread, rate, P&L, or Sharpe.
+- A reviewer can state the operator in one structural sentence: *"`correlation` computes the (optionally rolling) Pearson correlation between two index-aligned Series."*
 
 **Anti-patterns.**
-- `calculate_swap_spread` — knows finance (sovereign yield vs OIS rate). Correct home: a cross-domain primitive (already shipped as such).
-- `find_curve_inversions` — domain-specific curve semantics. Correct home: a primitive or workflow template.
-- `regress_breakeven_on_oil` — workflow logic. Correct home: a workflow template.
-- `format_event_study_report` — UI / explanation. Correct home: UI / orchestrator layer.
-- `conditional_mean` as a standalone operator — too narrow a variant of the broader `conditional_aggregate` family. Either generalise (expose `aggregator: Literal["mean", "median", ...]`) or fold into the existing operator.
+- `calculate_swap_spread`, `find_curve_inversions` — finance. Relocate to a primitive.
+- `evaluate_trades`, `summarize_trades` — finance math (P&L, Sharpe). **Removed in v2.0** (OPR6).
+- `correlate_btp_bund` — instrument-named. The operator is `correlation`, parameterised by the two Series it is handed.
 
-**Relates to.** OPR analog of [PR1](../primitive/README.md#pr1--concept-ownership-not-instrument-ownership), but the axis is different: primitives own finance concepts (parameterised by instrument); operators own structural methods (parameterised by metadata). [P9](../../00_thesis/01_non_negotiables.md) is the platform-level principle this operationalises.
+**Exceptions.** None.
+
+**Relates to.** [P9](../../00_thesis/01_non_negotiables.md); operator analog of [PR1](../primitive/README.md).
 
 ### OPR2 — One operator, one method family
 
-**Rule.** An operator expresses one cohesive structural method family. *Inside* that family, consequential method variants are exposed as caller-controlled parameters (e.g., `align_series` exposes `join_policy: Literal["inner", "outer"]` and `fill_policy: Literal["raw", "ffill"]` because both are legitimate variants of alignment). *Across* unrelated method families, split into multiple operators.
+**Rule.** One cohesive method family, with its consequential variants exposed as parameters (`correlation` exposes `method ∈ {pearson, spearman}` and an optional `window`; both are variants of *correlation*). Unrelated families split into separate operators.
 
-**Why.** Tool-selection clarity for workflow-template authors (the operator-layer analog of LLM tool-selection clarity for primitives) and reviewer sanity. An operator that does two structural things is two operators in a trench coat; templates can't tell which "mode" they're invoking, the contract becomes ambiguous, and downstream consumers can't reason about what they're calling.
+**Why.** Composition-layer clarity and reviewer sanity. An operator that does two things is two operators in a trench coat; a DAG author (and the validator) cannot reason about which mode is active.
 
 **Verify.**
-- The operator's `methodology.what_it_does` describes *one* method family in one paragraph.
-- There is no `mode: Literal["align", "threshold"]` parameter that switches between *different* method families.
-- The output artifact type is consistent across all parameter values (an operator that returns `SeriesSet` for some inputs and `EventSet` for others is doing two operators' work).
+- `methodology.what_it_does` describes one family in one paragraph, no "or".
+- No `mode` parameter switches between *different families*.
+- The output artifact type is constant across all parameter values.
 
 **Anti-patterns.**
-- An operator named `transform_series` that does alignment, thresholding, *or* arithmetic depending on a mode flag. Three operators, not one.
-- An operator that switches its output artifact type based on a param value.
-- An operator whose `what_it_does` requires the word "or" to describe what it produces.
+- `transform_series` that aligns *or* thresholds *or* correlates by a flag. Three operators.
+- An operator whose output artifact type changes with a param.
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR2](../primitive/README.md#pr2--one-primitive-one-concept). For operators, the "one concept" maps to "one structural method family with explicit variants" — variants inside the family are required (not forbidden), as long as each is a legitimate methodology choice within the family, not a different family.
+**Relates to.** Operator analog of [PR2](../primitive/README.md).
 
 ### OPR3 — Shared-folder residence
 
-**Rule.** Every operator lives at `shared/operators/<operator_name>/`. Operators are never placed under an agent's package, never under `shared/analytics/`, never under a domain-specific subdirectory of any kind. The `shared/operators/` folder *is* the finance-blind residence.
+**Rule.** Every operator lives at `shared/operators/<operator_name>/`. Never under an agent, never under `shared/analytics/`, never under a domain subdirectory.
 
-**Why.** This is the structural enforcement of OPR6 (finance-blind contract). Per [P11](../../00_thesis/01_non_negotiables.md), agents are isolated; per [P9](../../00_thesis/01_non_negotiables.md), operators are finance-blind. The two together force the conclusion: an operator under any agent's folder would either be domain-coupled (violating P9) or wrongly placed (violating P11). The shared folder is the only correct home.
-
-The contrast with primitives is sharp:
-
-- Primitives live under `<agent>/<sub_agent>/tools/<tool_name>/` because they own a desk concept, which has conventional ownership.
-- Operators live under `shared/operators/<operator_name>/` because they own a structural method, which has no conventional owner.
+**Why.** Structural enforcement of OPR6 + [P11](../../00_thesis/01_non_negotiables.md): an operator under an agent's folder would be either domain-coupled (P9 violation) or misplaced (P11 violation).
 
 **Verify.**
-- The operator's folder path begins with `shared/operators/`.
-- The operator's `operator.py`, `schemas.py`, and `config.yaml` do not import from any agent's package. A `grep` for `from rates_agent`, `from fx_agent`, etc., inside any operator file returns zero matches.
-- The operator's `shared/analytics/` imports (if any) are limited to truly finance-blind helpers — `shared/analytics/stats.py` (yes), `shared/analytics/rates_fetch.py` (no, that's domain-coupled).
+- The folder path begins with `shared/operators/`.
+- `grep` for `from rates_agent` / `from fx_agent` / any agent package inside any operator file returns zero matches.
+- `shared/analytics/` imports, if any, are finance-blind helpers only (`stats.py` yes; `rates_fetch.py` no).
 
-**Anti-patterns.**
-- An "operator" placed under `rates_agent/operators/` or any agent-scoped folder.
-- An operator that imports from any agent's tools or schemas.
-- A "shared but rates-only" operator. There is no such thing; either it's finance-blind (and lives in `shared/operators/`) or it's a primitive (and lives in an agent).
+**Anti-patterns.** An operator under `rates_agent/operators/`; an operator importing an agent's tools; a "shared but rates-only" operator (no such thing).
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR3](../primitive/README.md#pr3--domain-residence-by-conventional-ownership), but the rule inverts: primitives live where the *desk concept* conventionally lives; operators have *no* domain, so they live in the shared root by definition. The two rules together preserve [P9](../../00_thesis/01_non_negotiables.md) and [P11](../../00_thesis/01_non_negotiables.md).
+**Relates to.** Operator analog of [PR3](../primitive/README.md); [P9](../../00_thesis/01_non_negotiables.md), [P11](../../00_thesis/01_non_negotiables.md).
 
 ---
 
-## Group II — Admission: should this be built, and as a shared operator?
+## Group II — Admission: should this be built?
 
-OPR1–OPR3 said the candidate *is* an operator. Group II asks whether it *should* exist as a shared admission, and what bar it has to clear.
+### OPR4 — Toolbox admission (parsimony, no recipe gate)
 
-### OPR4 — Parsimony + the promotion rule
+**Rule.** An operator is admitted to `shared/operators/` when **both** hold:
 
-**Rule.** Do not build a new operator if existing operators compose to the same effect. The default action when a workflow needs a transformation that maps to a chain of `align_series → threshold_events → event_windows → conditional_aggregate` is **compose**, not **build a new operator**.
+1. **Distinctness / parsimony.** It adds a genuinely distinct finance-blind structural or statistical method that existing operators do not compose *cleanly* (the composability check still applies — do not add an operator whose effect is one trivial existing chain), measured against the five criteria: accuracy, efficiency, interpretability, provenance, **DAG-composition clarity**.
+2. **Toolbox membership.** It belongs to the target finance-blind composition toolbox — a pairwise relationship, a single-series transform, a cross-sectional reduction, a structural transform, or a unit/shape conversion — that the LLM-composed DAG layer ("Tier 2") will draw on.
 
-A new operator is admitted to the shared catalog **only when both of these hold**:
+**The v1 promotion rule — "admit only when reused across ≥3 workflow archetypes" — is REMOVED.** That gate was an artifact of the recipe-driven era (Tier 1 templates) and it actively *blocks* building the toolbox the composition layer needs: a `correlation` operator can never reach three template consumers because no template exists to use it until it exists. Operators are the *ingredients* for open composition; gating ingredient creation on pre-existing recipes is backwards.
 
-1. The composability argument fails on at least one of these grounds:
-   - **Accuracy.** The composition accumulates error that a direct operator avoids.
-   - **Efficiency.** The composition would require many intermediate artifact materialisations; a direct operator does it in one pass.
-   - **Interpretability.** The composition produces intermediate artifacts whose *meaning* a workflow-template reviewer cannot follow; the direct operator produces a coherent end-to-end transform.
-   - **Provenance.** The composition produces a lineage chain too noisy to audit; the direct operator carries a single coherent `OperatorStep`.
-   - **Workflow-template clarity.** The composition requires every template that uses it to repeat the same 4-node sub-DAG; a single operator makes the templates simpler and the operator's role auditable.
+**Why.** The product goal is open DAG composition over a rich, finance-blind operator catalogue. The constraint that keeps the catalogue sane is no longer "≥3 recipes" but **distinctness + toolbox-membership + a hard finance-blind boundary (OPR6)**. The catalogue should still be small enough to hold in one's head (target ≈ 25–30 operators; see *Method-family taxonomy*), but it must be *complete enough* that common research DAG nodes (correlation, covariance, cointegration, rolling z-score, cross-sectional rank, …) exist.
 
-2. The candidate satisfies the **promotion rule** — at least one of:
-   - It is **reused across ≥3 distinct workflow archetypes** (event_study, regime_conditioned_relationship, attribution_decomposition, cross_sectional_screen, backtest, etc.), or
-   - It is **algebraically foundational to the operator set** — meaning no composition of existing operators reproduces its effect cleanly, and the reviewer can name what the operator gives the operator algebra that the existing set does not.
-
-Promotion is reviewed against the existing operator catalog by a reviewer; it is **not self-declared by the author**.
-
-**Why.** Two compounding effects:
-
-1. Every operator added to `shared/operators/` is a maintenance, test, and review burden that compounds across every workflow that touches it.
-2. Operators are the *building blocks* templates compose. A bloated operator catalog makes templates harder to read (more operators to choose between) and the reviewer's job harder (more shapes to remember). The catalog must stay small enough that a human can hold the full operator vocabulary in their head — that's the bar.
-
-The promotion rule exists because the operator layer is *the* place where parsimony has compounding leverage: a primitive used by one workflow is fine; an operator used by one workflow is debt. Without the rule, the operator folder becomes a wastebasket.
-
-The five-criterion admission gate (the same five we use for primitives in PR4) and the promotion rule are **both required** — passing one without the other is not enough.
-
-**Verify.**
-
-The PR description must answer three questions explicitly:
-
-1. **Composability check.** What composition of existing operators was considered? Why is it materially worse against ≥1 of the five criteria?
-2. **Promotion check.** Which ≥3 workflow archetypes will use this operator? Name them. Alternatively, name the algebraic foundation the operator adds that no composition produces cleanly.
-3. **Non-overlap check.** Run the proposed operator's `name` and `methodology.what_it_does` past every existing operator's `name` and `what_it_does`. Is there an existing operator whose scope could plausibly cover this? If yes, the right answer is usually to *extend the existing operator with a new variant* (e.g., add a new `method_family` enum value, or a new `aggregator` value), not add a sibling.
+**Verify.** The PR description answers three questions:
+1. **Composability check.** What existing-operator composition was considered, and why is it materially worse on ≥1 of the five criteria (or impossible)?
+2. **Toolbox-membership.** Which target category does it fill, and what DAG node does it enable that is impossible today?
+3. **Non-overlap.** Run `name` + `methodology.what_it_does` past every existing operator; if an existing one's variant set could cover it, *extend that operator* instead.
 
 **Anti-patterns.**
-- "We need it for one workflow." Build it as workflow-local code; promote later if a second workflow needs it.
-- "It's faster than the composition" — without measuring how much faster, and whether the difference matters at template-execution rates.
-- Building `aggregate_with_mean`, `aggregate_with_median`, `aggregate_with_max` as three operators. One operator (`conditional_aggregate`) with an `aggregator` variant.
-- Building two operators whose `methodology.what_it_does` are near-paraphrases of each other.
-- Speculative additions ("we might need this someday"). Build when a real third workflow archetype is queued.
+- Re-introducing a "≥3 archetypes" or "used by only one workflow → reject" argument. That gate is gone in v2.0.
+- Building `correlation_pearson`, `correlation_spearman` as two operators (one operator, `method` variant).
+- A one-off transform that exists for a single template's internal convenience — that stays workflow-local code, not because of a recipe count but because it is not a distinct reusable method.
+- Speculative breadth with no target-category justification.
 
-**Exceptions.** Two narrow ones:
+**Exceptions.** None. (The v1 "bootstrap exception" is obsolete — without the ≥3 gate there is nothing to bootstrap around.)
 
-1. **Bootstrap exception (ADR-backed).** New asset-class or new workflow-archetype work sometimes needs a new operator before the third archetype consumer exists — the operator can't reach three consumers if no consumer can start until the operator exists. For these cases, the operator may be admitted with a single (planned) consumer **provided an ADR explicitly records the bootstrap status and names the expected ≥3-archetype timeline**. The bootstrap status is revisited at the next phase boundary; if the third consumer hasn't materialised, the operator is reviewed for either promotion (consumer #3 lands) or demotion to workflow-local code.
-2. **Algebraic foundation.** As stated in the promotion rule itself — an operator that is algebraically foundational to the operator algebra does not require ≥3 archetype reuse, but it does require reviewer confirmation that no composition of existing operators reproduces its effect cleanly.
+**Relates to.** Operator analog of [PR4](../primitive/README.md), with the promotion gate removed; [P8](../../00_thesis/01_non_negotiables.md) (the artifact closed family is still closed — admitting an operator never admits an artifact type).
 
-A workflow may also need workflow-local helper code that is not a shared operator; that's fine — but it lives inside the workflow template's package, not in `shared/operators/`.
+### OPR5 — Method novelty
 
-**Relates to.** OPR analog of [PR4](../primitive/README.md#pr4--parsimony-the-composability-check--llm-tool-selection-clarity), but with the **promotion rule** baked in — operators have a tighter admission bar than primitives because every operator added is debt amortised across the whole template catalog. The five admission criteria substitute "workflow-template clarity" for "LLM tool-selection clarity" (operators are not LLM-routed directly; they are template-routed).
+**Rule.** A new operator is a genuinely new structural/statistical method or a new variant inside an existing family — not a new finance use case for an existing method, and not a rename.
 
-### OPR5 — Concept novelty
-
-**Rule.** A new operator is a *genuinely new structural method family* or a *genuinely new variant inside an existing family*. It is not:
-
-- a new finance use case for an existing structural method (use the existing operator with the new artifact type as input),
-- a new universe member of an existing operator (universe expansion is a primitive concern, not an operator concern),
-- a new workflow step that happens to be composable (workflow steps are template components, not operators).
-
-**Why.** The most common reason an operator proposal is mis-classified as new is that the contributor sees a *new analytical use case* and reaches for *a new operator*, when the right answer is to use an existing operator with the new artifact type or a new parameter value.
+**Why.** The common mis-classification is reaching for a new operator when the right answer is a new parameter value on an existing one (`correlation` gains `method="spearman"`, not a new operator).
 
 **Verify.**
-- The PR description names the structural method family (one of the existing families, or a genuinely new one with a one-paragraph justification).
-- The reviewer can name an existing operator whose `method_family + variants` *could not* cover the new use case under any parameter value.
+- The PR names the method family (existing, or new with a one-paragraph justification).
+- A reviewer can name an existing operator whose `method_family + variants` could *not* cover the use case under any parameter value.
 
-**Anti-patterns.**
-- A PR titled `feat: add align_series for cross-currency-basis workflows` (the existing `align_series` is already finance-blind and handles any artifact type).
-- A PR that adds a new operator whose `methodology.what_it_does` is "same as `<existing_operator>` but for `<new_use_case>`."
-- A PR whose only diff from an existing operator is a different default value of a YAML default.
+**Anti-patterns.** `feat: add align_series for FX` (already finance-blind); an operator whose `what_it_does` is "same as `<x>` but for `<y>`"; a diff that is only a different default value.
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR5](../primitive/README.md#pr5--concept-novelty). For operators the bar is even tighter because the universe-coverage / region-coverage anti-pattern doesn't apply (operators have no universe) — concept novelty becomes pure structural novelty.
+**Relates to.** Operator analog of [PR5](../primitive/README.md).
 
-### OPR6 — Asset-class / domain-blind contract
+### OPR6 — Finance-blind contract (absolute)
 
-**Rule.** Operators do not know the **asset class** of their inputs. Generic, structural finance concepts that apply uniformly across asset classes (e.g., *trade*, *holding window*, *P&L*, *price panel*, *event date*) are allowed when they're part of the operator's structural method family. **Asset-class-specific concepts** (curve_family, tenor, sovereign vs OIS, FX pair convention, equity sector, credit issuer rating) are forbidden in the operator's signature, code, config, or imports.
+**Rule.** Operators contain **no asset-class concept and no finance math, anywhere** — not in the signature, the code, the config, the imports, the docstrings, or the output. The decision test: *"Would this operator's code change if I swapped rates inputs for FX or equity inputs?"* If yes, it is a primitive, not an operator. **There is no carve-out.** A candidate that performs P&L accounting, Sharpe annualisation, day-count math, financing logic, or any other asset-class-specific computation is relocated to the primitive layer — it does not live in `shared/operators/` under any label.
 
-The decision test: *"Would this operator's code change if I swap rates inputs for FX inputs or equity inputs?"* If yes (the operator branches on asset class, or its math depends on asset-class-specific conventions), it is not an operator — it is a primitive. If no (the operator treats every asset class identically through the typed-artifact metadata), it satisfies OPR6.
+**v2.0 supersedes the v1 "asset-class-blind, refined" framing.** v1 blessed `evaluate_trades` / `summarize_trades` as "sanctioned finance-aware trade operators." That was a description of an accident, not a principle. v2.0 restores the absolute boundary: finance-blind means finance-blind. (Founder decision #1; [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md).)
 
-**Why.** This is the platform-level operationalisation of [P9](../../00_thesis/01_non_negotiables.md) at the operator layer, refined for the reality that some structural transforms (trade lifecycle, P&L accounting, position-level windowing) inherently use trading-shaped vocabulary without being asset-class-specific. The substrate's cross-asset claim — that the same operator catalog works on rates today, FX tomorrow, equities later — depends on the asset-class boundary, not on banning every word that sounds financial.
-
-A *trade* is structurally the same shape in rates, FX, equities, and commodities; an operator that constructs trades from an event set is asset-class-blind because its code does not change when the asset class changes. A *yield curve* is structurally specific to rates; an operator that operates on yield curves is asset-class-specific and belongs in the primitive layer.
+**Why.** P9 is the precondition for cross-asset portability *and* for a composition layer the validator can trust. A "mostly finance-blind" layer is not finance-blind; one finance-aware operator forces every future asset class to special-case it, and a DAG validator cannot reason uniformly about a catalogue with exceptions. The boundary is binary on purpose.
 
 **Verify.**
-- The operator's signature contains no asset-class-specific parameters (`curve_family`, `tenor`, `currency_pair`, `equity_sector`, `bond_issuer`). Generic trading parameters (`holding_period`, `leg_spec`, `notional`) are allowed if the operator is in a trade-lifecycle family.
-- The operator's code does not branch on asset class identity. (Branching on structural metadata — *units*, *frequency*, *missingness policy* — is fine; that's the structural-metadata enforcement OPR11 prescribes.)
-- The operator's `config.yaml` `defaults:` block contains no asset-class-specific values. (Generic structural defaults like `business_day_convention: act/365` *do* appear in current operator configs with `source: industry_standard_*` tags — those are allowed when documented as cross-asset conventions, not rates-specific.)
-- The operator's imports include no agent packages: zero matches for `from rates_agent`, `from fx_agent`, etc.
-- The operator's test suite includes at least one test where inputs are explicitly *not* rates data (synthetic random walks for non-trade operators; non-rates synthetic trades for trade-lifecycle operators) — and the operator produces structurally-correct output without any rates-specific assumptions.
+- The signature contains no asset-class parameter (`curve_family`, `tenor`, `currency_pair`, `sector`, `issuer`) and no finance-math parameter (`financing`, `day_count`, `notional` used for P&L).
+- The code does not branch on asset class and performs no finance math.
+- `grep` for agent packages inside the operator returns zero matches.
+- A non-rates test (Z_SCORE / random-walk / temperature input) passes and produces structurally-correct output (OPR16 requires this for every operator).
+- Generic *structural* concepts that are asset-class-agnostic (a window length, a lag, a join policy, a correlation method) are fine; finance *semantics* are not.
 
 **Anti-patterns.**
-- An operator whose `<Operator>Params` includes `curve_family`, `tenor`, `instrument_type`, or any asset-class enum.
-- An operator that branches on asset-class-shaped fields (e.g., `if input.units == BPS: ...` is suspect — BPS is rates-specific).
-- An operator that imports anything from `rates_agent/`, `fx_agent/`, or any future agent's package.
-- An operator that hardcodes a rates-specific default (e.g., `default_window_days: 252` *tagged* `source: industry_standard_us_treasury_window`). The 252-day default is fine when tagged as the generic `industry_standard_252_business_days` (which it currently is across the catalog); the rates-specific tagging would be the violation.
-- An operator whose tests only use synthetic rates data, with no cross-asset smoke test.
+- Any P&L / Sharpe / financing / day-count math in an operator. → primitive.
+- `<Operator>Params` with `curve_family` / `tenor` / an asset-class enum.
+- A docstring describing the operator in finance terms when structural terms suffice.
+- Re-admitting a finance-aware operator "because the backtest template needs it" — the backtest capability is a primitive set (or a template), not an operator.
 
-**Acceptable** (not violations):
-- A trade-lifecycle operator using `TradeSet`, `LegSpec`, `holding_period`, `P&L`, `financing_assumption`. These are generic trading concepts that apply across all asset classes; the operator does not know whether the trades are in rates, FX, equities, or commodities.
-- A `default.source` tag that names an industry context (e.g., `industry_standard_sovereign_repo_usd_money_market`). The tag documents *provenance of the value*; it does not make the operator branch on asset class.
-- Generic structural conventions (`act/365` day count, business-day calendars) used as defaults across the catalog.
+**Exceptions.** None.
 
-**Exceptions.** None on the asset-class-blindness rule. Operators that need asset-class-specific behaviour are not operators; they are primitives.
+**Removed in v2.0.** `evaluate_trades` and `summarize_trades` (finance math) are removed from the operator layer. `construct_trades` and the `TradeSet` artifact are removed alongside them: `construct_trades` is structurally blind but exists only to feed the removed consumers, and `TradeSet` is produced/consumed only by the trade trio — so the three operators + `TradeSet` move together into the future finance-aware **backtest primitive set** (relocation decided in [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md); the backtest primitives land later as a separate workstream). Net operator count drops from 12 to **9**; the operator-composable artifact family drops `TradeSet`.
 
-**Relates to.** [P9](../../00_thesis/01_non_negotiables.md) is the platform-level principle; OPR6 is its operator-layer enforcement, refined to permit generic trading vocabulary where the trade-lifecycle operators legitimately need it. The complementary primitive rule is [PR3](../primitive/README.md#pr3--domain-residence-by-conventional-ownership) (primitives live where the desk concept conventionally lives — *because* primitives are the place asset-class-specific finance knowledge belongs).
+**Relates to.** [P9](../../00_thesis/01_non_negotiables.md); the primitive layer ([PR1](../primitive/README.md)) is where the relocated finance math belongs.
 
 ---
 
 ## Group III — Standardness: what does "standard operator" mean operationally?
 
-OPR1–OPR6 said the candidate *is* an admissible operator. Group III defines what it means for that operator to be *standard*. Same five-rule structure as the primitive's PR7–PR11, with operator-specific framings.
+### OPR7 — Defaults offloading
 
-### OPR7 — Defaults offloading + the design-locked-constant allowance
+**Rule.** Every *user-choosable* methodology default (join policy, fill policy, threshold rule, aggregator, correlation method, window default, ddof) lives in `config.yaml`'s `defaults:` block with `{value, source, rationale, valid_values?}`. Mathematical and structural invariants stay in code (Pydantic `@model_validator`). Hidden methodology constants in `operator.py` are forbidden, with one bounded exception: **design-locked constants** (a contract-shape value the caller must *not* vary, e.g. a fixed summary anchor) are allowed in code iff (1) documented as design-locked with rationale, (2) stamped into lineage when output-affecting, (3) migration-scoped in the docstring, (4) genuinely structural, not a methodology choice in disguise.
 
-**Rule.** Every *user-choosable methodology default* — join policies, fill policies, fill limits, threshold rules, aggregator defaults, ranking defaults — lives in `config.yaml`'s `defaults:` block with a full `{value, source, rationale, valid_values?}` block. Mathematical invariants — "all input series must have the same index type", "weights must sum to 1" — stay in code as Pydantic `@model_validator` validators or runtime structural-metadata checks.
+**Why.** Two reasons, the same two that drive the primitive's [PR7](../primitive/README.md). **(1) Configurability / de-opinionation** — the `config.yaml` is where every method choice and default is *declared and offloaded* so the operator ships a sensible default *without being opinionated*, and the caller can override it to switch behaviour seamlessly. This is the operator analog of how a primitive offloads its methodology to YAML: we never bake one "right" method into the code as the only option. **(2) Disclosure** — a reviewer must be able to enumerate every methodology choice from the YAML alone. Design locks are the one principled exception, documented, not hidden.
 
-**Hidden methodology constants in `operator.py` are forbidden, with one explicitly-bounded exception** described below.
+**Verify.** Every numeric constant in `operator.py` is a mathematical truth, a documented design lock, or `config.default_value(...)`. The `defaults:` block lists every user-choosable choice with a non-empty `source` and `rationale`. (Numeric ranges live on the `<Operator>Params` field as `Field(ge=, le=)`, re-checked on the config path per OPR8 — `OperatorDefault` is `extra="forbid"` and has no `valid_range`.)
 
-#### Design-locked constants — the allowed exception
+**Anti-patterns.** `_FFILL_LIMIT_DAYS = 5` undocumented at module level; magic numbers in the body; a "design lock" the caller would reasonably want to vary.
 
-Some operators carry **design-locked constants** that are deliberately *not* user-configurable: they are part of the operator's contract shape, not a methodology choice. Examples in live code:
+**Exceptions.** Design-locked constants per the four conditions.
 
-- `summarize_series/operator.py::SUMMARY_SENTINEL_DATE` — the fixed anchor date a 1-row summary is stamped at, so that two summaries can feed into `series_arithmetic.subtract` for cross-regime comparisons. Making this configurable would silently break downstream composition.
-- `conditional_aggregate/operator.py::_OFFSET_ANCHOR` (a fixed Unix epoch reference for offset arithmetic) and `::_FIXED_DDOF` (degrees-of-freedom convention locked at 1).
-- Standard `_OPERATOR_NAME`, `_OPERATOR_VERSION`, `_CONFIG_PATH` module-level constants every operator carries (these are identity / structural, not methodology).
+**Relates to.** Operator analog of [PR7](../primitive/README.md); [P5](../../00_thesis/01_non_negotiables.md), [P10](../../00_thesis/01_non_negotiables.md).
 
-These constants are allowed in `operator.py` provided **all four** of the following hold:
+### OPR8 — Uniform, bounded parameter surface
 
-1. **Documented as design-locked** in the operator's docstring or methodology block (`methodology.what_it_does` or `methodology.planned_extensions`), with a one-line rationale for why it is *not* a YAML default.
-2. **Stamped into lineage** when the constant materially affects the output — e.g., the sentinel date the summary is anchored at appears in `OperatorStep.params` so the artifact is replayable.
-3. **Migration-scoped** — the docstring names the future change that would unlock configurability (e.g., *"`SUMMARY_SENTINEL_DATE` is locked at `1970-01-01` until series_arithmetic supports caller-supplied anchor alignment; planned in v1.2"*).
-4. **Reviewable as a design lock, not a hidden methodology choice** — the constant is not a knob the user would *want* to vary; it's a structural pin the operator's contract depends on.
+**Rule.** **Every operator declares `params: Optional[<Operator>Params] = None`** and, when `params is None`, self-resolves every YAML-backed default from `config.yaml` via `config.default_value(...)`. `<Operator>Params` exposes every consequential method variant as a typed field (`Literal[...]` for enums, constrained numerics for ranges); nothing material is hidden in code. Each parameter is **either** a Pydantic schema-default **or** YAML-authoritative (`None`-in-schema + config-resolved) — never both, never silently divergent. Bounded-range params are re-validated to the full `[min,max]` on *both* the params path and the config path via a shared resolve-and-revalidate helper.
 
-Everything else — user-choosable methodology — goes in YAML, no exceptions.
+**Methods are baked in, switchable, and refuse cleanly — the same de-opinionated philosophy as primitives.** Where an operator family supports multiple methods (`correlation.method ∈ {pearson, spearman}`, `conditional_aggregate.aggregator ∈ {mean, median, max, …}`, `threshold_events.rule ∈ {one_sided, two_sided}`), **every supported method is implemented in the operator's Python** and selected by a typed param; `config.yaml` declares the valid set and the default. The caller switches methods seamlessly by setting the param, or omits it for the YAML default — the operator is **never opinionated** about which method is *the* method. A method **declared in the valid set but not yet built must refuse cleanly** (`raise NotImplementedError(...)` pointing at `methodology.planned_extensions`) and **never silently fall back** to another method. This is the operator analog of the primitive's [PR11](../primitive/README.md) honest-refusal rule.
 
-**Why.** A reviewer reading the YAML must be able to enumerate every methodology choice the operator makes. Truly-user-choosable defaults belong in YAML. Design locks — values that are part of the operator's contract shape and would break composition if they varied silently — belong in code *with documentation*. Pretending these are YAML defaults would mislead callers into thinking they could change them.
+**v2.0 supersedes v1's non-uniform surface.** v1 had four operators (`construct_trades`, `rolling_regression`, `select_from_series_set`, `threshold_events`) declaring `params` *required with no default*; the executor omits the `params` kwarg on an empty node, so those four `TypeError`-ed on the most ordinary template path. That is a live ABI break, fixed by this rule.
+
+**Why.** Operators must be independently callable with zero arguments and resolve from config — that is the contract the executor and every test depend on. A bounded, uniform input surface is also what lets the composition layer (and its eventual `OperatorCard`) describe an operator mechanically.
 
 **Verify.**
-- Every numeric constant in `operator.py` is either a mathematical truth (`1.0`, `100`), a documented design-locked constant (per the four conditions above), or read from `config.default_value("...")`.
-- Every string default is YAML-sourced or design-locked-documented.
-- The `config.yaml`'s `defaults:` block lists every user-choosable methodology choice with a non-empty `source`, non-empty `rationale`, and `valid_values` for enum-typed defaults. (Numeric defaults' range constraints belong in `<Operator>Params` field declarations, not in YAML — `OperatorDefault` has `extra="forbid"` and does not support `valid_range`.)
-- Every design-locked constant is named in the operator's docstring with a one-line rationale and a migration pointer.
+- `inspect.signature(callable).parameters['params'].default is None` for **all** operators (asserted by the OPR16 meta-test).
+- Calling the operator with only its artifact inputs (no `params`, no `config`) succeeds and matches the config defaults.
+- No `<Operator>Params` field is both a schema-default and a config key contesting the same value.
+- A bounded int (e.g. a window) is rejected out-of-range whether supplied via params or resolved from config.
 
 **Anti-patterns.**
-- `_FFILL_LIMIT_DAYS = 5` at module level *without* documentation. This is hidden methodology; move to YAML.
-- Magic numbers in operator body (`if abs(value) < 1.0:`) — the 1.0 should be in YAML.
-- Methodology choices in code comments rather than `config.yaml` (`# inner join is the default`) — the YAML should declare it.
-- A `valid_range` field in `config.yaml`'s `defaults:` block — `OperatorDefault` rejects this with `extra="forbid"`. Use `<Operator>Params` field constraints (Pydantic `Field(..., ge=..., le=...)`) for numeric ranges.
-- A "design-locked constant" that is actually a methodology choice the user would reasonably want to vary — that's hidden methodology disguised, not a design lock.
-
-**Exceptions.** Design-locked constants per the four conditions above. Every other methodology choice is YAML-locked.
-
-**Relates to.** OPR analog of [PR7](../primitive/README.md#pr7--configuration-offloading), with the operator-specific design-lock allowance recognising that some operators have contract-shape constants that *must not* be user-configurable.
-
-### OPR8 — Bounded parameter surface with explicit variants
-
-**Rule.** `<Operator>Params` exposes every consequential method variant the caller can pick. *"Consequential"* means: the variant changes the operator's output materially. Examples in current code:
-
-| Operator | Exposed consequential variants |
-|---|---|
-| `align_series` | `join_policy`, `fill_policy`, `fill_limit`, `require_matching_frequency`, `require_matching_missingness`, `output_keys` |
-| `threshold_events` | `threshold_rule` (one-sided ≥, two-sided absolute, etc.), comparator, threshold value source |
-| `event_windows` | `window_before`, `window_after`, alignment policy (event-aligned, calendar-aligned) |
-| `conditional_aggregate` | `aggregator` (mean, median, max, min, count, sum), `min_observations` |
-| `series_arithmetic` | `operation` (add, subtract, multiply, divide), unit-compatibility policy |
-
-Hidden hardcoded choices that the caller cannot inspect or override are prohibited.
-
-**Why.** This is the operator-specific analog of [PR8](../primitive/README.md#pr8--single-central-methodology-surface-the-central-knob), but with a different shape: primitives expose *one cohesive central methodology surface*; operators expose the *consequential variants of one structural method family*. The differences:
-
-- Primitives are LLM-routed; their input surface must be minimal (one slot for the LLM to fill).
-- Operators are workflow-template-routed; their parameter surface can be richer because the template author is choosing them deliberately, not extracting them from natural language.
-
-But the underlying discipline is the same: every methodology choice the operator makes is *either* a caller-controlled parameter *or* a YAML-locked default; nothing is hidden in code.
-
-**Verify.**
-- `<Operator>Params` has typed fields for every variant the operator supports.
-- Every variant has either a `Literal[...]` type or a `valid_values` constraint via the YAML's `defaults:` block.
-- A reviewer can list every methodology choice the operator makes by reading `<Operator>Params` + `config.yaml` together — no surprises lurking in `operator.py`.
-
-**Anti-patterns.**
-- An operator with a hidden `_HARDCODED_TOLERANCE = 1e-9` in `operator.py` that materially affects the output.
-- An operator whose "method family" has only one variant exposed when the doctrine clearly expects multiple (e.g., a `conditional_aggregate` that only supports `mean`).
-- A parameter named `mode` whose values switch between *different method families* (PR2 violation; should be different operators).
-
-**Exceptions.** None. Operators that genuinely have only one variant of their method family are correctly modeled as a single-variant family; the single variant is still declared explicitly.
-
-**Relates to.** OPR analog of [PR8](../primitive/README.md#pr8--single-central-methodology-surface-the-central-knob) for operators. The framing differs because operators are template-routed, not LLM-routed.
-
-### OPR9 — Typed artifact I/O over the closed family
-
-**Rule.** Inputs and outputs are drawn from the closed-family artifact set: `Series`, `SeriesSet`, `EventSet`, `Panel`, `WindowedPanel`, `TradeSet`. No naked `pd.DataFrame`, no `np.ndarray`, no `dict`, no prose. Each artifact carries:
-
-- a typed payload (the actual data)
-- structural metadata (index type, units, frequency, missingness policy)
-- a lineage chain (PrimitiveStep, OperatorStep)
-
-The operator reads structural metadata to enforce compatibility (OPR11) and to make method choices that depend on the structural shape (e.g., daily vs weekly resampling).
-
-Outputs are either **composable** (valid inputs to downstream operators) or **terminal** (valid end-state results for workflow templates / UI without further transformation). A single operator may produce either kind, but it does not produce prose, dicts, or ad-hoc objects.
-
-**Why.** Typed artifacts are what make operators compositional. A `pd.DataFrame` in vs `pd.DataFrame` out is type-safe in Python but semantically opaque — the operator could be doing anything to it, and the downstream operator has no way to enforce structural correctness. Typed artifacts surface unit mismatches, frequency mismatches, missingness-policy mismatches, and index incompatibilities at the operator boundary, where they can be caught and refused (OPR11).
-
-The artifact closed family is governed by [P8](../../00_thesis/01_non_negotiables.md) and owned by [`02_components/artifact/`](../artifact/) (forthcoming). Adding a new artifact type is an ADR-gated decision.
-
-**Verify.**
-- The operator's signature types every artifact input as one of the closed-family types.
-- The operator's return type is one of the closed-family types.
-- The operator's code does not "pass through" raw pandas / numpy objects in the public interface; pandas / numpy may be used internally but the boundary is typed.
-
-**Anti-patterns.**
-- An operator that takes `pd.DataFrame` as input. The right approach is to lift the DataFrame to a `Series` or `Panel` via a primitive's adapter first.
-- An operator that returns a `dict` with raw numbers and prose annotations. Use a closed-family artifact type (most naturally a single-row `Series` or a `Panel` with one row of summary statistics) or refactor the prose annotation into the UI layer.
-- An operator that introduces a new artifact type silently (e.g., a `CustomXResult` class). Adding artifact types is a P8 decision.
+- `params: <T>Params` (required, no default) — the v1 ABI break.
+- A param that is config-resolvable on one path and a hardcoded Pydantic default on the other (v1 `conditional_aggregate.min_n`).
+- A range enforced on the params path but not the config path (v1 `holding_window_days`).
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR10](../primitive/README.md#pr10--provenance-reachability) (provenance reachability) at the I/O layer, plus [P8](../../00_thesis/01_non_negotiables.md) (closed-family discipline). For primitives, output shape can vary (snapshot+TS, Panel, statistical fit, categorical); for operators, output must be one of the closed-family artifacts.
+**Relates to.** Operator analog of [PR8](../primitive/README.md), reframed: primitives expose one *central knob* for the LLM; operators expose the *full variant set* for the DAG author, but with the same "nothing hidden, uniform signature" discipline.
 
-### OPR10 — Lineage extension via `OperatorStep.build` + `Lineage.append`
+### OPR9 — Typed I/O via structured `SlotDescriptor`
 
-**Rule.** Every operator extends its primary input artifact's lineage chain by appending an `OperatorStep` constructed via `OperatorStep.build(...)`. The canonical pattern is:
+**Rule.** Every input slot and the output are declared in the registry by a structured **`SlotDescriptor`**, not a bare class-name string. A `SlotDescriptor` carries: `element_type` (a closed-family artifact type), `is_list`, `optional`, `scalar_ok` (+ `scalar_value_type`), `expected_unit_family` (or `any`), and a `sub_kind` where the artifact type alone is ambiguous (e.g. `Panel.sub_kind`; a `SeriesSet` `key_schema ∈ {fixed:[...], derived_from_input}`). The function signature mirrors the descriptors. No naked `pd.DataFrame` / `pd.Series` / `np.ndarray` / `dict` / prose crosses the public boundary; pandas/numpy may be used *inside* the body only.
 
-```python
-from shared.artifacts.lineage import OperatorStep
+**v2.0 supersedes v1's bare class-name slots.** v1 declared slots as strings (`"Series"`, `"List[Series]"`), so edge-compatibility was class-name-only — the validator had zero visibility into units, frequency, missingness, `SeriesSet` keys, or `Panel` sub-shape, and many pairs that *looked* composable broke at runtime. The structured descriptor is what makes the type algebra airtight enough to compose on.
 
-new_step = OperatorStep.build(
-    name=_OPERATOR_NAME,              # e.g. "align_series"
-    version=_OPERATOR_VERSION,        # e.g. "1.0.0"
-    params=params.model_dump(),       # the <Operator>Params instance, serialised
-    input_hashes=(<input_lineage_hashes>,),
-    auxiliary_lineages=(<non_primary_input_lineages>,),  # optional, see below
-)
-new_lineage = primary_input.lineage.append(new_step)
-```
-
-The `OperatorStep` model has exactly these fields (per `shared/artifacts/lineage.py`): `kind="operator"`, `name`, `version`, `params`, `input_hashes`, `auxiliary_lineages`, and a computed `hash`. The model has `extra="forbid"` — adding fields like `policy_choices` will fail at construction time. **Runtime policy decisions (e.g., the actual `join_policy` after defaults resolution, the actual `fill_limit` resolved from `None`) belong inside `params`, not in a separate field.**
-
-The `auxiliary_lineages` tuple is for **N-ary operators** whose right-hand or auxiliary inputs have their own provenance chains (e.g., `series_arithmetic` takes two `Series`; the second's lineage embeds into the step rather than living as a separate top-level chain). For unary operators, `auxiliary_lineages` is empty.
-
-The output artifact's `lineage` is constructed by appending the step to the *primary* input's lineage; auxiliary input chains live inside the step. Operators do not *originate* lineage; they continue it.
-
-**Why.** Lineage is what makes [P4](../../00_thesis/01_non_negotiables.md) (determinism and replayability) work at the workflow layer. A workflow that takes 12 nodes to produce its terminal artifact has 12 lineage steps; the user reading the terminal artifact's methodology card can see every transformation that touched the data. If one operator drops a step (doesn't extend lineage), the chain is broken and replay is impossible for everything downstream.
-
-`OperatorStep.build` (vs. direct construction) is the right entry point because it computes the canonical step hash deterministically over `kind + name + version + params + input_hashes`. Direct `OperatorStep(...)` would require the caller to supply the `hash` field, which is the wrong responsibility — the hash recipe lives in the class.
+**Why.** Typed artifacts make operators composable; the *structured* descriptor makes them *verifiably* composable before execution — the missing prerequisite for Tier-2 DAG validation.
 
 **Verify.**
-- The operator's output artifact's lineage is constructed via `primary_input.lineage.append(OperatorStep.build(...))`.
-- The `OperatorStep.build(...)` call passes `name`, `version`, `params` (a serialised dict), and `input_hashes` (a tuple of upstream lineage hashes). `auxiliary_lineages` is passed for N-ary operators only.
-- Runtime-resolved policy decisions are reflected *inside* the `params` dict, not as separate fields on `OperatorStep` (the model rejects them).
-- A test asserts: input artifact's lineage length is N; output artifact's lineage length is N+1; the new step's `name` matches the operator.
-- Composition of two operators through the workflow executor produces a lineage chain of length N+2.
+- Every `input_slots` entry and the `output_type` is a `SlotDescriptor` over a closed-family type.
+- `inspect.signature(callable)` params == slot keys ∪ `{params, config}` ∪ declared positionals (OPR16 meta-test).
+- The validator checks the descriptor's expectations (unit family, sub-kind, list/optional/scalar) — not just the class name.
 
-**Anti-patterns.**
-- An operator that returns its output without modifying lineage (lineage chain stays at length N).
-- An operator that *replaces* the input lineage rather than appending (loses upstream provenance).
-- Calling `OperatorStep(...)` directly instead of `OperatorStep.build(...)` (forces the caller to compute the hash; the hash recipe should live in the model).
-- Calling `lineage.extend(...)` — that method does not exist on `Lineage`. The method is `append`.
-- Adding a `policy_choices=...` kwarg to `OperatorStep.build` — the field does not exist and the model rejects unknown fields. Policy choices go inside `params`.
-- An `OperatorStep` whose `params` field is empty or missing the runtime-resolved decisions — the lineage can't reproduce the operator's behaviour without them.
+**Anti-patterns.** A `pd.DataFrame` input; a `dict` output; a bare-string slot; a new artifact-shaped class invented locally (that is an ART4 closed-family decision).
 
 **Exceptions.** None.
 
-**Relates to.** [P4](../../00_thesis/01_non_negotiables.md), OPR analog of [PR10](../primitive/README.md#pr10--provenance-reachability) (primitives originate via `PrimitiveStep`; operators extend via `OperatorStep`), [P5](../../00_thesis/01_non_negotiables.md) (provenance is the disclosure substrate).
+**Relates to.** [P8](../../00_thesis/01_non_negotiables.md); OPR15 (the descriptor *is* the arity declaration); [ART2/ART9](../artifact/README.md) (the closed family it draws on).
 
-### OPR11 — Structural-metadata enforcement and honest refusal
+### OPR10 — Lineage extension (uniform, finite, deterministic)
 
-**Rule.** Operators enforce structural metadata compatibility by default. The default is **strict**: if the operator's inputs disagree on `frequency`, `units`, `missingness_policy`, or `index_type` in a way that would silently change the result, the operator raises a typed `<Operator>Error` exception. Callers may opt into mixed inputs explicitly via `<Operator>Params` flags (e.g., `align_series.require_matching_frequency=False`); the flag value flows through to the `params` dict on the resulting `OperatorStep`, so downstream consumers can see in the lineage record which compatibility check was relaxed.
+**Rule.** Every operator appends **exactly one** `OperatorStep` via `OperatorStep.build(name, version, params, input_hashes, auxiliary_lineages)` and returns the output built on `primary_input.lineage.append(step)`. **All non-primary artifact inputs' chains go into `auxiliary_lineages`** — uniformly, including N-ary/list operators (no stashing provenance only on a payload field). `params` is the operator's resolved params `model_dump()`, passed through `sanitize_params_for_lineage` so that any non-finite computed float (NaN/Inf) becomes `None` (which is JSON-canonical) before hashing.
 
-**Why.** Structural metadata is the operator layer's safety net. Silently aligning a daily series with a weekly one, silently adding a basis-point series to a percentage-point series, silently aggregating a ffilled series with a raw series — these are the kinds of failure modes the typed-artifact framework exists to catch. If operators don't enforce, the framework is decorative. Strict by default + explicit opt-in is the discipline that surfaces compatibility decisions at the workflow-template layer where they're visible to the reviewer, instead of silently inside `operator.py` where they're invisible.
+**v2.0 supersedes v1's divergent mechanics.** v1 let `align_series` (the only N-ary operator) carry per-key provenance on a payload field instead of `auxiliary_lineages`, hand-built `step_params` per operator, and had no NaN-sanitisation — so `summarize_series` *crashed* on its default path (NaN into params → the lineage layer's NaN-rejection raised a bare `ValueError`). The sanitiser + uniform mechanism fix this.
 
-**Why typed exceptions, not envelopes:** operators are deep inside the workflow execution stack. Returning `{"error": "..."}` from an operator would force every workflow executor to branch on dict-shape — fragile. Raising a typed exception lets the executor catch at the right level (workflow boundary) and convert to the envelope for the user-facing layer. The transport-boundary envelope conversion happens once at the workflow / MCP / API layer; operators are below that.
+**Why.** [P4](../../00_thesis/01_non_negotiables.md). A single provenance walker must recover every input chain uniformly; the hash must be deterministic and never crash on legal compute output.
 
 **Verify.**
-- Every `<Operator>Params` exposes flags for the structural-metadata compatibility checks (`require_matching_X`); defaults are `True` (strict).
-- The operator validates input metadata on entry and raises `<Operator>Error` with a clear message on mismatch (e.g., *"AlignSeriesError: input frequencies disagree: ['daily', 'weekly']; pass require_matching_frequency=False to opt in"*).
-- When a `require_matching_X=False` flag is set, the operator proceeds with the mixed inputs and the relaxed flag value appears inside the output's `OperatorStep.params`.
-- A test exercises each strict-default case (mismatch → exception) and each opt-in case (mismatch tolerated → policy recorded).
+- Output lineage length == input length + 1; head step `name`/`version` match the operator (OPR16 + an executor post-call assertion).
+- Head step `auxiliary_lineages` count == (number of artifact input slots − 1).
+- No raw computed float reaches `step_params` without passing the sanitiser.
+- Rerun on identical inputs yields an identical `head_hash` (OPR14).
 
-**Anti-patterns.**
-- An operator that silently proceeds with mixed-frequency inputs (no exception, no flag, no policy record).
-- An operator whose `<Operator>Error` message is generic (`"input validation failed"`); it must name the specific mismatch.
-- An operator that returns `{"error": "..."}` instead of raising.
-- A `require_matching_X` flag whose default is `False` (strict-by-default is the rule).
+**Anti-patterns.** Not appending (length unchanged); replacing the chain (losing upstream); calling `OperatorStep(...)` directly instead of `.build`; an N-ary operator skipping `auxiliary_lineages`; a NaN/Inf in `step_params`.
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR11](../primitive/README.md#pr11--honest-refusal), but with two differences: operators always raise (no envelope path); the refusal is *structural* (metadata mismatch), not *methodological* (unbuilt method).
+**Relates to.** [P4](../../00_thesis/01_non_negotiables.md); [ART9/ART10](../artifact/README.md) (the lineage-integrity guards live at the artifact layer and back this rule).
+
+### OPR11 — Structural-metadata algebra (units, frequency, missingness)
+
+**Rule.** Operators enforce a single, uniform algebra over the three structural-metadata axes:
+
+- **Units — refuse, do not coerce.** An operator never silently converts units (no in-operator `PERCENT→BPS ×100`). Cross-unit operations raise `<Operator>Error`. The **only** place a unit transition happens is the dedicated **`convert_units`** operator, which a DAG must explicitly include. Every operator declares its output-unit propagation rule on the registry (passthrough / per-key passthrough / `COUNT` / `Z_SCORE` / `RATIO` / "from input") so the validator can track units across a whole chain. The "refuse cross-unit" rule applies to **unit-coherent** operations (arithmetic — BPS + PERCENT is meaningless); **unit-invariant** operators (a dimensionless statistic like `correlation`, a rank, a z-score) impose **no** same-unit requirement — they accept cross-unit inputs, record both inputs' units in lineage for provenance, and declare a fixed output unit (`RATIO` / `Z_SCORE` / …). *(Founder decision #4.)*
+- **Frequency — load-bearing.** Frequency is derived deterministically when data enters the typed-artifact world (the adapter bridge — see [ART8](../artifact/README.md)), not left `None`. Every operator that consumes **two or more** artifacts exposes `require_matching_frequency: bool = True` (strict) with identical naming/semantics, and an `'irregular'` value disambiguates event-derived series from `None`-unknown. *(Founder decision #3.)*
+- **Missingness — uniform + honest.** Every multi-artifact operator exposes `require_matching_missingness: bool = True`. Under an explicit opt-out, the operator emits a **combined/honest** policy reflecting *all* inputs (never silently "keep left's"), records the relaxation in `step.params`, and preserves **per-key** policy for every `SeriesSet` it produces. Any imputation an operator performs is recorded in `step.params` *and* reflected in the output's `missingness_policy` (never mislabelled `RawNoCleaning`).
+
+**v2.0 supersedes v1's contradictory per-axis behaviour** (only one operator refused cross-unit; two silently ×100'd; frequency checks were no-ops because the tag was always `None`; lenient missingness dropped one input's policy; an operator did `fillna(0)` while labelling output raw).
+
+**Why.** This algebra is the operator layer's safety net and the reason typed artifacts beat naked pandas. The composition layer *will* try to combine a monthly CPI series with a daily rates series, or add a BPS series to a PERCENT one — and silent wrong numbers destroy trust ([P2](../../00_thesis/01_non_negotiables.md), [P12](../../00_thesis/01_non_negotiables.md)). Strict-by-default + explicit, lineage-recorded opt-out surfaces every compatibility decision where a reviewer can see it.
+
+**Verify.**
+- Every multi-artifact operator exposes `require_matching_frequency` *and* `require_matching_missingness`, both defaulting `True`.
+- A cross-unit operation raises `<Operator>Error`; no operator multiplies to change units.
+- `convert_units` exists and is the sole unit-transition operator.
+- Adapter-derived `frequency` is populated on production artifacts (not `None`); a frequency mismatch raises in strict mode.
+- An opt-out emits a combined policy and records the relaxed flag in `step.params`; a `SeriesSet` producer preserves per-key missingness.
+
+**Anti-patterns.** Silent unit conversion; a frequency check that can never fire because the tag is unset; an operator missing one of the two `require_matching_*` flags; lenient mode dropping an input's policy; `fillna` labelled `RawNoCleaning`.
+
+**Exceptions.** Single-input operators expose only the metadata flags relevant to their one input.
+
+**Relates to.** Operator analog of [PR11](../primitive/README.md); [ART8/ART12](../artifact/README.md) (units/missingness closed enums + frequency derivation); [P2](../../00_thesis/01_non_negotiables.md), [P12](../../00_thesis/01_non_negotiables.md).
 
 ---
 
-## Group IV — Operational: the build conventions every standard operator follows
+## Group IV — Operational: build conventions + the gate
 
-OPR7–OPR11 define what *standard operator* means. OPR12–OPR16 are the operational conventions that keep the operator catalog coherent.
+### OPR12 — Config identity + source taxonomy
 
-### OPR12 — Source-tagged defaults
+**Rule.** Every operator calls a shared `_check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)` that asserts **both** `config.operator.name == _OPERATOR_NAME` **and** `config.operator.version == _OPERATOR_VERSION`. `config.operator.version` is semver-validated. `default.source` is drawn from a **closed taxonomy** (a `Literal`), reconciled to one spelling (the v1 `methodology_judgement_pending_review` vs `team_judgment_pending_review` drift is resolved to the canonical primitive-side spelling).
 
-**Rule.** Every `default.source` in every operator's `config.yaml` is a non-empty, defensible tag that documents where the default came from. The set of tags actually in use across the operator catalog today (observed across `shared/operators/*/config.yaml`):
+**v2.0 supersedes v1** where 0/12 operators cross-checked the config version, three trade operators omitted even the name guard, and `source` was a free string that had already drifted.
 
-- **`operator_v1_default`** — a choice made by the operator's V1 author as a sensible structural default, awaiting cross-template validation.
-- **`methodology_judgement_pending_review`** — a default reflecting team judgment, not yet validated externally. (Note the operator-side spelling differs from the primitive-side `team_judgment_pending_review`; both are debt tags meant to be driven down.)
-- **`industry_standard_252_business_days`** — generic 1-year rolling window convention, applicable across markets.
-- **`industry_standard_sovereign_repo_usd_money_market`** — industry-context citation. The tag documents *where the value originated*, not what the operator branches on — operators stay asset-class-blind per OPR6 even when their default values cite an industry context.
-- **`derived_from_window`** — a default mechanically derived from another default.
-- **`rolling_regression_primitive_v1`** — default inherited from a sibling primitive's V1 calibration.
+**Why.** `_OPERATOR_VERSION` is folded into the lineage hash; if the YAML version can diverge silently, replayed identities are wrong. A missing name guard lets an operator silently read a foreign config's defaults.
 
-New tags should be added by editing live configs and noting them in the version log; a formal tag registry with lint enforcement is a planned tightening (today the lint validates `OperatorDefault` schema shape but does not enforce a tag whitelist).
+**Verify.** The OPR16 meta-test asserts `config.operator.name == registry key`, `config.operator.version == module._OPERATOR_VERSION`, and `source ∈` the closed taxonomy, for every operator.
 
-Vague tags (`default`, `standard`, `convention`, `tbd`, `fixme`) are auto-reject.
-
-**Why.** Same as [PR12](../primitive/README.md#pr12--registered-methodology-sources) for primitives: every default value must have a defensible origin documented at the value. The operator-side and primitive-side tag sets overlap partially (both use `derived_from_window`; the "pending review" tag has slightly different spelling on each side); convergence to a unified registry is a known cleanup.
-
-**Verify.**
-- Every `default.source` is a non-empty string drawn from the tags in use across the operator catalog, or a new tag introduced with a one-line rationale in the PR description.
-- No vague tags.
-- The `source` field documents value provenance; it does *not* imply the operator branches on the citation. (An operator with `source: industry_standard_sovereign_repo_usd_money_market` is still asset-class-blind per OPR6 as long as its code doesn't branch on the citation.)
-
-**Anti-patterns.**
-- `source: "default"`, `source: "v1"`, `source: "team_choice"` — vague tags.
-- A new source tag that overlaps an existing one with a slightly different name (drift). Reuse the existing tag.
+**Anti-patterns.** Name-only guard; no guard; free-string `source`; non-semver version.
 
 **Exceptions.** None.
 
-**Relates to.** OPR analog of [PR12](../primitive/README.md#pr12--registered-methodology-sources). The operator-side tag enforcement is currently lighter than primitive-side (no formal registry); when the registry lands and is lint-enforced, both layers will share it.
+**Relates to.** Operator analog of [PR12/PR13](../primitive/README.md); [P4](../../00_thesis/01_non_negotiables.md).
 
-### OPR13 — Typed exceptions, not envelopes
+### OPR13 — One error family, owns every failure surface
 
-**Rule.** Operators raise typed `<Operator>Error` exceptions on user-facing failures. They never return `{"error": "..."}` envelopes from inside the operator. The envelope conversion happens at the transport boundary — the workflow executor's exception handler, or the MCP server wrapper around the workflow — never inside `operator.py`.
+**Rule.** One error taxonomy, set in stone (founder decision #2):
 
-`<Operator>Error` is conventionally a subclass of `ValueError` (e.g., `class AlignSeriesError(ValueError)`) so existing `except ValueError:` blocks in the rest of the codebase continue to work.
+1. Every `<Operator>Error` subclasses `ValueError`.
+2. `OperatorConfigError` subclasses `ValueError` (v1 subclassed bare `Exception`).
+3. `NotImplementedError` is the **single sanctioned** non-`ValueError` exception, used uniformly for declared-but-unbuilt variants.
+4. **An operator owns *all* failure surfaces for its declared inputs.** It must pre-validate or wrap so that no raw `pandas` / `numpy` / `pydantic` / `lineage` exception escapes on any input the descriptor admits. (v1 leaked raw library exceptions from ≥6 operators on reachable inputs.)
+5. The workflow executor **preserves** the original typed `<Operator>Error` (via `__cause__` *and* by surfacing the type), rather than flattening everything to a generic `WorkflowExecutionError`.
 
-**Why.** Operators are pure functions deep inside the workflow stack. Returning a dict envelope from inside one would force every workflow executor to type-check the output of every operator (`is it a SeriesSet or is it an error dict?`), which is fragile and against the typed-artifact contract (OPR9). Raising a typed exception lets the executor catch once at the workflow boundary, convert to the user-facing envelope shape per [P6](../../00_thesis/01_non_negotiables.md)'s transport-layer rule, and surface the error cleanly.
+**Why.** [P6](../../00_thesis/01_non_negotiables.md). The composition layer must catch failures uniformly and report them specifically — *"node 3 (`correlation`) failed: the two series do not overlap in time"*, not *"something went wrong."* Three escaping exception families and a flattening executor make honest, specific refusal impossible.
 
-This is the *opposite* discipline from primitives' PR11, where envelopes are sometimes acceptable (when the surrounding pattern expects them, e.g., `financing_rate`). The difference: primitives sit at the MCP boundary; operators sit deep inside the workflow stack.
+**Verify.** A parametrized test asserts every `<Operator>Error` and `OperatorConfigError` is a `ValueError` subclass; degenerate-input tests assert the operator raises its *own* typed error (not a raw library error) on every category in *Decided edge-case behavior*; the executor test asserts the typed error survives.
 
-**Verify.**
-- The operator defines `<Operator>Error(ValueError)`.
-- The operator's `operator.py` does not contain `return {"error": ...}` anywhere.
-- The operator raises with a clear, specific message naming the failure mode and any applicable opt-in flag.
+**Anti-patterns.** `return {"error": ...}` inside an operator; a bare `raise ValueError(...)`; a raw pandas/numpy/pydantic exception escaping; `OperatorConfigError(Exception)`; the executor erasing the type.
 
-**Anti-patterns.**
-- `return {"error": "alignment failed"}` from inside an operator.
-- `raise ValueError("error")` (use the typed `<Operator>Error` subclass with a specific message).
-- Bare `raise Exception(...)` (always raise the typed subclass).
-- Catching exceptions inside the operator and converting to a dict envelope — that conversion happens at the transport boundary, not here.
+**Exceptions.** `NotImplementedError` for unbuilt variants only.
 
-**Exceptions.** None.
+**Relates to.** [P6](../../00_thesis/01_non_negotiables.md); operator analog of [PR11](../primitive/README.md) (operators always raise — no envelope path).
 
-**Relates to.** [P6](../../00_thesis/01_non_negotiables.md) at the operator-vs-transport-layer split. Note the deliberate divergence from [PR11](../primitive/README.md#pr11--honest-refusal), which allows envelopes for primitives. The two layers have different correct refusal mechanisms.
+### OPR14 — Purity + determinism
 
-### OPR14 — Pure function, no I/O
+**Rule.** Operators are pure: no DB, network, filesystem (except the bundled config at import), wall-clock, unfixed random, or global mutation. Determinism is pinned: (a) `op(x) == op(x)` produces an identical `head_hash` — a **rerun-equality test is mandatory for every operator** (v1 had it for 3/12); (b) **`±Inf` is forbidden in any payload** (it survives the numeric-dtype check but detonates at JSON persistence — caught at construction instead, see [ART11](../artifact/README.md)); (c) meaningless param combinations are normalised before hashing (a `fill_limit` that is ignored under `fill_policy="raw"`, a `period` ignored for a binary op) so identity tracks content; (d) **version-bump rule** — any behavioural change increments both `_OPERATOR_VERSION` and `config.operator.version`, since the hash folds version but not code.
 
-**Rule.** Operators are pure functions. They have no DB access, no network calls, no filesystem reads or writes (except reading the bundled `config.yaml` at module load), no wall-clock time, no unfixed random seeds, no global state mutation.
+**Why.** [P4](../../00_thesis/01_non_negotiables.md). A 12-node DAG is replayable iff every node is deterministic and its identity tracks its content.
 
-`operator(inputs, params, config) → output` is deterministic: the same inputs + params + config always produce the same output (and the same lineage hash).
+**Verify.** Purity grep (no `engine`, `datetime.now`, `time.time`, unfixed `random`, `open(`); rerun-equality test green for every operator; an `Inf`-in-payload construction raises; a behavioural change without a version bump is caught in review.
 
-**Why.** Determinism at the operator layer is what makes [P4](../../00_thesis/01_non_negotiables.md) (replayability) work for workflows. A workflow that runs through 12 operators is replayable iff each operator is deterministic. Any I/O at the operator layer breaks the chain: the operator's output now depends on something the lineage chain doesn't capture, and the audit story collapses.
-
-The contrast with primitives is structural: primitives *must* read from the DB (that's the L2-from-L1 step); operators *must not* (they sit above L1; the data has already been read).
-
-**Verify.**
-- The operator's signature has no `engine` parameter, no DB connection, no path arguments (except indirectly via the bundled config).
-- A `grep` for `engine`, `connection`, `requests.`, `urllib`, `open(`, `datetime.now`, `time.time`, `random.` inside the operator's code is empty — or all matches are in the bundled-config load path, which runs once at import.
-- A test exercises the operator twice with identical inputs and asserts byte-identical outputs (`output_1.lineage.head_hash == output_2.lineage.head_hash`).
-
-**Anti-patterns.**
-- An operator that hits a database to look up a value during execution.
-- An operator that uses `datetime.now()` or `time.time()` anywhere in its compute path.
-- An operator that uses `np.random.randn()` or `random.choice()` without a fixed seed.
-- An operator that mutates global state (`shared.cache[key] = value`).
-- An operator that reads a non-bundled-config file from disk.
+**Anti-patterns.** Any I/O or clock/random in the compute path; `Inf` in a payload; identity finer than content; a behaviour change without a version bump.
 
 **Exceptions.** None.
 
-**Relates to.** [P4](../../00_thesis/01_non_negotiables.md), OPR analog of the primitive's compute-purity discipline.
+**Relates to.** Operator analog of the primitive compute-purity discipline; [P4](../../00_thesis/01_non_negotiables.md); [ART10/ART11](../artifact/README.md).
 
-### OPR15 — Arity declared in the registry; list slots are first-class
+### OPR15 — Arity declared in the registry
 
-**Rule.** Every operator's arity is declared in its `OperatorSpec.input_slots` entry in `shared/workflow/registry.py::OPERATOR_REGISTRY`. The substrate supports three slot shapes today:
+**Rule.** Every operator's arity is declared in `OPERATOR_REGISTRY` via the `SlotDescriptor` set (OPR9). Slots are explicitly **single**, **list** (`is_list`), **optional** (`optional`), or **scalar** (`scalar_ok` + `scalar_value_type`) — these are *distinct* declarations, not one overloaded flag (v1 overloaded `accepts_scalar_input` to mean both "scalar" and "optional"). The Python signature mirrors the declaration. No internal fan-out (`for x in xs` where `xs` is not a declared list slot). **No operator is special-cased by name in the executor** — any discriminator/positional argument (e.g. an arithmetic `op`) is a declared registry field resolved from params, so the executor stays generic.
 
-1. **Single-artifact slots**: `input_slots={"series": "Series", "mask": "EventSet"}` — exactly one artifact per slot.
-2. **List-of-artifact slots** (first-class): `input_slots={"series_list": "List[Series]"}` — the slot takes a variable-length list of artifacts of the named type. The workflow validator handles list-aggregation across multiple edges into the same slot. `align_series`'s `series_list` slot is the canonical example.
-3. **Mixed-arity** with optional slots: declared in `OperatorSpec.accepts_scalar_input` and validated by per-operator `arity_validator` lambdas (e.g., `evaluate_trades` has an optional `financing_rate_panel` slot whose requirement is conditional on a params value).
+**Why.** Type-algebra clarity and a generic executor. A DAG author and the validator read arity off the registry; the executor must never branch on a specific operator name.
 
-A list-typed slot is not "implicit fan-out" — it is an explicit, registry-declared arity choice. The substrate validator knows about it; workflow templates can bind multiple edges into a single list slot; the operator's signature can take `List[ArtifactType]` directly. There is no separate `map` meta-operator today (and none is needed for current use cases).
+**Verify.** The meta-test asserts the signature mirrors the slot descriptors and that optional/scalar are declared distinctly; `grep` for an operator name inside `executor.py` returns zero matches.
 
-A future `map` meta-operator may be added if a use case arises where an operator needs to be wrapped point-wise over a list without being designed as a list-slot operator from the start. That would be an OPR4 admission decision in its own right.
+**Anti-patterns.** `Union[T, List[T]]` branching inside the body; one flag meaning both optional and scalar; a `if node.operator_name == "..."` block in the executor.
 
-**Why.** Type-algebra clarity. A template author reading `OperatorSpec.input_slots` can tell at a glance whether a slot is single-artifact, list-of-artifact, or optional. The substrate validator enforces the declared shape at workflow-validation time, before any execution.
+**Exceptions.** None.
 
-**Verify.**
-- The operator's arity is declared in `OperatorSpec.input_slots` with explicit types: `"Series"`, `"List[Series]"`, `"EventSet"`, etc.
-- The operator's Python signature mirrors the registry declaration (e.g., `series_list: List[Series]` for a `"List[Series]"` slot).
-- The operator does not introduce implicit list handling inside its body that the registry hasn't declared (e.g., accepting `Union[Series, List[Series]]` and branching internally is a violation — the registry should pick one shape).
+**Relates to.** OPR9 (the descriptor); the executor ABI.
 
-**Anti-patterns.**
-- An operator with a `Union[T, List[T]]` input that branches internally instead of declaring the shape once in the registry.
-- A new "operator" whose only job is to fan out an existing operator over a list — the existing operator's slot should be list-typed if list input is a legitimate use; otherwise wait for a real fan-out use case before adding a `map` meta-operator.
-- An operator whose registry declaration disagrees with its Python signature (e.g., registry says `"Series"` but the function takes `List[Series]`).
+### OPR16 — Test pattern + the registry-consistency gate
 
-**Exceptions.** None. Arity is what the registry declares.
+**Rule.** Two layers, with the meta-test as the cornerstone:
 
-**Relates to.** The existing operator-architecture doctrine's fan-out section codified differently in v1 (referenced a `map` meta-operator); this principle aligns to what the substrate actually supports today (list-typed slots are first-class; `map` is future work).
+1. **The registry-consistency meta-test (the gate).** One parametrized test over `OPERATOR_REGISTRY` asserting, per operator: (a) `inspect.signature` params == slot keys ∪ `{params, config}` ∪ declared positionals; (b) `params` default is `None` (OPR8); (c) `<Operator>Error` subclasses `ValueError` (OPR13); (d) every slot/output type is in the single canonical closed-family enum (OPR9); (e) `__init__` exports `{CONFIG_PATH, <operator>, <Operator>Params, <Operator>Error}`; (f) `config.operator.name == registry key` and `config.operator.version == module._OPERATOR_VERSION` (OPR12); (g) the callable appends exactly one `OperatorStep` with matching name/version (OPR10). **This single test is the verifier** — it mechanically proves which contract clauses hold and red-flags every drift; "verify the audit findings" *is* "run this test."
+2. **Per-operator tests:** unit (happy path; every variant; every structural-metadata mismatch raising `<Operator>Error`; lineage extension N→N+1; idempotent `head_hash` on rerun; a **non-rates** finance-blind case per OPR6); plus at least one **workflow-integration** test through a real template.
 
-### OPR16 — Test pattern
+No SQL parity (operators have no DB); the workflow-integration test is the operator's parity layer.
 
-**Rule.** Every operator ships with two test layers, with a bootstrap allowance on the second:
+**Why.** [P2](../../00_thesis/01_non_negotiables.md)/[P3](../../00_thesis/01_non_negotiables.md). The meta-test is what makes the contract *enforced* rather than aspirational — it is the gate every legacy-migration and new-operator PR must keep green. One file-naming scheme (`test_operator_<op>.py`); the operator/primitive `rolling_regression` name collision is resolved by renaming the primitive.
 
-1. **`tests/test_<operator>.py`** (or equivalent unit-test file) — synthetic typed-artifact inputs exercising the happy path, every parameter variant, and every structural-metadata mismatch (each `require_matching_X=False` opt-in flag). Plus **registry / validator tests** confirming the operator is correctly registered in `OPERATOR_REGISTRY` and that the validator accepts representative slot bindings. *This layer is mandatory from day one — no bootstrap allowance.*
-2. **At least one workflow-integration test** through a real workflow template that consumes the operator — verifies the operator integrates with the workflow executor, the lineage chain extends correctly, and the output artifact flows into the next node. *This layer is mandatory **once a real workflow consumer exists**; for OPR4 bootstrap-exception operators that ship before any consumer, the workflow integration test lands with the first consumer's PR.*
+**Verify.** `pytest` green on the meta-test for all operators; each operator has its per-operator file with the layers above; the meta-test is wired into CI as a required gate.
 
-**No SQL validation tests.** Operators don't talk to the DB; there's no independent SQL baseline. The workflow-integration test is the operator's analog of the primitive's SQL parity check.
+**Anti-patterns.** A new or migrated operator not covered by the meta-test; per-operator tests on rates-only data; hand-enumerated variants where `parametrize` belongs; a red operator merged.
 
-**Why.** Operators are the building blocks workflow templates compose. Unit + registry tests catch local bugs and registry-misregistration; workflow integration catches composition bugs (the operator works on its own but fails to chain correctly). The bootstrap allowance on the second layer recognises the chicken-and-egg of OPR4: a brand-new operator may legitimately ship before any consumer exists, with the integration test arriving alongside the first consumer.
+**Exceptions.** None.
 
-**Verify.**
-- The operator has a unit-test file covering the happy path, every documented variant, and every structural-mismatch exception case.
-- Registry / validator tests confirm `OPERATOR_REGISTRY` includes the operator with correct `input_slots`, `output_type`, and `params_class`.
-- A workflow template in `<agent>/workflows/` references the operator and has an integration test **OR** an ADR records bootstrap status and names the timeline for the first consumer (per OPR4's bootstrap exception).
-- The unit test exercises cross-asset robustness (or asset-class-blind robustness in OPR6's revised sense): at least one test case uses inputs that aren't rates-shaped (random walks for non-trade operators; non-rates synthetic trades for trade-lifecycle operators).
-
-**Anti-patterns.**
-- An operator with unit tests only on rates-shaped data, no cross-asset coverage.
-- An operator without any workflow-integration test *and* no ADR-recorded bootstrap exception explaining when the integration test will arrive.
-- A unit test that mocks structural metadata away instead of constructing real typed artifacts.
-- A bootstrap-exception operator whose integration test never arrives — at the next phase-boundary review, the operator must either gain the integration test (consumer landed) or be demoted to workflow-local code.
-
-**Exceptions.** Bootstrap exception on the workflow-integration test, as described — ADR-recorded with a timeline. The unit + registry tests have no exception; they ship from day one.
-
-**Relates to.** OPR analog of [PR16](../primitive/README.md#pr16--test-triplet). The "triplet" reduces to a "doublet" for operators because there's no SQL-parity layer; the bootstrap allowance on the integration test is unique to operators (primitives have no equivalent because every primitive has a clear consumer by definition — it serves a desk concept).
+**Relates to.** Operator analog of [PR15/PR16](../primitive/README.md); the meta-test is the operator equivalent of the primitive parity fixture.
 
 ---
 
-## Method-family taxonomy
+## Method-family taxonomy (v2.0)
 
-Operators do not have buckets (the 1A / 1B / 2 axis used for primitives doesn't apply — operators have no methodology-depth gradient). They have a **method-family taxonomy** instead, declared as a `Literal[...]` enum at `shared/config/operator_config.py::OperatorMethodFamily`. The current registered families (in their canonical YAML-value form):
+Operators have no methodology-depth buckets (that is a primitive axis). They have a `method_family` enum (`OperatorMethodFamily` in `shared/config/operator_config.py`). v2.0 **removes the trade families** (relocated to primitives, OPR6) and **adds the statistical/transform/conversion families** the composition toolbox needs:
 
-| `method_family` value | What the family does | Current operators in this family |
+| `method_family` | What the family does | Operators (●=exists, ○=target Step-4 build) |
 |---|---|---|
-| `alignment` | Combine N indexed artifacts onto a common index | `align_series` |
-| `arithmetic` | Compose typed series via add / subtract / multiply / divide with unit compatibility | `series_arithmetic` |
-| `masking` | Apply a boolean mask / event-driven selection to an indexed artifact | `apply_mask`, `threshold_events` (events are masks over time) |
-| `windowing` | Extract data windows around event timestamps | `event_windows` |
-| `aggregation` | Reduce a windowed, panel, or series artifact into a summary | `conditional_aggregate`, `summarize_series` |
-| `ranking` | Rank or sort across a collection artifact | (no current operator; reserved for cross-sectional ranking when it ships) |
-| `mapping` | Project / transform / select across a collection artifact | `select_from_series_set` |
-| `trade_construction` | `EventSet → TradeSet` | `construct_trades` |
-| `trade_evaluation` | `TradeSet + price Panel → P&L Panel` | `evaluate_trades` |
-| `trade_summary` | `P&L Panel → summary Panel` | `summarize_trades` |
+| `alignment` | Combine N indexed artifacts onto a common index | ● `align_series` |
+| `arithmetic` | Typed series add/sub/mul/div (unit-checked, refuse cross-unit) | ● `series_arithmetic` |
+| `masking` | Apply a boolean/event mask to an indexed artifact | ● `apply_mask`, ● `threshold_events` |
+| `windowing` | Extract windows around event timestamps | ● `event_windows` |
+| `aggregation` | Reduce a windowed/panel/series artifact to a summary | ● `conditional_aggregate`, ● `summarize_series` |
+| `statistical_relationship` | Pairwise relationships between two series | ● `rolling_regression`, ● `correlation`; ○ `covariance`, `cointegration`, `lead_lag` |
+| `single_series_transform` | Per-series transforms | ○ `rolling_zscore`, `rolling_stat`, `percentile_rank`, `diff`, `cumulative`, `lag` |
+| `cross_sectional` | Reduce/rank across a collection | ● `select_from_series_set`; ○ `cross_sectional_rank`, `cross_sectional_zscore`, `top_n` |
+| `unit_conversion` | The **sole** unit-transition site (OPR11) | ○ `convert_units` |
 
-The trio of `trade_*` families exists because the backtest archetype required them; they are *asset-class-blind* trade-lifecycle structural transforms (the operator doesn't know if the trades are in rates or FX or equities). The non-trade families are pure structural transforms.
+`ranking` (an empty v1 family) is folded into `cross_sectional`. Target catalogue ≈ 25–30 operators — small enough to hold in one's head (OPR2), complete enough to cover the majority of research-DAG nodes.
 
-Adding a new family is a Literal-enum extension — it requires editing `OperatorMethodFamily` in `shared/config/operator_config.py` plus an ADR. This makes it both an OPR4 (admission) and an OPR5 (concept novelty) decision under the same five-criterion + promotion-rule bar as adding a new operator. Adding a new *variant* inside an existing family (e.g., a new `aggregator` value in `conditional_aggregate`) is a much smaller change — usually a YAML addition + a code branch + a test, no new operator needed.
+## Decided edge-case behavior (set in stone)
 
-## Non-standard operators (coming soon)
+The composition layer must never hit an *undefined* behaviour. Every operator implements these decisions; the OPR16 meta-test and per-operator degenerate-input tests enforce them. (These resolve the audit's "undecided edge cases", founder-approved defaults.)
 
-Some operators may legitimately not satisfy OPR7–OPR11 — e.g., operators wrapping a third-party library whose internals are opaque, operators carrying model state that's research-output rather than configuration. A non-standard operator category, its admission tests, and its workflow-composition rules are a planned extension. **Until that section opens, every operator that ships is held to OPR7–OPR11.** Contributors who believe their operator genuinely cannot meet the standard contract should surface the case rather than ship a non-standard operator under a standard label.
+| Scenario | Decided behavior |
+|---|---|
+| Empty input collection / zero events / empty mask result | **Valid sentinel** — emit a well-formed empty artifact of the declared output type. *Not* an error. (Exception: a zero-width window into `conditional_aggregate` **raises**.) |
+| `params` omitted on any operator | Resolve every default from `config.yaml` (OPR8). Never `TypeError`. |
+| Non-finite computed float (NaN/Inf) reaching `step.params` | Coerce to `None` via `sanitize_params_for_lineage` before `.build` (OPR10). |
+| Duplicate / unsorted / non-`DatetimeIndex` on any artifact index | A typed construction-time failure — the shared artifact index validator ([ART11](../artifact/README.md)) raises, so operators never meet a malformed index. |
+| `±Inf` produced into a payload (e.g. divide-by-zero) | **Forbidden at construction** ([ART11](../artifact/README.md)); the producing operation raises `<Operator>Error` (e.g. `series_arithmetic` Series/Series divide-by-zero raises, matching the scalar case — no asymmetry). |
+| Cross-unit operation | Raise `<Operator>Error`; the caller must insert `convert_units` (OPR11). |
+| Frequency / missingness mismatch on a multi-artifact operator | Raise in strict mode (default); explicit opt-out proceeds and records the relaxation + an honest combined policy in lineage (OPR11). |
+| Lenient-missingness output | Combined/honest policy reflecting all inputs; per-key for `SeriesSet` (OPR11). |
+| Scalar literal targeting a scalar slot | `SlotDescriptor.scalar_value_type` is numeric-only; `bool` is rejected (OPR9/OPR15). |
+| `select_from_series_set` key absent from the upstream producer's key-set | Best-effort static check at validate-time for fixed-key producers (declared via `SlotDescriptor.key_schema`); runtime-only for derived-key producers, documented (OPR9). |
 
----
+## Removed from the operator layer (v2.0)
 
-## Worked examples — how the principles manifest in real operators
+| Removed | Reason | Destination |
+|---|---|---|
+| `evaluate_trades` | Finance math (P&L, financing, day-count) — OPR6 | Backtest **primitive** set (per ADR 0016; built later) |
+| `summarize_trades` | Finance math (Sharpe annualisation) — OPR6 | Backtest **primitive** set |
+| `construct_trades` | Structurally blind but orphaned without its consumers | Moves with the trade set |
+| `TradeSet` artifact | Produced/consumed only by the trade trio | Primitive-output type; dropped from the operator-composable closed family ([ART2](../artifact/README.md)) |
 
-### Alignment family — `align_series`
+## Worked example — `correlation` (the v2.0 reference)
 
-The canonical example of every operator principle in one place. Consumes `List[Series]`, produces `SeriesSet`.
+`correlation` is the canonical v2.0 operator and the planned first reference build (Step 2 of the standardization plan).
 
-- **OPR1 + OPR6**: Pure structural alignment. Code makes no finance references; runs identically on yields, FX rates, equity prices, or temperatures.
-- **OPR3**: Lives at `shared/operators/align_series/`.
-- **OPR7 + OPR8**: `defaults:` block declares `join_policy`, `fill_policy`, `fill_limit`, `require_matching_frequency`, `require_matching_missingness`, each with `source`, `rationale`, `valid_values`. `AlignSeriesParams` exposes every variant.
-- **OPR9**: Input is `List[Series]` (structurally a collection of typed Series artifacts); output is `SeriesSet`. Closed-family in and out.
-- **OPR10**: Output's `lineage` is constructed via `series_list[0].lineage.append(OperatorStep.build(name="align_series", version="1.0.0", params=<flattened AlignSeriesParams>, input_hashes=(<each input's head_hash>,)))`. Auxiliary inputs' lineages embed into the step rather than appearing as separate top-level chains.
-- **OPR11**: Strict-by-default frequency/missingness matching; `require_matching_X=False` opts in to mixed inputs and records the choice.
-- **OPR13**: Raises `AlignSeriesError(ValueError)` on mismatch.
-- **OPR14**: Pure function; no I/O.
+- **OPR1/OPR6**: pure statistics. Consumes two `Series`; computes Pearson/Spearman correlation; runs identically on yields, FX, equities, temperatures. Zero finance references.
+- **OPR2**: one family (`statistical_relationship`); variants `method ∈ {pearson, spearman}` and an optional `window` (full-sample vs rolling) are variants of *correlation*, not different families.
+- **OPR8**: `params: Optional[CorrelationParams] = None`; `method` and `min_periods` resolve from `config.yaml` when omitted.
+- **OPR9/OPR15**: input slots `left: Series`, `right: Series` (both required, single); output **always `ScalarMetric`** (the full-sample coefficient, in `RATIO` units) — one constant output type per OPR2. A rolling correlation is a *separate* operator emitting a `Series` (also constant), never a `window` flag on this one. Registered with bare-string slots today; the structured `SlotDescriptor` lands with the wholesale registry/executor ABI step (not half-converted here).
+- **OPR10**: appends one `OperatorStep`; `right`'s chain goes in `auxiliary_lineages`; the resolved `method`/`window` are in `step.params`.
+- **OPR11**: strict-by-default on frequency + missingness; **unit-invariant** — a correlation is dimensionless, so it accepts cross-unit inputs (correlating a BPS series with a PERCENT series is valid and meaningful), records both inputs' units in lineage, and outputs `RATIO`. It never converts units itself.
+- **OPR13**: `CorrelationError(ValueError)` on non-overlapping indices, insufficient overlap (`< min_periods`), or a metadata mismatch — never a raw pandas error.
+- **OPR14**: pure; rerun yields an identical `head_hash`; an all-constant input (zero variance → undefined correlation) **raises `CorrelationError`** — an undefined coefficient is a typed refusal, never a `NaN`/`Inf` value (which `ScalarMetric` would reject anyway).
 
-### Thresholding family — `threshold_events`
-
-Consumes `Series`, produces `EventSet`. Same principles; output type *changes* across the operator boundary, which is the operator-algebra signal that this is structural transformation, not just filtering.
-
-- **OPR1**: Owns the thresholding method family with explicit variants (one-sided, two-sided, absolute, signed).
-- **OPR9**: Series → EventSet. The closed-family artifact types are designed to encode this kind of structural change (a time series of values becomes a set of events at specific timestamps).
-
-### Aggregation family — `conditional_aggregate`
-
-Consumes a `WindowedPanel` (whose contents already encode the events as window groupings), produces a `Series` (per-event aggregated values keyed by event date). The `aggregator` variant (`mean`, `median`, `max`, `min`, etc.) is the central choice; ancillary parameters like `min_observations` round out the surface.
-
-- **OPR8**: All consequential variants exposed as `<Operator>Params` fields.
-- The example most clearly demonstrates *why* an aggregator can't be a separate operator per aggregator value — the family is the operator; the values are its variants.
-
-### Backtest operator chain — `construct_trades → evaluate_trades → summarize_trades`
-
-The canonical composition example. Three operators chain through `EventSet → TradeSet → Panel → Panel`. Each operator handles one trade-lifecycle family:
-
-- `construct_trades` (family: `trade_construction`): `EventSet → TradeSet`.
-- `evaluate_trades` (family: `trade_evaluation`): `TradeSet + price Panel → per-trade P&L Panel`.
-- `summarize_trades` (family: `trade_summary`): `P&L Panel → single-row summary Panel`.
-
-Each operator is **asset-class-blind**: `construct_trades` doesn't know whether the trade is a rates trade, an FX trade, or an equity trade — only that the input is an `EventSet` and the output is a `TradeSet`. The workflow template (`backtest`) is what *composes* these into a finance-meaningful analysis specific to an asset class. This is the architecture working as designed: structural trade-lifecycle methods stay in the operator layer, asset-class-specific reasoning stays in the workflow template that consumes them. (Per OPR6 as revised, the operator layer is asset-class-blind, not finance-vocabulary-empty — see the OPR6 record for the distinction.)
-
-### Arithmetic family — `series_arithmetic`
-
-Consumes two `Series`, produces one `Series`. The `operation` variant (`add`, `subtract`, `multiply`, `divide`) is the central choice; unit compatibility is enforced (OPR11).
-
-- **OPR11 is especially load-bearing here**: silently adding a basis-point series to a percent series would produce a meaningless number. Strict unit-compatibility enforcement is what catches this at the operator boundary.
-
-### Single-output summary — `summarize_series`
-
-Consumes a `Series`, produces a single-row `Series` anchored at a hard-coded sentinel date (`SUMMARY_SENTINEL_DATE`). The single-row output stays inside the closed family (`Series` is the canonical type) while still being a *terminal-style summary* — a workflow template can use the value directly, or feed it into another operator like `series_arithmetic` to compare two summaries across regimes. The sentinel date is a wire-format / design-lock constant whose presence is documented in lineage and surfaced in the operator's methodology card (see OPR7's "design-locked constants" allowance).
-
----
-
-## Anti-patterns (catalogue-wide)
-
-Auto-reject in review:
-
-- **An operator with a finance-aware parameter** (`curve_family`, `tenor`, `instrument_type`, etc.). OPR6 violation. Refactor to operate on artifact metadata, not finance concepts.
-- **An operator placed under any agent's package.** OPR3 violation.
-- **An operator that imports from any agent's package.** OPR3 + OPR6 violation.
-- **An operator with hidden methodology constants in `operator.py`.** OPR7 violation.
-- **An operator returning a `dict` or `pd.DataFrame` from its public interface.** OPR9 violation.
-- **An operator that doesn't extend lineage.** OPR10 violation.
-- **An operator that silently tolerates structural-metadata mismatches.** OPR11 violation.
-- **An operator returning `{"error": "..."}` instead of raising.** OPR13 violation.
-- **An operator with `datetime.now()` or `np.random` (unseeded) in its compute path.** OPR14 violation.
-- **An operator with internal fan-out (`for x in xs: ...`) where `xs` is not a first-class collection artifact.** OPR15 violation.
-- **A new operator built when an existing one could be extended with a new variant.** OPR4 + OPR5 violation.
-- **A new operator that's used by only one workflow.** OPR4 promotion-rule violation; keep it as workflow-local code.
-- **An operator whose `methodology.what_it_does` uses the word "or" to describe two unrelated method families.** OPR2 violation.
+It exercises every principle, fills a real toolbox gap (there is *no* correlation today), and — once built — produces the BUILD_GUIDE, the meta-test, and the migration template for the legacy nine.
 
 ## Open questions and known gaps
 
-1. **The `map` meta-operator.** OPR15 references a `map` meta-operator as the canonical fan-out site. None is registered today; fan-out happens via collection-typed inputs. When the first true fan-out use case arrives, the `map` meta-operator will be added with explicit semantics for how it wraps base operators.
-2. **Non-standard operator category** (the OPR7–OPR11 escape hatch). Tracked as a planned extension; until it opens, every operator is held to standard.
-3. **Closed-family artifact set may grow.** The current set (`Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet`) covers all current operators. Two earlier design-note types — `ScalarMetric` (explicitly deferred) and `RankedResult` (not registered) — are not in the executable closed family today; operators that would naturally return one of them use a single-row `Series` or a `Panel` instead. New artifact types are ADR-gated decisions per [P8](../../00_thesis/01_non_negotiables.md); the operator contract will reference whatever the artifact contract declares.
-4. **Workflow-integration test discoverability.** OPR16 requires a workflow-integration test, but the operator-to-workflow mapping is not yet machine-discoverable. A registry that names which workflows consume each operator (for impact-analysis when an operator changes) is a planned tool addition.
-5. **`team_judgment_pending_review` count.** Operators share this tag with primitives. The platform's stated goal is to drive the count down by validating defaults against external references; the operator contribution to that count should be tracked separately from the primitive contribution.
-6. **Promotion-rule audit trail.** OPR4's promotion rule is reviewed at admission time, but there's no ongoing audit that confirms an operator still meets the rule (e.g., what if archetypes get deprecated and an operator drops below the ≥3 threshold?). Promotion-status as a periodic review is a planned hygiene practice.
+1. **`ScalarMetric` — admitted (decided).** `correlation`, `covariance`, and `cointegration` naturally output scalars; v2.0 admits a first-class `ScalarMetric` as a closed-family type (replacing the single-row-`Series` + sentinel-date hack), landing via the [ART16](../artifact/README.md) extension procedure alongside the `correlation` reference build.
+2. **`OperatorCard` + operator→workflow consumer registry.** The machine-readable I/O+units+arity surface for DAG-time validation and impact analysis. Specified once `SlotDescriptor` lands.
+3. **The backtest primitive set.** Where `evaluate_trades` / `summarize_trades` / `construct_trades` / `TradeSet` are re-homed. Separate workstream; tracked by its own ADR.
+4. **`convert_units` semantics.** The conversion matrix (which `TimeSeriesUnits` pairs are convertible, and how) is pinned when `convert_units` is built.
 
 ## Changing an operator principle
 
-Same discipline as the primitive principles:
-
-1. Open an ADR in [`../../05_decisions/`](../../05_decisions/) describing the proposed change.
-2. Land the ADR and the contract change in the same PR.
-3. Bump the version of this file.
-
-This contract is intentionally stable. New operators compound onto it; existing operators are audited against it; workflow templates rely on it. Slow change is the right shape.
+1. Open an ADR in [`../../05_decisions/`](../../05_decisions/). 2. Land the ADR + contract change together. 3. Bump the version. New operators compound onto this contract; existing operators are audited against it; the composition layer relies on it. Slow change is the right shape.
 
 ## Citation cheat sheet
 
 | Use | Pattern |
 |---|---|
-| In a commit message | `feat(threshold_events): expose two-sided rule variant per OPR8` |
-| In a PR review comment | `This violates OPR6 — the operator imports from rates_agent and branches on curve_family.` |
-| In a code comment (rare) | `# OPR11: strict-by-default; opt in via require_matching_frequency=False` |
-| In a runbook step | `Step 4 — verify OPR9 (typed I/O) and OPR10 (lineage extension).` |
-| In an ADR | `This decision relaxes OPR4's promotion rule for the first FX-agent operator pass.` |
+| Commit | `feat(correlation): typed SlotDescriptor I/O per OPR9` |
+| PR review | `This violates OPR6 — the operator does P&L math; relocate to a primitive.` |
+| Code comment | `# OPR10: right's chain goes in auxiliary_lineages` |
+| Runbook step | `Step 8 — the OPR16 meta-test must be green.` |
+| ADR | `This decision removes OPR4's ≥3-archetype promotion gate.` |
 
 ## Version log
 
 | Version | Date | Change | ADR |
 |---|---|---|---|
-| v1.1 | 2026-05-17 | Twelve pre-canonical factual corrections, each re-verified against live code: (a) **Folder shape** corrected from "exactly three files" to "exactly four files" — `__init__.py`, `config.yaml`, `schemas.py`, `operator.py` — matching the live shape; the difference from primitives is `operator.py` vs `compute.py`, not the count. (b) **Closed artifact family** corrected: live family is `Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet`. `ScalarMetric` is explicitly deferred per `shared/artifacts/types.py`; `RankedResult` is not registered. (c) **Worked example outputs** corrected: `conditional_aggregate` → `Series` (not Panel/ScalarMetric); `summarize_series` → `Series` (not ScalarMetric); `summarize_trades` → `Panel` (not ScalarMetric). All verified against `OPERATOR_REGISTRY`. (d) **Method-family taxonomy** rewritten to use the actual `OperatorMethodFamily` Literal values from `shared/config/operator_config.py`: `alignment, arithmetic, masking, windowing, aggregation, ranking, mapping, trade_construction, trade_evaluation, trade_summary`. Replaced incorrect entries (`thresholding`, `selection`, `construction`, `evaluation`). (e) **OPR6 reframed** from absolute "no finance vocabulary" to **asset-class/domain-blind** — generic trading concepts (trade, holding window, P&L) are allowed when they're part of the structural method family; asset-class-specific concepts (curve_family, tenor, FX pair) are forbidden. Reconciles with live `construct_trades` / `evaluate_trades` / `summarize_trades` and `TradeSet`. (f) **OPR7** added a **design-locked-constant allowance** with four explicit conditions (documented, stamped into lineage, migration-scoped, genuinely structural-not-methodology) — reconciles with live `SUMMARY_SENTINEL_DATE`, `_OFFSET_ANCHOR`, `_FIXED_DDOF` in the catalog. (g) **OPR10** rewritten around the actual lineage API: `OperatorStep.build(name=..., version=..., params=..., input_hashes=..., auxiliary_lineages=...)` + `Lineage.append(step)`. Removed the non-existent `policy_choices` field; runtime decisions go inside `params`. Removed the non-existent `lineage.extend(...)` method. (h) **OPR12** source-tag taxonomy aligned with tags actually in use across the operator catalog (`industry_standard_252_business_days`, `industry_standard_sovereign_repo_usd_money_market`, `methodology_judgement_pending_review`, `rolling_regression_primitive_v1`, etc.) and softened the enforcement claim — lint validates schema shape but doesn't enforce a tag registry today. (i) **OPR15** rewritten around the substrate's actual support: `OperatorSpec.input_slots` declares arity, list-typed slots (`"List[Series]"`) are first-class as in `align_series`. The `map` meta-operator is future work, not a current dispatch site. (j) **OPR4 + OPR16** added **bootstrap exception** with ADR backing for new asset-class / new archetype work where ≥3-consumer reuse can't be reached before the operator exists. (k) **Runbook Step 3** YAML template removed `valid_range` (operator `OperatorDefault` has `extra="forbid"` and only accepts `value`/`source`/`rationale`/`valid_values`); numeric range constraints belong in `<Operator>Params` Pydantic field constraints. (l) **Runbook Step 5** params resolution recipe rewritten to do explicit field-by-field via `config.default_value("<field>")`, not a comprehension over `model_fields` (which fails on per-call fields without YAML defaults). | (pending) |
-| v1 | 2026-05-17 | Initial operator contract. Replaced by v1.1 the same day after a factual-review pass against the source code. | — |
+| **v2.0** | 2026-05-30 | **Foundational reset** encoding five architectural decisions ([ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md)) and the operator-standardization audit. (1) **OPR6 absolute finance-blindness** — removed the v1 trade-operator carve-out; `evaluate_trades`, `summarize_trades`, `construct_trades`, and the `TradeSet` artifact are removed from the operator layer and relocated to a future backtest **primitive** set (12 operators → 9). (2) **OPR4 promotion gate removed** — the v1 "≥3 workflow archetypes" rule is replaced by toolbox-membership admission, because the LLM-DAG composition layer needs a complete finance-blind operator catalogue and the recipe gate blocked building it. (3) **OPR8 uniform signature** — `params: Optional=None` for every operator with full config-default resolution (fixes the v1 four-operator `TypeError` ABI break). (4) **OPR9/OPR15 structured `SlotDescriptor`** replaces bare class-name slots (units/frequency/sub-kind/arity now machine-checkable). (5) **OPR11 metadata algebra** — units refuse-don't-coerce with a sole `convert_units` site; frequency made load-bearing (derived at the adapter); uniform `require_matching_*` + honest combined lenient policy. (6) **OPR13 one error family** — all `<Operator>Error` and `OperatorConfigError` subclass `ValueError`; operators own every failure surface (no raw library leaks); executor preserves the typed error. (7) **OPR10 lineage** — uniform `auxiliary_lineages` for N-ary; `sanitize_params_for_lineage` (fixes the `summarize_series` default-path crash). (8) **OPR12/OPR14** — config name **and** version identity check; mandatory rerun-determinism; `±Inf` forbidden in payloads. (9) **OPR16 registry-consistency meta-test** introduced as the enforcement gate and the mechanical verifier. Added the v2.0 method-family taxonomy (statistical/transform/conversion families; trade families removed), the *Decided edge-case behavior* table, and the `correlation` reference example. Artifacts named a **co-equal component** hardened in lock-step ([ART](../artifact/README.md)). | [ADR 0016](../../05_decisions/0016-operator-and-artifact-standardization-v2.md) |
+| v1.1 | 2026-05-17 | Pre-canonical factual corrections against live code (four-file shape; live closed family incl. `TradeSet`; `OperatorMethodFamily` values; OPR6 "asset-class-blind, refined" with the trade carve-out; OPR7 design-locked-constant allowance; OPR10 real lineage API; OPR15 registry arity; OPR4/OPR16 bootstrap exception). Superseded by v2.0. | — |
+| v1 | 2026-05-17 | Initial operator contract. | — |

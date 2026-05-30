@@ -1,0 +1,73 @@
+# ADR 0016 — Operator & Artifact standardization v2.0: absolute finance-blindness, toolbox admission, the metadata algebra, and lock-step artifact hardening
+
+**Status:** Accepted
+**Date:** 2026-05-30
+**Builds on:** ADR 0014 (frontend module architecture — the precedent that a repeatable component type gets a contract + runbook + a derived-registry enforcement gate; this ADR is the backend counterpart for operators and artifacts). The contracts this ADR governs are [`../02_components/operator/README.md`](../02_components/operator/README.md) (OPR1–OPR16 v2.0) and [`../02_components/artifact/README.md`](../02_components/artifact/README.md) (ART1–ART16 v2.0).
+**Operationalises principles:** P1 (built right — no half-wired or shortcut operators), P3 (consistency by contract — every operator/artifact looks like every other of its type), P4 (determinism — lineage integrity + content-addressed identity), P6 (no silent failure — one error family, no raw leaks, validators raise at construction), P8 (closed-family discipline — one canonical artifact-type enum), **P9 (finance-blind operator boundary — restored to absolute, no carve-out)**, P10 (single source of truth — the closed family and the contracts).
+**Scope:** Records the architectural decisions that reset the operator and artifact component contracts from v1.x to v2.0. The decisions bind all operator and artifact work from this ADR forward. No code lands in this ADR; the contracts are the locked architecture (Step 1), the reference implementation (`correlation`) and the legacy migration follow as separate PRs (Step 2+).
+
+---
+
+## Context
+
+The operator and artifact layers (L3 + the typed wire format between layers) are the **ingredients** the workflow-composition layer is built on. The product goal is open, LLM-composed operator DAGs ("Tier 2"); that layer can only be trusted if its ingredients are rock-solid. They are not today.
+
+Two structural problems motivated this reset:
+
+1. **The v1.x contracts were descriptive, not prescriptive.** OPR1–OPR16 and ART1–ART16 (both dated 2026-05-17) were written by *factually correcting them against the operators that already existed* — a catalogue built to serve two specific workflow recipes (event studies and a paused backtest). The contracts therefore codified the *shape of an accident* as if it were principle. The clearest example: v1 OPR6 blessed `evaluate_trades` / `summarize_trades` as "sanctioned finance-aware trade operators" — a carve-out that exists only because those operators happened to be built that way, in direct tension with P9.
+
+2. **A multi-agent standardization audit (≈2.8M tokens, 24 agents, empirically verified via signature introspection + live test runs) found the ingredient layer is not set in stone.** Headline, all verified on the `revamp` branch:
+   - **A live ABI break.** Four operators (`construct_trades`, `rolling_regression`, `select_from_series_set`, `threshold_events`) declare `params` *required, no default*, but the executor omits the `params` argument on an empty node — so they `TypeError` on the most ordinary template path.
+   - **A live crash.** `summarize_series` crashes on its default settings (mean/std/n=1): it writes `NaN` into lineage params, which the lineage layer rejects with a bare `ValueError`. Its shipped test fails.
+   - **Closed-family drift.** The artifact family is enumerated in 3+ hand-maintained authorities that have diverged — `WorkflowResult.TerminalArtifact` omits `TradeSet` though the registry produces it, so a workflow ending on a `TradeSet` fails validation.
+   - **Raw-exception leaks from ≥6 operators** on reachable inputs (duplicate-index masks/panels, divide-by-zero, NaN/Inf in params) — traced to the artifact layer, where only `Series` validates its index while `EventSet`/`Panel` accept duplicate/unsorted indices, and `Lineage` has **zero integrity guards** (a forgeable `head_hash`, disconnected chains, and NaN-param steps all accepted).
+   - **Contradictory metadata handling.** Units: only one operator refuses cross-unit, two silently `×100`; frequency: a free tag that is `None` on every production artifact, so the "frequency-match" checks are no-ops; missingness: lenient mode silently drops one input's policy; one operator does `fillna(0)` while labelling output `RawNoCleaning`.
+   - **No general statistical-relationship operators.** There is no `correlation`, `covariance`, or `cointegration` — only `rolling_regression`. The operator catalogue is recipe-driven, not a composition toolbox. v1 OPR4's "admit only after ≥3 workflow archetypes use it" promotion gate *structurally blocks* building them.
+
+The root cause across the list is the same: the contracts described existing code rather than defining what *correct* is, and the artifact layer (the parts) was never held to the same strict shape as the operators (the machines).
+
+## Decision
+
+Reset both contracts to v2.0, encoding five founder decisions plus the audit's set-in-stone requirements. The detailed rules live in the two contract READMEs; this ADR records the load-bearing decisions and their rationale.
+
+1. **Finance-blindness is absolute (P9 restored; OPR6).** Operators contain no asset-class concept and no finance math, anywhere — no carve-out. `evaluate_trades` and `summarize_trades` (P&L, financing, day-count, Sharpe) are **removed** from the operator layer; `construct_trades` and the `TradeSet` artifact are **removed alongside them** (the trio + type are a coupled finance-aware backtest unit). They are relocated to a future **backtest primitive set**. Operator count drops from 12 to **9**.
+
+2. **Toolbox admission replaces the promotion gate (OPR4).** The v1 "≥3 workflow archetypes" rule is removed. An operator is admitted when it adds a distinct, reusable, finance-blind structural/statistical method the composition layer needs and that existing operators do not compose cleanly. Operators are the *ingredients* for open composition; gating ingredient creation on pre-existing recipes is backwards. Target catalogue ≈ 25–30 operators (small enough to hold in one's head, complete enough to cover most research-DAG nodes), including the missing `statistical_relationship`, `single_series_transform`, `cross_sectional`, and `unit_conversion` families.
+
+3. **One error family (OPR13).** Every `<Operator>Error` and `OperatorConfigError` subclasses `ValueError`; `NotImplementedError` is the single sanctioned non-`ValueError` exception (for declared-but-unbuilt method variants). An operator owns *every* failure surface for its declared inputs — no raw pandas/numpy/pydantic/lineage exception escapes. The executor preserves the original typed error rather than flattening it. Rationale: the composition layer must catch failures uniformly and refuse *specifically* (*"node 3 (correlation) failed: the two series do not overlap in time"*).
+
+4. **Frequency is load-bearing; units refuse-don't-coerce (OPR11 + ART8).** Frequency is derived deterministically at the adapter bridge and populated on every artifact (so the frequency-match checks are real, not no-ops), with an `'irregular'` value. Units are never silently converted inside an operator; cross-unit operations raise, and the single dedicated `convert_units` operator is the only conversion site. Missingness enforcement is uniform across every multi-artifact operator, with an honest combined policy under explicit opt-out. Rationale: the composition layer *will* combine a monthly CPI series with a daily rates series, or a BPS series with a PERCENT one — silent wrong numbers destroy trust (P2/P12).
+
+5. **Artifacts are a co-equal 4th component, hardened in lock-step (ART v2.0).** Operators cannot be set in stone while the types they consume/emit are not — the largest defect cluster is artifact-layer, not operator-layer. The artifact contract gains: one canonical closed-family enum with every derived site (discriminator, type-map, `TerminalArtifact`, store codec) derived from it + a lock-step test (ART2/ART6); one **shared** strict index/dtype/finiteness validator across all indexed types, `±Inf` forbidden at construction, and EventSet semantic invariants (ART11); lineage integrity guards (`head_hash == steps[-1].hash`, chain connectivity, `.build()`-only, NaN/Inf params sanitised to `None`) (ART9). **`ScalarMetric` is admitted** as a first-class type (a finite number + units + lineage): the statistical-operator toolbox predominantly outputs scalars, and the incumbent single-row-`Series` + `SUMMARY_SENTINEL_DATE` workaround is dishonest (it stamps a fictional date into the data — unacceptable on a platform whose thesis is end-to-end traceable, honest numbers). `TradeSet` is removed from the operator-composable family (see decision 1).
+
+Supporting set-in-stone rules also adopted (detailed in the contracts): uniform signature `params: Optional[<T>Params]=None` with full config-default resolution (OPR8, fixes the ABI break); the config YAML reaffirmed as the **configurability / de-opinionation layer** — all method variants baked into Python, switchable via params, defaulted in YAML, with honest refusal for unbuilt variants (OPR7/OPR8, the operator analog of PR11); structured `SlotDescriptor` I/O replacing bare class-name slots (OPR9/OPR15); config name **and** version identity check + closed `source` taxonomy (OPR12); mandatory rerun-determinism (OPR14); and a **registry-consistency meta-test** parametrized over `OPERATOR_REGISTRY` as the enforcement gate and the mechanical verifier of every clause above (OPR16).
+
+## What this ADR does NOT do
+
+- **Does not land any code.** The contracts are the locked architecture (Step 1). The reference operator (`correlation`), the artifact hardening, the meta-test, the legacy migration of the 9 operators, and the relocation of the trade trio are separate PRs (Step 2+), each gated by the OPR16 meta-test.
+- **Does not build the backtest primitive set.** Re-homing `construct_trades` / `evaluate_trades` / `summarize_trades` / `TradeSet` as primitives is a separate workstream with its own ADR; `TradeSet` is re-admitted to the artifact family (if operator-composable at all) via the ART16 procedure at that time.
+- **Does not touch the orchestration layer (Tier 2 / DAG composition).** This is component "A" (the ingredients), explicitly not "B" (using them). The composition layer is downstream and depends on these contracts being closed first.
+- **Does not change the primitive (PR), platform (P), or frontend (FM) contracts**, except that the relocated trade math becomes primitive work governed by the existing PR contract.
+
+## Alternatives considered
+
+- **Keep the v1 contracts; fix the operators against them.** Rejected. The contracts encode the accidents (the trade carve-out, the promotion gate); fixing code against a reverse-engineered contract re-entrenches the mistakes. Decide what *correct* is first.
+- **Bless `evaluate_trades` / `summarize_trades` as finance-aware operators (keep the v1 carve-out).** Rejected. A "mostly finance-blind" layer is not finance-blind; one exception forces every future asset class to special-case it and a DAG validator cannot reason uniformly about a catalogue with exceptions. The boundary is binary on purpose (P9).
+- **Keep the single-row-`Series` + sentinel-date convention instead of admitting `ScalarMetric`.** Rejected. It writes a fictional date into the data, fails ART5 ("a scalar is structurally a different shape from a series"), and the statistical toolbox needs honest scalars pervasively. The one-type cost is justified.
+- **Keep OPR4's ≥3-archetype promotion gate.** Rejected. It blocks the composition toolbox by construction (no recipe can use `correlation` before `correlation` exists). Distinctness + toolbox-membership + the hard P9 boundary are the constraints that keep the catalogue sane.
+- **Defer artifact hardening to a later pass ("operators first, artifacts later").** Rejected. The audit evidence is that most operator defects are artifact-layer defects; operators cannot be set in stone unless artifacts are. Lock-step is the only correct sequencing.
+
+## Consequences
+
+- **Operator catalogue: 12 → 9** finance-blind operators; the trade trio + `TradeSet` are queued for relocation to primitives.
+- **Artifact family:** `TradeSet` removed; `ScalarMetric` admitted; the family is single-sourced from one canonical enum with a lock-step test.
+- **A new enforcement gate:** the OPR16 registry-consistency meta-test. Every legacy-migration and new-operator PR must keep it green; running it *is* the mechanical verification of the audit findings.
+- **Migration is mechanical, in this order** (component A only): (0) canonical closed-family enum + meta-test; (1) fix the live blockers (params-Optional for the 4; `summarize_series` NaN→None); (2) harden the artifact layer in lock-step; (3) unify the error taxonomy; (4) standardize the registry/executor ABI (`SlotDescriptor`); (5) pin the metadata algebra; (6) relocate the trade trio; (7) tests + the BUILD_GUIDE + the legacy migration; build `correlation` as the reference. Each step keeps the meta-test green.
+- **Determinism / replay** strengthened: lineage integrity guards + content-defining choices folded into `step.params` + `±Inf` forbidden close the identity hazards.
+- **Forward unlock:** with a complete, finance-blind, machine-describable operator catalogue (and the `OperatorCard` surface that follows `SlotDescriptor`), the Tier-2 composition layer becomes buildable on a foundation that will not shift under it.
+
+## Version log
+
+| Version | Date | Change |
+|---|---|---|
+| v1 | 2026-05-30 | Initial ADR recording the operator + artifact v2.0 standardization decisions (absolute finance-blindness; toolbox admission; one error family; load-bearing frequency + refuse-don't-coerce units; artifacts as a co-equal component hardened in lock-step; `ScalarMetric` admitted, `TradeSet` removed; uniform params signature; structured `SlotDescriptor`; config identity; rerun-determinism; the OPR16 meta-test gate). Operationalises the operator/artifact contracts v2.0. |

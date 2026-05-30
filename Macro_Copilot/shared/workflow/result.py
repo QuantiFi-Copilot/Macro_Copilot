@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from shared.artifacts.types import (
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -47,7 +48,7 @@ from shared.artifacts.types import (
 # family the operator layer can produce.  Adding a new artifact
 # wrapper requires extending this union AND the operator
 # registry's ``output_type`` enum.
-TerminalArtifact = Union[Series, SeriesSet, EventSet, Panel, WindowedPanel]
+TerminalArtifact = Union[Series, SeriesSet, EventSet, Panel, WindowedPanel, ScalarMetric]
 
 
 class WorkflowResult(BaseModel):

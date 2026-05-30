@@ -109,6 +109,7 @@ from shared.artifacts.trades import LegSpec, Trade, TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -147,6 +148,8 @@ _ARTIFACT_CLASSES: Tuple[Tuple[str, type], ...] = (
     ("EventSet", EventSet),
     ("Panel", Panel),
     ("WindowedPanel", WindowedPanel),
+    # v2.0 (ADR 0016) — single-number closed-family shape.
+    ("ScalarMetric", ScalarMetric),
     # Phase 1 PR 12 — backtest archetype substrate.
     ("TradeSet", TradeSet),
 )
@@ -170,7 +173,7 @@ _PREVIEW_POINTS = 16
 # A typed-artifact union — what put_artifact accepts and what
 # get_artifact returns.  Phase 1 PR 12 adds TradeSet.
 Artifact = Union[
-    Series, SeriesSet, EventSet, Panel, WindowedPanel, TradeSet,
+    Series, SeriesSet, EventSet, Panel, WindowedPanel, ScalarMetric, TradeSet,
 ]
 
 
@@ -732,6 +735,8 @@ def _artifact_to_stored(artifact: Artifact) -> StoredArtifact:
         meta, payload = _panel_to_stored(artifact)
     elif isinstance(artifact, WindowedPanel):
         meta, payload = _windowed_panel_to_stored(artifact)
+    elif isinstance(artifact, ScalarMetric):
+        meta, payload = _scalar_metric_to_stored(artifact)
     elif isinstance(artifact, TradeSet):
         meta, payload = _trade_set_to_stored(artifact)
     else:
@@ -756,6 +761,8 @@ def _stored_to_artifact(stored: StoredArtifact) -> Artifact:
         return _panel_from_stored(stored)
     if cls is WindowedPanel:
         return _windowed_panel_from_stored(stored)
+    if cls is ScalarMetric:
+        return _scalar_metric_from_stored(stored)
     if cls is TradeSet:
         return _trade_set_from_stored(stored)
     raise TypeError(f"Unsupported artifact type {type_name!r}")
@@ -854,6 +861,29 @@ def _series_from_stored(stored: StoredArtifact) -> Series:
         units=TimeSeriesUnits(stored.metadata["units"]),
         frequency=stored.metadata.get("frequency"),
         missingness_policy=_load_missingness(stored.metadata["missingness_policy"]),
+        lineage=Lineage.model_validate(stored.metadata["lineage"]),
+    )
+
+
+# ----- ScalarMetric (admitted v2.0 — ADR 0016) ------------------------------
+
+
+def _scalar_metric_to_stored(art: ScalarMetric) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    meta = {
+        "metric_key": art.metric_key,
+        # TimeSeriesUnits is a string Enum; serialize its .value.
+        "units": art.units.value,
+        "lineage": art.lineage.model_dump(mode="json"),
+    }
+    payload = {"value": art.value}
+    return meta, payload
+
+
+def _scalar_metric_from_stored(stored: StoredArtifact) -> ScalarMetric:
+    return ScalarMetric(
+        metric_key=stored.metadata["metric_key"],
+        value=float(stored.payload["value"]),
+        units=TimeSeriesUnits(stored.metadata["units"]),
         lineage=Lineage.model_validate(stored.metadata["lineage"]),
     )
 

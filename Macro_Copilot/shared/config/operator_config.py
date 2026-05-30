@@ -62,6 +62,14 @@ OperatorMethodFamily = Literal[
     "trade_construction",
     "trade_evaluation",
     "trade_summary",
+    # v2.0 (ADR 0016) — the composition-toolbox families.  The trade_*
+    # families above are slated for removal when the trade operators
+    # relocate to the primitive layer (OPR6); they remain registered
+    # until that migration lands.
+    "statistical_relationship",
+    "single_series_transform",
+    "cross_sectional",
+    "unit_conversion",
 ]
 
 
@@ -206,6 +214,42 @@ def clear_operator_config_cache() -> None:
     _OPERATOR_CONFIG_CACHE.clear()
 
 
+# ============================================================================
+# CONFIG IDENTITY CHECK (OPR12 — name AND version)
+# ============================================================================
+
+
+def _check_config_identity(config: Any, name: str, version: str) -> None:
+    """Assert a loaded ``OperatorConfig`` matches the calling operator's
+    identity — BOTH ``name`` AND ``version`` (OPR12).
+
+    Every v2.0 operator calls this immediately after loading its config
+    so a foreign config (wrong ``name``) or a drifted YAML (wrong
+    ``version``) surfaces loudly via ``OperatorConfigError`` instead of
+    silently supplying the wrong defaults.  The version check matters
+    because ``_OPERATOR_VERSION`` is folded into the lineage hash — a
+    YAML version that diverges from the module constant would break
+    replay identity (OPR12 / P4).
+    """
+    if not isinstance(config, OperatorConfig):
+        raise OperatorConfigError(
+            f"{name}: 'config' must be an OperatorConfig instance; "
+            f"got {type(config).__name__}."
+        )
+    if config.operator.name != name:
+        raise OperatorConfigError(
+            f"{name}: config name mismatch — expected {name!r}, got "
+            f"{config.operator.name!r}."
+        )
+    if config.operator.version != version:
+        raise OperatorConfigError(
+            f"{name}: config version mismatch — expected {version!r}, "
+            f"got {config.operator.version!r}.  The lineage hash folds "
+            "_OPERATOR_VERSION, so a drifted YAML version breaks replay "
+            "identity (OPR12 / P4)."
+        )
+
+
 __all__ = [
     "OperatorMethodFamily",
     "OperatorDefault",
@@ -215,4 +259,5 @@ __all__ = [
     "OperatorConfigError",
     "load_operator_config",
     "clear_operator_config_cache",
+    "_check_config_identity",
 ]

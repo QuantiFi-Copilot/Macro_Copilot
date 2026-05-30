@@ -38,6 +38,7 @@ from shared.artifacts.trades import TradeSet
 from shared.artifacts.types import (
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -48,6 +49,7 @@ from shared.operators.conditional_aggregate import (
     conditional_aggregate,
     ConditionalAggregateParams,
 )
+from shared.operators.correlation import correlation, CorrelationParams
 from shared.operators.construct_trades import (
     construct_trades,
     ConstructTradesParams,
@@ -97,6 +99,9 @@ ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
     "EventSet",
     "Panel",
     "WindowedPanel",
+    # v2.0 (ADR 0016): ScalarMetric — the single-number closed-family
+    # shape for full-sample statistics (correlation, covariance, ...).
+    "ScalarMetric",
     # Phase 1 PR 12 added the TradeSet artifact for the backtest
     # archetype; PR 20 wires it into the substrate's closed-family
     # discriminator so the workflow executor can label TradeSet
@@ -122,6 +127,7 @@ def artifact_type_name(artifact: Any) -> str:
         EventSet: "EventSet",
         Panel: "Panel",
         WindowedPanel: "WindowedPanel",
+        ScalarMetric: "ScalarMetric",
         TradeSet: "TradeSet",
     }
     for cls, name in type_map.items():
@@ -343,6 +349,17 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         accepts_scalar_input=("right",),
         arity_validator=_series_arithmetic_arity_validator,
         unit_validator=_series_arithmetic_unit_validator,
+    ),
+    # v2.0 reference operator (ADR 0016) — the canonical finance-blind
+    # ``statistical_relationship`` operator: two Series → one
+    # ScalarMetric (the full-sample correlation coefficient).  Built to
+    # OPR1–OPR16; the OPR16 meta-test gates it.
+    "correlation": OperatorSpec(
+        operator_name="correlation",
+        callable=correlation,
+        params_class=CorrelationParams,
+        input_slots={"left": "Series", "right": "Series"},
+        output_type="ScalarMetric",
     ),
     "threshold_events": OperatorSpec(
         operator_name="threshold_events",

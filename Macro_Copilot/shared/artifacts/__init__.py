@@ -47,6 +47,7 @@ from shared.artifacts.missingness import (
 from shared.artifacts.types import (
     EventSet,
     Panel,
+    ScalarMetric,
     Series,
     SeriesSet,
     WindowedPanel,
@@ -61,6 +62,7 @@ __all__ = [
     "EventSet",
     "Panel",
     "WindowedPanel",
+    "ScalarMetric",
     # Lineage
     "Lineage",
     "LineageStep",

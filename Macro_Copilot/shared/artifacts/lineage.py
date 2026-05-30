@@ -568,6 +568,46 @@ class Lineage(BaseModel):
 OperatorStep.model_rebuild()
 
 
+# ============================================================================
+# PARAM SANITISATION (OPR10 — finite-or-None before hashing)
+# ============================================================================
+
+
+def sanitize_params_for_lineage(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively map non-finite floats (``NaN`` / ``+-Inf``) to
+    ``None`` so a params dict is safe to hash via
+    :func:`_compute_step_hash` (which rejects ``NaN`` / ``Inf`` — there
+    is no canonical-JSON form for them).
+
+    Operators that fold a *computed* float into their ``OperatorStep``
+    params (a dispersion, a per-event statistic that may be ``NaN`` on a
+    degenerate input) MUST pass the dict through this helper before
+    ``OperatorStep.build`` — so a legitimate degenerate result becomes
+    ``None`` (JSON-canonical) instead of crashing the lineage layer.
+    This is the OPR10 fix for the class of crash where a computed
+    ``math.nan`` reached the hasher (e.g. ``summarize_series`` on its
+    default path).
+
+    ``None`` / ``str`` / ``bool`` / ``int`` and finite floats pass
+    through unchanged; nested dicts and lists/tuples are recursed
+    (tuples become lists, matching the canonicalizer's tuple handling).
+    """
+    import math
+
+    def _clean(obj: Any) -> Any:
+        if isinstance(obj, bool):
+            return obj  # bool is an int subclass — preserve it as-is
+        if isinstance(obj, float):
+            return obj if math.isfinite(obj) else None
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_clean(x) for x in obj]
+        return obj
+
+    return _clean(params)
+
+
 __all__ = [
     "LineageHash",
     "LineageStep",
@@ -577,4 +617,5 @@ __all__ = [
     "AdapterStep",
     "PrimitiveStep",
     "OperatorStep",
+    "sanitize_params_for_lineage",
 ]

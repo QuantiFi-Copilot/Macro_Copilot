@@ -1,0 +1,48 @@
+operator:
+  name: correlation
+  method_family: statistical_relationship
+  version: "1.0.0"
+  description: >-
+    Full-sample correlation coefficient between two index-aligned
+    numeric Series. Finance-blind and unit-invariant: a correlation is a
+    dimensionless statistic, so it imposes no same-unit requirement —
+    only a shared DatetimeIndex and an agreed cadence. Output is a
+    single ScalarMetric in RATIO units (the coefficient, in [-1, 1]).
+
+# Every user-choosable method choice is offloaded here so the operator
+# is not opinionated and the caller can switch seamlessly (OPR7/OPR8).
+# All implemented methods are baked into the operator's Python; the
+# declared-but-unbuilt method (kendall) refuses cleanly (OPR8 honest
+# refusal). The schema defaults in schemas.py mirror these values and a
+# test asserts they do not diverge.
+defaults:
+  method:
+    value: pearson
+    source: operator_v1_default
+    rationale: >-
+      Pearson is the desk-default linear correlation; Spearman (rank)
+      captures monotonic non-linear association. Kendall is declared in
+      valid_values as a planned extension but is not yet implemented.
+    valid_values: [pearson, spearman, kendall]
+  min_periods:
+    value: 2
+    source: operator_v1_default
+    rationale: >-
+      A correlation coefficient is undefined with fewer than two
+      overlapping non-NaN observations; 2 is the mathematical floor.
+
+methodology:
+  what_it_does: >-
+    Computes the correlation between two Series over the dates where
+    both are present, after requiring an identical DatetimeIndex (align
+    upstream with align_series — correlation does not align). Returns a
+    single ScalarMetric in RATIO units. Strict-by-default on frequency
+    and missingness; unit-invariant by design (a correlation is
+    dimensionless, so cross-unit inputs are accepted and both inputs'
+    units are recorded in lineage for provenance). Raises
+    CorrelationError when the overlap is below min_periods or either
+    series has zero variance over the overlap — an undefined coefficient
+    is a typed refusal, never a non-finite value.
+  planned_extensions:
+    - "method='kendall' (Kendall's tau): declared in valid_values but not yet implemented; raises NotImplementedError (OPR8 honest refusal)."
+    - "rolling_correlation: a separate operator emitting a Series (constant output type per OPR2) — NOT a window parameter on this full-sample operator."
