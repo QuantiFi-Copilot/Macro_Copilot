@@ -421,6 +421,7 @@ tools:
     reviewer_dispatched_at: "2026-05-30T01:23:00Z"
     reviewer_finished_at: "2026-05-30T01:30:00Z"
     committed_at: "2026-05-30T01:38:00Z"
+    commit_sha: d8e8233
     previous_block_reason: |
       reviewer_findings_structural_no_fix_attempt: Dispatch 2 reviewer
       (fresh-context Claude) emitted CHANGES REQUIRED with 3 findings on
