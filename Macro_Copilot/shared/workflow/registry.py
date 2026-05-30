@@ -50,6 +50,7 @@ from shared.operators.conditional_aggregate import (
     ConditionalAggregateParams,
 )
 from shared.operators.correlation import correlation, CorrelationParams
+from shared.operators.convert_units import convert_units, ConvertUnitsParams
 from shared.operators.construct_trades import (
     construct_trades,
     ConstructTradesParams,
@@ -377,6 +378,16 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         params_class=CorrelationParams,
         input_slots={"left": "Series", "right": "Series"},
         output_type="ScalarMetric",
+    ),
+    # v2.0 — the single sanctioned unit-conversion operator (ADR 0016
+    # Decision 4).  One Series in, one Series out (re-tagged to the
+    # target unit).  ``unit_conversion`` method family.
+    "convert_units": OperatorSpec(
+        operator_name="convert_units",
+        callable=convert_units,
+        params_class=ConvertUnitsParams,
+        input_slots={"series": "Series"},
+        output_type="Series",
     ),
     "threshold_events": OperatorSpec(
         operator_name="threshold_events",

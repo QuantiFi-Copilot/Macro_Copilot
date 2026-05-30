@@ -49,6 +49,7 @@ _V2_CONFORMANT = {
     "series_arithmetic",
     "summarize_series",
     "threshold_events",
+    "convert_units",
 }
 
 # OPR15 discriminator-arg ABI — DONE for series_arithmetic: its ``op``

@@ -1,0 +1,28 @@
+operator:
+  name: convert_units
+  method_family: unit_conversion
+  version: "1.0.0"
+  description: >-
+    Dimensional unit conversion between TimeSeriesUnits members — the
+    single sanctioned unit-conversion site (ADR 0016 Decision 4).
+    PERCENT<->BPS in v1 (plus identity); other pairs raise
+    NotImplementedError (OPR8 honest refusal). Finance-blind: a
+    dimensional conversion (1 percent = 100 basis points), not finance
+    modelling.
+
+# convert_units has no config-defaulted method choice: ``target_units``
+# is a required per-call parameter (the caller must say what to convert
+# to), so there is nothing to default here (OPR7).
+defaults: {}
+
+methodology:
+  what_it_does: >-
+    Multiplies the payload by the exact dimensional factor for the
+    (source_units, target_units) pair and re-tags the Series with the
+    target units. Identity conversion (source == target) is a no-op
+    re-tag. An unsupported pair is an honest NotImplementedError, never a
+    silent pass-through. A conversion that would overflow to +/-Inf is a
+    typed ConvertUnitsError refusal. Lineage, frequency, and missingness
+    propagate unchanged.
+  planned_extensions:
+    - "additional unit pairs as the TimeSeriesUnits enum grows (dimensionless units like Z_SCORE / RATIO have no dimensional conversion target)."
