@@ -46,24 +46,19 @@ _V2_CONFORMANT = {
     "event_windows",
     "rolling_regression",
     "select_from_series_set",
+    "series_arithmetic",
     "summarize_series",
     "threshold_events",
 }
 
-# series_arithmetic is finance-blind and otherwise conformant, but its
-# public signature carries an extra ``op`` positional the executor
-# injects by name.  Resolving ``op`` solely from params + deleting the
-# executor's by-name special-case is the OPR15 / SlotDescriptor
-# registry-executor ABI step (ADR 0016 step 4) — a WHOLESALE change
-# across every operator's slot declaration.  Doing it for one operator
-# while the registry stays bare-string would re-introduce the
-# inconsistency Step 2 deliberately avoided, so series_arithmetic's
-# signature-level conformance lands with that ABI step.  It HAS received
-# the Step-3 local fixes (the *Error export, _check_config_identity
-# name+version).  Tracked here — NOT a gap.
-_PENDING_ABI = {
-    "series_arithmetic",
-}
+# OPR15 discriminator-arg ABI — DONE for series_arithmetic: its ``op``
+# is now a DECLARED discriminator on its OperatorSpec
+# (``discriminator_args=("op",)``), the executor's by-name special-case
+# is deleted, and ``op`` resolves from params — so series_arithmetic is
+# fully conformant and lives in _V2_CONFORMANT above.  This bucket is
+# reserved (currently empty) for any future operator genuinely blocked
+# on a substrate ABI change before it can conform.
+_PENDING_ABI: set[str] = set()
 
 # The trade-lifecycle operators are finance-AWARE (P&L, financing,
 # day-count, Sharpe) and are slated for RELOCATION to a backtest
@@ -132,11 +127,12 @@ def test_v2_operator_conforms(name):
     sig = inspect.signature(fn)
     param_names = set(sig.parameters)
 
-    # (a) signature params == input_slots ∪ {params, config}
-    expected = set(spec.input_slots) | {"params", "config"}
+    # (a) signature params == input_slots ∪ {params, config} ∪
+    #     declared discriminator args (OPR15 — e.g. series_arithmetic.op)
+    expected = set(spec.input_slots) | {"params", "config"} | set(spec.discriminator_args)
     assert param_names == expected, (
         f"{name}: signature {sorted(param_names)} != "
-        f"slots ∪ {{params, config}} = {sorted(expected)}"
+        f"slots ∪ {{params, config}} ∪ discriminator_args = {sorted(expected)}"
     )
 
     # (b) params default is None (OPR8) — also config default None

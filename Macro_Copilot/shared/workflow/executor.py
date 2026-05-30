@@ -395,23 +395,12 @@ def _execute_operator_node(
             ) from exc
         call_kwargs["params"] = params_instance
 
-    # Special case for series_arithmetic: ``op`` is a positional
-    # argument (or kwarg with no Params field).  If the caller
-    # supplied ``op`` in node.params, it must already be inside
-    # the SeriesArithmeticParams instance above; we additionally
-    # surface it as a positional kwarg so the operator's required
-    # ``op`` arg is satisfied.
-    if node.operator_name == "series_arithmetic":
-        op = node.params.get("op")
-        if op is None:
-            raise WorkflowExecutionError(
-                f"Workflow {workflow.workflow_id!r}: operator node "
-                f"{node.node_id!r} (series_arithmetic) requires "
-                "params.op (e.g. 'subtract', 'diff') but none was "
-                "supplied."
-            )
-        call_kwargs["op"] = op
-
+    # OPR15: no operator is special-cased by name here.  Discriminator
+    # args (e.g. series_arithmetic's ``op``) are DECLARED on the
+    # OperatorSpec (``discriminator_args``) and resolved by the operator
+    # from ``params`` — the executor stays generic.  A missing ``op``
+    # surfaces as a clean Pydantic error when the operator's *Params is
+    # constructed above (``op`` is a required field on the schema).
     return spec.callable(**call_kwargs)
 
 

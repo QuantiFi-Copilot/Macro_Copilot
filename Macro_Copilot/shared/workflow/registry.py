@@ -212,6 +212,12 @@ class OperatorSpec(BaseModel):
     input_slots: Dict[str, str]
     output_type: str
     accepts_scalar_input: tuple[str, ...] = ()
+    # OPR15: a discriminator / positional arg (e.g. series_arithmetic's
+    # ``op``) is DECLARED here, not injected by name in the executor.
+    # The executor stays generic; the operator resolves the value from
+    # ``params``.  The registry-consistency meta-test allows these
+    # declared names in the operator's signature.
+    discriminator_args: tuple[str, ...] = ()
     arity_validator: Optional[
         Callable[[Dict[str, Any], set, set], Optional[str]]
     ] = None
@@ -341,6 +347,9 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         params_class=SeriesArithmeticParams,
         input_slots={"left": "Series", "right": "Series"},
         output_type="Series",
+        # ``op`` is a declared discriminator (OPR15) — the operator
+        # resolves it from params; the executor injects nothing by name.
+        discriminator_args=("op",),
         # `right` can be a Series OR a Python scalar (int/float)
         # for binary scalar arithmetic, or absent for unary ops.
         # The arity_validator below enforces the conditional
