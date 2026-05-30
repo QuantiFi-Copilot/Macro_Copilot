@@ -34,13 +34,9 @@ from typing import Any, Callable, Dict, List, Optional, Protocol, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shared.artifacts.types import (
-    EventSet,
-    Panel,
-    ScalarMetric,
-    Series,
-    SeriesSet,
-    WindowedPanel,
+from shared.artifacts.registry import (
+    ARTIFACT_CLASS_TO_NAME,
+    ArtifactTypeName,
 )
 from shared.operators.align_series import align_series, AlignSeriesParams
 from shared.operators.apply_mask import apply_mask, ApplyMaskParams
@@ -94,19 +90,19 @@ from shared.operators.threshold_events import (
 # ARTIFACT TYPE NAMES (closed enum used by the validator)
 # ============================================================================
 
-# Names must match the artifact wrapper class names in
-# ``shared.artifacts.types``.  Used by the validator to compare
-# operator input/output slot types structurally.
+# Both ``ARTIFACT_TYPE_NAMES`` and ``_ARTIFACT_TYPE_MAP`` are DERIVED from
+# the canonical ``ArtifactTypeName`` enum in ``shared.artifacts.registry``
+# (ART2 / ART6: single source of truth).  Adding a new artifact wrapper
+# means adding a member to that enum + ``ARTIFACT_CLASS_TO_NAME`` — every
+# downstream tuple/dict re-derives automatically and the lock-step test
+# (``tests/test_artifact_closed_family_lockstep.py``) gates the rest.
+#
+# Canonical ordering (Series, SeriesSet, EventSet, Panel, WindowedPanel,
+# ScalarMetric) is preserved because ``Enum`` iteration is
+# definition-order.
 
-ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
-    "Series",
-    "SeriesSet",
-    "EventSet",
-    "Panel",
-    "WindowedPanel",
-    # v2.0 (ADR 0016): ScalarMetric — the single-number closed-family
-    # shape for full-sample statistics (correlation, covariance, ...).
-    "ScalarMetric",
+ARTIFACT_TYPE_NAMES: tuple[str, ...] = tuple(
+    member.value for member in ArtifactTypeName
 )
 
 
@@ -115,14 +111,11 @@ ARTIFACT_TYPE_NAMES: tuple[str, ...] = (
 # ``isinstance`` dispatch in ``artifact_type_name`` below).  Hoisted to
 # module scope so it is built once (not per call) AND importable, so the
 # lock-step test ``tests/test_artifact_closed_family_lockstep.py`` can
-# assert it stays in sync with the canonical enum (ART2/ART6).
+# assert it stays in sync with the canonical enum (ART2/ART6).  Values
+# are plain ``str`` (each enum member's ``.value``) so
+# ``artifact_type_name`` returns the same ``str`` it always returned.
 _ARTIFACT_TYPE_MAP: dict[type, str] = {
-    Series: "Series",
-    SeriesSet: "SeriesSet",
-    EventSet: "EventSet",
-    Panel: "Panel",
-    WindowedPanel: "WindowedPanel",
-    ScalarMetric: "ScalarMetric",
+    cls: name.value for cls, name in ARTIFACT_CLASS_TO_NAME.items()
 }
 
 

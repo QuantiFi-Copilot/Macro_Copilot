@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import typing
 
+from shared.artifacts.registry import ARTIFACT_CLASS_TO_NAME, ArtifactTypeName
 from shared.workflow.registry import ARTIFACT_TYPE_NAMES, _ARTIFACT_TYPE_MAP
 from shared.workflow.result import TerminalArtifact
 from state.artifact_store import Artifact, _ARTIFACT_CLASSES
@@ -61,6 +62,56 @@ def test_canonical_enum_well_formed() -> None:
     assert len(ARTIFACT_TYPE_NAMES) == len(CANONICAL), (
         f"ARTIFACT_TYPE_NAMES contains duplicates: {ARTIFACT_TYPE_NAMES}"
     )
+
+
+def test_artifact_type_name_enum_is_single_source_of_truth() -> None:
+    """``shared.artifacts.registry.ArtifactTypeName`` is the ONE canonical
+    enum; every other artifact-name surface (``ARTIFACT_TYPE_NAMES``,
+    ``_ARTIFACT_TYPE_MAP``, ``ARTIFACT_CLASS_TO_NAME``) must derive from it.
+
+    This is the meta-lockstep: it proves the SOURCE itself is consistent
+    with its DERIVED views (and that the underlying wrapper classes
+    self-name as the enum claims), so the cross-site assertions below
+    have a trustworthy anchor.
+    """
+    # The enum members' string values are exactly the canonical name set.
+    enum_values = {member.value for member in ArtifactTypeName}
+    assert enum_values == CANONICAL, (
+        f"ArtifactTypeName members {sorted(enum_values)} differ from "
+        f"ARTIFACT_TYPE_NAMES {sorted(CANONICAL)} — the derived tuple "
+        "must enumerate exactly the canonical enum."
+    )
+
+    # ARTIFACT_TYPE_NAMES is a faithful tuple-view of the enum (same order).
+    assert ARTIFACT_TYPE_NAMES == tuple(m.value for m in ArtifactTypeName), (
+        "ARTIFACT_TYPE_NAMES must equal tuple(m.value for m in "
+        "ArtifactTypeName) — order included."
+    )
+
+    # ARTIFACT_CLASS_TO_NAME covers exactly the enum and is self-naming:
+    # each wrapper class's __name__ equals the enum member's value.
+    assert set(ARTIFACT_CLASS_TO_NAME.values()) == set(ArtifactTypeName), (
+        "ARTIFACT_CLASS_TO_NAME values must enumerate every "
+        "ArtifactTypeName member exactly once."
+    )
+    for cls, member in ARTIFACT_CLASS_TO_NAME.items():
+        assert cls.__name__ == member.value, (
+            f"ARTIFACT_CLASS_TO_NAME maps {cls.__name__} -> "
+            f"{member.value!r} (wrapper class must self-name as its enum "
+            "member's value)."
+        )
+
+    # _ARTIFACT_TYPE_MAP is the str-valued projection of the canonical
+    # class -> enum mapping; the two must agree key-by-key.
+    assert set(_ARTIFACT_TYPE_MAP) == set(ARTIFACT_CLASS_TO_NAME), (
+        "_ARTIFACT_TYPE_MAP keys must equal ARTIFACT_CLASS_TO_NAME keys."
+    )
+    for cls, name_str in _ARTIFACT_TYPE_MAP.items():
+        assert name_str == ARTIFACT_CLASS_TO_NAME[cls].value, (
+            f"_ARTIFACT_TYPE_MAP[{cls.__name__}]={name_str!r} disagrees "
+            f"with ARTIFACT_CLASS_TO_NAME[{cls.__name__}]="
+            f"{ARTIFACT_CLASS_TO_NAME[cls].value!r}."
+        )
 
 
 def test_discriminator_literal_matches_canonical() -> None:
