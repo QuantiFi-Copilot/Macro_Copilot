@@ -7,6 +7,13 @@ dependencies:
   - pyarrow
   - pandas
   - scipy
+  # statsmodels powers the cointegration operator
+  # (shared.operators.cointegration) — the Engle–Granger ADF-on-residual
+  # test (statsmodels.tsa.stattools.coint) and the cointegrating OLS
+  # regression (statsmodels.regression.linear_model.OLS).  Adding ADR
+  # 0016's statistical_relationship toolbox would otherwise duplicate
+  # statsmodels' ADF-table machinery in-repo.
+  - statsmodels
   - sqlalchemy
   - pytest
   - psycopg
