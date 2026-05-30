@@ -94,7 +94,7 @@ class SeriesArithmeticError(ValueError):
 
 def series_arithmetic(
     left: Series,
-    op: SeriesArithmeticOp,
+    op: Optional[SeriesArithmeticOp] = None,
     right: Optional[Union[Series, int, float]] = None,
     *,
     params: Optional[SeriesArithmeticParams] = None,
@@ -108,18 +108,23 @@ def series_arithmetic(
         The left-hand ``Series`` artifact.
     op :
         One of ``add``, ``subtract``, ``multiply``, ``divide``,
-        ``diff``, ``pct_change``.  Surfaced as a positional argument
-        rather than only on ``params`` so the call site reads
-        naturally (``series_arithmetic(a, "subtract", b)``).
+        ``diff``, ``pct_change``.  May be supplied positionally so the
+        call site reads naturally (``series_arithmetic(a, "subtract",
+        b)``), OR omitted and carried on ``params.op`` instead — the
+        params-only call style the workflow executor uses when it
+        constructs operator calls from a node's params dict.  At least
+        one of ``op`` or ``params.op`` must be provided; if BOTH are
+        supplied they must agree (else ``SeriesArithmeticError``).
     right :
         For binary ops, a ``Series`` (must share index with ``left``)
         or a Python scalar.  For unary ops (``diff``, ``pct_change``)
         ``right`` MUST be ``None`` — passing one is a usage error.
     params :
-        Optional ``SeriesArithmeticParams``.  Currently used only for
-        ``period`` (defaults to 1; meaningful for ``diff``/``pct_change``).
-        ``op`` from ``params`` is ignored — the positional ``op``
-        argument is authoritative; if both are supplied they must agree.
+        Optional ``SeriesArithmeticParams`` carrying ``op`` and
+        ``period`` (``period`` defaults to 1; meaningful for
+        ``diff``/``pct_change``).  When the positional ``op`` is
+        omitted, ``params.op`` supplies it; when both are given they
+        must agree.
     config :
         Optional ``OperatorConfig``.  When omitted, the bundled
         ``config.yaml`` is loaded (process-cached).
@@ -147,7 +152,22 @@ def series_arithmetic(
             f"{_OPERATOR_NAME!r}, got {config.operator.name!r}."
         )
 
-    if params is None:
+    # ``op`` may be supplied positionally (natural call style:
+    # ``series_arithmetic(a, "subtract", b)``) OR omitted and carried
+    # on ``params.op`` — the params-only style the workflow executor
+    # uses when constructing operator calls from a node's params dict.
+    # Resolve to a single authoritative ``op`` before it reaches the
+    # lineage step: ``step_params["op"]`` must always be a concrete op
+    # (never ``None``) so the OperatorStep hash stays byte-stable.
+    if op is None:
+        if params is None:
+            raise SeriesArithmeticError(
+                "series_arithmetic: no op supplied.  Pass op positionally "
+                "(series_arithmetic(left, 'subtract', right)) or via "
+                "params=SeriesArithmeticParams(op=...)."
+            )
+        op = params.op
+    elif params is None:
         params = SeriesArithmeticParams(
             op=op,
             period=int(config.default_value("period")),
