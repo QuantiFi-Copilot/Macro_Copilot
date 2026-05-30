@@ -38,6 +38,7 @@ from shared.artifacts.registry import (
     ARTIFACT_CLASS_TO_NAME,
     ArtifactTypeName,
 )
+from shared.workflow.slots import OutputDescriptor, SlotDescriptor
 from shared.operators.align_series import align_series, AlignSeriesParams
 from shared.operators.apply_mask import apply_mask, ApplyMaskParams
 from shared.operators.conditional_aggregate import (
@@ -166,19 +167,18 @@ class OperatorSpec(BaseModel):
         (or passes ``None`` if the dict is empty + the operator's
         signature accepts ``params=None``).
     input_slots :
-        Map of input-slot name → artifact type name (closed enum).
-        The validator uses this to check edge type-compatibility.
-        A slot may also have ``"List[Series]"`` etc. for
-        list-shaped inputs.
-    output_type :
-        Artifact type name the operator emits (closed enum).
-    accepts_scalar_input :
-        Some operators accept a scalar OR an artifact at certain
-        slots (e.g. ``series_arithmetic.right`` can be a Series or
-        a Python scalar).  The validator's type-compat check
-        relaxes for slots in this set.  Codex P2 follow-up
-        (PR #78): scalar slots can also be filled by
-        ``LiteralBinding`` instances on the workflow.
+        Map of input-slot name → ``SlotDescriptor``.  Each
+        descriptor declares the closed-family artifact type the slot
+        expects, a one-line description, whether the slot is
+        list-shaped (fan-in), and whether the slot accepts a scalar
+        literal in lieu of an artifact edge.  Replaces the prior
+        ``Dict[str, str]`` encoding (with sibling
+        ``accepts_scalar_input`` tuple and ``"List[X]"`` string
+        prefixes).
+    output :
+        ``OutputDescriptor`` declaring the closed-family artifact
+        type the operator emits plus a one-line description.
+        Replaces the prior bare ``output_type: str`` field.
     arity_validator :
         Optional per-operator arity hook.  Called by
         ``validate_workflow`` with ``(node_params, bound_slots,
@@ -187,8 +187,8 @@ class OperatorSpec(BaseModel):
         ``series_arithmetic`` whose ``right`` slot's requiredness
         depends on ``op``) declare one.  Operators with simple
         always-required slots leave this as ``None`` and rely on
-        the substrate's default ``slot in accepts_scalar_input``
-        check.
+        the substrate's default per-slot
+        ``SlotDescriptor.accepts_scalar`` check.
     unit_validator :
         Optional per-operator unit-compatibility hook.  Called by
         ``validate_workflow`` with ``(node_params,
@@ -209,9 +209,8 @@ class OperatorSpec(BaseModel):
     operator_name: str
     callable: Callable[..., Any]
     params_class: Optional[Type[BaseModel]]
-    input_slots: Dict[str, str]
-    output_type: str
-    accepts_scalar_input: tuple[str, ...] = ()
+    input_slots: Dict[str, SlotDescriptor]
+    output: OutputDescriptor
     # OPR15: a discriminator / positional arg (e.g. series_arithmetic's
     # ``op``) is DECLARED here, not injected by name in the executor.
     # The executor stays generic; the operator resolves the value from
@@ -327,35 +326,67 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="align_series",
         callable=align_series,
         params_class=AlignSeriesParams,
-        # series_list takes List[Series] — encoded as a special
-        # marker; validator handles list-aggregation across edges.
-        input_slots={"series_list": "List[Series]"},
-        output_type="SeriesSet",
+        # ``series_list`` is list-shaped: multiple inbound edges fan
+        # in as a Python ``List[Series]`` (replaces the prior
+        # ``"List[Series]"`` string-encoded prefix).
+        input_slots={
+            "series_list": SlotDescriptor.list_of(
+                "Series",
+                "N Series to align onto a common DatetimeIndex.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            "Aligned bundle keyed by each input Series's identifier.",
+        ),
     ),
     "select_from_series_set": OperatorSpec(
         operator_name="select_from_series_set",
         callable=select_from_series_set,
         params_class=SelectFromSeriesSetParams,
-        # The lone consumer slot accepts a SeriesSet (e.g. produced by
-        # align_series upstream).  Output is a single Series.
-        input_slots={"series_set": "SeriesSet"},
-        output_type="Series",
+        input_slots={
+            "series_set": SlotDescriptor.of(
+                "SeriesSet",
+                "Source bundle to pick one named Series from.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "The single Series extracted by ``params.key``.",
+        ),
     ),
     "series_arithmetic": OperatorSpec(
         operator_name="series_arithmetic",
         callable=series_arithmetic,
         params_class=SeriesArithmeticParams,
-        input_slots={"left": "Series", "right": "Series"},
-        output_type="Series",
+        # ``right`` accepts a Series OR a Python scalar (int/float)
+        # for binary scalar arithmetic, or is absent for unary ops.
+        # ``accepts_scalar=True`` replaces the prior
+        # ``accepts_scalar_input=("right",)`` sibling tuple; the
+        # arity_validator below enforces the per-``op`` conditional
+        # rules.
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                "Left operand (unary input or binary LHS).",
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                (
+                    "Right operand for binary ops; may be a Series "
+                    "(via edge) or a scalar literal (via LiteralBinding); "
+                    "must be unbound for unary ops."
+                ),
+                accepts_scalar=True,
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Resulting Series after applying ``params.op``.",
+        ),
         # ``op`` is a declared discriminator (OPR15) — the operator
         # resolves it from params; the executor injects nothing by name.
         discriminator_args=("op",),
-        # `right` can be a Series OR a Python scalar (int/float)
-        # for binary scalar arithmetic, or absent for unary ops.
-        # The arity_validator below enforces the conditional
-        # rules; the substrate-default ``accepts_scalar_input``
-        # blanket-skip is now superseded by the explicit hook.
-        accepts_scalar_input=("right",),
         arity_validator=_series_arithmetic_arity_validator,
         unit_validator=_series_arithmetic_unit_validator,
     ),
@@ -367,8 +398,20 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="correlation",
         callable=correlation,
         params_class=CorrelationParams,
-        input_slots={"left": "Series", "right": "Series"},
-        output_type="ScalarMetric",
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                "Left Series in the correlation pair.",
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                "Right Series in the correlation pair.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            "Full-sample correlation coefficient between left and right.",
+        ),
     ),
     # v2.0 — the single sanctioned unit-conversion operator (ADR 0016
     # Decision 4).  One Series in, one Series out (re-tagged to the
@@ -377,38 +420,84 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="convert_units",
         callable=convert_units,
         params_class=ConvertUnitsParams,
-        input_slots={"series": "Series"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series to convert to ``params.target_units``.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Series re-expressed in the requested target units.",
+        ),
     ),
     "threshold_events": OperatorSpec(
         operator_name="threshold_events",
         callable=threshold_events,
         params_class=ThresholdEventsParams,
-        input_slots={"series": "Series"},
-        output_type="EventSet",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series whose values are compared against ``params``.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "EventSet",
+            "Boolean EventSet marking dates that satisfy the threshold rule.",
+        ),
     ),
     "event_windows": OperatorSpec(
         operator_name="event_windows",
         callable=event_windows,
         params_class=EventWindowsParams,
-        input_slots={"events": "EventSet", "target": "Series"},
-        output_type="WindowedPanel",
+        input_slots={
+            "events": SlotDescriptor.of(
+                "EventSet",
+                "Event timestamps that anchor each window.",
+            ),
+            "target": SlotDescriptor.of(
+                "Series",
+                "Series to sample around each event timestamp.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "WindowedPanel",
+            "Per-event panel with one row per event and one column per offset.",
+        ),
     ),
     "conditional_aggregate": OperatorSpec(
         operator_name="conditional_aggregate",
         callable=conditional_aggregate,
         params_class=ConditionalAggregateParams,
-        input_slots={"panel": "WindowedPanel"},
-        output_type="Series",
+        input_slots={
+            "panel": SlotDescriptor.of(
+                "WindowedPanel",
+                "Per-event panel to reduce column-wise via ``params.aggregator``.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Per-offset reduction of the panel into a Series indexed by offset.",
+        ),
     ),
     "apply_mask": OperatorSpec(
         operator_name="apply_mask",
         callable=apply_mask,
         params_class=ApplyMaskParams,
-        # Two slots: a Series payload + an EventSet boolean mask.
-        # Output is a Series subsampled to mask=True dates.
-        input_slots={"series": "Series", "mask": "EventSet"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Series payload to subsample by the boolean mask.",
+            ),
+            "mask": SlotDescriptor.of(
+                "EventSet",
+                "Boolean mask whose True dates select Series values to keep.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Series restricted to the dates where the mask is True.",
+        ),
     ),
     "rolling_regression": OperatorSpec(
         operator_name="rolling_regression",
@@ -416,8 +505,20 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         params_class=RollingRegressionParams,
         # lhs = dependent / target; rhs = single regressor in V1.
         # Output is a SeriesSet keyed by {beta, alpha, r_squared}.
-        input_slots={"lhs": "Series", "rhs": "Series"},
-        output_type="SeriesSet",
+        input_slots={
+            "lhs": SlotDescriptor.of(
+                "Series",
+                "Dependent (target) Series for the rolling OLS fit.",
+            ),
+            "rhs": SlotDescriptor.of(
+                "Series",
+                "Single regressor Series (V1: one explanatory variable).",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "SeriesSet",
+            "SeriesSet keyed by {beta, alpha, r_squared} over the rolling window.",
+        ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: trailing-window
     # standardisation of a Series.  One Series in, one Series out
@@ -427,8 +528,16 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_zscore",
         callable=rolling_zscore,
         params_class=RollingZscoreParams,
-        input_slots={"series": "Series"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series to standardise over a trailing window.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Trailing-window z-score (Z_SCORE units).",
+        ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: generic windowed
     # reducer (mean / std / min / max / sum) over a Series.  One Series
@@ -438,8 +547,16 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_statistic",
         callable=rolling_statistic,
         params_class=RollingStatisticParams,
-        input_slots={"series": "Series"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series to reduce over a trailing window.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Windowed reduction (mean / std / min / max / sum) preserving input units.",
+        ),
     ),
     # v2.0 (ADR 0016) — single_series_transform: trailing- or
     # expanding-window percentile rank ("where does today sit vs
@@ -450,8 +567,16 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="percentile_rank",
         callable=percentile_rank,
         params_class=PercentileRankParams,
-        input_slots={"series": "Series"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series to rank against its own trailing/expanding history.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Percentile rank vs history (PCT_RANK units, 0–100).",
+        ),
     ),
     # v2.0 (ADR 0016) — statistical_relationship: windowed correlation
     # between two index-aligned Series.  Two Series in, one Series out
@@ -462,8 +587,20 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="rolling_correlation",
         callable=rolling_correlation,
         params_class=RollingCorrelationParams,
-        input_slots={"left": "Series", "right": "Series"},
-        output_type="Series",
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                "Left Series in the rolling correlation pair.",
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                "Right Series in the rolling correlation pair.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "Rolling correlation coefficient over each window (RATIO units).",
+        ),
     ),
     # v2.0 (ADR 0016) — statistical_relationship: Engle–Granger
     # two-step cointegration test between two index-aligned Series.
@@ -474,8 +611,20 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         operator_name="cointegration",
         callable=cointegration,
         params_class=CointegrationParams,
-        input_slots={"left": "Series", "right": "Series"},
-        output_type="ScalarMetric",
+        input_slots={
+            "left": SlotDescriptor.of(
+                "Series",
+                "Left Series in the Engle–Granger cointegration pair.",
+            ),
+            "right": SlotDescriptor.of(
+                "Series",
+                "Right Series in the Engle–Granger cointegration pair.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "ScalarMetric",
+            "Engle–Granger ADF test statistic (dimensionless, RATIO units).",
+        ),
     ),
     "summarize_series": OperatorSpec(
         operator_name="summarize_series",
@@ -485,8 +634,16 @@ OPERATOR_REGISTRY: Dict[str, OperatorSpec] = {
         # sentinel date.  Lets two per-regime summaries feed into
         # series_arithmetic.subtract for the canonical "compare across
         # regimes" step.
-        input_slots={"series": "Series"},
-        output_type="Series",
+        input_slots={
+            "series": SlotDescriptor.of(
+                "Series",
+                "Source Series to collapse to a 1-row summary at the sentinel date.",
+            ),
+        },
+        output=OutputDescriptor.of(
+            "Series",
+            "1-row summary Series at the operator's fixed sentinel timestamp.",
+        ),
     ),
 }
 
