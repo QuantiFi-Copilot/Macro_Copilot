@@ -677,3 +677,47 @@ class TestRHSProvenanceRecoverability:
         assert op_step.auxiliary_lineages == ()
         # Scalar value still recorded in step params.
         assert op_step.params["right_scalar"] == 100.0
+
+
+# ===========================================================================
+# Finiteness + ±inf guards (OPR10 / OPR13 / OPR14)
+# ===========================================================================
+
+
+class TestFiniteAndInfGuards:
+    """A NaN/Inf scalar right, and a Series÷Series that would emit ±inf,
+    must fail with the operator's OWN typed error — never a bare lineage
+    ValueError (OPR10/OPR13) and never ±inf in the payload (OPR14)."""
+
+    @staticmethod
+    def _ser(key, values, units=TimeSeriesUnits.PERCENT):
+        dates = pd.bdate_range("2025-01-01", periods=len(values))
+        return _series(key, dates=dates, values=values, units=units)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_scalar_right_raises_typed(self, bad):
+        a = self._ser("a", [1.0, 2.0, 3.0])
+        with pytest.raises(SeriesArithmeticError, match="finite"):
+            series_arithmetic(
+                a, "multiply", bad,
+                params=SeriesArithmeticParams(op="multiply"),
+            )
+
+    def test_series_divide_nonzero_by_zero_refuses_inf(self):
+        # left nonzero where right is zero → ±inf → refuse (OPR14).
+        a = self._ser("a", [1.0, 2.0, 3.0])
+        b = self._ser("b", [0.0, 1.0, 2.0])
+        with pytest.raises(SeriesArithmeticError, match=r"non-finite|inf"):
+            series_arithmetic(
+                a, "divide", b, params=SeriesArithmeticParams(op="divide"),
+            )
+
+    def test_series_divide_zero_by_zero_is_nan_and_allowed(self):
+        # 0 / 0 → NaN (legitimate missingness, not inf) → allowed through.
+        a = self._ser("a", [0.0, 2.0, 3.0])
+        b = self._ser("b", [0.0, 1.0, 2.0])
+        out = series_arithmetic(
+            a, "divide", b, params=SeriesArithmeticParams(op="divide"),
+        )
+        assert bool(np.isnan(out.payload.iloc[0]))
+        assert out.payload.iloc[1] == pytest.approx(2.0)

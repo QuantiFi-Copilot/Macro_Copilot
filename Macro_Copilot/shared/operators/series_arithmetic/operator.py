@@ -196,6 +196,21 @@ def series_arithmetic(
             f"got {type(left).__name__}."
         )
 
+    # Scalar operands must be finite (OPR10/OPR13).  A NaN/Inf scalar
+    # has no canonical lineage form — it would land in ``step_params``
+    # below and surface as a bare ``ValueError`` from
+    # ``OperatorStep.build`` rather than a typed, boundary-level error.
+    # Refuse it here with the operator's own error type.
+    if (
+        (not is_unary)
+        and isinstance(right, (int, float))
+        and not np.isfinite(float(right))
+    ):
+        raise SeriesArithmeticError(
+            f"series_arithmetic op={op!r}: scalar right operand must be "
+            f"finite; got {right!r}."
+        )
+
     if (not is_unary) and isinstance(right, Series):
         if not left.payload.index.equals(right.payload.index):
             raise SeriesArithmeticError(
@@ -487,7 +502,24 @@ def _compute_payload(
         return (lp * float(right)).astype(float)  # type: ignore[arg-type]
     if op == "divide":
         if isinstance(right, Series):
-            return (lp / right.payload).astype(float)
+            # Series / Series: guard against ±inf entering the payload
+            # (OPR14 — no non-finite value may enter a payload).  A
+            # nonzero / zero yields ±inf, which we refuse.  A 0 / 0
+            # yields NaN — legitimate missingness, not inf — and is
+            # allowed through, consistent with how NaN is treated
+            # everywhere else.  Same deferred ``overflow_policy`` hatch.
+            result = (lp / right.payload).astype(float)
+            inf_mask = np.isinf(result.to_numpy())
+            if bool(inf_mask.any()):
+                n_inf = int(inf_mask.sum())
+                raise SeriesArithmeticError(
+                    f"series_arithmetic op='divide': division produced "
+                    f"{n_inf} non-finite (±inf) value(s) — the right "
+                    "Series has zero(s) where the left is nonzero.  Mask "
+                    "or filter those positions first, or use a future "
+                    "``overflow_policy='inf'`` knob."
+                )
+            return result
         # Scalar: explicit zero-divisor guard so the user gets a
         # controlled error rather than pandas' silent inf.
         scalar = float(right)  # type: ignore[arg-type]

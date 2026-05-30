@@ -39,6 +39,7 @@ regressor chain.  Mirrors the discipline ``series_arithmetic`` and
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -80,6 +81,13 @@ def _effective_unit(unit: TimeSeriesUnits, basis: str) -> TimeSeriesUnits:
         return unit
     # basis == "level_change"
     if unit == TimeSeriesUnits.PERCENT:
+        # F1 RESIDUE (scheduled for extraction — ADR 0016 §Cross-
+        # verification close-out): same PERCENT→BPS election as
+        # event_windows.  Superseded in principle by Decision 4
+        # (``convert_units`` is the only sanctioned conversion site);
+        # retained only because ≈27 B-layer consumers depend on the BPS
+        # output and must migrate in lock-step.  Do NOT add new callers
+        # that rely on it.
         return TimeSeriesUnits.BPS
     # Other unit kinds keep their unit on diff (a BPS series's diff is
     # still BPS; a Z_SCORE series's diff is still Z_SCORE — same
@@ -114,6 +122,39 @@ def rolling_regression(
         )
 
     # ------------------------------------------------------------------
+    # 0. Structural-metadata compatibility (OPR11).  Default-lenient to
+    #    preserve rolling_regression's inner-join + dropna behaviour (a
+    #    regression over overlapping dates is well-defined across
+    #    cadences); flip require_matching_* to True for the strict
+    #    event-study discipline align_series / series_arithmetic use.
+    #    Gated on the flags, so the default path is unchanged and the
+    #    OperatorStep hash is untouched (these checks add no lineage
+    #    params in v1.0.0).
+    # ------------------------------------------------------------------
+    if params.require_matching_frequency and lhs.frequency != rhs.frequency:
+        raise RollingRegressionError(
+            f"rolling_regression: incompatible frequencies "
+            f"lhs={lhs.frequency!r} vs rhs={rhs.frequency!r}.  Pass "
+            "require_matching_frequency=False to opt into mixed-"
+            "frequency regression explicitly."
+        )
+    if params.require_matching_missingness:
+        lhs_sig = json.dumps(
+            lhs.missingness_policy.model_dump(mode="json"),
+            sort_keys=True, separators=(",", ":"),
+        )
+        rhs_sig = json.dumps(
+            rhs.missingness_policy.model_dump(mode="json"),
+            sort_keys=True, separators=(",", ":"),
+        )
+        if lhs_sig != rhs_sig:
+            raise RollingRegressionError(
+                "rolling_regression: incompatible missingness policies "
+                "lhs vs rhs.  Pass require_matching_missingness=False to "
+                "opt into mixed policies explicitly."
+            )
+
+    # ------------------------------------------------------------------
     # 1. Inner-join lhs and rhs onto a common DatetimeIndex.
     # ------------------------------------------------------------------
     common_index = pd.DatetimeIndex(
@@ -142,6 +183,8 @@ def rolling_regression(
         # level_change
         diffed = series.diff()
         if unit == TimeSeriesUnits.PERCENT:
+            # F1 RESIDUE (×100 value side of the PERCENT→BPS election;
+            # ADR 0016 §Cross-verification close-out) — see _effective_unit.
             diffed = diffed * 100.0
         return diffed
 

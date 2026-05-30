@@ -81,6 +81,26 @@ class RollingRegressionParams(BaseModel):
             "compute primitive's default."
         ),
     )
+    require_matching_frequency: bool = Field(
+        default=False,
+        description=(
+            "OPR11 structural-metadata control (mirrors align_series / "
+            "series_arithmetic).  When True, refuse to regress two "
+            "Series whose frequency tags disagree.  Default False "
+            "preserves rolling_regression's inner-join + dropna "
+            "behaviour — a regression over the overlapping dates is "
+            "well-defined across cadences; flip to True for the strict "
+            "event-study discipline."
+        ),
+    )
+    require_matching_missingness: bool = Field(
+        default=False,
+        description=(
+            "OPR11 structural-metadata control.  When True, refuse to "
+            "regress two Series whose missingness policies disagree.  "
+            "Default False (see require_matching_frequency)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate(self) -> "RollingRegressionParams":

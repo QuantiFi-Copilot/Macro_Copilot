@@ -115,6 +115,16 @@ def select_from_series_set(
             "(``series_key``); none were supplied."
         )
 
+    # Typed input guard (OPR9/OPR13): a non-SeriesSet input would
+    # otherwise raise a raw ``AttributeError`` on ``.series_by_key``
+    # below.  The workflow executor type-checks slots, but a direct
+    # call must still fail with the operator's own error type.
+    if not isinstance(series_set, SeriesSet):
+        raise SelectFromSeriesSetError(
+            f"select_from_series_set: input must be a SeriesSet artifact; "
+            f"got {type(series_set).__name__}."
+        )
+
     if params.series_key not in series_set.series_by_key:
         available = sorted(series_set.series_by_key.keys())
         raise SelectFromSeriesSetError(

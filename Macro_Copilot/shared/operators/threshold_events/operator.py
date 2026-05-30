@@ -174,6 +174,17 @@ def threshold_events(
             "threshold_events: input series is empty."
         )
 
+    # The threshold is a user-supplied numeric (OPR10/OPR13): a NaN/Inf
+    # threshold has no canonical lineage form — it would land in
+    # ``step_params`` and surface as a bare ValueError from
+    # ``OperatorStep.build`` — and it silently fires zero events under
+    # every comparison rule.  Refuse it with the operator's own error.
+    if not np.isfinite(float(params.threshold)):
+        raise ThresholdEventsError(
+            f"threshold_events: threshold must be finite; got "
+            f"{params.threshold!r}."
+        )
+
     # ------------------------------------------------------------------
     # 4. Build the threshold series per the chosen basis.
     # ------------------------------------------------------------------

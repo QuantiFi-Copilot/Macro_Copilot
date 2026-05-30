@@ -281,3 +281,16 @@ class TestRegistryEntry:
     def test_params_class_resolves(self):
         spec = OPERATOR_REGISTRY["select_from_series_set"]
         assert spec.params_class is SelectFromSeriesSetParams
+
+
+class TestTypedInputGuard:
+    """A non-SeriesSet input must fail with the operator's own typed
+    error (OPR9/OPR13), not a raw AttributeError on ``.series_by_key``."""
+
+    def test_non_seriesset_input_raises_typed(self):
+        not_a_set = _make_series("x")  # a Series, not a SeriesSet
+        with pytest.raises(SelectFromSeriesSetError, match="SeriesSet"):
+            select_from_series_set(
+                not_a_set,
+                params=SelectFromSeriesSetParams(series_key="x"),
+            )

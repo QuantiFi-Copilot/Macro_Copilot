@@ -810,3 +810,23 @@ class TestYamlDefaultAuthority:
         # Operator resolved from the tweaked config.
         assert es.lineage.steps[-1].params["look_ahead_safe"] is False
         assert es.lineage.steps[-1].params["lookahead_shift_applied"] is False
+
+
+# ===========================================================================
+# Threshold finiteness guard (OPR10 / OPR13)
+# ===========================================================================
+
+
+class TestThresholdFiniteness:
+    """A NaN/Inf threshold has no canonical lineage form and silently
+    fires zero events — it must fail with the operator's own typed error
+    rather than a bare lineage ValueError."""
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_threshold_raises_typed(self, bad):
+        dates = pd.bdate_range("2025-01-01", periods=10)
+        s = _series("x", dates=dates, values=[float(i) for i in range(10)])
+        with pytest.raises(ThresholdEventsError, match="finite"):
+            threshold_events(
+                s, params=ThresholdEventsParams(rule="above", threshold=bad),
+            )

@@ -402,6 +402,13 @@ def _resolve_output_units(
         return input_units
     if units_basis == "level_change":
         if input_units == TimeSeriesUnits.PERCENT:
+            # F1 RESIDUE (scheduled for extraction — ADR 0016 §Cross-
+            # verification close-out): this PERCENT→BPS election is the
+            # one finance-flavoured behaviour left in the 9 operators.
+            # Superseded in principle by Decision 4 (``convert_units`` is
+            # the only sanctioned conversion site); retained only because
+            # ≈27 B-layer consumers depend on the BPS output and must
+            # migrate in lock-step.  Do NOT add new callers that rely on it.
             return TimeSeriesUnits.BPS
         return input_units
     raise EventWindowsError(

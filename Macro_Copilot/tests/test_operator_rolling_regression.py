@@ -473,3 +473,45 @@ class TestRegistryEntry:
     def test_params_class_resolves(self):
         spec = OPERATOR_REGISTRY["rolling_regression"]
         assert spec.params_class is RollingRegressionParams
+
+
+class TestStructuralMetadataKnobs:
+    """OPR11 — opt-in require_matching_frequency / require_matching_
+    missingness.  Default is lenient (inner-join + dropna), so the happy
+    path is unchanged; strict mode refuses a frequency-tag mismatch.
+    (The missingness branch is symmetric.)"""
+
+    @staticmethod
+    def _pair_diff_freq():
+        # Non-degenerate (random-walk) levels so the level_change
+        # regressor has variance and the rolling OLS is well-posed.
+        rng = np.random.default_rng(7)
+        idx = pd.bdate_range("2025-01-01", periods=80)
+        x_levels = np.cumsum(rng.normal(0.0, 1.0, size=80))
+        y_levels = 1.3 * x_levels + rng.normal(0.0, 0.1, size=80)
+        lhs = _make_series(
+            series_key="y", values=pd.Series(y_levels, index=idx),
+            frequency="B",
+        )
+        rhs = _make_series(
+            series_key="x", values=pd.Series(x_levels, index=idx),
+            frequency="W",  # different frequency TAG, same index
+        )
+        return lhs, rhs
+
+    def test_mismatched_frequency_lenient_by_default(self):
+        lhs, rhs = self._pair_diff_freq()
+        out = rolling_regression(
+            lhs, rhs, params=RollingRegressionParams(window=30),
+        )
+        assert set(out.series_by_key) == {"beta", "alpha", "r_squared"}
+
+    def test_mismatched_frequency_strict_refuses(self):
+        lhs, rhs = self._pair_diff_freq()
+        with pytest.raises(RollingRegressionError, match="frequenc"):
+            rolling_regression(
+                lhs, rhs,
+                params=RollingRegressionParams(
+                    window=30, require_matching_frequency=True,
+                ),
+            )
