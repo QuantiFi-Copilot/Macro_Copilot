@@ -92,10 +92,14 @@ def test_nan_preserved_through_conversion():
 
 
 def test_registered_and_config_loads():
+    # PART B refactor: input_slots values are SlotDescriptor instances and
+    # output is an OutputDescriptor (ArtifactTypeName is a str-Enum, so
+    # == "Series" still compares equal to the string).
     assert "convert_units" in OPERATOR_REGISTRY
     spec = OPERATOR_REGISTRY["convert_units"]
-    assert spec.input_slots == {"series": "Series"}
-    assert spec.output_type == "Series"
+    assert set(spec.input_slots) == {"series"}
+    assert spec.input_slots["series"].artifact_type == "Series"
+    assert spec.output.artifact_type == "Series"
     cfg = load_operator_config(CONFIG_PATH)
     assert cfg.operator.name == "convert_units"
     assert cfg.operator.method_family == "unit_conversion"

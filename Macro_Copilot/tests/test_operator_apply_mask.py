@@ -459,12 +459,18 @@ class TestRegistryEntry:
         assert "apply_mask" in OPERATOR_REGISTRY
 
     def test_input_slots(self):
+        # PART B refactor: input_slots values are SlotDescriptor instances
+        # (ArtifactTypeName is a str-Enum, so == "Series" still compares
+        # equal to the string).
         spec = OPERATOR_REGISTRY["apply_mask"]
-        assert spec.input_slots == {"series": "Series", "mask": "EventSet"}
+        assert set(spec.input_slots) == {"series", "mask"}
+        assert spec.input_slots["series"].artifact_type == "Series"
+        assert spec.input_slots["mask"].artifact_type == "EventSet"
 
     def test_output_type(self):
+        # PART B refactor: output is an OutputDescriptor.
         spec = OPERATOR_REGISTRY["apply_mask"]
-        assert spec.output_type == "Series"
+        assert spec.output.artifact_type == "Series"
 
     def test_callable_resolves_to_operator(self):
         spec = OPERATOR_REGISTRY["apply_mask"]

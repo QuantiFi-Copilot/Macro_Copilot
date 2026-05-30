@@ -267,12 +267,15 @@ class TestRegistryEntry:
         assert "select_from_series_set" in OPERATOR_REGISTRY
 
     def test_input_slots(self):
+        # PART B refactor: input_slots values are SlotDescriptor instances.
         spec = OPERATOR_REGISTRY["select_from_series_set"]
-        assert spec.input_slots == {"series_set": "SeriesSet"}
+        assert set(spec.input_slots) == {"series_set"}
+        assert spec.input_slots["series_set"].artifact_type == "SeriesSet"
 
     def test_output_type(self):
+        # PART B refactor: output is an OutputDescriptor.
         spec = OPERATOR_REGISTRY["select_from_series_set"]
-        assert spec.output_type == "Series"
+        assert spec.output.artifact_type == "Series"
 
     def test_callable_resolves_to_operator(self):
         spec = OPERATOR_REGISTRY["select_from_series_set"]
