@@ -235,10 +235,10 @@ class TestSeriesSetShape:
         )
         assert out.units_by_key["r_squared"] == TimeSeriesUnits.RATIO
 
-    def test_alpha_units_are_BPS_for_PERCENT_inputs_with_level_change(self):
-        """PERCENT inputs in level_change mode pick up the
-        methodology-owned PERCENT→BPS transition (×100), so alpha is
-        BPS — same rule event_windows uses."""
+    def test_alpha_units_preserve_percent_for_level_change(self):
+        """F1 extraction: level_change is unit-preserving (no ×100), so a
+        PERCENT lhs gives a PERCENT alpha (beta stays RATIO — scale-
+        invariant — regardless)."""
         lhs, rhs = _synthetic_pair_with_known_beta(n=400)
         out = rolling_regression(
             lhs, rhs, params=RollingRegressionParams(
@@ -246,7 +246,7 @@ class TestSeriesSetShape:
                 lhs_basis="level_change", rhs_basis="level_change",
             ),
         )
-        assert out.units_by_key["alpha"] == TimeSeriesUnits.BPS
+        assert out.units_by_key["alpha"] == TimeSeriesUnits.PERCENT
 
     def test_alpha_units_match_lhs_when_basis_is_raw_value(self):
         lhs, rhs = _synthetic_pair_with_known_beta(n=400)
@@ -378,9 +378,9 @@ class TestLineagePropagation:
             ),
         )
         head = out.lineage.steps[-1]
-        # PERCENT × level_change → BPS for both effective units.
-        assert head.params["effective_lhs_unit"] == "bps"
-        assert head.params["effective_rhs_unit"] == "bps"
+        # F1: level_change is unit-preserving, so effective units = input.
+        assert head.params["effective_lhs_unit"] == "percent"
+        assert head.params["effective_rhs_unit"] == "percent"
 
     def test_rhs_lineage_in_auxiliary(self):
         lhs, rhs = _synthetic_pair_with_known_beta(n=400)

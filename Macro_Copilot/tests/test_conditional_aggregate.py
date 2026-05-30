@@ -677,7 +677,7 @@ class TestPhase1AArchitectureProof:
                 units_basis="level_change",
             ),
         )
-        assert panel.units == TimeSeriesUnits.BPS
+        assert panel.units == TimeSeriesUnits.PERCENT  # F1: unit-preserving
 
         out = conditional_aggregate(
             panel,
@@ -688,7 +688,7 @@ class TestPhase1AArchitectureProof:
 
         # ---- Output checks (per v5 plan: typed Series) ----
         assert isinstance(out, Series)
-        assert out.units == TimeSeriesUnits.BPS
+        assert out.units == TimeSeriesUnits.PERCENT  # F1: unit-preserving
         assert len(out.payload) == 5  # pre=1 + event_day + post=3
         assert np.all(np.isfinite(out.payload.values))
 

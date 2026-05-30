@@ -249,7 +249,7 @@ class TestLevelChangeUnitTransition:
     target produces a BPS-units WindowedPanel.  Verified against an
     independent hand-computed reference."""
 
-    def test_percent_input_emits_bps_panel(self):
+    def test_percent_level_change_preserves_percent(self):
         idx = list(pd.bdate_range("2026-01-02", periods=10))
         vals = [4.10, 4.12, 4.15, 4.18, 4.20, 4.50, 4.45, 4.40, 4.35, 4.30]
         s = _series("ust_10y", dates=idx, values=vals,
@@ -262,14 +262,14 @@ class TestLevelChangeUnitTransition:
                 pre_window=2, post_window=2, units_basis="level_change",
             ),
         )
-        # Independent hand-computation:
+        # Independent hand-computation (finance-blind / F1: level_change
+        # PRESERVES the input unit — no hidden ×100, output stays PERCENT):
         # event_day = 4.50.  Window slice = [4.18, 4.20, 4.50, 4.45, 4.40].
         # level_change = window - 4.50 = [-0.32, -0.30, 0.0, -0.05, -0.10]
-        # × 100 = [-32, -30, 0, -5, -10] (in BPS).
-        expected = np.array([-32.0, -30.0, 0.0, -5.0, -10.0])
+        expected = np.array([-0.32, -0.30, 0.0, -0.05, -0.10])
         np.testing.assert_allclose(panel.payload[0], expected, rtol=1e-9, atol=1e-9)
-        # Output unit transition recorded.
-        assert panel.units == TimeSeriesUnits.BPS
+        # Output unit is PRESERVED (PERCENT in → PERCENT out).
+        assert panel.units == TimeSeriesUnits.PERCENT
 
     def test_lineage_records_unit_transition(self):
         s = _series(
@@ -285,7 +285,7 @@ class TestLevelChangeUnitTransition:
         )
         params = panel.lineage.steps[-1].params
         assert params["input_units"] == "percent"
-        assert params["output_units"] == "bps"
+        assert params["output_units"] == "percent"  # F1: unit-preserving
         assert params["units_basis"] == "level_change"
 
     def test_bps_input_level_change_stays_bps(self):
@@ -522,12 +522,12 @@ class TestYamlDefaultAuthority:
         )
         es = _events_from(s, dates_to_fire=[s.payload.index[2]])
         # Caller omits units_basis — must pick up tweaked YAML's
-        # level_change → output units = BPS.
+        # level_change → output units = PERCENT (F1: unit-preserving).
         panel = event_windows(
             es, s, EventWindowsParams(pre_window=1, post_window=1),
             config=tweaked_cfg,
         )
-        assert panel.units == TimeSeriesUnits.BPS
+        assert panel.units == TimeSeriesUnits.PERCENT
         assert panel.lineage.steps[-1].params["units_basis"] == "level_change"
 
 
@@ -616,7 +616,7 @@ class TestComposition:
             ),
         )
         assert panel.n_events == 1
-        assert panel.units == TimeSeriesUnits.BPS
+        assert panel.units == TimeSeriesUnits.PERCENT  # F1: unit-preserving
 
         # Lineage end-to-end:
         # events.lineage = fetch + adapter + align + arithmetic +

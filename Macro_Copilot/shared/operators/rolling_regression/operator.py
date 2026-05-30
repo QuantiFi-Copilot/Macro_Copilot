@@ -80,19 +80,12 @@ def _effective_unit(unit: TimeSeriesUnits, basis: str) -> TimeSeriesUnits:
     consistency)."""
     if basis == "raw_value":
         return unit
-    # basis == "level_change"
-    if unit == TimeSeriesUnits.PERCENT:
-        # F1 RESIDUE (scheduled for extraction — ADR 0016 §Cross-
-        # verification close-out): same PERCENT→BPS election as
-        # event_windows.  Superseded in principle by Decision 4
-        # (``convert_units`` is the only sanctioned conversion site);
-        # retained only because ≈27 B-layer consumers depend on the BPS
-        # output and must migrate in lock-step.  Do NOT add new callers
-        # that rely on it.
-        return TimeSeriesUnits.BPS
-    # Other unit kinds keep their unit on diff (a BPS series's diff is
-    # still BPS; a Z_SCORE series's diff is still Z_SCORE — same
-    # operator-architecture rule).
+    # basis == "level_change": a difference PRESERVES the input unit
+    # (finance-blind — ADR 0016 Decision 4 / F1 extraction).  A percent
+    # series's change is in percent; a bps series's change is in bps; a
+    # Z_SCORE series's diff is still Z_SCORE.  Conversion to basis points,
+    # when a finance consumer wants it, is an explicit convert_units node
+    # (the sole conversion site), never a hidden ×100 election here.
     return unit
 
 
@@ -196,10 +189,10 @@ def rolling_regression(
             return series
         # level_change
         diffed = series.diff()
-        if unit == TimeSeriesUnits.PERCENT:
-            # F1 RESIDUE (×100 value side of the PERCENT→BPS election;
-            # ADR 0016 §Cross-verification close-out) — see _effective_unit.
-            diffed = diffed * 100.0
+        # Finance-blind (ADR 0016 Decision 4 / F1 extraction): the diff
+        # PRESERVES the input unit/scale — a percent series's change is in
+        # percent.  (beta is scale-invariant, so this does not change it;
+        # alpha is now in the input unit rather than basis points.)
         return diffed
 
     y = _prepare(lhs_aligned, lhs.units, params.lhs_basis)

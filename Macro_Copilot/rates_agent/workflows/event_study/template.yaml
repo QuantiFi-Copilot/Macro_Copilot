@@ -400,6 +400,20 @@ nodes:
     params:
       op: subtract                 # template-locked: abnormal = conditional - unconditional
 
+  # ---- Present the abnormal move in basis points (F1 extraction) ----
+  #
+  # event_windows is finance-blind (ADR 0016 Decision 4): its
+  # level_change output PRESERVES the target's unit (PERCENT for a yield
+  # target), so the abnormal-move series above is in the target's unit.
+  # A rates desk reads forward moves in basis points, so this template
+  # converts the terminal explicitly via the sole conversion operator —
+  # convert_units(PERCENT→BPS) is ×100; for a BPS target it is identity.
+  - kind: operator
+    node_id: convert
+    operator_name: convert_units
+    params:
+      target_units: bps            # template-locked: present moves in basis points
+
 edges:
 
   # ---- Cross-calendar alignment branch (Codex P2 follow-up) ----
@@ -464,6 +478,11 @@ edges:
     target_node_id: compare
     target_input_slot: right
 
+  # ---- Present in basis points (F1 extraction) ----
+  - source_node_id: compare
+    target_node_id: convert
+    target_input_slot: series
+
 literal_bindings: []
 
-terminal_node_id: compare
+terminal_node_id: convert

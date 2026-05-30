@@ -187,15 +187,17 @@ class TestTemplateStructure:
             "unconditional_aggregate",
             # Comparison
             "compare",
+            # Present the abnormal move in basis points (F1 extraction)
+            "convert",
         }
 
-    def test_template_terminal_is_compare(self):
-        """Terminal is the conditional-vs-unconditional comparison
-        (the abnormal forward-move Series), not the conditional
-        branch alone — per workflow_architecture.md's canonical
-        archetype shape."""
+    def test_template_terminal_is_convert(self):
+        """Terminal is the convert_units node presenting the
+        conditional-vs-unconditional abnormal move in basis points (F1
+        extraction — event_windows is now unit-preserving, so the
+        template converts explicitly via the sole conversion site)."""
         t = load_event_study_template()
-        assert t.terminal_node_id == "compare"
+        assert t.terminal_node_id == "convert"
 
     def test_template_locks_canonical_methodology(self):
         """Topology-locked params are NOT slot-substitutable.
@@ -501,6 +503,7 @@ class TestEndToEndRealRates:
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
             "compare",
+            "convert",
         }
 
     def test_workflow_lineage_summary_includes_every_node(self):
@@ -720,6 +723,7 @@ class TestInstrumentAgnostic:
             "unconditional_events", "unconditional_windows",
             "unconditional_aggregate",
             "compare",
+            "convert",
         }
 
 
@@ -1044,6 +1048,7 @@ class TestTemplateCard:
             "event_windows",
             "conditional_aggregate",
             "series_arithmetic",
+            "convert_units",
         }
 
     def test_card_terminal_artifact_type_is_Series(self):
@@ -1062,8 +1067,8 @@ class TestTemplateCard:
         # 4 select-output edges replace the prior direct
         # signal/target → events/windows/uncond_events/uncond_windows
         # edges).
-        assert card.node_count == 12
-        assert card.edge_count == 14
+        assert card.node_count == 13  # +1: convert_units terminal (F1 extraction)
+        assert card.edge_count == 15  # +1: compare → convert
 
 
 # ===========================================================================
@@ -1386,15 +1391,18 @@ class TestAbnormalMoveSignConvention:
                 primitive_resolver=rates_primitive_resolver,
             )
 
-        terminal = result.terminal_artifact.payload
+        # Read the `compare` node (the conditional−unconditional subtract,
+        # in PERCENT) — NOT the terminal `convert` node, which re-presents
+        # it in basis points (×100).  This test pins the subtract identity.
+        compare = result.node_artifacts["compare"].payload
         cond = result.node_artifacts["aggregate"].payload
         uncond = result.node_artifacts["unconditional_aggregate"].payload
         # All three Series must share length = post_window + 1.
-        assert len(terminal) == len(cond) == len(uncond) == 6
+        assert len(compare) == len(cond) == len(uncond) == 6
         # Numeric identity.
-        for i in range(len(terminal)):
+        for i in range(len(compare)):
             expected = float(cond.iloc[i]) - float(uncond.iloc[i])
-            actual = float(terminal.iloc[i])
+            actual = float(compare.iloc[i])
             assert np.isclose(actual, expected, atol=1e-9), (
                 f"abnormal series at offset {i}: expected "
                 f"{expected:.6f} (=conditional-unconditional) but got "

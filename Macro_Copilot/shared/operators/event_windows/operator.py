@@ -289,12 +289,12 @@ def event_windows(
                     continue
                 level_change_row = np.full_like(raw_row, np.nan)
             else:
+                # Finance-blind (ADR 0016 Decision 4 / F1 extraction): a
+                # level change PRESERVES the input unit/scale — no hidden
+                # PERCENT→BPS ×100 here.  Conversion to basis points, when
+                # a finance consumer wants it, is an explicit convert_units
+                # node downstream (the sole conversion site).
                 level_change_row = raw_row - event_day_value
-                # PERCENT → BPS: multiply by 100.  Other unit types
-                # are *unit-preserving* under level_change (e.g.,
-                # BPS - BPS stays BPS, RATIO - RATIO stays RATIO).
-                if target.units == TimeSeriesUnits.PERCENT:
-                    level_change_row = level_change_row * 100.0
             row = level_change_row
         else:
             # raw basis: cells are target values as-is.
@@ -401,15 +401,10 @@ def _resolve_output_units(
     if units_basis == "raw":
         return input_units
     if units_basis == "level_change":
-        if input_units == TimeSeriesUnits.PERCENT:
-            # F1 RESIDUE (scheduled for extraction — ADR 0016 §Cross-
-            # verification close-out): this PERCENT→BPS election is the
-            # one finance-flavoured behaviour left in the 9 operators.
-            # Superseded in principle by Decision 4 (``convert_units`` is
-            # the only sanctioned conversion site); retained only because
-            # ≈27 B-layer consumers depend on the BPS output and must
-            # migrate in lock-step.  Do NOT add new callers that rely on it.
-            return TimeSeriesUnits.BPS
+        # Finance-blind (ADR 0016 Decision 4 / F1 extraction): a level
+        # change PRESERVES the input unit.  Conversion to basis points,
+        # when a finance consumer wants it, is an explicit convert_units
+        # node (the sole conversion site), never a hidden election here.
         return input_units
     raise EventWindowsError(
         f"event_windows: unsupported units_basis={units_basis!r}."
