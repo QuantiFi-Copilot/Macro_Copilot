@@ -2376,8 +2376,8 @@
     "hash": "313a57a9c2d7901017ab464febf2b654"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_cointegration.py": {
-    "mtime": 1780160549.155957,
-    "hash": "b065c71839efa6f14413a3456566e25f"
+    "mtime": 1780163727.653227,
+    "hash": "2e76b2e1877b9d0d0d16f66e039745c7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_inflation_swap_curve_spread_parity.py": {
     "mtime": 1779733803.9658372,
@@ -2936,8 +2936,8 @@
     "hash": "ab336a71a04e70e3bbde5f9d741dc8d7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_operator_rolling_statistic.py": {
-    "mtime": 1780159830.5280254,
-    "hash": "1ff749a43c66f59a65f5f80de65e6e67"
+    "mtime": 1780163713.8255706,
+    "hash": "f69fb3aa8b7daeecd92c6face9551fc0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/tests/test_futures_volume_oi_sql_validation.py": {
     "mtime": 1779724486.0297058,
@@ -3560,8 +3560,8 @@
     "hash": "371bc71317764720b2d55eb15a4412a0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/operator.py": {
-    "mtime": 1780160449.7510579,
-    "hash": "f4736dcfb7c17f35d6d12f9c222d9fc0"
+    "mtime": 1780163948.3267179,
+    "hash": "8290f113c6dec040bfb51c963c490c22"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/cointegration/__init__.py": {
     "mtime": 1780160456.7336826,
@@ -3596,8 +3596,8 @@
     "hash": "dba23ecfc875f14c267f2c0f037759c7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/operator.py": {
-    "mtime": 1780159752.384596,
-    "hash": "0f9c66bf8b59d56a085fde2d93da2133"
+    "mtime": 1780163591.1054566,
+    "hash": "d1a894873a036238c3f9773a6fc14a42"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/shared/operators/rolling_statistic/__init__.py": {
     "mtime": 1780159758.5447977,
@@ -4804,7 +4804,7 @@
     "hash": "66655a13df84757b41c8eab35e1125b7"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/graphify-out/converted/rates_playbook_planning_manifest_784d2d10.md": {
-    "mtime": 1780160777.32202,
+    "mtime": 1780164145.2420192,
     "hash": "411f509e99c9fd44c55add78551d2ad0"
   },
   "/Volumes/Sreeram/Macro/Macro_Copilot/docs/problems.md": {
