@@ -16,7 +16,16 @@ import type {
   RegimeOutput,
   RealYieldLevelOutput,
   BreakevenInflationSimpleOutput,
+  BreakevenButterflyOutput,
+  BreakevenCurveSpreadOutput,
+  RealYieldButterflyOutput,
   RealYieldCurveSpreadOutput,
+  CrossMarketInflationSwapSpreadOutput,
+  InflationSwapButterflyOutput,
+  OisButterflyOutput,
+  OisCurveSpreadOutput,
+  ScanInflationSwapsExtremesOutput,
+  PolicyFuturesPriceLevelOutput,
 } from '@/types/rates';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -158,6 +167,222 @@ export function fetchDetailBreakeven(
 }
 
 // ---------------------------------------------------------------------------
+// /detail/breakeven-butterfly  — standalone bridge for the 3-point
+// same-country breakeven butterfly (curvature of the bond-implied
+// breakeven curve).  Own typed helper; consumed by BOTH the extended
+// and compact Build views and the Monitor tile.  Same four exposed
+// methodology overrides as the spot breakeven primitive.
+// ---------------------------------------------------------------------------
+
+export type BreakevenButterflyDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBreakevenButterfly(
+  params: BreakevenButterflyDetailParams,
+): Promise<BreakevenButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/breakeven-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/breakeven-curve-spread  — standalone bridge for the same-country
+// bond-implied breakeven curve spread (2-point tenor spread on a single
+// nominal/linker pair, e.g. UST/USD_TIPS 2s10s breakeven).  Own typed
+// helper per the standalone-bridge contract; consumed by BOTH Build
+// views and the Monitor tile.  Rolling-z-score conventions are YAML-
+// locked on this primitive — only ``lookback_days`` + ``field_name`` are
+// exposed at the input layer (mirrors the sibling breakeven-butterfly
+// bridge).
+// ---------------------------------------------------------------------------
+
+export type BreakevenCurveSpreadDetailParams = {
+  nominal_curve_family: string;
+  linker_curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailBreakevenCurveSpread(
+  params: BreakevenCurveSpreadDetailParams,
+): Promise<BreakevenCurveSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/breakeven-curve-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/real-yield-butterfly  — same-country linker real-yield butterfly
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE linker curve (no nominal pair — distinct
+// from breakeven-butterfly).  Own typed helper per the standalone-bridge
+// contract; consumed by BOTH Build views and the Monitor tile.  The
+// rolling-z-score conventions are YAML-locked on this primitive (no
+// input-layer overrides); field_name remains overridable.
+
+export type RealYieldButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailRealYieldButterfly(
+  params: RealYieldButterflyDetailParams,
+): Promise<RealYieldButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/real-yield-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/cross-market-zcis  — same-tenor cross-market ZCIS spread bridge
+// ---------------------------------------------------------------------------
+// Two-curve, single-tenor primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).
+// Own typed helper per the standalone-bridge contract; consumed by BOTH
+// Build views and the Monitor tile.  The rolling-z-score conventions are
+// YAML-locked on this primitive (no input-layer overrides); ``field_name``
+// + ``lookback_days`` remain exposed.
+
+export type CrossMarketZcisDetailParams = {
+  leg_a_curve_family: string;
+  leg_b_curve_family: string;
+  tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailCrossMarketZcis(
+  params: CrossMarketZcisDetailParams,
+): Promise<CrossMarketInflationSwapSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/cross-market-zcis${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/zcis-butterfly  — same-curve ZCIS butterfly bridge
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE ZCIS curve family (e.g. USD_ZCIS 2s5s10s,
+// EUR_ZCIS 5s10s30s, GBP_ZCIS 2s10s30s).  Own typed helper per the standalone-
+// bridge contract; consumed by BOTH Build views and the Monitor tile.  The
+// rolling-z-score conventions are YAML-locked on this primitive (no input-
+// layer overrides — mirrors the sibling breakeven-butterfly / real-yield-
+// butterfly bridges); ``field_name`` + ``lookback_days`` remain exposed.
+
+export type InflationSwapButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailInflationSwapButterfly(
+  params: InflationSwapButterflyDetailParams,
+): Promise<InflationSwapButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/zcis-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-butterfly  — same-curve OIS butterfly bridge
+// ---------------------------------------------------------------------------
+// Three-point curvature on a SINGLE OIS curve family (e.g. USD_SOFR_OIS
+// 2s5s10s, EUR_ESTR_OIS 2s5s10s, GBP_SONIA_OIS 2s5s10s).  Own typed helper
+// per the standalone-bridge contract; consumed by BOTH Build views and the
+// Monitor tile.  Rolling-z-score conventions are YAML-locked on this
+// primitive (no input-layer overrides — mirrors the sibling sovereign /
+// linker / ZCIS butterfly bridges); ``field_name`` + ``lookback_days``
+// remain exposed.
+
+export type OisButterflyDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  belly_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisButterfly(
+  params: OisButterflyDetailParams,
+): Promise<OisButterflyOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-butterfly${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/ois-curve-spread  — same-curve OIS tenor spread bridge
+// ---------------------------------------------------------------------------
+// Two-point spread on a SINGLE OIS curve family (e.g. USD_SOFR_OIS 2s10s,
+// EUR_ESTR_OIS 1s5s, GBP_SONIA_OIS 5s30s).  Own typed helper per the
+// standalone-bridge contract; consumed by BOTH Build views and the Monitor
+// tile.  Rolling-z-score conventions are YAML-locked on this primitive (no
+// input-layer overrides — mirrors the sibling OIS butterfly bridge);
+// ``lookback_days`` + ``field_name`` remain exposed.
+
+export type OisCurveSpreadDetailParams = {
+  curve_family: string;
+  short_tenor: string;
+  long_tenor: string;
+  lookback_days?: number;
+  field_name?: string;
+};
+
+export function fetchDetailOisCurveSpread(
+  params: OisCurveSpreadDetailParams,
+): Promise<OisCurveSpreadOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/ois-curve-spread${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /detail/zcis-scanner  — universe-wide ZCIS rate-extremes scanner bridge
+// ---------------------------------------------------------------------------
+// First SCANNER-shape primitive under the standalone-bridge contract.  Wire
+// returns a ranked LIST of extremes — the per-tool BuildCompact renders a
+// top-N table (NOT a sparkline), the BuildExtended renders the universe
+// scan + full ranked detail.  Rolling-z-score conventions are YAML-locked
+// on this primitive; only scope / threshold / anchor inputs are exposed.
+
+export type ZcisScannerDetailParams = {
+  /** Comma-separated list of ZCIS curve families (e.g.
+   *  "USD_ZCIS,EUR_ZCIS"). Omit for the full universe. */
+  curve_families?: string;
+  /** Number of extreme stems to return; omit for the YAML default. */
+  top_n?: number;
+  /** Minimum absolute z-score threshold; omit for the YAML default. */
+  min_abs_z_score?: number;
+  /** ISO-format date (YYYY-MM-DD) anchoring the scan; omit for the
+   *  most-recent shared trading day in the DB. */
+  as_of_date?: string;
+};
+
+export function fetchDetailZcisScanner(
+  params: ZcisScannerDetailParams,
+): Promise<ScanInflationSwapsExtremesOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/zcis-scanner${buildQuery(params)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // /detail/real_yield_curve_spread  — Stage-C standalone bridge
 // ---------------------------------------------------------------------------
 // Same-country linker real-yield curve spread (long − short real yield).
@@ -225,6 +450,39 @@ export function fetchDetailButterfly(
   params: ButterflyDetailParams,
 ): Promise<ButterflyOutput> {
   return fetchJSON(`${RATES_PREFIX}/detail/butterfly${buildQuery(params)}`);
+}
+
+// ---------------------------------------------------------------------------
+// /detail/policy-futures-price  — policy_futures strip-position price level
+// ---------------------------------------------------------------------------
+// Standalone bridge for the policy_futures futures_price_level primitive
+// (SFR1 / SFR2 / ER1 / SFI1 / ... strip slots on SOFR_FUT / SONIA_FUT /
+// EUR_SHORT_RATE_FUT).  Keyed by ``(curve_family, strip_position)`` per
+// ADR 0013 — strip-position-keyed monitors.  Consumed by BOTH the
+// extended and compact Build views and the Monitor tile (single payload,
+// different rendering density per rendering_density.md §1.1).
+//
+// Per ADR 0013 V1 there are no LLM-facing override paths for conventions
+// (z_score_window_days / trailing_range_window_days etc. are YAML-locked);
+// only the structural ``(curve_family, strip_position)`` keys plus
+// ``lookback_days`` / ``as_of_date`` / ``field_name`` are exposed.
+
+export type PolicyFuturesPriceDetailParams = {
+  curve_family: string;
+  strip_position: number;
+  lookback_days?: number;
+  /** YYYY-MM-DD; omit to anchor at the universe's last observed
+   *  trade_date for the requested strip (post-fetch data-max anchor). */
+  as_of_date?: string;
+  field_name?: string;
+};
+
+export function fetchDetailPolicyFuturesPrice(
+  params: PolicyFuturesPriceDetailParams,
+): Promise<PolicyFuturesPriceLevelOutput> {
+  return fetchJSON(
+    `${RATES_PREFIX}/detail/policy-futures-price${buildQuery(params)}`,
+  );
 }
 
 export type RegimeDetailParams = {

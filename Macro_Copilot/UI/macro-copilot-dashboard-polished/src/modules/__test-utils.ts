@@ -52,7 +52,7 @@ export interface ModuleTestFs {
 }
 
 async function defaultFs(): Promise<ModuleTestFs> {
-  // @ts-expect-error — Node only.  Test runner uses esbuild
+  // @ts-ignore — Node only.  Test runner uses esbuild
   // --platform=node so this import resolves at bundle time.
   return (await import('fs')) as ModuleTestFs;
 }

@@ -12,6 +12,7 @@ Each returns the complete tool output including time_series for charts.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -76,6 +77,128 @@ from rates_agent.inflation_indexed_bonds.tools.real_yield_curve_spread import (
     RealYieldCurveSpreadInput,
     RealYieldCurveSpreadOutput,
     calculate_real_yield_curve_spread,
+)
+# Standalone-bridge endpoint for the same-country bond-implied breakeven
+# butterfly primitive (3-point breakeven curvature).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_butterfly import (
+    CONFIG_PATH as BREAKEVEN_BUTTERFLY_CONFIG_PATH,
+    BreakevenButterflyInput,
+    BreakevenButterflyOutput,
+    calculate_breakeven_butterfly,
+)
+# Standalone-bridge endpoint for the same-country bond-implied breakeven
+# curve spread primitive (2-point tenor spread on a single nominal/linker
+# pair — the inflation-compensation term-structure object).  Per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Same-country invariant inherited transitively from the spot breakeven
+# primitive's ``_enforce_same_country_invariant`` guard.
+from rates_agent.inflation_indexed_bonds.tools.breakeven_curve_spread import (
+    CONFIG_PATH as BREAKEVEN_CURVE_SPREAD_CONFIG_PATH,
+    BreakevenCurveSpreadInput,
+    BreakevenCurveSpreadOutput,
+    calculate_breakeven_curve_spread,
+)
+# Standalone-bridge endpoint for the same-country linker real-yield
+# butterfly primitive (3-point curvature on a SINGLE linker curve — no
+# nominal pair).  Per ``docs_revamped/03_standards/methodology_exposure.md
+# §5`` every new tool ships its OWN typed-detail endpoint consumed by
+# both the extended and compact Build views (rendering_density dual-view)
+# + the Monitor tile.
+from rates_agent.inflation_indexed_bonds.tools.real_yield_butterfly import (
+    CONFIG_PATH as REAL_YIELD_BUTTERFLY_CONFIG_PATH,
+    RealYieldButterflyInput,
+    RealYieldButterflyOutput,
+    calculate_real_yield_butterfly,
+)
+# Standalone-bridge endpoint for the same-tenor cross-market ZCIS spread
+# primitive (e.g. USD_ZCIS 5Y minus EUR_ZCIS 5Y).  First inflation_swaps tool
+# under the standalone-bridge contract — per
+# ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Surfaces the load-bearing index-family caveat (USD_ZCIS / EUR_ZCIS /
+# GBP_ZCIS reference different indices — NOT a clean expected-inflation
+# divergence) via the wire's per-leg metadata + ``index_family_caveat``.
+from rates_agent.inflation_swaps.tools.cross_market_inflation_swap_spread import (
+    CONFIG_PATH as CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH,
+    CrossMarketInflationSwapSpreadInput,
+    CrossMarketInflationSwapSpreadOutput,
+    calculate_cross_market_inflation_swap_spread,
+)
+# Standalone-bridge endpoint for the same-curve zero-coupon inflation swap
+# (ZCIS) butterfly primitive (3-point curvature on ONE ZCIS curve family).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Surfaces the load-bearing index-family caveat (CPI-U / HICPxT / RPI are
+# distinct inflation measures) via the same-curve invariant — all three legs
+# share inflation_index_family / index_lag / interpolation / underlying_index.
+from rates_agent.inflation_swaps.tools.inflation_swap_butterfly import (
+    CONFIG_PATH as INFLATION_SWAP_BUTTERFLY_CONFIG_PATH,
+    InflationSwapButterflyInput,
+    InflationSwapButterflyOutput,
+    calculate_inflation_swap_butterfly,
+)
+# Standalone-bridge endpoint for the universe-wide ZCIS rate-extremes scanner.
+# First SCANNER-shape primitive under the dual-view contract — the wire
+# returns a ranked LIST of (curve_family, tenor) extremes rather than a single
+# time series, so this endpoint feeds the per-tool BuildCompact (top-N table)
+# and BuildExtended (universe scan + ranked detail) per
+# ``docs_revamped/03_standards/rendering_density.md §10`` + the standalone-
+# bridge contract (``methodology_exposure.md §5``).
+from rates_agent.inflation_swaps.tools.scan_inflation_swaps_extremes import (
+    CONFIG_PATH as SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+    ScanInflationSwapsExtremesInput,
+    ScanInflationSwapsExtremesOutput,
+    calculate_scan_inflation_swaps_extremes,
+)
+# Standalone-bridge endpoint for the same-curve OIS butterfly primitive (3-point
+# curvature on ONE OIS par-swap curve family — e.g. USD_SOFR_OIS 2s5s10s).
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` every new tool
+# ships its OWN typed-detail endpoint consumed by both the extended and
+# compact Build views (rendering_density dual-view) + the Monitor tile.
+# Single-curve, raw OIS par-rate-space curvature — POSITIVE = belly cheap,
+# NEGATIVE = belly rich.  Risk-neutral policy-pricing caveat surfaces on the
+# methodology card (OIS prices the expected policy path, not realised outcomes).
+from rates_agent.ois.tools.calculate_ois_butterfly import (
+    CONFIG_PATH as OIS_BUTTERFLY_CONFIG_PATH,
+    OISButterflyInput,
+    OISButterflyOutput,
+    calculate_ois_butterfly,
+)
+# Standalone-bridge endpoint for the same-curve OIS curve-spread primitive
+# (2-point tenor spread on ONE OIS par-swap curve family — e.g. USD_SOFR_OIS
+# 2s10s).  Same standalone-bridge contract as the OIS butterfly bridge: own
+# typed-detail endpoint consumed by both the extended and compact Build views
+# (rendering_density dual-view) + the Monitor tile.  Single-curve, raw OIS
+# par-rate-space spread (long − short, in BPS).  Risk-neutral policy-pricing
+# caveat surfaces on the methodology card (OIS prices the expected policy
+# path, not realised outcomes).  Rolling-z-score conventions are YAML-locked
+# on this primitive — only ``lookback_days`` + ``field_name`` are exposed.
+from rates_agent.ois.tools.curve_spread import (
+    CONFIG_PATH as OIS_CURVE_SPREAD_CONFIG_PATH,
+    OISCurveSpreadInput,
+    OISCurveSpreadOutput,
+    calculate_ois_curve_spread,
+)
+# Standalone-bridge endpoint for the policy_futures strip-position price level
+# primitive (SFR1 / SFR2 / ER1 / SFI1 / ... — STIR strip slots on
+# SOFR_FUT / EUR_SHORT_RATE_FUT / SONIA_FUT).  Keyed by
+# ``(curve_family, strip_position)`` per ADR 0013.  Same standalone-bridge
+# contract as the other rates primitives: own typed-detail endpoint consumed
+# by both the extended and compact Build views (rendering_density dual-view)
+# + the Monitor tile.  Methodology disclosure flows verbatim from
+# compute()'s ``methodology_disclosure`` string (NOT a hardcoded TS literal).
+from rates_agent.policy_futures.tools.futures_price_level import (
+    CONFIG_PATH as POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH,
+    FuturesPriceLevelInput,
+    FuturesPriceLevelOutput,
+    calculate_futures_price_level,
 )
 from rates_agent.sovereign_bonds.tools.zscore_custom import (
     CONFIG_PATH as ZSCORE_CUSTOM_CONFIG_PATH,
@@ -518,6 +641,684 @@ def real_yield_curve_spread_detail(
     return result
 
 
+# ----------------------------------------------------------------------------
+# /detail/breakeven-butterfly  — same-country breakeven butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# breakeven_butterfly primitive ships its OWN typed-detail endpoint.
+# The same payload feeds BOTH the extended and compact Build views and
+# the Monitor tile (rendering_density.md §10).  Same four Phase-1
+# methodology overrides as the spot breakeven primitive (the inner
+# composed calls share the same z-score window / min-periods / ddof
+# / field_name semantics).
+# ============================================================================
+@router.get(
+    "/detail/breakeven-butterfly",
+    response_model=BreakevenButterflyOutput,
+    summary="Bond-Implied Breakeven Butterfly Detail (standalone bridge)",
+)
+def breakeven_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL SIX underlying series "
+            "(nominal + linker at each endpoint tenor).  Omit (None) to "
+            "use the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The breakeven-butterfly primitive intentionally does NOT expose the
+    Phase-1 z-score overrides at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.
+    """
+    try:
+        params = BreakevenButterflyInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bbf_config = load_tool_config(BREAKEVEN_BUTTERFLY_CONFIG_PATH)
+        result = calculate_breakeven_butterfly(
+            engine=engine, params=params, config=bbf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/breakeven-butterfly: tool failed for %s vs %s %s/%s/%s",
+            nominal_curve_family, linker_curve_family,
+            short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Breakeven butterfly for {nominal_curve_family} vs "
+        f"{linker_curve_family} {short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/breakeven-curve-spread  — same-country breakeven curve spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# breakeven_curve_spread primitive ships its OWN typed-detail endpoint.
+# Same-country 2-point tenor spread on a single nominal/linker pair (e.g.
+# UST/USD_TIPS 2s10s breakeven, UK_GILT/GBP_LINKER 5s30s breakeven).  The
+# same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  The rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof (mirrors the sibling breakeven-butterfly bridge).
+# ============================================================================
+@router.get(
+    "/detail/breakeven-curve-spread",
+    response_model=BreakevenCurveSpreadOutput,
+    summary="Bond-Implied Breakeven Curve Spread Detail (standalone bridge)",
+)
+def breakeven_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    nominal_curve_family: str = Query(..., description="Nominal sovereign curve family — UST / UK_GILT / FR_OAT / CANADA_GOVT"),
+    linker_curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short tenor of the spread (e.g. '2Y' for 2s10s)"),
+    long_tenor: str = Query(..., description="Long tenor of the spread (e.g. '10Y' for 2s10s) — must be strictly longer than short_tenor"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL FOUR underlying series "
+            "(nominal + linker at each endpoint tenor).  Omit (None) to "
+            "use the tool's bundled ``default_field_name`` convention "
+            "(currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The breakeven-curve-spread primitive intentionally does NOT expose
+    the Phase-1 z-score overrides at its Input layer — its rolling-z-
+    score conventions are sourced from the YAML at compute() time only
+    (mirrors the sibling breakeven-butterfly primitive).
+    """
+    try:
+        params = BreakevenCurveSpreadInput(
+            nominal_curve_family=nominal_curve_family,
+            linker_curve_family=linker_curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        bcs_config = load_tool_config(BREAKEVEN_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_breakeven_curve_spread(
+            engine=engine, params=params, config=bcs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/breakeven-curve-spread: tool failed for %s vs %s %s/%s",
+            nominal_curve_family, linker_curve_family,
+            short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Breakeven curve spread for {nominal_curve_family} vs "
+        f"{linker_curve_family} {short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/real-yield-butterfly  — same-country linker real-yield butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# real_yield_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve primitive — one linker ``curve_family`` + three strictly-
+# ordered tenors; no nominal counterparty (distinct from breakeven-butterfly).
+# The same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  The rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof.
+# ============================================================================
+@router.get(
+    "/detail/real-yield-butterfly",
+    response_model=RealYieldButterflyOutput,
+    summary="Linker Real-Yield Butterfly Detail (standalone bridge)",
+)
+def real_yield_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Linker curve family — USD_TIPS / GBP_LINKER / EUR_FR_LINKER / CAD_RRB"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '5Y' for 5s10s30s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '10Y' for 5s10s30s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '30Y' for 5s10s30s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint real-yield "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_field_name`` convention (currently 'YLD_YTM_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the
+    frontend module's ``surfaces/BuildExtended.tsx``,
+    ``surfaces/BuildCompact.tsx``, AND the Monitor widget per the
+    rendering-density dual-view + monitor contract.
+
+    The real-yield-butterfly primitive intentionally does NOT expose the
+    Phase-1 z-score overrides at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  This
+    mirrors the sibling breakeven-butterfly bridge.
+    """
+    try:
+        params = RealYieldButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        ryb_config = load_tool_config(REAL_YIELD_BUTTERFLY_CONFIG_PATH)
+        result = calculate_real_yield_butterfly(
+            engine=engine, params=params, config=ryb_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/real-yield-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Real-yield butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/cross-market-zcis  — same-tenor cross-market ZCIS spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# cross_market_inflation_swap_spread primitive ships its OWN typed-detail
+# endpoint.  Two-curve, single-tenor primitive — two ZCIS curve families
+# (e.g. USD_ZCIS, EUR_ZCIS, GBP_ZCIS) at a shared pillar (e.g. 5Y).
+# Schema layer rejects ``leg_a_curve_family == leg_b_curve_family`` (same-
+# curve, two-tenor spreads belong to ``inflation_swap_curve_spread``).
+# The same payload feeds BOTH the extended and compact Build views and the
+# Monitor tile (rendering_density.md §10).  Rolling-z-score conventions
+# are YAML-locked on this primitive — no input-layer overrides for window /
+# min-periods / ddof; only ``lookback_days`` + ``field_name`` are exposed.
+# ============================================================================
+@router.get(
+    "/detail/cross-market-zcis",
+    response_model=CrossMarketInflationSwapSpreadOutput,
+    summary="Cross-Market ZCIS Spread Detail (standalone bridge)",
+)
+def cross_market_zcis_detail(
+    engine: Engine = Depends(get_engine),
+    leg_a_curve_family: str = Query(..., description="Left (numerator) ZCIS curve family — USD_ZCIS / EUR_ZCIS / GBP_ZCIS"),
+    leg_b_curve_family: str = Query(..., description="Right (denominator) ZCIS curve family.  Must differ from leg_a_curve_family"),
+    tenor: str = Query(..., description="Single tenor pillar shared by both legs (e.g. '5Y', '10Y')"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic threaded into BOTH endpoint ZCIS "
+            "level series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The cross-market ZCIS spread primitive intentionally does NOT expose
+    the z-score conventions at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  This
+    mirrors the sibling breakeven-butterfly / real-yield-butterfly bridges.
+    """
+    try:
+        params = CrossMarketInflationSwapSpreadInput(
+            leg_a_curve_family=leg_a_curve_family,
+            leg_b_curve_family=leg_b_curve_family,
+            tenor=tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        cmzcis_config = load_tool_config(CROSS_MARKET_INFLATION_SWAP_SPREAD_CONFIG_PATH)
+        result = calculate_cross_market_inflation_swap_spread(
+            engine=engine, params=params, config=cmzcis_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/cross-market-zcis: tool failed for %s - %s %s",
+            leg_a_curve_family, leg_b_curve_family, tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Cross-market ZCIS spread for {leg_a_curve_family} - "
+        f"{leg_b_curve_family} {tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/zcis-butterfly  — same-curve ZCIS butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# inflation_swap_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve, three-tenor primitive — one ZCIS ``curve_family`` (e.g.
+# USD_ZCIS, EUR_ZCIS, GBP_ZCIS) plus three strictly-ordered tenors; cross-
+# curve butterflies are forbidden by the schema layer.  The same payload
+# feeds BOTH the extended and compact Build views and the Monitor tile
+# (rendering_density.md §10).  Rolling-z-score conventions are YAML-locked
+# on this primitive (no input-layer overrides — mirrors the breakeven-
+# butterfly / real-yield-butterfly siblings).
+# ============================================================================
+@router.get(
+    "/detail/zcis-butterfly",
+    response_model=InflationSwapButterflyOutput,
+    summary="Same-Curve ZCIS Butterfly Detail (standalone bridge)",
+)
+def zcis_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(..., description="Inflation-swap curve family — USD_ZCIS / EUR_ZCIS / GBP_ZCIS"),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s, '5Y' for 5s10s30s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s, '10Y' for 5s10s30s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s, '30Y' for 5s10s30s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint ZCIS rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_zcis_rate_field`` convention (currently 'PX_MID')."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The inflation_swap_butterfly primitive intentionally does NOT expose the
+    z-score conventions at its Input layer — its rolling-z-score
+    conventions are sourced from the YAML at compute() time only.  Mirrors
+    the sibling breakeven-butterfly / real-yield-butterfly bridges.
+    """
+    try:
+        params = InflationSwapButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        zcisfly_config = load_tool_config(INFLATION_SWAP_BUTTERFLY_CONFIG_PATH)
+        result = calculate_inflation_swap_butterfly(
+            engine=engine, params=params, config=zcisfly_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zcis-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/ois-butterfly  — same-curve OIS butterfly bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# calculate_ois_butterfly primitive ships its OWN typed-detail endpoint.
+# Single-curve, three-tenor primitive — one OIS ``curve_family`` (closed enum
+# sourced from rates_agent/playbooks/ois.yml: USD_SOFR_OIS / EUR_ESTR_OIS /
+# GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS) plus three distinct tenors;
+# the schema layer rejects duplicate tenors at construction time.  The same
+# payload feeds BOTH the extended and compact Build views and the Monitor
+# tile (rendering_density.md §10).  Rolling-z-score conventions are YAML-
+# locked on this primitive (mirrors the sibling sovereign / linker / ZCIS
+# butterflies — no input-layer overrides for window / min-periods / ddof);
+# only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+# ============================================================================
+@router.get(
+    "/detail/ois-butterfly",
+    response_model=OISButterflyOutput,
+    summary="Same-Curve OIS Butterfly Detail (standalone bridge)",
+)
+def ois_butterfly_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family — closed enum sourced from "
+            "rates_agent/playbooks/ois.yml: USD_SOFR_OIS / EUR_ESTR_OIS / "
+            "GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS."
+        ),
+    ),
+    short_tenor: str = Query(..., description="Short wing tenor (e.g. '2Y' for 2s5s10s)"),
+    belly_tenor: str = Query(..., description="Belly tenor (e.g. '5Y' for 2s5s10s)"),
+    long_tenor: str = Query(..., description="Long wing tenor (e.g. '10Y' for 2s5s10s) — must satisfy short < belly < long"),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for ALL THREE endpoint OIS par-swap "
+            "rate series.  Omit (None) to use the tool's bundled "
+            "``default_swap_rate_field`` convention (currently 'PX_LAST' — "
+            "the OIS Bloomberg mid-rate field, NOT the sovereign "
+            "'YLD_YTM_MID' yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OIS butterfly primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling
+    sovereign / linker / ZCIS butterfly bridges.
+    """
+    try:
+        params = OISButterflyInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            belly_tenor=belly_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        oisfly_config = load_tool_config(OIS_BUTTERFLY_CONFIG_PATH)
+        result = calculate_ois_butterfly(
+            engine=engine, params=params, config=oisfly_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-butterfly: tool failed for %s %s/%s/%s",
+            curve_family, short_tenor, belly_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS butterfly for {curve_family} "
+        f"{short_tenor}/{belly_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/ois-curve-spread  — same-curve OIS tenor spread bridge
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# calculate_ois_curve_spread primitive ships its OWN typed-detail endpoint.
+# Single-curve, two-tenor primitive — one OIS ``curve_family`` (USD_SOFR_OIS
+# / EUR_ESTR_OIS / GBP_SONIA_OIS / JPY_OIS / AUD_OIS / CAD_OIS) plus a
+# (short_tenor, long_tenor) pair; the schema layer rejects identical tenors
+# at construction time.  The same payload feeds BOTH the extended and compact
+# Build views and the Monitor tile (rendering_density.md §10).  Rolling-
+# z-score conventions are YAML-locked on this primitive (mirrors the sibling
+# OIS butterfly bridge — no input-layer overrides for window / min-periods /
+# ddof); only ``lookback_days`` + ``field_name`` are exposed at the API layer.
+# ============================================================================
+@router.get(
+    "/detail/ois-curve-spread",
+    response_model=OISCurveSpreadOutput,
+    summary="Same-Curve OIS Tenor Spread Detail (standalone bridge)",
+)
+def ois_curve_spread_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "OIS curve family identifier.  Examples: 'USD_SOFR_OIS', "
+            "'EUR_ESTR_OIS', 'GBP_SONIA_OIS', 'JPY_OIS', 'AUD_OIS', "
+            "'CAD_OIS'."
+        ),
+    ),
+    short_tenor: str = Query(
+        ...,
+        description=(
+            "Short leg of the spread.  OIS curves have a dense short-end "
+            "grid: '1W', '1M', '2M', '3M', '6M', '9M', '1Y', '2Y', '3Y'."
+        ),
+    ),
+    long_tenor: str = Query(
+        ...,
+        description=(
+            "Long leg of the spread.  Examples: '2Y', '5Y', '10Y', '20Y', "
+            "'30Y'.  Must differ from short_tenor."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg field mnemonic for both endpoint OIS par-swap rate "
+            "series.  Omit (None) to use the tool's bundled "
+            "``default_swap_rate_field`` convention (currently 'PX_LAST' — "
+            "the OIS Bloomberg mid-rate field, NOT the sovereign "
+            "'YLD_YTM_MID' yield-to-maturity field)."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx``, ``surfaces/BuildCompact.tsx``,
+    AND the Monitor widget per the rendering-density dual-view + monitor
+    contract.
+
+    The OIS curve-spread primitive intentionally does NOT expose the z-score
+    conventions at its Input layer — its rolling-z-score conventions are
+    sourced from the YAML at compute() time only.  Mirrors the sibling OIS
+    butterfly bridge.
+    """
+    try:
+        params = OISCurveSpreadInput(
+            curve_family=curve_family,
+            short_tenor=short_tenor,
+            long_tenor=long_tenor,
+            lookback_days=lookback_days,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        cs_config = load_tool_config(OIS_CURVE_SPREAD_CONFIG_PATH)
+        result = calculate_ois_curve_spread(
+            engine=engine, params=params, config=cs_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/ois-curve-spread: tool failed for %s %s/%s",
+            curve_family, short_tenor, long_tenor,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"OIS curve spread for {curve_family} {short_tenor}/{long_tenor}",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/zcis-scanner  — universe-wide ZCIS rate-extremes scanner bridge
+# ----------------------------------------------------------------------------
+# First SCANNER-shape primitive under the standalone-bridge contract.  Wire
+# shape is a ranked LIST (top-N rows by |z| of the 252d-rolling ZCIS rate
+# level z-score) rather than a single time series — the BuildCompact view
+# renders this as a top-N table (NOT a sparkline) and the BuildExtended view
+# renders the same payload as a universe scan + full ranked detail.  The
+# rolling-z-score conventions are YAML-locked on this primitive (no input-
+# layer overrides — mirrors the sibling linker / bond_futures scanners);
+# ``curve_families`` / ``top_n`` / ``min_abs_z_score`` / ``as_of_date``
+# remain exposed.
+# ============================================================================
+@router.get(
+    "/detail/zcis-scanner",
+    response_model=ScanInflationSwapsExtremesOutput,
+    summary="ZCIS Universe Extremes Scan (standalone bridge)",
+)
+def zcis_scanner_detail(
+    engine: Engine = Depends(get_engine),
+    curve_families: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated list of ZCIS curve families to scan.  Omit "
+            "(None) for the full universe (USD_ZCIS / EUR_ZCIS / "
+            "GBP_ZCIS).  Pass a CSV to narrow (e.g. 'USD_ZCIS,EUR_ZCIS')."
+            "  Non-ZCIS families are refused at schema-validation time."
+        ),
+    ),
+    top_n: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Number of extreme stems to return.  Omit (None) to fall "
+            "through to the YAML default (currently 5)."
+        ),
+    ),
+    min_abs_z_score: Optional[float] = Query(
+        default=None,
+        ge=0.0,
+        description=(
+            "Minimum absolute z-score threshold for inclusion.  Omit "
+            "(None) to fall through to the YAML default (currently 1.5)."
+        ),
+    ),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the scan.  Omit "
+            "(None) to anchor to the most-recent shared trading day in "
+            "the DB across the universe."
+        ),
+    ),
+):
+    """Same payload semantics as the MCP wrapper; consumed by the frontend
+    module's ``surfaces/BuildExtended.tsx`` (universe scan + ranked detail)
+    AND ``surfaces/BuildCompact.tsx`` (top-N table) per the rendering-
+    density dual-view contract + the Monitor widget per the standalone-
+    bridge contract.
+
+    The rolling-z-score conventions are YAML-locked on this primitive —
+    only scope / threshold / anchor inputs are exposed at the API layer.
+    """
+    parsed_families: Optional[List[str]] = None
+    if curve_families and curve_families.strip():
+        parsed_families = [
+            cf.strip() for cf in curve_families.split(",") if cf.strip()
+        ]
+
+    as_of_arg: Optional[date]
+    if as_of_date and as_of_date.strip():
+        try:
+            as_of_arg = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Invalid as_of_date {as_of_date!r}: must be ISO "
+                    f"YYYY-MM-DD (e.g. '2026-04-08'). Detail: {exc}"
+                ),
+            )
+    else:
+        as_of_arg = None
+
+    try:
+        params = ScanInflationSwapsExtremesInput(
+            curve_families=parsed_families,
+            top_n=top_n,
+            min_abs_z_score=min_abs_z_score,
+            as_of_date=as_of_arg,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        scan_config = load_tool_config(
+            SCAN_INFLATION_SWAPS_EXTREMES_CONFIG_PATH,
+        )
+        result = calculate_scan_inflation_swaps_extremes(
+            engine=engine, params=params, config=scan_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/zcis-scanner: tool failed for curve_families=%s",
+            parsed_families,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"ZCIS universe scan ({', '.join(parsed_families) if parsed_families else 'full universe'})",
+    )
+    return result
+
+
 @router.get("/detail/spread", response_model=CurveSpreadOutput, summary="Curve Spread Detail (workspace)")
 def spread_detail(
     engine: Engine = Depends(get_engine),
@@ -950,5 +1751,106 @@ def pca_yield_curve_detail(
         result,
         f"PCA for {curve_family} (n_components={n_components}, "
         f"{change_frequency}, lookback={lookback_days}d)",
+    )
+    return result
+
+
+# ----------------------------------------------------------------------------
+# /detail/policy-futures-price  — policy_futures strip-position price level
+# ----------------------------------------------------------------------------
+# Per ``docs_revamped/03_standards/methodology_exposure.md §5`` the
+# ``policy_futures_get_futures_price_level_tool`` primitive ships its OWN
+# typed-detail endpoint.  Keyed by ``(curve_family, strip_position)`` per
+# ADR 0013 (strip-position-keyed monitors).  Conventions are YAML-locked
+# in V1; only the structural keys plus ``lookback_days`` / ``as_of_date``
+# / ``field_name`` are exposed (mirrors the MCP wrapper's input surface).
+@router.get(
+    "/detail/policy-futures-price",
+    response_model=FuturesPriceLevelOutput,
+    summary="Policy Futures Strip-Position Price Level Detail (standalone bridge)",
+)
+def policy_futures_price_detail(
+    engine: Engine = Depends(get_engine),
+    curve_family: str = Query(
+        ...,
+        description=(
+            "Policy-futures curve family — 'SOFR_FUT' (US RFR), "
+            "'EUR_SHORT_RATE_FUT' (Euribor IBOR), 'SONIA_FUT' (UK RFR)."
+        ),
+    ),
+    strip_position: int = Query(
+        ...,
+        ge=1,
+        le=12,
+        description=(
+            "1-based strip position. 1 = front contract; whites = 1-4, "
+            "reds = 5-8 in the V1 universe."
+        ),
+    ),
+    lookback_days: int = Query(default=365, ge=30, le=7300),
+    as_of_date: Optional[str] = Query(
+        default=None,
+        description=(
+            "ISO-format date (YYYY-MM-DD) anchoring the snapshot.  Omit "
+            "to anchor at the universe's last observed trade_date for "
+            "the requested strip (post-fetch data-max anchor).  A date "
+            "BEYOND the universe's last observed trade_date returns the "
+            "documented controlled-error envelope rather than silently "
+            "re-labelling an unbounded read."
+        ),
+    ),
+    field_name: Optional[str] = Query(
+        default=None,
+        description=(
+            "Bloomberg observation field mnemonic.  Omit (None) to use "
+            "the tool's bundled ``default_price_field`` convention from "
+            "futures_price_level/config.yaml (currently 'PX_LAST').  "
+            "Per config.yaml:default_price_field."
+        ),
+    ),
+):
+    """Same payload + sentinel semantics as the MCP wrapper.  Consumed by
+    ``surfaces/BuildExtended.tsx`` AND ``surfaces/BuildCompact.tsx`` per
+    the rendering-density dual-view contract, plus the Monitor tile.
+    None-sentinels on ``field_name`` / ``as_of_date`` fall through to the
+    YAML default / data-max anchor via compute() — same shadowing fix
+    pattern as sovereign get_yield_levels / linker real_yield_level.
+    """
+    parsed_as_of: Optional[date] = None
+    if as_of_date and as_of_date.strip():
+        try:
+            parsed_as_of = date.fromisoformat(as_of_date.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid as_of_date {as_of_date!r}: {exc}",
+            )
+
+    try:
+        params = FuturesPriceLevelInput(
+            curve_family=curve_family,
+            strip_position=strip_position,
+            lookback_days=lookback_days,
+            as_of_date=parsed_as_of,
+            field_name=field_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid parameters: {exc}")
+
+    try:
+        pf_config = load_tool_config(POLICY_FUTURES_PRICE_LEVEL_CONFIG_PATH)
+        result = calculate_futures_price_level(
+            engine=engine, params=params, config=pf_config,
+        )
+    except Exception as exc:
+        logger.exception(
+            "detail/policy-futures-price: tool failed for %s strip=%d",
+            curve_family, strip_position,
+        )
+        raise HTTPException(status_code=503, detail=f"Database error: {exc}")
+
+    _tool_result_or_raise(
+        result,
+        f"Policy futures price level for {curve_family} strip={strip_position}",
     )
     return result

@@ -76,7 +76,7 @@ let _cachedSource: string | null = null;
 
 async function loadRichModelWidgetSource(): Promise<string> {
   if (_cachedSource !== null) return _cachedSource;
-  // @ts-expect-error - node-only module; esbuild --platform=node resolves it.
+  // @ts-ignore - node-only module; esbuild --platform=node resolves it.
   const fs = (await import('fs')) as NodeFs;
   const _g = globalThis as unknown as NodeGlobal;
   const cwd = _g.process?.cwd?.() ?? '.';
@@ -257,7 +257,7 @@ const PREVIEW_WIDGETS_BY_TOOL: Array<{
 ];
 
 async function loadPreviewWidgetSource(toolName: string): Promise<string> {
-  // @ts-expect-error - node-only.
+  // @ts-ignore - node-only.
   const fs = (await import('fs')) as NodeFs;
   const _g = globalThis as unknown as NodeGlobal;
   const cwd = _g.process?.cwd?.() ?? '.';

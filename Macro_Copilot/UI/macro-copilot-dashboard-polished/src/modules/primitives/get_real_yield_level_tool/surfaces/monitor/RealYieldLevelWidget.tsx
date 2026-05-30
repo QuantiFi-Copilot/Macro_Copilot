@@ -170,11 +170,6 @@ export function RealYieldLevelWidget({ params }: Props) {
   );
 }
 
-// Suppress unused: zToneClass is computed for the z-meta badge above
-// (kept named for future use when the body adds a second z-coloured
-// element).
-void (null as unknown as typeof zToneClass);
-
 // ----------------------------------------------------------------------------
 // Local fetcher — mirrors useFetchDetailYield in the sovereign analog.
 // Stable JSON key prevents re-fetch churn on parent re-renders.

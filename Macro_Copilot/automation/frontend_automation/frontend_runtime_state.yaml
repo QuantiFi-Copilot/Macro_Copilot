@@ -1,0 +1,1826 @@
+version: '1.0'
+branch: frontend_automation
+backend: claude-cli
+orchestrator_status: catalog_exhausted
+current_tool: null
+current_tool_backend_name: null
+current_step: committed
+dispatch_round: null
+last_dispatch_at: '2026-05-30T01:23:00Z'
+last_successful_tool: policy_futures__futures_price_level
+last_successful_commit: d8e8233
+last_reviewer_heading: APPROVED
+last_gate_result: pass
+last_stop_reason: catalog_exhausted
+last_error: null
+last_updated: "2026-05-30T02:07:00Z"
+done: 9
+blocked: 0
+remaining: 0
+quota_state: probe_unavailable
+quota_snapshot: null
+quota_snapshot_at: '2026-05-29T15:52:00Z'
+quota_snapshot_fresh: false
+quota_note: |
+  `claude /status` is not available in non-interactive automation
+  ("/status isn't available in this environment").  Per
+  QUOTA_AND_RESUME_POLICY.md §3 the orchestrator proceeds in
+  runtime-enforced mode: dispatch normally, stop only if the
+  actual provider returns a real quota signal (detected by
+  parse_reviewer_log.py setting reviewer_quota_exhausted: true).
+reviewer_mode: claude_only
+reviewer_mode_history:
+  - at: '2026-05-29T00:00:00Z'
+    note: |
+      This factory uses Claude for BOTH builder and reviewer (single-engine
+      design).  There is NO fallback engine.  See DESIGN_PRINCIPLES.md §10
+      and SINGLE_REVIEW_ROUND_POLICY.md.  Quota exhaustion on either
+      dispatch triggers a clean waiting_quota stop; the next cron wake
+      retries.
+catalog_exhausted_at: '2026-05-30T01:38:00Z'
+human_required: null
+status_notes:
+  - at: '2026-05-30T02:07:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 02:07 UTC on 2026-05-30 (cron id 450aa21c-
+      625d-4ad7-b3da-ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml.
+      Branch check passed (on `frontend_automation`).  Tree clean
+      against HEAD 5cdfd4c on entry.  Catalog state unchanged from
+      prior wake @01:52: done=9, blocked=0, remaining=0, no
+      eligible work under the selection order
+      (in_progress / changes_required / waiting_quota / todo all
+      empty).  Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule +
+      BACKGROUND_EXECUTION_POLICY §8, this wake is a clean no-op:
+      orchestrator_status + last_stop_reason remain
+      `catalog_exhausted`, last_updated bumped to 02:07, no
+      dispatches, no source code changes.  Second consecutive no-op
+      wake since tool 9 shipped.  The cron entry-point short-circuit
+      (BACKGROUND_EXECUTION_POLICY §8.2) is still not engaging — the
+      cron continues to dispatch the orchestrator prompt even with
+      `orchestrator_status: catalog_exhausted` set.  That is a cron
+      entry-point bug, not an orchestrator bug; tracked via the
+      recurring pattern in this status_notes log.  Resumption
+      requires a human to either (a) append a new entry to
+      `frontend_tool_catalog.yaml` with non-terminal status, or
+      (b) set `orchestrator_status: idle` in this file per
+      BACKGROUND_EXECUTION_POLICY §8.3.  Wake exits cleanly.
+
+  - at: '2026-05-30T01:52:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 01:52 UTC on 2026-05-30 (cron id 450aa21c-
+      625d-4ad7-b3da-ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml.
+      Branch check passed (on `frontend_automation`).  Tree clean
+      against HEAD cbd5613 on entry.  Catalog state unchanged from
+      prior wake @01:38 (tool 9 shipped that wake; nothing has
+      mutated the catalog since): done=9, blocked=0, remaining=0,
+      no eligible work under the selection order
+      (in_progress / changes_required / waiting_quota / todo all
+      empty).  Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule +
+      BACKGROUND_EXECUTION_POLICY §8, this wake is a clean no-op:
+      orchestrator_status + last_stop_reason remain
+      `catalog_exhausted`, last_updated bumped to 01:52, no
+      dispatches, no source code changes.  First no-op wake since
+      tool 9 shipped (the prior consecutive no-op streak under the
+      pre-resolution `done=7 / blocked=2` state ended when tools 2
+      and 9 were unblocked + shipped @00:48 → 01:38).  The cron
+      entry-point short-circuit (BACKGROUND_EXECUTION_POLICY §8.2)
+      is still not engaging — the cron continues to dispatch the
+      orchestrator prompt even with `orchestrator_status:
+      catalog_exhausted` set.  That is a cron entry-point bug, not
+      an orchestrator bug; tracked via the recurring pattern in
+      this status_notes log.  Resumption requires a human to either
+      (a) append a new entry to `frontend_tool_catalog.yaml` with
+      non-terminal status, or (b) set `orchestrator_status: idle`
+      in this file per BACKGROUND_EXECUTION_POLICY §8.3.  Wake
+      exits cleanly.
+
+  - at: '2026-05-30T01:38:00Z'
+    kind: tool_shipped_catalog_exhausted
+    text: |
+      Cron-fired wake at 01:37 UTC (cron id 450aa21c-625d-4ad7-b3da-
+      ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md + frontend_tool_catalog.yaml +
+      frontend_runtime_state.yaml.  Branch check passed (on `frontend_automation`,
+      HEAD 134b4b6).  On entry the tree carried an in-flight dispatch for tool 9
+      (`policy_futures__futures_price_level`): builder finished @01:21, reviewer
+      dispatched @01:23 with the builder's diff sitting unstaged.  Reviewer log
+      finalized @01:30 (`/tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log`,
+      2362 bytes).  `parse_reviewer_log.py` returned
+      `{"ok": true, "heading": "APPROVED", "environment_failure": false,
+        "reviewer_quota_exhausted": false}` — Case C.  Reviewer confirmed all
+      three round-1 findings addressed (the two double-`·` identity bugs +
+      the structural shell-density mismatch resolved per Option (c) acceptance,
+      documented in THESIS `## Mockup conformance`).
+
+      Pre-commit gate (orchestrator-run, all from
+      UI/macro-copilot-dashboard-polished/):
+        npm run typecheck         clean
+        npm run test:modules      `policy_futures_get_futures_price_level_tool:
+                                    8 passed, 0 failed`; all 58 modules + registry pass
+        npm run test:build        all build-folder tests pass
+
+      Mirrors:
+        surface_contract.md §4.5 row updated:
+          build_archetype: generic-builder → typed-result-renderer
+          build_status:    scaffolded      → dual-view-built
+          monitor_status:  deferred        → built (PolicyFuturesPriceLevel widget)
+          (monitor_elig was already `required`)
+        surface_contract.md §11 added v17 entry covering the ship.
+        §10 not edited (pilot-pinned).
+        `graphify update` — skipped, not on PATH on this VM
+        (recorded per ORCHESTRATOR_PROMPT Mirrors §2 fallback;
+         same precedent as v16, v15, v14, v13, etc.).
+
+      Commit on `frontend_automation` per the template; catalog tool 9 flipped
+      → `status: done`, `last_review_heading: APPROVED`, `last_gate_result: pass`,
+      `active_step: committed`.  Tool 2's already-uncommitted commit_sha backfill
+      (`commit_sha: 134b4b6` line for `inflation_indexed_bonds__breakeven_curve_spread`)
+      is bundled into the same work commit so the tree returns clean.
+
+      Counts on exit: done=9 / blocked=0 / remaining=0 — catalog fully shipped.
+      orchestrator_status flips → `catalog_exhausted`, last_stop_reason →
+      `catalog_exhausted`, catalog_exhausted_at → 01:38.
+      last_successful_tool → `policy_futures__futures_price_level`,
+      last_successful_commit → `pending-backfill` (a second tiny automation
+      commit will land the actual SHA after the work commit, mirroring the
+      tool 7 / tool 8 pattern at 1a41454 + 2a22a5e).
+
+      Next cron wake: the entry-point script
+      (BACKGROUND_EXECUTION_POLICY §8) should short-circuit on
+      `orchestrator_status: catalog_exhausted` and exit before invoking
+      this prompt.  If it fires anyway, the wake should be a clean no-op
+      (no eligible work under the selection order; no dispatches).
+
+  - at: '2026-05-30T00:07:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 00:07 UTC on 2026-05-30 (cron id 450aa21c-
+      625d-4ad7-b3da-ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml.
+      Branch check passed (on `frontend_automation`).  Tree clean
+      against HEAD b689cae on entry.  Catalog state unchanged from
+      prior wake @23:52 (only HEAD advance was 23:52's own no-op
+      commit): done=7, blocked=2 (tools 2 + 9, both
+      human_action_required: true), remaining=0, no eligible work
+      under the selection order.  Per ORCHESTRATOR_PROMPT.md
+      Catalog-exhaustion rule, this wake is a clean no-op:
+      orchestrator_status + last_stop_reason remain `catalog_exhausted`,
+      last_updated bumped to 00:07, no dispatches, no source code
+      changes.  6th consecutive no-op wake; the cron entry-point
+      short-circuit (BACKGROUND_EXECUTION_POLICY §8) is not engaging.
+      Resumption gated on the human action documented in the
+      `human_required` block + tool 2's catalog block_reason; see the
+      @23:37 status note for the full resumption checklist (not
+      repeated here to keep the file's size sane).  Wake exits cleanly.
+
+  - at: '2026-05-29T23:52:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 23:52 UTC (cron id 450aa21c-625d-4ad7-b3da-
+      ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml as
+      required.  Branch check passed
+      (`automation/frontend_automation/check_branch.sh` → OK on
+      `frontend_automation`).
+
+      Catalog state on entry (unchanged from prior wake @23:37):
+        done:      7   (tools 1, 3, 4, 5, 6, 7, 8)
+        blocked:   2   (tool 2 mockup_content_mismatch + tool 9
+                        reviewer_findings_structural_no_fix_attempt;
+                        both have human_action_required: true)
+        remaining: 0
+        eligible work under selection order (in_progress →
+        changes_required → waiting_quota → todo): NONE.
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule, this wake is
+      a clean no-op:
+        - orchestrator_status remains `catalog_exhausted` (set @22:28)
+        - last_stop_reason remains `catalog_exhausted` (durable value
+          per the rule; the structural-finding reason that originally
+          triggered exhaustion is preserved in tool 9's catalog
+          block_reason + the human_required block + the @22:28 +
+          @22:52 + @23:07 + @23:22 + @23:37 status notes)
+        - last_updated bumped to 23:52
+        - no dispatches, no commits to source code, no tree changes
+        - tree clean against HEAD d31543a on entry (verified
+          `git status --short` empty)
+
+      The cron entry-point script (BACKGROUND_EXECUTION_POLICY §8) is
+      expected to short-circuit future wakes by reading
+      `orchestrator_status: catalog_exhausted` and exiting before the
+      orchestrator prompt is invoked.  This wake (like @22:52 + @23:07
+      + @23:22 + @23:37) fired the prompt anyway, so it repeated the
+      no-op pattern.  All such wakes will continue to repeat until a
+      human flips tool 2 or tool 9 back to `todo`.
+
+      Resumption requires one of:
+        Tool 2 — human re-authors
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/
+          {Compact,Extended}.png to depict a 2-leg curve spread
+          (template: calculate_real_yield_curve_spread_tool/mockups
+          adapted from PERCENT → BPS), then flips
+          catalog status: blocked → todo + clears
+          human_action_required: true → false.
+        Tool 9 — human decides between (a) extending
+          BuildCompactShell + BuildCompactShellProps with `subtitle`
+          + `secondaryKpis` slots (touches 10+ shipped compact views;
+          outside the 4-file fix-pass blast-radius rule) OR
+          (b) revising
+          UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line).  Either path can be combined
+          with hand-applying findings #1 + #2 (1-line double-"·" fixes
+          per the catalog block_reason) on the re-dispatch.
+
+      Until one of those happens, the factory has nothing to do.
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T23:37:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 23:37 UTC (cron id 450aa21c-625d-4ad7-b3da-
+      ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml as
+      required.  Branch check passed
+      (`automation/frontend_automation/check_branch.sh` → OK on
+      `frontend_automation`).
+
+      Catalog state on entry (unchanged from prior wake @23:22):
+        done:      7   (tools 1, 3, 4, 5, 6, 7, 8)
+        blocked:   2   (tool 2 mockup_content_mismatch + tool 9
+                        reviewer_findings_structural_no_fix_attempt;
+                        both have human_action_required: true)
+        remaining: 0
+        eligible work under selection order (in_progress →
+        changes_required → waiting_quota → todo): NONE.
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule, this wake is
+      a clean no-op:
+        - orchestrator_status remains `catalog_exhausted` (set @22:28)
+        - last_stop_reason remains `catalog_exhausted` (durable value
+          per the rule; the structural-finding reason that originally
+          triggered exhaustion is preserved in tool 9's catalog
+          block_reason + the human_required block + the @22:28 +
+          @22:52 + @23:07 + @23:22 status notes)
+        - last_updated bumped to 23:37
+        - no dispatches, no commits to source code, no tree changes
+        - tree clean against HEAD dd09b48 on entry (verified
+          `git status --short` empty)
+
+      The cron entry-point script (BACKGROUND_EXECUTION_POLICY §8) is
+      expected to short-circuit future wakes by reading
+      `orchestrator_status: catalog_exhausted` and exiting before the
+      orchestrator prompt is invoked.  This wake (like @22:52 + @23:07
+      + @23:22) fired the prompt anyway, so it repeated the no-op
+      pattern.  All such wakes will continue to repeat until a human
+      flips tool 2 or tool 9 back to `todo`.
+
+      Resumption requires one of:
+        Tool 2 — human re-authors
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/
+          {Compact,Extended}.png to depict a 2-leg curve spread
+          (template: calculate_real_yield_curve_spread_tool/mockups
+          adapted from PERCENT → BPS), then flips
+          catalog status: blocked → todo + clears
+          human_action_required: true → false.
+        Tool 9 — human decides between (a) extending
+          BuildCompactShell + BuildCompactShellProps with `subtitle`
+          + `secondaryKpis` slots (touches 10+ shipped compact views;
+          outside the 4-file fix-pass blast-radius rule) OR
+          (b) revising
+          UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line).  Either path can be combined
+          with hand-applying findings #1 + #2 (1-line double-"·" fixes
+          per the catalog block_reason) on the re-dispatch.
+
+      Until one of those happens, the factory has nothing to do.
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T23:22:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 23:22 UTC (cron id 450aa21c-625d-4ad7-b3da-
+      ef39a6ba7784).  Read ORCHESTRATOR_PROMPT.md +
+      frontend_tool_catalog.yaml + frontend_runtime_state.yaml as
+      required.  Branch check passed
+      (`automation/frontend_automation/check_branch.sh` → OK on
+      `frontend_automation`).
+
+      Catalog state on entry (unchanged from prior wake @23:07):
+        done:      7   (tools 1, 3, 4, 5, 6, 7, 8)
+        blocked:   2   (tool 2 mockup_content_mismatch + tool 9
+                        reviewer_findings_structural_no_fix_attempt;
+                        both have human_action_required: true)
+        remaining: 0
+        eligible work under selection order (in_progress →
+        changes_required → waiting_quota → todo): NONE.
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule, this wake is
+      a clean no-op:
+        - orchestrator_status remains `catalog_exhausted` (set @22:28)
+        - last_stop_reason remains `catalog_exhausted` (durable value
+          per the rule; the structural-finding reason that originally
+          triggered exhaustion is preserved in tool 9's catalog
+          block_reason + the human_required block + the @22:28 +
+          @22:52 + @23:07 status notes)
+        - last_updated bumped to 23:22
+        - no dispatches, no commits to source code, no tree changes
+        - tree clean against HEAD 43969c6 on entry (verified
+          `git status --short` empty)
+
+      The cron entry-point script (BACKGROUND_EXECUTION_POLICY §8) is
+      expected to short-circuit future wakes by reading
+      `orchestrator_status: catalog_exhausted` and exiting before the
+      orchestrator prompt is invoked.  This wake (like @22:52 + @23:07)
+      fired the prompt anyway, so it repeated the no-op pattern.  All
+      such wakes will continue to repeat until a human flips tool 2
+      or tool 9 back to `todo`.
+
+      Resumption requires one of:
+        Tool 2 — human re-authors
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/
+          {Compact,Extended}.png to depict a 2-leg curve spread
+          (template: calculate_real_yield_curve_spread_tool/mockups
+          adapted from PERCENT → BPS), then flips
+          catalog status: blocked → todo + clears
+          human_action_required: true → false.
+        Tool 9 — human decides between (a) extending
+          BuildCompactShell + BuildCompactShellProps with `subtitle`
+          + `secondaryKpis` slots (touches 10+ shipped compact views;
+          outside the 4-file fix-pass blast-radius rule) OR
+          (b) revising
+          UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line).  Either path can be combined
+          with hand-applying findings #1 + #2 (1-line double-"·" fixes
+          per the catalog block_reason) on the re-dispatch.
+
+      Until one of those happens, the factory has nothing to do.
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T23:07:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 23:07 UTC (cron id 450aa21c-…).  Read
+      ORCHESTRATOR_PROMPT.md + frontend_tool_catalog.yaml +
+      frontend_runtime_state.yaml as required.  Branch check passed
+      (`automation/frontend_automation/check_branch.sh` → OK on
+      `frontend_automation`).
+
+      Catalog state on entry (unchanged from prior wake @22:52):
+        done:      7   (tools 1, 3, 4, 5, 6, 7, 8)
+        blocked:   2   (tool 2 mockup_content_mismatch + tool 9
+                        reviewer_findings_structural_no_fix_attempt;
+                        both have human_action_required: true)
+        remaining: 0
+        eligible work under selection order (in_progress →
+        changes_required → waiting_quota → todo): NONE.
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule, this wake is
+      a clean no-op:
+        - orchestrator_status remains `catalog_exhausted` (set @22:28)
+        - last_stop_reason remains `catalog_exhausted` (durable value
+          per the rule; the structural-finding reason that originally
+          triggered exhaustion is preserved in tool 9's catalog
+          block_reason + the human_required block + the @22:28 +
+          @22:52 status notes)
+        - last_updated bumped to 23:07
+        - no dispatches, no commits to source code, no tree changes
+        - tree clean against HEAD 95b7b9a on entry (verified
+          `git status --short` empty)
+
+      The cron entry-point script (BACKGROUND_EXECUTION_POLICY §8) is
+      expected to short-circuit future wakes by reading
+      `orchestrator_status: catalog_exhausted` and exiting before the
+      orchestrator prompt is invoked.  Each wake that fires the prompt
+      anyway (as this one did, like @22:52) will repeat this no-op
+      pattern until a human flips tool 2 or tool 9 back to `todo`.
+
+      Resumption requires one of:
+        Tool 2 — human re-authors
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/
+          {Compact,Extended}.png to depict a 2-leg curve spread
+          (template: calculate_real_yield_curve_spread_tool/mockups
+          adapted from PERCENT → BPS), then flips
+          catalog status: blocked → todo + clears
+          human_action_required: true → false.
+        Tool 9 — human decides between (a) extending
+          BuildCompactShell + BuildCompactShellProps with `subtitle`
+          + `secondaryKpis` slots (touches 10+ shipped compact views;
+          outside the 4-file fix-pass blast-radius rule) OR
+          (b) revising
+          UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line).  Either path can be combined
+          with hand-applying findings #1 + #2 (1-line double-"·" fixes
+          per the catalog block_reason) on the re-dispatch.
+
+      Until one of those happens, the factory has nothing to do.
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T22:52:00Z'
+    kind: cron_wake_noop_catalog_exhausted
+    text: |
+      Cron-fired wake at 22:52 UTC (cron id 450aa21c-…).  Read
+      ORCHESTRATOR_PROMPT.md + frontend_tool_catalog.yaml +
+      frontend_runtime_state.yaml as required.  Branch check passed
+      (`automation/frontend_automation/check_branch.sh` → OK on
+      `frontend_automation`).
+
+      Catalog state on entry (unchanged from prior wake @22:28):
+        done:      7   (tools 1, 3, 4, 5, 6, 7, 8)
+        blocked:   2   (tool 2 mockup_content_mismatch + tool 9
+                        reviewer_findings_structural_no_fix_attempt;
+                        both have human_action_required: true)
+        remaining: 0
+        eligible work under selection order (in_progress →
+        changes_required → waiting_quota → todo): NONE.
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule, this wake is
+      a clean no-op:
+        - orchestrator_status remains `catalog_exhausted` (set @22:28)
+        - last_stop_reason advanced from
+          `reviewer_findings_structural_no_fix_attempt` →
+          `catalog_exhausted` (the literal rule-mandated value once the
+          state is durable; the structural-finding reason is preserved
+          in tool 9's catalog block_reason + the human_required block
+          + the @22:28 status note)
+        - last_updated bumped to 22:52
+        - no dispatches, no commits, no tree changes
+
+      The cron entry-point script (BACKGROUND_EXECUTION_POLICY §8) is
+      expected to short-circuit future wakes by reading
+      `orchestrator_status: catalog_exhausted` and exiting before the
+      orchestrator prompt is invoked.  If wakes continue to fire the
+      prompt anyway (as this one did), each wake will repeat this
+      no-op pattern until a human flips tool 2 or tool 9 back to
+      `todo`.
+
+      Resumption requires one of:
+        Tool 2 — human re-authors
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/
+          {Compact,Extended}.png to depict a 2-leg curve spread
+          (template: calculate_real_yield_curve_spread_tool/mockups
+          adapted from PERCENT → BPS), then flips
+          catalog status: blocked → todo + clears
+          human_action_required: true → false.
+        Tool 9 — human decides between (a) extending
+          BuildCompactShell + BuildCompactShellProps with `subtitle`
+          + `secondaryKpis` slots (touches 10+ shipped compact views;
+          outside the 4-file fix-pass blast-radius rule) OR
+          (b) revising
+          UI/.../policy_futures_get_futures_price_level_tool/
+          mockups/Compact.png down to the shell's standard density
+          (3 KPIs, single identity line).  Either path can be combined
+          with hand-applying findings #1 + #2 (1-line double-"·" fixes
+          per the catalog block_reason) on the re-dispatch.
+
+      Until one of those happens, the factory has nothing to do.
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T22:28:00Z'
+    kind: tool_9_blocked_catalog_exhausted
+    text: |
+      Tool 9 (policy_futures__futures_price_level) Dispatch 2 reviewer
+      verdict: CHANGES REQUIRED with 3 findings, 1 prefixed `STRUCTURAL:`.
+      Reviewer log
+      /tmp/claude_frontend_reviewer_run_policy_futures_price_level_round2.log
+      (5576 bytes) parsed: heading=CHANGES REQUIRED, environment_failure=
+      false, reviewer_quota_exhausted=false.
+
+      Findings (verbatim summary, full text in catalog block_reason):
+        #1 CONCRETE  surfaces/BuildCompact.tsx:67 — double "·" separator
+                     (BuildCompactShell already inserts the glyph).  1-line
+                     fix.
+        #2 CONCRETE  surfaces/BuildExtended.tsx:243 — same double "·" bug
+                     in extended identity.  1-line fix.
+        #3 STRUCTURAL Compact.png mockup demands density (2-line identity
+                      + 6 secondary KPIs) the shared BuildCompactShell
+                      cannot deliver without API changes touching 10+
+                      shipped compact views.  Human design call:
+                      extend shell OR revise mockup down.
+
+      Adjudication per SINGLE_REVIEW_ROUND_POLICY.md §3 + ORCHESTRATOR_PROMPT
+      Case D step 1:
+        ANY STRUCTURAL: prefix → mark human_required, SKIP Dispatch 3.
+      Decision: NO Dispatch 3.  Tool 9 → status: blocked +
+      human_action_required: true.  Builder diff discarded per default
+      blocked-and-discardable rule (no explicit human preservation
+      directive on entry).  Tree clean against HEAD 2a22a5e after
+      `git restore` (THESIS.md, module.ts, __tests__/module.spec.ts,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) + `git clean -fd` (surfaces/ folder).
+
+      Pipeline summary (this wake):
+        Entry state                            tool 8 builder_dispatched
+                                                @21:33; this wake @21:52
+                                                reconstructed
+        Dispatch 1 reviewer (tool 8)           parsed builder log
+                                                @21:50 (full BUILDER
+                                                REPORT, ~17m runtime)
+        Dispatch 2 reviewer (tool 8)           APPROVED @21:59 (~5m)
+        Pre-commit gate (tool 8)               npm run test:modules ✓
+                                                test:build ✓ typecheck ✓
+        Mirrors update (tool 8)                surface_contract.md §4.2
+                                                row updated; v15 §11
+                                                entry added.  graphify
+                                                SKIPPED (not on PATH).
+        Commit (tool 8)                        a0364d4 frontend(curve_spread)
+        Backfill + advance commit              2a22a5e chore(automation)
+        Dispatch 1 builder (tool 9)            exit 0 @22:19 (~13m, full
+                                                BUILDER REPORT;
+                                                self-tests green;
+                                                documented Extended.png
+                                                vol/OI deviation per
+                                                NO_GO_RULES)
+        Dispatch 2 reviewer (tool 9)           CHANGES REQUIRED @22:26
+                                                (~6m, 5576-byte review)
+        Adjudication                           STRUCTURAL → human_required;
+                                                NO Dispatch 3
+        Blocked-diff disposition               discarded (default rule)
+        Catalog state                          done: 7, blocked: 2,
+                                                remaining: 0
+
+      Catalog exhaustion rule triggered: every entry is `done` or
+      `blocked` (tool 2 mockup_content_mismatch + tool 9 structural
+      findings).  Setting orchestrator_status: catalog_exhausted,
+      last_stop_reason: reviewer_findings_structural_no_fix_attempt
+      (the proximate cause for THIS wake's stop; the catalog-exhausted
+      state is the durable downstream consequence).
+
+      Per ORCHESTRATOR_PROMPT.md Catalog-exhaustion rule + the cron
+      entry-point script (BACKGROUND_EXECUTION_POLICY §8), future cron
+      wakes will read `orchestrator_status: catalog_exhausted` at the
+      top and exit without invoking this prompt.  Resumption requires
+      human action on either tool 2 (re-author mockups) or tool 9
+      (resolve structural mismatch + flip status: blocked → todo).
+
+      Wake exits cleanly with no additional dispatches.
+
+  - at: '2026-05-29T22:03:00Z'
+    kind: wake_continued_tool_9_dispatched
+    text: |
+      Same wake as tool 8 commit.  Advancing to last eligible tool per
+      BACKGROUND_EXECUTION_POLICY §3 selection order: tool 9
+      (policy_futures__futures_price_level, build_order 9).
+      Categorically distinct from tools 1-8 — SNAPSHOT shape, not a
+      butterfly/spread chart.  Reference is get_real_yield_level_tool
+      (Phase-1 snapshot pilot).
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/policy_futures/tools/futures_price_level/
+          {__init__.py, config.yaml, schemas.py, compute.py}
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/policy_futures/mcp_server.py:200
+          def get_futures_price_level_tool(
+          (matches catalog's pre_flight_backend_audit.mcp_tool_name
+           which differs from backend_tool_name policy_futures_get_*_tool
+           — wrapper unprefixed inside its own domain namespace; workflow
+           registry at workflows/__init__.py L1147 disambiguates from the
+           bond_futures sibling at L1079)
+        Check 3 (curated migration file)       PASS via 3(b)
+          database/migrations/2026-05-29_phase1_policy_futures_get_futures_price_level_curated.sql
+        Check 4 (mockups Compact+Extended)     PASS
+          sha256 C=39c4e5f… E=ecad482… (unique in catalog from
+          tool 2's catalog-wide audit; no byte-collision with any
+          other tool)
+
+      Defensive vision sanity check (post-tool-2 lesson): viewed both
+      PNGs as images via the Read tool.  Confirmed content matches the
+      catalog's tool 9 SNAPSHOT concept:
+        - Compact: "Policy Futures Price Level · SNAPSHOT" header,
+          "SFR1 · SOFR Whites Pack" identity, "WHITES · SOFR 1st
+          Quarterly" sub-tag, 3 KPIs (IMPLIED RATE 4.25% (Price 95.75) /
+          1D CHANGE -4.5 bp (-1.05%) / Z-SCORE 252D +1.36 Elevated),
+          implied-rate sparkline with ±2σ / ±1.5σ bands, range strip
+          (5D / 1M change + 252D PCTL/HIGH/LOW/OBSERVATIONS), caveat
+          footer "100-minus-rate; UP price = DOWN implied rate (dovish)"
+          + "Rolling-generic strip read at position 1." + flag chip +
+          freshness indicator + expand affordance.
+        - Extended: same identity + KPI strip (PRICE 95.75 / 1D / 5D /
+          IMPLIED-RATE z-score / 252D pctl) + volume & open-interest
+          side panel + implied-rate chart with bands + methodology card
+          + lineage footer + controls strip (FAMILY / TENOR / CONTRACT
+          / LAST_PRICE / etc.).
+        - Snapshot shape per catalog design guardrails: "Mirror
+          get_real_yield_level_tool's snapshot shape (level + change +
+          z-score + range strip)" + "Quote convention: 100-minus-rate;
+          note in methodology disclosure that an UP price = DOWN implied
+          rate (dovish)".  Both honored on the mockup.
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      policy_futures__futures_price_level, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via run_claude_builder.sh on
+      `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_policy_futures_price_level_round1.md.  Log:
+      /tmp/claude_frontend_builder_run_policy_futures_price_level_round1.log.
+      Quota probe still unavailable; runtime-enforced.
+
+  - at: '2026-05-29T22:00:00Z'
+    kind: tool_8_committed_advance
+    text: |
+      Tool 8 (ois__curve_spread) APPROVED on first review.  Reviewer log
+      /tmp/claude_frontend_reviewer_run_ois_curve_spread_round2.log
+      (6194 bytes) parsed: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false.
+
+      Wake reconstructed state on entry: prior wake's Dispatch 1 builder
+      (dispatched 21:33 UTC) had completed by ~21:50 UTC.  Builder log
+      /tmp/claude_frontend_builder_run_ois_curve_spread_round1.log
+      (4363 bytes) reports all 4 surfaces files created + 3 Stage-3
+      stubs overwritten + shared infra updated (src/types/rates.ts +
+      src/services/ratesApi.ts + api/routes/rates/detail.py route ADDED
+      not replaced) + self-tests green.  No retry needed.
+
+      Pipeline summary:
+        Dispatch 1 (builder)                   exit 0 ~21:50 (~17m, full
+                                               BUILDER REPORT in log)
+        Dispatch 2 (reviewer)                  APPROVED ~21:59 (~5m,
+                                               6194-byte review)
+        Pre-commit gate (orchestrator):
+          npm run test:modules ✓
+            calculate_ois_curve_spread_tool: 6 passed, 0 failed
+            all module + registry tests passed
+          npm run test:build   ✓ (all build-folder tests passed)
+          npm run typecheck    ✓ (tsc --noEmit clean)
+        Mirrors update:
+          surface_contract.md §4.2 row updated in place
+            (build_archetype generic-builder → typed-result-renderer,
+             build_status scaffolded → dual-view-built,
+             monitor_status deferred → built (OisCurveSpread widget);
+             monitor_elig was already required).
+          §11 v15 changelog entry added.
+          §10.3 untouched (pilot-pinned to original 3 Phase-1 pilots).
+          graphify update: SKIPPED — not on PATH on this VM (recorded
+            per ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      Reviewer notes (verbatim from log):
+        A. Dual-view contract — tiers + surfaces + size prop + tone all
+          honored.  Compact has no controls strip, calls onExpand,
+          surfaces caveat in footer.  Extended has full controls, KPI
+          strip, decomposition row, chart with z-bands, methodology
+          card, lineage footer.
+        B. Mockup conformance — accepted defensible deviations
+          (bull/bear flattening regime substituted with steeper/flatter
+          cues because bull/bear requires rate-direction history not in
+          the Output; top-right card #3 substituted with identity +
+          caveat; decomposition row folded into headline strip),
+          following just-approved OIS butterfly precedent.
+        C. Standalone bridge — typedView: null, /api/v1/rates/detail/
+          ois-curve-spread endpoint, fetchDetailOisCurveSpread added,
+          OisCurveSpreadOutput mirror type field-by-field match to
+          backend (snake_case preserved, no fabricated methodology_label
+          / percentile_252d / high_252d_bps).  Both build surfaces +
+          Monitor widget consume the SAME bridge via the shared
+          useOisCurveSpread hook.
+        D. FM1-FM12 — all satisfied; alphabetical loader entry at
+          index.ts:64 + :137 between calculate_ois_cross_market_spread
+          and calculate_ois_forward_rate.
+        E. Methodology honesty — Documented carve-out: OIS sub-domain
+          Output does NOT carry methodology_label (sub-domain consistent
+          with tool 7), so disclosure is sourced from
+          OIS_CURVE_SPREAD_COMPACT_CAVEAT in the shared helper with a
+          TODO(PR10) marker.  Honest disclosure honored.  All other
+          methodology rows sourced from wire fields (current_spread_bps,
+          daily_change_bps, current_z_score, rolling_window_days,
+          curve_family, spread_label).
+        F. Shared cross-surface helper — oisCurveSpreadShared.ts houses
+          family registry + curve options + tenor options + pair options
+          + data hook + KPI builders + reference bands + stretch context
+          + methodology rows + sanitiser + caveat constant.  Extended +
+          Compact + Monitor all import from it.  No drift.
+        G. Pre-commit gates — all three pass.
+
+      State: done: 7, blocked: 1, remaining: 1.  Factory advancing to
+      tool 9 (policy_futures__futures_price_level, build_order 9 —
+      SNAPSHOT shape mirroring get_real_yield_level_tool, NOT a
+      butterfly/spread chart).  Wake remaining budget should permit a
+      fresh tool dispatch; will probe eligibility on next entry per
+      BACKGROUND_EXECUTION_POLICY §3 selection order.
+
+  - at: '2026-05-29T21:31:00Z'
+    kind: tool_7_committed_advance
+    text: |
+      Tool 7 (ois__calculate_ois_butterfly) APPROVED on first review.
+      Reviewer log /tmp/claude_frontend_reviewer_run_ois_butterfly_round2.log
+      (3787 bytes) parsed: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false.
+
+      Wake reconstructed state on entry: prior wake's Dispatch 1 builder
+      (dispatched 20:55 UTC) had completed by ~21:10 UTC.  Builder stdout
+      log was 1 byte (transient claude --print buffering — same pattern
+      as tool 5 reviewer Dispatch 2 first attempt at 20:05 UTC), but ALL
+      8 frontend artifact slots were populated on-disk: module.ts +
+      THESIS.md + __tests__/module.spec.ts (overwritten Stage-3 scaffold)
+      + surfaces/{BuildExtended,BuildCompact,oisButterflyShared,monitor/
+      OisButterflyWidget}.tsx (new) + shared infra (types/rates.ts +
+      services/ratesApi.ts + api/routes/rates/detail.py).  No retry
+      needed since the diff was complete and the reviewer doesn't see
+      the builder's stdout.
+
+      Pipeline summary:
+        Dispatch 1 (builder)                   exit 0 ~21:10 (~15m,
+                                               1-byte stdout but full diff)
+        Dispatch 2 (reviewer)                  APPROVED ~21:30 (~6m)
+        Pre-commit gate (orchestrator):
+          npm run test:modules ✓
+            calculate_ois_butterfly_tool: 6 passed, 0 failed
+            all module + registry tests passed
+          npm run test:build   ✓ (all build-folder tests passed,
+            including widget-format 53 / widget-contract 11 / dashboard-
+            registry 18 / routing 48)
+          npm run typecheck    ✓ (tsc --noEmit clean)
+        Mirrors update:
+          surface_contract.md §4.2 row updated in place
+            (build_archetype generic-builder → typed-result-renderer,
+             build_status scaffolded → dual-view-built,
+             monitor_elig not-required → required,
+             monitor_status n/a → built (OisButterfly widget)).
+          §11 v14 changelog entry added.
+          §10.3 untouched (pilot-pinned to original 3 Phase-1 pilots).
+          graphify update: SKIPPED — not on PATH on this VM (recorded
+            per ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      Reviewer notes (verbatim from log):
+        A. Dual-view contract — tiers + surfaces + size prop + tone all
+          honored.  Compact has no controls strip, calls onExpand,
+          surfaces caveat in footer.  Extended has full controls, KPI
+          strip, decomposition row, chart with z-bands, methodology
+          card, lineage footer.
+        B. Mockup conformance — Compact matches mockup beat-for-beat
+          (identity "SOFR · 2-5-10 OIS FLY", USD flag, 3 KPIs with the
+          mockup's "Elevated Cheap" caption, sparkline with ±2σ/±1.5σ
+          bands, caveat + flag chip footer).  Extended reproduces the
+          mockup layout per the sibling factory pattern.
+        C. Standalone bridge — typedView: null, /api/v1/rates/detail/
+          ois-butterfly endpoint, fetchDetailOisButterfly added, type
+          mirror matches Pydantic field-by-field, both views share the
+          same useOisButterfly hook.
+        D. FM1-FM12 — all satisfied; alphabetical loader entry at
+          index.ts:62.
+        E. Methodology honesty — Documented carve-out: OIS sub-domain
+          Output does NOT carry methodology_label (distinct from the
+          linker/ZCIS sibling Outputs), so disclosure is sourced from
+          OIS_BUTTERFLY_COMPACT_CAVEAT in the shared helper with a
+          TODO(PR10) marker.  Honest disclosure honored.
+        F. Shared cross-surface helper — oisButterflyShared.ts houses
+          family registry + triplet registry + KPI builders + reference
+          bands + stretch context + methodology rows + sanitiser + hook.
+          Extended + Compact + Monitor all import from it.  No drift.
+        G. Pre-commit gates — all three pass.
+
+      Non-blocking observations (NOT findings):
+        - THESIS "Mockup conformance" sub-section mentions 2 cards
+          while Q2 enumerates all 3 — minor prose self-inconsistency
+          in THESIS only; implementation matches mockup.  Not worth a
+          fix pass.
+        - surfaces.build = BuildExtended retained for the legacy
+          VirtualPrimitiveCanvas dispatcher; consistent with the
+          sibling pattern.
+        - Family registry honestly uses short-form curve_family ids
+          (USD_SOFR / EUR_ESTR / GBP_SONIA / JPY_OIS / AUD_OIS /
+          CAD_OIS) while labelling the overnight index (SOFR / ESTR /
+          SONIA / TONA / AONIA / CORRA) — matches backend schema's
+          "honest disclosure" comment.
+
+      State: done: 6, blocked: 1, remaining: 2.  Factory advancing to
+      tool 8 (ois__curve_spread, build_order 8).  Wake remaining budget
+      should permit a fresh tool dispatch; will probe eligibility on
+      next entry per BACKGROUND_EXECUTION_POLICY §3 selection order.
+
+  - at: '2026-05-29T20:53:00Z'
+    kind: tool_6_committed_advance
+    text: |
+      Tool 6 (inflation_swaps__scan_inflation_swaps_extremes) APPROVED on
+      first review.  Reviewer log
+      /tmp/claude_frontend_reviewer_run_zcis_scanner_round2.log (4663
+      bytes) parsed: heading=APPROVED, environment_failure=false,
+      reviewer_quota_exhausted=false.
+
+      Wake reconstructed state on entry: prior wake's reviewer dispatch
+      at 20:38 UTC (state showed current_step=reviewer_dispatched,
+      dispatch_round=2) completed at 20:45 UTC on the slug
+      `zcis_scanner` (NOT `scan_inflation_swaps_extremes` — the wrappers
+      use the short tool_slug stem so logs/prompts are at
+      /tmp/{builder,reviewer}_*_zcis_scanner_round*.{md,log}).  No
+      claude / wrapper processes still in flight.
+
+      Reviewer affirmed dual-view (A1-A5), mockup conformance (B6-B8),
+      standalone bridge (C9-C13), FM1-FM12, methodology honesty (E21-E22),
+      shared helper (F23-F27).  One non-blocking observation
+      (BuildExtended.tsx:43 imports `instrumentLabel` without referencing
+      it — code-hygiene smell, not a typecheck failure; not worth a fix
+      pass).  Documented mockup-vs-wire delta: mockup's TIMEFRAME /
+      RANK BY / per-row PCTILE absent in impl because backend
+      ScanInflationSwapsExtremesInput schema YAML-locks lookback_days,
+      single-metric ranking, and does not emit a percentile column.
+      THESIS Q3 ("single-metric per catalog") + Q4 ("Multi-metric scan
+      adoption" as future scenario) document this — builder aligned to
+      wire over aspirational mockup.
+
+      Pre-commit gate (orchestrator):
+        npm run test:modules ✓
+          scan_inflation_swaps_extremes_tool: 7 passed, 0 failed
+          all module + registry tests passed
+        npm run test:build  ✓ (all build-folder tests passed)
+        npm run typecheck   ✓ (tsc --noEmit clean)
+
+      Mirrors update:
+        surface_contract.md §4.4 row (line 235) updated in place
+          (output_kind scanner-result → scanner-rankedlist,
+           build_archetype generic-builder → typed-result-renderer,
+           build_status scaffolded → dual-view-built,
+           monitor_status deferred → built (ZcisScanner widget)).
+        Redundant §4.7a "Inflation-swap scanner (shipped this wake)"
+          sub-section the builder added removed — consolidated into the
+          §4.4 row in place, matching the v10-v12 pattern.
+        §11 v13 changelog entry added.
+        §10.3 untouched (pilot-pinned to original 3 Phase-1 pilots).
+        graphify update: SKIPPED — not on PATH on this VM (recorded per
+          ORCHESTRATOR_PROMPT Mirrors §2 fallback).
+
+      State: done: 5, blocked: 1, remaining: 3.  Factory advancing to
+      tool 7 (ois__calculate_ois_butterfly, build_order 7).  Wake
+      remaining budget should permit a fresh tool dispatch; will probe
+      eligibility on next entry per BACKGROUND_EXECUTION_POLICY §3
+      selection order.
+
+  - at: '2026-05-29T20:16:00Z'
+    kind: tool_5_committed_after_fix_advance
+    text: |
+      Tool 5 (inflation_swaps__inflation_swap_butterfly) committed as
+      8e95e1cce67ba47a84af5d164f6dfce2e07fcf68 with
+      last_reviewer_heading: APPROVED-AFTER-FIX.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 19:47
+        Dispatch 1 (builder)                   exit 0 at 20:00 (~13m)
+        Dispatch 2 (reviewer) — FIRST ATTEMPT  empty 1-byte log at 20:05
+          The reviewer wrapper exited cleanly with the branch-check
+          line in wrapper.out but claude --print produced 0 bytes of
+          stdout to the tee log.  Parser returned heading: null,
+          environment_failure: false, reviewer_quota_exhausted: false
+          (no marker substrings in the 1-byte log).  No quota / env
+          signals — looks like a transient claude --print failure
+          (network blip, buffer issue, or one-off process glitch).
+        Dispatch 2 (reviewer) — RETRY            CHANGES REQUIRED at 20:11 (~5m)
+          Re-ran with the same prompt verbatim; produced a substantive
+          3150-byte review.  Verdict: CHANGES REQUIRED.  2 findings,
+          both concrete + actionable + bounded + within the module
+          folder (surfaces/BuildExtended.tsx only):
+            #1 identity primary deviates from mockup (rendering_density
+                §2.1 + THESIS Mockup-conformance) — exact fix provided
+            #2 inlined bucketForPercentile bypasses shared helper
+                (BUILD_GUIDE §6B + FM contract) — exact fix provided;
+                bucketForPercentile verified to exist at
+                lib/tone.ts:92-99 and already imported in the shared
+                helper.
+        Dispatch 3 (fix pass)                  exit 0 at 20:14 (~2m)
+          Both findings applied verbatim to surfaces/BuildExtended.tsx
+          ONLY (no other files touched).  Self-tests green.
+        Pre-commit gate (orchestrator)         all 3 exit 0 at 20:15
+        Mirrors update                         at 20:15
+          surface_contract.md §4.4 row updated; §11 v12 entry added
+        Commit                                 8e95e1c at 20:15
+          11 files changed, 1827 insertions(+), 31 deletions(-)
+          last_reviewer_heading recorded as APPROVED-AFTER-FIX (honest
+          disclosure that Dispatch 3 bypassed re-review per
+          SINGLE_REVIEW_ROUND_POLICY §6 / §1).
+
+      Lesson learned (for future wakes): a 1-byte reviewer log with no
+      parser markers can be a transient claude --print failure — a
+      single retry can disambiguate before escalating to Case F /
+      waiting_quota.  Recommend codifying this in
+      QUOTA_AND_RESUME_POLICY.md as "Case F handling protocol: try
+      ONE retry before marking human_required, log the retry decision
+      to status_notes for audit".  Out of scope for this wake — a
+      separate human-authored policy edit.
+
+      State: done: 4, blocked: 1, remaining: 4.  Factory advancing to
+      tool 6 (inflation_swaps__scan_inflation_swaps_extremes,
+      build_order 6, SCANNER shape — compact view is a top-N ranked
+      table, NOT a sparkline).
+
+  - at: '2026-05-29T19:46:00Z'
+    kind: tool_4_committed_advance
+    text: |
+      Tool 4 (inflation_swaps__cross_market_inflation_swap_spread)
+      committed as 302a388fac7d2cbad86c57aaab673cbafac62798.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 19:22
+        Dispatch 1 (builder)                   exit 0 at 19:38 (~16m)
+          all 8 frontend artifact slots populated; index.ts already had
+          alphabetical entry; self-tests green
+        Dispatch 2 (reviewer)                  APPROVED at 19:43 (~4m)
+          fresh-context Claude; no findings; explicitly confirmed
+          methodology honesty (index_family_caveat sourced from wire,
+          not hardcoded)
+        Pre-commit gate                        all 3 exit 0 at 19:44
+        Mirrors update                         at 19:45
+          surface_contract.md §4.4 row updated; §11 v11 entry added
+        Commit                                 302a388 at 19:45
+          11 files changed, 1597 insertions(+), 36 deletions(-)
+
+      State: done: 3, blocked: 1, remaining: 5.  Factory advancing to
+      tool 5 (inflation_swaps__inflation_swap_butterfly, build_order 5).
+
+  - at: '2026-05-29T19:19:00Z'
+    kind: tool_3_committed_advance
+    text: |
+      Tool 3 (inflation_indexed_bonds__real_yield_butterfly) committed
+      as 48e4230ae68c75f78fd1f2237b8b71ce3fb85fd6.
+
+      Pipeline summary:
+        Pre-flight (4 checks + vision sanity)  PASS  at 18:55
+        Dispatch 1 (builder)                   exit 0 at 19:11 (~16m)
+          builder report: all 8 frontend artifact slots populated,
+          self-reported npm test:modules / test:build / typecheck all 0
+        Dispatch 2 (reviewer)                  APPROVED at 19:16 (~5m)
+          fresh-context Claude; no findings; documented the THESIS
+          Mockup-conformance "TIPS"→"linkers" generalization rationale
+          as the lone known deviation
+        Pre-commit gate                        all 3 exit 0 at 19:17
+          npm run test:modules ✓ (per-module 6 checks pass; full registry
+                                   passes; loader-presence test enforces
+                                   dual-view for this module)
+          npm run test:build   ✓ (all build-folder tests pass — DAG,
+                                   build-empty-state, parameters,
+                                   slot-controls, routing, dashboard,
+                                   widget contracts, etc.)
+          npm run typecheck    ✓ (tsc --noEmit clean, no NEW errors)
+        Mirrors update                         at 19:18
+          surface_contract.md §4.3 row: build_archetype generic-builder
+            → typed-result-renderer; build_status scaffolded →
+            dual-view-built; monitor_elig not-required → required;
+            monitor_status n/a → built (RealYieldButterfly widget)
+          surface_contract.md §11: v10 changelog entry added
+          §10.3 skipped (pilot-pinned to original 3 Phase-1 pilots)
+          graphify: SKIPPED — not on PATH (recorded per
+            ORCHESTRATOR_PROMPT Case C Mirrors §2 fallback)
+        Commit                                 48e4230 at 19:18
+          11 files changed, 1753 insertions(+), 31 deletions(-)
+          on `frontend_automation`; never touched main / revamp /
+          primitive_automation
+
+      State reset: orchestrator_status: processing, current_tool: null,
+      current_step: ready_to_dispatch, dispatch_round: 0, done: 2,
+      blocked: 1, remaining: 6.  Factory advancing to next eligible
+      tool per BACKGROUND_EXECUTION_POLICY §3 selection order: tool 4
+      (inflation_swaps__cross_market_inflation_swap_spread,
+      build_order: 4).
+
+      Note: tool 1's §4.3 row in surface_contract.md remains stale
+      (scaffolded / not-required) — tool 1's commit (fdac7d2) shipped
+      without the mirror update.  This is a separately-trackable docs
+      drift but not a blocker.  Future wake could batch-fix it; current
+      wake stays focused on `current_tool` per NO_GO_RULES §16.
+  - at: '2026-05-29T18:55:00Z'
+    kind: wake_start_real_yield_butterfly_round1
+    text: |
+      After tool 2 blocked on misfiled mockups (see prior status_notes
+      entry), advanced to next eligible `todo` per
+      BACKGROUND_EXECUTION_POLICY §3:
+
+        inflation_indexed_bonds__real_yield_butterfly
+        (backend: calculate_real_yield_butterfly_tool;
+         endpoint slug: real-yield-butterfly;
+         build_order: 3)
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/inflation_indexed_bonds/tools/real_yield_butterfly/
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/inflation_indexed_bonds/mcp_server.py:1743
+          def calculate_real_yield_butterfly_tool(
+        Check 3 (curated migration file)       PASS via 3(b)
+          database/migrations/2026-05-29_phase1_calculate_real_yield_butterfly_curated.sql
+        Check 4 (mockups Compact+Extended)     PASS
+          sha256 C=81187a08… E=68f7e114… (unique in catalog; no
+          byte-collision with any other tool)
+
+      Defensive vision sanity check (post-tool-2 lesson): viewed both
+      PNGs as images via the Read tool.  Confirmed content matches the
+      catalog's tool 3 concept:
+        - Compact: "Real Yield Butterfly · SNAPSHOT", "USD_TIPS 5-10-30
+          RY FLY", 3 KPIs (FLY -14 bp Belly Rich · 1D CHANGE -1.8 bp ·
+          Z-SCORE -2.07 Extreme Rich), sparkline w/ ±2σ z-score bands,
+          identity chip "USD_TIPS Linker curve", expand affordance
+          top-right.
+        - Extended: "USD_TIPS 5-10-30 REAL YIELD BUTTERFLY", FLY KPI
+          strip + z-score + percentile + history range, time-series
+          chart, FLY-vs-decomposition panel (belly vs wings), real-yield
+          curve snapshot panel (3 points), methodology card on right,
+          lineage footer.
+        - Matches the catalog's design guardrail "Single linker curve
+          (no nominal pair) — input is one curve_family + three tenors"
+          (single USD_TIPS curve, 5Y / 10Y / 30Y).
+        - No byte-collision with any other tool's mockups (verified by
+          catalog-wide sha256 audit).
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      inflation_indexed_bonds__real_yield_butterfly, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via run_claude_builder.sh on
+      `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_real_yield_butterfly_round1.md.  Log:
+      /tmp/claude_frontend_builder_run_real_yield_butterfly_round1.log.
+      Quota probe still unavailable; runtime-enforced.
+  - at: '2026-05-29T18:54:00Z'
+    kind: tool_2_builder_refused_mockup_content_mismatch
+    text: |
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) was
+      dispatched to Dispatch 1 (Claude builder, --print --model opus
+      --effort xhigh) at 18:48 UTC after a CLEAN pre-flight (all four
+      checks PASS including Check 4 path-existence of the mockup PNGs).
+
+      The builder ran for ~5 minutes and REFUSED the build per the
+      builder-prompt "blocker" policy.  Builder evidence (verbatim,
+      from /tmp/claude_frontend_builder_run_breakeven_curve_spread_round1.log):
+
+        - The two mockup PNGs at
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,
+          Extended}.png are byte-identical to the corresponding files
+          under calculate_breakeven_butterfly_tool/mockups/ (sha256
+          a47e9746c90537c22183c6d8f7ec7cec6fee6cdf7a3cd97892ccd5836af97fda
+          + adf8ad5d4a3711731eed42fb165f1ea201050303c24a7687f3ff2c2301631e5e).
+        - The PNGs' visual content depicts a 3-leg BREAKEVEN BUTTERFLY
+          (title "US 2-5-10 BE FLY", three tenors UST/USD_TIPS 2Y/5Y/10Y,
+          headline KPI "FLY -18 bp", 3-leg caveat footer), NOT a 2-leg
+          curve spread.
+        - The backend tool's schemas
+          (rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/schemas.py)
+          unambiguously model a 2-leg spread:
+          BreakevenCurveSpreadInput exposes only short_tenor + long_tenor;
+          BreakevenCurveSpreadCurrentMetrics exposes current_spread_bps +
+          short_breakeven_bps + long_breakeven_bps (NO belly_bps /
+          fly_bps); _short_must_precede_long validator enforces
+          short_years < long_years; docstring spread_label examples are
+          "UST/USD_TIPS 2s10s breakeven", "FR_OAT/EUR_FR_LINKER 5s10s
+          breakeven".  No third leg anywhere.
+        - The mockup's headline `FLY -18 bp` KPI has no backing field in
+          BreakevenCurveSpreadOutput.  Faking it (e.g. relabelling
+          current_spread_bps as "FLY") would mis-shape the module to
+          PMs and violate P5 honest disclosure (the methodology_label
+          threaded from the backend YAML would visibly contradict the
+          headline).
+        - Both pairs were committed in `5ea7ecc "changes"` together —
+          almost certainly a cp/mv into the wrong folder during
+          mockup intake.  No alternate mockups exist elsewhere in the
+          repo for this tool.
+
+      Catalog-wide mockup audit (sha256 of all 9 tools' Compact + Extended
+      PNGs) confirms tool 2 is the ONLY misfile in the catalog.  Tools
+      3-9 each have unique mockup hashes — none collide with each other
+      or with tool 1.  Hashes:
+        tool 1 breakeven_butterfly:                C=a47e974… E=adf8ad5…  ← reference
+        tool 2 breakeven_curve_spread:             C=a47e974… E=adf8ad5…  ← DUPLICATE (blocker)
+        tool 3 real_yield_butterfly:               C=81187a0… E=68f7e11…
+        tool 4 cross_market_inflation_swap_spread: C=3069d05… E=e1fc747…
+        tool 5 inflation_swap_butterfly:           C=7c75285… E=15b3fa6…
+        tool 6 scan_inflation_swaps_extremes:      C=513299b… E=b705a94…
+        tool 7 ois_butterfly:                      C=0c90439… E=1f74c86…
+        tool 8 ois_curve_spread:                   C=a7c2853… E=d49faec…
+        tool 9 policy_futures_price_level:         C=39c4e5f… E=ecad482…
+
+      Disposition per ORCHESTRATOR_PROMPT "Blocked-diff disposition rule"
+      + NO_GO_RULES §1 (functional mockups-missing) + PRE_FLIGHT §4
+      (read-only — orchestrator MUST NOT manufacture mockups):
+        - Tool 2 → status: blocked, block_reason: mockup_content_mismatch
+          (verbatim in catalog entry).
+        - Tree is already clean: builder wrote 0 files (refusal exited
+          before any edit), so blocked-and-discardable disposition is
+          a no-op; HEAD remains 9c6c30c.
+        - Counts: done:1, blocked:1, remaining:7.
+        - Per BACKGROUND_EXECUTION_POLICY §3 selection order and the
+          ORCHESTRATOR_PROMPT loop rule ("Continue to the next eligible
+          tool — one missing artifact blocks only its dependent tool"),
+          advance to next eligible: tool 3
+          (inflation_indexed_bonds__real_yield_butterfly, build_order 3).
+
+      Remediation (for human): re-author the two PNGs at
+      UI/.../calculate_breakeven_curve_spread_tool/mockups/ to depict a
+      2-leg breakeven curve spread (current spread bps + endpoint
+      decomposition + 252d z-score + sparkline + percentile), e.g.
+      "UST/USD_TIPS 2s10s breakeven".  Natural template:
+      calculate_real_yield_curve_spread_tool/mockups/ adapted PERCENT →
+      BPS (matches the catalog entry's existing design guardrail).  Then
+      flip catalog status: blocked → todo and the factory will pick it
+      up on the next eligible-selection pass.
+
+      Optional gate-extension (recommended, per builder's third
+      remediation point): extend PRE_FLIGHT Check 4 with a sha256
+      collision check across all catalog tools' mockup folders — would
+      have caught this misfile at audit time rather than burning ~5min
+      of Claude builder quota.  Out of scope for this wake; would be a
+      separate human-authored PR.
+  - at: '2026-05-29T18:48:00Z'
+    kind: wake_start_breakeven_curve_spread_round1
+    text: |
+      New cron wake at 18:47 UTC.  Tree clean at HEAD 9c6c30c (tool 1
+      committed at fdac7d2; state-reset commit at 9c6c30c).  Selected
+      first eligible `todo` tool per BACKGROUND_EXECUTION_POLICY §3
+      selection order (no in_progress / changes_required / waiting_quota
+      entries; tool 1 done; tool 2 is first todo):
+
+        inflation_indexed_bonds__breakeven_curve_spread
+        (backend: calculate_breakeven_curve_spread_tool;
+         endpoint slug: breakeven-curve-spread;
+         build_order: 2)
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+          rates_agent/inflation_indexed_bonds/tools/breakeven_curve_spread/
+          {__init__.py, config.yaml, schemas.py, compute.py}
+        Check 2 (MCP wrapper grep)             PASS
+          rates_agent/inflation_indexed_bonds/mcp_server.py:831
+          def calculate_breakeven_curve_spread_tool(
+        Check 3 (curated migration file)       PASS via Check 3(b)
+          database/migrations/2026-05-29_phase1_calculate_breakeven_curve_spread_curated.sql
+          (Check 3(a) DB row probe returned `relation "macro_data.tool_metadata"
+          does not exist` — table not created on this VM; migration file
+          presence satisfies the gate per PRE_FLIGHT_BACKEND_AUDIT.md §2)
+        Check 4 (mockups Compact+Extended)     PASS
+          UI/.../calculate_breakeven_curve_spread_tool/mockups/{Compact,Extended}.png
+          (1.3 MB + 1.6 MB committed)
+
+      Catalog entry flipped: status: todo → in_progress.  Runtime state:
+      orchestrator_status: processing, current_tool:
+      inflation_indexed_bonds__breakeven_curve_spread, dispatch_round: 1,
+      current_step: builder_dispatched.
+
+      Dispatching Dispatch 1 (builder) via
+      run_claude_builder.sh on `frontend_automation` branch.  Prompt:
+      /tmp/builder_prompt_breakeven_curve_spread_round1.md (309 lines —
+      catalog entry verbatim + pre-flight output + resolved paths +
+      CLAUDE_BUILDER_PROMPT.md body).  Log:
+      /tmp/claude_frontend_builder_run_breakeven_curve_spread_round1.log.
+      Quota probe unavailable; proceeding runtime-enforced.
+  - at: '2026-05-29T18:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 18:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 18:22 wake.  This is the 10th consecutive NO-OP wake on
+      the same blocker (16:22 → 16:37 → 16:52 → 17:07 → 17:22 → 17:37
+      → 17:52 → 18:07 → 18:22 → 18:37).
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T18:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 18:07 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 18:07 wake.  This is the 9th consecutive NO-OP wake on
+      the same blocker (16:22 → 16:37 → 16:52 → 17:07 → 17:22 → 17:37
+      → 17:52 → 18:07 → 18:22).
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T18:07:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 18:07 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 17:52 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:52 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:52:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:52 UTC.  Read ORCHESTRATOR_PROMPT,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:37 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:37 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:22 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 17:07 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 17:07 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T17:07:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 17:07 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY,
+      DISCORD_STATUS_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 16:52 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  HEAD is unchanged at 6972c5d.  No human action
+      since 16:52 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T14:30:00Z'
+    kind: factory_armed_after_rename_revert
+    text: |
+      Previous block (`pre_commit_gate_test_build_pre_existing_baseline_drift`)
+      remediated by reverting the two bad rename commits (2b8b36b +
+      cd4aa0d) and adding `node` to tsconfig.app.json types.
+
+      The test:build failure root cause: the bad rename removed
+      `policy_futures_get_futures_price_level_tool` from src/modules/
+      index.ts entirely (treating it as a duplicate of
+      `get_futures_price_level_tool`, but they are distinct tools —
+      L1079 vs L1147 in rates_agent/workflows/__init__.py).  The build
+      harness test asserts KNOWN_BACKEND_TOOLS contains 58 names;
+      after the deletion it was 57, hence the failure.  The revert
+      restores the 58th tool.
+
+      The 8 pre-existing typecheck baseline errors (`node:fs/promises`,
+      `NodeJS.*`, `process` references in pilot module specs and
+      shared compact components) are now fixed by the `node` types
+      addition.
+
+      The `zToneClass` error in RealYieldLevelWidget.tsx:176 remains
+      as pre-existing baseline (single error; predates the factory).
+      The orchestrator's gate logic compares AFTER ≤ BEFORE count, so
+      this single residual won't block.
+
+      All 9 tools are back to status `todo` — including the previously
+      blocked breakeven_butterfly which the orchestrator had flipped
+      after the failed gate.
+
+      On this wake: select the first eligible tool, run pre-flight,
+      dispatch the builder.
+  - at: '2026-05-29T15:52:00Z'
+    kind: wake_start_breakeven_butterfly_round1
+    text: |
+      Wake start.  Discarded stale builder diff sitting in working
+      tree from prior wake (THESIS.md / module.ts / __tests__/module.spec.ts
+      modifications + surfaces/ folder untracked + ratesApi.ts /
+      types/rates.ts / detail.py mods) per default
+      blocked-and-discardable rule (no human preservation
+      directive).  Tree is clean against HEAD.
+
+      Selected first eligible `todo` tool:
+      inflation_indexed_bonds__breakeven_butterfly
+      (backend: calculate_breakeven_butterfly_tool).
+
+      Pre-flight 4-check audit:
+        Check 1 (backend folder 4-file shape)  PASS
+        Check 2 (MCP wrapper grep)             PASS
+        Check 3 (curated migration file)       PASS
+        Check 4 (mockups Compact+Extended)     PASS
+
+      Dispatching Dispatch 1 (builder) via
+      run_claude_builder.sh on `frontend_automation` branch.
+      Quota probe unavailable; proceeding runtime-enforced.
+  - at: '2026-05-29T16:07:30Z'
+    kind: wake_detected_inflight_builder
+    text: |
+      New cron wake at 16:07 UTC.  Prior wake's Dispatch 1 builder
+      (PID 200737 wrapper / 200744 claude CLI; tee log
+      /tmp/claude_frontend_builder_run_breakeven_butterfly_round1.log)
+      still in flight after ~12m runtime; `claude --print` buffers
+      stdout so the tee log is currently 0 bytes (expected).
+
+      Per BACKGROUND_EXECUTION_POLICY §7 no-overlap rule, will NOT
+      dispatch a parallel builder.  Per §1 / §6, will wait
+      synchronously (bounded ~20m) for the in-flight builder to
+      complete, then continue the single-round loop on this same
+      wake (reviewer dispatch → parse → commit or fix → next tool).
+      If the wait times out, this wake will exit cleanly leaving
+      `current_step: builder_dispatched` for the next cron wake.
+  - at: '2026-05-29T16:09:00Z'
+    kind: builder_completed_round1
+    text: |
+      Dispatch 1 builder exited cleanly at ~16:08.  BUILDER REPORT
+      reports all 8 frontend artifact slots populated (module.ts +
+      THESIS.md + surfaces/BuildExtended.tsx + surfaces/BuildCompact.tsx
+      + surfaces/breakevenButterflyShared.ts + surfaces/monitor/
+      BreakevenButterflyWidget.tsx + __tests__/module.spec.ts +
+      mockups/{Compact,Extended}.png input).  Shared infra updates:
+      src/types/rates.ts + src/services/ratesApi.ts + api/routes/
+      rates/detail.py (route ADDED, not replaced).  FM12 loader entry
+      already present from prior Stage-3 import; no edit needed.
+      Builder self-reports `npm run test:modules` + `test:build` +
+      `typecheck` all exit 0 (NOT independently verified by
+      orchestrator yet — gate runs post-reviewer per protocol).
+      Dispatching Dispatch 2 reviewer via run_claude_reviewer.sh.
+  - at: '2026-05-29T16:17:33Z'
+    kind: reviewer_changes_required_structural
+    text: |
+      Dispatch 2 reviewer completed in ~6m.  Verdict: CHANGES REQUIRED
+      with 5 findings, of which two are explicitly prefixed
+      `STRUCTURAL:`.  Parser output:
+        {ok:true, heading:"CHANGES REQUIRED",
+         environment_failure:false, reviewer_quota_exhausted:false}
+
+      Adjudication per SINGLE_REVIEW_ROUND_POLICY §3 + ORCHESTRATOR_PROMPT
+      Case D:
+        ANY STRUCTURAL: prefix → mark human_required, SKIP Dispatch 3.
+
+      Decision: NO Dispatch 3.  Tool → human_required.  Wake stops
+      cleanly.  Full finding text + working-tree disposition recorded
+      under the runtime-state `human_required` block above.
+
+      Reviewer notes findings #3 (type-mirror nullability) + #4
+      (Monitor triplet options) are concrete + actionable in
+      isolation, but cannot be applied without first resolving #1
+      (mockup default unreachable in USD_TIPS playbook) and #2
+      (identity-string drift coupled to #1).  A piecemeal fix-pass
+      that addressed only #3/#4 would not satisfy the reviewer's
+      structural concerns and would risk needing to be re-done after
+      the human design call lands.
+  - at: '2026-05-29T16:52:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:52 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, DISCORD_STATUS_POLICY,
+      frontend_tool_catalog.yaml, and frontend_runtime_state.yaml.
+      Ran check_branch.sh: OK on `frontend_automation`.
+
+      Observed state (unchanged from 16:37 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per explicit prior-wake
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  No human action since 16:37 wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions + SINGLE_REVIEW_ROUND_POLICY §3:
+        - cannot advance to next eligible tool
+          (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+          a dirty tree (§4a Disallowed clause);
+        - cannot discard the preserved diff (non-default preservation
+          was the explicit prior-wake choice);
+        - cannot re-dispatch builder/reviewer for breakeven_butterfly
+          (STRUCTURAL findings skip Dispatch 3 + NO Dispatch 4 / NO
+          re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T16:37:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:37 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, frontend_tool_catalog.yaml, and
+      frontend_runtime_state.yaml.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state (unchanged from 16:22 wake, ~15m delta):
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per prior wake's explicit
+                             non-default preservation directive)
+        done:0  blocked:1  remaining:8
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications.  No human action yet.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a + ORCHESTRATOR_PROMPT Stop
+      conditions: cannot advance to next eligible tool
+      (`inflation_indexed_bonds__breakeven_curve_spread`) on top of a
+      dirty tree; cannot discard the preserved diff (non-default
+      preservation was the explicit prior-wake choice); cannot
+      re-dispatch builder/reviewer for breakeven_butterfly because the
+      structural findings require a human design call (per
+      SINGLE_REVIEW_ROUND_POLICY §3, NO Dispatch 4 / NO re-review).
+
+      Decision: NO-OP wake.  Factory remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`) and
+            resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended USD_TIPS playbook OR THESIS Mockup-conformance
+            section), re-stages + commits + sets
+            orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.
+
+  - at: '2026-05-29T16:22:30Z'
+    kind: wake_noop_dirty_tree_preserved
+    text: |
+      New cron wake at 16:22 UTC.  Read ORCHESTRATOR_PROMPT,
+      BACKGROUND_EXECUTION_POLICY, SINGLE_REVIEW_ROUND_POLICY, and
+      DISCORD_STATUS_POLICY.  Ran check_branch.sh: OK on
+      `frontend_automation`.
+
+      Observed state:
+        orchestrator_status: human_required
+        current_tool:        inflation_indexed_bonds__breakeven_butterfly (blocked)
+        working_tree:        dirty_preserved (per prior wake's explicit
+                             non-default preservation directive)
+
+      `git status --short` confirms the preserved breakeven_butterfly
+      diff is still in the tree (THESIS.md, module.ts, __tests__/
+      module.spec.ts, surfaces/{BuildCompact,BuildExtended,
+      breakevenButterflyShared,monitor/BreakevenButterflyWidget}.tsx,
+      src/types/rates.ts, src/services/ratesApi.ts, api/routes/rates/
+      detail.py) plus the runtime-state + catalog state-flip
+      modifications from the prior wake.
+
+      Per BACKGROUND_EXECUTION_POLICY §4a:
+        "if a human explicitly wants the blocked scaffold preserved,
+         stop and surface that preservation requirement as the reason
+         for the halt"
+        "Disallowed: leaving blocked generated code in the tree and
+         starting the next tool on top of it"
+
+      Decision: NO-OP wake.  Do NOT discard the preserved diff
+      (non-default preservation was an explicit prior-wake choice).
+      Do NOT advance to next eligible tool
+      (`inflation_indexed_bonds__breakeven_curve_spread`) on top of
+      a dirty tree — that would violate §4a.  Do NOT re-dispatch
+      builder/reviewer for breakeven_butterfly — the structural
+      findings (#1 mockup default unreachable from USD_TIPS playbook;
+      #2 identity-string drift coupled to #1) require a human design
+      call, not another automated round.
+
+      Re-surfacing the existing human_required block.  The factory
+      remains halted pending one of:
+        (a) human clears the tree (`git restore . && git clean -fd
+            UI/.../calculate_breakeven_butterfly_tool/surfaces/`)
+            and resolves the structural design call, then sets
+            orchestrator_status: idle to re-arm; OR
+        (b) human hand-applies the resolution (revised mockup OR
+            extended playbook OR THESIS Mockup-conformance section),
+            then re-stages + commits + sets orchestrator_status: idle.
+
+      Wake exits cleanly with no dispatches and no commits.  Next cron
+      wake will again read state, observe human_required + dirty
+      tree, and again no-op until the human acts.
+  - at: '2026-05-29T18:45:59Z'
+    kind: tool_1_advanced_via_human_resolution
+    text: |
+      Tool 1 (inflation_indexed_bonds__breakeven_butterfly) committed as
+      fdac7d2821fc61ecdab7b122b8ede4d18d1c3374.  Reviewer's 2 STRUCTURAL findings resolved via
+      Option (c): accept USD_TIPS data-driven deviation + document in
+      THESIS Mockup-conformance subsection.  Findings #3 (over-permissive
+      types — time_series_butterfly + time_series_zscore tightened to
+      REQUIRED to mirror Pydantic Output) and #4 (single-pair
+      BUTTERFLY_TRIPLET_OPTIONS — widened to union across all four linker
+      pairs) addressed alongside.  Loading-state stub in BuildExtended.tsx
+      extended to satisfy the now-required TimeSeries fields.
+
+      Gate green on the VM (npm run test:modules + test:build + typecheck
+      all exit 0).  Tool commit pushed to origin/frontend_automation.
+
+      State reset: orchestrator_status: processing, current_tool: null,
+      current_step: ready_to_dispatch, dispatch_round: 0, done: 1,
+      blocked: 0, remaining: 8.  Factory advancing to tool 2
+      (inflation_indexed_bonds__breakeven_curve_spread) on next cron
+      wake.
+  - at: "2026-05-30T00:35:00Z"
+    kind: tool_9_design_call_applied_advance
+    text: |
+      Catalog reset: tool 9 (policy_futures__futures_price_level)
+      flipped status: blocked -> todo with two new design_guardrails
+      added per Option (c) precedent from tool 1 (breakeven_butterfly,
+      commit fdac7d2):
+
+        guardrail (5): keep shell-standard density on Compact +
+        Extended; do NOT extend BuildCompactShell / BuildExtendedShell
+        to add subtitle / secondaryKpis slots (10+ tool blast radius);
+        add a `## Mockup conformance` subsection to THESIS.md.
+
+        guardrail (6): do NOT prepend `· ` to the secondary string
+        on either Build view (IdentityBlock already inserts the glyph).
+        Reference twin: get_real_yield_level_tool/surfaces/BuildCompact.tsx:72-76.
+        Avoiding this prevents review findings #1 + #2 from recurring.
+
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) REMAINS
+      blocked — its mockups are byte-identical to breakeven_butterfly`s
+      mockups (depicting a 3-leg butterfly, not a 2-leg curve spread).
+      Human must author new Compact.png + Extended.png for this tool
+      depicting a 2-leg breakeven curve spread (template:
+      calculate_real_yield_curve_spread_tool/mockups/ adapted from % -> bps),
+      then flip status back to todo.  No safe path from the orchestrator
+      side; PRE_FLIGHT Check 4 is path-existence only.
+
+      Counters: done:7  blocked:1  remaining:1.  Cron is currently
+      DISABLED (`openclaw cron disable 450aa21c-...` at 00:30Z).  User
+      must re-enable to dispatch tool 9, then optionally disable again
+      after tool 9 settles to avoid post-exhaustion no-op commit spam
+      until tool 2 mockups are authored.
+  - at: "2026-05-30T00:48:00Z"
+    kind: tool_2_mockups_remediated_unblocked
+    text: |
+      Tool 2 (inflation_indexed_bonds__breakeven_curve_spread) unblocked.
+      Human (sreeramandra) authored new mockup PNGs depicting the canonical
+      2-leg breakeven curve spread (US 2s10s, UST/USD_TIPS, 3 KPIs, single
+      identity line — shell-density compatible).  Old butterfly-duplicate
+      mockups (sha256 a47e9746 + adf8ad5d) replaced with new ones (sha256
+      f6f21f1c + 117558a3) in commit 0b1eb86 on frontend_automation.
+
+      Catalog tool 2 entry:
+        status: blocked -> todo
+        human_action_required: true -> false
+        block_reason: <multi-line> -> null  (preserved as previous_block_reason)
+        last_resolution_applied: mockups_remediated_user_authored_2leg_spread
+
+      Counters: done:7  blocked:1  remaining:1  ->  done:7  blocked:0  remaining:2
+      Both tool 2 and tool 9 are now eligible for dispatch on next wake.
+      Cron must be re-enabled to dispatch.

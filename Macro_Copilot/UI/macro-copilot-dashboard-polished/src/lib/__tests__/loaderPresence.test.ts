@@ -87,7 +87,7 @@ function assertEqual<T>(actual: T, expected: T, label: string): void {
 }
 
 async function loadFs(): Promise<NodeFs> {
-  // @ts-expect-error - node-only; esbuild --platform=node resolves it.
+  // @ts-ignore - node-only; esbuild --platform=node resolves it.
   return (await import('fs')) as NodeFs;
 }
 

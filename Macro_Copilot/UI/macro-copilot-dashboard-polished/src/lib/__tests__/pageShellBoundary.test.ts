@@ -71,7 +71,7 @@ function assertTruthy(v: unknown, label: string): void {
 }
 
 async function loadFs(): Promise<NodeFs> {
-  // @ts-expect-error - node-only.
+  // @ts-ignore - node-only.
   return (await import('fs')) as NodeFs;
 }
 

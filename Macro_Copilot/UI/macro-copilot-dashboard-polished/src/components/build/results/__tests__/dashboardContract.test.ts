@@ -62,7 +62,7 @@ function assertNotContains(
 let _src: Record<string, string> = {};
 
 async function loadSources(): Promise<Record<string, string>> {
-  // @ts-expect-error - node-only; esbuild --platform=node resolves it.
+  // @ts-ignore - node-only; esbuild --platform=node resolves it.
   const fs = (await import('fs')) as NodeFs;
   const _g = globalThis as unknown as NodeGlobal;
   const cwd = _g.process?.cwd?.() ?? '.';

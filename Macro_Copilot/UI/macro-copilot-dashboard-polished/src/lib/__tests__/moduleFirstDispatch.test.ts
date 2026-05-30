@@ -118,7 +118,7 @@ check('Stage 5 architectural locality: dispatcher modules import only registry-l
   // level lookup) and never via per-module folder imports.  FP12
   // already covers the second half via ``pageShellBoundary.test.ts``;
   // this check holds the registry-lookup half.
-  // @ts-expect-error - node-only
+  // @ts-ignore - node-only
   const fs = (await import('fs')) as {
     readFileSync: (p: string, e: string) => string;
   };
