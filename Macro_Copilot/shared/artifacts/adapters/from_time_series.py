@@ -119,7 +119,7 @@ def time_series_to_artifact_series(
     *,
     primitive_step: PrimitiveStep,
     missingness_policy: MissingnessPolicy,
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None,
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None,
 ) -> Series:
     """Convert a canonical ``TimeSeries`` payload into a typed ``Series``.
 
@@ -194,6 +194,16 @@ def time_series_to_artifact_series(
     # duplicate dates and the bridge shouldn't paper over it).
     payload = payload.sort_index()
 
+    # Derive the frequency tag from the index when the caller did not
+    # supply one (Decision 3 — frequency is load-bearing and must be
+    # populated at the bridge, not left None on every production artifact,
+    # which would make every operator's frequency-match check a no-op).
+    # An explicit ``frequency=`` argument always wins.
+    effective_frequency = (
+        frequency if frequency is not None
+        else _infer_frequency(payload.index)
+    )
+
     # ------------------------------------------------------------------
     # 2. Build the lineage — single step, the primitive that
     #    produced this TimeSeries.
@@ -209,7 +219,7 @@ def time_series_to_artifact_series(
         series_key=ts.series_name,
         payload=payload,
         units=ts.units,
-        frequency=frequency,
+        frequency=effective_frequency,
         missingness_policy=missingness_policy,
         lineage=lineage,
     )
@@ -229,7 +239,7 @@ def tool_output_to_artifact_series(
     params: BaseModel,
     tool_config_path: Optional[str] = None,
     missingness_policy: Optional[MissingnessPolicy] = None,
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None,
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None,
     primitive_version: str = "1.0.0",
 ) -> Series:
     """Convenience wrapper: primitive output dict → ``Series`` artifact.
@@ -667,6 +677,51 @@ def tool_output_to_artifact_panel(
 # ============================================================================
 # INTERNAL HELPERS
 # ============================================================================
+
+def _coarse_frequency(alias: str) -> str:
+    """Map a pandas offset alias (possibly anchored / pandas-2.2-renamed)
+    to the coarse B/D/W/M/Q/Y tag, or 'irregular' if unrecognised."""
+    base = alias.upper().split("-", 1)[0]
+    if base in ("BME", "BM", "BMS", "CBM", "CBME"):
+        return "M"
+    if base in ("BQ", "BQE", "BQS"):
+        return "Q"
+    if base in ("BA", "BY", "BYE", "BAS", "BYS"):
+        return "Y"
+    if base == "B":
+        return "B"
+    if base in ("D", "C"):
+        return "D"
+    if base.startswith("W"):
+        return "W"
+    if base in ("M", "ME", "MS", "SM", "SMS"):
+        return "M"
+    if base in ("Q", "QE", "QS"):
+        return "Q"
+    if base in ("A", "Y", "YE", "AS", "YS"):
+        return "Y"
+    return "irregular"
+
+
+def _infer_frequency(
+    index: Any,
+) -> Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]]:
+    """Derive a coarse frequency tag from a sorted DatetimeIndex (Decision 3).
+
+    Returns B/D/W/M/Q/Y when pandas infers a regular cadence, ``'irregular'``
+    for a non-uniform but >=3-point index, or ``None`` for a too-short
+    (<3-point) index where inference is unreliable.  Never raises.
+    """
+    if not isinstance(index, pd.DatetimeIndex) or len(index) < 3:
+        return None
+    try:
+        inferred = pd.infer_freq(index)
+    except (ValueError, TypeError):
+        return "irregular"
+    if inferred is None:
+        return "irregular"
+    return _coarse_frequency(inferred)  # type: ignore[return-value]
+
 
 def _is_time_series_type(annotation: Any) -> bool:
     """Best-effort check: does this Pydantic field annotation declare

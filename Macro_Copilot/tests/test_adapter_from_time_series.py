@@ -288,14 +288,17 @@ class TestLowLevelConversion:
         )
         assert s.frequency == "B"
 
-    def test_frequency_default_is_none(self):
+    def test_frequency_is_derived_from_index(self):
+        # Step 6 (Decision 3): the bridge now DERIVES a coarse frequency
+        # tag from the index rather than leaving it None — three
+        # consecutive weekdays infer to a regular cadence (B or D).
         ts = _example_time_series()
         s = time_series_to_artifact_series(
             ts,
             primitive_step=_example_primitive_step(),
             missingness_policy=CleanSingleSeriesV1(ffill_limit=5),
         )
-        assert s.frequency is None
+        assert s.frequency in ("B", "D")
 
     def test_missingness_policy_attached(self):
         ts = _example_time_series()

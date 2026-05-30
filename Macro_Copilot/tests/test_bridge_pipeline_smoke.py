@@ -559,9 +559,11 @@ class TestPipeline_CrossPrimitiveComposition:
         # Same missingness regime — that's the structural metadata
         # align_series checks.
         assert s_rate.missingness_policy == s_spread.missingness_policy
-        # Both have frequency=None (bridge does not infer).
-        assert s_rate.frequency is None
-        assert s_spread.frequency is None
+        # Step 6 (Decision 3): the bridge now derives frequency from the
+        # index; both synthetic series share a cadence, so they agree and
+        # strict-mode align passes.
+        assert s_rate.frequency is not None
+        assert s_rate.frequency == s_spread.frequency
 
         ss = align_series([s_rate, s_spread])
         assert isinstance(ss, SeriesSet)
@@ -685,14 +687,14 @@ class TestPipeline_StructuralMetadataRefusalAtOperator:
 
         s_a = _bridge_curve_spread(output_field="time_series_spread")
         s_b_orig = _bridge_curve_spread(output_field="time_series_zscore")
-        # Re-construct s_b with frequency='B' (deliberately drift the
-        # structural metadata to test the operator's refusal — bridge
-        # itself preserves None unless caller passes frequency).
+        # Deliberately drift s_b to a frequency that differs from s_a's
+        # (now bridge-derived) tag, to test the operator's refusal.
+        drift_freq = "M" if s_a.frequency != "M" else "Q"
         s_b_drift = Series(
             series_key=s_b_orig.series_key,
             payload=s_b_orig.payload,
             units=s_b_orig.units,
-            frequency="B",  # drift!
+            frequency=drift_freq,  # drift!
             missingness_policy=s_b_orig.missingness_policy,
             lineage=s_b_orig.lineage,
         )

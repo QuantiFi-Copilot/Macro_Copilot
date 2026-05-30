@@ -121,7 +121,7 @@ class Series(BaseModel):
     series_key: str = Field(..., min_length=1)
     payload: pd.Series
     units: TimeSeriesUnits
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None
     missingness_policy: MissingnessPolicy
     lineage: Lineage
 
@@ -169,7 +169,7 @@ class SeriesSet(BaseModel):
     missingness_by_key: Dict[str, MissingnessPolicy]
     upstream_lineage_by_key: Dict[str, Lineage]
     common_index: pd.DatetimeIndex
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None
     lineage: Lineage  # the SeriesSet's own lineage (head = align_series step)
 
     @model_validator(mode="after")
@@ -267,7 +267,7 @@ class EventSet(BaseModel):
     event_dates: List[pd.Timestamp]
     per_event_metadata: List[Dict[str, Any]]
     source_series_key: str  # the Series this event set was derived from
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None
     lineage: Lineage
 
     @model_validator(mode="after")

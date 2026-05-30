@@ -41,6 +41,7 @@ from shared.artifacts.lineage import (
     Lineage,
     LineageStep,
 )
+from shared.artifacts.adapters.from_time_series import _infer_frequency
 from shared.artifacts.missingness import MissingnessPolicy
 from shared.artifacts.types import Series
 from shared.artifacts.units import TimeSeriesUnits
@@ -67,7 +68,7 @@ def raw_dataframe_to_artifact_series(
     missingness_policy: MissingnessPolicy,
     value_col: str = "field_value",
     date_col: str = "trade_date",
-    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y"]] = None,
+    frequency: Optional[Literal["B", "D", "W", "M", "Q", "Y", "irregular"]] = None,
     upstream_lineage: Optional[Tuple[LineageStep, ...]] = None,
 ) -> Series:
     """Convert a fetch-shaped DataFrame into a typed ``Series`` artifact.
@@ -154,6 +155,16 @@ def raw_dataframe_to_artifact_series(
             f"series_key='{series_key}' (after coercion + dropna)."
         )
 
+    # Derive the frequency tag from the index when the caller did not
+    # supply one (Decision 3 — frequency is load-bearing; see
+    # from_time_series._infer_frequency).  Recorded in BOTH the adapter
+    # step params and the Series so they agree.  An explicit ``frequency=``
+    # argument always wins.
+    effective_frequency = (
+        frequency if frequency is not None
+        else _infer_frequency(payload.index)
+    )
+
     # ------------------------------------------------------------------
     # 2. Build the lineage chain.
     # ------------------------------------------------------------------
@@ -183,7 +194,7 @@ def raw_dataframe_to_artifact_series(
             "missingness_policy": missingness_policy.model_dump(),
             "value_col": value_col,
             "date_col": date_col,
-            "frequency": frequency,
+            "frequency": effective_frequency,
         },
         input_hashes=upstream_hashes,
     )
@@ -194,7 +205,7 @@ def raw_dataframe_to_artifact_series(
         series_key=series_key,
         payload=payload,
         units=units,
-        frequency=frequency,
+        frequency=effective_frequency,
         missingness_policy=missingness_policy,
         lineage=lineage,
     )
