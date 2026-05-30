@@ -114,6 +114,14 @@ def summarize_series(
     # Config identity (OPR12) — name AND version.
     _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
+    # Typed input guard (OPR13 / ERR-8): a non-Series input would otherwise
+    # raise a raw AttributeError on ``series.payload`` below.
+    if not isinstance(series, Series):
+        raise SummarizeSeriesError(
+            f"summarize_series: input must be a Series artifact; got "
+            f"{type(series).__name__}."
+        )
+
     if params is None:
         params = SummarizeSeriesParams(
             statistic=config.default_value("statistic"),
@@ -139,6 +147,15 @@ def summarize_series(
         )
 
     central = _compute_statistic(cleaned, params.statistic)
+    # OPR14(b) / ERR-3: refuse to emit a non-finite central value into the
+    # payload (e.g. a sum that overflowed) with the operator's own typed
+    # error, rather than letting the artifact layer reject it as a bare
+    # ValidationError.
+    if not math.isfinite(central):
+        raise SummarizeSeriesError(
+            f"summarize_series: statistic={params.statistic!r} produced a "
+            f"non-finite value ({central!r})."
+        )
     if (
         params.dispersion in ("std", "mad")
         and n_used < 2

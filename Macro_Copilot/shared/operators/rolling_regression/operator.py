@@ -112,6 +112,19 @@ def rolling_regression(
     # Config identity (OPR12) — name AND version.
     _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
+    # Typed input guards (OPR13 / ERR-8): a non-Series lhs/rhs would
+    # otherwise raise a raw AttributeError on ``.payload`` below.
+    if not isinstance(lhs, Series):
+        raise RollingRegressionError(
+            f"rolling_regression: lhs must be a Series artifact; got "
+            f"{type(lhs).__name__}."
+        )
+    if not isinstance(rhs, Series):
+        raise RollingRegressionError(
+            f"rolling_regression: rhs must be a Series artifact; got "
+            f"{type(rhs).__name__}."
+        )
+
     if params is None:
         # rolling_regression has a required per-call field (``window``)
         # with no sensible default — there is nothing to resolve from

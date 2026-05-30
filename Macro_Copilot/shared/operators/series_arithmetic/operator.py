@@ -260,6 +260,18 @@ def series_arithmetic(
     # ------------------------------------------------------------------
     payload = _compute_payload(op, left, right, period=params.period)
 
+    # OPR14(b) / ERR-2: no op may emit ±Inf into the payload (e.g. divide
+    # or pct_change where the denominator is zero).  Refuse with the
+    # operator's own typed error before the artifact layer would reject it
+    # as a bare ValidationError.  NaN (missingness) is allowed.
+    if bool(np.isinf(payload.to_numpy()).any()):
+        n_inf = int(np.isinf(payload.to_numpy()).sum())
+        raise SeriesArithmeticError(
+            f"series_arithmetic op={op!r}: produced {n_inf} non-finite "
+            "(±inf) value(s) — typically a divide / pct_change where the "
+            "denominator is zero.  Mask or filter those positions first."
+        )
+
     # ------------------------------------------------------------------
     # 5. Build lineage step.
     # ------------------------------------------------------------------
@@ -285,7 +297,11 @@ def series_arithmetic(
 
     step_params: Dict[str, Any] = {
         "op": op,
-        "period": params.period,
+        # ``period`` is only meaningful for the unary diff/pct_change ops;
+        # null it for binary ops so two otherwise-identical binary calls
+        # aren't given distinct identities by a meaningless param
+        # (OPR14c / F-DET-1).
+        "period": params.period if is_unary else None,
         "right_kind": right_kind,
         "right_scalar": (
             float(right) if (right_kind == "scalar") else None

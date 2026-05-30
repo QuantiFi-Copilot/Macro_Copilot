@@ -300,7 +300,12 @@ def align_series(
     step_params: dict[str, Any] = {
         "join_policy": params.join_policy,
         "fill_policy": params.fill_policy,
-        "fill_limit": params.fill_limit,
+        # ``fill_limit`` is only content-defining under ffill; null it under
+        # fill_policy='raw' so two raw-joins aren't given distinct
+        # identities by an ignored param (OPR14c / F-DET-2).
+        "fill_limit": (
+            params.fill_limit if params.fill_policy == "ffill" else None
+        ),
         "require_matching_frequency": params.require_matching_frequency,
         "require_matching_missingness": params.require_matching_missingness,
         # Stable, sorted to keep the hash invariant under input

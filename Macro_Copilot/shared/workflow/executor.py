@@ -61,10 +61,17 @@ from shared.workflow.validate import (
 )
 
 
-class WorkflowExecutionError(RuntimeError):
+class WorkflowExecutionError(ValueError, RuntimeError):
     """Raised when the executor fails mid-DAG.  Carries enough
     context (workflow_id, failing node_id, underlying exception)
-    to diagnose without rerunning."""
+    to diagnose without rerunning.
+
+    Subclasses ``ValueError`` (OPR13 / ADR 0016 Decision 3 — one error
+    family) so a node failure surfaces in the same ``except ValueError``
+    family as the operators' own ``<Op>Error`` (ERR-5); retains
+    ``RuntimeError`` for backward-compatibility with any existing
+    ``except RuntimeError`` handler.  The original typed ``<Op>Error`` is
+    preserved as ``__cause__``."""
 
 
 def execute_workflow(

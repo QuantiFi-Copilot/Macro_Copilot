@@ -90,6 +90,19 @@ def apply_mask(
     # defaults so a wrong config surfaces clearly.
     _check_config_identity(config, _OPERATOR_NAME, _OPERATOR_VERSION)
 
+    # Typed input guards (OPR13 / ERR-8): wrong-typed inputs would
+    # otherwise raise a raw AttributeError on ``.frequency`` / ``.mask``.
+    if not isinstance(series, Series):
+        raise ApplyMaskError(
+            f"apply_mask: series must be a Series artifact; got "
+            f"{type(series).__name__}."
+        )
+    if not isinstance(mask, EventSet):
+        raise ApplyMaskError(
+            f"apply_mask: mask must be an EventSet artifact; got "
+            f"{type(mask).__name__}."
+        )
+
     if params is None:
         params = ApplyMaskParams(
             index_policy=config.default_value("index_policy"),

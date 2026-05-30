@@ -58,7 +58,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from shared.artifacts.lineage import OperatorStep
+from shared.artifacts.lineage import OperatorStep, sanitize_params_for_lineage
 from shared.artifacts.types import Series, WindowedPanel
 from shared.artifacts.units import TimeSeriesUnits
 from shared.config.operator_config import (
@@ -272,16 +272,17 @@ def conditional_aggregate(
         "n_offsets_low_n": int(low_n_flags.sum()),
     }
     if dispersions is not None:
-        step_params["dispersions_per_offset"] = [
-            float(x) if np.isfinite(x) else None for x in dispersions
-        ]
+        # NaN dispersions (all-NaN columns) are mapped to None by
+        # sanitize_params_for_lineage below — the canonical OPR10 path,
+        # replacing the prior hand-rolled finite-check (F-DET-5).
+        step_params["dispersions_per_offset"] = [float(x) for x in dispersions]
     else:
         step_params["dispersions_per_offset"] = None
 
     op_step = OperatorStep.build(
         name=_OPERATOR_NAME,
         version=_OPERATOR_VERSION,
-        params=step_params,
+        params=sanitize_params_for_lineage(step_params),
         input_hashes=(panel.lineage.head_hash,),
     )
     lineage = panel.lineage.append(op_step)
